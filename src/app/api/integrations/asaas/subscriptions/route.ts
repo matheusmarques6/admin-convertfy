@@ -162,6 +162,50 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// DELETE - Cancel subscription
+export async function DELETE(request: NextRequest) {
+  try {
+    const supabase = await createClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
+    }
+
+    const searchParams = request.nextUrl.searchParams
+    const subscriptionId = searchParams.get("subscription_id")
+
+    if (!subscriptionId) {
+      return NextResponse.json({ error: "subscription_id é obrigatório" }, { status: 400 })
+    }
+
+    const { data: integration } = await supabase
+      .from("integrations")
+      .select("credentials, is_active")
+      .eq("type", "asaas")
+      .eq("is_active", true)
+      .single()
+
+    if (!integration) {
+      return NextResponse.json({ error: "Integração Asaas não ativa" }, { status: 400 })
+    }
+
+    const asaas = createAsaasService(integration.credentials)
+    const result = await asaas.cancelSubscription(subscriptionId)
+
+    return NextResponse.json({
+      success: true,
+      deleted: result.deleted,
+    })
+  } catch (error) {
+    console.error("Error canceling subscription:", error)
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Erro ao cancelar assinatura" },
+      { status: 500 }
+    )
+  }
+}
+
 function getSubscriptionStatusLabel(status: string): string {
   const labels: Record<string, string> = {
     ACTIVE: "Ativa",
