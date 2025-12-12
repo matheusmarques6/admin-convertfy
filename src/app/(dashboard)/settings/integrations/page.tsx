@@ -47,7 +47,7 @@ import { testIntegrationConnection } from "@/lib/integrations"
 import { toast } from "@/lib/hooks/use-toast"
 import type { IntegrationType, Integration } from "@/types"
 
-const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+const ICONS: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
   DollarSign,
   Facebook,
   Search,
