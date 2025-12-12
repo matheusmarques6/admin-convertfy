@@ -43,9 +43,21 @@ import {
 import { createClient } from "@/lib/supabase/client"
 import { useIntegrationsStore } from "@/lib/store"
 import { INTEGRATION_CONFIGS, getIntegrationConfig } from "@/lib/integrations/config"
-import { testIntegrationConnection } from "@/lib/integrations"
 import { toast } from "@/lib/hooks/use-toast"
 import type { IntegrationType, Integration } from "@/types"
+
+// Call backend API to test connection (avoids CORS issues)
+async function testIntegrationConnection(
+  type: string,
+  credentials: Record<string, string>
+): Promise<{ success: boolean; error?: string }> {
+  const response = await fetch("/api/integrations/test", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ type, credentials }),
+  })
+  return response.json()
+}
 
 const ICONS: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
   DollarSign,
