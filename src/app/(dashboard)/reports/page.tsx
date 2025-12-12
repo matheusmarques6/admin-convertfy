@@ -6,7 +6,26 @@ import { formatCurrency } from "@/lib/utils"
 
 export const dynamic = "force-dynamic"
 
-async function getReports() {
+interface ReportWithRelations {
+  id: string
+  month: string
+  metrics?: {
+    revenue?: number
+    roas?: number
+  }
+  document_url?: string
+  client?: {
+    id: string
+    name: string
+    company?: string
+  }
+  user?: {
+    id: string
+    name: string
+  }
+}
+
+async function getReports(): Promise<ReportWithRelations[]> {
   const supabase = await createClient()
 
   const { data: reports } = await supabase
@@ -25,7 +44,7 @@ async function getReports() {
     `)
     .order("month", { ascending: false })
 
-  return reports || []
+  return (reports || []) as ReportWithRelations[]
 }
 
 const months: Record<string, string> = {
