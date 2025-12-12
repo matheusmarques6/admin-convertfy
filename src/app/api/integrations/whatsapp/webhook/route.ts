@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import { WhatsAppService } from "@/lib/integrations/whatsapp"
 
-// Use service role for webhook processing
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+// Create Supabase client lazily to avoid build-time errors
+function getSupabaseAdmin() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+}
 
 // GET - Webhook verification
 export async function GET(request: NextRequest) {
@@ -66,6 +68,8 @@ async function handleIncomingMessage(message: {
 }) {
   console.log("Incoming WhatsApp message:", message)
 
+  const supabase = getSupabaseAdmin()
+
   // Try to find client by phone number
   const phoneNumber = message.from.replace(/^55/, "") // Remove Brazil code
   const phoneVariants = [
@@ -110,6 +114,8 @@ async function handleStatusUpdate(status: {
   timestamp: string
 }) {
   console.log("WhatsApp status update:", status)
+
+  const supabase = getSupabaseAdmin()
 
   // Update message status in activities if we're tracking it
   const { data: activities } = await supabase
