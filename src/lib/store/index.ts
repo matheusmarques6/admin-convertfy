@@ -1,6 +1,6 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
-import type { User, Client, Pipeline, Deal, Automation } from "@/types"
+import type { User, Client, Pipeline, Deal, Automation, Integration, IntegrationType } from "@/types"
 
 // Auth Store
 interface AuthState {
@@ -195,3 +195,109 @@ export const useDashboardStore = create<DashboardState>()(
     }
   )
 )
+
+// Integrations Store
+interface IntegrationStatus {
+  type: IntegrationType
+  connected: boolean
+  lastSync?: string
+  error?: string
+  data?: Record<string, unknown>
+}
+
+interface IntegrationsState {
+  integrations: Integration[]
+  statuses: Record<IntegrationType, IntegrationStatus>
+  isLoading: boolean
+  isTesting: IntegrationType | null
+  setIntegrations: (integrations: Integration[]) => void
+  addIntegration: (integration: Integration) => void
+  updateIntegration: (id: string, updates: Partial<Integration>) => void
+  removeIntegration: (id: string) => void
+  setStatus: (type: IntegrationType, status: Partial<IntegrationStatus>) => void
+  setLoading: (loading: boolean) => void
+  setTesting: (type: IntegrationType | null) => void
+  getIntegrationByType: (type: IntegrationType) => Integration | undefined
+  isConnected: (type: IntegrationType) => boolean
+}
+
+const initialStatuses: Record<IntegrationType, IntegrationStatus> = {
+  asaas: { type: "asaas", connected: false },
+  meta_ads: { type: "meta_ads", connected: false },
+  google_ads: { type: "google_ads", connected: false },
+  klaviyo: { type: "klaviyo", connected: false },
+  shopify: { type: "shopify", connected: false },
+  instagram: { type: "instagram", connected: false },
+  whatsapp: { type: "whatsapp", connected: false },
+  google_calendar: { type: "google_calendar", connected: false },
+}
+
+export const useIntegrationsStore = create<IntegrationsState>((set, get) => ({
+  integrations: [],
+  statuses: initialStatuses,
+  isLoading: false,
+  isTesting: null,
+  setIntegrations: (integrations) => {
+    const newStatuses = { ...initialStatuses }
+    integrations.forEach((integration) => {
+      newStatuses[integration.type] = {
+        type: integration.type,
+        connected: integration.is_active,
+        lastSync: integration.last_sync,
+      }
+    })
+    set({ integrations, statuses: newStatuses })
+  },
+  addIntegration: (integration) =>
+    set((state) => ({
+      integrations: [...state.integrations, integration],
+      statuses: {
+        ...state.statuses,
+        [integration.type]: {
+          type: integration.type,
+          connected: integration.is_active,
+          lastSync: integration.last_sync,
+        },
+      },
+    })),
+  updateIntegration: (id, updates) =>
+    set((state) => {
+      const updatedIntegrations = state.integrations.map((i) =>
+        i.id === id ? { ...i, ...updates } : i
+      )
+      const integration = updatedIntegrations.find((i) => i.id === id)
+      const newStatuses = { ...state.statuses }
+      if (integration) {
+        newStatuses[integration.type] = {
+          type: integration.type,
+          connected: integration.is_active,
+          lastSync: integration.last_sync,
+        }
+      }
+      return { integrations: updatedIntegrations, statuses: newStatuses }
+    }),
+  removeIntegration: (id) =>
+    set((state) => {
+      const integration = state.integrations.find((i) => i.id === id)
+      const filteredIntegrations = state.integrations.filter((i) => i.id !== id)
+      const newStatuses = { ...state.statuses }
+      if (integration) {
+        newStatuses[integration.type] = {
+          type: integration.type,
+          connected: false,
+        }
+      }
+      return { integrations: filteredIntegrations, statuses: newStatuses }
+    }),
+  setStatus: (type, status) =>
+    set((state) => ({
+      statuses: {
+        ...state.statuses,
+        [type]: { ...state.statuses[type], ...status },
+      },
+    })),
+  setLoading: (isLoading) => set({ isLoading }),
+  setTesting: (isTesting) => set({ isTesting }),
+  getIntegrationByType: (type) => get().integrations.find((i) => i.type === type),
+  isConnected: (type) => get().statuses[type]?.connected ?? false,
+}))

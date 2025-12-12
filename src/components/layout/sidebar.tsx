@@ -20,6 +20,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { Logo, LogoIcon } from "@/components/ui/logo"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
@@ -98,14 +99,11 @@ export function Sidebar({ user }: SidebarProps) {
       >
         {/* Logo */}
         <div className="flex items-center h-16 px-4 border-b border-border">
-          <Link href="/dashboard" className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-convertfy-purple via-convertfy-blue to-convertfy-cyan flex items-center justify-center flex-shrink-0">
-              <span className="text-xl font-bold text-white">C</span>
-            </div>
-            {!sidebarCollapsed && (
-              <span className="text-lg font-semibold gradient-text">
-                Convertfy
-              </span>
+          <Link href="/dashboard" className="flex items-center">
+            {sidebarCollapsed ? (
+              <LogoIcon className="w-10 h-10" />
+            ) : (
+              <Logo size="md" showText={true} />
             )}
           </Link>
         </div>
