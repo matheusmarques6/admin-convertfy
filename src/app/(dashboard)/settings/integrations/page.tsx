@@ -288,22 +288,42 @@ export default function IntegrationsPage() {
       const integration = integrations.find((i) => i.type === type)
       if (!integration) return
 
-      const result = await testIntegrationConnection(type, integration.credentials)
+      // Call the sync API based on integration type
+      let syncUrl = ""
+      switch (type) {
+        case "asaas":
+          syncUrl = "/api/integrations/asaas/sync"
+          break
+        default:
+          // For other integrations, just test connection
+          const testResult = await testIntegrationConnection(type, integration.credentials)
+          if (testResult.success) {
+            toast({
+              title: "Conexão verificada",
+              description: "A integração está funcionando.",
+            })
+          } else {
+            toast({
+              variant: "destructive",
+              title: "Falha na verificação",
+              description: testResult.error,
+            })
+          }
+          return
+      }
+
+      const response = await fetch(syncUrl, { method: "POST" })
+      const result = await response.json()
 
       if (result.success) {
-        const supabase = createClient()
-        await supabase
-          .from("integrations")
-          .update({ last_sync: new Date().toISOString() })
-          .eq("id", integration.id)
-
         updateIntegration(integration.id, {
           last_sync: new Date().toISOString(),
         })
+        setStatus(type, { connected: true, lastSync: new Date().toISOString() })
 
         toast({
-          title: "Sincronização concluída",
-          description: "Dados atualizados com sucesso.",
+          title: "Sincronização concluída!",
+          description: `${result.stats?.synced || 0} novos, ${result.stats?.updated || 0} atualizados`,
         })
       } else {
         toast({
