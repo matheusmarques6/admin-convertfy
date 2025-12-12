@@ -64,57 +64,67 @@ export async function POST() {
 
     for (const customer of allCustomers) {
       try {
-        // Check if client already exists by asaas_customer_id or email
-        const { data: existingByAsaas } = await supabase
+        // Check if client already exists by email
+        const { data: existingClient } = await supabase
           .from("clients")
-          .select("id")
-          .eq("asaas_customer_id", customer.id)
-          .single()
-
-        const { data: existingByEmail } = await supabase
-          .from("clients")
-          .select("id")
+          .select("id, custom_fields")
           .eq("email", customer.email)
           .single()
 
-        const existingClient = existingByAsaas || existingByEmail
-
-        const clientData = {
-          name: customer.name,
-          email: customer.email,
-          phone: customer.phone || null,
-          company: customer.company || null,
-          cpf_cnpj: customer.cpfCnpj || null,
+        // Store Asaas data in custom_fields JSON column
+        const asaasData = {
           asaas_customer_id: customer.id,
-          address: customer.address ? {
-            street: customer.address,
-            number: customer.addressNumber,
-            complement: customer.complement,
-            neighborhood: customer.province,
-            postal_code: customer.postalCode,
-            city: customer.city,
-            state: customer.state,
-          } : null,
-          status: "active" as const,
-          health_score: 100,
-          tags: [] as string[],
-          custom_fields: {} as Record<string, unknown>,
+          cpf_cnpj: customer.cpfCnpj || null,
+          asaas_address: customer.address || null,
+          asaas_address_number: customer.addressNumber || null,
+          asaas_complement: customer.complement || null,
+          asaas_neighborhood: customer.province || null,
+          asaas_postal_code: customer.postalCode || null,
+          asaas_city: customer.city || null,
+          asaas_state: customer.state || null,
         }
 
         if (existingClient) {
-          // Update existing client
-          await supabase
+          // Update existing client - merge custom_fields
+          const existingCustomFields = (existingClient.custom_fields as Record<string, unknown>) || {}
+          const { error: updateError } = await supabase
             .from("clients")
             .update({
-              ...clientData,
+              name: customer.name,
+              phone: customer.phone || null,
+              company: customer.company || null,
+              custom_fields: { ...existingCustomFields, ...asaasData },
               updated_at: new Date().toISOString(),
             })
             .eq("id", existingClient.id)
-          updated++
+
+          if (updateError) {
+            console.error(`Error updating ${customer.email}:`, updateError.message)
+            errors++
+          } else {
+            updated++
+          }
         } else {
-          // Create new client
-          await supabase.from("clients").insert(clientData)
-          imported++
+          // Create new client with basic fields
+          const { error: insertError } = await supabase
+            .from("clients")
+            .insert({
+              name: customer.name,
+              email: customer.email,
+              phone: customer.phone || null,
+              company: customer.company || null,
+              status: "active",
+              health_score: 100,
+              tags: [],
+              custom_fields: asaasData,
+            })
+
+          if (insertError) {
+            console.error(`Error inserting ${customer.email}:`, insertError.message)
+            errors++
+          } else {
+            imported++
+          }
         }
       } catch (err) {
         console.error(`Error importing customer ${customer.id}:`, err)
@@ -185,17 +195,21 @@ export async function GET() {
       .from("clients")
       .select("*", { count: "exact", head: true })
 
-    const { count: syncedClients } = await supabase
+    // Count clients that have asaas_customer_id in custom_fields
+    const { data: allClients } = await supabase
       .from("clients")
-      .select("*", { count: "exact", head: true })
-      .not("asaas_customer_id", "is", null)
+      .select("custom_fields")
+
+    const syncedClients = allClients?.filter(
+      (c) => c.custom_fields && (c.custom_fields as Record<string, unknown>).asaas_customer_id
+    ).length || 0
 
     return NextResponse.json({
       connected: true,
       lastSync: integration.last_sync,
       asaasCustomers,
       localClients: localClients || 0,
-      syncedClients: syncedClients || 0,
+      syncedClients,
     })
   } catch (error) {
     return NextResponse.json(
