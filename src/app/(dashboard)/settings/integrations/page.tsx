@@ -20,7 +20,6 @@ import {
   Plug,
   ArrowLeft,
 } from "lucide-react"
-import Link from "next/link"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -82,6 +81,7 @@ export default function IntegrationsPage() {
 
   useEffect(() => {
     loadIntegrations()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function loadIntegrations() {

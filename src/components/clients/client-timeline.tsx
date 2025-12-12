@@ -57,7 +57,7 @@ export function ClientTimeline({ activities }: ClientTimelineProps) {
 
               {/* Activities */}
               <div className="space-y-6">
-                {sortedActivities.map((activity, index) => {
+                {sortedActivities.map((activity) => {
                   const config = activityIcons[activity.type] || {
                     icon: Edit,
                     color: "text-gray-500",

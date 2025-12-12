@@ -31,7 +31,7 @@ function formatMonth(month: string): string {
   return `${months[m] || m} ${year}`
 }
 
-export function ClientReports({ reports, clientId }: ClientReportsProps) {
+export function ClientReports({ reports }: ClientReportsProps) {
   const sortedReports = [...reports].sort((a, b) => b.month.localeCompare(a.month))
 
   return (

@@ -175,6 +175,6 @@ async function handleDunningEvent(payload: AsaasWebhookPayload) {
 }
 
 // Handle GET for webhook verification
-export async function GET(request: NextRequest) {
+export async function GET() {
   return NextResponse.json({ status: "Asaas webhook endpoint active" })
 }

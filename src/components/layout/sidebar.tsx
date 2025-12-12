@@ -78,7 +78,7 @@ export function Sidebar({ user }: SidebarProps) {
       await supabase.auth.signOut()
       router.push("/login")
       router.refresh()
-    } catch (error) {
+    } catch {
       toast({
         variant: "destructive",
         title: "Erro ao sair",

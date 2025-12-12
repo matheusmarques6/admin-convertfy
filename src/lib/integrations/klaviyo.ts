@@ -1,4 +1,4 @@
-import { KlaviyoProfile, KlaviyoList, KlaviyoMetrics, KlaviyoFlowMetrics } from "./types"
+import { KlaviyoProfile, KlaviyoList, KlaviyoMetrics } from "./types"
 
 const KLAVIYO_API_URL = "https://a.klaviyo.com/api"
 
@@ -225,10 +225,7 @@ export class KlaviyoService {
   }
 
   // Dashboard Metrics
-  async getDashboardMetrics(params: {
-    startDate: string
-    endDate: string
-  }): Promise<{
+  async getDashboardMetrics(): Promise<{
     totalProfiles: number
     newProfiles: number
     totalLists: number
