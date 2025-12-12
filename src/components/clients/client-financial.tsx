@@ -98,6 +98,8 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString())
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [noAsaasId, setNoAsaasId] = useState(false)
   const [createdPayment, setCreatedPayment] = useState<{
     id: string
     invoiceUrl?: string
@@ -120,6 +122,8 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
 
   async function loadData() {
     setIsLoading(true)
+    setError(null)
+    setNoAsaasId(false)
     try {
       const [paymentsRes, subscriptionsRes] = await Promise.all([
         fetch(`/api/integrations/asaas/payments?client_id=${clientId}&year=${selectedYear}`),
@@ -129,6 +133,21 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
       const paymentsData = await paymentsRes.json()
       const subscriptionsData = await subscriptionsRes.json()
 
+      // Check for errors
+      if (paymentsData.error) {
+        if (paymentsData.error.includes("não ativa")) {
+          setError("Integração Asaas não está ativa. Configure nas configurações.")
+        } else {
+          setError(paymentsData.error)
+        }
+        return
+      }
+
+      // Check if client has Asaas ID (via subscriptions message)
+      if (subscriptionsData.message?.includes("não possui ID Asaas")) {
+        setNoAsaasId(true)
+      }
+
       if (paymentsData.success) {
         setPayments(paymentsData.payments || [])
         setSummary(paymentsData.summary)
@@ -137,8 +156,9 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
       if (subscriptionsData.success) {
         setSubscriptions(subscriptionsData.subscriptions || [])
       }
-    } catch (error) {
-      console.error("Error loading financial data:", error)
+    } catch (err) {
+      console.error("Error loading financial data:", err)
+      setError("Erro ao carregar dados financeiros")
     } finally {
       setIsLoading(false)
     }
@@ -237,6 +257,42 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
   }
 
   const years = Array.from({ length: 5 }, (_, i) => (new Date().getFullYear() - i).toString())
+
+  // Show error state
+  if (error) {
+    return (
+      <Card className="border-destructive/50 bg-destructive/5">
+        <CardContent className="flex flex-col items-center justify-center py-12">
+          <AlertCircle className="h-12 w-12 text-destructive mb-4" />
+          <h3 className="text-lg font-medium text-destructive">Erro ao carregar</h3>
+          <p className="text-muted-foreground text-center mt-1">{error}</p>
+          <Button variant="outline" className="mt-4" onClick={loadData}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Tentar novamente
+          </Button>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  // Show message if client doesn't have Asaas ID
+  if (noAsaasId && !isLoading) {
+    return (
+      <Card className="border-dashed">
+        <CardContent className="flex flex-col items-center justify-center py-12">
+          <Receipt className="h-12 w-12 text-muted-foreground mb-4" />
+          <h3 className="text-lg font-medium">Cliente não vinculado ao Asaas</h3>
+          <p className="text-muted-foreground text-center mt-1 max-w-md">
+            Este cliente ainda não foi importado do Asaas. Importe os clientes na página de clientes
+            para visualizar o histórico financeiro.
+          </p>
+          <Button variant="outline" className="mt-4" asChild>
+            <a href="/clients">Ir para Clientes</a>
+          </Button>
+        </CardContent>
+      </Card>
+    )
+  }
 
   return (
     <div className="space-y-6">

@@ -98,7 +98,29 @@ export function BillingMetrics() {
     }
   }
 
-  if (!data?.connected) {
+  // Show loading state first
+  if (isLoading && !data) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-2">
+          <div className="h-10 w-48 bg-muted animate-pulse rounded-md" />
+          <div className="h-10 w-10 bg-muted animate-pulse rounded-md" />
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {[...Array(4)].map((_, i) => (
+            <Card key={i}>
+              <CardContent className="h-32 flex items-center justify-center">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  // Show connect message only after loading completes and we know it's not connected
+  if (data && !data.connected) {
     return (
       <Card className="border-dashed">
         <CardContent className="flex flex-col items-center justify-center py-12">
