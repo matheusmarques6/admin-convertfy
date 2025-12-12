@@ -19,7 +19,7 @@ const statusConfig: Record<string, { label: string; variant: "default" | "second
   no_show: { label: "Não Compareceu", variant: "destructive", icon: XCircle },
 }
 
-export function ClientMeetings({ meetings, clientId }: ClientMeetingsProps) {
+export function ClientMeetings({ meetings, clientId: _clientId }: ClientMeetingsProps) {
   const now = new Date()
   const upcomingMeetings = meetings
     .filter((m) => m.status === "scheduled" && new Date(m.scheduled_at) > now)

@@ -1,4 +1,3 @@
-import Link from "next/link"
 import { Plus, Calendar, Video, Clock, CheckCircle, XCircle } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { Button } from "@/components/ui/button"

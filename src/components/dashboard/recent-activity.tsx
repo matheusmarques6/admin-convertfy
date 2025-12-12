@@ -86,7 +86,7 @@ export function RecentActivity() {
       <CardContent>
         <ScrollArea className="h-[300px] pr-4">
           <div className="space-y-4">
-            {activities.map((activity, index) => (
+            {activities.map((activity) => (
               <div key={activity.id} className="flex gap-3">
                 <div className={cn("rounded-lg p-2 h-fit", activity.iconBg)}>
                   <activity.icon className={cn("h-4 w-4", activity.iconColor)} />

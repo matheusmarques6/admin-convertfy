@@ -13,7 +13,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Skeleton } from "@/components/ui/skeleton"
-import { formatDateTime } from "@/lib/utils"
 import type { Automation } from "@/types"
 
 export const dynamic = "force-dynamic"
