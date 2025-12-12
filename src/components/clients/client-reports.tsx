@@ -8,7 +8,6 @@ import type { Report } from "@/types"
 
 interface ClientReportsProps {
   reports: Report[]
-  clientId: string
 }
 
 const months: Record<string, string> = {
@@ -31,7 +30,7 @@ function formatMonth(month: string): string {
   return `${months[m] || m} ${year}`
 }
 
-export function ClientReports({ reports, clientId: _clientId }: ClientReportsProps) {
+export function ClientReports({ reports }: ClientReportsProps) {
   const sortedReports = [...reports].sort((a, b) => b.month.localeCompare(a.month))
 
   return (
