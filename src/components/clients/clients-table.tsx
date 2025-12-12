@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
@@ -10,6 +10,10 @@ import {
   Trash2,
   Mail,
   ExternalLink,
+  CheckCircle2,
+  AlertCircle,
+  Repeat,
+  DollarSign,
 } from "lucide-react"
 import {
   Table,
@@ -40,6 +44,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { formatCurrency, getInitials, getHealthScoreColor } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
 import { toast } from "@/lib/hooks/use-toast"
@@ -54,6 +64,20 @@ interface ClientsTableProps {
   clients: ClientWithRelations[]
 }
 
+interface ClientStatus {
+  asaasId: string
+  hasOverdue: boolean
+  overdueCount: number
+  overdueValue: number
+  pendingCount: number
+  pendingValue: number
+  subscription?: {
+    value: number
+    cycle: string
+    status: string
+  }
+}
+
 const statusLabels: Record<string, { label: string; variant: "default" | "secondary" | "success" | "destructive" | "warning" }> = {
   active: { label: "Ativo", variant: "success" },
   inactive: { label: "Inativo", variant: "secondary" },
@@ -62,10 +86,39 @@ const statusLabels: Record<string, { label: string; variant: "default" | "second
   onboarding: { label: "Onboarding", variant: "warning" },
 }
 
+const cycleLabels: Record<string, string> = {
+  WEEKLY: "Semanal",
+  BIWEEKLY: "Quinzenal",
+  MONTHLY: "Mensal",
+  QUARTERLY: "Trimestral",
+  SEMIANNUALLY: "Semestral",
+  YEARLY: "Anual",
+}
+
 export function ClientsTable({ clients }: ClientsTableProps) {
   const router = useRouter()
   const [deleteClient, setDeleteClient] = useState<ClientWithRelations | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [clientsStatus, setClientsStatus] = useState<Record<string, ClientStatus>>({})
+  const [isLoadingStatus, setIsLoadingStatus] = useState(true)
+
+  useEffect(() => {
+    loadClientsStatus()
+  }, [])
+
+  async function loadClientsStatus() {
+    try {
+      const response = await fetch("/api/integrations/asaas/clients-status")
+      const data = await response.json()
+      if (data.success) {
+        setClientsStatus(data.clientsStatus || {})
+      }
+    } catch (error) {
+      console.error("Error loading clients status:", error)
+    } finally {
+      setIsLoadingStatus(false)
+    }
+  }
 
   async function handleDelete() {
     if (!deleteClient) return
@@ -120,15 +173,15 @@ export function ClientsTable({ clients }: ClientsTableProps) {
   }
 
   return (
-    <>
+    <TooltipProvider>
       <div className="rounded-lg border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead className="w-[250px]">Cliente</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Plano</TableHead>
-              <TableHead>Valor Mensal</TableHead>
+              <TableHead>Pagamento</TableHead>
+              <TableHead>Assinatura</TableHead>
               <TableHead>Saúde</TableHead>
               <TableHead>Responsável</TableHead>
               <TableHead className="w-[50px]"></TableHead>
@@ -139,30 +192,36 @@ export function ClientsTable({ clients }: ClientsTableProps) {
               const activeContract = getActiveContract(client.contracts)
               const statusInfo = statusLabels[client.status] || statusLabels.prospect
               const healthColor = getHealthScoreColor(client.health_score)
+              const clientStatus = clientsStatus[client.id]
 
               return (
-                <TableRow key={client.id}>
+                <TableRow key={client.id} className={clientStatus?.hasOverdue ? "bg-red-50/50 dark:bg-red-950/10" : ""}>
                   <TableCell>
                     <div className="flex items-center gap-3">
-                      <Avatar className="h-9 w-9">
-                        <AvatarFallback className="bg-primary/10 text-primary text-sm">
+                      <Avatar className="h-10 w-10">
+                        <AvatarFallback className="bg-primary/10 text-primary text-sm font-semibold">
                           {getInitials(client.name)}
                         </AvatarFallback>
                       </Avatar>
                       <div>
                         <Link
                           href={`/clients/${client.id}`}
-                          className="font-medium hover:underline"
+                          className="font-medium hover:underline flex items-center gap-2"
                         >
                           {client.name}
+                          {clientStatus?.hasOverdue && (
+                            <Tooltip>
+                              <TooltipTrigger>
+                                <AlertCircle className="h-4 w-4 text-red-500" />
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Inadimplente - {clientStatus.overdueCount} cobranças vencidas</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
                         </Link>
                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          {client.email && (
-                            <span className="flex items-center gap-1">
-                              <Mail className="h-3 w-3" />
-                              {client.email}
-                            </span>
-                          )}
+                          {client.company && <span>{client.company}</span>}
                         </div>
                       </div>
                     </div>
@@ -173,21 +232,67 @@ export function ClientsTable({ clients }: ClientsTableProps) {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    {activeContract?.plan_name || (
-                      <span className="text-muted-foreground">-</span>
+                    {clientStatus ? (
+                      <div className="space-y-1">
+                        {clientStatus.hasOverdue ? (
+                          <Badge variant="destructive" className="flex items-center gap-1 w-fit">
+                            <AlertCircle className="h-3 w-3" />
+                            Inadimplente
+                          </Badge>
+                        ) : (
+                          <Badge variant="success" className="flex items-center gap-1 w-fit">
+                            <CheckCircle2 className="h-3 w-3" />
+                            Adimplente
+                          </Badge>
+                        )}
+                        {clientStatus.overdueValue > 0 && (
+                          <p className="text-xs text-red-500">
+                            {formatCurrency(clientStatus.overdueValue)} vencido
+                          </p>
+                        )}
+                        {clientStatus.pendingValue > 0 && !clientStatus.hasOverdue && (
+                          <p className="text-xs text-amber-500">
+                            {formatCurrency(clientStatus.pendingValue)} pendente
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">
+                        {isLoadingStatus ? "..." : "Sem vínculo Asaas"}
+                      </span>
                     )}
                   </TableCell>
                   <TableCell>
-                    {activeContract ? (
-                      formatCurrency(activeContract.monthly_value)
+                    {clientStatus?.subscription ? (
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-1">
+                          <Repeat className="h-3 w-3 text-purple-500" />
+                          <span className="font-medium text-sm">
+                            {formatCurrency(clientStatus.subscription.value)}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {cycleLabels[clientStatus.subscription.cycle] || clientStatus.subscription.cycle}
+                        </p>
+                      </div>
+                    ) : activeContract ? (
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-1">
+                          <DollarSign className="h-3 w-3 text-emerald-500" />
+                          <span className="font-medium text-sm">
+                            {formatCurrency(activeContract.monthly_value)}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">{activeContract.plan_name}</p>
+                      </div>
                     ) : (
-                      <span className="text-muted-foreground">-</span>
+                      <span className="text-muted-foreground text-sm">-</span>
                     )}
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
                       <div
-                        className={`h-2 w-2 rounded-full ${
+                        className={`h-2.5 w-2.5 rounded-full ${
                           healthColor === "green"
                             ? "bg-emerald-500"
                             : healthColor === "yellow"
@@ -195,7 +300,7 @@ export function ClientsTable({ clients }: ClientsTableProps) {
                             : "bg-red-500"
                         }`}
                       />
-                      <span className="text-sm">{client.health_score}%</span>
+                      <span className="text-sm font-medium">{client.health_score}%</span>
                     </div>
                   </TableCell>
                   <TableCell>
@@ -287,6 +392,6 @@ export function ClientsTable({ clients }: ClientsTableProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </>
+    </TooltipProvider>
   )
 }
