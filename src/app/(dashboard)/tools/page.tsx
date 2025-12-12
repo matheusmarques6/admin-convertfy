@@ -1,0 +1,361 @@
+"use client"
+
+import { useState } from "react"
+import {
+  Wand2,
+  Mail,
+  FileText,
+  Calculator,
+  BarChart3,
+  Sparkles,
+  Loader2,
+} from "lucide-react"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { formatCurrency } from "@/lib/utils"
+
+export default function ToolsPage() {
+  const [emailSubjects, setEmailSubjects] = useState<string[]>([])
+  const [isGeneratingSubjects, setIsGeneratingSubjects] = useState(false)
+  const [adCopyResult, setAdCopyResult] = useState("")
+  const [isGeneratingCopy, setIsGeneratingCopy] = useState(false)
+
+  // ROAS Calculator state
+  const [adSpend, setAdSpend] = useState("")
+  const [revenue, setRevenue] = useState("")
+  const roas = adSpend && revenue ? (parseFloat(revenue) / parseFloat(adSpend)).toFixed(2) : null
+
+  async function generateEmailSubjects() {
+    setIsGeneratingSubjects(true)
+    // Simulate API call
+    setTimeout(() => {
+      setEmailSubjects([
+        "Recupere seu carrinho abandonado com 10% OFF",
+        "[Urgente] Seus produtos estão te esperando!",
+        "Oops! Você esqueceu algo importante...",
+        "Última chance: Finalize sua compra hoje!",
+        "Reservamos seu carrinho por 24h",
+      ])
+      setIsGeneratingSubjects(false)
+    }, 1500)
+  }
+
+  async function generateAdCopy() {
+    setIsGeneratingCopy(true)
+    setTimeout(() => {
+      setAdCopyResult(
+        `🔥 OFERTA ESPECIAL 🔥
+
+Descubra como centenas de lojistas estão aumentando suas vendas em até 40% com nossas estratégias de marketing.
+
+✅ Gestão completa de tráfego pago
+✅ Email marketing que converte
+✅ Automações inteligentes
+
+📈 Resultados em até 30 dias ou seu dinheiro de volta!
+
+👉 Agende uma reunião gratuita agora
+[LINK]
+
+#ecommerce #marketingdigital #vendasonline`
+      )
+      setIsGeneratingCopy(false)
+    }, 2000)
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-bold">Hub de Ferramentas</h1>
+        <p className="text-muted-foreground">
+          Ferramentas e utilitários para aumentar sua produtividade
+        </p>
+      </div>
+
+      <Tabs defaultValue="ai" className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="ai" className="gap-2">
+            <Sparkles className="h-4 w-4" />
+            IA
+          </TabsTrigger>
+          <TabsTrigger value="calculators" className="gap-2">
+            <Calculator className="h-4 w-4" />
+            Calculadoras
+          </TabsTrigger>
+          <TabsTrigger value="reports" className="gap-2">
+            <FileText className="h-4 w-4" />
+            Relatórios
+          </TabsTrigger>
+        </TabsList>
+
+        {/* AI Tools */}
+        <TabsContent value="ai" className="space-y-6">
+          <div className="grid gap-6 md:grid-cols-2">
+            {/* Email Subject Generator */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Mail className="h-4 w-4 text-primary" />
+                  Gerador de Assuntos de Email
+                </CardTitle>
+                <CardDescription>
+                  Gere assuntos de email otimizados para maior abertura
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Tipo de campanha</Label>
+                  <Select defaultValue="abandoned_cart">
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="abandoned_cart">Carrinho Abandonado</SelectItem>
+                      <SelectItem value="welcome">Boas-vindas</SelectItem>
+                      <SelectItem value="promotional">Promocional</SelectItem>
+                      <SelectItem value="newsletter">Newsletter</SelectItem>
+                      <SelectItem value="reactivation">Reativação</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button
+                  onClick={generateEmailSubjects}
+                  disabled={isGeneratingSubjects}
+                  className="w-full"
+                >
+                  {isGeneratingSubjects ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Wand2 className="mr-2 h-4 w-4" />
+                  )}
+                  Gerar Assuntos
+                </Button>
+
+                {emailSubjects.length > 0 && (
+                  <div className="space-y-2 pt-4 border-t">
+                    <Label>Sugestões:</Label>
+                    {emailSubjects.map((subject, index) => (
+                      <div
+                        key={index}
+                        className="p-3 rounded-lg bg-muted text-sm cursor-pointer hover:bg-muted/80"
+                        onClick={() => navigator.clipboard.writeText(subject)}
+                      >
+                        {subject}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Ad Copy Generator */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  Gerador de Copy para Ads
+                </CardTitle>
+                <CardDescription>
+                  Crie copies persuasivas para seus anúncios
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Produto/Serviço</Label>
+                  <Input placeholder="Ex: Gestão de tráfego pago" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Tom de voz</Label>
+                  <Select defaultValue="professional">
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="professional">Profissional</SelectItem>
+                      <SelectItem value="casual">Casual</SelectItem>
+                      <SelectItem value="urgent">Urgente</SelectItem>
+                      <SelectItem value="friendly">Amigável</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button
+                  onClick={generateAdCopy}
+                  disabled={isGeneratingCopy}
+                  className="w-full"
+                >
+                  {isGeneratingCopy ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Wand2 className="mr-2 h-4 w-4" />
+                  )}
+                  Gerar Copy
+                </Button>
+
+                {adCopyResult && (
+                  <div className="space-y-2 pt-4 border-t">
+                    <Label>Resultado:</Label>
+                    <Textarea
+                      value={adCopyResult}
+                      readOnly
+                      className="min-h-[200px]"
+                    />
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        {/* Calculators */}
+        <TabsContent value="calculators" className="space-y-6">
+          <div className="grid gap-6 md:grid-cols-2">
+            {/* ROAS Calculator */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Calculator className="h-4 w-4 text-primary" />
+                  Calculadora de ROAS
+                </CardTitle>
+                <CardDescription>
+                  Calcule o retorno sobre investimento em anúncios
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Investimento em Ads (R$)</Label>
+                  <Input
+                    type="number"
+                    placeholder="0,00"
+                    value={adSpend}
+                    onChange={(e) => setAdSpend(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Receita Gerada (R$)</Label>
+                  <Input
+                    type="number"
+                    placeholder="0,00"
+                    value={revenue}
+                    onChange={(e) => setRevenue(e.target.value)}
+                  />
+                </div>
+
+                {roas && (
+                  <div className="p-4 rounded-lg bg-primary/10 text-center">
+                    <p className="text-sm text-muted-foreground">Seu ROAS é</p>
+                    <p className="text-3xl font-bold text-primary">{roas}x</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Para cada R$ 1 investido, você gera{" "}
+                      {formatCurrency(parseFloat(roas))}
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Benchmark Card */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <BarChart3 className="h-4 w-4 text-primary" />
+                  Benchmark da Carteira
+                </CardTitle>
+                <CardDescription>
+                  Compare o desempenho de um cliente com a média
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Selecione o cliente</Label>
+                  <Select>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="client1">Loja ABC</SelectItem>
+                      <SelectItem value="client2">Loja XYZ</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button className="w-full">
+                  <BarChart3 className="mr-2 h-4 w-4" />
+                  Gerar Comparativo
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        {/* Reports */}
+        <TabsContent value="reports" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <FileText className="h-4 w-4 text-primary" />
+                Gerador de Relatório Automático
+              </CardTitle>
+              <CardDescription>
+                Gere relatórios completos automaticamente com dados das integrações
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Cliente</Label>
+                  <Select>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o cliente" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="client1">Loja ABC</SelectItem>
+                      <SelectItem value="client2">Loja XYZ</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Período</Label>
+                  <Select defaultValue="last_month">
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="last_month">Último mês</SelectItem>
+                      <SelectItem value="last_quarter">Último trimestre</SelectItem>
+                      <SelectItem value="custom">Personalizado</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Incluir métricas de:</Label>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" size="sm">Shopify</Button>
+                  <Button variant="outline" size="sm">Facebook Ads</Button>
+                  <Button variant="outline" size="sm">Google Ads</Button>
+                  <Button variant="outline" size="sm">Klaviyo</Button>
+                  <Button variant="outline" size="sm">Instagram</Button>
+                </div>
+              </div>
+              <Button className="w-full">
+                <FileText className="mr-2 h-4 w-4" />
+                Gerar Relatório PDF
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+    </div>
+  )
+}

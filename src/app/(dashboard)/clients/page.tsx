@@ -1,0 +1,80 @@
+import { Suspense } from "react"
+import Link from "next/link"
+import { Plus } from "lucide-react"
+import { createClient } from "@/lib/supabase/server"
+import { Button } from "@/components/ui/button"
+import { ClientsTable } from "@/components/clients/clients-table"
+import { ClientsFilters } from "@/components/clients/clients-filters"
+import { Skeleton } from "@/components/ui/skeleton"
+
+export const dynamic = "force-dynamic"
+
+async function getClients() {
+  const supabase = await createClient()
+
+  const { data: clients, error } = await supabase
+    .from("clients")
+    .select(`
+      *,
+      contracts (
+        id,
+        plan_name,
+        monthly_value,
+        status
+      ),
+      owner:profiles!clients_owner_id_fkey (
+        id,
+        name,
+        avatar_url
+      )
+    `)
+    .order("created_at", { ascending: false })
+
+  if (error) {
+    console.error("Error fetching clients:", error)
+    return []
+  }
+
+  return clients || []
+}
+
+function TableSkeleton() {
+  return (
+    <div className="space-y-4">
+      <Skeleton className="h-10 w-full" />
+      <Skeleton className="h-[400px] w-full" />
+    </div>
+  )
+}
+
+export default async function ClientsPage() {
+  const clients = await getClients()
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Clientes</h1>
+          <p className="text-muted-foreground">
+            Gerencie sua carteira de clientes
+          </p>
+        </div>
+        <Button asChild>
+          <Link href="/clients/new">
+            <Plus className="mr-2 h-4 w-4" />
+            Novo Cliente
+          </Link>
+        </Button>
+      </div>
+
+      {/* Filters */}
+      <ClientsFilters />
+
+      {/* Table */}
+      <Suspense fallback={<TableSkeleton />}>
+        <ClientsTable clients={clients} />
+      </Suspense>
+    </div>
+  )
+}
