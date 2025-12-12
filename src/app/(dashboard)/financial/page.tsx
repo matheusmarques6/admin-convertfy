@@ -1,7 +1,7 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ChargesManager } from "@/components/financial/charges-manager"
 import { SubscriptionsManager } from "@/components/financial/subscriptions-manager"
-import { DollarSign, CreditCard, Repeat } from "lucide-react"
+import { DollarSign, Repeat } from "lucide-react"
 
 export const dynamic = "force-dynamic"
 
