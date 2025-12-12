@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server"
 import { Button } from "@/components/ui/button"
 import { ClientsTable } from "@/components/clients/clients-table"
 import { ClientsFilters } from "@/components/clients/clients-filters"
+import { ImportAsaasButton } from "@/components/clients/import-asaas-button"
 import { Skeleton } from "@/components/ui/skeleton"
 
 export const dynamic = "force-dynamic"
@@ -60,12 +61,15 @@ export default async function ClientsPage() {
             Gerencie sua carteira de clientes
           </p>
         </div>
-        <Button asChild>
-          <Link href="/clients/new">
-            <Plus className="mr-2 h-4 w-4" />
-            Novo Cliente
-          </Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          <ImportAsaasButton />
+          <Button asChild>
+            <Link href="/clients/new">
+              <Plus className="mr-2 h-4 w-4" />
+              Novo Cliente
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}

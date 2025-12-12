@@ -21,6 +21,17 @@ export interface Client {
   phone?: string
   company?: string
   website?: string
+  cpf_cnpj?: string
+  asaas_customer_id?: string
+  address?: {
+    street?: string
+    number?: string
+    complement?: string
+    neighborhood?: string
+    postal_code?: string
+    city?: string
+    state?: string
+  }
   status: ClientStatus
   health_score: number
   tags: string[]
