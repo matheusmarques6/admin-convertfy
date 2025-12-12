@@ -20,7 +20,7 @@ export function Logo({ className, size = "md", showText = true }: LogoProps) {
 
   return (
     <div className={cn("flex items-center gap-3", className)}>
-      <div className={cn("flex-shrink-0", sizeConfig.icon)}>
+      <div className={cn("flex-shrink-0 relative", sizeConfig.icon)}>
         <svg
           viewBox="0 0 200 200"
           fill="none"
@@ -28,33 +28,32 @@ export function Logo({ className, size = "md", showText = true }: LogoProps) {
           className="w-full h-full"
         >
           <defs>
-            <linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <linearGradient id="logoGradient" x1="50%" y1="0%" x2="50%" y2="100%">
               <stop offset="0%" stopColor="#8B5CF6" />
-              <stop offset="50%" stopColor="#3B82F6" />
-              <stop offset="100%" stopColor="#06B6D4" />
+              <stop offset="100%" stopColor="#3a68fc" />
             </linearGradient>
           </defs>
           {/* Outer C arc */}
           <path
-            d="M140 40C95 10 40 35 25 90C10 145 45 190 100 190C125 190 145 180 160 165"
+            d="M150 45C110 15 50 25 30 80C10 135 40 185 95 185C130 185 155 165 170 140"
+            stroke="url(#logoGradient)"
+            strokeWidth="28"
+            strokeLinecap="round"
+            fill="none"
+          />
+          {/* Inner arc with chat bubble */}
+          <path
+            d="M145 75C125 50 85 45 60 65C35 85 35 125 50 155"
             stroke="url(#logoGradient)"
             strokeWidth="24"
             strokeLinecap="round"
             fill="none"
           />
-          {/* Inner arc with chat bubble hint */}
+          {/* Chat bubble accent */}
           <path
-            d="M150 70C130 50 100 45 75 60C50 75 45 110 55 140C60 155 75 165 95 170"
+            d="M50 155L40 175L70 160"
             stroke="url(#logoGradient)"
             strokeWidth="20"
-            strokeLinecap="round"
-            fill="none"
-          />
-          {/* Small accent connector */}
-          <path
-            d="M95 170L85 185L110 175"
-            stroke="url(#logoGradient)"
-            strokeWidth="16"
             strokeLinecap="round"
             strokeLinejoin="round"
             fill="none"
@@ -62,7 +61,7 @@ export function Logo({ className, size = "md", showText = true }: LogoProps) {
         </svg>
       </div>
       {showText && (
-        <span className={cn("font-semibold gradient-text", sizeConfig.text)}>
+        <span className={cn("font-bold text-white", sizeConfig.text)}>
           Convertfy
         </span>
       )}
@@ -79,30 +78,29 @@ export function LogoIcon({ className }: { className?: string }) {
       className={cn("w-10 h-10", className)}
     >
       <defs>
-        <linearGradient id="logoGradientIcon" x1="0%" y1="0%" x2="100%" y2="100%">
+        <linearGradient id="logoGradientIcon" x1="50%" y1="0%" x2="50%" y2="100%">
           <stop offset="0%" stopColor="#8B5CF6" />
-          <stop offset="50%" stopColor="#3B82F6" />
-          <stop offset="100%" stopColor="#06B6D4" />
+          <stop offset="100%" stopColor="#3a68fc" />
         </linearGradient>
       </defs>
       <path
-        d="M140 40C95 10 40 35 25 90C10 145 45 190 100 190C125 190 145 180 160 165"
+        d="M150 45C110 15 50 25 30 80C10 135 40 185 95 185C130 185 155 165 170 140"
+        stroke="url(#logoGradientIcon)"
+        strokeWidth="28"
+        strokeLinecap="round"
+        fill="none"
+      />
+      <path
+        d="M145 75C125 50 85 45 60 65C35 85 35 125 50 155"
         stroke="url(#logoGradientIcon)"
         strokeWidth="24"
         strokeLinecap="round"
         fill="none"
       />
       <path
-        d="M150 70C130 50 100 45 75 60C50 75 45 110 55 140C60 155 75 165 95 170"
+        d="M50 155L40 175L70 160"
         stroke="url(#logoGradientIcon)"
         strokeWidth="20"
-        strokeLinecap="round"
-        fill="none"
-      />
-      <path
-        d="M95 170L85 185L110 175"
-        stroke="url(#logoGradientIcon)"
-        strokeWidth="16"
         strokeLinecap="round"
         strokeLinejoin="round"
         fill="none"
