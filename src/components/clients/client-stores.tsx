@@ -173,7 +173,8 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
 
       // Add optional fields only if they have values
       if (form.url) storeData.store_url = form.url
-      if (form.platform) storeData.platform = form.platform
+      // Platform is an ENUM - convert to lowercase
+      if (form.platform) storeData.platform = form.platform.toLowerCase()
 
       // Shopify fields
       if (form.shopify_store_domain) storeData.shopify_store_domain = form.shopify_store_domain
