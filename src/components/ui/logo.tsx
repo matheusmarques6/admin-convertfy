@@ -10,32 +10,25 @@ interface LogoProps {
 }
 
 const sizes = {
-  sm: { icon: 32, text: "text-base" },
-  md: { icon: 40, text: "text-lg" },
-  lg: { icon: 48, text: "text-xl" },
-  xl: { icon: 64, text: "text-2xl" },
+  sm: { height: 28, width: 120 },
+  md: { height: 36, width: 150 },
+  lg: { height: 44, width: 180 },
+  xl: { height: 56, width: 230 },
 }
 
-export function Logo({ className, size = "md", showText = true }: LogoProps) {
+export function Logo({ className, size = "md" }: LogoProps) {
   const sizeConfig = sizes[size]
 
   return (
-    <div className={cn("flex items-center gap-2", className)}>
-      <div className="flex-shrink-0 relative">
-        <Image
-          src="/images/logo.svg"
-          alt="Convertfy"
-          width={sizeConfig.icon}
-          height={sizeConfig.icon}
-          className="object-contain"
-          priority
-        />
-      </div>
-      {showText && (
-        <span className={cn("font-bold text-foreground", sizeConfig.text)}>
-          Convertfy
-        </span>
-      )}
+    <div className={cn("flex items-center", className)}>
+      <Image
+        src="/images/logo da convertfy com escrito branco.png"
+        alt="Convertfy"
+        width={sizeConfig.width}
+        height={sizeConfig.height}
+        className="object-contain"
+        priority
+      />
     </div>
   )
 }
@@ -43,9 +36,9 @@ export function Logo({ className, size = "md", showText = true }: LogoProps) {
 export function LogoIcon({ className, size = 40 }: { className?: string; size?: number }) {
   return (
     <Image
-      src="/images/logo.svg"
+      src="/images/logo da convertfy com escrito branco.png"
       alt="Convertfy"
-      width={size}
+      width={size * 2.5}
       height={size}
       className={cn("object-contain", className)}
       priority
