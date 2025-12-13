@@ -18,6 +18,10 @@ import {
   Copy,
   ExternalLink,
   Repeat,
+  Edit2,
+  Building2,
+  Wallet,
+  MoreVertical,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -48,9 +52,18 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "@/lib/hooks/use-toast"
 import { formatCurrency } from "@/lib/utils"
+import { createClient } from "@/lib/supabase/client"
 
 interface ClientFinancialProps {
   clientId: string
@@ -66,6 +79,8 @@ interface Payment {
   paymentDate?: string
   description?: string
   invoiceUrl?: string
+  paymentMethod?: string // Método real de pagamento (manual override)
+  manualStatus?: string // Status manual override
 }
 
 interface Subscription {
@@ -78,6 +93,36 @@ interface Subscription {
   nextDueDate: string
   description?: string
   isActive: boolean
+  paymentMethod?: string // Asaas, PIX Direto, Wise
+}
+
+interface LocalSubscription {
+  id: string
+  client_id: string
+  name: string
+  value: number
+  cycle: "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "QUARTERLY" | "SEMIANNUALLY" | "YEARLY"
+  payment_method: "asaas" | "pix_direto" | "wise" | "boleto"
+  status: "active" | "inactive" | "cancelled"
+  start_date: string
+  next_due_date: string
+  notes?: string
+  created_at: string
+}
+
+interface LocalCharge {
+  id: string
+  client_id: string
+  subscription_id?: string
+  description: string
+  value: number
+  due_date: string
+  payment_date?: string
+  status: "pending" | "paid" | "overdue" | "cancelled"
+  payment_method: "asaas" | "pix_direto" | "wise" | "boleto" | "cartao"
+  actual_payment_method?: string // Se foi pago por outro método
+  notes?: string
+  created_at: string
 }
 
 interface PaymentSummary {
@@ -91,16 +136,37 @@ interface PaymentSummary {
   overdueValue: number
 }
 
+const cycleLabels: Record<string, string> = {
+  WEEKLY: "Semanal",
+  BIWEEKLY: "Quinzenal",
+  MONTHLY: "Mensal",
+  QUARTERLY: "Trimestral",
+  SEMIANNUALLY: "Semestral",
+  YEARLY: "Anual",
+}
+
+const paymentMethodLabels: Record<string, { label: string; icon: typeof Building2 }> = {
+  asaas: { label: "Asaas (Automático)", icon: Building2 },
+  pix_direto: { label: "PIX Direto", icon: QrCode },
+  wise: { label: "Transferência Wise", icon: Wallet },
+  boleto: { label: "Boleto", icon: FileText },
+  cartao: { label: "Cartão de Crédito", icon: CreditCard },
+}
+
 export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [payments, setPayments] = useState<Payment[]>([])
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
+  const [localSubscriptions, setLocalSubscriptions] = useState<LocalSubscription[]>([])
+  const [localCharges, setLocalCharges] = useState<LocalCharge[]>([])
   const [summary, setSummary] = useState<PaymentSummary | null>(null)
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString())
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
+  const [subscriptionDialogOpen, setSubscriptionDialogOpen] = useState(false)
+  const [statusDialogOpen, setStatusDialogOpen] = useState(false)
+  const [selectedCharge, setSelectedCharge] = useState<LocalCharge | null>(null)
   const [isCreating, setIsCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [noAsaasId, setNoAsaasId] = useState(false)
   const [createdPayment, setCreatedPayment] = useState<{
     id: string
     invoiceUrl?: string
@@ -114,17 +180,64 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
     dueDate: new Date().toISOString().split("T")[0],
     description: "",
     installmentCount: "1",
+    paymentMethod: "asaas",
+  })
+
+  const [subscriptionForm, setSubscriptionForm] = useState({
+    name: "",
+    value: "",
+    cycle: "MONTHLY" as LocalSubscription["cycle"],
+    paymentMethod: "asaas" as LocalSubscription["payment_method"],
+    startDate: new Date().toISOString().split("T")[0],
+    notes: "",
+  })
+
+  const [statusForm, setStatusForm] = useState({
+    status: "paid" as LocalCharge["status"],
+    actualPaymentMethod: "",
+    paymentDate: new Date().toISOString().split("T")[0],
+    notes: "",
   })
 
   useEffect(() => {
     loadData()
+    loadLocalData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId, selectedYear])
+
+  async function loadLocalData() {
+    try {
+      const supabase = createClient()
+
+      // Load local subscriptions
+      const { data: subs } = await supabase
+        .from("client_subscriptions")
+        .select("*")
+        .eq("client_id", clientId)
+        .order("created_at", { ascending: false })
+
+      if (subs) {
+        setLocalSubscriptions(subs)
+      }
+
+      // Load local charges
+      const { data: charges } = await supabase
+        .from("client_charges")
+        .select("*")
+        .eq("client_id", clientId)
+        .order("due_date", { ascending: false })
+
+      if (charges) {
+        setLocalCharges(charges)
+      }
+    } catch (err) {
+      console.error("Error loading local data:", err)
+    }
+  }
 
   async function loadData() {
     setIsLoading(true)
     setError(null)
-    setNoAsaasId(false)
     try {
       const [paymentsRes, subscriptionsRes] = await Promise.all([
         fetch(`/api/integrations/asaas/payments?client_id=${clientId}&year=${selectedYear}`),
@@ -142,11 +255,6 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           setError(paymentsData.error)
         }
         return
-      }
-
-      // Check if client has Asaas ID (via subscriptions message)
-      if (subscriptionsData.message?.includes("não possui ID Asaas")) {
-        setNoAsaasId(true)
       }
 
       if (paymentsData.success) {
@@ -176,41 +284,155 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
     }
 
     setIsCreating(true)
+
     try {
-      const response = await fetch("/api/integrations/asaas/charges", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          clientId,
-          value: parseFloat(chargeForm.value),
-          billingType: chargeForm.billingType,
-          dueDate: chargeForm.dueDate,
+      // If using Asaas, create via API
+      if (chargeForm.paymentMethod === "asaas") {
+        const response = await fetch("/api/integrations/asaas/charges", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            clientId,
+            value: parseFloat(chargeForm.value),
+            billingType: chargeForm.billingType,
+            dueDate: chargeForm.dueDate,
+            description: chargeForm.description || `Cobrança - ${clientName}`,
+            installmentCount: parseInt(chargeForm.installmentCount),
+          }),
+        })
+
+        const result = await response.json()
+
+        if (result.success) {
+          setCreatedPayment(result.payment)
+          toast({
+            title: "Cobrança criada!",
+            description: "A cobrança foi criada com sucesso no Asaas.",
+          })
+          loadData()
+        } else {
+          toast({
+            variant: "destructive",
+            title: "Erro ao criar cobrança",
+            description: result.error,
+          })
+        }
+      } else {
+        // Create local charge (PIX Direto, Wise, etc.)
+        const supabase = createClient()
+        const { error } = await supabase.from("client_charges").insert({
+          client_id: clientId,
           description: chargeForm.description || `Cobrança - ${clientName}`,
-          installmentCount: parseInt(chargeForm.installmentCount),
-        }),
-      })
+          value: parseFloat(chargeForm.value),
+          due_date: chargeForm.dueDate,
+          status: "pending",
+          payment_method: chargeForm.paymentMethod,
+        })
 
-      const result = await response.json()
+        if (error) throw error
 
-      if (result.success) {
-        setCreatedPayment(result.payment)
         toast({
           title: "Cobrança criada!",
-          description: "A cobrança foi criada com sucesso no Asaas.",
+          description: "A cobrança foi registrada com sucesso.",
         })
-        loadData()
-      } else {
-        toast({
-          variant: "destructive",
-          title: "Erro ao criar cobrança",
-          description: result.error,
-        })
+
+        loadLocalData()
+        setCreateDialogOpen(false)
+        resetForm()
       }
-    } catch {
+    } catch (err) {
+      console.error("Error creating charge:", err)
       toast({
         variant: "destructive",
         title: "Erro",
         description: "Erro ao criar cobrança",
+      })
+    } finally {
+      setIsCreating(false)
+    }
+  }
+
+  async function handleCreateSubscription() {
+    if (!subscriptionForm.name || !subscriptionForm.value) {
+      toast({
+        variant: "destructive",
+        title: "Campos obrigatórios",
+        description: "Preencha o nome e o valor",
+      })
+      return
+    }
+
+    setIsCreating(true)
+
+    try {
+      const supabase = createClient()
+      const { error } = await supabase.from("client_subscriptions").insert({
+        client_id: clientId,
+        name: subscriptionForm.name,
+        value: parseFloat(subscriptionForm.value),
+        cycle: subscriptionForm.cycle,
+        payment_method: subscriptionForm.paymentMethod,
+        status: "active",
+        start_date: subscriptionForm.startDate,
+        next_due_date: subscriptionForm.startDate,
+        notes: subscriptionForm.notes || null,
+      })
+
+      if (error) throw error
+
+      toast({
+        title: "Assinatura criada!",
+        description: "A assinatura foi registrada com sucesso.",
+      })
+
+      loadLocalData()
+      setSubscriptionDialogOpen(false)
+      resetSubscriptionForm()
+    } catch (err) {
+      console.error("Error creating subscription:", err)
+      toast({
+        variant: "destructive",
+        title: "Erro",
+        description: "Erro ao criar assinatura. Verifique se a tabela existe no banco.",
+      })
+    } finally {
+      setIsCreating(false)
+    }
+  }
+
+  async function handleUpdateChargeStatus() {
+    if (!selectedCharge) return
+
+    setIsCreating(true)
+
+    try {
+      const supabase = createClient()
+      const { error } = await supabase
+        .from("client_charges")
+        .update({
+          status: statusForm.status,
+          actual_payment_method: statusForm.actualPaymentMethod || null,
+          payment_date: statusForm.status === "paid" ? statusForm.paymentDate : null,
+          notes: statusForm.notes || selectedCharge.notes,
+        })
+        .eq("id", selectedCharge.id)
+
+      if (error) throw error
+
+      toast({
+        title: "Status atualizado!",
+        description: "O status da cobrança foi atualizado.",
+      })
+
+      loadLocalData()
+      setStatusDialogOpen(false)
+      setSelectedCharge(null)
+    } catch (err) {
+      console.error("Error updating charge status:", err)
+      toast({
+        variant: "destructive",
+        title: "Erro",
+        description: "Erro ao atualizar status",
       })
     } finally {
       setIsCreating(false)
@@ -224,8 +446,31 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
       dueDate: new Date().toISOString().split("T")[0],
       description: "",
       installmentCount: "1",
+      paymentMethod: "asaas",
     })
     setCreatedPayment(null)
+  }
+
+  function resetSubscriptionForm() {
+    setSubscriptionForm({
+      name: "",
+      value: "",
+      cycle: "MONTHLY",
+      paymentMethod: "asaas",
+      startDate: new Date().toISOString().split("T")[0],
+      notes: "",
+    })
+  }
+
+  function openStatusDialog(charge: LocalCharge) {
+    setSelectedCharge(charge)
+    setStatusForm({
+      status: charge.status,
+      actualPaymentMethod: charge.actual_payment_method || "",
+      paymentDate: charge.payment_date || new Date().toISOString().split("T")[0],
+      notes: charge.notes || "",
+    })
+    setStatusDialogOpen(true)
   }
 
   function getStatusBadge(status: string) {
@@ -234,7 +479,11 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
       CONFIRMED: { label: "Confirmado", variant: "success", icon: CheckCircle2 },
       RECEIVED_IN_CASH: { label: "Recebido", variant: "success", icon: CheckCircle2 },
       PENDING: { label: "Pendente", variant: "warning", icon: Clock },
+      pending: { label: "Pendente", variant: "warning", icon: Clock },
       OVERDUE: { label: "Vencido", variant: "destructive", icon: AlertCircle },
+      overdue: { label: "Vencido", variant: "destructive", icon: AlertCircle },
+      paid: { label: "Pago", variant: "success", icon: CheckCircle2 },
+      cancelled: { label: "Cancelado", variant: "secondary", icon: XCircle },
       REFUNDED: { label: "Estornado", variant: "secondary", icon: XCircle },
     }
     const info = statusMap[status] || { label: status, variant: "default" as const, icon: Clock }
@@ -253,6 +502,11 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
       case "PIX": return <QrCode className="h-4 w-4" />
       case "BOLETO": return <FileText className="h-4 w-4" />
       case "CREDIT_CARD": return <CreditCard className="h-4 w-4" />
+      case "pix_direto": return <QrCode className="h-4 w-4" />
+      case "wise": return <Wallet className="h-4 w-4" />
+      case "boleto": return <FileText className="h-4 w-4" />
+      case "cartao": return <CreditCard className="h-4 w-4" />
+      case "asaas": return <Building2 className="h-4 w-4" />
       default: return <Receipt className="h-4 w-4" />
     }
   }
@@ -260,7 +514,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
   const years = Array.from({ length: 5 }, (_, i) => (new Date().getFullYear() - i).toString())
 
   // Show error state
-  if (error) {
+  if (error && localSubscriptions.length === 0 && localCharges.length === 0) {
     return (
       <Card className="border-destructive/50 bg-destructive/5">
         <CardContent className="flex flex-col items-center justify-center py-12">
@@ -276,25 +530,6 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
     )
   }
 
-  // Show message if client doesn't have Asaas ID
-  if (noAsaasId && !isLoading) {
-    return (
-      <Card className="border-dashed">
-        <CardContent className="flex flex-col items-center justify-center py-12">
-          <Receipt className="h-12 w-12 text-muted-foreground mb-4" />
-          <h3 className="text-lg font-medium">Cliente não vinculado ao Asaas</h3>
-          <p className="text-muted-foreground text-center mt-1 max-w-md">
-            Este cliente ainda não foi importado do Asaas. Importe os clientes na página de clientes
-            para visualizar o histórico financeiro.
-          </p>
-          <Button variant="outline" className="mt-4" asChild>
-            <a href="/clients">Ir para Clientes</a>
-          </Button>
-        </CardContent>
-      </Card>
-    )
-  }
-
   return (
     <div className="space-y-6">
       {/* Summary Cards */}
@@ -303,11 +538,13 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           <CardHeader className="pb-2">
             <CardDescription>Total Recebido</CardDescription>
             <CardTitle className="text-2xl text-green-600">
-              {formatCurrency(summary?.paidValue || 0)}
+              {formatCurrency((summary?.paidValue || 0) + localCharges.filter(c => c.status === "paid").reduce((acc, c) => acc + c.value, 0))}
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-xs text-muted-foreground">{summary?.paid || 0} cobranças pagas</p>
+            <p className="text-xs text-muted-foreground">
+              {(summary?.paid || 0) + localCharges.filter(c => c.status === "paid").length} cobranças pagas
+            </p>
           </CardContent>
         </Card>
 
@@ -315,11 +552,13 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           <CardHeader className="pb-2">
             <CardDescription>Pendente</CardDescription>
             <CardTitle className="text-2xl text-yellow-600">
-              {formatCurrency(summary?.pendingValue || 0)}
+              {formatCurrency((summary?.pendingValue || 0) + localCharges.filter(c => c.status === "pending").reduce((acc, c) => acc + c.value, 0))}
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-xs text-muted-foreground">{summary?.pending || 0} cobranças pendentes</p>
+            <p className="text-xs text-muted-foreground">
+              {(summary?.pending || 0) + localCharges.filter(c => c.status === "pending").length} cobranças pendentes
+            </p>
           </CardContent>
         </Card>
 
@@ -327,22 +566,29 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           <CardHeader className="pb-2">
             <CardDescription>Vencido</CardDescription>
             <CardTitle className="text-2xl text-red-600">
-              {formatCurrency(summary?.overdueValue || 0)}
+              {formatCurrency((summary?.overdueValue || 0) + localCharges.filter(c => c.status === "overdue").reduce((acc, c) => acc + c.value, 0))}
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-xs text-muted-foreground">{summary?.overdue || 0} cobranças vencidas</p>
+            <p className="text-xs text-muted-foreground">
+              {(summary?.overdue || 0) + localCharges.filter(c => c.status === "overdue").length} cobranças vencidas
+            </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Assinaturas Ativas</CardDescription>
-            <CardTitle className="text-2xl">{subscriptions.filter(s => s.isActive).length}</CardTitle>
+            <CardTitle className="text-2xl">
+              {subscriptions.filter(s => s.isActive).length + localSubscriptions.filter(s => s.status === "active").length}
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-xs text-muted-foreground">
-              {subscriptions.filter(s => s.isActive).length > 0 ? "Recorrentes" : "Nenhuma"}
+              {formatCurrency(
+                subscriptions.filter(s => s.isActive).reduce((acc, s) => acc + s.value, 0) +
+                localSubscriptions.filter(s => s.status === "active").reduce((acc, s) => acc + s.value, 0)
+              )}/mês
             </p>
           </CardContent>
         </Card>
@@ -361,35 +607,41 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
               ))}
             </SelectContent>
           </Select>
-          <Button variant="outline" size="icon" onClick={loadData} disabled={isLoading}>
+          <Button variant="outline" size="icon" onClick={() => { loadData(); loadLocalData(); }} disabled={isLoading}>
             <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
           </Button>
         </div>
-        <Button onClick={() => { resetForm(); setCreateDialogOpen(true) }}>
-          <Plus className="mr-2 h-4 w-4" />
-          Nova Cobrança
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setSubscriptionDialogOpen(true)}>
+            <Repeat className="mr-2 h-4 w-4" />
+            Nova Assinatura
+          </Button>
+          <Button onClick={() => { resetForm(); setCreateDialogOpen(true) }}>
+            <Plus className="mr-2 h-4 w-4" />
+            Nova Cobrança
+          </Button>
+        </div>
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="payments">
+      <Tabs defaultValue="charges">
         <TabsList>
-          <TabsTrigger value="payments">
+          <TabsTrigger value="charges">
             <Receipt className="mr-2 h-4 w-4" />
-            Cobranças ({payments.length})
+            Cobranças ({payments.length + localCharges.length})
           </TabsTrigger>
           <TabsTrigger value="subscriptions">
             <Repeat className="mr-2 h-4 w-4" />
-            Assinaturas ({subscriptions.length})
+            Assinaturas ({subscriptions.length + localSubscriptions.length})
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="payments" className="mt-4">
+        <TabsContent value="charges" className="mt-4">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
-          ) : payments.length === 0 ? (
+          ) : (payments.length === 0 && localCharges.length === 0) ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <Receipt className="h-12 w-12 text-muted-foreground mb-4" />
               <h3 className="text-lg font-medium">Nenhuma cobrança</h3>
@@ -401,7 +653,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                 <TableHeader>
                   <TableRow>
                     <TableHead>Descrição</TableHead>
-                    <TableHead>Tipo</TableHead>
+                    <TableHead>Método</TableHead>
                     <TableHead>Valor</TableHead>
                     <TableHead>Vencimento</TableHead>
                     <TableHead>Status</TableHead>
@@ -409,18 +661,60 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                   </TableRow>
                 </TableHeader>
                 <TableBody>
+                  {/* Local Charges */}
+                  {localCharges.map(charge => (
+                    <TableRow key={charge.id}>
+                      <TableCell>
+                        <div>
+                          <p className="font-medium">{charge.description}</p>
+                          {charge.actual_payment_method && (
+                            <p className="text-xs text-muted-foreground">
+                              Pago via: {paymentMethodLabels[charge.actual_payment_method]?.label || charge.actual_payment_method}
+                            </p>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          {getBillingTypeIcon(charge.payment_method)}
+                          <span className="text-sm">{paymentMethodLabels[charge.payment_method]?.label || charge.payment_method}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="font-medium">{formatCurrency(charge.value)}</TableCell>
+                      <TableCell>{new Date(charge.due_date).toLocaleDateString("pt-BR")}</TableCell>
+                      <TableCell>{getStatusBadge(charge.status)}</TableCell>
+                      <TableCell>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon">
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuLabel>Ações</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={() => openStatusDialog(charge)}>
+                              <Edit2 className="mr-2 h-4 w-4" />
+                              Alterar Status
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {/* Asaas Payments */}
                   {payments.map(payment => (
                     <TableRow key={payment.id}>
                       <TableCell>
                         <div>
                           <p className="font-medium">{payment.description || `Cobrança #${payment.id.slice(-6)}`}</p>
-                          <p className="text-xs text-muted-foreground">ID: {payment.id}</p>
+                          <p className="text-xs text-muted-foreground">Asaas: {payment.id}</p>
                         </div>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
                           {getBillingTypeIcon(payment.billingType)}
-                          {payment.billingType}
+                          <span className="text-sm">{payment.billingType}</span>
                         </div>
                       </TableCell>
                       <TableCell className="font-medium">{formatCurrency(payment.value)}</TableCell>
@@ -444,14 +738,48 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
         </TabsContent>
 
         <TabsContent value="subscriptions" className="mt-4">
-          {subscriptions.length === 0 ? (
+          {(subscriptions.length === 0 && localSubscriptions.length === 0) ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <Repeat className="h-12 w-12 text-muted-foreground mb-4" />
               <h3 className="text-lg font-medium">Nenhuma assinatura</h3>
-              <p className="text-muted-foreground mt-1">Este cliente não possui assinaturas no Asaas</p>
+              <p className="text-muted-foreground mt-1">Crie uma nova assinatura para este cliente</p>
             </div>
           ) : (
             <div className="grid gap-4 md:grid-cols-2">
+              {/* Local Subscriptions */}
+              {localSubscriptions.map(sub => (
+                <Card key={sub.id} className={sub.status === "active" ? "border-green-500/50" : ""}>
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-lg">{formatCurrency(sub.value)}</CardTitle>
+                      <Badge variant={sub.status === "active" ? "success" : "secondary"}>
+                        {sub.status === "active" ? "Ativa" : sub.status === "inactive" ? "Inativa" : "Cancelada"}
+                      </Badge>
+                    </div>
+                    <CardDescription>{sub.name}</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Método:</span>
+                        <span className="flex items-center gap-1">
+                          {getBillingTypeIcon(sub.payment_method)}
+                          {paymentMethodLabels[sub.payment_method]?.label}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Ciclo:</span>
+                        <span>{cycleLabels[sub.cycle]}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Próximo vencimento:</span>
+                        <span>{new Date(sub.next_due_date).toLocaleDateString("pt-BR")}</span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+              {/* Asaas Subscriptions */}
               {subscriptions.map(sub => (
                 <Card key={sub.id} className={sub.isActive ? "border-green-500/50" : ""}>
                   <CardHeader className="pb-2">
@@ -459,10 +787,17 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                       <CardTitle className="text-lg">{formatCurrency(sub.value)}</CardTitle>
                       <Badge variant={sub.isActive ? "success" : "secondary"}>{sub.statusLabel}</Badge>
                     </div>
-                    <CardDescription>{sub.description || "Assinatura"}</CardDescription>
+                    <CardDescription>{sub.description || "Assinatura Asaas"}</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Método:</span>
+                        <span className="flex items-center gap-1">
+                          <Building2 className="h-4 w-4" />
+                          Asaas (Automático)
+                        </span>
+                      </div>
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Ciclo:</span>
                         <span>{sub.cycleLabel}</span>
@@ -495,6 +830,32 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
             <>
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
+                  <Label>Método de Cobrança *</Label>
+                  <Select
+                    value={chargeForm.paymentMethod}
+                    onValueChange={(value) => setChargeForm({ ...chargeForm, paymentMethod: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="asaas">
+                        <div className="flex items-center gap-2"><Building2 className="h-4 w-4" /> Asaas (Automático)</div>
+                      </SelectItem>
+                      <SelectItem value="pix_direto">
+                        <div className="flex items-center gap-2"><QrCode className="h-4 w-4" /> PIX Direto</div>
+                      </SelectItem>
+                      <SelectItem value="wise">
+                        <div className="flex items-center gap-2"><Wallet className="h-4 w-4" /> Transferência Wise</div>
+                      </SelectItem>
+                      <SelectItem value="boleto">
+                        <div className="flex items-center gap-2"><FileText className="h-4 w-4" /> Boleto Manual</div>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
                   <Label>Valor *</Label>
                   <div className="relative">
                     <span className="absolute left-3 top-2.5 text-muted-foreground">R$</span>
@@ -509,28 +870,30 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label>Forma de Pagamento *</Label>
-                  <Select value={chargeForm.billingType} onValueChange={(value) => setChargeForm({ ...chargeForm, billingType: value })}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="PIX">
-                        <div className="flex items-center gap-2"><QrCode className="h-4 w-4" /> PIX</div>
-                      </SelectItem>
-                      <SelectItem value="BOLETO">
-                        <div className="flex items-center gap-2"><FileText className="h-4 w-4" /> Boleto</div>
-                      </SelectItem>
-                      <SelectItem value="CREDIT_CARD">
-                        <div className="flex items-center gap-2"><CreditCard className="h-4 w-4" /> Cartão de Crédito</div>
-                      </SelectItem>
-                      <SelectItem value="UNDEFINED">
-                        <div className="flex items-center gap-2"><Receipt className="h-4 w-4" /> Cliente escolhe</div>
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                {chargeForm.paymentMethod === "asaas" && (
+                  <div className="space-y-2">
+                    <Label>Forma de Pagamento (Asaas) *</Label>
+                    <Select value={chargeForm.billingType} onValueChange={(value) => setChargeForm({ ...chargeForm, billingType: value })}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="PIX">
+                          <div className="flex items-center gap-2"><QrCode className="h-4 w-4" /> PIX</div>
+                        </SelectItem>
+                        <SelectItem value="BOLETO">
+                          <div className="flex items-center gap-2"><FileText className="h-4 w-4" /> Boleto</div>
+                        </SelectItem>
+                        <SelectItem value="CREDIT_CARD">
+                          <div className="flex items-center gap-2"><CreditCard className="h-4 w-4" /> Cartão de Crédito</div>
+                        </SelectItem>
+                        <SelectItem value="UNDEFINED">
+                          <div className="flex items-center gap-2"><Receipt className="h-4 w-4" /> Cliente escolhe</div>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <Label>Data de Vencimento *</Label>
@@ -541,7 +904,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                   />
                 </div>
 
-                {chargeForm.billingType === "CREDIT_CARD" && (
+                {chargeForm.paymentMethod === "asaas" && chargeForm.billingType === "CREDIT_CARD" && (
                   <div className="space-y-2">
                     <Label>Parcelas</Label>
                     <Select value={chargeForm.installmentCount} onValueChange={(value) => setChargeForm({ ...chargeForm, installmentCount: value })}>
@@ -637,6 +1000,205 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
               </DialogFooter>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Subscription Dialog */}
+      <Dialog open={subscriptionDialogOpen} onOpenChange={(open) => { setSubscriptionDialogOpen(open); if (!open) resetSubscriptionForm(); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Repeat className="h-5 w-5" />
+              Nova Assinatura
+            </DialogTitle>
+            <DialogDescription>Criar assinatura recorrente para {clientName}</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Nome da Assinatura *</Label>
+              <Input
+                placeholder="Ex: Plano Mensal, Gestão de Tráfego..."
+                value={subscriptionForm.name}
+                onChange={(e) => setSubscriptionForm({ ...subscriptionForm, name: e.target.value })}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Valor *</Label>
+              <div className="relative">
+                <span className="absolute left-3 top-2.5 text-muted-foreground">R$</span>
+                <Input
+                  type="number"
+                  step="0.01"
+                  placeholder="0,00"
+                  className="pl-10"
+                  value={subscriptionForm.value}
+                  onChange={(e) => setSubscriptionForm({ ...subscriptionForm, value: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Ciclo de Cobrança *</Label>
+              <Select
+                value={subscriptionForm.cycle}
+                onValueChange={(value) => setSubscriptionForm({ ...subscriptionForm, cycle: value as LocalSubscription["cycle"] })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="WEEKLY">Semanal</SelectItem>
+                  <SelectItem value="BIWEEKLY">Quinzenal</SelectItem>
+                  <SelectItem value="MONTHLY">Mensal</SelectItem>
+                  <SelectItem value="QUARTERLY">Trimestral</SelectItem>
+                  <SelectItem value="SEMIANNUALLY">Semestral</SelectItem>
+                  <SelectItem value="YEARLY">Anual</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Método de Pagamento *</Label>
+              <Select
+                value={subscriptionForm.paymentMethod}
+                onValueChange={(value) => setSubscriptionForm({ ...subscriptionForm, paymentMethod: value as LocalSubscription["payment_method"] })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="asaas">
+                    <div className="flex items-center gap-2"><Building2 className="h-4 w-4" /> Asaas (Automático)</div>
+                  </SelectItem>
+                  <SelectItem value="pix_direto">
+                    <div className="flex items-center gap-2"><QrCode className="h-4 w-4" /> PIX Direto</div>
+                  </SelectItem>
+                  <SelectItem value="wise">
+                    <div className="flex items-center gap-2"><Wallet className="h-4 w-4" /> Transferência Wise</div>
+                  </SelectItem>
+                  <SelectItem value="boleto">
+                    <div className="flex items-center gap-2"><FileText className="h-4 w-4" /> Boleto</div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Data de Início *</Label>
+              <Input
+                type="date"
+                value={subscriptionForm.startDate}
+                onChange={(e) => setSubscriptionForm({ ...subscriptionForm, startDate: e.target.value })}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Observações</Label>
+              <Textarea
+                placeholder="Notas sobre a assinatura..."
+                value={subscriptionForm.notes}
+                onChange={(e) => setSubscriptionForm({ ...subscriptionForm, notes: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSubscriptionDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={handleCreateSubscription} disabled={isCreating}>
+              {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Criar Assinatura
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Update Status Dialog */}
+      <Dialog open={statusDialogOpen} onOpenChange={(open) => { setStatusDialogOpen(open); if (!open) setSelectedCharge(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Edit2 className="h-5 w-5" />
+              Alterar Status da Cobrança
+            </DialogTitle>
+            <DialogDescription>
+              {selectedCharge?.description} - {selectedCharge && formatCurrency(selectedCharge.value)}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Novo Status *</Label>
+              <Select
+                value={statusForm.status}
+                onValueChange={(value) => setStatusForm({ ...statusForm, status: value as LocalCharge["status"] })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pending">Pendente</SelectItem>
+                  <SelectItem value="paid">Pago</SelectItem>
+                  <SelectItem value="overdue">Vencido</SelectItem>
+                  <SelectItem value="cancelled">Cancelado</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {statusForm.status === "paid" && (
+              <>
+                <div className="space-y-2">
+                  <Label>Método de Pagamento Real</Label>
+                  <Select
+                    value={statusForm.actualPaymentMethod}
+                    onValueChange={(value) => setStatusForm({ ...statusForm, actualPaymentMethod: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione se diferente do original" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">Mesmo método original</SelectItem>
+                      <SelectItem value="asaas">Asaas</SelectItem>
+                      <SelectItem value="pix_direto">PIX Direto</SelectItem>
+                      <SelectItem value="wise">Transferência Wise</SelectItem>
+                      <SelectItem value="boleto">Boleto</SelectItem>
+                      <SelectItem value="cartao">Cartão de Crédito</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Use quando o cliente pagou por um método diferente (ex: cobrança Asaas paga via Wise)
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Data do Pagamento</Label>
+                  <Input
+                    type="date"
+                    value={statusForm.paymentDate}
+                    onChange={(e) => setStatusForm({ ...statusForm, paymentDate: e.target.value })}
+                  />
+                </div>
+              </>
+            )}
+
+            <div className="space-y-2">
+              <Label>Observações</Label>
+              <Textarea
+                placeholder="Notas sobre a alteração..."
+                value={statusForm.notes}
+                onChange={(e) => setStatusForm({ ...statusForm, notes: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setStatusDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={handleUpdateChargeStatus} disabled={isCreating}>
+              {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Salvar Alterações
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
