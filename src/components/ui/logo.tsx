@@ -23,7 +23,7 @@ export function Logo({ className, size = "md", showText = true }: LogoProps) {
     <div className={cn("flex items-center gap-2", className)}>
       <div className="flex-shrink-0 relative">
         <Image
-          src="/logo.png"
+          src="/images/logo.svg"
           alt="Convertfy"
           width={sizeConfig.icon}
           height={sizeConfig.icon}
@@ -43,7 +43,7 @@ export function Logo({ className, size = "md", showText = true }: LogoProps) {
 export function LogoIcon({ className, size = 40 }: { className?: string; size?: number }) {
   return (
     <Image
-      src="/logo.png"
+      src="/images/logo.svg"
       alt="Convertfy"
       width={size}
       height={size}
