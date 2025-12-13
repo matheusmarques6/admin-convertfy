@@ -27,40 +27,6 @@ async function klaviyoRequest<T>(apiKey: string, endpoint: string, params?: Reco
   return response.json()
 }
 
-// Get profile count with growth
-async function getProfileMetrics(apiKey: string) {
-  try {
-    // Get total profiles
-    const profilesResponse = await klaviyoRequest<{data: Array<{id: string}>}>(
-      apiKey,
-      "/profiles/",
-      { "page[size]": "1" }
-    )
-
-    // Get profiles created in last 30 days
-    const thirtyDaysAgo = new Date()
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
-    const dateFilter = `greater-than(created,${thirtyDaysAgo.toISOString()})`
-
-    const newProfilesResponse = await klaviyoRequest<{data: Array<{id: string}>}>(
-      apiKey,
-      "/profiles/",
-      {
-        "page[size]": "1",
-        "filter": dateFilter
-      }
-    ).catch(() => ({ data: [] }))
-
-    return {
-      totalProfiles: profilesResponse.data?.length || 0,
-      newProfiles30Days: newProfilesResponse.data?.length || 0,
-    }
-  } catch (error) {
-    console.error("Error fetching profile metrics:", error)
-    return { totalProfiles: 0, newProfiles30Days: 0 }
-  }
-}
-
 // Get lists with profile counts
 async function getListMetrics(apiKey: string) {
   try {
