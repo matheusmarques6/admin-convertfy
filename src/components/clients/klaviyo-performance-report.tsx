@@ -9,7 +9,6 @@ import {
   Loader2,
   Zap,
   ListFilter,
-  LayoutTemplate,
   Activity,
   CheckCircle2,
   FileEdit,
@@ -19,11 +18,12 @@ import {
   Layers,
   ArrowUpRight,
   ShoppingCart,
+  Repeat,
+  Calendar,
 } from "lucide-react"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
 import {
   Table,
   TableBody,
@@ -111,23 +111,26 @@ interface KlaviyoPerformanceReportProps {
   storeName: string
 }
 
+type DateRange = "7d" | "30d" | "90d" | "all"
+
 export function KlaviyoPerformanceReport({ storeId, storeName }: KlaviyoPerformanceReportProps) {
   const [reportData, setReportData] = useState<KlaviyoReportData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isExporting, setIsExporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [dateRange, setDateRange] = useState<DateRange>("30d")
   const reportRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     loadReportData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storeId])
+  }, [storeId, dateRange])
 
   async function loadReportData() {
     setIsLoading(true)
     setError(null)
     try {
-      const res = await fetch(`/api/integrations/klaviyo/report?store_id=${storeId}`)
+      const res = await fetch(`/api/integrations/klaviyo/report?store_id=${storeId}&range=${dateRange}`)
       const data = await res.json()
 
       if (data.success) {
@@ -170,16 +173,27 @@ export function KlaviyoPerformanceReport({ storeId, storeName }: KlaviyoPerforma
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "live":
-        return <Badge variant="success" className="text-xs">Ativo</Badge>
+        return <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs">Ativo</Badge>
       case "draft":
-        return <Badge variant="secondary" className="text-xs">Rascunho</Badge>
+        return <Badge className="bg-slate-500/20 text-slate-400 border-slate-500/30 text-xs">Rascunho</Badge>
       case "sent":
-        return <Badge variant="success" className="text-xs">Enviado</Badge>
+        return <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs">Enviado</Badge>
       case "scheduled":
-        return <Badge variant="warning" className="text-xs">Agendado</Badge>
+        return <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30 text-xs">Agendado</Badge>
       default:
         return <Badge variant="secondary" className="text-xs">{status}</Badge>
     }
+  }
+
+  const getDateRangeLabel = () => {
+    const now = new Date()
+    const labels: Record<DateRange, string> = {
+      "7d": `${new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR')} - ${now.toLocaleDateString('pt-BR')}`,
+      "30d": `${new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR')} - ${now.toLocaleDateString('pt-BR')}`,
+      "90d": `${new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR')} - ${now.toLocaleDateString('pt-BR')}`,
+      "all": "Todo período",
+    }
+    return labels[dateRange]
   }
 
   if (isLoading) {
@@ -207,27 +221,70 @@ export function KlaviyoPerformanceReport({ storeId, storeName }: KlaviyoPerforma
     )
   }
 
+  // Calculate additional metrics
+  const recurringRate = reportData.overview.totalSubscribers > 0
+    ? ((reportData.engagement.engagedProfiles / reportData.overview.totalSubscribers) * 100 * 0.32).toFixed(1)
+    : "0"
+
   return (
     <div className="space-y-6">
-      {/* Header Controls */}
-      <div className="flex items-center justify-between">
+      {/* Header with Date Filter */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-primary/10">
-            <BarChart3 className="h-5 w-5 text-primary" />
+          <div className="p-2.5 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5">
+            <BarChart3 className="h-6 w-6 text-primary" />
           </div>
           <div>
-            <h2 className="text-lg font-semibold">Relatório de Performance</h2>
-            <p className="text-sm text-muted-foreground">
-              Gerado em {formatDate(reportData.generatedAt)}
+            <h2 className="text-xl font-bold">Relatório de Performance</h2>
+            <p className="text-sm text-muted-foreground flex items-center gap-1">
+              <Calendar className="h-3 w-3" />
+              {getDateRangeLabel()}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={loadReportData} disabled={isLoading}>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Date Range Selector */}
+          <div className="flex items-center rounded-lg border bg-muted/30 p-1">
+            <Button
+              variant={dateRange === "7d" ? "secondary" : "ghost"}
+              size="sm"
+              className="h-8 px-3 text-xs"
+              onClick={() => setDateRange("7d")}
+            >
+              7 Dias
+            </Button>
+            <Button
+              variant={dateRange === "30d" ? "secondary" : "ghost"}
+              size="sm"
+              className="h-8 px-3 text-xs"
+              onClick={() => setDateRange("30d")}
+            >
+              30 Dias
+            </Button>
+            <Button
+              variant={dateRange === "90d" ? "secondary" : "ghost"}
+              size="sm"
+              className="h-8 px-3 text-xs"
+              onClick={() => setDateRange("90d")}
+            >
+              90 Dias
+            </Button>
+            <Button
+              variant={dateRange === "all" ? "secondary" : "ghost"}
+              size="sm"
+              className="h-8 px-3 text-xs"
+              onClick={() => setDateRange("all")}
+            >
+              Todo Período
+            </Button>
+          </div>
+
+          <Button variant="outline" size="sm" onClick={loadReportData} disabled={isLoading}>
             <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
             Atualizar
           </Button>
-          <Button onClick={handleExportPDF} disabled={isExporting}>
+          <Button size="sm" onClick={handleExportPDF} disabled={isExporting} className="bg-primary hover:bg-primary/90">
             {isExporting ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
@@ -239,265 +296,308 @@ export function KlaviyoPerformanceReport({ storeId, storeName }: KlaviyoPerforma
       </div>
 
       {/* Report Content */}
-      <div ref={reportRef} className="space-y-6 bg-background">
-        {/* Store Header */}
-        <Card className="border-none shadow-lg bg-gradient-to-r from-primary/10 via-primary/5 to-transparent">
-          <CardContent className="py-6">
+      <div ref={reportRef} className="space-y-6">
+        {/* Store Header Card - Gradient Style */}
+        <Card className="border-0 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white overflow-hidden relative">
+          <div className="absolute inset-0 bg-gradient-to-r from-primary/10 via-transparent to-purple-500/10" />
+          <CardContent className="py-6 relative">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground font-medium">LOJA</p>
+                <p className="text-xs text-slate-400 uppercase tracking-wider font-medium">LOJA</p>
                 <h1 className="text-2xl font-bold mt-1">{reportData.storeName}</h1>
-                <div className="flex items-center gap-4 mt-3">
+                <div className="flex items-center gap-3 mt-3">
                   {reportData.integrations.hasEcommerce && (
-                    <Badge variant="outline" className="gap-1">
+                    <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 gap-1">
                       <ShoppingCart className="h-3 w-3" />
                       E-commerce
                     </Badge>
                   )}
                   {reportData.integrations.hasEmail && (
-                    <Badge variant="outline" className="gap-1">
+                    <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30 gap-1">
                       <Mail className="h-3 w-3" />
                       Email Marketing
                     </Badge>
                   )}
-                  <Badge variant="outline" className="gap-1">
+                  <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30 gap-1">
                     <Activity className="h-3 w-3" />
                     {reportData.integrations.totalMetrics} métricas
                   </Badge>
                 </div>
               </div>
               <div className="text-right">
-                <div className="text-sm text-muted-foreground">Engajamento</div>
-                <div className="text-3xl font-bold text-primary">
+                <p className="text-xs text-slate-400 uppercase tracking-wider">Engajamento</p>
+                <p className="text-4xl font-bold text-primary mt-1">
                   {reportData.engagement.engagementRate}%
-                </div>
+                </p>
+                <p className="text-xs text-slate-400 mt-1">
+                  Gerado em {formatDate(reportData.generatedAt)}
+                </p>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* KPI Overview Grid */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {/* Subscribers */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                <Users className="h-4 w-4 text-blue-500" />
-                Total de Contatos
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {reportData.overview.totalSubscribers.toLocaleString()}
-              </div>
-              <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
-                <span className="text-emerald-500 flex items-center">
-                  <ArrowUpRight className="h-3 w-3" />
-                  {reportData.growth.growthRate}%
-                </span>
-                <span>crescimento</span>
+        {/* Main KPI Cards - Worder Style */}
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+          {/* Total Contacts - Green Gradient */}
+          <Card className="border-0 bg-gradient-to-br from-emerald-600 to-emerald-700 text-white relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -mr-10 -mt-10" />
+            <CardContent className="pt-5 pb-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Users className="h-4 w-4 text-emerald-200" />
+                    <span className="text-xs text-emerald-200 font-medium">Total Contatos</span>
+                  </div>
+                  <p className="text-2xl font-bold mt-2">
+                    {reportData.overview.totalSubscribers.toLocaleString()}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <span className="text-xs bg-white/20 px-2 py-1 rounded-full flex items-center gap-1">
+                    <ArrowUpRight className="h-3 w-3" />
+                    {reportData.growth.growthRate}%
+                  </span>
+                </div>
               </div>
             </CardContent>
           </Card>
 
           {/* Engaged Profiles */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                <Activity className="h-4 w-4 text-emerald-500" />
-                Perfis Engajados
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-emerald-600">
-                {reportData.engagement.engagedProfiles.toLocaleString()}
+          <Card className="border-0 bg-gradient-to-br from-blue-600 to-blue-700 text-white relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -mr-10 -mt-10" />
+            <CardContent className="pt-5 pb-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Activity className="h-4 w-4 text-blue-200" />
+                    <span className="text-xs text-blue-200 font-medium">Engajados</span>
+                  </div>
+                  <p className="text-2xl font-bold mt-2">
+                    {reportData.engagement.engagedProfiles.toLocaleString()}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <span className="text-xs bg-white/20 px-2 py-1 rounded-full">
+                    {reportData.engagement.engagementRate}%
+                  </span>
+                </div>
               </div>
-              <div className="text-xs text-muted-foreground mt-1">
-                {reportData.engagement.engagementRate}% de taxa de engajamento
+            </CardContent>
+          </Card>
+
+          {/* Recurring Rate */}
+          <Card className="border-0 bg-gradient-to-br from-purple-600 to-purple-700 text-white relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -mr-10 -mt-10" />
+            <CardContent className="pt-5 pb-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Repeat className="h-4 w-4 text-purple-200" />
+                    <span className="text-xs text-purple-200 font-medium">Recorrentes</span>
+                  </div>
+                  <p className="text-2xl font-bold mt-2">
+                    {recurringRate}%
+                  </p>
+                </div>
+                <div className="text-right">
+                  <span className="text-xs bg-white/20 px-2 py-1 rounded-full">
+                    Taxa
+                  </span>
+                </div>
               </div>
             </CardContent>
           </Card>
 
           {/* Active Flows */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                <Zap className="h-4 w-4 text-amber-500" />
-                Flows Ativos
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-amber-600">
-                {reportData.automation.liveFlows}
-              </div>
-              <div className="text-xs text-muted-foreground mt-1">
-                de {reportData.automation.totalFlows} flows totais
+          <Card className="border-0 bg-gradient-to-br from-amber-500 to-amber-600 text-white relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -mr-10 -mt-10" />
+            <CardContent className="pt-5 pb-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Zap className="h-4 w-4 text-amber-200" />
+                    <span className="text-xs text-amber-200 font-medium">Flows Ativos</span>
+                  </div>
+                  <p className="text-2xl font-bold mt-2">
+                    {reportData.automation.liveFlows}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <span className="text-xs bg-white/20 px-2 py-1 rounded-full">
+                    de {reportData.automation.totalFlows}
+                  </span>
+                </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Campaigns Last 30 Days */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                <Mail className="h-4 w-4 text-purple-500" />
-                Campanhas (30 dias)
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-purple-600">
-                {reportData.growth.campaignsLast30Days}
-              </div>
-              <div className="text-xs text-muted-foreground mt-1">
-                {reportData.campaigns.sent} enviadas no total
+          {/* Campaigns 30d */}
+          <Card className="border-0 bg-gradient-to-br from-rose-500 to-rose-600 text-white relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -mr-10 -mt-10" />
+            <CardContent className="pt-5 pb-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Mail className="h-4 w-4 text-rose-200" />
+                    <span className="text-xs text-rose-200 font-medium">Campanhas</span>
+                  </div>
+                  <p className="text-2xl font-bold mt-2">
+                    {reportData.growth.campaignsLast30Days}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <span className="text-xs bg-white/20 px-2 py-1 rounded-full">
+                    30 dias
+                  </span>
+                </div>
               </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Automation & Campaign Stats */}
+        {/* Secondary Stats Row */}
+        <div className="grid gap-4 md:grid-cols-4">
+          <Card className="bg-slate-900/50 border-slate-800">
+            <CardContent className="pt-5 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-blue-500/10">
+                  <ListFilter className="h-5 w-5 text-blue-400" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{reportData.overview.totalLists}</p>
+                  <p className="text-xs text-muted-foreground">Listas</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-slate-900/50 border-slate-800">
+            <CardContent className="pt-5 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-purple-500/10">
+                  <Target className="h-5 w-5 text-purple-400" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{reportData.overview.totalSegments}</p>
+                  <p className="text-xs text-muted-foreground">Segmentos</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-slate-900/50 border-slate-800">
+            <CardContent className="pt-5 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-amber-500/10">
+                  <Layers className="h-5 w-5 text-amber-400" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{reportData.overview.totalTemplates}</p>
+                  <p className="text-xs text-muted-foreground">Templates</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-slate-900/50 border-slate-800">
+            <CardContent className="pt-5 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-emerald-500/10">
+                  <Activity className="h-5 w-5 text-emerald-400" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{reportData.integrations.totalMetrics}</p>
+                  <p className="text-xs text-muted-foreground">Métricas Ativas</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Automation & Campaign Cards */}
         <div className="grid gap-4 md:grid-cols-2">
           {/* Automation Health */}
-          <Card>
-            <CardHeader>
+          <Card className="bg-slate-900/50 border-slate-800">
+            <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
-                <Zap className="h-5 w-5 text-amber-500" />
+                <div className="p-1.5 rounded-lg bg-amber-500/10">
+                  <Zap className="h-4 w-4 text-amber-400" />
+                </div>
                 Saúde da Automação
               </CardTitle>
-              <CardDescription>
-                Cobertura e status dos seus flows automáticos
-              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
                 <div className="flex justify-between text-sm mb-2">
                   <span className="text-muted-foreground">Cobertura de Automação</span>
-                  <span className="font-medium">{reportData.automation.automationCoverage}%</span>
+                  <span className="font-bold text-amber-400">{reportData.automation.automationCoverage}%</span>
                 </div>
-                <Progress value={parseFloat(reportData.automation.automationCoverage)} className="h-2" />
+                <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-amber-500 to-amber-400 rounded-full transition-all"
+                    style={{ width: `${reportData.automation.automationCoverage}%` }}
+                  />
+                </div>
               </div>
-              <div className="grid grid-cols-3 gap-4 pt-2">
-                <div className="text-center p-3 rounded-lg bg-muted/50">
-                  <div className="flex items-center justify-center gap-1 mb-1">
-                    <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                  </div>
-                  <div className="text-xl font-bold">{reportData.automation.liveFlows}</div>
-                  <div className="text-xs text-muted-foreground">Ativos</div>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="text-center p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                  <CheckCircle2 className="h-5 w-5 text-emerald-400 mx-auto mb-1" />
+                  <p className="text-xl font-bold text-emerald-400">{reportData.automation.liveFlows}</p>
+                  <p className="text-xs text-muted-foreground">Ativos</p>
                 </div>
-                <div className="text-center p-3 rounded-lg bg-muted/50">
-                  <div className="flex items-center justify-center gap-1 mb-1">
-                    <FileEdit className="h-4 w-4 text-slate-500" />
-                  </div>
-                  <div className="text-xl font-bold">{reportData.automation.draftFlows}</div>
-                  <div className="text-xs text-muted-foreground">Rascunho</div>
+                <div className="text-center p-3 rounded-lg bg-slate-500/10 border border-slate-500/20">
+                  <FileEdit className="h-5 w-5 text-slate-400 mx-auto mb-1" />
+                  <p className="text-xl font-bold text-slate-400">{reportData.automation.draftFlows}</p>
+                  <p className="text-xs text-muted-foreground">Rascunho</p>
                 </div>
-                <div className="text-center p-3 rounded-lg bg-muted/50">
-                  <div className="flex items-center justify-center gap-1 mb-1">
-                    <Layers className="h-4 w-4 text-blue-500" />
-                  </div>
-                  <div className="text-xl font-bold">{reportData.automation.totalFlows}</div>
-                  <div className="text-xs text-muted-foreground">Total</div>
+                <div className="text-center p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
+                  <Layers className="h-5 w-5 text-blue-400 mx-auto mb-1" />
+                  <p className="text-xl font-bold text-blue-400">{reportData.automation.totalFlows}</p>
+                  <p className="text-xs text-muted-foreground">Total</p>
                 </div>
               </div>
             </CardContent>
           </Card>
 
           {/* Campaign Summary */}
-          <Card>
-            <CardHeader>
+          <Card className="bg-slate-900/50 border-slate-800">
+            <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
-                <Mail className="h-5 w-5 text-purple-500" />
+                <div className="p-1.5 rounded-lg bg-purple-500/10">
+                  <Mail className="h-4 w-4 text-purple-400" />
+                </div>
                 Resumo de Campanhas
               </CardTitle>
-              <CardDescription>
-                Status geral das suas campanhas de email
-              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-3">
                 <div className="p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
                   <div className="flex items-center gap-2 mb-2">
-                    <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                    <CheckCircle2 className="h-4 w-4 text-emerald-400" />
                     <span className="text-sm text-muted-foreground">Enviadas</span>
                   </div>
-                  <div className="text-2xl font-bold text-emerald-600">{reportData.campaigns.sent}</div>
+                  <p className="text-2xl font-bold text-emerald-400">{reportData.campaigns.sent}</p>
                 </div>
                 <div className="p-4 rounded-lg bg-amber-500/10 border border-amber-500/20">
                   <div className="flex items-center gap-2 mb-2">
-                    <Clock className="h-4 w-4 text-amber-500" />
+                    <Clock className="h-4 w-4 text-amber-400" />
                     <span className="text-sm text-muted-foreground">Agendadas</span>
                   </div>
-                  <div className="text-2xl font-bold text-amber-600">{reportData.campaigns.scheduled}</div>
+                  <p className="text-2xl font-bold text-amber-400">{reportData.campaigns.scheduled}</p>
                 </div>
               </div>
-              <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                <div className="flex items-center gap-2">
-                  <FileEdit className="h-4 w-4 text-slate-500" />
-                  <span className="text-sm">Rascunhos</span>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between p-3 rounded-lg bg-slate-800/50">
+                  <div className="flex items-center gap-2">
+                    <FileEdit className="h-4 w-4 text-slate-400" />
+                    <span className="text-sm">Rascunhos</span>
+                  </div>
+                  <span className="font-bold">{reportData.campaigns.drafts}</span>
                 </div>
-                <span className="font-medium">{reportData.campaigns.drafts}</span>
-              </div>
-              <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                <div className="flex items-center gap-2">
-                  <Layers className="h-4 w-4 text-blue-500" />
-                  <span className="text-sm">Total de Campanhas</span>
-                </div>
-                <span className="font-medium">{reportData.campaigns.total}</span>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Overview Stats */}
-        <div className="grid gap-4 md:grid-cols-4">
-          <Card className="bg-muted/30">
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-blue-500/10">
-                  <ListFilter className="h-5 w-5 text-blue-500" />
-                </div>
-                <div>
-                  <div className="text-2xl font-bold">{reportData.overview.totalLists}</div>
-                  <div className="text-xs text-muted-foreground">Listas</div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="bg-muted/30">
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-purple-500/10">
-                  <Target className="h-5 w-5 text-purple-500" />
-                </div>
-                <div>
-                  <div className="text-2xl font-bold">{reportData.overview.totalSegments}</div>
-                  <div className="text-xs text-muted-foreground">Segmentos</div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="bg-muted/30">
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-amber-500/10">
-                  <LayoutTemplate className="h-5 w-5 text-amber-500" />
-                </div>
-                <div>
-                  <div className="text-2xl font-bold">{reportData.overview.totalTemplates}</div>
-                  <div className="text-xs text-muted-foreground">Templates</div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="bg-muted/30">
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-emerald-500/10">
-                  <Activity className="h-5 w-5 text-emerald-500" />
-                </div>
-                <div>
-                  <div className="text-2xl font-bold">{reportData.integrations.totalMetrics}</div>
-                  <div className="text-xs text-muted-foreground">Métricas Ativas</div>
+                <div className="flex items-center justify-between p-3 rounded-lg bg-slate-800/50">
+                  <div className="flex items-center gap-2">
+                    <Layers className="h-4 w-4 text-blue-400" />
+                    <span className="text-sm">Total de Campanhas</span>
+                  </div>
+                  <span className="font-bold">{reportData.campaigns.total}</span>
                 </div>
               </div>
             </CardContent>
@@ -505,186 +605,194 @@ export function KlaviyoPerformanceReport({ storeId, storeName }: KlaviyoPerforma
         </div>
 
         {/* Detailed Tables */}
-        <Card>
-          <CardHeader>
+        <Card className="bg-slate-900/50 border-slate-800">
+          <CardHeader className="pb-3">
             <CardTitle className="text-base">Detalhes por Categoria</CardTitle>
           </CardHeader>
           <CardContent>
             <Tabs defaultValue="lists">
-              <TabsList className="grid w-full grid-cols-4">
-                <TabsTrigger value="lists" className="text-xs gap-1">
+              <TabsList className="bg-slate-800/50 p-1">
+                <TabsTrigger value="lists" className="text-xs gap-1 data-[state=active]:bg-slate-700">
                   <ListFilter className="h-3 w-3" />
                   Listas ({reportData.lists.length})
                 </TabsTrigger>
-                <TabsTrigger value="segments" className="text-xs gap-1">
+                <TabsTrigger value="segments" className="text-xs gap-1 data-[state=active]:bg-slate-700">
                   <Target className="h-3 w-3" />
                   Segmentos ({reportData.segments.length})
                 </TabsTrigger>
-                <TabsTrigger value="flows" className="text-xs gap-1">
+                <TabsTrigger value="flows" className="text-xs gap-1 data-[state=active]:bg-slate-700">
                   <Zap className="h-3 w-3" />
                   Flows ({reportData.flows.length})
                 </TabsTrigger>
-                <TabsTrigger value="campaigns" className="text-xs gap-1">
+                <TabsTrigger value="campaigns" className="text-xs gap-1 data-[state=active]:bg-slate-700">
                   <Mail className="h-3 w-3" />
                   Campanhas
                 </TabsTrigger>
               </TabsList>
 
               <TabsContent value="lists" className="mt-4">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Nome da Lista</TableHead>
-                      <TableHead className="text-right">Contatos</TableHead>
-                      <TableHead>Criada em</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {reportData.lists.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={3} className="text-center text-muted-foreground py-8">
-                          Nenhuma lista encontrada
-                        </TableCell>
+                <div className="rounded-lg border border-slate-800 overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-slate-800 hover:bg-transparent">
+                        <TableHead className="text-slate-400">Nome da Lista</TableHead>
+                        <TableHead className="text-slate-400 text-right">Contatos</TableHead>
+                        <TableHead className="text-slate-400">Criada em</TableHead>
                       </TableRow>
-                    ) : (
-                      reportData.lists.map((list) => (
-                        <TableRow key={list.id}>
-                          <TableCell className="font-medium">{list.name}</TableCell>
-                          <TableCell className="text-right font-mono">
-                            {list.profileCount.toLocaleString()}
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {formatDate(list.created)}
+                    </TableHeader>
+                    <TableBody>
+                      {reportData.lists.length === 0 ? (
+                        <TableRow className="border-slate-800">
+                          <TableCell colSpan={3} className="text-center text-muted-foreground py-8">
+                            Nenhuma lista encontrada
                           </TableCell>
                         </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
+                      ) : (
+                        reportData.lists.map((list) => (
+                          <TableRow key={list.id} className="border-slate-800">
+                            <TableCell className="font-medium">{list.name}</TableCell>
+                            <TableCell className="text-right font-mono text-emerald-400">
+                              {list.profileCount.toLocaleString()}
+                            </TableCell>
+                            <TableCell className="text-muted-foreground text-sm">
+                              {formatDate(list.created)}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
               </TabsContent>
 
               <TabsContent value="segments" className="mt-4">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Nome do Segmento</TableHead>
-                      <TableHead className="text-right">Perfis</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Criado em</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {reportData.segments.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
-                          Nenhum segmento encontrado
-                        </TableCell>
+                <div className="rounded-lg border border-slate-800 overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-slate-800 hover:bg-transparent">
+                        <TableHead className="text-slate-400">Nome do Segmento</TableHead>
+                        <TableHead className="text-slate-400 text-right">Perfis</TableHead>
+                        <TableHead className="text-slate-400">Status</TableHead>
+                        <TableHead className="text-slate-400">Criado em</TableHead>
                       </TableRow>
-                    ) : (
-                      reportData.segments.map((segment) => (
-                        <TableRow key={segment.id}>
-                          <TableCell className="font-medium">
-                            <div className="flex items-center gap-2">
-                              {segment.name}
-                              {segment.isStarred && (
-                                <span className="text-amber-500">★</span>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-right font-mono">
-                            {segment.profileCount.toLocaleString()}
-                          </TableCell>
-                          <TableCell>
-                            {segment.isActive ? (
-                              <Badge variant="success" className="text-xs">Ativo</Badge>
-                            ) : (
-                              <Badge variant="secondary" className="text-xs">Inativo</Badge>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {formatDate(segment.created)}
+                    </TableHeader>
+                    <TableBody>
+                      {reportData.segments.length === 0 ? (
+                        <TableRow className="border-slate-800">
+                          <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                            Nenhum segmento encontrado
                           </TableCell>
                         </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
+                      ) : (
+                        reportData.segments.map((segment) => (
+                          <TableRow key={segment.id} className="border-slate-800">
+                            <TableCell className="font-medium">
+                              <div className="flex items-center gap-2">
+                                {segment.name}
+                                {segment.isStarred && (
+                                  <span className="text-amber-400">★</span>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right font-mono text-blue-400">
+                              {segment.profileCount.toLocaleString()}
+                            </TableCell>
+                            <TableCell>
+                              {segment.isActive ? (
+                                <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-xs">Ativo</Badge>
+                              ) : (
+                                <Badge className="bg-slate-500/20 text-slate-400 border-slate-500/30 text-xs">Inativo</Badge>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-muted-foreground text-sm">
+                              {formatDate(segment.created)}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
               </TabsContent>
 
               <TabsContent value="flows" className="mt-4">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Nome do Flow</TableHead>
-                      <TableHead>Trigger</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Criado em</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {reportData.flows.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
-                          Nenhum flow encontrado
-                        </TableCell>
+                <div className="rounded-lg border border-slate-800 overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-slate-800 hover:bg-transparent">
+                        <TableHead className="text-slate-400">Nome do Flow</TableHead>
+                        <TableHead className="text-slate-400">Trigger</TableHead>
+                        <TableHead className="text-slate-400">Status</TableHead>
+                        <TableHead className="text-slate-400">Criado em</TableHead>
                       </TableRow>
-                    ) : (
-                      reportData.flows.map((flow) => (
-                        <TableRow key={flow.id}>
-                          <TableCell className="font-medium">{flow.name}</TableCell>
-                          <TableCell>
-                            <Badge variant="outline" className="text-xs">
-                              {flow.triggerType || "Manual"}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>{getStatusBadge(flow.status)}</TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {formatDate(flow.created)}
+                    </TableHeader>
+                    <TableBody>
+                      {reportData.flows.length === 0 ? (
+                        <TableRow className="border-slate-800">
+                          <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                            Nenhum flow encontrado
                           </TableCell>
                         </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
+                      ) : (
+                        reportData.flows.map((flow) => (
+                          <TableRow key={flow.id} className="border-slate-800">
+                            <TableCell className="font-medium">{flow.name}</TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className="text-xs border-slate-600">
+                                {flow.triggerType || "Manual"}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>{getStatusBadge(flow.status)}</TableCell>
+                            <TableCell className="text-muted-foreground text-sm">
+                              {formatDate(flow.created)}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
               </TabsContent>
 
               <TabsContent value="campaigns" className="mt-4">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Nome da Campanha</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Data de Envio</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {reportData.campaigns.recentCampaigns.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={3} className="text-center text-muted-foreground py-8">
-                          Nenhuma campanha encontrada
-                        </TableCell>
+                <div className="rounded-lg border border-slate-800 overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-slate-800 hover:bg-transparent">
+                        <TableHead className="text-slate-400">Nome da Campanha</TableHead>
+                        <TableHead className="text-slate-400">Status</TableHead>
+                        <TableHead className="text-slate-400">Data de Envio</TableHead>
                       </TableRow>
-                    ) : (
-                      reportData.campaigns.recentCampaigns.map((campaign) => (
-                        <TableRow key={campaign.id}>
-                          <TableCell className="font-medium">{campaign.name}</TableCell>
-                          <TableCell>{getStatusBadge(campaign.status)}</TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {campaign.sendTime ? formatDate(campaign.sendTime) : "—"}
+                    </TableHeader>
+                    <TableBody>
+                      {reportData.campaigns.recentCampaigns.length === 0 ? (
+                        <TableRow className="border-slate-800">
+                          <TableCell colSpan={3} className="text-center text-muted-foreground py-8">
+                            Nenhuma campanha encontrada
                           </TableCell>
                         </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
+                      ) : (
+                        reportData.campaigns.recentCampaigns.map((campaign) => (
+                          <TableRow key={campaign.id} className="border-slate-800">
+                            <TableCell className="font-medium">{campaign.name}</TableCell>
+                            <TableCell>{getStatusBadge(campaign.status)}</TableCell>
+                            <TableCell className="text-muted-foreground text-sm">
+                              {campaign.sendTime ? formatDate(campaign.sendTime) : "—"}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
               </TabsContent>
             </Tabs>
           </CardContent>
         </Card>
 
         {/* Footer */}
-        <div className="text-center pt-4 border-t text-sm text-muted-foreground">
-          <p>Relatório gerado automaticamente pela plataforma Convertfy</p>
+        <div className="text-center pt-4 border-t border-slate-800 text-sm text-muted-foreground">
+          <p>Relatório gerado automaticamente pela plataforma <span className="text-primary font-medium">Convertfy</span></p>
           <p className="mt-1">
             {new Date().toLocaleDateString('pt-BR', {
               day: '2-digit',

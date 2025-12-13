@@ -529,13 +529,33 @@ export function ClientKlaviyoReports({ clientId }: ClientKlaviyoReportsProps) {
         </>
       )}
 
-      {activeView === "overview" && !isLoadingMetrics && !metrics && (
+      {activeView === "overview" && !isLoadingMetrics && !metrics && selectedStore && (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium">Dados não disponíveis</h3>
+            <h3 className="text-lg font-medium">Erro ao carregar dados</h3>
             <p className="text-muted-foreground text-center mt-1">
-              Selecione uma loja para ver os dados do Klaviyo
+              Não foi possível carregar os dados do Klaviyo
+            </p>
+            <Button
+              variant="outline"
+              className="mt-4"
+              onClick={() => loadMetrics(selectedStore)}
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Tentar Novamente
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {activeView === "overview" && !isLoadingMetrics && !metrics && !selectedStore && (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-medium">Selecione uma loja</h3>
+            <p className="text-muted-foreground text-center mt-1">
+              Escolha uma loja para ver os dados do Klaviyo
             </p>
           </CardContent>
         </Card>
