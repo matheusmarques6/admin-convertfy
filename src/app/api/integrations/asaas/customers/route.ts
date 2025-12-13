@@ -36,7 +36,7 @@ export async function POST() {
     let allCustomers: Array<{
       id: string
       name: string
-      email: string
+      email?: string
       phone?: string
       cpfCnpj?: string
       company?: string

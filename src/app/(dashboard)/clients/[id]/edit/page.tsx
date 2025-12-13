@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useForm } from "react-hook-form"
@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Select,
   SelectContent,
@@ -21,14 +22,15 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { toast } from "@/lib/hooks/use-toast"
+import { use } from "react"
 
 const clientSchema = z.object({
   name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres"),
   email: z.string().email("Email inválido").optional().or(z.literal("")),
-  phone: z.string().optional(),
+  phone: z.string().min(10, "Telefone deve ter pelo menos 10 dígitos").optional().or(z.literal("")),
   company: z.string().optional(),
   website: z.string().url("URL inválida").optional().or(z.literal("")),
-  cpf_cnpj: z.string().optional(),
+  cpf_cnpj: z.string().min(11, "CPF/CNPJ inválido").optional().or(z.literal("")),
   asaas_customer_id: z.string().optional(),
   status: z.enum(["active", "inactive", "prospect", "onboarding", "churned"]),
   notes: z.string().optional(),
@@ -44,9 +46,39 @@ const clientSchema = z.object({
 
 type ClientForm = z.infer<typeof clientSchema>
 
-export default function NewClientPage() {
+interface Client {
+  id: string
+  name: string
+  email?: string
+  phone?: string
+  company?: string
+  website?: string
+  cpf_cnpj?: string
+  asaas_customer_id?: string
+  status: string
+  address?: {
+    street?: string
+    number?: string
+    complement?: string
+    neighborhood?: string
+    postal_code?: string
+    city?: string
+    state?: string
+  }
+  custom_fields?: Record<string, unknown>
+}
+
+export default function EditClientPage({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}) {
+  const { id } = use(params)
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
+  const [isFetching, setIsFetching] = useState(true)
+  const [client, setClient] = useState<Client | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const {
     register,
@@ -61,14 +93,55 @@ export default function NewClientPage() {
     },
   })
 
-  // Check if client has all required Asaas fields
-  const hasRequiredAsaasFields = () => {
-    const name = watch("name")
-    const cpfCnpj = watch("cpf_cnpj")
-    const email = watch("email")
-    const phone = watch("phone")
-    return name && cpfCnpj && (email || phone)
-  }
+  useEffect(() => {
+    async function fetchClient() {
+      try {
+        const supabase = createClient()
+        const { data, error } = await supabase
+          .from("clients")
+          .select("*")
+          .eq("id", id)
+          .single()
+
+        if (error) throw error
+
+        setClient(data)
+
+        // Populate form
+        setValue("name", data.name || "")
+        setValue("email", data.email || "")
+        setValue("phone", data.phone || "")
+        setValue("company", data.company || "")
+        setValue("website", data.website || "")
+        setValue("cpf_cnpj", data.cpf_cnpj || "")
+        setValue("asaas_customer_id", data.asaas_customer_id || "")
+        setValue("status", data.status || "prospect")
+
+        // Address
+        if (data.address) {
+          setValue("address_street", data.address.street || "")
+          setValue("address_number", data.address.number || "")
+          setValue("address_complement", data.address.complement || "")
+          setValue("address_neighborhood", data.address.neighborhood || "")
+          setValue("address_postal_code", data.address.postal_code || "")
+          setValue("address_city", data.address.city || "")
+          setValue("address_state", data.address.state || "")
+        }
+
+        // Notes from custom_fields
+        if (data.custom_fields?.notes) {
+          setValue("notes", data.custom_fields.notes as string)
+        }
+      } catch (err) {
+        console.error("Error fetching client:", err)
+        setError("Erro ao carregar dados do cliente")
+      } finally {
+        setIsFetching(false)
+      }
+    }
+
+    fetchClient()
+  }, [id, setValue])
 
   async function onSubmit(data: ClientForm) {
     setIsLoading(true)
@@ -79,7 +152,7 @@ export default function NewClientPage() {
       // Get current user
       const { data: { user } } = await supabase.auth.getUser()
 
-      // Build address object if any address field is provided
+      // Build address object
       const hasAddress = data.address_street || data.address_city || data.address_postal_code
       const address = hasAddress ? {
         street: data.address_street || undefined,
@@ -93,8 +166,8 @@ export default function NewClientPage() {
 
       let asaasCustomerId = data.asaas_customer_id || null
 
-      // If we have all required fields, create customer in Asaas
-      if (data.name && data.cpf_cnpj && (data.email || data.phone)) {
+      // If no Asaas ID and we have all required fields, create customer in Asaas
+      if (!asaasCustomerId && data.name && data.cpf_cnpj && (data.email || data.phone)) {
         try {
           const asaasResponse = await fetch("/api/integrations/asaas/customers/create", {
             method: "POST",
@@ -110,6 +183,7 @@ export default function NewClientPage() {
               complement: data.address_complement || undefined,
               province: data.address_neighborhood || undefined,
               postalCode: data.address_postal_code || undefined,
+              externalReference: id,
             }),
           })
 
@@ -128,18 +202,18 @@ export default function NewClientPage() {
             toast({
               variant: "destructive",
               title: "Aviso: Erro ao criar no Asaas",
-              description: asaasData.error || "Cliente será criado localmente sem integração Asaas.",
+              description: asaasData.error || "Cliente atualizado localmente sem integração Asaas.",
             })
           }
         } catch (asaasError) {
           console.warn("Error creating Asaas customer:", asaasError)
-          // Continue creating local client even if Asaas fails
+          // Continue updating local client even if Asaas fails
         }
       }
 
-      const { data: newClient, error } = await supabase
+      const { error } = await supabase
         .from("clients")
-        .insert({
+        .update({
           name: data.name,
           email: data.email || null,
           phone: data.phone || null,
@@ -149,38 +223,38 @@ export default function NewClientPage() {
           asaas_customer_id: asaasCustomerId,
           status: data.status,
           address: address,
-          owner_id: null, // Set to null to avoid foreign key constraint
-          custom_fields: {},
-          tags: [],
-          health_score: 100,
+          custom_fields: {
+            ...client?.custom_fields,
+            notes: data.notes || undefined,
+          },
+          updated_at: new Date().toISOString(),
         })
-        .select()
-        .single()
+        .eq("id", id)
 
       if (error) throw error
 
       // Create activity
       await supabase.from("activities").insert({
-        client_id: newClient.id,
+        client_id: id,
         user_id: user?.id,
-        type: "client_created",
-        description: `Cliente "${data.name}" foi criado${asaasCustomerId ? ` (Asaas: ${asaasCustomerId})` : ""}`,
+        type: "client_updated",
+        description: `Cliente "${data.name}" foi atualizado${asaasCustomerId && !data.asaas_customer_id ? ` e vinculado ao Asaas (${asaasCustomerId})` : ""}`,
       })
 
       toast({
-        title: "Cliente criado!",
-        description: asaasCustomerId
-          ? "Cliente criado e vinculado ao Asaas com sucesso."
-          : "Cliente criado com sucesso. Preencha CPF/CNPJ e email/telefone para criar cobranças.",
+        title: "Cliente atualizado!",
+        description: asaasCustomerId && !data.asaas_customer_id
+          ? "Cliente atualizado e vinculado ao Asaas com sucesso."
+          : "As informações foram salvas com sucesso.",
       })
 
-      router.push(`/clients/${newClient.id}`)
+      router.push(`/clients/${id}`)
       router.refresh()
     } catch (error) {
-      console.error("Error creating client:", error)
+      console.error("Error updating client:", error)
       toast({
         variant: "destructive",
-        title: "Erro ao criar cliente",
+        title: "Erro ao atualizar cliente",
         description: "Verifique os dados e tente novamente.",
       })
     } finally {
@@ -188,44 +262,108 @@ export default function NewClientPage() {
     }
   }
 
+  // Check if client has all required Asaas fields
+  const hasRequiredAsaasFields = () => {
+    const name = watch("name")
+    const cpfCnpj = watch("cpf_cnpj")
+    const email = watch("email")
+    const phone = watch("phone")
+    return name && cpfCnpj && (email || phone)
+  }
+
+  if (error) {
+    return (
+      <div className="max-w-3xl mx-auto space-y-6">
+        <Card className="border-destructive/50 bg-destructive/5">
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <AlertCircle className="h-12 w-12 text-destructive mb-4" />
+            <h3 className="text-lg font-medium text-destructive">Erro</h3>
+            <p className="text-muted-foreground text-center mt-1">{error}</p>
+            <Button variant="outline" className="mt-4" asChild>
+              <Link href="/clients">Voltar para Clientes</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  if (isFetching) {
+    return (
+      <div className="max-w-3xl mx-auto space-y-6">
+        <div className="flex items-center gap-4">
+          <Skeleton className="h-10 w-10 rounded-lg" />
+          <div>
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-4 w-64 mt-2" />
+          </div>
+        </div>
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-6 w-40" />
+            <Skeleton className="h-4 w-64" />
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {[1, 2, 3, 4, 5].map(i => (
+              <div key={i} className="space-y-2">
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-10 w-full" />
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" asChild>
-          <Link href="/clients">
+          <Link href={`/clients/${id}`}>
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </Button>
         <div>
-          <h1 className="text-2xl font-bold">Novo Cliente</h1>
+          <h1 className="text-2xl font-bold">Editar Cliente</h1>
           <p className="text-muted-foreground">
-            Cadastre um novo cliente na sua carteira
+            Atualize as informações de {client?.name}
           </p>
         </div>
       </div>
 
-      {/* Asaas Fields Warning */}
-      {!hasRequiredAsaasFields() && (
+      {/* Asaas Status */}
+      {watch("asaas_customer_id") ? (
+        <Card className="border-emerald-500/50 bg-emerald-500/10">
+          <CardContent className="flex items-start gap-3 py-4">
+            <CheckCircle2 className="h-5 w-5 text-emerald-500 mt-0.5" />
+            <div>
+              <p className="font-medium text-emerald-600">Cliente vinculado ao Asaas</p>
+              <p className="text-sm text-muted-foreground">
+                ID: <code className="bg-emerald-500/20 px-1 rounded">{watch("asaas_customer_id")}</code>
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      ) : !hasRequiredAsaasFields() ? (
         <Card className="border-amber-500/50 bg-amber-500/10">
           <CardContent className="flex items-start gap-3 py-4">
             <AlertCircle className="h-5 w-5 text-amber-500 mt-0.5" />
             <div>
-              <p className="font-medium text-amber-600">Campos obrigatórios para cobranças automáticas</p>
+              <p className="font-medium text-amber-600">Campos obrigatórios para cobranças</p>
               <p className="text-sm text-muted-foreground">
                 Para criar o cliente no Asaas automaticamente, preencha: <strong>Nome</strong>, <strong>CPF/CNPJ</strong> e <strong>Email ou Telefone</strong>
               </p>
             </div>
           </CardContent>
         </Card>
-      )}
-
-      {hasRequiredAsaasFields() && (
-        <Card className="border-emerald-500/50 bg-emerald-500/10">
+      ) : (
+        <Card className="border-blue-500/50 bg-blue-500/10">
           <CardContent className="flex items-start gap-3 py-4">
-            <CheckCircle2 className="h-5 w-5 text-emerald-500 mt-0.5" />
+            <CheckCircle2 className="h-5 w-5 text-blue-500 mt-0.5" />
             <div>
-              <p className="font-medium text-emerald-600">Pronto para integração Asaas</p>
+              <p className="font-medium text-blue-600">Pronto para criar no Asaas</p>
               <p className="text-sm text-muted-foreground">
                 O cliente será criado automaticamente no Asaas ao salvar.
               </p>
@@ -244,7 +382,7 @@ export default function NewClientPage() {
               <span className="text-xs font-normal text-muted-foreground">(para cobranças)</span>
             </CardTitle>
             <CardDescription>
-              Estes campos são necessários para criar o cliente no Asaas e gerar cobranças
+              Estes campos são necessários para gerar cobranças no Asaas
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -271,7 +409,10 @@ export default function NewClientPage() {
                 {...register("cpf_cnpj")}
                 disabled={isLoading}
               />
-              <p className="text-xs text-muted-foreground">Obrigatório para criar cliente no Asaas</p>
+              {errors.cpf_cnpj && (
+                <p className="text-sm text-destructive">{errors.cpf_cnpj.message}</p>
+              )}
+              <p className="text-xs text-muted-foreground">Obrigatório para cobranças via Asaas</p>
             </div>
 
             {/* Email and Phone */}
@@ -297,13 +438,16 @@ export default function NewClientPage() {
                   {...register("phone")}
                   disabled={isLoading}
                 />
+                {errors.phone && (
+                  <p className="text-sm text-destructive">{errors.phone.message}</p>
+                )}
               </div>
             </div>
-            <p className="text-xs text-muted-foreground">* Pelo menos email ou telefone é obrigatório</p>
+            <p className="text-xs text-muted-foreground">* Pelo menos email ou telefone é obrigatório para cobranças</p>
           </CardContent>
         </Card>
 
-        {/* Additional Info */}
+        {/* Basic Info */}
         <Card>
           <CardHeader>
             <CardTitle>Informações Adicionais</CardTitle>
@@ -341,7 +485,7 @@ export default function NewClientPage() {
             <div className="space-y-2">
               <Label htmlFor="status">Status</Label>
               <Select
-                defaultValue="prospect"
+                value={watch("status")}
                 onValueChange={(value) => setValue("status", value as ClientForm["status"])}
                 disabled={isLoading}
               >
@@ -365,7 +509,7 @@ export default function NewClientPage() {
           <CardHeader>
             <CardTitle>Endereço</CardTitle>
             <CardDescription>
-              Informações de endereço do cliente (opcional)
+              Necessário para cobranças via boleto
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -433,6 +577,7 @@ export default function NewClientPage() {
               <div className="space-y-2">
                 <Label htmlFor="address_state">Estado</Label>
                 <Select
+                  value={watch("address_state") || ""}
                   onValueChange={(value) => setValue("address_state", value)}
                   disabled={isLoading}
                 >
@@ -479,21 +624,30 @@ export default function NewClientPage() {
           <CardHeader>
             <CardTitle>Integração Asaas</CardTitle>
             <CardDescription>
-              O cliente será criado automaticamente no Asaas se os campos obrigatórios estiverem preenchidos
+              {watch("asaas_customer_id")
+                ? "Cliente já vinculado ao Asaas"
+                : "O cliente será criado automaticamente no Asaas ao salvar (se os campos obrigatórios estiverem preenchidos)"}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="asaas_customer_id">ID do Cliente no Asaas (opcional)</Label>
+              <Label htmlFor="asaas_customer_id">ID do Cliente no Asaas</Label>
               <Input
                 id="asaas_customer_id"
-                placeholder="cus_xxxxxxxxxxxxxx"
+                placeholder={watch("asaas_customer_id") ? "" : "Será gerado automaticamente"}
                 {...register("asaas_customer_id")}
-                disabled={isLoading}
+                disabled={isLoading || !!watch("asaas_customer_id")}
+                className={watch("asaas_customer_id") ? "bg-muted" : ""}
               />
-              <p className="text-xs text-muted-foreground">
-                Deixe vazio para criar automaticamente. Use apenas se o cliente já existe no Asaas.
-              </p>
+              {watch("asaas_customer_id") ? (
+                <p className="text-xs text-emerald-600">
+                  Cliente vinculado ao Asaas. ID não pode ser alterado.
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Deixe vazio para criar automaticamente ao salvar.
+                </p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -519,11 +673,11 @@ export default function NewClientPage() {
         {/* Actions */}
         <div className="flex justify-end gap-4">
           <Button type="button" variant="outline" asChild disabled={isLoading}>
-            <Link href="/clients">Cancelar</Link>
+            <Link href={`/clients/${id}`}>Cancelar</Link>
           </Button>
           <Button type="submit" disabled={isLoading}>
             {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Criar Cliente
+            Salvar Alterações
           </Button>
         </div>
       </form>

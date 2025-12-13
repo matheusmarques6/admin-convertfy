@@ -41,7 +41,7 @@ export interface WebhookPayload {
 export interface AsaasCustomer {
   id: string
   name: string
-  email: string
+  email?: string  // Optional - Asaas requires email OR phone
   cpfCnpj: string
   phone?: string
   mobilePhone?: string
