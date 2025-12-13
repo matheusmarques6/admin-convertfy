@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import Image from "next/image"
 import {
   DollarSign,
   Plus,
@@ -588,10 +589,13 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                   <div className="space-y-2">
                     <Label>QR Code PIX</Label>
                     <div className="flex flex-col items-center p-4 border rounded-lg">
-                      <img
+                      <Image
                         src={`data:image/png;base64,${createdPayment.pixQrCode.encodedImage}`}
                         alt="QR Code PIX"
+                        width={192}
+                        height={192}
                         className="w-48 h-48"
+                        unoptimized
                       />
                       <Button
                         variant="outline"

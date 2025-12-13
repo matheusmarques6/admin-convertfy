@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import {
   Wallet,
   RefreshCw,
@@ -96,7 +96,7 @@ export function WiseReconciliation() {
   const [notes, setNotes] = useState("")
   const [saving, setSaving] = useState(false)
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setError(null)
       const [transactionsRes, balancesRes, reconciliationsRes] = await Promise.all([
@@ -135,11 +135,11 @@ export function WiseReconciliation() {
       setLoading(false)
       setRefreshing(false)
     }
-  }
+  }, [dateRange])
 
   useEffect(() => {
     fetchData()
-  }, [dateRange])
+  }, [fetchData])
 
   const handleRefresh = () => {
     setRefreshing(true)

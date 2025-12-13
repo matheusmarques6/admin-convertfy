@@ -109,20 +109,6 @@ export function ClientsTable({ clients }: ClientsTableProps) {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [loadError, setLoadError] = useState(false)
 
-  // Load cached data immediately on mount
-  useEffect(() => {
-    const cached = getCachedStatus()
-    if (cached) {
-      setClientsStatus(cached)
-      setIsLoadingStatus(false)
-    }
-  }, [])
-
-  // Fetch fresh data
-  useEffect(() => {
-    loadClientsStatus()
-  }, [loadClientsStatus])
-
   function getCachedStatus(): Record<string, ClientStatus> | null {
     try {
       const cached = localStorage.getItem(CACHE_KEY)
@@ -197,6 +183,20 @@ export function ClientsTable({ clients }: ClientsTableProps) {
     setIsLoadingStatus(false)
     setIsRefreshing(false)
   }, [])
+
+  // Load cached data immediately on mount
+  useEffect(() => {
+    const cached = getCachedStatus()
+    if (cached) {
+      setClientsStatus(cached)
+      setIsLoadingStatus(false)
+    }
+  }, [])
+
+  // Fetch fresh data
+  useEffect(() => {
+    loadClientsStatus()
+  }, [loadClientsStatus])
 
   const handleManualRefresh = () => {
     loadClientsStatus(true)
