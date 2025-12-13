@@ -93,8 +93,11 @@ export default function NewClientPage() {
 
       let asaasCustomerId = data.asaas_customer_id || null
 
-      // If we have all required fields, create customer in Asaas
-      if (data.name && data.cpf_cnpj && (data.email || data.phone)) {
+      // If "000" is used, skip Asaas creation (for international clients or clients outside Asaas)
+      const skipAsaas = data.asaas_customer_id === "000"
+
+      // If we have all required fields and not skipping, create customer in Asaas
+      if (!skipAsaas && !asaasCustomerId && data.name && data.cpf_cnpj && (data.email || data.phone)) {
         try {
           const asaasResponse = await fetch("/api/integrations/asaas/customers/create", {
             method: "POST",
@@ -137,6 +140,11 @@ export default function NewClientPage() {
         }
       }
 
+      // If "000" was used, set to null for local storage
+      if (skipAsaas) {
+        asaasCustomerId = null
+      }
+
       const { data: newClient, error } = await supabase
         .from("clients")
         .insert({
@@ -145,12 +153,14 @@ export default function NewClientPage() {
           phone: data.phone || null,
           company: data.company || null,
           website: data.website || null,
-          cpf_cnpj: data.cpf_cnpj || null,
-          asaas_customer_id: asaasCustomerId,
           status: data.status,
-          address: address,
           owner_id: null, // Set to null to avoid foreign key constraint
-          custom_fields: {},
+          custom_fields: {
+            cpf_cnpj: data.cpf_cnpj || null,
+            asaas_customer_id: asaasCustomerId,
+            address: address,
+            skip_asaas: skipAsaas || false,
+          },
           tags: [],
           health_score: 100,
         })
@@ -492,7 +502,7 @@ export default function NewClientPage() {
                 disabled={isLoading}
               />
               <p className="text-xs text-muted-foreground">
-                Deixe vazio para criar automaticamente. Use apenas se o cliente já existe no Asaas.
+                Deixe vazio para criar automaticamente. Use &quot;000&quot; para clientes internacionais/fora do Asaas.
               </p>
             </div>
           </CardContent>

@@ -113,24 +113,28 @@ export default function EditClientPage({
         setValue("phone", data.phone || "")
         setValue("company", data.company || "")
         setValue("website", data.website || "")
-        setValue("cpf_cnpj", data.cpf_cnpj || "")
-        setValue("asaas_customer_id", data.asaas_customer_id || "")
+
+        // Read cpf_cnpj and asaas_customer_id from root or custom_fields
+        const customFields = data.custom_fields as Record<string, unknown> || {}
+        setValue("cpf_cnpj", data.cpf_cnpj || customFields.cpf_cnpj as string || "")
+        setValue("asaas_customer_id", data.asaas_customer_id || customFields.asaas_customer_id as string || "")
         setValue("status", data.status || "prospect")
 
-        // Address
-        if (data.address) {
-          setValue("address_street", data.address.street || "")
-          setValue("address_number", data.address.number || "")
-          setValue("address_complement", data.address.complement || "")
-          setValue("address_neighborhood", data.address.neighborhood || "")
-          setValue("address_postal_code", data.address.postal_code || "")
-          setValue("address_city", data.address.city || "")
-          setValue("address_state", data.address.state || "")
+        // Address - try root level first, then custom_fields
+        const addressData = data.address || customFields.address as Record<string, string> | null
+        if (addressData) {
+          setValue("address_street", addressData.street || "")
+          setValue("address_number", addressData.number || "")
+          setValue("address_complement", addressData.complement || "")
+          setValue("address_neighborhood", addressData.neighborhood || "")
+          setValue("address_postal_code", addressData.postal_code || "")
+          setValue("address_city", addressData.city || "")
+          setValue("address_state", addressData.state || "")
         }
 
         // Notes from custom_fields
-        if (data.custom_fields?.notes) {
-          setValue("notes", data.custom_fields.notes as string)
+        if (customFields.notes) {
+          setValue("notes", customFields.notes as string)
         }
       } catch (err) {
         console.error("Error fetching client:", err)
@@ -166,8 +170,11 @@ export default function EditClientPage({
 
       let asaasCustomerId = data.asaas_customer_id || null
 
-      // If no Asaas ID and we have all required fields, create customer in Asaas
-      if (!asaasCustomerId && data.name && data.cpf_cnpj && (data.email || data.phone)) {
+      // If "000" is used, skip Asaas creation (for international clients or clients outside Asaas)
+      const skipAsaas = data.asaas_customer_id === "000"
+
+      // If no Asaas ID and we have all required fields and not skipping, create customer in Asaas
+      if (!skipAsaas && !asaasCustomerId && data.name && data.cpf_cnpj && (data.email || data.phone)) {
         try {
           const asaasResponse = await fetch("/api/integrations/asaas/customers/create", {
             method: "POST",
@@ -211,6 +218,11 @@ export default function EditClientPage({
         }
       }
 
+      // If "000" was used, set to null for local storage
+      if (skipAsaas) {
+        asaasCustomerId = null
+      }
+
       const { error } = await supabase
         .from("clients")
         .update({
@@ -219,13 +231,14 @@ export default function EditClientPage({
           phone: data.phone || null,
           company: data.company || null,
           website: data.website || null,
-          cpf_cnpj: data.cpf_cnpj || null,
-          asaas_customer_id: asaasCustomerId,
           status: data.status,
-          address: address,
           custom_fields: {
             ...client?.custom_fields,
+            cpf_cnpj: data.cpf_cnpj || null,
+            asaas_customer_id: asaasCustomerId,
+            address: address,
             notes: data.notes || undefined,
+            skip_asaas: skipAsaas || (client?.custom_fields as Record<string, unknown>)?.skip_asaas || false,
           },
           updated_at: new Date().toISOString(),
         })
@@ -645,7 +658,7 @@ export default function EditClientPage({
                 </p>
               ) : (
                 <p className="text-xs text-muted-foreground">
-                  Deixe vazio para criar automaticamente ao salvar.
+                  Deixe vazio para criar automaticamente. Use &quot;000&quot; para clientes internacionais/fora do Asaas.
                 </p>
               )}
             </div>
