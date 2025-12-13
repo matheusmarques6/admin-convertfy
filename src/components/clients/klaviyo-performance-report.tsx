@@ -1,111 +1,161 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useEffect, useRef } from "react"
 import {
-  TrendingUp,
   Users,
   Mail,
-  DollarSign,
   Target,
   Download,
-  Calendar,
-  ArrowUpRight,
-  BarChart3,
-  PieChart,
   Loader2,
+  Zap,
+  ListFilter,
+  LayoutTemplate,
+  Activity,
+  CheckCircle2,
+  FileEdit,
+  Clock,
+  RefreshCw,
+  BarChart3,
+  Layers,
+  ArrowUpRight,
+  ShoppingCart,
 } from "lucide-react"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Progress } from "@/components/ui/progress"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { formatCurrency } from "@/lib/utils"
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { formatDate } from "@/lib/utils"
 
-interface PerformanceData {
-  period: string
+interface KlaviyoReportData {
+  success: boolean
+  connected: boolean
   storeName: string
-  // Funnel metrics
-  funnelLTV: { current: number; total: number }
-  leadGrowth: number
-  recurringCustomersRate: number
-  // Engagement
-  totalLeads: number
-  engagedLeads: number
-  // Financial
-  totalRevenue: number
-  averageTicket: number
-  emailRevenue: number
-  // Attribution
-  trafficPercent: number
-  emailPercent: number
-  // Projections
-  monthlyProjection: number
-  emailMonthlyProjection: number
-  conversionRate: number
-  annualProjection: number
-  emailAnnualProjection: number
+  generatedAt: string
+  overview: {
+    totalSubscribers: number
+    totalLists: number
+    totalSegments: number
+    totalFlows: number
+    liveFlows: number
+    totalCampaigns: number
+    sentCampaigns: number
+    totalTemplates: number
+  }
+  engagement: {
+    engagedProfiles: number
+    engagementRate: string
+  }
+  growth: {
+    growthRate: string
+    campaignsLast30Days: number
+  }
+  automation: {
+    totalFlows: number
+    liveFlows: number
+    draftFlows: number
+    automationCoverage: string
+  }
+  campaigns: {
+    total: number
+    sent: number
+    scheduled: number
+    drafts: number
+    last30Days: number
+    recentCampaigns: Array<{
+      id: string
+      name: string
+      status: string
+      sendTime: string | null
+      createdAt: string
+    }>
+  }
+  lists: Array<{
+    id: string
+    name: string
+    profileCount: number
+    created: string
+  }>
+  segments: Array<{
+    id: string
+    name: string
+    profileCount: number
+    isActive: boolean
+    isStarred: boolean
+    created: string
+  }>
+  flows: Array<{
+    id: string
+    name: string
+    status: string
+    triggerType: string
+    created: string
+  }>
+  integrations: {
+    hasEcommerce: boolean
+    hasEmail: boolean
+    totalMetrics: number
+  }
 }
 
 interface KlaviyoPerformanceReportProps {
+  storeId: string
   storeName: string
-  data?: PerformanceData
-  onPeriodChange?: (period: string) => void
 }
 
-export function KlaviyoPerformanceReport({
-  storeName,
-  data,
-  onPeriodChange
-}: KlaviyoPerformanceReportProps) {
-  const [selectedPeriod, setSelectedPeriod] = useState("last_30_days")
+export function KlaviyoPerformanceReport({ storeId, storeName }: KlaviyoPerformanceReportProps) {
+  const [reportData, setReportData] = useState<KlaviyoReportData | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
   const [isExporting, setIsExporting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const reportRef = useRef<HTMLDivElement>(null)
 
-  // Demo data for visualization (would be replaced with real data)
-  const reportData: PerformanceData = data || {
-    period: "24/09 - 02/12",
-    storeName: storeName,
-    funnelLTV: { current: 27, total: 4 },
-    leadGrowth: 11.20,
-    recurringCustomersRate: 21.9,
-    totalLeads: 31981,
-    engagedLeads: 21377,
-    totalRevenue: 400500,
-    averageTicket: 174,
-    emailRevenue: 183500,
-    trafficPercent: 54.21,
-    emailPercent: 45.79,
-    monthlyProjection: 500000,
-    emailMonthlyProjection: 150000,
-    conversionRate: 30,
-    annualProjection: 6000000,
-    emailAnnualProjection: 1800000,
-  }
+  useEffect(() => {
+    loadReportData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storeId])
 
-  const handlePeriodChange = (value: string) => {
-    setSelectedPeriod(value)
-    onPeriodChange?.(value)
+  async function loadReportData() {
+    setIsLoading(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/integrations/klaviyo/report?store_id=${storeId}`)
+      const data = await res.json()
+
+      if (data.success) {
+        setReportData(data)
+      } else {
+        setError(data.error || "Erro ao carregar relatório")
+      }
+    } catch (err) {
+      console.error("Error loading report:", err)
+      setError("Erro de conexão ao carregar relatório")
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const handleExportPDF = async () => {
     setIsExporting(true)
     try {
-      // Dynamic import for html2pdf
       const html2pdf = (await import("html2pdf.js")).default
 
       const element = reportRef.current
       if (!element) return
 
       const opt = {
-        margin: 0.5,
-        filename: `relatorio-${storeName}-${new Date().toISOString().split('T')[0]}.pdf`,
+        margin: 0.3,
+        filename: `klaviyo-report-${storeName}-${new Date().toISOString().split('T')[0]}.pdf`,
         image: { type: 'jpeg' as const, quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true },
+        html2canvas: { scale: 2, useCORS: true, logging: false },
         jsPDF: { unit: 'in' as const, format: 'a4' as const, orientation: 'portrait' as const }
       }
 
@@ -117,326 +167,533 @@ export function KlaviyoPerformanceReport({
     }
   }
 
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "live":
+        return <Badge variant="success" className="text-xs">Ativo</Badge>
+      case "draft":
+        return <Badge variant="secondary" className="text-xs">Rascunho</Badge>
+      case "sent":
+        return <Badge variant="success" className="text-xs">Enviado</Badge>
+      case "scheduled":
+        return <Badge variant="warning" className="text-xs">Agendado</Badge>
+      default:
+        return <Badge variant="secondary" className="text-xs">{status}</Badge>
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16">
+        <Loader2 className="h-10 w-10 animate-spin text-primary mb-4" />
+        <p className="text-muted-foreground">Carregando relatório de performance...</p>
+      </div>
+    )
+  }
+
+  if (error || !reportData) {
+    return (
+      <Card className="border-destructive/50 bg-destructive/5">
+        <CardContent className="flex flex-col items-center justify-center py-12">
+          <Target className="h-12 w-12 text-destructive/70 mb-4" />
+          <h3 className="text-lg font-medium text-destructive">Erro ao Carregar Relatório</h3>
+          <p className="text-muted-foreground text-center mt-1">{error}</p>
+          <Button variant="outline" className="mt-4" onClick={loadReportData}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Tentar Novamente
+          </Button>
+        </CardContent>
+      </Card>
+    )
+  }
+
   return (
     <div className="space-y-6">
       {/* Header Controls */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Select value={selectedPeriod} onValueChange={handlePeriodChange}>
-            <SelectTrigger className="w-[200px]">
-              <Calendar className="h-4 w-4 mr-2" />
-              <SelectValue placeholder="Selecione o período" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="last_7_days">Últimos 7 dias</SelectItem>
-              <SelectItem value="last_30_days">Últimos 30 dias</SelectItem>
-              <SelectItem value="last_90_days">Últimos 90 dias</SelectItem>
-              <SelectItem value="this_month">Este mês</SelectItem>
-              <SelectItem value="last_month">Mês passado</SelectItem>
-              <SelectItem value="this_quarter">Este trimestre</SelectItem>
-              <SelectItem value="this_year">Este ano</SelectItem>
-            </SelectContent>
-          </Select>
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-primary/10">
+            <BarChart3 className="h-5 w-5 text-primary" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold">Relatório de Performance</h2>
+            <p className="text-sm text-muted-foreground">
+              Gerado em {formatDate(reportData.generatedAt)}
+            </p>
+          </div>
         </div>
-        <Button onClick={handleExportPDF} disabled={isExporting}>
-          {isExporting ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <Download className="mr-2 h-4 w-4" />
-          )}
-          Exportar PDF
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={loadReportData} disabled={isLoading}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
+            Atualizar
+          </Button>
+          <Button onClick={handleExportPDF} disabled={isExporting}>
+            {isExporting ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="mr-2 h-4 w-4" />
+            )}
+            Exportar PDF
+          </Button>
+        </div>
       </div>
 
       {/* Report Content */}
-      <div ref={reportRef} className="space-y-6 bg-background p-6 rounded-lg">
-        {/* Report Header */}
-        <div className="text-center pb-6 border-b">
-          <div className="flex items-center justify-center gap-2 mb-2">
-            <div className="flex">
-              {[1, 2, 3, 4, 5].map((star) => (
-                <span key={star} className="text-yellow-400 text-lg">★</span>
-              ))}
-            </div>
-          </div>
-          <h1 className="text-3xl font-bold text-primary">{storeName.toUpperCase()}</h1>
-          <p className="text-muted-foreground mt-1">
-            {new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }).toUpperCase()}
-          </p>
-          <Badge variant="outline" className="mt-2">
-            APRESENTAÇÃO DE RESULTADOS
-          </Badge>
-        </div>
-
-        {/* Attention Banner */}
-        <Card className="bg-amber-500/10 border-amber-500/30">
-          <CardContent className="py-4">
-            <div className="flex items-start gap-3">
-              <div className="p-2 rounded-full bg-amber-500/20">
-                <Target className="h-5 w-5 text-amber-600" />
-              </div>
+      <div ref={reportRef} className="space-y-6 bg-background">
+        {/* Store Header */}
+        <Card className="border-none shadow-lg bg-gradient-to-r from-primary/10 via-primary/5 to-transparent">
+          <CardContent className="py-6">
+            <div className="flex items-center justify-between">
               <div>
-                <h3 className="font-semibold text-amber-700">ATENÇÃO</h3>
-                <p className="text-sm text-amber-600/80 mt-1">
-                  A seguir, apresentamos os resultados do período de {reportData.period},
-                  com o objetivo de fornecer uma análise mensal do crescimento.
-                  A gestão desses resultados foi realizada pela Agência Convertfy.
-                </p>
+                <p className="text-sm text-muted-foreground font-medium">LOJA</p>
+                <h1 className="text-2xl font-bold mt-1">{reportData.storeName}</h1>
+                <div className="flex items-center gap-4 mt-3">
+                  {reportData.integrations.hasEcommerce && (
+                    <Badge variant="outline" className="gap-1">
+                      <ShoppingCart className="h-3 w-3" />
+                      E-commerce
+                    </Badge>
+                  )}
+                  {reportData.integrations.hasEmail && (
+                    <Badge variant="outline" className="gap-1">
+                      <Mail className="h-3 w-3" />
+                      Email Marketing
+                    </Badge>
+                  )}
+                  <Badge variant="outline" className="gap-1">
+                    <Activity className="h-3 w-3" />
+                    {reportData.integrations.totalMetrics} métricas
+                  </Badge>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-sm text-muted-foreground">Engajamento</div>
+                <div className="text-3xl font-bold text-primary">
+                  {reportData.engagement.engagementRate}%
+                </div>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Conversion by Funnel */}
-        <div className="space-y-4">
-          <div className="flex items-center gap-2">
-            <BarChart3 className="h-5 w-5 text-primary" />
-            <h2 className="text-lg font-semibold">CONVERSÃO INDIVIDUAL POR FUNIL</h2>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Analisado entre os dias {reportData.period}
-          </p>
+        {/* KPI Overview Grid */}
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {/* Subscribers */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <Users className="h-4 w-4 text-blue-500" />
+                Total de Contatos
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {reportData.overview.totalSubscribers.toLocaleString()}
+              </div>
+              <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
+                <span className="text-emerald-500 flex items-center">
+                  <ArrowUpRight className="h-3 w-3" />
+                  {reportData.growth.growthRate}%
+                </span>
+                <span>crescimento</span>
+              </div>
+            </CardContent>
+          </Card>
 
-          <div className="grid grid-cols-3 gap-4">
-            {/* LTV Funnel */}
-            <Card className="bg-gradient-to-br from-slate-900 to-slate-800 text-white">
-              <CardContent className="p-6 text-center">
-                <p className="text-xs text-slate-400 uppercase tracking-wider">Funil de LTV</p>
-                <div className="my-4">
-                  <div className="w-20 h-20 mx-auto rounded-full border-4 border-cyan-400 flex items-center justify-center">
-                    <span className="text-2xl font-bold">
-                      {reportData.funnelLTV.current}/{reportData.funnelLTV.total}
-                    </span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+          {/* Engaged Profiles */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <Activity className="h-4 w-4 text-emerald-500" />
+                Perfis Engajados
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-emerald-600">
+                {reportData.engagement.engagedProfiles.toLocaleString()}
+              </div>
+              <div className="text-xs text-muted-foreground mt-1">
+                {reportData.engagement.engagementRate}% de taxa de engajamento
+              </div>
+            </CardContent>
+          </Card>
 
-            {/* Lead Growth */}
-            <Card className="bg-gradient-to-br from-slate-900 to-slate-800 text-white">
-              <CardContent className="p-6 text-center">
-                <p className="text-xs text-slate-400 uppercase tracking-wider">Crescimento de Leads</p>
-                <div className="my-4">
-                  <div className="w-20 h-20 mx-auto rounded-full border-4 border-emerald-400 flex items-center justify-center">
-                    <span className="text-2xl font-bold text-emerald-400">
-                      +{(reportData.leadGrowth || 0).toFixed(2)}%
-                    </span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+          {/* Active Flows */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <Zap className="h-4 w-4 text-amber-500" />
+                Flows Ativos
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-amber-600">
+                {reportData.automation.liveFlows}
+              </div>
+              <div className="text-xs text-muted-foreground mt-1">
+                de {reportData.automation.totalFlows} flows totais
+              </div>
+            </CardContent>
+          </Card>
 
-            {/* Recurring Customers */}
-            <Card className="bg-gradient-to-br from-slate-900 to-slate-800 text-white">
-              <CardContent className="p-6 text-center">
-                <p className="text-xs text-slate-400 uppercase tracking-wider">Taxa de Clientes Recorrentes</p>
-                <div className="my-4">
-                  <div className="w-20 h-20 mx-auto rounded-full border-4 border-purple-400 flex items-center justify-center">
-                    <span className="text-2xl font-bold text-purple-400">
-                      {(reportData.recurringCustomersRate || 0).toFixed(1)}%
-                    </span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+          {/* Campaigns Last 30 Days */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <Mail className="h-4 w-4 text-purple-500" />
+                Campanhas (30 dias)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-purple-600">
+                {reportData.growth.campaignsLast30Days}
+              </div>
+              <div className="text-xs text-muted-foreground mt-1">
+                {reportData.campaigns.sent} enviadas no total
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
-        {/* Leads vs Engaged */}
-        <Card className="bg-gradient-to-br from-slate-900 to-slate-800 text-white">
-          <CardContent className="py-8">
-            <div className="flex items-center justify-center gap-2 mb-6">
-              <Users className="h-5 w-5 text-cyan-400" />
-              <h2 className="text-lg font-semibold">LEADS X ENGAJADOS</h2>
-            </div>
-            <div className="flex items-center justify-center gap-16">
-              <div className="text-center">
-                <div className="flex items-center gap-2 justify-center">
-                  <Users className="h-6 w-6 text-cyan-400" />
-                  <span className="text-3xl font-bold">{(reportData.totalLeads || 0).toLocaleString()}</span>
+        {/* Automation & Campaign Stats */}
+        <div className="grid gap-4 md:grid-cols-2">
+          {/* Automation Health */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Zap className="h-5 w-5 text-amber-500" />
+                Saúde da Automação
+              </CardTitle>
+              <CardDescription>
+                Cobertura e status dos seus flows automáticos
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <div className="flex justify-between text-sm mb-2">
+                  <span className="text-muted-foreground">Cobertura de Automação</span>
+                  <span className="font-medium">{reportData.automation.automationCoverage}%</span>
                 </div>
-                <p className="text-sm text-slate-400 mt-1">Todos os Leads</p>
+                <Progress value={parseFloat(reportData.automation.automationCoverage)} className="h-2" />
               </div>
-              <div className="text-center">
-                <div className="flex items-center gap-2 justify-center">
-                  <Mail className="h-6 w-6 text-emerald-400" />
-                  <span className="text-3xl font-bold text-emerald-400">{(reportData.engagedLeads || 0).toLocaleString()}</span>
+              <div className="grid grid-cols-3 gap-4 pt-2">
+                <div className="text-center p-3 rounded-lg bg-muted/50">
+                  <div className="flex items-center justify-center gap-1 mb-1">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                  </div>
+                  <div className="text-xl font-bold">{reportData.automation.liveFlows}</div>
+                  <div className="text-xs text-muted-foreground">Ativos</div>
                 </div>
-                <p className="text-sm text-slate-400 mt-1">Engajados</p>
+                <div className="text-center p-3 rounded-lg bg-muted/50">
+                  <div className="flex items-center justify-center gap-1 mb-1">
+                    <FileEdit className="h-4 w-4 text-slate-500" />
+                  </div>
+                  <div className="text-xl font-bold">{reportData.automation.draftFlows}</div>
+                  <div className="text-xs text-muted-foreground">Rascunho</div>
+                </div>
+                <div className="text-center p-3 rounded-lg bg-muted/50">
+                  <div className="flex items-center justify-center gap-1 mb-1">
+                    <Layers className="h-4 w-4 text-blue-500" />
+                  </div>
+                  <div className="text-xl font-bold">{reportData.automation.totalFlows}</div>
+                  <div className="text-xs text-muted-foreground">Total</div>
+                </div>
               </div>
-            </div>
+            </CardContent>
+          </Card>
+
+          {/* Campaign Summary */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Mail className="h-5 w-5 text-purple-500" />
+                Resumo de Campanhas
+              </CardTitle>
+              <CardDescription>
+                Status geral das suas campanhas de email
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                  <div className="flex items-center gap-2 mb-2">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                    <span className="text-sm text-muted-foreground">Enviadas</span>
+                  </div>
+                  <div className="text-2xl font-bold text-emerald-600">{reportData.campaigns.sent}</div>
+                </div>
+                <div className="p-4 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Clock className="h-4 w-4 text-amber-500" />
+                    <span className="text-sm text-muted-foreground">Agendadas</span>
+                  </div>
+                  <div className="text-2xl font-bold text-amber-600">{reportData.campaigns.scheduled}</div>
+                </div>
+              </div>
+              <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                <div className="flex items-center gap-2">
+                  <FileEdit className="h-4 w-4 text-slate-500" />
+                  <span className="text-sm">Rascunhos</span>
+                </div>
+                <span className="font-medium">{reportData.campaigns.drafts}</span>
+              </div>
+              <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                <div className="flex items-center gap-2">
+                  <Layers className="h-4 w-4 text-blue-500" />
+                  <span className="text-sm">Total de Campanhas</span>
+                </div>
+                <span className="font-medium">{reportData.campaigns.total}</span>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Overview Stats */}
+        <div className="grid gap-4 md:grid-cols-4">
+          <Card className="bg-muted/30">
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-blue-500/10">
+                  <ListFilter className="h-5 w-5 text-blue-500" />
+                </div>
+                <div>
+                  <div className="text-2xl font-bold">{reportData.overview.totalLists}</div>
+                  <div className="text-xs text-muted-foreground">Listas</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-muted/30">
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-purple-500/10">
+                  <Target className="h-5 w-5 text-purple-500" />
+                </div>
+                <div>
+                  <div className="text-2xl font-bold">{reportData.overview.totalSegments}</div>
+                  <div className="text-xs text-muted-foreground">Segmentos</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-muted/30">
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-amber-500/10">
+                  <LayoutTemplate className="h-5 w-5 text-amber-500" />
+                </div>
+                <div>
+                  <div className="text-2xl font-bold">{reportData.overview.totalTemplates}</div>
+                  <div className="text-xs text-muted-foreground">Templates</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-muted/30">
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-emerald-500/10">
+                  <Activity className="h-5 w-5 text-emerald-500" />
+                </div>
+                <div>
+                  <div className="text-2xl font-bold">{reportData.integrations.totalMetrics}</div>
+                  <div className="text-xs text-muted-foreground">Métricas Ativas</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Detailed Tables */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Detalhes por Categoria</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Tabs defaultValue="lists">
+              <TabsList className="grid w-full grid-cols-4">
+                <TabsTrigger value="lists" className="text-xs gap-1">
+                  <ListFilter className="h-3 w-3" />
+                  Listas ({reportData.lists.length})
+                </TabsTrigger>
+                <TabsTrigger value="segments" className="text-xs gap-1">
+                  <Target className="h-3 w-3" />
+                  Segmentos ({reportData.segments.length})
+                </TabsTrigger>
+                <TabsTrigger value="flows" className="text-xs gap-1">
+                  <Zap className="h-3 w-3" />
+                  Flows ({reportData.flows.length})
+                </TabsTrigger>
+                <TabsTrigger value="campaigns" className="text-xs gap-1">
+                  <Mail className="h-3 w-3" />
+                  Campanhas
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="lists" className="mt-4">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Nome da Lista</TableHead>
+                      <TableHead className="text-right">Contatos</TableHead>
+                      <TableHead>Criada em</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {reportData.lists.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={3} className="text-center text-muted-foreground py-8">
+                          Nenhuma lista encontrada
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      reportData.lists.map((list) => (
+                        <TableRow key={list.id}>
+                          <TableCell className="font-medium">{list.name}</TableCell>
+                          <TableCell className="text-right font-mono">
+                            {list.profileCount.toLocaleString()}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {formatDate(list.created)}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </TabsContent>
+
+              <TabsContent value="segments" className="mt-4">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Nome do Segmento</TableHead>
+                      <TableHead className="text-right">Perfis</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Criado em</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {reportData.segments.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                          Nenhum segmento encontrado
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      reportData.segments.map((segment) => (
+                        <TableRow key={segment.id}>
+                          <TableCell className="font-medium">
+                            <div className="flex items-center gap-2">
+                              {segment.name}
+                              {segment.isStarred && (
+                                <span className="text-amber-500">★</span>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right font-mono">
+                            {segment.profileCount.toLocaleString()}
+                          </TableCell>
+                          <TableCell>
+                            {segment.isActive ? (
+                              <Badge variant="success" className="text-xs">Ativo</Badge>
+                            ) : (
+                              <Badge variant="secondary" className="text-xs">Inativo</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {formatDate(segment.created)}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </TabsContent>
+
+              <TabsContent value="flows" className="mt-4">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Nome do Flow</TableHead>
+                      <TableHead>Trigger</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Criado em</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {reportData.flows.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                          Nenhum flow encontrado
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      reportData.flows.map((flow) => (
+                        <TableRow key={flow.id}>
+                          <TableCell className="font-medium">{flow.name}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="text-xs">
+                              {flow.triggerType || "Manual"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>{getStatusBadge(flow.status)}</TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {formatDate(flow.created)}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </TabsContent>
+
+              <TabsContent value="campaigns" className="mt-4">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Nome da Campanha</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Data de Envio</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {reportData.campaigns.recentCampaigns.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={3} className="text-center text-muted-foreground py-8">
+                          Nenhuma campanha encontrada
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      reportData.campaigns.recentCampaigns.map((campaign) => (
+                        <TableRow key={campaign.id}>
+                          <TableCell className="font-medium">{campaign.name}</TableCell>
+                          <TableCell>{getStatusBadge(campaign.status)}</TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {campaign.sendTime ? formatDate(campaign.sendTime) : "—"}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </TabsContent>
+            </Tabs>
           </CardContent>
         </Card>
-
-        {/* Financial Results */}
-        <div className="space-y-4">
-          <div className="flex items-center gap-2">
-            <DollarSign className="h-5 w-5 text-primary" />
-            <h2 className="text-lg font-semibold">RESULTADOS FINANCEIROS</h2>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Faturamento {reportData.period}
-          </p>
-
-          <div className="grid grid-cols-3 gap-4">
-            {/* Total Revenue */}
-            <Card className="bg-gradient-to-br from-slate-900 to-slate-800 text-white">
-              <CardContent className="p-6">
-                <div className="flex items-center gap-2 mb-2">
-                  <DollarSign className="h-4 w-4 text-emerald-400" />
-                  <span className="text-xs text-slate-400 uppercase">Faturamento</span>
-                </div>
-                <p className="text-2xl font-bold text-emerald-400">
-                  {formatCurrency(reportData.totalRevenue)}
-                </p>
-              </CardContent>
-            </Card>
-
-            {/* Average Ticket */}
-            <Card className="bg-gradient-to-br from-slate-900 to-slate-800 text-white">
-              <CardContent className="p-6">
-                <div className="flex items-center gap-2 mb-2">
-                  <DollarSign className="h-4 w-4 text-cyan-400" />
-                  <span className="text-xs text-slate-400 uppercase">Ticket Médio</span>
-                </div>
-                <p className="text-2xl font-bold text-cyan-400">
-                  {formatCurrency(reportData.averageTicket)}
-                </p>
-              </CardContent>
-            </Card>
-
-            {/* Email Revenue */}
-            <Card className="bg-gradient-to-br from-slate-900 to-slate-800 text-white">
-              <CardContent className="p-6">
-                <div className="flex items-center gap-2 mb-2">
-                  <Mail className="h-4 w-4 text-purple-400" />
-                  <span className="text-xs text-slate-400 uppercase">Faturamento Email</span>
-                </div>
-                <p className="text-2xl font-bold text-purple-400">
-                  {formatCurrency(reportData.emailRevenue)}
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Attribution Split */}
-          <div className="grid grid-cols-2 gap-4">
-            <Card className="bg-gradient-to-br from-slate-900 to-slate-800 text-white">
-              <CardContent className="p-4 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-blue-500/20">
-                    <ArrowUpRight className="h-5 w-5 text-blue-400" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold">{reportData.trafficPercent}%</p>
-                    <p className="text-xs text-slate-400">Tráfego</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-gradient-to-br from-slate-900 to-slate-800 text-white">
-              <CardContent className="p-4 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-purple-500/20">
-                    <Mail className="h-5 w-5 text-purple-400" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold">{reportData.emailPercent}%</p>
-                    <p className="text-xs text-slate-400">Email</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-
-        {/* Projections */}
-        <div className="space-y-4">
-          <div className="flex items-center gap-2">
-            <TrendingUp className="h-5 w-5 text-primary" />
-            <h2 className="text-lg font-semibold">PROJEÇÃO DE FATURAMENTO</h2>
-          </div>
-
-          {/* Monthly Projection */}
-          <Card className="bg-gradient-to-br from-slate-900 to-slate-800 text-white">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-sm text-slate-400">Mensal</span>
-                <Badge variant="outline" className="bg-emerald-500/10 text-emerald-400 border-emerald-500/30">
-                  Meta
-                </Badge>
-              </div>
-              <div className="grid grid-cols-4 gap-4">
-                <div className="text-center p-4 rounded-lg bg-slate-800/50">
-                  <DollarSign className="h-6 w-6 mx-auto mb-2 text-emerald-400" />
-                  <p className="text-xl font-bold">{formatCurrency(reportData.monthlyProjection)}</p>
-                  <p className="text-xs text-slate-400 mt-1">Mensal</p>
-                </div>
-                <div className="text-center p-4 rounded-lg bg-slate-800/50">
-                  <Mail className="h-6 w-6 mx-auto mb-2 text-purple-400" />
-                  <p className="text-xl font-bold">{formatCurrency(reportData.emailMonthlyProjection)}</p>
-                  <p className="text-xs text-slate-400 mt-1">Mensal</p>
-                </div>
-                <div className="text-center p-4 rounded-lg bg-slate-800/50">
-                  <PieChart className="h-6 w-6 mx-auto mb-2 text-cyan-400" />
-                  <p className="text-xl font-bold">{reportData.conversionRate}%</p>
-                  <p className="text-xs text-slate-400 mt-1">Conversão</p>
-                </div>
-                <div className="text-center p-4 rounded-lg bg-slate-800/50">
-                  <Target className="h-6 w-6 mx-auto mb-2 text-amber-400" />
-                  <p className="text-xl font-bold">XXX</p>
-                  <p className="text-xs text-slate-400 mt-1">Ticket Médio</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Annual Projection */}
-          <Card className="bg-gradient-to-br from-slate-900 to-slate-800 text-white">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-sm text-slate-400">Anual</span>
-                <Badge variant="outline" className="bg-blue-500/10 text-blue-400 border-blue-500/30">
-                  Projeção
-                </Badge>
-              </div>
-              <div className="grid grid-cols-4 gap-4">
-                <div className="text-center p-4 rounded-lg bg-slate-800/50">
-                  <DollarSign className="h-6 w-6 mx-auto mb-2 text-emerald-400" />
-                  <p className="text-xl font-bold">{formatCurrency(reportData.annualProjection)}</p>
-                  <p className="text-xs text-slate-400 mt-1">Anual</p>
-                </div>
-                <div className="text-center p-4 rounded-lg bg-slate-800/50">
-                  <Mail className="h-6 w-6 mx-auto mb-2 text-purple-400" />
-                  <p className="text-xl font-bold">{formatCurrency(reportData.emailAnnualProjection)}</p>
-                  <p className="text-xs text-slate-400 mt-1">Anual</p>
-                </div>
-                <div className="text-center p-4 rounded-lg bg-slate-800/50">
-                  <PieChart className="h-6 w-6 mx-auto mb-2 text-cyan-400" />
-                  <p className="text-xl font-bold">{reportData.conversionRate}%</p>
-                  <p className="text-xs text-slate-400 mt-1">Conversão</p>
-                </div>
-                <div className="text-center p-4 rounded-lg bg-slate-800/50">
-                  <Target className="h-6 w-6 mx-auto mb-2 text-amber-400" />
-                  <p className="text-xl font-bold">XXX</p>
-                  <p className="text-xs text-slate-400 mt-1">Ticket Médio</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
 
         {/* Footer */}
-        <div className="text-center pt-6 border-t text-sm text-muted-foreground">
+        <div className="text-center pt-4 border-t text-sm text-muted-foreground">
           <p>Relatório gerado automaticamente pela plataforma Convertfy</p>
-          <p className="mt-1">{new Date().toLocaleDateString('pt-BR', {
-            day: '2-digit',
-            month: 'long',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-          })}</p>
+          <p className="mt-1">
+            {new Date().toLocaleDateString('pt-BR', {
+              day: '2-digit',
+              month: 'long',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit'
+            })}
+          </p>
         </div>
       </div>
     </div>

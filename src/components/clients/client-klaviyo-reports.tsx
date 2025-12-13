@@ -263,7 +263,7 @@ export function ClientKlaviyoReports({ clientId }: ClientKlaviyoReportsProps) {
 
       {/* Performance Report View */}
       {activeView === "report" && selectedStore && (
-        <KlaviyoPerformanceReport storeName={selectedStoreName} />
+        <KlaviyoPerformanceReport storeId={selectedStore} storeName={selectedStoreName} />
       )}
 
       {/* Overview View */}
