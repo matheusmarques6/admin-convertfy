@@ -43,9 +43,14 @@ import { createClient } from "@/lib/supabase/client"
 
 interface ClientStore {
   id: string
-  name: string
-  url?: string
+  // Database uses store_name and store_url
+  store_name: string
+  store_url?: string
   platform?: string
+  // Generic credentials (from original table)
+  api_key?: string
+  api_secret?: string
+  access_token?: string
   // Shopify credentials
   shopify_store_domain?: string
   shopify_api_key?: string
@@ -55,7 +60,6 @@ interface ClientStore {
   klaviyo_public_key?: string  // Site ID / Public API Key
   klaviyo_private_key?: string // Private API Key
   klaviyo_list_id?: string
-  // Legacy field (for backwards compatibility)
   klaviyo_api_key?: string
   is_active: boolean
   created_at: string
@@ -118,8 +122,8 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
     if (store) {
       setEditStore(store)
       setForm({
-        name: store.name,
-        url: store.url || "",
+        name: store.store_name,
+        url: store.store_url || "",
         platform: store.platform || "Shopify",
         // Shopify
         shopify_store_domain: store.shopify_store_domain || "",
@@ -160,15 +164,16 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
       const supabase = createClient()
 
       // Build store data object - only include fields with values
+      // Using correct column names: store_name, store_url
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const storeData: Record<string, any> = {
         client_id: clientId,
-        name: form.name,
+        store_name: form.name,
         is_active: true,
       }
 
       // Add optional fields only if they have values
-      if (form.url) storeData.url = form.url
+      if (form.url) storeData.store_url = form.url
       if (form.platform) storeData.platform = form.platform
 
       // Shopify fields
@@ -384,7 +389,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
                       <Store className="h-5 w-5 text-primary" />
                     </div>
                     <div>
-                      <CardTitle className="text-base">{store.name}</CardTitle>
+                      <CardTitle className="text-base">{store.store_name}</CardTitle>
                       {store.platform && (
                         <CardDescription>{store.platform}</CardDescription>
                       )}
@@ -396,16 +401,16 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                {store.url && (
+                {store.store_url && (
                   <div className="flex items-center gap-2 text-sm">
                     <ExternalLink className="h-4 w-4 text-muted-foreground" />
                     <a
-                      href={store.url}
+                      href={store.store_url}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-blue-500 hover:underline truncate"
                     >
-                      {store.url}
+                      {store.store_url}
                     </a>
                   </div>
                 )}
@@ -663,7 +668,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
           <AlertDialogHeader>
             <AlertDialogTitle>Remover loja</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja remover a loja &quot;{deleteStore?.name}&quot;?
+              Tem certeza que deseja remover a loja &quot;{deleteStore?.store_name}&quot;?
               As configurações de integração serão perdidas.
             </AlertDialogDescription>
           </AlertDialogHeader>
