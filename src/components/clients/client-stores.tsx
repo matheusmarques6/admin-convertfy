@@ -12,7 +12,6 @@ import {
   Check,
   X,
   RefreshCw,
-  AlertCircle,
   Database,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
