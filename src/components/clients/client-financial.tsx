@@ -22,6 +22,8 @@ import {
   Building2,
   Wallet,
   MoreVertical,
+  Trash2,
+  Ban,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -365,29 +367,64 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
     setIsCreating(true)
 
     try {
-      const supabase = createClient()
-      const { error } = await supabase.from("client_subscriptions").insert({
-        client_id: clientId,
-        name: subscriptionForm.name,
-        value: parseFloat(subscriptionForm.value),
-        cycle: subscriptionForm.cycle,
-        payment_method: subscriptionForm.paymentMethod,
-        status: "active",
-        start_date: subscriptionForm.startDate,
-        next_due_date: subscriptionForm.startDate,
-        notes: subscriptionForm.notes || null,
-      })
+      // If using Asaas, create subscription via API
+      if (subscriptionForm.paymentMethod === "asaas") {
+        const response = await fetch("/api/integrations/asaas/subscriptions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            clientId,
+            value: parseFloat(subscriptionForm.value),
+            cycle: subscriptionForm.cycle,
+            nextDueDate: subscriptionForm.startDate,
+            description: subscriptionForm.name,
+            billingType: "PIX", // Default to PIX for subscriptions
+          }),
+        })
 
-      if (error) throw error
+        const result = await response.json()
 
-      toast({
-        title: "Assinatura criada!",
-        description: "A assinatura foi registrada com sucesso.",
-      })
+        if (result.success) {
+          toast({
+            title: "Assinatura criada no Asaas!",
+            description: `ID: ${result.subscription?.id}`,
+          })
+          loadData()
+          setSubscriptionDialogOpen(false)
+          resetSubscriptionForm()
+        } else {
+          toast({
+            variant: "destructive",
+            title: "Erro ao criar assinatura no Asaas",
+            description: result.error,
+          })
+        }
+      } else {
+        // Create local subscription (PIX Direto, Wise, etc.)
+        const supabase = createClient()
+        const { error } = await supabase.from("client_subscriptions").insert({
+          client_id: clientId,
+          name: subscriptionForm.name,
+          value: parseFloat(subscriptionForm.value),
+          cycle: subscriptionForm.cycle,
+          payment_method: subscriptionForm.paymentMethod,
+          status: "active",
+          start_date: subscriptionForm.startDate,
+          next_due_date: subscriptionForm.startDate,
+          notes: subscriptionForm.notes || null,
+        })
 
-      loadLocalData()
-      setSubscriptionDialogOpen(false)
-      resetSubscriptionForm()
+        if (error) throw error
+
+        toast({
+          title: "Assinatura criada!",
+          description: "A assinatura foi registrada com sucesso.",
+        })
+
+        loadLocalData()
+        setSubscriptionDialogOpen(false)
+        resetSubscriptionForm()
+      }
     } catch (err) {
       console.error("Error creating subscription:", err)
       toast({
@@ -397,6 +434,184 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
       })
     } finally {
       setIsCreating(false)
+    }
+  }
+
+  async function handleDeleteCharge(charge: LocalCharge) {
+    if (!confirm("Tem certeza que deseja excluir esta cobrança?")) return
+
+    try {
+      const supabase = createClient()
+      const { error } = await supabase
+        .from("client_charges")
+        .delete()
+        .eq("id", charge.id)
+
+      if (error) throw error
+
+      toast({
+        title: "Cobrança excluída!",
+        description: "A cobrança foi removida com sucesso.",
+      })
+
+      loadLocalData()
+    } catch (err) {
+      console.error("Error deleting charge:", err)
+      toast({
+        variant: "destructive",
+        title: "Erro",
+        description: "Erro ao excluir cobrança",
+      })
+    }
+  }
+
+  async function handleCancelCharge(charge: LocalCharge) {
+    if (!confirm("Tem certeza que deseja cancelar esta cobrança?")) return
+
+    try {
+      const supabase = createClient()
+      const { error } = await supabase
+        .from("client_charges")
+        .update({ status: "cancelled" })
+        .eq("id", charge.id)
+
+      if (error) throw error
+
+      toast({
+        title: "Cobrança cancelada!",
+        description: "A cobrança foi cancelada com sucesso.",
+      })
+
+      loadLocalData()
+    } catch (err) {
+      console.error("Error cancelling charge:", err)
+      toast({
+        variant: "destructive",
+        title: "Erro",
+        description: "Erro ao cancelar cobrança",
+      })
+    }
+  }
+
+  async function handleDeleteSubscription(sub: LocalSubscription) {
+    if (!confirm("Tem certeza que deseja excluir esta assinatura?")) return
+
+    try {
+      const supabase = createClient()
+      const { error } = await supabase
+        .from("client_subscriptions")
+        .delete()
+        .eq("id", sub.id)
+
+      if (error) throw error
+
+      toast({
+        title: "Assinatura excluída!",
+        description: "A assinatura foi removida com sucesso.",
+      })
+
+      loadLocalData()
+    } catch (err) {
+      console.error("Error deleting subscription:", err)
+      toast({
+        variant: "destructive",
+        title: "Erro",
+        description: "Erro ao excluir assinatura",
+      })
+    }
+  }
+
+  async function handleCancelSubscription(sub: LocalSubscription) {
+    if (!confirm("Tem certeza que deseja cancelar esta assinatura?")) return
+
+    try {
+      const supabase = createClient()
+      const { error } = await supabase
+        .from("client_subscriptions")
+        .update({ status: "cancelled" })
+        .eq("id", sub.id)
+
+      if (error) throw error
+
+      toast({
+        title: "Assinatura cancelada!",
+        description: "A assinatura foi cancelada com sucesso.",
+      })
+
+      loadLocalData()
+    } catch (err) {
+      console.error("Error cancelling subscription:", err)
+      toast({
+        variant: "destructive",
+        title: "Erro",
+        description: "Erro ao cancelar assinatura",
+      })
+    }
+  }
+
+  async function handleCancelAsaasSubscription(subId: string) {
+    if (!confirm("Tem certeza que deseja cancelar esta assinatura no Asaas?")) return
+
+    try {
+      const response = await fetch(`/api/integrations/asaas/subscriptions?subscription_id=${subId}`, {
+        method: "DELETE",
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        toast({
+          title: "Assinatura cancelada!",
+          description: "A assinatura foi cancelada no Asaas.",
+        })
+        loadData()
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Erro",
+          description: result.error,
+        })
+      }
+    } catch (err) {
+      console.error("Error cancelling Asaas subscription:", err)
+      toast({
+        variant: "destructive",
+        title: "Erro",
+        description: "Erro ao cancelar assinatura no Asaas",
+      })
+    }
+  }
+
+  async function handleCancelAsaasPayment(paymentId: string) {
+    if (!confirm("Tem certeza que deseja cancelar esta cobrança no Asaas?")) return
+
+    try {
+      const response = await fetch(`/api/integrations/asaas/charges?payment_id=${paymentId}`, {
+        method: "DELETE",
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        toast({
+          title: "Cobrança cancelada!",
+          description: "A cobrança foi cancelada no Asaas.",
+        })
+        loadData()
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Erro",
+          description: result.error,
+        })
+      }
+    } catch (err) {
+      console.error("Error cancelling Asaas payment:", err)
+      toast({
+        variant: "destructive",
+        title: "Erro",
+        description: "Erro ao cancelar cobrança no Asaas",
+      })
     }
   }
 
@@ -697,6 +912,20 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                               <Edit2 className="mr-2 h-4 w-4" />
                               Alterar Status
                             </DropdownMenuItem>
+                            {charge.status !== "cancelled" && (
+                              <DropdownMenuItem onClick={() => handleCancelCharge(charge)}>
+                                <Ban className="mr-2 h-4 w-4" />
+                                Cancelar Cobrança
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={() => handleDeleteCharge(charge)}
+                              className="text-destructive focus:text-destructive"
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Excluir
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -721,13 +950,31 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                       <TableCell>{new Date(payment.dueDate).toLocaleDateString("pt-BR")}</TableCell>
                       <TableCell>{getStatusBadge(payment.status)}</TableCell>
                       <TableCell>
-                        {payment.invoiceUrl && (
-                          <Button variant="ghost" size="sm" asChild>
-                            <a href={payment.invoiceUrl} target="_blank" rel="noopener noreferrer">
-                              <ExternalLink className="h-4 w-4" />
-                            </a>
-                          </Button>
-                        )}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon">
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuLabel>Ações</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            {payment.invoiceUrl && (
+                              <DropdownMenuItem asChild>
+                                <a href={payment.invoiceUrl} target="_blank" rel="noopener noreferrer">
+                                  <ExternalLink className="mr-2 h-4 w-4" />
+                                  Ver Cobrança
+                                </a>
+                              </DropdownMenuItem>
+                            )}
+                            {(payment.status === "PENDING" || payment.status === "OVERDUE") && (
+                              <DropdownMenuItem onClick={() => handleCancelAsaasPayment(payment.id)}>
+                                <Ban className="mr-2 h-4 w-4" />
+                                Cancelar Cobrança
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -752,9 +999,35 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                   <CardHeader className="pb-2">
                     <div className="flex items-center justify-between">
                       <CardTitle className="text-lg">{formatCurrency(sub.value)}</CardTitle>
-                      <Badge variant={sub.status === "active" ? "success" : "secondary"}>
-                        {sub.status === "active" ? "Ativa" : sub.status === "inactive" ? "Inativa" : "Cancelada"}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={sub.status === "active" ? "success" : "secondary"}>
+                          {sub.status === "active" ? "Ativa" : sub.status === "inactive" ? "Inativa" : "Cancelada"}
+                        </Badge>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuLabel>Ações</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            {sub.status === "active" && (
+                              <DropdownMenuItem onClick={() => handleCancelSubscription(sub)}>
+                                <Ban className="mr-2 h-4 w-4" />
+                                Cancelar Assinatura
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem
+                              onClick={() => handleDeleteSubscription(sub)}
+                              className="text-destructive focus:text-destructive"
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Excluir
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     </div>
                     <CardDescription>{sub.name}</CardDescription>
                   </CardHeader>
@@ -785,7 +1058,26 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                   <CardHeader className="pb-2">
                     <div className="flex items-center justify-between">
                       <CardTitle className="text-lg">{formatCurrency(sub.value)}</CardTitle>
-                      <Badge variant={sub.isActive ? "success" : "secondary"}>{sub.statusLabel}</Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={sub.isActive ? "success" : "secondary"}>{sub.statusLabel}</Badge>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuLabel>Ações</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            {sub.isActive && (
+                              <DropdownMenuItem onClick={() => handleCancelAsaasSubscription(sub.id)}>
+                                <Ban className="mr-2 h-4 w-4" />
+                                Cancelar Assinatura
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     </div>
                     <CardDescription>{sub.description || "Assinatura Asaas"}</CardDescription>
                   </CardHeader>
@@ -805,6 +1097,10 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Próximo vencimento:</span>
                         <span>{new Date(sub.nextDueDate).toLocaleDateString("pt-BR")}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">ID Asaas:</span>
+                        <span className="text-xs font-mono">{sub.id}</span>
                       </div>
                     </div>
                   </CardContent>
