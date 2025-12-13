@@ -36,9 +36,9 @@ export function Logo({ className, size = "md" }: LogoProps) {
 export function LogoIcon({ className, size = 40 }: { className?: string; size?: number }) {
   return (
     <Image
-      src="/images/logo da convertfy com escrito branco.png"
+      src="/images/convertfy icon.png"
       alt="Convertfy"
-      width={size * 2.5}
+      width={size}
       height={size}
       className={cn("object-contain", className)}
       priority
