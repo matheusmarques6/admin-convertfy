@@ -286,10 +286,10 @@ export function ClientKlaviyoReports({ clientId }: ClientKlaviyoReportsProps) {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {metrics.summary.totalProfiles.toLocaleString()}
+                  {(metrics.summary?.totalProfiles ?? 0).toLocaleString()}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  em {metrics.summary.totalLists} listas
+                  em {metrics.summary?.totalLists ?? 0} listas
                 </p>
               </CardContent>
             </Card>
@@ -303,10 +303,10 @@ export function ClientKlaviyoReports({ clientId }: ClientKlaviyoReportsProps) {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-emerald-500">
-                  {metrics.summary.activeFlows}
+                  {metrics.summary?.activeFlows ?? 0}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  ativos de {metrics.summary.totalFlows} total
+                  ativos de {metrics.summary?.totalFlows ?? 0} total
                 </p>
               </CardContent>
             </Card>
@@ -320,10 +320,10 @@ export function ClientKlaviyoReports({ clientId }: ClientKlaviyoReportsProps) {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {metrics.summary.sentCampaigns}
+                  {metrics.summary?.sentCampaigns ?? 0}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  enviadas / {metrics.summary.scheduledCampaigns} agendadas
+                  enviadas / {metrics.summary?.scheduledCampaigns ?? 0} agendadas
                 </p>
               </CardContent>
             </Card>
@@ -337,7 +337,7 @@ export function ClientKlaviyoReports({ clientId }: ClientKlaviyoReportsProps) {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {metrics.summary.totalMetrics}
+                  {metrics.summary?.totalMetrics ?? 0}
                 </div>
                 <p className="text-xs text-muted-foreground">
                   eventos rastreados
@@ -363,7 +363,7 @@ export function ClientKlaviyoReports({ clientId }: ClientKlaviyoReportsProps) {
                   <div>
                     <p className="font-medium">{metrics.mainList.name}</p>
                     <p className="text-sm text-muted-foreground">
-                      {metrics.mainList.profileCount.toLocaleString()} contatos
+                      {(metrics.mainList.profileCount ?? 0).toLocaleString()} contatos
                     </p>
                   </div>
                   <Badge variant="outline" className="text-primary">
@@ -384,11 +384,11 @@ export function ClientKlaviyoReports({ clientId }: ClientKlaviyoReportsProps) {
                 <TabsList>
                   <TabsTrigger value="lists" className="gap-2">
                     <List className="h-4 w-4" />
-                    Listas ({metrics.lists.length})
+                    Listas ({metrics.lists?.length ?? 0})
                   </TabsTrigger>
                   <TabsTrigger value="flows" className="gap-2">
                     <Zap className="h-4 w-4" />
-                    Flows ({metrics.flows.length})
+                    Flows ({metrics.flows?.length ?? 0})
                   </TabsTrigger>
                   <TabsTrigger value="campaigns" className="gap-2">
                     <Mail className="h-4 w-4" />
@@ -410,7 +410,7 @@ export function ClientKlaviyoReports({ clientId }: ClientKlaviyoReportsProps) {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {metrics.lists.length === 0 ? (
+                      {!metrics.lists || metrics.lists.length === 0 ? (
                         <TableRow>
                           <TableCell colSpan={3} className="text-center text-muted-foreground">
                             Nenhuma lista encontrada
@@ -420,7 +420,7 @@ export function ClientKlaviyoReports({ clientId }: ClientKlaviyoReportsProps) {
                         metrics.lists.map((list) => (
                           <TableRow key={list.id}>
                             <TableCell className="font-medium">{list.name}</TableCell>
-                            <TableCell>{list.profileCount.toLocaleString()}</TableCell>
+                            <TableCell>{(list.profileCount ?? 0).toLocaleString()}</TableCell>
                             <TableCell>{formatDate(list.created)}</TableCell>
                           </TableRow>
                         ))
@@ -439,7 +439,7 @@ export function ClientKlaviyoReports({ clientId }: ClientKlaviyoReportsProps) {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {metrics.flows.length === 0 ? (
+                      {!metrics.flows || metrics.flows.length === 0 ? (
                         <TableRow>
                           <TableCell colSpan={3} className="text-center text-muted-foreground">
                             Nenhum flow encontrado
@@ -468,7 +468,7 @@ export function ClientKlaviyoReports({ clientId }: ClientKlaviyoReportsProps) {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {metrics.campaigns.length === 0 ? (
+                      {!metrics.campaigns || metrics.campaigns.length === 0 ? (
                         <TableRow>
                           <TableCell colSpan={3} className="text-center text-muted-foreground">
                             Nenhuma campanha encontrada
@@ -501,7 +501,7 @@ export function ClientKlaviyoReports({ clientId }: ClientKlaviyoReportsProps) {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {metrics.metrics.length === 0 ? (
+                      {!metrics.metrics || metrics.metrics.length === 0 ? (
                         <TableRow>
                           <TableCell colSpan={3} className="text-center text-muted-foreground">
                             Nenhuma métrica encontrada

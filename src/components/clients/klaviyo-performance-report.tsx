@@ -350,13 +350,13 @@ export function KlaviyoPerformanceReport({ storeId, storeName }: KlaviyoPerforma
                     <span className="text-xs text-emerald-200 font-medium">Total Contatos</span>
                   </div>
                   <p className="text-2xl font-bold mt-2">
-                    {reportData.overview.totalSubscribers.toLocaleString()}
+                    {(reportData.overview?.totalSubscribers ?? 0).toLocaleString()}
                   </p>
                 </div>
                 <div className="text-right">
                   <span className="text-xs bg-white/20 px-2 py-1 rounded-full flex items-center gap-1">
                     <ArrowUpRight className="h-3 w-3" />
-                    {reportData.growth.growthRate}%
+                    {reportData.growth?.growthRate ?? 0}%
                   </span>
                 </div>
               </div>
@@ -374,12 +374,12 @@ export function KlaviyoPerformanceReport({ storeId, storeName }: KlaviyoPerforma
                     <span className="text-xs text-blue-200 font-medium">Engajados</span>
                   </div>
                   <p className="text-2xl font-bold mt-2">
-                    {reportData.engagement.engagedProfiles.toLocaleString()}
+                    {(reportData.engagement?.engagedProfiles ?? 0).toLocaleString()}
                   </p>
                 </div>
                 <div className="text-right">
                   <span className="text-xs bg-white/20 px-2 py-1 rounded-full">
-                    {reportData.engagement.engagementRate}%
+                    {reportData.engagement?.engagementRate ?? 0}%
                   </span>
                 </div>
               </div>
@@ -420,12 +420,12 @@ export function KlaviyoPerformanceReport({ storeId, storeName }: KlaviyoPerforma
                     <span className="text-xs text-amber-200 font-medium">Flows Ativos</span>
                   </div>
                   <p className="text-2xl font-bold mt-2">
-                    {reportData.automation.liveFlows}
+                    {reportData.automation?.liveFlows ?? 0}
                   </p>
                 </div>
                 <div className="text-right">
                   <span className="text-xs bg-white/20 px-2 py-1 rounded-full">
-                    de {reportData.automation.totalFlows}
+                    de {reportData.automation?.totalFlows ?? 0}
                   </span>
                 </div>
               </div>
@@ -443,7 +443,7 @@ export function KlaviyoPerformanceReport({ storeId, storeName }: KlaviyoPerforma
                     <span className="text-xs text-rose-200 font-medium">Campanhas</span>
                   </div>
                   <p className="text-2xl font-bold mt-2">
-                    {reportData.growth.campaignsLast30Days}
+                    {reportData.growth?.campaignsLast30Days ?? 0}
                   </p>
                 </div>
                 <div className="text-right">
@@ -465,7 +465,7 @@ export function KlaviyoPerformanceReport({ storeId, storeName }: KlaviyoPerforma
                   <ListFilter className="h-5 w-5 text-blue-400" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{reportData.overview.totalLists}</p>
+                  <p className="text-2xl font-bold">{reportData.overview?.totalLists ?? 0}</p>
                   <p className="text-xs text-muted-foreground">Listas</p>
                 </div>
               </div>
@@ -478,7 +478,7 @@ export function KlaviyoPerformanceReport({ storeId, storeName }: KlaviyoPerforma
                   <Target className="h-5 w-5 text-purple-400" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{reportData.overview.totalSegments}</p>
+                  <p className="text-2xl font-bold">{reportData.overview?.totalSegments ?? 0}</p>
                   <p className="text-xs text-muted-foreground">Segmentos</p>
                 </div>
               </div>
@@ -491,7 +491,7 @@ export function KlaviyoPerformanceReport({ storeId, storeName }: KlaviyoPerforma
                   <Layers className="h-5 w-5 text-amber-400" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{reportData.overview.totalTemplates}</p>
+                  <p className="text-2xl font-bold">{reportData.overview?.totalTemplates ?? 0}</p>
                   <p className="text-xs text-muted-foreground">Templates</p>
                 </div>
               </div>
@@ -504,7 +504,7 @@ export function KlaviyoPerformanceReport({ storeId, storeName }: KlaviyoPerforma
                   <Activity className="h-5 w-5 text-emerald-400" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{reportData.integrations.totalMetrics}</p>
+                  <p className="text-2xl font-bold">{reportData.integrations?.totalMetrics ?? 0}</p>
                   <p className="text-xs text-muted-foreground">Métricas Ativas</p>
                 </div>
               </div>
@@ -528,29 +528,29 @@ export function KlaviyoPerformanceReport({ storeId, storeName }: KlaviyoPerforma
               <div>
                 <div className="flex justify-between text-sm mb-2">
                   <span className="text-muted-foreground">Cobertura de Automação</span>
-                  <span className="font-bold text-amber-400">{reportData.automation.automationCoverage}%</span>
+                  <span className="font-bold text-amber-400">{reportData.automation?.automationCoverage ?? 0}%</span>
                 </div>
                 <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
                   <div
                     className="h-full bg-gradient-to-r from-amber-500 to-amber-400 rounded-full transition-all"
-                    style={{ width: `${reportData.automation.automationCoverage}%` }}
+                    style={{ width: `${reportData.automation?.automationCoverage ?? 0}%` }}
                   />
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <div className="text-center p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
                   <CheckCircle2 className="h-5 w-5 text-emerald-400 mx-auto mb-1" />
-                  <p className="text-xl font-bold text-emerald-400">{reportData.automation.liveFlows}</p>
+                  <p className="text-xl font-bold text-emerald-400">{reportData.automation?.liveFlows ?? 0}</p>
                   <p className="text-xs text-muted-foreground">Ativos</p>
                 </div>
                 <div className="text-center p-3 rounded-lg bg-slate-500/10 border border-slate-500/20">
                   <FileEdit className="h-5 w-5 text-slate-400 mx-auto mb-1" />
-                  <p className="text-xl font-bold text-slate-400">{reportData.automation.draftFlows}</p>
+                  <p className="text-xl font-bold text-slate-400">{reportData.automation?.draftFlows ?? 0}</p>
                   <p className="text-xs text-muted-foreground">Rascunho</p>
                 </div>
                 <div className="text-center p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
                   <Layers className="h-5 w-5 text-blue-400 mx-auto mb-1" />
-                  <p className="text-xl font-bold text-blue-400">{reportData.automation.totalFlows}</p>
+                  <p className="text-xl font-bold text-blue-400">{reportData.automation?.totalFlows ?? 0}</p>
                   <p className="text-xs text-muted-foreground">Total</p>
                 </div>
               </div>
@@ -574,14 +574,14 @@ export function KlaviyoPerformanceReport({ storeId, storeName }: KlaviyoPerforma
                     <CheckCircle2 className="h-4 w-4 text-emerald-400" />
                     <span className="text-sm text-muted-foreground">Enviadas</span>
                   </div>
-                  <p className="text-2xl font-bold text-emerald-400">{reportData.campaigns.sent}</p>
+                  <p className="text-2xl font-bold text-emerald-400">{reportData.campaigns?.sent ?? 0}</p>
                 </div>
                 <div className="p-4 rounded-lg bg-amber-500/10 border border-amber-500/20">
                   <div className="flex items-center gap-2 mb-2">
                     <Clock className="h-4 w-4 text-amber-400" />
                     <span className="text-sm text-muted-foreground">Agendadas</span>
                   </div>
-                  <p className="text-2xl font-bold text-amber-400">{reportData.campaigns.scheduled}</p>
+                  <p className="text-2xl font-bold text-amber-400">{reportData.campaigns?.scheduled ?? 0}</p>
                 </div>
               </div>
               <div className="space-y-2">
@@ -590,14 +590,14 @@ export function KlaviyoPerformanceReport({ storeId, storeName }: KlaviyoPerforma
                     <FileEdit className="h-4 w-4 text-slate-400" />
                     <span className="text-sm">Rascunhos</span>
                   </div>
-                  <span className="font-bold">{reportData.campaigns.drafts}</span>
+                  <span className="font-bold">{reportData.campaigns?.drafts ?? 0}</span>
                 </div>
                 <div className="flex items-center justify-between p-3 rounded-lg bg-slate-800/50">
                   <div className="flex items-center gap-2">
                     <Layers className="h-4 w-4 text-blue-400" />
                     <span className="text-sm">Total de Campanhas</span>
                   </div>
-                  <span className="font-bold">{reportData.campaigns.total}</span>
+                  <span className="font-bold">{reportData.campaigns?.total ?? 0}</span>
                 </div>
               </div>
             </CardContent>
@@ -614,15 +614,15 @@ export function KlaviyoPerformanceReport({ storeId, storeName }: KlaviyoPerforma
               <TabsList className="bg-slate-800/50 p-1">
                 <TabsTrigger value="lists" className="text-xs gap-1 data-[state=active]:bg-slate-700">
                   <ListFilter className="h-3 w-3" />
-                  Listas ({reportData.lists.length})
+                  Listas ({reportData.lists?.length ?? 0})
                 </TabsTrigger>
                 <TabsTrigger value="segments" className="text-xs gap-1 data-[state=active]:bg-slate-700">
                   <Target className="h-3 w-3" />
-                  Segmentos ({reportData.segments.length})
+                  Segmentos ({reportData.segments?.length ?? 0})
                 </TabsTrigger>
                 <TabsTrigger value="flows" className="text-xs gap-1 data-[state=active]:bg-slate-700">
                   <Zap className="h-3 w-3" />
-                  Flows ({reportData.flows.length})
+                  Flows ({reportData.flows?.length ?? 0})
                 </TabsTrigger>
                 <TabsTrigger value="campaigns" className="text-xs gap-1 data-[state=active]:bg-slate-700">
                   <Mail className="h-3 w-3" />
@@ -641,7 +641,7 @@ export function KlaviyoPerformanceReport({ storeId, storeName }: KlaviyoPerforma
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {reportData.lists.length === 0 ? (
+                      {!reportData.lists || reportData.lists.length === 0 ? (
                         <TableRow className="border-slate-800">
                           <TableCell colSpan={3} className="text-center text-muted-foreground py-8">
                             Nenhuma lista encontrada
@@ -652,7 +652,7 @@ export function KlaviyoPerformanceReport({ storeId, storeName }: KlaviyoPerforma
                           <TableRow key={list.id} className="border-slate-800">
                             <TableCell className="font-medium">{list.name}</TableCell>
                             <TableCell className="text-right font-mono text-emerald-400">
-                              {list.profileCount.toLocaleString()}
+                              {(list.profileCount ?? 0).toLocaleString()}
                             </TableCell>
                             <TableCell className="text-muted-foreground text-sm">
                               {formatDate(list.created)}
@@ -677,7 +677,7 @@ export function KlaviyoPerformanceReport({ storeId, storeName }: KlaviyoPerforma
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {reportData.segments.length === 0 ? (
+                      {!reportData.segments || reportData.segments.length === 0 ? (
                         <TableRow className="border-slate-800">
                           <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
                             Nenhum segmento encontrado
@@ -695,7 +695,7 @@ export function KlaviyoPerformanceReport({ storeId, storeName }: KlaviyoPerforma
                               </div>
                             </TableCell>
                             <TableCell className="text-right font-mono text-blue-400">
-                              {segment.profileCount.toLocaleString()}
+                              {(segment.profileCount ?? 0).toLocaleString()}
                             </TableCell>
                             <TableCell>
                               {segment.isActive ? (
@@ -727,7 +727,7 @@ export function KlaviyoPerformanceReport({ storeId, storeName }: KlaviyoPerforma
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {reportData.flows.length === 0 ? (
+                      {!reportData.flows || reportData.flows.length === 0 ? (
                         <TableRow className="border-slate-800">
                           <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
                             Nenhum flow encontrado
@@ -765,7 +765,7 @@ export function KlaviyoPerformanceReport({ storeId, storeName }: KlaviyoPerforma
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {reportData.campaigns.recentCampaigns.length === 0 ? (
+                      {!reportData.campaigns?.recentCampaigns || reportData.campaigns.recentCampaigns.length === 0 ? (
                         <TableRow className="border-slate-800">
                           <TableCell colSpan={3} className="text-center text-muted-foreground py-8">
                             Nenhuma campanha encontrada
