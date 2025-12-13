@@ -38,8 +38,9 @@ import { formatDate } from "@/lib/utils"
 
 interface ClientStore {
   id: string
-  name: string
+  store_name: string
   klaviyo_api_key?: string
+  klaviyo_private_key?: string
   klaviyo_list_id?: string
 }
 
@@ -119,13 +120,14 @@ export function ClientKlaviyoReports({ clientId }: ClientKlaviyoReportsProps) {
       const supabase = createClient()
       const { data, error } = await supabase
         .from("client_stores")
-        .select("id, name, klaviyo_api_key, klaviyo_list_id")
+        .select("id, store_name, klaviyo_api_key, klaviyo_private_key, klaviyo_list_id")
         .eq("client_id", clientId)
-        .order("name")
+        .order("store_name")
 
       if (error) throw error
 
-      const klaviyoStores = (data || []).filter(s => s.klaviyo_api_key)
+      // Filter stores that have Klaviyo configured (either private_key or api_key)
+      const klaviyoStores = (data || []).filter(s => s.klaviyo_private_key || s.klaviyo_api_key)
       setStores(klaviyoStores)
 
       // Auto-select first store
@@ -215,7 +217,7 @@ export function ClientKlaviyoReports({ clientId }: ClientKlaviyoReportsProps) {
             <SelectContent>
               {stores.map((store) => (
                 <SelectItem key={store.id} value={store.id}>
-                  {store.name}
+                  {store.store_name}
                 </SelectItem>
               ))}
             </SelectContent>

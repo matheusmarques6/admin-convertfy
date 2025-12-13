@@ -91,7 +91,7 @@ export async function GET(request: NextRequest) {
     // Get store with Klaviyo API key
     const { data: store, error: storeError } = await supabase
       .from("client_stores")
-      .select("klaviyo_api_key, klaviyo_list_id, name")
+      .select("klaviyo_api_key, klaviyo_private_key, klaviyo_list_id, store_name")
       .eq("id", storeId)
       .single()
 
@@ -99,15 +99,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Loja não encontrada" }, { status: 404 })
     }
 
-    if (!store.klaviyo_api_key) {
+    // Use private_key (new) or api_key (legacy)
+    const apiKey = store.klaviyo_private_key || store.klaviyo_api_key
+    if (!apiKey) {
       return NextResponse.json({
         success: false,
         connected: false,
         error: "API Key não configurada",
       })
     }
-
-    const apiKey = store.klaviyo_api_key
 
     // Fetch data in parallel
     const [lists, flows, campaigns, metrics] = await Promise.all([
@@ -140,7 +140,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       connected: true,
-      storeName: store.name,
+      storeName: store.store_name,
       summary: {
         totalProfiles,
         totalLists: lists.data.length,
