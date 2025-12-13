@@ -278,27 +278,30 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
 
     setTestingKlaviyo(store.id)
     try {
-      // Test Klaviyo API connection
-      const response = await fetch("https://a.klaviyo.com/api/accounts/", {
+      // Test Klaviyo API connection via our backend (to avoid CORS)
+      const response = await fetch("/api/integrations/klaviyo/test", {
+        method: "POST",
         headers: {
-          "Authorization": `Klaviyo-API-Key ${apiKey}`,
-          "revision": "2024-02-15",
+          "Content-Type": "application/json",
         },
+        body: JSON.stringify({ api_key: apiKey }),
       })
 
-      if (response.ok) {
+      const data = await response.json()
+
+      if (data.success) {
         toast({
           title: "Conexão bem sucedida!",
-          description: "A API do Klaviyo está funcionando corretamente",
+          description: data.account ? `Conectado a: ${data.account}` : "A API do Klaviyo está funcionando corretamente",
         })
       } else {
-        throw new Error("Falha na conexão")
+        throw new Error(data.error || "Falha na conexão")
       }
-    } catch {
+    } catch (error) {
       toast({
         variant: "destructive",
         title: "Erro na conexão",
-        description: "Verifique se a Private API Key está correta",
+        description: error instanceof Error ? error.message : "Verifique se a Private API Key está correta",
       })
     } finally {
       setTestingKlaviyo(null)
