@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
@@ -14,6 +14,7 @@ import {
   AlertCircle,
   Repeat,
   DollarSign,
+  RefreshCw,
 } from "lucide-react"
 import {
   Table,
@@ -50,10 +51,14 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { Skeleton } from "@/components/ui/skeleton"
 import { formatCurrency, getInitials, getHealthScoreColor } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
 import { toast } from "@/lib/hooks/use-toast"
 import type { Client, Contract, User } from "@/types"
+
+const CACHE_KEY = "clients_status_cache"
+const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
 
 interface ClientWithRelations extends Client {
   contracts?: Contract[]
@@ -101,23 +106,100 @@ export function ClientsTable({ clients }: ClientsTableProps) {
   const [isDeleting, setIsDeleting] = useState(false)
   const [clientsStatus, setClientsStatus] = useState<Record<string, ClientStatus>>({})
   const [isLoadingStatus, setIsLoadingStatus] = useState(true)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [loadError, setLoadError] = useState(false)
 
+  // Load cached data immediately on mount
   useEffect(() => {
-    loadClientsStatus()
-  }, [])
-
-  async function loadClientsStatus() {
-    try {
-      const response = await fetch("/api/integrations/asaas/clients-status")
-      const data = await response.json()
-      if (data.success) {
-        setClientsStatus(data.clientsStatus || {})
-      }
-    } catch (error) {
-      console.error("Error loading clients status:", error)
-    } finally {
+    const cached = getCachedStatus()
+    if (cached) {
+      setClientsStatus(cached)
       setIsLoadingStatus(false)
     }
+  }, [])
+
+  // Fetch fresh data
+  useEffect(() => {
+    loadClientsStatus()
+  }, [loadClientsStatus])
+
+  function getCachedStatus(): Record<string, ClientStatus> | null {
+    try {
+      const cached = localStorage.getItem(CACHE_KEY)
+      if (cached) {
+        const { data, timestamp } = JSON.parse(cached)
+        if (Date.now() - timestamp < CACHE_TTL) {
+          return data
+        }
+      }
+    } catch {
+      // Ignore cache errors
+    }
+    return null
+  }
+
+  function setCachedStatus(data: Record<string, ClientStatus>) {
+    try {
+      localStorage.setItem(CACHE_KEY, JSON.stringify({
+        data,
+        timestamp: Date.now()
+      }))
+    } catch {
+      // Ignore cache errors
+    }
+  }
+
+  const loadClientsStatus = useCallback(async (isManualRefresh = false) => {
+    if (isManualRefresh) {
+      setIsRefreshing(true)
+    }
+    setLoadError(false)
+
+    // Retry logic with exponential backoff
+    let attempts = 0
+    const maxAttempts = 3
+
+    while (attempts < maxAttempts) {
+      try {
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 25000) // 25s timeout
+
+        const response = await fetch("/api/integrations/asaas/clients-status", {
+          signal: controller.signal
+        })
+        clearTimeout(timeoutId)
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`)
+        }
+
+        const data = await response.json()
+        if (data.success) {
+          const statusData = data.clientsStatus || {}
+          setClientsStatus(statusData)
+          setCachedStatus(statusData)
+          setLoadError(false)
+          break
+        }
+      } catch (error) {
+        attempts++
+        console.error(`Attempt ${attempts} failed:`, error)
+
+        if (attempts < maxAttempts) {
+          // Wait before retry (exponential backoff)
+          await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempts) * 1000))
+        } else {
+          setLoadError(true)
+        }
+      }
+    }
+
+    setIsLoadingStatus(false)
+    setIsRefreshing(false)
+  }, [])
+
+  const handleManualRefresh = () => {
+    loadClientsStatus(true)
   }
 
   async function handleDelete() {
@@ -180,7 +262,31 @@ export function ClientsTable({ clients }: ClientsTableProps) {
             <TableRow>
               <TableHead className="w-[250px]">Cliente</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Pagamento</TableHead>
+              <TableHead>
+                <div className="flex items-center gap-2">
+                  Pagamento
+                  {(isLoadingStatus || isRefreshing) && (
+                    <RefreshCw className="h-3 w-3 animate-spin text-muted-foreground" />
+                  )}
+                  {loadError && !isLoadingStatus && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-5 w-5"
+                          onClick={handleManualRefresh}
+                        >
+                          <RefreshCw className="h-3 w-3 text-destructive" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Erro ao carregar. Clique para tentar novamente.</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                </div>
+              </TableHead>
               <TableHead>Assinatura</TableHead>
               <TableHead>Saúde</TableHead>
               <TableHead>Responsável</TableHead>
@@ -232,7 +338,12 @@ export function ClientsTable({ clients }: ClientsTableProps) {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    {clientStatus ? (
+                    {isLoadingStatus && !clientStatus ? (
+                      <div className="space-y-2">
+                        <Skeleton className="h-5 w-24" />
+                        <Skeleton className="h-3 w-16" />
+                      </div>
+                    ) : clientStatus ? (
                       <div className="space-y-1">
                         {clientStatus.hasOverdue ? (
                           <Badge variant="destructive" className="flex items-center gap-1 w-fit">
@@ -258,12 +369,17 @@ export function ClientsTable({ clients }: ClientsTableProps) {
                       </div>
                     ) : (
                       <span className="text-xs text-muted-foreground">
-                        {isLoadingStatus ? "..." : "Sem vínculo Asaas"}
+                        Sem vínculo Asaas
                       </span>
                     )}
                   </TableCell>
                   <TableCell>
-                    {clientStatus?.subscription ? (
+                    {isLoadingStatus && !clientStatus ? (
+                      <div className="space-y-2">
+                        <Skeleton className="h-4 w-20" />
+                        <Skeleton className="h-3 w-14" />
+                      </div>
+                    ) : clientStatus?.subscription ? (
                       <div className="space-y-1">
                         <div className="flex items-center gap-1">
                           <Repeat className="h-3 w-3 text-purple-500" />
