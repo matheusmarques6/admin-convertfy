@@ -12,6 +12,8 @@ import {
   Check,
   X,
   RefreshCw,
+  AlertCircle,
+  Database,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -193,10 +195,13 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
       loadStores()
     } catch (error) {
       console.error("Error saving store:", error)
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      // Check if it's a Supabase error with details
+      const supabaseError = error as { message?: string; details?: string; hint?: string; code?: string }
       toast({
         variant: "destructive",
         title: "Erro ao salvar",
-        description: "Não foi possível salvar a loja. Verifique se a tabela client_stores existe.",
+        description: supabaseError.details || supabaseError.hint || errorMessage || "Erro desconhecido ao salvar a loja",
       })
     } finally {
       setIsSaving(false)
@@ -267,6 +272,34 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
     }
   }
 
+  async function checkDatabaseStatus() {
+    try {
+      const response = await fetch("/api/setup/database")
+      const data = await response.json()
+
+      if (data.tables?.client_stores?.exists) {
+        toast({
+          title: "Tabelas OK",
+          description: "As tabelas do banco de dados estão configuradas corretamente.",
+        })
+        loadStores()
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Tabela não encontrada",
+          description: "Execute o SQL de migração no Supabase SQL Editor. Arquivo: supabase/migrations/20241213_add_store_credentials.sql",
+        })
+      }
+    } catch (error) {
+      console.error("Error checking database:", error)
+      toast({
+        variant: "destructive",
+        title: "Erro ao verificar",
+        description: "Não foi possível verificar o status do banco de dados",
+      })
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -300,10 +333,16 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
             <p className="text-muted-foreground text-center mt-1">
               Adicione as lojas deste cliente para configurar integrações
             </p>
-            <Button onClick={() => openDialog()} className="mt-4">
-              <Plus className="mr-2 h-4 w-4" />
-              Adicionar Loja
-            </Button>
+            <div className="flex gap-2 mt-4">
+              <Button onClick={() => openDialog()}>
+                <Plus className="mr-2 h-4 w-4" />
+                Adicionar Loja
+              </Button>
+              <Button variant="outline" onClick={checkDatabaseStatus}>
+                <Database className="mr-2 h-4 w-4" />
+                Verificar BD
+              </Button>
+            </div>
           </CardContent>
         </Card>
       ) : (
