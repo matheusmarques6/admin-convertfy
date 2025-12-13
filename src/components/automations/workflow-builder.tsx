@@ -22,7 +22,6 @@ import {
   Mail,
   MessageSquare,
   Phone,
-  Bell,
   Webhook,
   Clock,
   Trash2,
@@ -39,7 +38,6 @@ import {
   Code,
   PhoneCall,
   HelpCircle,
-  ChevronDown,
   Crown,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -102,13 +100,8 @@ const logicTypes = [
   { type: "execute_script", label: "Executar", icon: Code, color: "#f59e0b" },
 ]
 
-// Delay/wait type
-const delayType = { type: "delay", label: "Aguardar", icon: Clock, color: "#f97316" }
-
 // Custom Node: Trigger (green)
 function TriggerNode({ data, selected }: { data: { label: string; type: string; config?: Record<string, unknown> }; selected: boolean }) {
-  const trigger = triggerTypes.find(t => t.type === data.type)
-
   return (
     <div className={cn(
       "relative rounded-xl shadow-lg min-w-[180px] transition-all",
