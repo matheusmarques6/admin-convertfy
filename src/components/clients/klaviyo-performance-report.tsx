@@ -219,7 +219,7 @@ export function KlaviyoPerformanceReport({
                 <div className="my-4">
                   <div className="w-20 h-20 mx-auto rounded-full border-4 border-emerald-400 flex items-center justify-center">
                     <span className="text-2xl font-bold text-emerald-400">
-                      +{reportData.leadGrowth.toFixed(2)}%
+                      +{(reportData.leadGrowth || 0).toFixed(2)}%
                     </span>
                   </div>
                 </div>
@@ -233,7 +233,7 @@ export function KlaviyoPerformanceReport({
                 <div className="my-4">
                   <div className="w-20 h-20 mx-auto rounded-full border-4 border-purple-400 flex items-center justify-center">
                     <span className="text-2xl font-bold text-purple-400">
-                      {reportData.recurringCustomersRate.toFixed(1)}%
+                      {(reportData.recurringCustomersRate || 0).toFixed(1)}%
                     </span>
                   </div>
                 </div>
@@ -253,14 +253,14 @@ export function KlaviyoPerformanceReport({
               <div className="text-center">
                 <div className="flex items-center gap-2 justify-center">
                   <Users className="h-6 w-6 text-cyan-400" />
-                  <span className="text-3xl font-bold">{reportData.totalLeads.toLocaleString()}</span>
+                  <span className="text-3xl font-bold">{(reportData.totalLeads || 0).toLocaleString()}</span>
                 </div>
                 <p className="text-sm text-slate-400 mt-1">Todos os Leads</p>
               </div>
               <div className="text-center">
                 <div className="flex items-center gap-2 justify-center">
                   <Mail className="h-6 w-6 text-emerald-400" />
-                  <span className="text-3xl font-bold text-emerald-400">{reportData.engagedLeads.toLocaleString()}</span>
+                  <span className="text-3xl font-bold text-emerald-400">{(reportData.engagedLeads || 0).toLocaleString()}</span>
                 </div>
                 <p className="text-sm text-slate-400 mt-1">Engajados</p>
               </div>
