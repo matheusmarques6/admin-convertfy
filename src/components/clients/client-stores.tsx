@@ -159,20 +159,32 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
     try {
       const supabase = createClient()
 
-      const storeData = {
+      // Build store data object - only include fields with values
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const storeData: Record<string, any> = {
         client_id: clientId,
         name: form.name,
-        url: form.url || null,
-        platform: form.platform || null,
-        // Shopify
-        shopify_store_domain: form.shopify_store_domain || null,
-        shopify_access_token: form.shopify_access_token || null,
-        // Klaviyo
-        klaviyo_public_key: form.klaviyo_public_key || null,
-        klaviyo_private_key: form.klaviyo_private_key || null,
-        klaviyo_list_id: form.klaviyo_list_id || null,
         is_active: true,
       }
+
+      // Add optional fields only if they have values
+      if (form.url) storeData.url = form.url
+      if (form.platform) storeData.platform = form.platform
+
+      // Shopify fields
+      if (form.shopify_store_domain) storeData.shopify_store_domain = form.shopify_store_domain
+      if (form.shopify_access_token) storeData.shopify_access_token = form.shopify_access_token
+
+      // Klaviyo fields - try new column names first
+      if (form.klaviyo_public_key) storeData.klaviyo_public_key = form.klaviyo_public_key
+      if (form.klaviyo_private_key) {
+        storeData.klaviyo_private_key = form.klaviyo_private_key
+        // Also set legacy field for backwards compatibility
+        storeData.klaviyo_api_key = form.klaviyo_private_key
+      }
+      if (form.klaviyo_list_id) storeData.klaviyo_list_id = form.klaviyo_list_id
+
+      console.log("Saving store data:", storeData)
 
       if (editStore) {
         const { error } = await supabase
@@ -180,14 +192,20 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
           .update(storeData)
           .eq("id", editStore.id)
 
-        if (error) throw error
+        if (error) {
+          console.error("Supabase update error:", error)
+          throw error
+        }
         toast({ title: "Loja atualizada!" })
       } else {
         const { error } = await supabase
           .from("client_stores")
           .insert(storeData)
 
-        if (error) throw error
+        if (error) {
+          console.error("Supabase insert error:", error)
+          throw error
+        }
         toast({ title: "Loja adicionada!" })
       }
 
@@ -195,14 +213,24 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
       loadStores()
     } catch (error) {
       console.error("Error saving store:", error)
-      const errorMessage = error instanceof Error ? error.message : String(error)
-      // Check if it's a Supabase error with details
+      // Supabase errors have message, details, hint, code properties
       const supabaseError = error as { message?: string; details?: string; hint?: string; code?: string }
-      toast({
-        variant: "destructive",
-        title: "Erro ao salvar",
-        description: supabaseError.details || supabaseError.hint || errorMessage || "Erro desconhecido ao salvar a loja",
-      })
+      const errorMsg = supabaseError.message || (error instanceof Error ? error.message : String(error))
+
+      // Check if it's a column not found error
+      if (errorMsg.includes("column") && errorMsg.includes("does not exist")) {
+        toast({
+          variant: "destructive",
+          title: "Coluna não encontrada",
+          description: `${errorMsg}. Execute a migração SQL no Supabase.`,
+        })
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Erro ao salvar",
+          description: errorMsg,
+        })
+      }
     } finally {
       setIsSaving(false)
     }
