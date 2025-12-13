@@ -376,3 +376,110 @@ export interface GoogleCalendarList {
   accessRole: "freeBusyReader" | "reader" | "writer" | "owner"
   primary?: boolean
 }
+
+// Wise Types
+export interface WiseBalance {
+  id: number
+  currency: string
+  amount: {
+    value: number
+    currency: string
+  }
+  reservedAmount: {
+    value: number
+    currency: string
+  }
+  bankDetails?: {
+    accountHolderName: string
+    bankIdentifier?: string
+    accountNumber?: string
+    iban?: string
+    swift?: string
+    routingNumber?: string
+  }
+}
+
+export interface WiseTransaction {
+  type: string
+  date: string
+  amount: {
+    value: number
+    currency: string
+  }
+  totalFees: {
+    value: number
+    currency: string
+  }
+  details: {
+    type: string
+    description: string
+    senderName?: string
+    senderAccount?: string
+    paymentReference?: string
+    recipient?: {
+      name: string
+      bankAccount?: string
+    }
+  }
+  exchangeDetails?: {
+    toAmount: {
+      value: number
+      currency: string
+    }
+    fromAmount: {
+      value: number
+      currency: string
+    }
+    rate: number
+  }
+  runningBalance: {
+    value: number
+    currency: string
+  }
+  referenceNumber: string
+}
+
+export interface WiseStatementResponse {
+  accountHolder: {
+    type: string
+    firstName?: string
+    lastName?: string
+    businessName?: string
+  }
+  issuer: {
+    name: string
+    firstLine: string
+    city: string
+    postCode: string
+    stateCode?: string
+    country: string
+  }
+  bankDetails?: WiseBalance["bankDetails"]
+  transactions: WiseTransaction[]
+  startOfStatementBalance: {
+    value: number
+    currency: string
+  }
+  endOfStatementBalance: {
+    value: number
+    currency: string
+  }
+  query: {
+    intervalStart: string
+    intervalEnd: string
+    currency: string
+    accountId: number
+  }
+}
+
+export interface WiseProfile {
+  id: number
+  type: "personal" | "business"
+  details: {
+    firstName?: string
+    lastName?: string
+    name?: string
+    companyName?: string
+    companyType?: string
+  }
+}

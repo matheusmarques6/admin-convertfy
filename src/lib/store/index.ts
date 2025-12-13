@@ -230,6 +230,7 @@ const initialStatuses: Record<IntegrationType, IntegrationStatus> = {
   instagram: { type: "instagram", connected: false },
   whatsapp: { type: "whatsapp", connected: false },
   google_calendar: { type: "google_calendar", connected: false },
+  wise: { type: "wise", connected: false },
 }
 
 export const useIntegrationsStore = create<IntegrationsState>((set, get) => ({

@@ -1,7 +1,8 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ChargesManager } from "@/components/financial/charges-manager"
 import { SubscriptionsManager } from "@/components/financial/subscriptions-manager"
-import { DollarSign, Repeat } from "lucide-react"
+import { WiseReconciliation } from "@/components/financial/wise-reconciliation"
+import { DollarSign, Repeat, Wallet } from "lucide-react"
 
 export const dynamic = "force-dynamic"
 
@@ -27,6 +28,10 @@ export default function FinancialPage() {
             <Repeat className="h-4 w-4" />
             Assinaturas
           </TabsTrigger>
+          <TabsTrigger value="wise" className="gap-2">
+            <Wallet className="h-4 w-4" />
+            Wise
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="charges" className="mt-6">
@@ -35,6 +40,10 @@ export default function FinancialPage() {
 
         <TabsContent value="subscriptions" className="mt-6">
           <SubscriptionsManager />
+        </TabsContent>
+
+        <TabsContent value="wise" className="mt-6">
+          <WiseReconciliation />
         </TabsContent>
       </Tabs>
     </div>

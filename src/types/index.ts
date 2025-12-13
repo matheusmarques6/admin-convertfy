@@ -274,6 +274,7 @@ export type IntegrationType =
   | "instagram"
   | "whatsapp"
   | "google_calendar"
+  | "wise"
 
 export interface Integration {
   id: string
