@@ -44,8 +44,17 @@ interface ClientStore {
   name: string
   url?: string
   platform?: string
-  klaviyo_api_key?: string
+  // Shopify credentials
+  shopify_store_domain?: string
+  shopify_api_key?: string
+  shopify_api_secret?: string
+  shopify_access_token?: string
+  // Klaviyo credentials
+  klaviyo_public_key?: string  // Site ID / Public API Key
+  klaviyo_private_key?: string // Private API Key
   klaviyo_list_id?: string
+  // Legacy field (for backwards compatibility)
+  klaviyo_api_key?: string
   is_active: boolean
   created_at: string
 }
@@ -67,8 +76,13 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
   const [form, setForm] = useState({
     name: "",
     url: "",
-    platform: "",
-    klaviyo_api_key: "",
+    platform: "Shopify",
+    // Shopify
+    shopify_store_domain: "",
+    shopify_access_token: "",
+    // Klaviyo
+    klaviyo_public_key: "",
+    klaviyo_private_key: "",
     klaviyo_list_id: "",
   })
 
@@ -104,8 +118,13 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
       setForm({
         name: store.name,
         url: store.url || "",
-        platform: store.platform || "",
-        klaviyo_api_key: store.klaviyo_api_key || "",
+        platform: store.platform || "Shopify",
+        // Shopify
+        shopify_store_domain: store.shopify_store_domain || "",
+        shopify_access_token: store.shopify_access_token || "",
+        // Klaviyo - use new fields or fall back to legacy
+        klaviyo_public_key: store.klaviyo_public_key || "",
+        klaviyo_private_key: store.klaviyo_private_key || store.klaviyo_api_key || "",
         klaviyo_list_id: store.klaviyo_list_id || "",
       })
     } else {
@@ -113,8 +132,11 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
       setForm({
         name: "",
         url: "",
-        platform: "",
-        klaviyo_api_key: "",
+        platform: "Shopify",
+        shopify_store_domain: "",
+        shopify_access_token: "",
+        klaviyo_public_key: "",
+        klaviyo_private_key: "",
         klaviyo_list_id: "",
       })
     }
@@ -140,7 +162,12 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
         name: form.name,
         url: form.url || null,
         platform: form.platform || null,
-        klaviyo_api_key: form.klaviyo_api_key || null,
+        // Shopify
+        shopify_store_domain: form.shopify_store_domain || null,
+        shopify_access_token: form.shopify_access_token || null,
+        // Klaviyo
+        klaviyo_public_key: form.klaviyo_public_key || null,
+        klaviyo_private_key: form.klaviyo_private_key || null,
         klaviyo_list_id: form.klaviyo_list_id || null,
         is_active: true,
       }
@@ -201,11 +228,12 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
   }
 
   async function testKlaviyoConnection(store: ClientStore) {
-    if (!store.klaviyo_api_key) {
+    const apiKey = store.klaviyo_private_key || store.klaviyo_api_key
+    if (!apiKey) {
       toast({
         variant: "destructive",
         title: "API Key não configurada",
-        description: "Configure a API Key do Klaviyo primeiro",
+        description: "Configure a Private API Key do Klaviyo primeiro",
       })
       return
     }
@@ -215,7 +243,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
       // Test Klaviyo API connection
       const response = await fetch("https://a.klaviyo.com/api/accounts/", {
         headers: {
-          "Authorization": `Klaviyo-API-Key ${store.klaviyo_api_key}`,
+          "Authorization": `Klaviyo-API-Key ${apiKey}`,
           "revision": "2024-02-15",
         },
       })
@@ -232,7 +260,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
       toast({
         variant: "destructive",
         title: "Erro na conexão",
-        description: "Verifique se a API Key está correta",
+        description: "Verifique se a Private API Key está correta",
       })
     } finally {
       setTestingKlaviyo(null)
@@ -315,6 +343,34 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
                   </div>
                 )}
 
+                {/* Shopify Integration Status */}
+                {store.platform?.toLowerCase() === "shopify" && (
+                  <div className="p-3 rounded-lg bg-muted/50 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Store className="h-4 w-4 text-green-500" />
+                        <span className="text-sm font-medium">Shopify</span>
+                      </div>
+                      {store.shopify_access_token ? (
+                        <Badge variant="success" className="flex items-center gap-1">
+                          <Check className="h-3 w-3" />
+                          Configurado
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary" className="flex items-center gap-1">
+                          <X className="h-3 w-3" />
+                          Não configurado
+                        </Badge>
+                      )}
+                    </div>
+                    {store.shopify_store_domain && (
+                      <div className="text-xs text-muted-foreground">
+                        Domínio: {store.shopify_store_domain}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Klaviyo Integration Status */}
                 <div className="p-3 rounded-lg bg-muted/50 space-y-2">
                   <div className="flex items-center justify-between">
@@ -322,7 +378,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
                       <Key className="h-4 w-4 text-purple-500" />
                       <span className="text-sm font-medium">Klaviyo</span>
                     </div>
-                    {store.klaviyo_api_key ? (
+                    {(store.klaviyo_private_key || store.klaviyo_api_key) ? (
                       <Badge variant="success" className="flex items-center gap-1">
                         <Check className="h-3 w-3" />
                         Configurado
@@ -334,10 +390,15 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
                       </Badge>
                     )}
                   </div>
-                  {store.klaviyo_api_key && (
+                  {(store.klaviyo_private_key || store.klaviyo_api_key) && (
                     <>
+                      {store.klaviyo_public_key && (
+                        <div className="text-xs text-muted-foreground">
+                          Site ID: {store.klaviyo_public_key}
+                        </div>
+                      )}
                       <div className="text-xs text-muted-foreground">
-                        API Key: ****{store.klaviyo_api_key.slice(-8)}
+                        Private Key: ****{(store.klaviyo_private_key || store.klaviyo_api_key || "").slice(-8)}
                       </div>
                       {store.klaviyo_list_id && (
                         <div className="text-xs text-muted-foreground">
@@ -400,7 +461,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 py-4 max-h-[60vh] overflow-y-auto">
             <div className="space-y-2">
               <Label>Nome da Loja *</Label>
               <Input
@@ -421,13 +482,58 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
 
             <div className="space-y-2">
               <Label>Plataforma</Label>
-              <Input
-                placeholder="Ex: Shopify, VTEX, Nuvemshop"
+              <select
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 value={form.platform}
                 onChange={(e) => setForm({ ...form, platform: e.target.value })}
-              />
+              >
+                <option value="Shopify">Shopify</option>
+                <option value="VTEX">VTEX</option>
+                <option value="Nuvemshop">Nuvemshop</option>
+                <option value="WooCommerce">WooCommerce</option>
+                <option value="Magento">Magento</option>
+                <option value="Outro">Outro</option>
+              </select>
             </div>
 
+            {/* Shopify Integration */}
+            {form.platform === "Shopify" && (
+              <div className="border-t pt-4 mt-4">
+                <h4 className="font-medium flex items-center gap-2 mb-4">
+                  <Store className="h-4 w-4 text-green-500" />
+                  Integração Shopify
+                </h4>
+
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>Domínio da Loja</Label>
+                    <Input
+                      placeholder="minhaloja.myshopify.com"
+                      value={form.shopify_store_domain}
+                      onChange={(e) => setForm({ ...form, shopify_store_domain: e.target.value })}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Domínio .myshopify.com da sua loja
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Admin API Access Token</Label>
+                    <Input
+                      type="password"
+                      placeholder="shpat_xxxxxxxxxxxxxxxx"
+                      value={form.shopify_access_token}
+                      onChange={(e) => setForm({ ...form, shopify_access_token: e.target.value })}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Crie em Settings → Apps → Develop apps → Create app → Admin API access token
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Klaviyo Integration */}
             <div className="border-t pt-4 mt-4">
               <h4 className="font-medium flex items-center gap-2 mb-4">
                 <Key className="h-4 w-4 text-purple-500" />
@@ -436,15 +542,27 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
 
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label>API Key</Label>
+                  <Label>Public API Key / Site ID</Label>
                   <Input
-                    type="password"
-                    placeholder="pk_xxxxxxxxxxxxxxxx"
-                    value={form.klaviyo_api_key}
-                    onChange={(e) => setForm({ ...form, klaviyo_api_key: e.target.value })}
+                    placeholder="XXXXXX (6 caracteres)"
+                    value={form.klaviyo_public_key}
+                    onChange={(e) => setForm({ ...form, klaviyo_public_key: e.target.value })}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Encontre em Klaviyo → Settings → API Keys
+                    Encontre em Klaviyo → Settings → API Keys → Public API Key (Site ID)
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Private API Key *</Label>
+                  <Input
+                    type="password"
+                    placeholder="pk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    value={form.klaviyo_private_key}
+                    onChange={(e) => setForm({ ...form, klaviyo_private_key: e.target.value })}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Encontre em Klaviyo → Settings → API Keys → Create Private API Key
                   </p>
                 </div>
 
