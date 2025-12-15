@@ -287,6 +287,48 @@ export const INTEGRATION_CONFIGS: Record<string, IntegrationConfig> = {
     docsUrl: "https://developers.facebook.com/docs/instagram-api/",
     oauthUrl: "/api/integrations/meta/authorize?scope=instagram",
   },
+
+  wise: {
+    type: "wise",
+    name: "Wise",
+    description: "Receba pagamentos internacionais e visualize extratos",
+    icon: "Wallet",
+    color: "#9FE870",
+    requiredCredentials: [
+      {
+        key: "api_token",
+        label: "API Token",
+        type: "password",
+        placeholder: "Seu token pessoal da API",
+        helpText: "Gere em Settings > API tokens no painel Wise",
+      },
+      {
+        key: "profile_id",
+        label: "Profile ID",
+        type: "text",
+        placeholder: "123456789",
+        helpText: "ID do seu perfil (pessoal ou business)",
+      },
+    ],
+    optionalCredentials: [
+      {
+        key: "environment",
+        label: "Ambiente",
+        type: "select",
+        options: [
+          { value: "sandbox", label: "Sandbox (Testes)" },
+          { value: "production", label: "Produção" },
+        ],
+      },
+    ],
+    features: [
+      "Visualizar saldos multi-moeda",
+      "Extrato de transações",
+      "Conciliação de pagamentos",
+      "Atribuição a clientes",
+    ],
+    docsUrl: "https://docs.wise.com/",
+  },
 }
 
 export function getIntegrationConfig(type: string): IntegrationConfig | undefined {

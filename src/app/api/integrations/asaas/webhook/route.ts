@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import { mapAsaasStatusToInternal } from "@/lib/integrations/asaas"
 
-// Use service role for webhook processing
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+// Create Supabase client lazily to avoid build-time errors
+function getSupabaseAdmin() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+}
 
 interface AsaasWebhookPayload {
   event: string
@@ -79,6 +81,7 @@ async function handlePaymentEvent(payload: AsaasWebhookPayload) {
   const payment = payload.payment
   if (!payment) return
 
+  const supabase = getSupabaseAdmin()
   const status = mapAsaasStatusToInternal(payment.status as never)
 
   // Find invoice by Asaas ID
@@ -150,6 +153,8 @@ async function handlePaymentEvent(payload: AsaasWebhookPayload) {
 async function handleDunningEvent(payload: AsaasWebhookPayload) {
   const payment = payload.payment
   if (!payment) return
+
+  const supabase = getSupabaseAdmin()
 
   // Find invoice and update to overdue
   const { data: invoice } = await supabase

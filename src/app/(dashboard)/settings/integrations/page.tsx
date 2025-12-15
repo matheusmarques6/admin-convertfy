@@ -43,9 +43,21 @@ import {
 import { createClient } from "@/lib/supabase/client"
 import { useIntegrationsStore } from "@/lib/store"
 import { INTEGRATION_CONFIGS, getIntegrationConfig } from "@/lib/integrations/config"
-import { testIntegrationConnection } from "@/lib/integrations"
 import { toast } from "@/lib/hooks/use-toast"
 import type { IntegrationType, Integration } from "@/types"
+
+// Call backend API to test connection (avoids CORS issues)
+async function testIntegrationConnection(
+  type: string,
+  credentials: Record<string, string>
+): Promise<{ success: boolean; error?: string }> {
+  const response = await fetch("/api/integrations/test", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ type, credentials }),
+  })
+  return response.json()
+}
 
 const ICONS: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
   DollarSign,
@@ -276,22 +288,42 @@ export default function IntegrationsPage() {
       const integration = integrations.find((i) => i.type === type)
       if (!integration) return
 
-      const result = await testIntegrationConnection(type, integration.credentials)
+      // Call the sync API based on integration type
+      let syncUrl = ""
+      switch (type) {
+        case "asaas":
+          syncUrl = "/api/integrations/asaas/sync"
+          break
+        default:
+          // For other integrations, just test connection
+          const testResult = await testIntegrationConnection(type, integration.credentials)
+          if (testResult.success) {
+            toast({
+              title: "Conexão verificada",
+              description: "A integração está funcionando.",
+            })
+          } else {
+            toast({
+              variant: "destructive",
+              title: "Falha na verificação",
+              description: testResult.error,
+            })
+          }
+          return
+      }
+
+      const response = await fetch(syncUrl, { method: "POST" })
+      const result = await response.json()
 
       if (result.success) {
-        const supabase = createClient()
-        await supabase
-          .from("integrations")
-          .update({ last_sync: new Date().toISOString() })
-          .eq("id", integration.id)
-
         updateIntegration(integration.id, {
           last_sync: new Date().toISOString(),
         })
+        setStatus(type, { connected: true, lastSync: new Date().toISOString() })
 
         toast({
-          title: "Sincronização concluída",
-          description: "Dados atualizados com sucesso.",
+          title: "Sincronização concluída!",
+          description: `${result.stats?.synced || 0} novos, ${result.stats?.updated || 0} atualizados`,
         })
       } else {
         toast({
