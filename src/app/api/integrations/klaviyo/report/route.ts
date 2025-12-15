@@ -50,11 +50,12 @@ async function klaviyoRequest<T>(
 
   if (!response.ok) {
     const errorText = await response.text()
-    console.error(`[Klaviyo] API error ${response.status}:`, errorText.substring(0, 500))
+    console.error(`[Klaviyo] API error ${response.status}:`, errorText)
     throw new Error(`Klaviyo API error: ${response.status} - ${errorText.substring(0, 200)}`)
   }
 
   const data = await response.json()
+  console.log(`[Klaviyo] Response from ${endpoint}:`, JSON.stringify(data).substring(0, 1000))
   return data
 }
 
@@ -636,6 +637,7 @@ async function getCampaignPerformance(
   conversionMetricId?: string | null
 ) {
   if (campaignIds.length === 0) {
+    console.log("[Klaviyo] No campaign IDs provided, skipping campaign performance")
     return {
       totalDelivered: 0, totalOpened: 0, totalClicked: 0,
       totalBounced: 0, totalUnsubscribed: 0,
@@ -644,12 +646,14 @@ async function getCampaignPerformance(
   }
 
   try {
-    // Format dates for reporting API (YYYY-MM-DD format)
-    const startDate = dateRange.start.split('T')[0]
-    const endDate = dateRange.end.split('T')[0]
+    // Format dates for reporting API - needs full ISO format with timezone
+    const startDate = new Date(dateRange.start).toISOString().split('.')[0] + "+00:00"
+    const endDate = new Date(dateRange.end).toISOString().split('.')[0] + "+00:00"
 
     console.log("[Klaviyo] Fetching campaign performance for", campaignIds.length, "campaigns")
-    console.log("[Klaviyo] Using conversion metric ID:", conversionMetricId)
+    console.log("[Klaviyo] Campaign IDs:", campaignIds)
+    console.log("[Klaviyo] Timeframe:", { start: startDate, end: endDate })
+    console.log("[Klaviyo] Conversion metric ID:", conversionMetricId)
 
     // Build statistics array - include conversion stats if we have a metric ID
     const statistics = [
@@ -675,7 +679,7 @@ async function getCampaignPerformance(
       },
     }
 
-    console.log("[Klaviyo] Campaign report request:", JSON.stringify(requestBody).substring(0, 500))
+    console.log("[Klaviyo] Campaign report request body:", JSON.stringify(requestBody, null, 2))
 
     const response = await klaviyoRequest<{
       data: {
@@ -770,11 +774,13 @@ async function getFlowPerformance(
   conversionMetricId?: string | null
 ) {
   try {
-    const startDate = dateRange.start.split('T')[0]
-    const endDate = dateRange.end.split('T')[0]
+    // Format dates for reporting API - needs full ISO format with timezone
+    const startDate = new Date(dateRange.start).toISOString().split('.')[0] + "+00:00"
+    const endDate = new Date(dateRange.end).toISOString().split('.')[0] + "+00:00"
 
     console.log("[Klaviyo] Fetching flow performance")
-    console.log("[Klaviyo] Using conversion metric ID:", conversionMetricId)
+    console.log("[Klaviyo] Timeframe:", { start: startDate, end: endDate })
+    console.log("[Klaviyo] Conversion metric ID:", conversionMetricId)
 
     // Build statistics array - include conversion stats if we have a metric ID
     const statistics = [
@@ -798,7 +804,7 @@ async function getFlowPerformance(
       },
     }
 
-    console.log("[Klaviyo] Flow report request:", JSON.stringify(requestBody).substring(0, 500))
+    console.log("[Klaviyo] Flow report request body:", JSON.stringify(requestBody, null, 2))
 
     const response = await klaviyoRequest<{
       data: {
