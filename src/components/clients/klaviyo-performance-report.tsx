@@ -59,6 +59,12 @@ interface KlaviyoReportData {
     start: string
     end: string
   }
+  account?: {
+    currency: string
+    currencySymbol: string
+    locale: string
+    isTestAccount: boolean
+  }
   revenue: {
     totalRevenue: number
     klaviyoAttributedRevenue: number
@@ -187,13 +193,18 @@ interface KlaviyoPerformanceReportProps {
 
 type DateRange = "7d" | "30d" | "90d" | "all"
 
-const formatCurrency = (value: number | undefined | null) => {
+const formatCurrencyWithCode = (value: number | undefined | null, currency: string = 'BRL', locale: string = 'pt-BR') => {
   const num = typeof value === 'number' && !isNaN(value) ? value : 0
-  return new Intl.NumberFormat('pt-BR', {
-    style: 'currency',
-    currency: 'BRL',
-    minimumFractionDigits: 2,
-  }).format(num)
+  try {
+    return new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency: currency,
+      minimumFractionDigits: 2,
+    }).format(num)
+  } catch {
+    // Fallback for invalid currency codes
+    return `${currency} ${num.toFixed(2)}`
+  }
 }
 
 const formatNumber = (value: number | undefined | null) => {
@@ -213,6 +224,15 @@ export function KlaviyoPerformanceReport({ storeId, storeName }: KlaviyoPerforma
   const [error, setError] = useState<string | null>(null)
   const [dateRange, setDateRange] = useState<DateRange>("30d")
   const reportRef = useRef<HTMLDivElement>(null)
+
+  // Get currency from report data, default to BRL
+  const currency = reportData?.account?.currency || 'BRL'
+  const locale = reportData?.account?.locale || 'pt-BR'
+
+  // Format currency using the account's currency setting
+  const formatCurrency = (value: number | undefined | null) => {
+    return formatCurrencyWithCode(value, currency, locale)
+  }
 
   useEffect(() => {
     loadReportData()

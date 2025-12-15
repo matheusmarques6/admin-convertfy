@@ -41,6 +41,99 @@ async function klaviyoRequest<T>(
   return response.json()
 }
 
+// Currency symbols mapping
+function getCurrencySymbol(currency: string): string {
+  const symbols: Record<string, string> = {
+    "USD": "$",
+    "EUR": "€",
+    "GBP": "£",
+    "BRL": "R$",
+    "AUD": "A$",
+    "CAD": "C$",
+    "JPY": "¥",
+    "CNY": "¥",
+    "INR": "₹",
+    "MXN": "MX$",
+    "ARS": "AR$",
+    "CLP": "CL$",
+    "COP": "CO$",
+    "PEN": "S/",
+    "CHF": "CHF",
+    "SEK": "kr",
+    "NOK": "kr",
+    "DKK": "kr",
+    "PLN": "zł",
+    "RUB": "₽",
+    "ZAR": "R",
+    "NZD": "NZ$",
+    "SGD": "S$",
+    "HKD": "HK$",
+    "KRW": "₩",
+    "THB": "฿",
+    "MYR": "RM",
+    "IDR": "Rp",
+    "PHP": "₱",
+    "TWD": "NT$",
+    "AED": "د.إ",
+    "SAR": "﷼",
+    "ILS": "₪",
+    "TRY": "₺",
+  }
+  return symbols[currency] || currency
+}
+
+// Get account info including currency
+async function getAccountInfo(apiKey: string) {
+  try {
+    const response = await klaviyoRequest<{
+      data: Array<{
+        id: string
+        attributes: {
+          test_account: boolean
+          contact_information: {
+            default_sender_name: string
+            default_sender_email: string
+            website_url: string
+          }
+          preferred_currency: string
+          public_api_key: string
+          locale: string
+        }
+      }>
+    }>(apiKey, "/accounts/")
+
+    const account = response.data?.[0]
+    if (account) {
+      return {
+        accountId: account.id,
+        currency: account.attributes.preferred_currency || "BRL",
+        locale: account.attributes.locale || "pt-BR",
+        isTestAccount: account.attributes.test_account || false,
+        publicApiKey: account.attributes.public_api_key,
+        websiteUrl: account.attributes.contact_information?.website_url,
+      }
+    }
+    return {
+      accountId: null,
+      currency: "BRL",
+      locale: "pt-BR",
+      isTestAccount: false,
+      publicApiKey: null,
+      websiteUrl: null,
+    }
+  } catch (error) {
+    console.error("Error fetching account info:", error)
+    return {
+      accountId: null,
+      currency: "BRL",
+      locale: "pt-BR",
+      isTestAccount: false,
+      publicApiKey: null,
+      websiteUrl: null,
+    }
+  }
+}
+
 // Get lists with profile counts
 async function getListMetrics(apiKey: string) {
   try {
@@ -886,7 +979,9 @@ export async function GET(request: NextRequest) {
 
     const searchParams = request.nextUrl.searchParams
     const storeId = searchParams.get("store_id")
-    const period = searchParams.get("period") || "30d" // 7d, 30d, 90d, all
+    const period = searchParams.get("period") || "30d" // 7d, 30d, 90d, all, custom
+    const customStartDate = searchParams.get("start_date") // ISO date string
+    const customEndDate = searchParams.get("end_date") // ISO date string
 
     if (!storeId) {
       return NextResponse.json({ error: "store_id é obrigatório" }, { status: 400 })
@@ -915,31 +1010,41 @@ export async function GET(request: NextRequest) {
     // Calculate date range
     const now = new Date()
     let startDate: Date
+    let endDate: Date = now
 
-    switch (period) {
-      case "7d":
-        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-        break
-      case "30d":
-        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-        break
-      case "90d":
-        startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
-        break
-      case "all":
-        startDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000) // Max 1 year
-        break
-      default:
-        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+    // Support for custom date range
+    if (period === "custom" && customStartDate && customEndDate) {
+      startDate = new Date(customStartDate)
+      endDate = new Date(customEndDate)
+      // Ensure end date is end of day
+      endDate.setHours(23, 59, 59, 999)
+    } else {
+      switch (period) {
+        case "7d":
+          startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+          break
+        case "30d":
+          startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+          break
+        case "90d":
+          startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
+          break
+        case "all":
+          startDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000) // Max 1 year
+          break
+        default:
+          startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+      }
     }
 
     const dateRange = {
       start: startDate.toISOString(),
-      end: now.toISOString(),
+      end: endDate.toISOString(),
     }
 
-    // Fetch basic metrics in parallel
+    // Fetch basic metrics in parallel (including account info for currency)
     const [
+      accountInfo,
       listMetrics,
       flowMetrics,
       campaignMetrics,
@@ -947,6 +1052,7 @@ export async function GET(request: NextRequest) {
       segmentMetrics,
       templateMetrics,
     ] = await Promise.all([
+      getAccountInfo(apiKey),
       getListMetrics(apiKey),
       getFlowMetrics(apiKey),
       getCampaignMetrics(apiKey),
@@ -1019,6 +1125,14 @@ export async function GET(request: NextRequest) {
       dateRange: {
         start: dateRange.start,
         end: dateRange.end,
+      },
+
+      // Account info (including currency)
+      account: {
+        currency: accountInfo.currency,
+        currencySymbol: getCurrencySymbol(accountInfo.currency),
+        locale: accountInfo.locale,
+        isTestAccount: accountInfo.isTestAccount,
       },
 
       // Revenue & Financial Metrics

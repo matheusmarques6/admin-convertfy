@@ -166,7 +166,7 @@ export default async function ClientPage({
         </TabsContent>
 
         <TabsContent value="reports">
-          <ClientReports reports={client.reports || []} clientId={client.id} />
+          <ClientReports clientId={client.id} />
         </TabsContent>
 
         <TabsContent value="timeline">

@@ -37,10 +37,8 @@ import { Label } from "@/components/ui/label"
 import { createClient } from "@/lib/supabase/client"
 import { toast } from "@/lib/hooks/use-toast"
 import { KlaviyoPerformanceReport } from "./klaviyo-performance-report"
-import type { Report } from "@/types"
 
 interface ClientReportsProps {
-  reports: Report[]
   clientId: string
 }
 
@@ -66,16 +64,20 @@ interface SavedReport {
   created_at: string
 }
 
-const formatCurrency = (value: number | undefined | null) => {
+const formatCurrencyWithCode = (value: number | undefined | null, currency: string = 'BRL', locale: string = 'pt-BR') => {
   const num = typeof value === 'number' && !isNaN(value) ? value : 0
-  return new Intl.NumberFormat('pt-BR', {
-    style: 'currency',
-    currency: 'BRL',
-    minimumFractionDigits: 2,
-  }).format(num)
+  try {
+    return new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency: currency,
+      minimumFractionDigits: 2,
+    }).format(num)
+  } catch {
+    return `${currency} ${num.toFixed(2)}`
+  }
 }
 
-export function ClientReports({ reports, clientId }: ClientReportsProps) {
+export function ClientReports({ clientId }: ClientReportsProps) {
   const [stores, setStores] = useState<ClientStore[]>([])
   const [savedReports, setSavedReports] = useState<SavedReport[]>([])
   const [isLoadingStores, setIsLoadingStores] = useState(true)
@@ -88,6 +90,8 @@ export function ClientReports({ reports, clientId }: ClientReportsProps) {
   const [selectedStore, setSelectedStore] = useState<string>("")
   const [selectedPeriod, setSelectedPeriod] = useState<string>("30d")
   const [reportType, setReportType] = useState<string>("klaviyo")
+  const [customStartDate, setCustomStartDate] = useState<string>("")
+  const [customEndDate, setCustomEndDate] = useState<string>("")
 
   const reportRef = useRef<HTMLDivElement>(null)
 
@@ -158,10 +162,36 @@ export function ClientReports({ reports, clientId }: ClientReportsProps) {
       return
     }
 
+    // Validate custom date range
+    if (selectedPeriod === "custom") {
+      if (!customStartDate || !customEndDate) {
+        toast({
+          variant: "destructive",
+          title: "Datas obrigatórias",
+          description: "Selecione as datas de início e fim do período.",
+        })
+        return
+      }
+      if (new Date(customStartDate) > new Date(customEndDate)) {
+        toast({
+          variant: "destructive",
+          title: "Datas inválidas",
+          description: "A data de início deve ser anterior à data de fim.",
+        })
+        return
+      }
+    }
+
     setIsCreating(true)
     try {
+      // Build API URL with custom dates if needed
+      let apiUrl = `/api/integrations/klaviyo/report?store_id=${selectedStore}&period=${selectedPeriod}`
+      if (selectedPeriod === "custom" && customStartDate && customEndDate) {
+        apiUrl += `&start_date=${customStartDate}&end_date=${customEndDate}`
+      }
+
       // Fetch report data from Klaviyo
-      const res = await fetch(`/api/integrations/klaviyo/report?store_id=${selectedStore}&period=${selectedPeriod}`)
+      const res = await fetch(apiUrl)
       const reportData = await res.json()
 
       if (!reportData.success) {
@@ -174,18 +204,25 @@ export function ClientReports({ reports, clientId }: ClientReportsProps) {
       // Calculate date range
       const now = new Date()
       let startDate: Date
-      switch (selectedPeriod) {
-        case "7d":
-          startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-          break
-        case "30d":
-          startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-          break
-        case "90d":
-          startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
-          break
-        default:
-          startDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000)
+      let endDate: Date = now
+
+      if (selectedPeriod === "custom" && customStartDate && customEndDate) {
+        startDate = new Date(customStartDate)
+        endDate = new Date(customEndDate)
+      } else {
+        switch (selectedPeriod) {
+          case "7d":
+            startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+            break
+          case "30d":
+            startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+            break
+          case "90d":
+            startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
+            break
+          default:
+            startDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000)
+        }
       }
 
       // Save to database
@@ -200,7 +237,7 @@ export function ClientReports({ reports, clientId }: ClientReportsProps) {
           period: selectedPeriod,
           date_range: {
             start: startDate.toISOString(),
-            end: now.toISOString(),
+            end: endDate.toISOString(),
           },
           report_data: reportData,
         })
@@ -276,13 +313,29 @@ export function ClientReports({ reports, clientId }: ClientReportsProps) {
     }
   }
 
-  const getPeriodLabel = (period: string) => {
+  const getPeriodLabel = (period: string, dateRange?: { start: string; end: string }) => {
     switch (period) {
       case "7d": return "7 dias"
       case "30d": return "30 dias"
       case "90d": return "90 dias"
       case "all": return "12 meses"
+      case "custom":
+        if (dateRange?.start && dateRange?.end) {
+          const start = new Date(dateRange.start).toLocaleDateString('pt-BR')
+          const end = new Date(dateRange.end).toLocaleDateString('pt-BR')
+          return `${start} - ${end}`
+        }
+        return "Personalizado"
       default: return period
+    }
+  }
+
+  // Helper to get currency from report data
+  const getReportCurrency = (report: SavedReport) => {
+    const data = report.report_data as { account?: { currency?: string; locale?: string } }
+    return {
+      currency: data?.account?.currency || 'BRL',
+      locale: data?.account?.locale || 'pt-BR',
     }
   }
 
@@ -360,6 +413,7 @@ export function ClientReports({ reports, clientId }: ClientReportsProps) {
             const data = report.report_data as Record<string, unknown>
             const revenue = data?.revenue as Record<string, number> | undefined
             const overview = data?.overview as Record<string, number> | undefined
+            const { currency, locale } = getReportCurrency(report)
 
             return (
               <Card key={report.id} className="hover:border-primary/50 transition-colors">
@@ -387,7 +441,7 @@ export function ClientReports({ reports, clientId }: ClientReportsProps) {
                   {/* Period Badge */}
                   <div className="flex items-center gap-2">
                     <Badge variant="secondary">
-                      {getPeriodLabel(report.period)}
+                      {getPeriodLabel(report.period, report.date_range)}
                     </Badge>
                     <Badge variant="outline" className="capitalize">
                       {report.report_type}
@@ -403,7 +457,7 @@ export function ClientReports({ reports, clientId }: ClientReportsProps) {
                           Receita Klaviyo
                         </p>
                         <p className="text-sm font-bold text-emerald-500">
-                          {formatCurrency(revenue.klaviyoAttributedRevenue)}
+                          {formatCurrencyWithCode(revenue.klaviyoAttributedRevenue, currency, locale)}
                         </p>
                       </div>
                     )}
@@ -492,9 +546,43 @@ export function ClientReports({ reports, clientId }: ClientReportsProps) {
                   <SelectItem value="30d">Últimos 30 dias</SelectItem>
                   <SelectItem value="90d">Últimos 90 dias</SelectItem>
                   <SelectItem value="all">Últimos 12 meses</SelectItem>
+                  <SelectItem value="custom">Personalizado</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Custom Date Range */}
+            {selectedPeriod === "custom" && (
+              <div className="space-y-3 p-3 rounded-lg border bg-muted/30">
+                <Label className="text-sm font-medium flex items-center gap-2">
+                  <Calendar className="h-4 w-4" />
+                  Período Personalizado
+                </Label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Data Início</Label>
+                    <input
+                      type="date"
+                      value={customStartDate}
+                      onChange={(e) => setCustomStartDate(e.target.value)}
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      max={customEndDate || new Date().toISOString().split('T')[0]}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Data Fim</Label>
+                    <input
+                      type="date"
+                      value={customEndDate}
+                      onChange={(e) => setCustomEndDate(e.target.value)}
+                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      min={customStartDate}
+                      max={new Date().toISOString().split('T')[0]}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           <DialogFooter>
