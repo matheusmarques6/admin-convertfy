@@ -1,0 +1,130 @@
+import { NextResponse } from "next/server"
+import { createClient } from "@/lib/supabase/server"
+import { createAsaasService } from "@/lib/integrations/asaas"
+
+interface CreateCustomerBody {
+  name: string
+  cpfCnpj: string
+  email?: string
+  phone?: string
+  mobilePhone?: string
+  address?: string
+  addressNumber?: string
+  complement?: string
+  province?: string
+  postalCode?: string
+  externalReference?: string
+  notificationDisabled?: boolean
+}
+
+// POST - Create a single customer in Asaas
+export async function POST(request: Request) {
+  try {
+    const supabase = await createClient()
+
+    // Verify authentication
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
+    }
+
+    // Get request body
+    const body: CreateCustomerBody = await request.json()
+
+    // Validate required fields
+    if (!body.name) {
+      return NextResponse.json(
+        { error: "Nome é obrigatório" },
+        { status: 400 }
+      )
+    }
+
+    if (!body.cpfCnpj) {
+      return NextResponse.json(
+        { error: "CPF/CNPJ é obrigatório" },
+        { status: 400 }
+      )
+    }
+
+    if (!body.email && !body.phone && !body.mobilePhone) {
+      return NextResponse.json(
+        { error: "Email ou telefone é obrigatório" },
+        { status: 400 }
+      )
+    }
+
+    // Get Asaas integration credentials
+    const { data: integration, error: intError } = await supabase
+      .from("integrations")
+      .select("*")
+      .eq("type", "asaas")
+      .eq("is_active", true)
+      .single()
+
+    if (intError || !integration) {
+      return NextResponse.json(
+        { error: "Integração Asaas não encontrada ou inativa. Configure a integração primeiro." },
+        { status: 400 }
+      )
+    }
+
+    const asaas = createAsaasService(integration.credentials)
+
+    // Check if customer already exists by cpfCnpj
+    try {
+      const existing = await asaas.listCustomers({ cpfCnpj: body.cpfCnpj, limit: 1 })
+      if (existing.data && existing.data.length > 0) {
+        // Customer already exists, return existing customer
+        return NextResponse.json({
+          success: true,
+          customer: existing.data[0],
+          message: "Cliente já existe no Asaas",
+          alreadyExists: true,
+        })
+      }
+    } catch {
+      // Ignore search error and try to create
+    }
+
+    // Clean CPF/CNPJ (remove non-numeric characters)
+    const cleanCpfCnpj = body.cpfCnpj.replace(/\D/g, "")
+
+    // Clean phone numbers
+    const cleanPhone = body.phone?.replace(/\D/g, "") || undefined
+    const cleanMobilePhone = body.mobilePhone?.replace(/\D/g, "") || cleanPhone
+
+    // Clean postal code
+    const cleanPostalCode = body.postalCode?.replace(/\D/g, "") || undefined
+
+    // Create customer in Asaas
+    const customer = await asaas.createCustomer({
+      name: body.name,
+      cpfCnpj: cleanCpfCnpj,
+      email: body.email || undefined,
+      phone: cleanPhone,
+      mobilePhone: cleanMobilePhone,
+      address: body.address || undefined,
+      addressNumber: body.addressNumber || undefined,
+      complement: body.complement || undefined,
+      province: body.province || undefined,
+      postalCode: cleanPostalCode,
+      externalReference: body.externalReference || undefined,
+      notificationDisabled: body.notificationDisabled ?? false,
+    })
+
+    return NextResponse.json({
+      success: true,
+      customer,
+      message: "Cliente criado no Asaas com sucesso",
+    })
+  } catch (error) {
+    console.error("Error creating Asaas customer:", error)
+    return NextResponse.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : "Erro ao criar cliente no Asaas",
+      },
+      { status: 500 }
+    )
+  }
+}
