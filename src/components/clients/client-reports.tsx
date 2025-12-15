@@ -1,9 +1,42 @@
 "use client"
 
-import { Plus, FileText, Download, Eye } from "lucide-react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { useState, useEffect, useRef } from "react"
+import {
+  Plus,
+  FileText,
+  Download,
+  Eye,
+  Loader2,
+  Calendar,
+  Trash2,
+  Store,
+  BarChart3,
+  Mail,
+  DollarSign,
+  X,
+} from "lucide-react"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { formatCurrency } from "@/lib/utils"
+import { Badge } from "@/components/ui/badge"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { createClient } from "@/lib/supabase/client"
+import { toast } from "@/lib/hooks/use-toast"
+import { KlaviyoPerformanceReport } from "./klaviyo-performance-report"
 import type { Report } from "@/types"
 
 interface ClientReportsProps {
@@ -11,121 +44,507 @@ interface ClientReportsProps {
   clientId: string
 }
 
-const months: Record<string, string> = {
-  "01": "Janeiro",
-  "02": "Fevereiro",
-  "03": "Março",
-  "04": "Abril",
-  "05": "Maio",
-  "06": "Junho",
-  "07": "Julho",
-  "08": "Agosto",
-  "09": "Setembro",
-  "10": "Outubro",
-  "11": "Novembro",
-  "12": "Dezembro",
+interface ClientStore {
+  id: string
+  store_name: string
+  klaviyo_private_key?: string
+  klaviyo_api_key?: string
 }
 
-function formatMonth(month: string): string {
-  const [year, m] = month.split("-")
-  return `${months[m] || m} ${year}`
+interface SavedReport {
+  id: string
+  client_id: string
+  store_id: string
+  store_name: string
+  report_type: string
+  period: string
+  date_range: {
+    start: string
+    end: string
+  }
+  report_data: Record<string, unknown>
+  created_at: string
 }
 
-export function ClientReports({ reports }: ClientReportsProps) {
-  const sortedReports = [...reports].sort((a, b) => b.month.localeCompare(a.month))
+const formatCurrency = (value: number | undefined | null) => {
+  const num = typeof value === 'number' && !isNaN(value) ? value : 0
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+    minimumFractionDigits: 2,
+  }).format(num)
+}
+
+export function ClientReports({ reports, clientId }: ClientReportsProps) {
+  const [stores, setStores] = useState<ClientStore[]>([])
+  const [savedReports, setSavedReports] = useState<SavedReport[]>([])
+  const [isLoadingStores, setIsLoadingStores] = useState(true)
+  const [isLoadingReports, setIsLoadingReports] = useState(true)
+  const [isCreating, setIsCreating] = useState(false)
+  const [showCreateDialog, setShowCreateDialog] = useState(false)
+  const [viewingReport, setViewingReport] = useState<SavedReport | null>(null)
+
+  // Form state for creating report
+  const [selectedStore, setSelectedStore] = useState<string>("")
+  const [selectedPeriod, setSelectedPeriod] = useState<string>("30d")
+  const [reportType, setReportType] = useState<string>("klaviyo")
+
+  const reportRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    loadStores()
+    loadSavedReports()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientId])
+
+  async function loadStores() {
+    setIsLoadingStores(true)
+    try {
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from("client_stores")
+        .select("id, store_name, klaviyo_private_key, klaviyo_api_key")
+        .eq("client_id", clientId)
+        .order("store_name")
+
+      if (error) throw error
+
+      // Filter stores with Klaviyo configured
+      const klaviyoStores = (data || []).filter(s => s.klaviyo_private_key || s.klaviyo_api_key)
+      setStores(klaviyoStores)
+
+      if (klaviyoStores.length > 0) {
+        setSelectedStore(klaviyoStores[0].id)
+      }
+    } catch (error) {
+      console.error("Error loading stores:", error)
+    } finally {
+      setIsLoadingStores(false)
+    }
+  }
+
+  async function loadSavedReports() {
+    setIsLoadingReports(true)
+    try {
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from("client_reports")
+        .select("*")
+        .eq("client_id", clientId)
+        .order("created_at", { ascending: false })
+
+      if (error) {
+        // Table might not exist yet
+        console.warn("Error loading reports:", error)
+        setSavedReports([])
+      } else {
+        setSavedReports(data || [])
+      }
+    } catch (error) {
+      console.error("Error loading reports:", error)
+      setSavedReports([])
+    } finally {
+      setIsLoadingReports(false)
+    }
+  }
+
+  async function createReport() {
+    if (!selectedStore) {
+      toast({
+        variant: "destructive",
+        title: "Selecione uma loja",
+        description: "É necessário selecionar uma loja para gerar o relatório.",
+      })
+      return
+    }
+
+    setIsCreating(true)
+    try {
+      // Fetch report data from Klaviyo
+      const res = await fetch(`/api/integrations/klaviyo/report?store_id=${selectedStore}&period=${selectedPeriod}`)
+      const reportData = await res.json()
+
+      if (!reportData.success) {
+        throw new Error(reportData.error || "Erro ao gerar relatório")
+      }
+
+      // Get store name
+      const store = stores.find(s => s.id === selectedStore)
+
+      // Calculate date range
+      const now = new Date()
+      let startDate: Date
+      switch (selectedPeriod) {
+        case "7d":
+          startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+          break
+        case "30d":
+          startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+          break
+        case "90d":
+          startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
+          break
+        default:
+          startDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000)
+      }
+
+      // Save to database
+      const supabase = createClient()
+      const { data: newReport, error } = await supabase
+        .from("client_reports")
+        .insert({
+          client_id: clientId,
+          store_id: selectedStore,
+          store_name: store?.store_name || "Loja",
+          report_type: reportType,
+          period: selectedPeriod,
+          date_range: {
+            start: startDate.toISOString(),
+            end: now.toISOString(),
+          },
+          report_data: reportData,
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+
+      toast({
+        title: "Relatório criado!",
+        description: "O relatório foi salvo com sucesso.",
+      })
+
+      setSavedReports([newReport, ...savedReports])
+      setShowCreateDialog(false)
+    } catch (error) {
+      console.error("Error creating report:", error)
+      toast({
+        variant: "destructive",
+        title: "Erro ao criar relatório",
+        description: error instanceof Error ? error.message : "Tente novamente mais tarde.",
+      })
+    } finally {
+      setIsCreating(false)
+    }
+  }
+
+  async function deleteReport(reportId: string) {
+    try {
+      const supabase = createClient()
+      const { error } = await supabase
+        .from("client_reports")
+        .delete()
+        .eq("id", reportId)
+
+      if (error) throw error
+
+      setSavedReports(savedReports.filter(r => r.id !== reportId))
+      toast({
+        title: "Relatório excluído",
+        description: "O relatório foi removido com sucesso.",
+      })
+    } catch (error) {
+      console.error("Error deleting report:", error)
+      toast({
+        variant: "destructive",
+        title: "Erro ao excluir",
+        description: "Não foi possível excluir o relatório.",
+      })
+    }
+  }
+
+  const handleExportPDF = async () => {
+    if (!viewingReport) return
+
+    try {
+      const html2pdf = (await import("html2pdf.js")).default
+
+      const element = reportRef.current
+      if (!element) return
+
+      const opt = {
+        margin: 0.3,
+        filename: `relatorio-${viewingReport.store_name}-${new Date(viewingReport.created_at).toISOString().split('T')[0]}.pdf`,
+        image: { type: 'jpeg' as const, quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, logging: false },
+        jsPDF: { unit: 'in' as const, format: 'a4' as const, orientation: 'portrait' as const }
+      }
+
+      await html2pdf().set(opt).from(element).save()
+    } catch (error) {
+      console.error("Error exporting PDF:", error)
+    }
+  }
+
+  const getPeriodLabel = (period: string) => {
+    switch (period) {
+      case "7d": return "7 dias"
+      case "30d": return "30 dias"
+      case "90d": return "90 dias"
+      case "all": return "12 meses"
+      default: return period
+    }
+  }
+
+  const formatReportDate = (dateString: string) => {
+    const date = new Date(dateString)
+    return date.toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  }
+
+  if (isLoadingStores || isLoadingReports) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
-      {/* Quick Actions */}
-      <div className="flex justify-end">
-        <Button>
+      {/* Header */}
+      <div className="flex justify-between items-center">
+        <div>
+          <h3 className="text-lg font-medium">Relatórios</h3>
+          <p className="text-sm text-muted-foreground">
+            Crie e visualize relatórios de performance
+          </p>
+        </div>
+        <Button onClick={() => setShowCreateDialog(true)} disabled={stores.length === 0}>
           <Plus className="mr-2 h-4 w-4" />
           Novo Relatório
         </Button>
       </div>
 
+      {/* No stores warning */}
+      {stores.length === 0 && (
+        <Card className="border-amber-500/50 bg-amber-500/10">
+          <CardContent className="flex items-start gap-3 py-4">
+            <Store className="h-5 w-5 text-amber-500 mt-0.5" />
+            <div>
+              <p className="font-medium text-amber-600">Configure uma loja</p>
+              <p className="text-sm text-muted-foreground">
+                Para criar relatórios, configure a API do Klaviyo em pelo menos uma loja.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Reports Grid */}
-      {sortedReports.length === 0 ? (
+      {savedReports.length === 0 ? (
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center justify-center py-12">
             <div className="rounded-full bg-muted p-4 mb-4">
               <FileText className="h-8 w-8 text-muted-foreground" />
             </div>
             <p className="text-muted-foreground mb-4">
-              Nenhum relatório enviado ainda
+              Nenhum relatório criado ainda
             </p>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Criar Primeiro Relatório
-            </Button>
+            {stores.length > 0 && (
+              <Button onClick={() => setShowCreateDialog(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Criar Primeiro Relatório
+              </Button>
+            )}
           </CardContent>
         </Card>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {sortedReports.map((report) => (
-            <Card key={report.id}>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <FileText className="h-4 w-4 text-primary" />
-                  {formatMonth(report.month)}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {/* Metrics Summary */}
-                <div className="grid grid-cols-2 gap-3">
-                  {report.metrics?.revenue !== undefined && (
-                    <div>
-                      <p className="text-xs text-muted-foreground">Receita</p>
-                      <p className="text-sm font-medium">
-                        {formatCurrency(report.metrics.revenue)}
-                      </p>
-                    </div>
-                  )}
-                  {report.metrics?.orders !== undefined && (
-                    <div>
-                      <p className="text-xs text-muted-foreground">Pedidos</p>
-                      <p className="text-sm font-medium">{report.metrics.orders}</p>
-                    </div>
-                  )}
-                  {report.metrics?.roas !== undefined && (
-                    <div>
-                      <p className="text-xs text-muted-foreground">ROAS</p>
-                      <p className="text-sm font-medium">{report.metrics.roas}x</p>
-                    </div>
-                  )}
-                  {report.metrics?.ad_spend !== undefined && (
-                    <div>
-                      <p className="text-xs text-muted-foreground">Investimento</p>
-                      <p className="text-sm font-medium">
-                        {formatCurrency(report.metrics.ad_spend)}
-                      </p>
-                    </div>
-                  )}
-                </div>
+          {savedReports.map((report) => {
+            const data = report.report_data as Record<string, unknown>
+            const revenue = data?.revenue as Record<string, number> | undefined
+            const overview = data?.overview as Record<string, number> | undefined
 
-                {/* Actions */}
-                <div className="flex gap-2 pt-2 border-t">
-                  <Button variant="outline" size="sm" className="flex-1">
-                    <Eye className="mr-2 h-3 w-3" />
-                    Ver
-                  </Button>
-                  {report.document_url && (
-                    <Button variant="outline" size="sm" asChild>
-                      <a
-                        href={report.document_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        <Download className="h-3 w-3" />
-                      </a>
+            return (
+              <Card key={report.id} className="hover:border-primary/50 transition-colors">
+                <CardHeader className="pb-2">
+                  <div className="flex items-start justify-between">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-primary" />
+                      {report.store_name}
+                    </CardTitle>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                      onClick={() => deleteReport(report.id)}
+                    >
+                      <Trash2 className="h-4 w-4" />
                     </Button>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                  </div>
+                  <CardDescription className="flex items-center gap-2">
+                    <Calendar className="h-3 w-3" />
+                    {formatReportDate(report.created_at)}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {/* Period Badge */}
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary">
+                      {getPeriodLabel(report.period)}
+                    </Badge>
+                    <Badge variant="outline" className="capitalize">
+                      {report.report_type}
+                    </Badge>
+                  </div>
+
+                  {/* Quick Stats */}
+                  <div className="grid grid-cols-2 gap-3">
+                    {revenue?.klaviyoAttributedRevenue !== undefined && (
+                      <div className="p-2 rounded-lg bg-emerald-500/10">
+                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                          <DollarSign className="h-3 w-3" />
+                          Receita Klaviyo
+                        </p>
+                        <p className="text-sm font-bold text-emerald-500">
+                          {formatCurrency(revenue.klaviyoAttributedRevenue)}
+                        </p>
+                      </div>
+                    )}
+                    {overview?.totalSubscribers !== undefined && (
+                      <div className="p-2 rounded-lg bg-blue-500/10">
+                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                          <Mail className="h-3 w-3" />
+                          Contatos
+                        </p>
+                        <p className="text-sm font-bold text-blue-500">
+                          {overview.totalSubscribers?.toLocaleString() || 0}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex gap-2 pt-2 border-t">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => setViewingReport(report)}
+                    >
+                      <Eye className="mr-2 h-3 w-3" />
+                      Ver
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })}
         </div>
       )}
+
+      {/* Create Report Dialog */}
+      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Criar Novo Relatório</DialogTitle>
+            <DialogDescription>
+              Configure as opções para gerar o relatório
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {/* Store Selection */}
+            <div className="space-y-2">
+              <Label>Loja</Label>
+              <Select value={selectedStore} onValueChange={setSelectedStore}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione uma loja" />
+                </SelectTrigger>
+                <SelectContent>
+                  {stores.map((store) => (
+                    <SelectItem key={store.id} value={store.id}>
+                      {store.store_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Report Type */}
+            <div className="space-y-2">
+              <Label>Tipo de Relatório</Label>
+              <Select value={reportType} onValueChange={setReportType}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="klaviyo">Klaviyo - Email Marketing</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Period */}
+            <div className="space-y-2">
+              <Label>Período</Label>
+              <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="7d">Últimos 7 dias</SelectItem>
+                  <SelectItem value="30d">Últimos 30 dias</SelectItem>
+                  <SelectItem value="90d">Últimos 90 dias</SelectItem>
+                  <SelectItem value="all">Últimos 12 meses</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={createReport} disabled={isCreating || !selectedStore}>
+              {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Gerar Relatório
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* View Report Dialog */}
+      <Dialog open={!!viewingReport} onOpenChange={(open) => !open && setViewingReport(null)}>
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <DialogTitle className="flex items-center gap-2">
+                  <BarChart3 className="h-5 w-5 text-primary" />
+                  Relatório - {viewingReport?.store_name}
+                </DialogTitle>
+                <DialogDescription>
+                  Gerado em {viewingReport ? formatReportDate(viewingReport.created_at) : ""}
+                </DialogDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={handleExportPDF}>
+                  <Download className="mr-2 h-4 w-4" />
+                  Exportar PDF
+                </Button>
+                <Button variant="ghost" size="icon" onClick={() => setViewingReport(null)}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </DialogHeader>
+
+          {viewingReport && (
+            <div ref={reportRef}>
+              <KlaviyoPerformanceReport
+                storeId={viewingReport.store_id}
+                storeName={viewingReport.store_name}
+              />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

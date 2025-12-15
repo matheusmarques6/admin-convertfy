@@ -187,20 +187,23 @@ interface KlaviyoPerformanceReportProps {
 
 type DateRange = "7d" | "30d" | "90d" | "all"
 
-const formatCurrency = (value: number) => {
+const formatCurrency = (value: number | undefined | null) => {
+  const num = typeof value === 'number' && !isNaN(value) ? value : 0
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
     currency: 'BRL',
     minimumFractionDigits: 2,
-  }).format(value)
+  }).format(num)
 }
 
-const formatNumber = (value: number) => {
-  return new Intl.NumberFormat('pt-BR').format(value)
+const formatNumber = (value: number | undefined | null) => {
+  const num = typeof value === 'number' && !isNaN(value) ? value : 0
+  return new Intl.NumberFormat('pt-BR').format(num)
 }
 
-const formatPercent = (value: number) => {
-  return `${value.toFixed(1)}%`
+const formatPercent = (value: number | undefined | null) => {
+  const num = typeof value === 'number' && !isNaN(value) ? value : 0
+  return `${num.toFixed(1)}%`
 }
 
 export function KlaviyoPerformanceReport({ storeId, storeName }: KlaviyoPerformanceReportProps) {

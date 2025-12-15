@@ -12,7 +12,6 @@ import {
   AlertCircle,
   BarChart3,
   Zap,
-  FileText,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -36,7 +35,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "@/lib/hooks/use-toast"
 import { createClient } from "@/lib/supabase/client"
 import { formatDate } from "@/lib/utils"
-import { KlaviyoPerformanceReport } from "./klaviyo-performance-report"
 
 interface ClientStore {
   id: string
@@ -103,7 +101,6 @@ export function ClientKlaviyoReports({ clientId }: ClientKlaviyoReportsProps) {
   const [metrics, setMetrics] = useState<KlaviyoMetrics | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isLoadingMetrics, setIsLoadingMetrics] = useState(false)
-  const [activeView, setActiveView] = useState<"overview" | "report">("overview")
 
   useEffect(() => {
     loadStores()
@@ -208,72 +205,41 @@ export function ClientKlaviyoReports({ clientId }: ClientKlaviyoReportsProps) {
     )
   }
 
-  const selectedStoreName = stores.find(s => s.id === selectedStore)?.store_name || "Loja"
-
   return (
     <div className="space-y-6">
-      {/* Store Selector and View Toggle */}
+      {/* Store Selector */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Select value={selectedStore} onValueChange={setSelectedStore}>
-            <SelectTrigger className="w-[250px]">
-              <SelectValue placeholder="Selecione uma loja" />
-            </SelectTrigger>
-            <SelectContent>
-              {stores.map((store) => (
-                <SelectItem key={store.id} value={store.id}>
-                  {store.store_name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <Select value={selectedStore} onValueChange={setSelectedStore}>
+          <SelectTrigger className="w-[250px]">
+            <SelectValue placeholder="Selecione uma loja" />
+          </SelectTrigger>
+          <SelectContent>
+            {stores.map((store) => (
+              <SelectItem key={store.id} value={store.id}>
+                {store.store_name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
-          {/* View Toggle */}
-          <div className="flex rounded-lg border p-1">
-            <Button
-              variant={activeView === "overview" ? "secondary" : "ghost"}
-              size="sm"
-              onClick={() => setActiveView("overview")}
-            >
-              <BarChart3 className="h-4 w-4 mr-2" />
-              Visão Geral
-            </Button>
-            <Button
-              variant={activeView === "report" ? "secondary" : "ghost"}
-              size="sm"
-              onClick={() => setActiveView("report")}
-            >
-              <FileText className="h-4 w-4 mr-2" />
-              Relatório
-            </Button>
-          </div>
-        </div>
-
-        {activeView === "overview" && (
-          <Button
-            variant="outline"
-            onClick={() => selectedStore && loadMetrics(selectedStore)}
-            disabled={isLoadingMetrics}
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${isLoadingMetrics ? "animate-spin" : ""}`} />
-            Atualizar
-          </Button>
-        )}
+        <Button
+          variant="outline"
+          onClick={() => selectedStore && loadMetrics(selectedStore)}
+          disabled={isLoadingMetrics}
+        >
+          <RefreshCw className={`h-4 w-4 mr-2 ${isLoadingMetrics ? "animate-spin" : ""}`} />
+          Atualizar
+        </Button>
       </div>
 
-      {/* Performance Report View */}
-      {activeView === "report" && selectedStore && (
-        <KlaviyoPerformanceReport storeId={selectedStore} storeName={selectedStoreName} />
-      )}
-
-      {/* Overview View */}
-      {activeView === "overview" && isLoadingMetrics && (
+      {/* Loading */}
+      {isLoadingMetrics && (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
       )}
 
-      {activeView === "overview" && !isLoadingMetrics && metrics && (
+      {!isLoadingMetrics && metrics && (
         <>
           {/* Summary Cards */}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -529,7 +495,7 @@ export function ClientKlaviyoReports({ clientId }: ClientKlaviyoReportsProps) {
         </>
       )}
 
-      {activeView === "overview" && !isLoadingMetrics && !metrics && selectedStore && (
+      {!isLoadingMetrics && !metrics && selectedStore && (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
@@ -549,7 +515,7 @@ export function ClientKlaviyoReports({ clientId }: ClientKlaviyoReportsProps) {
         </Card>
       )}
 
-      {activeView === "overview" && !isLoadingMetrics && !metrics && !selectedStore && (
+      {!isLoadingMetrics && !metrics && !selectedStore && (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
