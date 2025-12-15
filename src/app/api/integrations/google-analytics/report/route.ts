@@ -4,6 +4,20 @@ import { createClient } from "@/lib/supabase/server"
 // Google Analytics Data API v1
 const GA_API_URL = "https://analyticsdata.googleapis.com/v1beta"
 
+// CORS headers helper
+function corsHeaders() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  }
+}
+
+// Handle OPTIONS preflight requests
+export async function OPTIONS() {
+  return NextResponse.json({}, { headers: corsHeaders() })
+}
+
 interface GACredentials {
   client_email: string
   private_key: string

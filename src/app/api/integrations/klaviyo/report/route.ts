@@ -4,6 +4,20 @@ import { createClient } from "@/lib/supabase/server"
 const KLAVIYO_API_URL = "https://a.klaviyo.com/api"
 const KLAVIYO_REVISION = "2024-10-15" // Latest stable revision
 
+// CORS headers helper
+function corsHeaders() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  }
+}
+
+// Handle OPTIONS preflight requests
+export async function OPTIONS() {
+  return NextResponse.json({}, { headers: corsHeaders() })
+}
+
 // Helper function to make Klaviyo API requests
 async function klaviyoRequest<T>(
   apiKey: string,
