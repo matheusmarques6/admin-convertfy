@@ -13,6 +13,8 @@ import {
   X,
   RefreshCw,
   Database,
+  BarChart3,
+  FileJson,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -60,6 +62,9 @@ interface ClientStore {
   klaviyo_private_key?: string // Private API Key
   klaviyo_list_id?: string
   klaviyo_api_key?: string
+  // Google Analytics credentials
+  ga4_property_id?: string
+  ga4_credentials?: Record<string, unknown>
   is_active: boolean
   created_at: string
 }
@@ -89,6 +94,9 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
     klaviyo_public_key: "",
     klaviyo_private_key: "",
     klaviyo_list_id: "",
+    // Google Analytics
+    ga4_property_id: "",
+    ga4_credentials_json: "",
   })
 
   useEffect(() => {
@@ -131,6 +139,9 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
         klaviyo_public_key: store.klaviyo_public_key || "",
         klaviyo_private_key: store.klaviyo_private_key || store.klaviyo_api_key || "",
         klaviyo_list_id: store.klaviyo_list_id || "",
+        // Google Analytics
+        ga4_property_id: store.ga4_property_id || "",
+        ga4_credentials_json: store.ga4_credentials ? JSON.stringify(store.ga4_credentials, null, 2) : "",
       })
     } else {
       setEditStore(null)
@@ -143,6 +154,8 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
         klaviyo_public_key: "",
         klaviyo_private_key: "",
         klaviyo_list_id: "",
+        ga4_property_id: "",
+        ga4_credentials_json: "",
       })
     }
     setDialogOpen(true)
@@ -188,6 +201,22 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
         storeData.klaviyo_api_key = form.klaviyo_private_key
       }
       if (form.klaviyo_list_id) storeData.klaviyo_list_id = form.klaviyo_list_id
+
+      // Google Analytics fields
+      if (form.ga4_property_id) storeData.ga4_property_id = form.ga4_property_id
+      if (form.ga4_credentials_json) {
+        try {
+          storeData.ga4_credentials = JSON.parse(form.ga4_credentials_json)
+        } catch {
+          toast({
+            variant: "destructive",
+            title: "JSON inválido",
+            description: "As credenciais do Google Analytics devem ser um JSON válido",
+          })
+          setIsSaving(false)
+          return
+        }
+      }
 
       console.log("Saving store data:", storeData)
 
@@ -497,6 +526,32 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
                   )}
                 </div>
 
+                {/* Google Analytics Integration Status */}
+                <div className="p-3 rounded-lg bg-muted/50 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <BarChart3 className="h-4 w-4 text-orange-500" />
+                      <span className="text-sm font-medium">Google Analytics</span>
+                    </div>
+                    {store.ga4_property_id ? (
+                      <Badge variant="success" className="flex items-center gap-1">
+                        <Check className="h-3 w-3" />
+                        Configurado
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary" className="flex items-center gap-1">
+                        <X className="h-3 w-3" />
+                        Não configurado
+                      </Badge>
+                    )}
+                  </div>
+                  {store.ga4_property_id && (
+                    <div className="text-xs text-muted-foreground">
+                      Property ID: {store.ga4_property_id}
+                    </div>
+                  )}
+                </div>
+
                 {/* Actions */}
                 <div className="flex gap-2">
                   <Button
@@ -648,6 +703,44 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
                     value={form.klaviyo_list_id}
                     onChange={(e) => setForm({ ...form, klaviyo_list_id: e.target.value })}
                   />
+                </div>
+              </div>
+            </div>
+
+            {/* Google Analytics Integration */}
+            <div className="border-t pt-4 mt-4">
+              <h4 className="font-medium flex items-center gap-2 mb-4">
+                <BarChart3 className="h-4 w-4 text-orange-500" />
+                Integração Google Analytics (GA4)
+              </h4>
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Property ID</Label>
+                  <Input
+                    placeholder="123456789"
+                    value={form.ga4_property_id}
+                    onChange={(e) => setForm({ ...form, ga4_property_id: e.target.value })}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Encontre em GA4 → Admin → Property Settings → Property ID
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <FileJson className="h-4 w-4" />
+                    Service Account Credentials (JSON)
+                  </Label>
+                  <textarea
+                    className="flex min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 font-mono text-xs"
+                    placeholder='{"type": "service_account", "project_id": "...", "private_key_id": "...", "private_key": "...", "client_email": "...", ...}'
+                    value={form.ga4_credentials_json}
+                    onChange={(e) => setForm({ ...form, ga4_credentials_json: e.target.value })}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Cole o JSON completo da service account. Crie em Google Cloud Console → IAM → Service Accounts → Create → Keys → Add Key → JSON
+                  </p>
                 </div>
               </div>
             </div>

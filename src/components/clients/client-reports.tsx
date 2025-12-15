@@ -14,6 +14,13 @@ import {
   Mail,
   DollarSign,
   X,
+  GitCompare,
+  ArrowUpRight,
+  ArrowDownRight,
+  Minus,
+  TrendingUp,
+  Users,
+  MousePointerClick,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -85,6 +92,10 @@ export function ClientReports({ clientId }: ClientReportsProps) {
   const [isCreating, setIsCreating] = useState(false)
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [viewingReport, setViewingReport] = useState<SavedReport | null>(null)
+  const [showCompareDialog, setShowCompareDialog] = useState(false)
+  const [compareReport1, setCompareReport1] = useState<string>("")
+  const [compareReport2, setCompareReport2] = useState<string>("")
+  const [showCompareResults, setShowCompareResults] = useState(false)
 
   // Form state for creating report
   const [selectedStore, setSelectedStore] = useState<string>("")
@@ -350,6 +361,108 @@ export function ClientReports({ clientId }: ClientReportsProps) {
     })
   }
 
+  // Comparison helpers
+  const getComparisonData = () => {
+    const report1 = savedReports.find(r => r.id === compareReport1)
+    const report2 = savedReports.find(r => r.id === compareReport2)
+    if (!report1 || !report2) return null
+
+    const data1 = report1.report_data as Record<string, Record<string, number>>
+    const data2 = report2.report_data as Record<string, Record<string, number>>
+    const { currency: currency1, locale: locale1 } = getReportCurrency(report1)
+
+    const calcChange = (v1: number | undefined, v2: number | undefined) => {
+      const val1 = v1 || 0
+      const val2 = v2 || 0
+      if (val2 === 0) return val1 > 0 ? 100 : 0
+      return ((val1 - val2) / val2) * 100
+    }
+
+    return {
+      report1,
+      report2,
+      currency: currency1,
+      locale: locale1,
+      metrics: {
+        revenue: {
+          label: "Receita Klaviyo",
+          value1: data1?.revenue?.klaviyoAttributedRevenue || 0,
+          value2: data2?.revenue?.klaviyoAttributedRevenue || 0,
+          change: calcChange(data1?.revenue?.klaviyoAttributedRevenue, data2?.revenue?.klaviyoAttributedRevenue),
+          format: "currency",
+        },
+        totalRevenue: {
+          label: "Faturamento Total",
+          value1: data1?.revenue?.totalRevenue || 0,
+          value2: data2?.revenue?.totalRevenue || 0,
+          change: calcChange(data1?.revenue?.totalRevenue, data2?.revenue?.totalRevenue),
+          format: "currency",
+        },
+        orders: {
+          label: "Pedidos",
+          value1: data1?.revenue?.totalOrders || 0,
+          value2: data2?.revenue?.totalOrders || 0,
+          change: calcChange(data1?.revenue?.totalOrders, data2?.revenue?.totalOrders),
+          format: "number",
+        },
+        avgOrderValue: {
+          label: "Ticket Médio",
+          value1: data1?.revenue?.averageOrderValue || 0,
+          value2: data2?.revenue?.averageOrderValue || 0,
+          change: calcChange(data1?.revenue?.averageOrderValue, data2?.revenue?.averageOrderValue),
+          format: "currency",
+        },
+        subscribers: {
+          label: "Contatos",
+          value1: data1?.overview?.totalSubscribers || 0,
+          value2: data2?.overview?.totalSubscribers || 0,
+          change: calcChange(data1?.overview?.totalSubscribers, data2?.overview?.totalSubscribers),
+          format: "number",
+        },
+        openRate: {
+          label: "Taxa de Abertura",
+          value1: data1?.emailPerformance?.openRate || 0,
+          value2: data2?.emailPerformance?.openRate || 0,
+          change: calcChange(data1?.emailPerformance?.openRate, data2?.emailPerformance?.openRate),
+          format: "percent",
+        },
+        clickRate: {
+          label: "Taxa de Clique",
+          value1: data1?.emailPerformance?.clickRate || 0,
+          value2: data2?.emailPerformance?.clickRate || 0,
+          change: calcChange(data1?.emailPerformance?.clickRate, data2?.emailPerformance?.clickRate),
+          format: "percent",
+        },
+        delivered: {
+          label: "Emails Entregues",
+          value1: data1?.emailPerformance?.delivered || 0,
+          value2: data2?.emailPerformance?.delivered || 0,
+          change: calcChange(data1?.emailPerformance?.delivered, data2?.emailPerformance?.delivered),
+          format: "number",
+        },
+      },
+    }
+  }
+
+  const formatComparisonValue = (value: number, format: string, currency: string, locale: string) => {
+    switch (format) {
+      case "currency":
+        return formatCurrencyWithCode(value, currency, locale)
+      case "percent":
+        return `${value.toFixed(1)}%`
+      case "number":
+      default:
+        return value.toLocaleString('pt-BR')
+    }
+  }
+
+  const handleStartComparison = () => {
+    if (compareReport1 && compareReport2 && compareReport1 !== compareReport2) {
+      setShowCompareDialog(false)
+      setShowCompareResults(true)
+    }
+  }
+
   if (isLoadingStores || isLoadingReports) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -368,10 +481,18 @@ export function ClientReports({ clientId }: ClientReportsProps) {
             Crie e visualize relatórios de performance
           </p>
         </div>
-        <Button onClick={() => setShowCreateDialog(true)} disabled={stores.length === 0}>
-          <Plus className="mr-2 h-4 w-4" />
-          Novo Relatório
-        </Button>
+        <div className="flex items-center gap-2">
+          {savedReports.length >= 2 && (
+            <Button variant="outline" onClick={() => setShowCompareDialog(true)}>
+              <GitCompare className="mr-2 h-4 w-4" />
+              Comparar
+            </Button>
+          )}
+          <Button onClick={() => setShowCreateDialog(true)} disabled={stores.length === 0}>
+            <Plus className="mr-2 h-4 w-4" />
+            Novo Relatório
+          </Button>
+        </div>
       </div>
 
       {/* No stores warning */}
@@ -631,6 +752,211 @@ export function ClientReports({ clientId }: ClientReportsProps) {
               />
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Compare Reports Selection Dialog */}
+      <Dialog open={showCompareDialog} onOpenChange={setShowCompareDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <GitCompare className="h-5 w-5 text-primary" />
+              Comparar Relatórios
+            </DialogTitle>
+            <DialogDescription>
+              Selecione dois relatórios para comparar side-by-side
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Relatório Base (mais antigo)</Label>
+              <Select value={compareReport1} onValueChange={setCompareReport1}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o primeiro relatório" />
+                </SelectTrigger>
+                <SelectContent>
+                  {savedReports.map((report) => (
+                    <SelectItem
+                      key={report.id}
+                      value={report.id}
+                      disabled={report.id === compareReport2}
+                    >
+                      {report.store_name} - {getPeriodLabel(report.period, report.date_range)} ({formatReportDate(report.created_at)})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Relatório de Comparação (mais recente)</Label>
+              <Select value={compareReport2} onValueChange={setCompareReport2}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o segundo relatório" />
+                </SelectTrigger>
+                <SelectContent>
+                  {savedReports.map((report) => (
+                    <SelectItem
+                      key={report.id}
+                      value={report.id}
+                      disabled={report.id === compareReport1}
+                    >
+                      {report.store_name} - {getPeriodLabel(report.period, report.date_range)} ({formatReportDate(report.created_at)})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCompareDialog(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleStartComparison}
+              disabled={!compareReport1 || !compareReport2 || compareReport1 === compareReport2}
+            >
+              <GitCompare className="mr-2 h-4 w-4" />
+              Comparar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Compare Results Dialog */}
+      <Dialog open={showCompareResults} onOpenChange={setShowCompareResults}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <DialogTitle className="flex items-center gap-2">
+                  <GitCompare className="h-5 w-5 text-primary" />
+                  Comparativo de Relatórios
+                </DialogTitle>
+                <DialogDescription>
+                  Análise comparativa de performance entre períodos
+                </DialogDescription>
+              </div>
+              <Button variant="ghost" size="icon" onClick={() => setShowCompareResults(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </DialogHeader>
+
+          {(() => {
+            const comparisonData = getComparisonData()
+            if (!comparisonData) return <p className="text-muted-foreground">Selecione dois relatórios válidos</p>
+
+            const { report1, report2, currency, locale, metrics } = comparisonData
+
+            return (
+              <div className="space-y-6">
+                {/* Period Headers */}
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="font-medium text-muted-foreground">Métrica</div>
+                  <div className="text-center">
+                    <Badge variant="outline" className="mb-1">Base</Badge>
+                    <p className="text-sm font-medium">{report1.store_name}</p>
+                    <p className="text-xs text-muted-foreground">{getPeriodLabel(report1.period, report1.date_range)}</p>
+                  </div>
+                  <div className="text-center">
+                    <Badge variant="secondary" className="mb-1">Comparação</Badge>
+                    <p className="text-sm font-medium">{report2.store_name}</p>
+                    <p className="text-xs text-muted-foreground">{getPeriodLabel(report2.period, report2.date_range)}</p>
+                  </div>
+                </div>
+
+                {/* Metrics Comparison */}
+                <div className="space-y-2">
+                  {Object.entries(metrics).map(([key, metric]) => {
+                    const isPositive = metric.change > 0
+                    const isNeutral = metric.change === 0
+
+                    return (
+                      <Card key={key} className="bg-muted/30">
+                        <CardContent className="py-3">
+                          <div className="grid grid-cols-3 gap-4 items-center">
+                            <div className="flex items-center gap-2">
+                              {key === 'revenue' || key === 'totalRevenue' || key === 'avgOrderValue' ? (
+                                <DollarSign className="h-4 w-4 text-emerald-500" />
+                              ) : key === 'subscribers' ? (
+                                <Users className="h-4 w-4 text-blue-500" />
+                              ) : key === 'openRate' || key === 'clickRate' ? (
+                                <MousePointerClick className="h-4 w-4 text-purple-500" />
+                              ) : key === 'orders' ? (
+                                <TrendingUp className="h-4 w-4 text-amber-500" />
+                              ) : (
+                                <Mail className="h-4 w-4 text-blue-500" />
+                              )}
+                              <span className="font-medium text-sm">{metric.label}</span>
+                            </div>
+                            <div className="text-center">
+                              <p className="font-bold text-lg">
+                                {formatComparisonValue(metric.value1, metric.format, currency, locale)}
+                              </p>
+                            </div>
+                            <div className="text-center">
+                              <p className="font-bold text-lg">
+                                {formatComparisonValue(metric.value2, metric.format, currency, locale)}
+                              </p>
+                              <div className={`flex items-center justify-center gap-1 text-sm ${
+                                isNeutral ? 'text-muted-foreground' :
+                                isPositive ? 'text-emerald-500' : 'text-rose-500'
+                              }`}>
+                                {isNeutral ? (
+                                  <Minus className="h-3 w-3" />
+                                ) : isPositive ? (
+                                  <ArrowUpRight className="h-3 w-3" />
+                                ) : (
+                                  <ArrowDownRight className="h-3 w-3" />
+                                )}
+                                <span>{isNeutral ? '0%' : `${isPositive ? '+' : ''}${metric.change.toFixed(1)}%`}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )
+                  })}
+                </div>
+
+                {/* Summary */}
+                <Card className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white">
+                  <CardContent className="py-4">
+                    <h4 className="font-medium mb-3">Resumo da Comparação</h4>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="text-center p-2 rounded-lg bg-white/10">
+                        <p className="text-xs text-slate-400">Receita Klaviyo</p>
+                        <p className={`text-lg font-bold ${metrics.revenue.change >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {metrics.revenue.change >= 0 ? '+' : ''}{metrics.revenue.change.toFixed(1)}%
+                        </p>
+                      </div>
+                      <div className="text-center p-2 rounded-lg bg-white/10">
+                        <p className="text-xs text-slate-400">Pedidos</p>
+                        <p className={`text-lg font-bold ${metrics.orders.change >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {metrics.orders.change >= 0 ? '+' : ''}{metrics.orders.change.toFixed(1)}%
+                        </p>
+                      </div>
+                      <div className="text-center p-2 rounded-lg bg-white/10">
+                        <p className="text-xs text-slate-400">Taxa Abertura</p>
+                        <p className={`text-lg font-bold ${metrics.openRate.change >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {metrics.openRate.change >= 0 ? '+' : ''}{metrics.openRate.change.toFixed(1)}%
+                        </p>
+                      </div>
+                      <div className="text-center p-2 rounded-lg bg-white/10">
+                        <p className="text-xs text-slate-400">Taxa Clique</p>
+                        <p className={`text-lg font-bold ${metrics.clickRate.change >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {metrics.clickRate.change >= 0 ? '+' : ''}{metrics.clickRate.change.toFixed(1)}%
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )
+          })()}
         </DialogContent>
       </Dialog>
     </div>
