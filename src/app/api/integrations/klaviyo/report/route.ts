@@ -632,7 +632,8 @@ async function getEmailEngagementMetrics(
 async function getCampaignPerformance(
   apiKey: string,
   campaignIds: string[],
-  dateRange: { start: string; end: string }
+  dateRange: { start: string; end: string },
+  conversionMetricId?: string | null
 ) {
   if (campaignIds.length === 0) {
     return {
@@ -648,6 +649,33 @@ async function getCampaignPerformance(
     const endDate = dateRange.end.split('T')[0]
 
     console.log("[Klaviyo] Fetching campaign performance for", campaignIds.length, "campaigns")
+    console.log("[Klaviyo] Using conversion metric ID:", conversionMetricId)
+
+    // Build statistics array - include conversion stats if we have a metric ID
+    const statistics = [
+      "delivered", "opens", "opens_unique",
+      "clicks", "clicks_unique", "bounces",
+      "unsubscribes", "open_rate", "click_rate",
+    ]
+
+    // Add conversion statistics if we have a conversion metric ID
+    if (conversionMetricId) {
+      statistics.push("conversion_value", "conversion_uniques")
+    }
+
+    const requestBody: Record<string, unknown> = {
+      data: {
+        type: "campaign-values-report",
+        attributes: {
+          statistics,
+          timeframe: { start: startDate, end: endDate },
+          filter: `equals(campaign_id,["${campaignIds.join('","')}"])`,
+          ...(conversionMetricId && { conversion_metric_id: conversionMetricId }),
+        },
+      },
+    }
+
+    console.log("[Klaviyo] Campaign report request:", JSON.stringify(requestBody).substring(0, 500))
 
     const response = await klaviyoRequest<{
       data: {
@@ -662,7 +690,8 @@ async function getCampaignPerformance(
               clicks_unique?: number
               bounces?: number
               unsubscribes?: number
-              revenue?: number
+              conversion_value?: number
+              conversion_uniques?: number
               open_rate?: number
               click_rate?: number
             }
@@ -671,20 +700,7 @@ async function getCampaignPerformance(
       }
     }>(apiKey, "/campaign-values-reports/", {
       method: "POST",
-      body: {
-        data: {
-          type: "campaign-values-report",
-          attributes: {
-            statistics: [
-              "delivered", "opens", "opens_unique",
-              "clicks", "clicks_unique", "bounces",
-              "unsubscribes", "revenue", "open_rate", "click_rate",
-            ],
-            timeframe: { start: startDate, end: endDate },
-            filter: `equals(campaign_id,["${campaignIds.join('","')}"])`,
-          },
-        },
-      },
+      body: requestBody,
     }).catch(e => {
       console.error("[Klaviyo] Campaign values report error:", e)
       return null
@@ -700,6 +716,9 @@ async function getCampaignPerformance(
 
     const results = response.data?.attributes?.results || []
     console.log("[Klaviyo] Campaign performance results:", results.length, "entries")
+    if (results.length > 0) {
+      console.log("[Klaviyo] First campaign result:", JSON.stringify(results[0]))
+    }
 
     const totals = results.reduce((acc, r) => ({
       delivered: acc.delivered + (r.statistics.delivered || 0),
@@ -707,8 +726,11 @@ async function getCampaignPerformance(
       clicked: acc.clicked + (r.statistics.clicks_unique || 0),
       bounced: acc.bounced + (r.statistics.bounces || 0),
       unsubscribed: acc.unsubscribed + (r.statistics.unsubscribes || 0),
-      revenue: acc.revenue + (r.statistics.revenue || 0),
-    }), { delivered: 0, opened: 0, clicked: 0, bounced: 0, unsubscribed: 0, revenue: 0 })
+      revenue: acc.revenue + (r.statistics.conversion_value || 0),
+      conversions: acc.conversions + (r.statistics.conversion_uniques || 0),
+    }), { delivered: 0, opened: 0, clicked: 0, bounced: 0, unsubscribed: 0, revenue: 0, conversions: 0 })
+
+    console.log("[Klaviyo] Campaign totals:", totals)
 
     return {
       totalDelivered: totals.delivered,
@@ -719,6 +741,7 @@ async function getCampaignPerformance(
       avgOpenRate: totals.delivered > 0 ? (totals.opened / totals.delivered) * 100 : 0,
       avgClickRate: totals.delivered > 0 ? (totals.clicked / totals.delivered) * 100 : 0,
       totalRevenue: totals.revenue,
+      totalConversions: totals.conversions,
       campaigns: results.map(r => ({
         campaignId: r.groupings.campaign_id,
         delivered: r.statistics.delivered || 0,
@@ -726,7 +749,8 @@ async function getCampaignPerformance(
         clicks: r.statistics.clicks_unique || 0,
         openRate: r.statistics.open_rate || 0,
         clickRate: r.statistics.click_rate || 0,
-        revenue: r.statistics.revenue || 0,
+        revenue: r.statistics.conversion_value || 0,
+        conversions: r.statistics.conversion_uniques || 0,
       })),
     }
   } catch (error) {
@@ -742,13 +766,39 @@ async function getCampaignPerformance(
 // Get Flow Performance using Reporting API
 async function getFlowPerformance(
   apiKey: string,
-  dateRange: { start: string; end: string }
+  dateRange: { start: string; end: string },
+  conversionMetricId?: string | null
 ) {
   try {
     const startDate = dateRange.start.split('T')[0]
     const endDate = dateRange.end.split('T')[0]
 
     console.log("[Klaviyo] Fetching flow performance")
+    console.log("[Klaviyo] Using conversion metric ID:", conversionMetricId)
+
+    // Build statistics array - include conversion stats if we have a metric ID
+    const statistics = [
+      "delivered", "opens_unique", "clicks_unique",
+      "bounces", "unsubscribes", "open_rate", "click_rate",
+    ]
+
+    // Add conversion statistics if we have a conversion metric ID
+    if (conversionMetricId) {
+      statistics.push("conversion_value", "conversion_uniques")
+    }
+
+    const requestBody: Record<string, unknown> = {
+      data: {
+        type: "flow-values-report",
+        attributes: {
+          statistics,
+          timeframe: { start: startDate, end: endDate },
+          ...(conversionMetricId && { conversion_metric_id: conversionMetricId }),
+        },
+      },
+    }
+
+    console.log("[Klaviyo] Flow report request:", JSON.stringify(requestBody).substring(0, 500))
 
     const response = await klaviyoRequest<{
       data: {
@@ -761,7 +811,8 @@ async function getFlowPerformance(
               clicks_unique?: number
               bounces?: number
               unsubscribes?: number
-              revenue?: number
+              conversion_value?: number
+              conversion_uniques?: number
               open_rate?: number
               click_rate?: number
             }
@@ -770,19 +821,7 @@ async function getFlowPerformance(
       }
     }>(apiKey, "/flow-values-reports/", {
       method: "POST",
-      body: {
-        data: {
-          type: "flow-values-report",
-          attributes: {
-            statistics: [
-              "delivered", "opens_unique", "clicks_unique",
-              "bounces", "unsubscribes", "revenue",
-              "open_rate", "click_rate",
-            ],
-            timeframe: { start: startDate, end: endDate },
-          },
-        },
-      },
+      body: requestBody,
     }).catch(e => {
       console.error("[Klaviyo] Flow values report error:", e)
       return null
@@ -798,6 +837,9 @@ async function getFlowPerformance(
 
     const results = response.data?.attributes?.results || []
     console.log("[Klaviyo] Flow performance results:", results.length, "entries")
+    if (results.length > 0) {
+      console.log("[Klaviyo] First flow result:", JSON.stringify(results[0]))
+    }
 
     const totals = results.reduce((acc, r) => ({
       delivered: acc.delivered + (r.statistics.delivered || 0),
@@ -805,8 +847,11 @@ async function getFlowPerformance(
       clicked: acc.clicked + (r.statistics.clicks_unique || 0),
       bounced: acc.bounced + (r.statistics.bounces || 0),
       unsubscribed: acc.unsubscribed + (r.statistics.unsubscribes || 0),
-      revenue: acc.revenue + (r.statistics.revenue || 0),
-    }), { delivered: 0, opened: 0, clicked: 0, bounced: 0, unsubscribed: 0, revenue: 0 })
+      revenue: acc.revenue + (r.statistics.conversion_value || 0),
+      conversions: acc.conversions + (r.statistics.conversion_uniques || 0),
+    }), { delivered: 0, opened: 0, clicked: 0, bounced: 0, unsubscribed: 0, revenue: 0, conversions: 0 })
+
+    console.log("[Klaviyo] Flow totals:", totals)
 
     return {
       totalDelivered: totals.delivered,
@@ -817,6 +862,7 @@ async function getFlowPerformance(
       avgOpenRate: totals.delivered > 0 ? (totals.opened / totals.delivered) * 100 : 0,
       avgClickRate: totals.delivered > 0 ? (totals.clicked / totals.delivered) * 100 : 0,
       totalRevenue: totals.revenue,
+      totalConversions: totals.conversions,
       flows: results.map(r => ({
         flowId: r.groupings.flow_id,
         delivered: r.statistics.delivered || 0,
@@ -824,7 +870,8 @@ async function getFlowPerformance(
         clicks: r.statistics.clicks_unique || 0,
         openRate: r.statistics.open_rate || 0,
         clickRate: r.statistics.click_rate || 0,
-        revenue: r.statistics.revenue || 0,
+        revenue: r.statistics.conversion_value || 0,
+        conversions: r.statistics.conversion_uniques || 0,
       })),
     }
   } catch (error) {
@@ -944,13 +991,22 @@ export async function GET(request: NextRequest) {
       clicked: eventMetrics.clickedEmailMetricId,
     }, dateRange)
 
-    // Get campaign performance
+    // Get campaign performance (pass conversion metric ID for revenue calculation)
     if (campaignMetrics.campaignIds.length > 0) {
-      campaignPerformance = await getCampaignPerformance(apiKey, campaignMetrics.campaignIds, dateRange)
+      campaignPerformance = await getCampaignPerformance(
+        apiKey,
+        campaignMetrics.campaignIds,
+        dateRange,
+        eventMetrics.placedOrderMetricId
+      )
     }
 
-    // Get flow performance
-    flowPerformance = await getFlowPerformance(apiKey, dateRange)
+    // Get flow performance (pass conversion metric ID for revenue calculation)
+    flowPerformance = await getFlowPerformance(
+      apiKey,
+      dateRange,
+      eventMetrics.placedOrderMetricId
+    )
 
     // Calculate totals - prefer Reporting API data over Metric Aggregates for accuracy
     const totalKlaviyoRevenue =
