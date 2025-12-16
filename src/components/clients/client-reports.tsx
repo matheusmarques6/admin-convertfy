@@ -201,8 +201,13 @@ export function ClientReports({ clientId }: ClientReportsProps) {
         apiUrl += `&start_date=${customStartDate}&end_date=${customEndDate}`
       }
 
+      // Create abort controller for timeout (3 minutes for report generation)
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 180000)
+
       // Fetch report data from Klaviyo
-      const res = await fetch(apiUrl)
+      const res = await fetch(apiUrl, { signal: controller.signal })
+      clearTimeout(timeoutId)
       const reportData = await res.json()
 
       if (!reportData.success) {
@@ -266,10 +271,18 @@ export function ClientReports({ clientId }: ClientReportsProps) {
       setShowCreateDialog(false)
     } catch (error) {
       console.error("Error creating report:", error)
+      let errorMessage = "Tente novamente mais tarde."
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          errorMessage = "Tempo limite excedido. O relatório está demorando muito para ser gerado. Tente um período menor."
+        } else {
+          errorMessage = error.message
+        }
+      }
       toast({
         variant: "destructive",
         title: "Erro ao criar relatório",
-        description: error instanceof Error ? error.message : "Tente novamente mais tarde.",
+        description: errorMessage,
       })
     } finally {
       setIsCreating(false)
@@ -749,6 +762,7 @@ export function ClientReports({ clientId }: ClientReportsProps) {
               <KlaviyoPerformanceReport
                 storeId={viewingReport.store_id}
                 storeName={viewingReport.store_name}
+                savedReportData={viewingReport.report_data as unknown as Parameters<typeof KlaviyoPerformanceReport>[0]['savedReportData']}
               />
             </div>
           )}

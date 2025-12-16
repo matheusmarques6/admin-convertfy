@@ -189,6 +189,7 @@ interface KlaviyoReportData {
 interface KlaviyoPerformanceReportProps {
   storeId: string
   storeName: string
+  savedReportData?: KlaviyoReportData | null  // Pass saved data to avoid re-fetching
 }
 
 type DateRange = "7d" | "30d" | "90d" | "all"
@@ -217,12 +218,13 @@ const formatPercent = (value: number | undefined | null) => {
   return `${num.toFixed(1)}%`
 }
 
-export function KlaviyoPerformanceReport({ storeId, storeName }: KlaviyoPerformanceReportProps) {
-  const [reportData, setReportData] = useState<KlaviyoReportData | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }: KlaviyoPerformanceReportProps) {
+  const [reportData, setReportData] = useState<KlaviyoReportData | null>(savedReportData || null)
+  const [isLoading, setIsLoading] = useState(!savedReportData)
   const [isExporting, setIsExporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [dateRange, setDateRange] = useState<DateRange>("30d")
+  const [usingSavedData, setUsingSavedData] = useState(!!savedReportData)
   const reportRef = useRef<HTMLDivElement>(null)
 
   // Get currency from report data, default to BRL
@@ -235,15 +237,33 @@ export function KlaviyoPerformanceReport({ storeId, storeName }: KlaviyoPerforma
   }
 
   useEffect(() => {
+    // If we have saved data, use it directly
+    if (savedReportData) {
+      setReportData(savedReportData)
+      setIsLoading(false)
+      setUsingSavedData(true)
+      return
+    }
+    // Only fetch if no saved data
     loadReportData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storeId, dateRange])
+  }, [storeId, dateRange, savedReportData])
 
   async function loadReportData() {
     setIsLoading(true)
     setError(null)
+    setUsingSavedData(false)
+
+    // Create abort controller for timeout
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 120000) // 2 minute timeout
+
     try {
-      const res = await fetch(`/api/integrations/klaviyo/report?store_id=${storeId}&period=${dateRange}`)
+      const res = await fetch(`/api/integrations/klaviyo/report?store_id=${storeId}&period=${dateRange}`, {
+        signal: controller.signal
+      })
+      clearTimeout(timeoutId)
+
       const data = await res.json()
 
       if (data.success) {
@@ -252,8 +272,13 @@ export function KlaviyoPerformanceReport({ storeId, storeName }: KlaviyoPerforma
         setError(data.error || "Erro ao carregar relatório")
       }
     } catch (err) {
+      clearTimeout(timeoutId)
       console.error("Error loading report:", err)
-      setError("Erro de conexão ao carregar relatório")
+      if (err instanceof Error && err.name === 'AbortError') {
+        setError("Tempo limite excedido. O relatório está demorando muito para carregar.")
+      } else {
+        setError("Erro de conexão ao carregar relatório")
+      }
     } finally {
       setIsLoading(false)
     }
