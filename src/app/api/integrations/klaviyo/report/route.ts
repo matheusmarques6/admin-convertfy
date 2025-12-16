@@ -260,26 +260,27 @@ async function getFlowValuesReport(
 ) {
   console.log(`[Klaviyo] Getting flow values report: ${startDate} to ${endDate}`)
 
-  // All available statistics per Klaviyo docs
+  // Valid statistics per Klaviyo Reporting API
+  // Note: bounces, unsubscribes, spam_complaints are NOT valid for flow-values-reports
   const statistics = [
-    "delivered",
-    "opens",
-    "opens_unique",
+    "average_order_value",
+    "bounce_rate",
+    "click_rate",
+    "click_to_open_rate",
     "clicks",
     "clicks_unique",
-    "bounces",
-    "unsubscribes",
-    "spam_complaints",
+    "conversion_rate",
+    "conversion_uniques",
     "conversion_value",
     "conversions",
-    "conversion_uniques",
-    "recipients",
-    "deliverability_rate",
-    "bounce_rate",
+    "delivered",
+    "delivery_rate",
     "open_rate",
-    "click_rate",
-    "unsubscribe_rate",
-    "click_to_open_rate"
+    "opens",
+    "opens_unique",
+    "recipients",
+    "revenue_per_recipient",
+    "unsubscribe_rate"
   ]
 
   // Timeframe format per docs: ISO 8601 with timezone
@@ -315,19 +316,18 @@ async function getFlowValuesReport(
             opens_unique?: number
             clicks?: number
             clicks_unique?: number
-            bounces?: number
-            unsubscribes?: number
-            spam_complaints?: number
             conversion_value?: number
             conversions?: number
             conversion_uniques?: number
             recipients?: number
-            deliverability_rate?: number
+            delivery_rate?: number
             bounce_rate?: number
             open_rate?: number
             click_rate?: number
             unsubscribe_rate?: number
             click_to_open_rate?: number
+            average_order_value?: number
+            revenue_per_recipient?: number
           }
         }>
       }
@@ -349,8 +349,10 @@ async function getFlowValuesReport(
     delivered: number
     opens: number
     clicks: number
-    bounces: number
-    unsubscribes: number
+    openRate: number
+    clickRate: number
+    bounceRate: number
+    unsubscribeRate: number
   }>()
 
   let totalRevenue = 0
@@ -358,8 +360,9 @@ async function getFlowValuesReport(
   let totalDelivered = 0
   let totalOpens = 0
   let totalClicks = 0
-  let totalBounces = 0
-  let totalUnsubscribes = 0
+  let sumBounceRate = 0
+  let sumUnsubscribeRate = 0
+  let rateCount = 0
 
   for (const r of results) {
     const flowId = r.groupings.flow_id
@@ -370,11 +373,18 @@ async function getFlowValuesReport(
     totalDelivered += stats.delivered || 0
     totalOpens += stats.opens_unique || 0
     totalClicks += stats.clicks_unique || 0
-    totalBounces += stats.bounces || 0
-    totalUnsubscribes += stats.unsubscribes || 0
+
+    if (stats.bounce_rate !== undefined) {
+      sumBounceRate += stats.bounce_rate
+      rateCount++
+    }
+    if (stats.unsubscribe_rate !== undefined) {
+      sumUnsubscribeRate += stats.unsubscribe_rate
+    }
 
     const existing = flowMap.get(flowId) || {
-      revenue: 0, conversions: 0, delivered: 0, opens: 0, clicks: 0, bounces: 0, unsubscribes: 0
+      revenue: 0, conversions: 0, delivered: 0, opens: 0, clicks: 0,
+      openRate: 0, clickRate: 0, bounceRate: 0, unsubscribeRate: 0
     }
 
     flowMap.set(flowId, {
@@ -383,12 +393,17 @@ async function getFlowValuesReport(
       delivered: existing.delivered + (stats.delivered || 0),
       opens: existing.opens + (stats.opens_unique || 0),
       clicks: existing.clicks + (stats.clicks_unique || 0),
-      bounces: existing.bounces + (stats.bounces || 0),
-      unsubscribes: existing.unsubscribes + (stats.unsubscribes || 0)
+      openRate: stats.open_rate || existing.openRate,
+      clickRate: stats.click_rate || existing.clickRate,
+      bounceRate: stats.bounce_rate || existing.bounceRate,
+      unsubscribeRate: stats.unsubscribe_rate || existing.unsubscribeRate
     })
   }
 
   console.log(`[Klaviyo] Flow totals - Revenue: ${totalRevenue.toFixed(2)}, Conversions: ${totalConversions}`)
+
+  const avgBounceRate = rateCount > 0 ? sumBounceRate / rateCount : 0
+  const avgUnsubscribeRate = rateCount > 0 ? sumUnsubscribeRate / rateCount : 0
 
   return {
     totalRevenue,
@@ -396,8 +411,8 @@ async function getFlowValuesReport(
     totalDelivered,
     totalOpens,
     totalClicks,
-    totalBounces,
-    totalUnsubscribes,
+    avgBounceRate,
+    avgUnsubscribeRate,
     flows: Array.from(flowMap.entries()).map(([flowId, stats]) => ({
       flowId,
       ...stats
@@ -405,7 +420,8 @@ async function getFlowValuesReport(
     stats: {
       openRate: totalDelivered > 0 ? (totalOpens / totalDelivered) * 100 : 0,
       clickRate: totalDelivered > 0 ? (totalClicks / totalDelivered) * 100 : 0,
-      bounceRate: totalDelivered > 0 ? (totalBounces / totalDelivered) * 100 : 0
+      bounceRate: avgBounceRate,
+      unsubscribeRate: avgUnsubscribeRate
     }
   }
 }
@@ -425,26 +441,26 @@ async function getCampaignValuesReport(
 
   console.log(`[Klaviyo] Getting campaign values report for ${campaignIds.length} campaigns`)
 
-  // All available statistics
+  // Valid statistics per Klaviyo Reporting API
   const statistics = [
-    "delivered",
-    "opens",
-    "opens_unique",
+    "average_order_value",
+    "bounce_rate",
+    "click_rate",
+    "click_to_open_rate",
     "clicks",
     "clicks_unique",
-    "bounces",
-    "unsubscribes",
-    "spam_complaints",
+    "conversion_rate",
+    "conversion_uniques",
     "conversion_value",
     "conversions",
-    "conversion_uniques",
-    "recipients",
-    "deliverability_rate",
-    "bounce_rate",
+    "delivered",
+    "delivery_rate",
     "open_rate",
-    "click_rate",
-    "unsubscribe_rate",
-    "click_to_open_rate"
+    "opens",
+    "opens_unique",
+    "recipients",
+    "revenue_per_recipient",
+    "unsubscribe_rate"
   ]
 
   let totalRevenue = 0
@@ -452,8 +468,9 @@ async function getCampaignValuesReport(
   let totalDelivered = 0
   let totalOpens = 0
   let totalClicks = 0
-  let totalBounces = 0
-  let totalUnsubscribes = 0
+  let sumBounceRate = 0
+  let sumUnsubscribeRate = 0
+  let rateCount = 0
   const campaignResults: Array<{
     campaignId: string
     revenue: number
@@ -461,6 +478,8 @@ async function getCampaignValuesReport(
     delivered: number
     opens: number
     clicks: number
+    openRate: number
+    clickRate: number
   }> = []
 
   // Process campaigns one at a time to avoid rate limits
@@ -491,10 +510,12 @@ async function getCampaignValuesReport(
               delivered?: number
               opens_unique?: number
               clicks_unique?: number
-              bounces?: number
-              unsubscribes?: number
               conversion_value?: number
               conversions?: number
+              bounce_rate?: number
+              unsubscribe_rate?: number
+              open_rate?: number
+              click_rate?: number
             }
           }>
         }
@@ -511,17 +532,25 @@ async function getCampaignValuesReport(
       totalDelivered += stats.delivered || 0
       totalOpens += stats.opens_unique || 0
       totalClicks += stats.clicks_unique || 0
-      totalBounces += stats.bounces || 0
-      totalUnsubscribes += stats.unsubscribes || 0
 
-      if (revenue > 0 || conversions > 0) {
+      if (stats.bounce_rate !== undefined) {
+        sumBounceRate += stats.bounce_rate
+        rateCount++
+      }
+      if (stats.unsubscribe_rate !== undefined) {
+        sumUnsubscribeRate += stats.unsubscribe_rate
+      }
+
+      if (revenue > 0 || conversions > 0 || (stats.delivered && stats.delivered > 0)) {
         campaignResults.push({
           campaignId,
           revenue,
           conversions,
           delivered: stats.delivered || 0,
           opens: stats.opens_unique || 0,
-          clicks: stats.clicks_unique || 0
+          clicks: stats.clicks_unique || 0,
+          openRate: stats.open_rate || 0,
+          clickRate: stats.click_rate || 0
         })
       }
     }
@@ -529,19 +558,23 @@ async function getCampaignValuesReport(
 
   console.log(`[Klaviyo] Campaign totals - Revenue: ${totalRevenue.toFixed(2)}, Conversions: ${totalConversions}`)
 
+  const avgBounceRate = rateCount > 0 ? sumBounceRate / rateCount : 0
+  const avgUnsubscribeRate = rateCount > 0 ? sumUnsubscribeRate / rateCount : 0
+
   return {
     totalRevenue,
     totalConversions,
     totalDelivered,
     totalOpens,
     totalClicks,
-    totalBounces,
-    totalUnsubscribes,
+    avgBounceRate,
+    avgUnsubscribeRate,
     campaigns: campaignResults,
     stats: {
       openRate: totalDelivered > 0 ? (totalOpens / totalDelivered) * 100 : 0,
       clickRate: totalDelivered > 0 ? (totalClicks / totalDelivered) * 100 : 0,
-      bounceRate: totalDelivered > 0 ? (totalBounces / totalDelivered) * 100 : 0
+      bounceRate: avgBounceRate,
+      unsubscribeRate: avgUnsubscribeRate
     }
   }
 }
@@ -736,8 +769,8 @@ export async function GET(request: NextRequest) {
     const totalDelivered = (flowReport.totalDelivered || 0) + (campaignReport.totalDelivered || 0)
     const totalOpens = (flowReport.totalOpens || 0) + (campaignReport.totalOpens || 0)
     const totalClicks = (flowReport.totalClicks || 0) + (campaignReport.totalClicks || 0)
-    const totalBounces = (flowReport.totalBounces || 0) + (campaignReport.totalBounces || 0)
-    const totalUnsubscribes = (flowReport.totalUnsubscribes || 0) + (campaignReport.totalUnsubscribes || 0)
+    const avgBounceRate = ((flowReport.avgBounceRate || 0) + (campaignReport.avgBounceRate || 0)) / 2
+    const avgUnsubscribeRate = ((flowReport.avgUnsubscribeRate || 0) + (campaignReport.avgUnsubscribeRate || 0)) / 2
 
     console.log("[Klaviyo] ========== FINAL SUMMARY ==========")
     console.log(`[Klaviyo] Total Klaviyo Revenue: ${accountInfo.currency} ${totalKlaviyoRevenue.toFixed(2)}`)
@@ -775,8 +808,8 @@ export async function GET(request: NextRequest) {
         delivered: totalDelivered,
         opened: totalOpens,
         clicked: totalClicks,
-        bounced: totalBounces,
-        unsubscribed: totalUnsubscribes,
+        bounceRate: avgBounceRate,
+        unsubscribeRate: avgUnsubscribeRate,
         openRate: totalDelivered > 0 ? (totalOpens / totalDelivered) * 100 : 0,
         clickRate: totalDelivered > 0 ? (totalClicks / totalDelivered) * 100 : 0,
         clickToOpenRate: totalOpens > 0 ? (totalClicks / totalOpens) * 100 : 0,
