@@ -224,8 +224,10 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
   const [isExporting, setIsExporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [dateRange, setDateRange] = useState<DateRange>("30d")
-  const [usingSavedData, setUsingSavedData] = useState(!!savedReportData)
   const reportRef = useRef<HTMLDivElement>(null)
+
+  // Track if we're using saved data (disables date range selector)
+  const isUsingSavedData = !!savedReportData
 
   // Get currency from report data, default to BRL
   const currency = reportData?.account?.currency || 'BRL'
@@ -241,7 +243,6 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
     if (savedReportData) {
       setReportData(savedReportData)
       setIsLoading(false)
-      setUsingSavedData(true)
       return
     }
     // Only fetch if no saved data
@@ -252,7 +253,6 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
   async function loadReportData() {
     setIsLoading(true)
     setError(null)
-    setUsingSavedData(false)
 
     // Create abort controller for timeout
     const controller = new AbortController()
@@ -426,46 +426,50 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Date Range Selector */}
-          <div className="flex items-center rounded-lg border bg-muted/30 p-1">
-            <Button
-              variant={dateRange === "7d" ? "secondary" : "ghost"}
-              size="sm"
-              className="h-8 px-3 text-xs"
-              onClick={() => setDateRange("7d")}
-            >
-              7 Dias
-            </Button>
-            <Button
-              variant={dateRange === "30d" ? "secondary" : "ghost"}
-              size="sm"
-              className="h-8 px-3 text-xs"
-              onClick={() => setDateRange("30d")}
-            >
-              30 Dias
-            </Button>
-            <Button
-              variant={dateRange === "90d" ? "secondary" : "ghost"}
-              size="sm"
-              className="h-8 px-3 text-xs"
-              onClick={() => setDateRange("90d")}
-            >
-              90 Dias
-            </Button>
-            <Button
-              variant={dateRange === "all" ? "secondary" : "ghost"}
-              size="sm"
-              className="h-8 px-3 text-xs"
-              onClick={() => setDateRange("all")}
-            >
-              12 Meses
-            </Button>
-          </div>
+          {/* Date Range Selector - hidden when viewing saved data */}
+          {!isUsingSavedData && (
+            <div className="flex items-center rounded-lg border bg-muted/30 p-1">
+              <Button
+                variant={dateRange === "7d" ? "secondary" : "ghost"}
+                size="sm"
+                className="h-8 px-3 text-xs"
+                onClick={() => setDateRange("7d")}
+              >
+                7 Dias
+              </Button>
+              <Button
+                variant={dateRange === "30d" ? "secondary" : "ghost"}
+                size="sm"
+                className="h-8 px-3 text-xs"
+                onClick={() => setDateRange("30d")}
+              >
+                30 Dias
+              </Button>
+              <Button
+                variant={dateRange === "90d" ? "secondary" : "ghost"}
+                size="sm"
+                className="h-8 px-3 text-xs"
+                onClick={() => setDateRange("90d")}
+              >
+                90 Dias
+              </Button>
+              <Button
+                variant={dateRange === "all" ? "secondary" : "ghost"}
+                size="sm"
+                className="h-8 px-3 text-xs"
+                onClick={() => setDateRange("all")}
+              >
+                12 Meses
+              </Button>
+            </div>
+          )}
 
-          <Button variant="outline" size="sm" onClick={loadReportData} disabled={isLoading}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
-            Atualizar
-          </Button>
+          {!isUsingSavedData && (
+            <Button variant="outline" size="sm" onClick={loadReportData} disabled={isLoading}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
+              Atualizar
+            </Button>
+          )}
           <Button size="sm" onClick={handleExportPDF} disabled={isExporting} className="bg-primary hover:bg-primary/90">
             {isExporting ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
