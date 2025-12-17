@@ -85,7 +85,7 @@ async function getShopInfo(storeDomain: string, accessToken: string) {
   }
 }
 
-// Get orders summary
+// Get orders summary with best-selling products
 async function getOrdersSummary(
   storeDomain: string,
   accessToken: string,
@@ -103,8 +103,13 @@ async function getOrdersSummary(
         fulfillment_status: string | null
         created_at: string
         line_items: Array<{
+          product_id: number
+          variant_id: number
+          title: string
+          variant_title: string
           quantity: number
           price: string
+          sku: string
         }>
         customer?: {
           id: number
@@ -133,6 +138,46 @@ async function getOrdersSummary(
 
     // Unique customers
     const uniqueCustomers = new Set(orders.map(o => o.customer?.id).filter(Boolean)).size
+
+    // Recurring customers in this period (customers with more than 1 order historically)
+    const recurringCustomersInPeriod = orders.filter(o => o.customer && o.customer.orders_count > 1).length
+    const recurringCustomerRate = totalOrders > 0 ? (recurringCustomersInPeriod / totalOrders) * 100 : 0
+
+    // Calculate best-selling products from order line items
+    const productSales: Record<number, {
+      productId: number
+      title: string
+      variantTitle: string
+      sku: string
+      quantitySold: number
+      revenue: number
+      ordersCount: number
+    }> = {}
+
+    orders.forEach(order => {
+      order.line_items.forEach(item => {
+        const key = item.product_id || item.variant_id
+        if (!productSales[key]) {
+          productSales[key] = {
+            productId: item.product_id,
+            title: item.title,
+            variantTitle: item.variant_title || "",
+            sku: item.sku || "",
+            quantitySold: 0,
+            revenue: 0,
+            ordersCount: 0,
+          }
+        }
+        productSales[key].quantitySold += item.quantity
+        productSales[key].revenue += parseFloat(item.price || "0") * item.quantity
+        productSales[key].ordersCount += 1
+      })
+    })
+
+    // Sort by revenue and get top 10 best-selling products
+    const bestSellingProducts = Object.values(productSales)
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 10)
 
     // Fulfillment status
     const fulfilledOrders = orders.filter(o => o.fulfillment_status === "fulfilled").length
@@ -173,6 +218,9 @@ async function getOrdersSummary(
       totalItems,
       uniqueCustomers,
       averageOrderValue: totalOrders > 0 ? totalRevenue / totalOrders : 0,
+      recurringCustomersInPeriod,
+      recurringCustomerRate,
+      bestSellingProducts,
       fulfillment: {
         fulfilled: fulfilledOrders,
         unfulfilled,
@@ -194,6 +242,9 @@ async function getOrdersSummary(
       totalItems: 0,
       uniqueCustomers: 0,
       averageOrderValue: 0,
+      recurringCustomersInPeriod: 0,
+      recurringCustomerRate: 0,
+      bestSellingProducts: [],
       fulfillment: { fulfilled: 0, unfulfilled: 0, partiallyFulfilled: 0 },
       financialStatus: { paid: 0, pending: 0, refunded: 0, voided: 0 },
       timeSeries: [],
@@ -284,7 +335,12 @@ async function getCustomersSummary(storeDomain: string, accessToken: string) {
     const totalSpent = customers.reduce((sum, c) => sum + parseFloat(c.total_spent || "0"), 0)
     const totalOrders = customers.reduce((sum, c) => sum + (c.orders_count || 0), 0)
     const returningCustomers = customers.filter(c => (c.orders_count || 0) > 1).length
+    const firstTimeCustomers = customers.filter(c => (c.orders_count || 0) === 1).length
     const marketingOptIn = customers.filter(c => c.accepts_marketing).length
+
+    // Recurring customer rate (customers with more than 1 order / total customers)
+    const totalCustomersCount = countResponse.count || customers.length
+    const recurringCustomerRate = totalCustomersCount > 0 ? (returningCustomers / totalCustomersCount) * 100 : 0
 
     // New customers in last 30 days
     const thirtyDaysAgo = new Date()
@@ -292,12 +348,14 @@ async function getCustomersSummary(storeDomain: string, accessToken: string) {
     const newCustomers = customers.filter(c => new Date(c.created_at) >= thirtyDaysAgo).length
 
     return {
-      totalCustomers: countResponse.count || customers.length,
+      totalCustomers: totalCustomersCount,
       totalSpent,
       totalOrders,
       averageOrdersPerCustomer: customers.length > 0 ? totalOrders / customers.length : 0,
       averageSpentPerCustomer: customers.length > 0 ? totalSpent / customers.length : 0,
       returningCustomers,
+      firstTimeCustomers,
+      recurringCustomerRate,
       newCustomersLast30Days: newCustomers,
       marketingOptIn,
       marketingOptInRate: customers.length > 0 ? (marketingOptIn / customers.length) * 100 : 0,
@@ -311,6 +369,8 @@ async function getCustomersSummary(storeDomain: string, accessToken: string) {
       averageOrdersPerCustomer: 0,
       averageSpentPerCustomer: 0,
       returningCustomers: 0,
+      firstTimeCustomers: 0,
+      recurringCustomerRate: 0,
       newCustomersLast30Days: 0,
       marketingOptIn: 0,
       marketingOptInRate: 0,
@@ -420,7 +480,7 @@ export async function GET(request: NextRequest) {
       // Customers metrics
       customers: customersSummary,
 
-      // Summary
+      // Summary with key metrics
       summary: {
         totalRevenue: ordersSummary.totalRevenue,
         totalOrders: ordersSummary.totalOrders,
@@ -428,7 +488,17 @@ export async function GET(request: NextRequest) {
         totalCustomers: customersSummary.totalCustomers,
         totalProducts: productsSummary.totalProducts,
         currency: shopInfo?.currency || "BRL",
+        // Recurring customer metrics
+        recurringCustomerRate: customersSummary.recurringCustomerRate,
+        returningCustomers: customersSummary.returningCustomers,
+        // Conversion metrics (orders with payment / total orders)
+        conversionRate: ordersSummary.totalOrders > 0
+          ? (ordersSummary.paidOrders / ordersSummary.totalOrders) * 100
+          : 0,
       },
+
+      // Best-selling products
+      bestSellingProducts: ordersSummary.bestSellingProducts,
     }
 
     return NextResponse.json(reportData)

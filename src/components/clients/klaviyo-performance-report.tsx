@@ -28,6 +28,10 @@ import {
   PieChart,
   MailOpen,
   Send,
+  Package,
+  Repeat,
+  Store,
+  Percent,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -194,6 +198,104 @@ interface KlaviyoReportData {
   }
 }
 
+interface ShopifyReportData {
+  success: boolean
+  connected: boolean
+  storeName: string
+  generatedAt: string
+  period: string
+  dateRange: {
+    start: string
+    end: string
+  }
+  shop?: {
+    name: string
+    currency: string
+    domain: string
+  }
+  orders: {
+    totalOrders: number
+    paidOrders: number
+    totalRevenue: number
+    paidRevenue: number
+    subtotal: number
+    totalTax: number
+    totalDiscounts: number
+    totalItems: number
+    uniqueCustomers: number
+    averageOrderValue: number
+    recurringCustomersInPeriod: number
+    recurringCustomerRate: number
+    bestSellingProducts: Array<{
+      productId: number
+      title: string
+      variantTitle: string
+      sku: string
+      quantitySold: number
+      revenue: number
+      ordersCount: number
+    }>
+    fulfillment: {
+      fulfilled: number
+      unfulfilled: number
+      partiallyFulfilled: number
+    }
+    financialStatus: {
+      paid: number
+      pending: number
+      refunded: number
+      voided: number
+    }
+    timeSeries: Array<{
+      date: string
+      revenue: number
+      orders: number
+    }>
+  }
+  products: {
+    totalProducts: number
+    activeProducts: number
+    draftProducts: number
+    archivedProducts: number
+    totalInventory: number
+    lowStockCount: number
+    outOfStockCount: number
+  }
+  customers: {
+    totalCustomers: number
+    totalSpent: number
+    totalOrders: number
+    averageOrdersPerCustomer: number
+    averageSpentPerCustomer: number
+    returningCustomers: number
+    firstTimeCustomers: number
+    recurringCustomerRate: number
+    newCustomersLast30Days: number
+    marketingOptIn: number
+    marketingOptInRate: number
+  }
+  summary: {
+    totalRevenue: number
+    totalOrders: number
+    averageOrderValue: number
+    totalCustomers: number
+    totalProducts: number
+    currency: string
+    recurringCustomerRate: number
+    returningCustomers: number
+    conversionRate: number
+  }
+  bestSellingProducts: Array<{
+    productId: number
+    title: string
+    variantTitle: string
+    sku: string
+    quantitySold: number
+    revenue: number
+    ordersCount: number
+  }>
+}
+
 interface KlaviyoPerformanceReportProps {
   storeId: string
   storeName: string
@@ -228,6 +330,7 @@ const formatPercent = (value: number | undefined | null) => {
 
 export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }: KlaviyoPerformanceReportProps) {
   const [reportData, setReportData] = useState<KlaviyoReportData | null>(savedReportData || null)
+  const [shopifyData, setShopifyData] = useState<ShopifyReportData | null>(null)
   const [isLoading, setIsLoading] = useState(!savedReportData)
   const [isExporting, setIsExporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -238,7 +341,7 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
   const isUsingSavedData = !!savedReportData
 
   // Get currency from report data, default to BRL
-  const currency = reportData?.account?.currency || 'BRL'
+  const currency = reportData?.account?.currency || shopifyData?.shop?.currency || 'BRL'
   const locale = reportData?.account?.locale || 'pt-BR'
 
   // Format currency using the account's currency setting
@@ -251,12 +354,27 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
     if (savedReportData) {
       setReportData(savedReportData)
       setIsLoading(false)
+      // Still load Shopify data
+      loadShopifyData()
       return
     }
     // Only fetch if no saved data
     loadReportData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storeId, dateRange, savedReportData])
+
+  async function loadShopifyData() {
+    try {
+      const res = await fetch(`/api/integrations/shopify/report?store_id=${storeId}&period=${dateRange}`)
+      const data = await res.json()
+      if (data.success && data.connected) {
+        setShopifyData(data)
+      }
+    } catch (err) {
+      console.error("Error loading Shopify data:", err)
+      // Don't set error - Shopify data is optional
+    }
+  }
 
   async function loadReportData() {
     setIsLoading(true)
@@ -267,17 +385,31 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
     const timeoutId = setTimeout(() => controller.abort(), 120000) // 2 minute timeout
 
     try {
-      const res = await fetch(`/api/integrations/klaviyo/report?store_id=${storeId}&period=${dateRange}`, {
-        signal: controller.signal
-      })
+      // Fetch both Klaviyo and Shopify data in parallel
+      const [klaviyoRes, shopifyRes] = await Promise.all([
+        fetch(`/api/integrations/klaviyo/report?store_id=${storeId}&period=${dateRange}`, {
+          signal: controller.signal
+        }),
+        fetch(`/api/integrations/shopify/report?store_id=${storeId}&period=${dateRange}`, {
+          signal: controller.signal
+        }).catch(() => null) // Shopify is optional, don't fail if it errors
+      ])
       clearTimeout(timeoutId)
 
-      const data = await res.json()
+      const klaviyoData = await klaviyoRes.json()
 
-      if (data.success) {
-        setReportData(data)
+      if (klaviyoData.success) {
+        setReportData(klaviyoData)
       } else {
-        setError(data.error || "Erro ao carregar relatório")
+        setError(klaviyoData.error || "Erro ao carregar relatório")
+      }
+
+      // Handle Shopify data (optional)
+      if (shopifyRes) {
+        const shopifyDataRes = await shopifyRes.json()
+        if (shopifyDataRes.success && shopifyDataRes.connected) {
+          setShopifyData(shopifyDataRes)
+        }
       }
     } catch (err) {
       clearTimeout(timeoutId)
@@ -541,6 +673,12 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
                 <p className="text-slate-400 text-sm mt-2">{reportData.storeName}</p>
               </div>
               <div className="flex flex-wrap gap-3">
+                {shopifyData && (
+                  <Badge className="bg-green-500/20 text-green-400 border-green-500/30 gap-1 text-sm py-1 px-3">
+                    <Store className="h-3.5 w-3.5" />
+                    Shopify Integrado
+                  </Badge>
+                )}
                 {reportData.integrations?.hasEcommerce && (
                   <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 gap-1 text-sm py-1 px-3">
                     <ShoppingCart className="h-3.5 w-3.5" />
@@ -1035,6 +1173,252 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
             </div>
           </CardContent>
         </Card>
+
+        {/* Shopify Integration Section */}
+        {shopifyData && (
+          <>
+            {/* Shopify Header */}
+            <Card className="border-0 bg-gradient-to-r from-green-900/50 via-green-800/30 to-green-900/50 overflow-hidden relative">
+              <div className="absolute inset-0 bg-gradient-to-r from-green-500/5 via-transparent to-green-500/5" />
+              <CardContent className="py-6 relative">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-green-500/20">
+                    <Store className="h-6 w-6 text-green-400" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold">Dados da Loja Shopify</h2>
+                    <p className="text-sm text-muted-foreground">{shopifyData.shop?.name || shopifyData.storeName}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Shopify KPIs */}
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              {/* Shopify Total Revenue */}
+              <Card className="bg-slate-900/50 border-slate-800">
+                <CardContent className="pt-5 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-green-500/10">
+                      <DollarSign className="h-5 w-5 text-green-400" />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold text-green-400">
+                        {formatCurrency(shopifyData.summary?.totalRevenue || 0)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">Faturamento Shopify</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Conversion Rate */}
+              <Card className="bg-slate-900/50 border-slate-800">
+                <CardContent className="pt-5 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-blue-500/10">
+                      <Percent className="h-5 w-5 text-blue-400" />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold text-blue-400">
+                        {formatPercent(shopifyData.summary?.conversionRate || 0)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">Taxa de Conversão</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Recurring Customer Rate */}
+              <Card className="bg-slate-900/50 border-slate-800">
+                <CardContent className="pt-5 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-purple-500/10">
+                      <Repeat className="h-5 w-5 text-purple-400" />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold text-purple-400">
+                        {formatPercent(shopifyData.summary?.recurringCustomerRate || 0)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">Taxa de Recorrência</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Total Orders */}
+              <Card className="bg-slate-900/50 border-slate-800">
+                <CardContent className="pt-5 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-amber-500/10">
+                      <ShoppingCart className="h-5 w-5 text-amber-400" />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold text-amber-400">
+                        {formatNumber(shopifyData.summary?.totalOrders || 0)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">Pedidos no Período</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Additional Shopify Metrics */}
+            <div className="grid gap-4 md:grid-cols-3">
+              {/* Customer Stats */}
+              <Card className="bg-slate-900/50 border-slate-800">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-emerald-500/10">
+                      <Users className="h-4 w-4 text-emerald-400" />
+                    </div>
+                    Clientes
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Total de Clientes</span>
+                    <span className="font-bold">{formatNumber(shopifyData.customers?.totalCustomers || 0)}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Clientes Recorrentes</span>
+                    <span className="font-bold text-purple-400">{formatNumber(shopifyData.customers?.returningCustomers || 0)}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Novos (últimos 30 dias)</span>
+                    <span className="font-bold text-emerald-400">{formatNumber(shopifyData.customers?.newCustomersLast30Days || 0)}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Gasto Médio/Cliente</span>
+                    <span className="font-bold">{formatCurrency(shopifyData.customers?.averageSpentPerCustomer || 0)}</span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Products Stats */}
+              <Card className="bg-slate-900/50 border-slate-800">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-blue-500/10">
+                      <Package className="h-4 w-4 text-blue-400" />
+                    </div>
+                    Produtos
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Total de Produtos</span>
+                    <span className="font-bold">{formatNumber(shopifyData.products?.totalProducts || 0)}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Produtos Ativos</span>
+                    <span className="font-bold text-emerald-400">{formatNumber(shopifyData.products?.activeProducts || 0)}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Estoque Total</span>
+                    <span className="font-bold">{formatNumber(shopifyData.products?.totalInventory || 0)}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Fora de Estoque</span>
+                    <span className="font-bold text-rose-400">{formatNumber(shopifyData.products?.outOfStockCount || 0)}</span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Order Stats */}
+              <Card className="bg-slate-900/50 border-slate-800">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-amber-500/10">
+                      <ShoppingCart className="h-4 w-4 text-amber-400" />
+                    </div>
+                    Pedidos
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Ticket Médio</span>
+                    <span className="font-bold">{formatCurrency(shopifyData.summary?.averageOrderValue || 0)}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Pedidos Pagos</span>
+                    <span className="font-bold text-emerald-400">{formatNumber(shopifyData.orders?.paidOrders || 0)}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Descontos Totais</span>
+                    <span className="font-bold text-amber-400">{formatCurrency(shopifyData.orders?.totalDiscounts || 0)}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Itens Vendidos</span>
+                    <span className="font-bold">{formatNumber(shopifyData.orders?.totalItems || 0)}</span>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Best Selling Products */}
+            {shopifyData.bestSellingProducts && shopifyData.bestSellingProducts.length > 0 && (
+              <Card className="bg-slate-900/50 border-slate-800">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-amber-500/10">
+                      <TrendingUp className="h-4 w-4 text-amber-400" />
+                    </div>
+                    Produtos Mais Vendidos
+                  </CardTitle>
+                  <CardDescription>Top 10 produtos por receita no período</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="rounded-lg border border-slate-800 overflow-hidden">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="border-slate-800 hover:bg-transparent">
+                          <TableHead className="text-slate-400">#</TableHead>
+                          <TableHead className="text-slate-400">Produto</TableHead>
+                          <TableHead className="text-slate-400 text-right">Qtd. Vendida</TableHead>
+                          <TableHead className="text-slate-400 text-right">Pedidos</TableHead>
+                          <TableHead className="text-slate-400 text-right">Receita</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {shopifyData.bestSellingProducts.map((product, index) => (
+                          <TableRow key={product.productId || index} className="border-slate-800">
+                            <TableCell className="font-medium text-muted-foreground">
+                              {index + 1}
+                            </TableCell>
+                            <TableCell className="font-medium">
+                              <div>
+                                {product.title}
+                                {product.variantTitle && (
+                                  <span className="text-xs text-muted-foreground ml-2">
+                                    ({product.variantTitle})
+                                  </span>
+                                )}
+                              </div>
+                              {product.sku && (
+                                <span className="text-xs text-muted-foreground">SKU: {product.sku}</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right font-mono">
+                              {formatNumber(product.quantitySold)}
+                            </TableCell>
+                            <TableCell className="text-right font-mono text-blue-400">
+                              {formatNumber(product.ordersCount)}
+                            </TableCell>
+                            <TableCell className="text-right font-mono font-bold text-emerald-400">
+                              {formatCurrency(product.revenue)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </>
+        )}
 
         {/* Detailed Tables */}
         <Card className="bg-slate-900/50 border-slate-800">
