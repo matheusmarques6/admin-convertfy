@@ -123,6 +123,8 @@ interface KlaviyoReportData {
     totalRevenue: number
     flows: Array<{
       flowId: string
+      name: string
+      status: string
       delivered: number
       opens: number
       clicks: number
@@ -155,7 +157,13 @@ interface KlaviyoReportData {
       name: string
       status: string
       sendTime: string | null
-      createdAt: string
+      createdAt?: string
+      delivered?: number
+      opens?: number
+      clicks?: number
+      openRate?: number
+      clickRate?: number
+      revenue?: number
     }>
   }
   lists: Array<{
@@ -1145,31 +1153,41 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
                     <TableHeader>
                       <TableRow className="border-slate-800 hover:bg-transparent">
                         <TableHead className="text-slate-400">Nome do Flow</TableHead>
-                        <TableHead className="text-slate-400">Trigger</TableHead>
+                        <TableHead className="text-slate-400 text-right">Entregas</TableHead>
+                        <TableHead className="text-slate-400 text-right">Aberturas</TableHead>
+                        <TableHead className="text-slate-400 text-right">Cliques</TableHead>
+                        <TableHead className="text-slate-400 text-right">Receita</TableHead>
                         <TableHead className="text-slate-400">Status</TableHead>
-                        <TableHead className="text-slate-400">Criado em</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {!reportData.flows || reportData.flows.length === 0 ? (
+                      {!reportData.flowPerformance?.flows || reportData.flowPerformance.flows.length === 0 ? (
                         <TableRow className="border-slate-800">
-                          <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
-                            Nenhum flow encontrado
+                          <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                            Nenhum flow com dados no período
                           </TableCell>
                         </TableRow>
                       ) : (
-                        reportData.flows.map((flow) => (
-                          <TableRow key={flow.id} className="border-slate-800">
+                        reportData.flowPerformance.flows.map((flow) => (
+                          <TableRow key={flow.flowId} className="border-slate-800">
                             <TableCell className="font-medium">{flow.name}</TableCell>
-                            <TableCell>
-                              <Badge variant="outline" className="text-xs border-slate-600">
-                                {flow.triggerType || "Manual"}
-                              </Badge>
+                            <TableCell className="text-right">{formatNumber(flow.delivered || 0)}</TableCell>
+                            <TableCell className="text-right">
+                              {formatNumber(flow.opens || 0)}
+                              <span className="text-xs text-muted-foreground ml-1">
+                                ({(flow.openRate || 0).toFixed(1)}%)
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {formatNumber(flow.clicks || 0)}
+                              <span className="text-xs text-muted-foreground ml-1">
+                                ({(flow.clickRate || 0).toFixed(1)}%)
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right font-medium text-emerald-400">
+                              {formatCurrency(flow.revenue || 0)}
                             </TableCell>
                             <TableCell>{getStatusBadge(flow.status)}</TableCell>
-                            <TableCell className="text-muted-foreground text-sm">
-                              {formatDate(flow.created)}
-                            </TableCell>
                           </TableRow>
                         ))
                       )}
@@ -1184,22 +1202,40 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
                     <TableHeader>
                       <TableRow className="border-slate-800 hover:bg-transparent">
                         <TableHead className="text-slate-400">Nome da Campanha</TableHead>
-                        <TableHead className="text-slate-400">Status</TableHead>
+                        <TableHead className="text-slate-400 text-right">Entregas</TableHead>
+                        <TableHead className="text-slate-400 text-right">Aberturas</TableHead>
+                        <TableHead className="text-slate-400 text-right">Cliques</TableHead>
+                        <TableHead className="text-slate-400 text-right">Receita</TableHead>
                         <TableHead className="text-slate-400">Data de Envio</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {!reportData.campaigns?.recentCampaigns || reportData.campaigns.recentCampaigns.length === 0 ? (
                         <TableRow className="border-slate-800">
-                          <TableCell colSpan={3} className="text-center text-muted-foreground py-8">
-                            Nenhuma campanha encontrada
+                          <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                            Nenhuma campanha com dados no período
                           </TableCell>
                         </TableRow>
                       ) : (
                         reportData.campaigns.recentCampaigns.map((campaign) => (
                           <TableRow key={campaign.id} className="border-slate-800">
                             <TableCell className="font-medium">{campaign.name}</TableCell>
-                            <TableCell>{getStatusBadge(campaign.status)}</TableCell>
+                            <TableCell className="text-right">{formatNumber(campaign.delivered || 0)}</TableCell>
+                            <TableCell className="text-right">
+                              {formatNumber(campaign.opens || 0)}
+                              <span className="text-xs text-muted-foreground ml-1">
+                                ({(campaign.openRate || 0).toFixed(1)}%)
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {formatNumber(campaign.clicks || 0)}
+                              <span className="text-xs text-muted-foreground ml-1">
+                                ({(campaign.clickRate || 0).toFixed(1)}%)
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right font-medium text-emerald-400">
+                              {formatCurrency(campaign.revenue || 0)}
+                            </TableCell>
                             <TableCell className="text-muted-foreground text-sm">
                               {campaign.sendTime ? formatDate(campaign.sendTime) : "—"}
                             </TableCell>
