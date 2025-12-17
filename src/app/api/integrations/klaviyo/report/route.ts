@@ -165,7 +165,7 @@ function getTimezoneOffset(timezone: string): string {
         return `${sign}${hours}:00`
       }
     }
-  } catch (e) {
+  } catch {
     console.log(`[Klaviyo] Error parsing timezone ${timezone}, using UTC`)
   }
   return "+00:00"
