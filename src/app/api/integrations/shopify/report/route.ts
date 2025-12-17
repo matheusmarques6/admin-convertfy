@@ -41,7 +41,12 @@ interface ShopifyRequestOptions {
   body?: Record<string, unknown>
 }
 
-// Helper function to make Shopify API requests
+interface ShopifyPaginatedResponse<T> {
+  data: T
+  nextPageUrl: string | null
+}
+
+// Helper function to make Shopify API requests with pagination support
 async function shopifyRequest<T>(
   storeDomain: string,
   accessToken: string,
@@ -50,7 +55,9 @@ async function shopifyRequest<T>(
 ): Promise<T> {
   const { method = "GET", body } = options || {}
 
-  const url = `https://${storeDomain}/admin/api/${SHOPIFY_API_VERSION}${endpoint}`
+  const url = endpoint.startsWith("http")
+    ? endpoint
+    : `https://${storeDomain}/admin/api/${SHOPIFY_API_VERSION}${endpoint}`
 
   const response = await fetch(url, {
     method,
@@ -68,6 +75,149 @@ async function shopifyRequest<T>(
   }
 
   return response.json()
+}
+
+// Helper function to make paginated Shopify API requests
+async function shopifyPaginatedRequest<T>(
+  storeDomain: string,
+  accessToken: string,
+  endpoint: string
+): Promise<ShopifyPaginatedResponse<T>> {
+  const url = endpoint.startsWith("http")
+    ? endpoint
+    : `https://${storeDomain}/admin/api/${SHOPIFY_API_VERSION}${endpoint}`
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      "X-Shopify-Access-Token": accessToken,
+      "Content-Type": "application/json",
+    },
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    console.error(`Shopify API error: ${response.status}`, errorText)
+    throw new Error(`Shopify API error: ${response.status}`)
+  }
+
+  // Parse Link header for pagination
+  const linkHeader = response.headers.get("Link")
+  let nextPageUrl: string | null = null
+
+  if (linkHeader) {
+    const links = linkHeader.split(",")
+    for (const link of links) {
+      const match = link.match(/<([^>]+)>;\s*rel="next"/)
+      if (match) {
+        nextPageUrl = match[1]
+        break
+      }
+    }
+  }
+
+  const data = await response.json()
+  return { data, nextPageUrl }
+}
+
+// Fetch all orders with pagination
+async function fetchAllOrders(
+  storeDomain: string,
+  accessToken: string,
+  dateRange: { start: string; end: string }
+): Promise<Array<{
+  id: number
+  total_price: string
+  subtotal_price: string
+  total_tax: string
+  total_discounts: string
+  financial_status: string
+  fulfillment_status: string | null
+  created_at: string
+  line_items: Array<{
+    product_id: number
+    variant_id: number
+    title: string
+    variant_title: string
+    quantity: number
+    price: string
+    sku: string
+  }>
+  customer?: {
+    id: number
+    email: string
+    orders_count: number
+  }
+}>> {
+  const allOrders: Array<{
+    id: number
+    total_price: string
+    subtotal_price: string
+    total_tax: string
+    total_discounts: string
+    financial_status: string
+    fulfillment_status: string | null
+    created_at: string
+    line_items: Array<{
+      product_id: number
+      variant_id: number
+      title: string
+      variant_title: string
+      quantity: number
+      price: string
+      sku: string
+    }>
+    customer?: {
+      id: number
+      email: string
+      orders_count: number
+    }
+  }> = []
+
+  let endpoint = `/orders.json?status=any&created_at_min=${dateRange.start}&created_at_max=${dateRange.end}&limit=250`
+  let pageCount = 0
+  const maxPages = 50 // Safety limit to prevent infinite loops
+
+  while (endpoint && pageCount < maxPages) {
+    pageCount++
+    console.log(`Fetching orders page ${pageCount}...`)
+
+    const { data, nextPageUrl } = await shopifyPaginatedRequest<{
+      orders: Array<{
+        id: number
+        total_price: string
+        subtotal_price: string
+        total_tax: string
+        total_discounts: string
+        financial_status: string
+        fulfillment_status: string | null
+        created_at: string
+        line_items: Array<{
+          product_id: number
+          variant_id: number
+          title: string
+          variant_title: string
+          quantity: number
+          price: string
+          sku: string
+        }>
+        customer?: {
+          id: number
+          email: string
+          orders_count: number
+        }
+      }>
+    }>(storeDomain, accessToken, endpoint)
+
+    if (data.orders && data.orders.length > 0) {
+      allOrders.push(...data.orders)
+    }
+
+    endpoint = nextPageUrl || ""
+  }
+
+  console.log(`Total orders fetched: ${allOrders.length} (${pageCount} pages)`)
+  return allOrders
 }
 
 // Get shop info
@@ -104,41 +254,15 @@ async function getShopInfo(storeDomain: string, accessToken: string) {
   }
 }
 
-// Get orders summary with best-selling products
+// Get orders summary with best-selling products (with full pagination)
 async function getOrdersSummary(
   storeDomain: string,
   accessToken: string,
   dateRange: { start: string; end: string }
 ) {
   try {
-    const response = await shopifyRequest<{
-      orders: Array<{
-        id: number
-        total_price: string
-        subtotal_price: string
-        total_tax: string
-        total_discounts: string
-        financial_status: string
-        fulfillment_status: string | null
-        created_at: string
-        line_items: Array<{
-          product_id: number
-          variant_id: number
-          title: string
-          variant_title: string
-          quantity: number
-          price: string
-          sku: string
-        }>
-        customer?: {
-          id: number
-          email: string
-          orders_count: number
-        }
-      }>
-    }>(storeDomain, accessToken, `/orders.json?status=any&created_at_min=${dateRange.start}&created_at_max=${dateRange.end}&limit=250`)
-
-    const orders = response.orders || []
+    // Fetch ALL orders with pagination
+    const orders = await fetchAllOrders(storeDomain, accessToken, dateRange)
 
     // Calculate metrics
     const totalOrders = orders.length

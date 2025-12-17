@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import {
   Users,
   Mail,
@@ -35,6 +35,9 @@ import {
   Truck,
   CheckCircle,
   XCircle,
+  Maximize2,
+  Minimize2,
+  X,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -338,10 +341,37 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
   const [isExporting, setIsExporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [dateRange, setDateRange] = useState<DateRange>("30d")
+  const [isFullscreen, setIsFullscreen] = useState(false)
   const reportRef = useRef<HTMLDivElement>(null)
+  const fullscreenRef = useRef<HTMLDivElement>(null)
 
   // Track if we're using saved data (disables date range selector)
   const isUsingSavedData = !!savedReportData
+
+  // Toggle fullscreen mode
+  const toggleFullscreen = useCallback(() => {
+    setIsFullscreen(prev => !prev)
+    // Prevent body scroll when fullscreen
+    if (!isFullscreen) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+  }, [isFullscreen])
+
+  // Handle escape key to close fullscreen
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isFullscreen) {
+        toggleFullscreen()
+      }
+    }
+    window.addEventListener('keydown', handleEscape)
+    return () => {
+      window.removeEventListener('keydown', handleEscape)
+      document.body.style.overflow = ''
+    }
+  }, [isFullscreen, toggleFullscreen])
 
   // Get currency from report data, default to BRL
   const currency = reportData?.account?.currency || shopifyData?.shop?.currency || 'BRL'
@@ -583,7 +613,7 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
     )
   }
 
-  // Calculate insights
+  // Calculate insights - Use Shopify as main revenue source when available
   const emailROI = reportData.revenue?.campaignRevenue > 0 ?
     ((reportData.revenue.campaignRevenue / (reportData.emailPerformance?.delivered || 1)) * 1000).toFixed(2) : "0"
 
@@ -591,10 +621,19 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
     ((reportData.revenue.flowRevenue / (reportData.flowPerformance?.totalDelivered || 1)) * 1000).toFixed(2) : "0"
 
   const totalKlaviyoRevenue = reportData.revenue?.klaviyoAttributedRevenue || 0
-  const totalRevenue = reportData.revenue?.totalRevenue || 0
-  const revenuePercentage = totalRevenue > 0 ? ((totalKlaviyoRevenue / totalRevenue) * 100).toFixed(1) : "0"
 
-  return (
+  // Use Shopify revenue as main source when available
+  const shopifyTotalRevenue = shopifyData?.summary?.totalRevenue || 0
+  const totalRevenue = shopifyTotalRevenue > 0 ? shopifyTotalRevenue : (reportData.revenue?.totalRevenue || 0)
+
+  // Calculate Klaviyo revenue as percentage of total (Shopify) revenue
+  const klaviyoRevenuePercentage = totalRevenue > 0 ? ((totalKlaviyoRevenue / totalRevenue) * 100).toFixed(1) : "0"
+
+  // For backwards compatibility
+  const revenuePercentage = klaviyoRevenuePercentage
+
+  // Fullscreen wrapper component
+  const ReportContent = () => (
     <div className="space-y-6">
       {/* Header with Date Filter */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -603,10 +642,22 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
             <BarChart3 className="h-6 w-6 text-primary" />
           </div>
           <div>
-            <h2 className="text-xl font-bold">Relatório de Performance</h2>
+            <h2 className="text-xl font-bold">Relatório de Resultados</h2>
             <p className="text-sm text-muted-foreground flex items-center gap-1">
               <Calendar className="h-3 w-3" />
               {getDateRangeLabel()}
+              {shopifyData && (
+                <Badge variant="outline" className="ml-2 text-xs bg-green-500/10 text-green-500 border-green-500/30">
+                  <Store className="h-3 w-3 mr-1" />
+                  Shopify
+                </Badge>
+              )}
+              {reportData?.integrations?.hasEmail && (
+                <Badge variant="outline" className="ml-1 text-xs bg-purple-500/10 text-purple-500 border-purple-500/30">
+                  <Mail className="h-3 w-3 mr-1" />
+                  Klaviyo
+                </Badge>
+              )}
             </p>
           </div>
         </div>
@@ -656,6 +707,27 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
               Atualizar
             </Button>
           )}
+
+          {/* Fullscreen Toggle Button */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={toggleFullscreen}
+            className="gap-2"
+          >
+            {isFullscreen ? (
+              <>
+                <Minimize2 className="h-4 w-4" />
+                Sair
+              </>
+            ) : (
+              <>
+                <Maximize2 className="h-4 w-4" />
+                Tela Cheia
+              </>
+            )}
+          </Button>
+
           <Button size="sm" onClick={handleExportPDF} disabled={isExporting} className="bg-primary hover:bg-primary/90">
             {isExporting ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -675,7 +747,7 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
           <CardContent className="py-8 relative">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
               <div>
-                <p className="text-sm text-slate-400 uppercase tracking-wider font-medium mb-1">Resultados Financeiros</p>
+                <p className="text-sm text-slate-400 uppercase tracking-wider font-medium mb-1">Relatório Completo de Resultados</p>
                 <h1 className="text-3xl font-bold">{getPeriodLabel()}</h1>
                 <p className="text-slate-400 text-sm mt-2">{reportData.storeName}</p>
               </div>
@@ -683,19 +755,13 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
                 {shopifyData && (
                   <Badge className="bg-green-500/20 text-green-400 border-green-500/30 gap-1 text-sm py-1 px-3">
                     <Store className="h-3.5 w-3.5" />
-                    Shopify Integrado
-                  </Badge>
-                )}
-                {reportData.integrations?.hasEcommerce && (
-                  <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 gap-1 text-sm py-1 px-3">
-                    <ShoppingCart className="h-3.5 w-3.5" />
-                    E-commerce Integrado
+                    {formatNumber(shopifyData.orders?.totalOrders || 0)} pedidos
                   </Badge>
                 )}
                 {reportData.integrations?.hasEmail && (
                   <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30 gap-1 text-sm py-1 px-3">
                     <Mail className="h-3.5 w-3.5" />
-                    Email Marketing
+                    {formatNumber(reportData.emailPerformance?.delivered || 0)} emails
                   </Badge>
                 )}
               </div>
@@ -712,74 +778,54 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
               <div className="flex items-center gap-2 mb-3">
                 <DollarSign className="h-5 w-5 text-emerald-200" />
                 <span className="text-sm text-emerald-200 font-medium">Faturamento Total</span>
+                {shopifyData && (
+                  <Badge className="bg-white/20 text-white text-[10px] px-1.5 py-0">Shopify</Badge>
+                )}
               </div>
               <p className="text-3xl font-bold">
-                {formatCurrency(shopifyData?.summary?.totalRevenue || reportData.revenue?.totalRevenue || 0)}
+                {formatCurrency(totalRevenue)}
               </p>
               <div className="flex items-center gap-2 mt-3">
                 <span className="text-xs bg-white/20 px-2 py-1 rounded-full flex items-center gap-1">
                   <ShoppingCart className="h-3 w-3" />
                   {formatNumber(shopifyData?.summary?.totalOrders || reportData.revenue?.totalOrders || 0)} pedidos
                 </span>
-                {shopifyData && (
-                  <span className="text-xs bg-green-500/30 px-2 py-1 rounded-full">
-                    Shopify
-                  </span>
-                )}
               </div>
             </CardContent>
           </Card>
 
-          {/* Klaviyo Revenue */}
-          <Card className="border-0 bg-gradient-to-br from-blue-600 to-blue-700 text-white relative overflow-hidden">
+          {/* Klaviyo Revenue with percentage */}
+          <Card className="border-0 bg-gradient-to-br from-purple-600 to-purple-700 text-white relative overflow-hidden">
             <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -mr-12 -mt-12" />
             <CardContent className="pt-6 pb-5">
               <div className="flex items-center gap-2 mb-3">
-                <Mail className="h-5 w-5 text-blue-200" />
-                <span className="text-sm text-blue-200 font-medium">Faturamento Klaviyo</span>
+                <Mail className="h-5 w-5 text-purple-200" />
+                <span className="text-sm text-purple-200 font-medium">Receita Email Marketing</span>
               </div>
               <p className="text-3xl font-bold">
                 {formatCurrency(totalKlaviyoRevenue)}
               </p>
               <div className="flex items-center gap-2 mt-3">
                 <span className="text-xs bg-white/20 px-2 py-1 rounded-full flex items-center gap-1">
-                  <TrendingUp className="h-3 w-3" />
-                  {shopifyData
-                    ? `${((totalKlaviyoRevenue / (shopifyData.summary?.totalRevenue || 1)) * 100).toFixed(1)}%`
-                    : `${revenuePercentage}%`
-                  } do total
+                  <Percent className="h-3 w-3" />
+                  {klaviyoRevenuePercentage}% do faturamento
                 </span>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* ROI */}
-          <Card className="border-0 bg-gradient-to-br from-purple-600 to-purple-700 text-white relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -mr-12 -mt-12" />
-            <CardContent className="pt-6 pb-5">
-              <div className="flex items-center gap-2 mb-3">
-                <PieChart className="h-5 w-5 text-purple-200" />
-                <span className="text-sm text-purple-200 font-medium">ROI Estimado</span>
-              </div>
-              <p className="text-3xl font-bold">
-                {reportData.revenue?.estimatedROI || 0}%
-              </p>
-              <div className="flex items-center gap-2 mt-3">
-                <span className="text-xs bg-white/20 px-2 py-1 rounded-full flex items-center gap-1">
-                  <ArrowUpRight className="h-3 w-3" />
-                  Retorno sobre investimento
-                </span>
+                {Number(klaviyoRevenuePercentage) > 20 && (
+                  <span className="text-xs bg-emerald-500/30 px-2 py-1 rounded-full">
+                    Excelente!
+                  </span>
+                )}
               </div>
             </CardContent>
           </Card>
 
           {/* Average Order Value - Use Shopify data when available */}
-          <Card className="border-0 bg-gradient-to-br from-amber-500 to-amber-600 text-white relative overflow-hidden">
+          <Card className="border-0 bg-gradient-to-br from-blue-600 to-blue-700 text-white relative overflow-hidden">
             <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -mr-12 -mt-12" />
             <CardContent className="pt-6 pb-5">
               <div className="flex items-center gap-2 mb-3">
-                <ShoppingCart className="h-5 w-5 text-amber-200" />
-                <span className="text-sm text-amber-200 font-medium">Ticket Médio</span>
+                <ShoppingCart className="h-5 w-5 text-blue-200" />
+                <span className="text-sm text-blue-200 font-medium">Ticket Médio</span>
               </div>
               <p className="text-3xl font-bold">
                 {formatCurrency(shopifyData?.summary?.averageOrderValue || reportData.revenue?.averageOrderValue || 0)}
@@ -788,6 +834,40 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
                 <span className="text-xs bg-white/20 px-2 py-1 rounded-full flex items-center gap-1">
                   <Users className="h-3 w-3" />
                   {formatNumber(shopifyData?.summary?.totalCustomers || reportData.revenue?.uniqueCustomers || 0)} clientes
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Recurring Customer Rate or ROI */}
+          <Card className="border-0 bg-gradient-to-br from-amber-500 to-amber-600 text-white relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -mr-12 -mt-12" />
+            <CardContent className="pt-6 pb-5">
+              <div className="flex items-center gap-2 mb-3">
+                <Repeat className="h-5 w-5 text-amber-200" />
+                <span className="text-sm text-amber-200 font-medium">
+                  {shopifyData ? "Taxa de Recorrência" : "ROI Estimado"}
+                </span>
+              </div>
+              <p className="text-3xl font-bold">
+                {shopifyData
+                  ? formatPercent(shopifyData.summary?.recurringCustomerRate || 0)
+                  : `${reportData.revenue?.estimatedROI || 0}%`
+                }
+              </p>
+              <div className="flex items-center gap-2 mt-3">
+                <span className="text-xs bg-white/20 px-2 py-1 rounded-full flex items-center gap-1">
+                  {shopifyData ? (
+                    <>
+                      <Users className="h-3 w-3" />
+                      {formatNumber(shopifyData.customers?.returningCustomers || 0)} recorrentes
+                    </>
+                  ) : (
+                    <>
+                      <ArrowUpRight className="h-3 w-3" />
+                      Retorno sobre investimento
+                    </>
+                  )}
                 </span>
               </div>
             </CardContent>
@@ -1704,5 +1784,36 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
         </div>
       </div>
     </div>
+  )
+
+  // Return with fullscreen support
+  return (
+    <>
+      {/* Normal view */}
+      {!isFullscreen && <ReportContent />}
+
+      {/* Fullscreen Modal */}
+      {isFullscreen && (
+        <div
+          ref={fullscreenRef}
+          className="fixed inset-0 z-50 bg-background overflow-auto"
+          style={{ padding: '1.5rem' }}
+        >
+          {/* Close button fixed at top right */}
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={toggleFullscreen}
+            className="fixed top-4 right-4 z-[60] bg-background/80 backdrop-blur-sm shadow-lg"
+          >
+            <X className="h-5 w-5" />
+          </Button>
+
+          <div className="max-w-7xl mx-auto">
+            <ReportContent />
+          </div>
+        </div>
+      )}
+    </>
   )
 }
