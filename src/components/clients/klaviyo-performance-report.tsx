@@ -323,23 +323,34 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
     }
   }
 
+  // Parse date string without timezone conversion (YYYY-MM-DD format)
+  const parseDateString = (dateStr: string) => {
+    // Handle both "YYYY-MM-DD" and ISO format "YYYY-MM-DDTHH:mm:ss"
+    const parts = dateStr.split('T')[0].split('-')
+    return {
+      year: parseInt(parts[0]),
+      month: parseInt(parts[1]) - 1, // 0-indexed
+      day: parseInt(parts[2])
+    }
+  }
+
   // Get period label showing actual dates from API response (matches Klaviyo dashboard)
   const getPeriodLabel = () => {
     // Use actual dates from API response
     if (reportData?.dateRange?.start && reportData?.dateRange?.end) {
-      const startDate = new Date(reportData.dateRange.start)
-      const endDate = new Date(reportData.dateRange.end)
       const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
 
+      // Parse dates without timezone conversion
+      const start = parseDateString(reportData.dateRange.start)
+      const end = parseDateString(reportData.dateRange.end)
+
       // Format like Klaviyo: "16 de nov. de 2025 – 16 de dez. de 2025"
-      const formatDate = (d: Date) => {
-        const day = d.getDate()
-        const month = months[d.getMonth()].substring(0, 3).toLowerCase()
-        const year = d.getFullYear()
-        return `${day} de ${month}. de ${year}`
+      const formatDate = (d: { year: number; month: number; day: number }) => {
+        const month = months[d.month].substring(0, 3).toLowerCase()
+        return `${d.day} de ${month}. de ${d.year}`
       }
 
-      return `${formatDate(startDate)} – ${formatDate(endDate)}`
+      return `${formatDate(start)} – ${formatDate(end)}`
     }
 
     // Fallback to current month
@@ -350,11 +361,11 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
 
   // Get date range for display (uses actual API dates)
   const getDateRangeLabel = () => {
-    // Use actual dates from API response
+    // Use actual dates from API response - parse without timezone conversion
     if (reportData?.dateRange?.start && reportData?.dateRange?.end) {
-      const start = new Date(reportData.dateRange.start).toLocaleDateString('pt-BR')
-      const end = new Date(reportData.dateRange.end).toLocaleDateString('pt-BR')
-      return `${start} - ${end}`
+      const start = parseDateString(reportData.dateRange.start)
+      const end = parseDateString(reportData.dateRange.end)
+      return `${start.day.toString().padStart(2, '0')}/${(start.month + 1).toString().padStart(2, '0')}/${start.year} - ${end.day.toString().padStart(2, '0')}/${(end.month + 1).toString().padStart(2, '0')}/${end.year}`
     }
 
     // Fallback to calculated dates

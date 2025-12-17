@@ -1013,19 +1013,41 @@ export async function GET(request: NextRequest) {
 
       lists: listMetrics.lists, // ALL lists
 
+      // Flows with counts and details for frontend
       flows: allFlows.map(f => ({
         id: f.id,
         name: f.name,
         status: f.status,
         triggerType: f.triggerType
-      })), // ALL flows
+      })),
 
-      campaigns: campaignsInPeriod.map(c => ({
-        id: c.id,
-        name: c.name,
-        status: c.status,
-        sendTime: c.sendTime
-      })), // ALL campaigns in period
+      // Campaigns with counts and details for frontend (structure expected by UI)
+      campaigns: {
+        total: allCampaigns.length,
+        sent: allCampaigns.filter(c => c.status === "sent").length,
+        scheduled: allCampaigns.filter(c => c.status === "scheduled").length,
+        drafts: allCampaigns.filter(c => c.status === "draft").length,
+        // Recent campaigns with performance data (sorted by revenue, includes all with data)
+        recentCampaigns: campaignsWithNames.map(c => ({
+          id: c.campaignId,
+          name: c.name,
+          status: "sent",
+          sendTime: c.sendTime,
+          revenue: c.revenue,
+          delivered: c.delivered,
+          opens: c.opens,
+          clicks: c.clicks,
+          openRate: c.openRate,
+          clickRate: c.clickRate
+        })).sort((a, b) => b.revenue - a.revenue),
+        // Also include campaigns in period without revenue data
+        allInPeriod: campaignsInPeriod.map(c => ({
+          id: c.id,
+          name: c.name,
+          status: c.status,
+          sendTime: c.sendTime
+        }))
+      },
 
       integrations: {
         hasEcommerce: true,

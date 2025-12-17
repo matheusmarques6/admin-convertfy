@@ -337,12 +337,25 @@ export function ClientReports({ clientId }: ClientReportsProps) {
     }
   }
 
+  // Parse date string without timezone conversion (handles YYYY-MM-DD and ISO formats)
+  const parseDateString = (dateStr: string) => {
+    const parts = dateStr.split('T')[0].split('-')
+    return {
+      year: parseInt(parts[0]),
+      month: parseInt(parts[1]),
+      day: parseInt(parts[2])
+    }
+  }
+
   const getPeriodLabel = (period: string, dateRange?: { start: string; end: string }) => {
     // Always show actual dates if available (matches Klaviyo dashboard format)
+    // Parse without timezone conversion to avoid date shift issues
     if (dateRange?.start && dateRange?.end) {
-      const start = new Date(dateRange.start).toLocaleDateString('pt-BR')
-      const end = new Date(dateRange.end).toLocaleDateString('pt-BR')
-      return `${start} - ${end}`
+      const start = parseDateString(dateRange.start)
+      const end = parseDateString(dateRange.end)
+      const formatDate = (d: { day: number; month: number; year: number }) =>
+        `${d.day.toString().padStart(2, '0')}/${d.month.toString().padStart(2, '0')}/${d.year}`
+      return `${formatDate(start)} - ${formatDate(end)}`
     }
 
     // Fallback to period labels if no dates available
