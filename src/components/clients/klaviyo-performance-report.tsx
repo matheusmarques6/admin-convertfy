@@ -360,14 +360,17 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
 
   // Toggle fullscreen mode
   const toggleFullscreen = useCallback(() => {
-    setIsFullscreen(prev => !prev)
-    // Prevent body scroll when fullscreen
-    if (!isFullscreen) {
-      document.body.style.overflow = 'hidden'
-    } else {
-      document.body.style.overflow = ''
-    }
-  }, [isFullscreen])
+    setIsFullscreen(prev => {
+      const newValue = !prev
+      // Prevent body scroll when entering fullscreen
+      if (newValue) {
+        document.body.style.overflow = 'hidden'
+      } else {
+        document.body.style.overflow = ''
+      }
+      return newValue
+    })
+  }, [])
 
   // Handle escape key to close fullscreen
   useEffect(() => {
@@ -439,20 +442,26 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
       ])
       clearTimeout(timeoutId)
 
+      // Parse both responses before setting any state
       const klaviyoData = await klaviyoRes.json()
+      let shopifyDataRes = null
 
-      if (klaviyoData.success) {
-        setReportData(klaviyoData)
-      } else {
-        setError(klaviyoData.error || "Erro ao carregar relatório")
+      if (shopifyRes) {
+        shopifyDataRes = await shopifyRes.json()
       }
 
-      // Handle Shopify data (optional)
-      if (shopifyRes) {
-        const shopifyDataRes = await shopifyRes.json()
-        if (shopifyDataRes.success && shopifyDataRes.connected) {
+      // Batch all state updates together to prevent multiple renders
+      // This ensures the UI shows all data at once
+      if (klaviyoData.success) {
+        setReportData(klaviyoData)
+        // Set Shopify data in same tick (React 18 auto-batches these)
+        if (shopifyDataRes && shopifyDataRes.success && shopifyDataRes.connected) {
           setShopifyData(shopifyDataRes)
         }
+        setIsLoading(false)
+      } else {
+        setError(klaviyoData.error || "Erro ao carregar relatório")
+        setIsLoading(false)
       }
     } catch (err) {
       clearTimeout(timeoutId)
@@ -462,7 +471,6 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
       } else {
         setError("Erro de conexão ao carregar relatório")
       }
-    } finally {
       setIsLoading(false)
     }
   }

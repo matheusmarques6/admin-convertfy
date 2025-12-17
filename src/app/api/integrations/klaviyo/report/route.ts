@@ -325,6 +325,70 @@ async function getFlows(apiKey: string) {
   return allFlows
 }
 
+// Get ALL segments with profile counts
+type SegmentsResponse = {
+  data: Array<{
+    id: string
+    attributes: { name: string; profile_count: number; created: string; is_active: boolean; is_starred: boolean }
+  }>
+  links?: { next?: string }
+}
+
+async function getSegments(apiKey: string) {
+  const allSegments: Array<{
+    id: string
+    name: string
+    profileCount: number
+    isActive: boolean
+    isStarred: boolean
+    created: string
+  }> = []
+
+  let nextPage: string | null = "/segments/?page[size]=100"
+
+  while (nextPage) {
+    const response: SegmentsResponse | null = await klaviyoRequest<SegmentsResponse>(apiKey, nextPage)
+
+    if (!response?.data) break
+
+    for (const s of response.data) {
+      allSegments.push({
+        id: s.id,
+        name: s.attributes.name,
+        profileCount: s.attributes.profile_count || 0,
+        isActive: s.attributes.is_active,
+        isStarred: s.attributes.is_starred,
+        created: s.attributes.created
+      })
+    }
+
+    // Get next page URL if exists
+    nextPage = response.links?.next ? response.links.next.replace(KLAVIYO_API_URL, "") : null
+
+    // Rate limit between pages
+    if (nextPage) await sleep(500)
+  }
+
+  console.log(`[Klaviyo] Fetched ${allSegments.length} total segments`)
+
+  // Find engaged 90d segment (common naming patterns)
+  const engaged90dSegment = allSegments.find(s => {
+    const nameLower = s.name.toLowerCase()
+    return nameLower.includes('engajado') ||
+           nameLower.includes('engaged') ||
+           nameLower.includes('90d') ||
+           nameLower.includes('90 dias') ||
+           nameLower.includes('ativos')
+  })
+
+  return {
+    totalSegments: allSegments.length,
+    segments: allSegments.sort((a, b) => b.profileCount - a.profileCount),
+    engaged90dProfiles: engaged90dSegment?.profileCount || 0,
+    engaged90dSegmentName: engaged90dSegment?.name || null
+  }
+}
+
 // Get ALL campaigns with pagination - filter by email channel
 async function getCampaigns(apiKey: string) {
   const allCampaigns: Array<{
@@ -819,8 +883,9 @@ export async function GET(request: NextRequest) {
 
     if (!metricId) {
       // Return basic data without revenue
-      const [listMetrics, allFlows, allCampaigns] = await Promise.all([
+      const [listMetrics, segmentMetrics, allFlows, allCampaigns] = await Promise.all([
         getLists(apiKey),
+        getSegments(apiKey),
         getFlows(apiKey),
         getCampaigns(apiKey)
       ])
@@ -848,12 +913,30 @@ export async function GET(request: NextRequest) {
         overview: {
           totalSubscribers: listMetrics.totalSubscribers,
           totalLists: listMetrics.totalLists,
+          totalSegments: segmentMetrics.totalSegments,
           totalFlows: allFlows.length,
           liveFlows: allFlows.filter(f => f.status === "live").length,
           totalCampaigns: allCampaigns.length,
           sentCampaigns: allCampaigns.filter(c => c.status === "sent").length,
+          totalTemplates: 0,
+        },
+        engagement: {
+          engagedProfiles: segmentMetrics.engaged90dProfiles,
+          engagementRate: listMetrics.totalSubscribers > 0
+            ? ((segmentMetrics.engaged90dProfiles / listMetrics.totalSubscribers) * 100).toFixed(1)
+            : "0",
+          engaged90dSegmentName: segmentMetrics.engaged90dSegmentName,
+        },
+        automation: {
+          totalFlows: allFlows.length,
+          liveFlows: allFlows.filter(f => f.status === "live").length,
+          draftFlows: allFlows.filter(f => f.status === "draft").length,
+          automationCoverage: allFlows.length > 0
+            ? ((allFlows.filter(f => f.status === "live").length / allFlows.length) * 100).toFixed(0)
+            : "0",
         },
         lists: listMetrics.lists, // ALL lists
+        segments: segmentMetrics.segments, // ALL segments
         flows: allFlows, // ALL flows
         campaigns: allCampaigns.filter(c => c.status === "sent"), // ALL sent campaigns
         integrations: { hasEcommerce: false }
@@ -861,8 +944,9 @@ export async function GET(request: NextRequest) {
     }
 
     // Get all data
-    const [listMetrics, allFlows, allCampaigns] = await Promise.all([
+    const [listMetrics, segmentMetrics, allFlows, allCampaigns] = await Promise.all([
       getLists(apiKey),
+      getSegments(apiKey),
       getFlows(apiKey),
       getCampaigns(apiKey)
     ])
@@ -986,11 +1070,37 @@ export async function GET(request: NextRequest) {
       overview: {
         totalSubscribers: listMetrics.totalSubscribers,
         totalLists: listMetrics.totalLists,
+        totalSegments: segmentMetrics.totalSegments,
         totalFlows: allFlows.length,
         liveFlows: allFlows.filter(f => f.status === "live").length,
         totalCampaigns: allCampaigns.length,
         sentCampaigns: allCampaigns.filter(c => c.status === "sent").length,
         campaignsInPeriod: campaignsInPeriod.length,
+        totalTemplates: 0, // Templates not fetched currently
+      },
+
+      // Engagement data - uses segment data for accurate counts
+      engagement: {
+        engagedProfiles: segmentMetrics.engaged90dProfiles,
+        engagementRate: listMetrics.totalSubscribers > 0
+          ? ((segmentMetrics.engaged90dProfiles / listMetrics.totalSubscribers) * 100).toFixed(1)
+          : "0",
+        engaged90dSegmentName: segmentMetrics.engaged90dSegmentName,
+      },
+
+      // Automation data
+      automation: {
+        totalFlows: allFlows.length,
+        liveFlows: allFlows.filter(f => f.status === "live").length,
+        draftFlows: allFlows.filter(f => f.status === "draft").length,
+        automationCoverage: allFlows.length > 0
+          ? ((allFlows.filter(f => f.status === "live").length / allFlows.length) * 100).toFixed(0)
+          : "0",
+      },
+
+      // Growth metrics
+      growth: {
+        campaignsLast30Days: campaignsInPeriod.length,
       },
 
       campaignPerformance: {
@@ -1012,6 +1122,9 @@ export async function GET(request: NextRequest) {
       },
 
       lists: listMetrics.lists, // ALL lists
+
+      // ALL segments with profile counts
+      segments: segmentMetrics.segments,
 
       // Flows with counts and details for frontend
       flows: allFlows.map(f => ({

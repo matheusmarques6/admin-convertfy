@@ -689,9 +689,10 @@ export async function GET(request: NextRequest) {
         totalCustomers: customersSummary.totalCustomers,
         totalProducts: productsSummary.totalProducts,
         currency: shopInfo?.currency || "BRL",
-        // Recurring customer metrics
-        recurringCustomerRate: customersSummary.recurringCustomerRate,
-        returningCustomers: customersSummary.returningCustomers,
+        // Recurring customer metrics - use order data for accurate rate in period
+        // ordersSummary.recurringCustomerRate counts orders from customers with >1 total orders
+        recurringCustomerRate: ordersSummary.recurringCustomerRate,
+        returningCustomers: ordersSummary.recurringCustomersInPeriod,
         // Conversion metrics (orders with payment / total orders)
         conversionRate: ordersSummary.totalOrders > 0
           ? (ordersSummary.paidOrders / ordersSummary.totalOrders) * 100
