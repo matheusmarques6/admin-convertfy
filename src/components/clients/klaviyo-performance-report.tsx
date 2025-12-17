@@ -32,6 +32,9 @@ import {
   Repeat,
   Store,
   Percent,
+  Truck,
+  CheckCircle,
+  XCircle,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -474,38 +477,42 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
     }
   }
 
-  // Get period label showing actual dates from API response (matches Klaviyo dashboard)
+  // Get period label showing actual dates from API response
   const getPeriodLabel = () => {
     // Use actual dates from API response
     if (reportData?.dateRange?.start && reportData?.dateRange?.end) {
-      const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
+      const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
 
       // Parse dates without timezone conversion
       const start = parseDateString(reportData.dateRange.start)
       const end = parseDateString(reportData.dateRange.end)
 
-      // Format like Klaviyo: "16 de nov. de 2025 – 16 de dez. de 2025"
+      // Format: "17 Nov 2025 - 17 Dez 2025"
       const formatDate = (d: { year: number; month: number; day: number }) => {
-        const month = months[d.month].substring(0, 3).toLowerCase()
-        return `${d.day} de ${month}. de ${d.year}`
+        return `${d.day.toString().padStart(2, '0')} ${months[d.month]} ${d.year}`
       }
 
-      return `${formatDate(start)} – ${formatDate(end)}`
+      return `${formatDate(start)} - ${formatDate(end)}`
     }
 
     // Fallback to current month
     const now = new Date()
     const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
-    return `${months[now.getMonth()].toUpperCase()} ${now.getFullYear()}`
+    return `${months[now.getMonth()]} ${now.getFullYear()}`
   }
 
   // Get date range for display (uses actual API dates)
   const getDateRangeLabel = () => {
     // Use actual dates from API response - parse without timezone conversion
     if (reportData?.dateRange?.start && reportData?.dateRange?.end) {
+      const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
       const start = parseDateString(reportData.dateRange.start)
       const end = parseDateString(reportData.dateRange.end)
-      return `${start.day.toString().padStart(2, '0')}/${(start.month + 1).toString().padStart(2, '0')}/${start.year} - ${end.day.toString().padStart(2, '0')}/${(end.month + 1).toString().padStart(2, '0')}/${end.year}`
+      // Format: "17 Nov - 17 Dez 2025"
+      if (start.year === end.year) {
+        return `${start.day.toString().padStart(2, '0')} ${months[start.month]} - ${end.day.toString().padStart(2, '0')} ${months[end.month]} ${end.year}`
+      }
+      return `${start.day.toString().padStart(2, '0')} ${months[start.month]} ${start.year} - ${end.day.toString().padStart(2, '0')} ${months[end.month]} ${end.year}`
     }
 
     // Fallback to calculated dates
@@ -1273,7 +1280,7 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
             </div>
 
             {/* Additional Shopify Metrics */}
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
               {/* Customer Stats */}
               <Card className="bg-slate-900/50 border-slate-800">
                 <CardHeader className="pb-2">
@@ -1360,6 +1367,46 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Itens Vendidos</span>
                     <span className="font-bold">{formatNumber(shopifyData.orders?.totalItems || 0)}</span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Fulfillment Stats */}
+              <Card className="bg-slate-900/50 border-slate-800">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-cyan-500/10">
+                      <Truck className="h-4 w-4 text-cyan-400" />
+                    </div>
+                    Envios
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground flex items-center gap-1">
+                      <CheckCircle className="h-3 w-3 text-emerald-400" />
+                      Enviados
+                    </span>
+                    <span className="font-bold text-emerald-400">{formatNumber(shopifyData.orders?.fulfillment?.fulfilled || 0)}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground flex items-center gap-1">
+                      <XCircle className="h-3 w-3 text-amber-400" />
+                      Pendentes
+                    </span>
+                    <span className="font-bold text-amber-400">{formatNumber(shopifyData.orders?.fulfillment?.unfulfilled || 0)}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Parcialmente Enviados</span>
+                    <span className="font-bold text-blue-400">{formatNumber(shopifyData.orders?.fulfillment?.partiallyFulfilled || 0)}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Taxa de Envio</span>
+                    <span className="font-bold">
+                      {shopifyData.orders?.totalOrders
+                        ? formatPercent((shopifyData.orders.fulfillment?.fulfilled || 0) / shopifyData.orders.totalOrders * 100)
+                        : '0.0%'}
+                    </span>
                   </div>
                 </CardContent>
               </Card>

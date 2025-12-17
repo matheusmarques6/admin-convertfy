@@ -131,10 +131,14 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
   function openDialog(store?: ClientStore) {
     if (store) {
       setEditStore(store)
+      // Capitalize platform for form display (database stores as lowercase)
+      const platformCapitalized = store.platform
+        ? store.platform.charAt(0).toUpperCase() + store.platform.slice(1)
+        : "Shopify"
       setForm({
         name: store.store_name,
         url: store.store_url || "",
-        platform: store.platform || "Shopify",
+        platform: platformCapitalized,
         currency: store.currency || "BRL",
         // Shopify
         shopify_store_domain: store.shopify_store_domain || "",
