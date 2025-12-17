@@ -698,7 +698,7 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
 
         {/* Main Financial KPIs */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {/* Total Revenue */}
+          {/* Total Revenue - Use Shopify data when available */}
           <Card className="border-0 bg-gradient-to-br from-emerald-600 to-emerald-700 text-white relative overflow-hidden">
             <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -mr-12 -mt-12" />
             <CardContent className="pt-6 pb-5">
@@ -707,13 +707,18 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
                 <span className="text-sm text-emerald-200 font-medium">Faturamento Total</span>
               </div>
               <p className="text-3xl font-bold">
-                {formatCurrency(reportData.revenue?.totalRevenue || 0)}
+                {formatCurrency(shopifyData?.summary?.totalRevenue || reportData.revenue?.totalRevenue || 0)}
               </p>
               <div className="flex items-center gap-2 mt-3">
                 <span className="text-xs bg-white/20 px-2 py-1 rounded-full flex items-center gap-1">
                   <ShoppingCart className="h-3 w-3" />
-                  {formatNumber(reportData.revenue?.totalOrders || 0)} pedidos
+                  {formatNumber(shopifyData?.summary?.totalOrders || reportData.revenue?.totalOrders || 0)} pedidos
                 </span>
+                {shopifyData && (
+                  <span className="text-xs bg-green-500/30 px-2 py-1 rounded-full">
+                    Shopify
+                  </span>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -732,7 +737,10 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
               <div className="flex items-center gap-2 mt-3">
                 <span className="text-xs bg-white/20 px-2 py-1 rounded-full flex items-center gap-1">
                   <TrendingUp className="h-3 w-3" />
-                  {revenuePercentage}% do total
+                  {shopifyData
+                    ? `${((totalKlaviyoRevenue / (shopifyData.summary?.totalRevenue || 1)) * 100).toFixed(1)}%`
+                    : `${revenuePercentage}%`
+                  } do total
                 </span>
               </div>
             </CardContent>
@@ -758,7 +766,7 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
             </CardContent>
           </Card>
 
-          {/* Average Order Value */}
+          {/* Average Order Value - Use Shopify data when available */}
           <Card className="border-0 bg-gradient-to-br from-amber-500 to-amber-600 text-white relative overflow-hidden">
             <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -mr-12 -mt-12" />
             <CardContent className="pt-6 pb-5">
@@ -767,12 +775,12 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
                 <span className="text-sm text-amber-200 font-medium">Ticket Médio</span>
               </div>
               <p className="text-3xl font-bold">
-                {formatCurrency(reportData.revenue?.averageOrderValue || 0)}
+                {formatCurrency(shopifyData?.summary?.averageOrderValue || reportData.revenue?.averageOrderValue || 0)}
               </p>
               <div className="flex items-center gap-2 mt-3">
                 <span className="text-xs bg-white/20 px-2 py-1 rounded-full flex items-center gap-1">
                   <Users className="h-3 w-3" />
-                  {formatNumber(reportData.revenue?.uniqueCustomers || 0)} clientes
+                  {formatNumber(shopifyData?.summary?.totalCustomers || reportData.revenue?.uniqueCustomers || 0)} clientes
                 </span>
               </div>
             </CardContent>

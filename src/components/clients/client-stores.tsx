@@ -48,6 +48,7 @@ interface ClientStore {
   store_name: string
   store_url?: string
   platform?: string
+  currency?: string
   // Generic credentials (from original table)
   api_key?: string
   api_secret?: string
@@ -82,11 +83,13 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
   const [editStore, setEditStore] = useState<ClientStore | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [testingKlaviyo, setTestingKlaviyo] = useState<string | null>(null)
+  const [testingShopify, setTestingShopify] = useState<string | null>(null)
 
   const [form, setForm] = useState({
     name: "",
     url: "",
     platform: "Shopify",
+    currency: "BRL",
     // Shopify
     shopify_store_domain: "",
     shopify_access_token: "",
@@ -132,6 +135,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
         name: store.store_name,
         url: store.store_url || "",
         platform: store.platform || "Shopify",
+        currency: store.currency || "BRL",
         // Shopify
         shopify_store_domain: store.shopify_store_domain || "",
         shopify_access_token: store.shopify_access_token || "",
@@ -149,6 +153,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
         name: "",
         url: "",
         platform: "Shopify",
+        currency: "BRL",
         shopify_store_domain: "",
         shopify_access_token: "",
         klaviyo_public_key: "",
@@ -188,6 +193,8 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
       if (form.url) storeData.store_url = form.url
       // Platform is an ENUM - convert to lowercase
       if (form.platform) storeData.platform = form.platform.toLowerCase()
+      // Currency
+      if (form.currency) storeData.currency = form.currency
 
       // Shopify fields
       if (form.shopify_store_domain) storeData.shopify_store_domain = form.shopify_store_domain
@@ -337,6 +344,52 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
     }
   }
 
+  async function testShopifyConnection(store: ClientStore) {
+    if (!store.shopify_store_domain || !store.shopify_access_token) {
+      toast({
+        variant: "destructive",
+        title: "Credenciais não configuradas",
+        description: "Configure o domínio e o Access Token da Shopify primeiro",
+      })
+      return
+    }
+
+    setTestingShopify(store.id)
+    try {
+      const response = await fetch("/api/integrations/shopify/test", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          store_domain: store.shopify_store_domain,
+          access_token: store.shopify_access_token,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        toast({
+          title: "Conexão Shopify bem sucedida!",
+          description: data.shop?.name
+            ? `Conectado a: ${data.shop.name} (${data.shop.currency})`
+            : "A API da Shopify está funcionando corretamente",
+        })
+      } else {
+        throw new Error(data.error || "Falha na conexão")
+      }
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Erro na conexão Shopify",
+        description: error instanceof Error ? error.message : "Verifique as credenciais da Shopify",
+      })
+    } finally {
+      setTestingShopify(null)
+    }
+  }
+
   async function checkDatabaseStatus() {
     try {
       const response = await fetch("/api/setup/database")
@@ -471,6 +524,26 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
                       <div className="text-xs text-muted-foreground">
                         Domínio: {store.shopify_store_domain}
                       </div>
+                    )}
+                    {store.currency && (
+                      <div className="text-xs text-muted-foreground">
+                        Moeda: {store.currency}
+                      </div>
+                    )}
+                    {store.shopify_access_token && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => testShopifyConnection(store)}
+                        disabled={testingShopify === store.id}
+                      >
+                        {testingShopify === store.id ? (
+                          <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                        ) : (
+                          <RefreshCw className="mr-2 h-3 w-3" />
+                        )}
+                        Testar Conexão
+                      </Button>
                     )}
                   </div>
                 )}
@@ -624,6 +697,28 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
                 <option value="Magento">Magento</option>
                 <option value="Outro">Outro</option>
               </select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Moeda</Label>
+              <select
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                value={form.currency}
+                onChange={(e) => setForm({ ...form, currency: e.target.value })}
+              >
+                <option value="BRL">BRL - Real Brasileiro</option>
+                <option value="USD">USD - Dólar Americano</option>
+                <option value="EUR">EUR - Euro</option>
+                <option value="GBP">GBP - Libra Esterlina</option>
+                <option value="ARS">ARS - Peso Argentino</option>
+                <option value="CLP">CLP - Peso Chileno</option>
+                <option value="COP">COP - Peso Colombiano</option>
+                <option value="MXN">MXN - Peso Mexicano</option>
+                <option value="PEN">PEN - Sol Peruano</option>
+              </select>
+              <p className="text-xs text-muted-foreground">
+                Moeda usada para exibir valores nos relatórios
+              </p>
             </div>
 
             {/* Shopify Integration */}
