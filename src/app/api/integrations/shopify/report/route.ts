@@ -134,6 +134,10 @@ async function fetchAllOrders(
   financial_status: string
   fulfillment_status: string | null
   created_at: string
+  tags: string
+  source_name: string
+  referring_site: string | null
+  landing_site: string | null
   line_items: Array<{
     product_id: number
     variant_id: number
@@ -158,6 +162,10 @@ async function fetchAllOrders(
     financial_status: string
     fulfillment_status: string | null
     created_at: string
+    tags: string
+    source_name: string
+    referring_site: string | null
+    landing_site: string | null
     line_items: Array<{
       product_id: number
       variant_id: number
@@ -192,6 +200,10 @@ async function fetchAllOrders(
         financial_status: string
         fulfillment_status: string | null
         created_at: string
+        tags: string
+        source_name: string
+        referring_site: string | null
+        landing_site: string | null
         line_items: Array<{
           product_id: number
           variant_id: number
@@ -286,6 +298,37 @@ async function getOrdersSummary(
     const recurringCustomersInPeriod = orders.filter(o => o.customer && o.customer.orders_count > 1).length
     const recurringCustomerRate = totalOrders > 0 ? (recurringCustomersInPeriod / totalOrders) * 100 : 0
 
+    // SMS Attribution - detect orders from YSMS or other SMS marketing
+    // Check tags, source_name, referring_site for SMS-related keywords
+    const smsKeywords = ['sms', 'ysms', 'sms-marketing', 'sms_marketing', 'text', 'whatsapp']
+    const smsOrders = orders.filter(order => {
+      const tags = (order.tags || '').toLowerCase()
+      const source = (order.source_name || '').toLowerCase()
+      const referrer = (order.referring_site || '').toLowerCase()
+      const landing = (order.landing_site || '').toLowerCase()
+
+      return smsKeywords.some(keyword =>
+        tags.includes(keyword) ||
+        source.includes(keyword) ||
+        referrer.includes(keyword) ||
+        landing.includes(keyword)
+      )
+    })
+
+    const smsRevenue = smsOrders.reduce((sum, o) => sum + parseFloat(o.total_price || "0"), 0)
+    const smsOrdersCount = smsOrders.length
+
+    // Collect unique sources for debugging/analysis
+    const orderSources: Record<string, { count: number; revenue: number }> = {}
+    orders.forEach(order => {
+      const source = order.source_name || 'unknown'
+      if (!orderSources[source]) {
+        orderSources[source] = { count: 0, revenue: 0 }
+      }
+      orderSources[source].count += 1
+      orderSources[source].revenue += parseFloat(order.total_price || "0")
+    })
+
     // Calculate best-selling products from order line items
     const productSales: Record<number, {
       productId: number
@@ -371,6 +414,16 @@ async function getOrdersSummary(
       },
       financialStatus: statusBreakdown,
       timeSeries,
+      // SMS Marketing Attribution (YSMS, etc)
+      smsMarketing: {
+        revenue: smsRevenue,
+        orders: smsOrdersCount,
+        percentage: totalRevenue > 0 ? (smsRevenue / totalRevenue) * 100 : 0,
+      },
+      // Order sources breakdown for analysis
+      orderSources: Object.entries(orderSources)
+        .map(([source, data]) => ({ source, ...data }))
+        .sort((a, b) => b.revenue - a.revenue),
     }
   } catch (error) {
     console.error("Error fetching orders:", error)
@@ -391,6 +444,8 @@ async function getOrdersSummary(
       fulfillment: { fulfilled: 0, unfulfilled: 0, partiallyFulfilled: 0 },
       financialStatus: { paid: 0, pending: 0, refunded: 0, voided: 0 },
       timeSeries: [],
+      smsMarketing: { revenue: 0, orders: 0, percentage: 0 },
+      orderSources: [],
     }
   }
 }

@@ -37,6 +37,7 @@ import {
   Maximize2,
   Minimize2,
   X,
+  MessageSquare,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -255,6 +256,16 @@ interface ShopifyReportData {
       date: string
       revenue: number
       orders: number
+    }>
+    smsMarketing?: {
+      revenue: number
+      orders: number
+      percentage: number
+    }
+    orderSources?: Array<{
+      source: string
+      count: number
+      revenue: number
     }>
   }
   products: {
@@ -874,7 +885,7 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
         </div>
 
         {/* Revenue Breakdown Cards */}
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className={`grid gap-4 ${shopifyData?.orders?.smsMarketing?.orders ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
           {/* Campaign Revenue */}
           <Card className="bg-slate-900/50 border-slate-800">
             <CardHeader className="pb-2">
@@ -930,6 +941,39 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
               </div>
             </CardContent>
           </Card>
+
+          {/* SMS Revenue - Only show if there's SMS data */}
+          {shopifyData?.orders?.smsMarketing && shopifyData.orders.smsMarketing.orders > 0 && (
+            <Card className="bg-slate-900/50 border-slate-800">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-cyan-500/10">
+                    <MessageSquare className="h-4 w-4 text-cyan-400" />
+                  </div>
+                  Receita de SMS
+                  <Badge className="bg-cyan-500/20 text-cyan-400 text-[10px] px-1.5 py-0">YSMS</Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-end justify-between">
+                  <div>
+                    <p className="text-3xl font-bold text-cyan-400">
+                      {formatCurrency(shopifyData.orders.smsMarketing.revenue)}
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {formatNumber(shopifyData.orders.smsMarketing.orders)} pedidos via SMS
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-muted-foreground">% do faturamento</p>
+                    <p className="text-lg font-bold text-emerald-400">
+                      {formatPercent(shopifyData.orders.smsMarketing.percentage)}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* Revenue Chart */}
