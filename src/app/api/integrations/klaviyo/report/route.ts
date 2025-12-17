@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 
+// Vercel serverless function configuration
+// Extended timeout to allow fetching all Klaviyo data
+export const maxDuration = 300 // 5 minutes (Pro plan limit)
+export const dynamic = 'force-dynamic'
+
 // Latest stable API revision per Klaviyo documentation
 // https://developers.klaviyo.com/en/docs/api_versioning_and_deprecation_policy
 const KLAVIYO_API_URL = "https://a.klaviyo.com/api"
@@ -176,78 +181,157 @@ async function findPlacedOrderMetric(apiKey: string): Promise<string | null> {
   return null
 }
 
-// Get lists with profile counts
+// Types for paginated responses
+type ListsResponse = {
+  data: Array<{
+    id: string
+    attributes: { name: string; profile_count: number; created: string }
+  }>
+  links?: { next?: string }
+}
+
+type FlowsResponse = {
+  data: Array<{
+    id: string
+    attributes: { name: string; status: string; created: string; trigger_type: string }
+  }>
+  links?: { next?: string }
+}
+
+type CampaignsResponse = {
+  data: Array<{
+    id: string
+    attributes: {
+      name: string
+      status: string
+      send_time: string | null
+      created_at: string
+      archived: boolean
+    }
+  }>
+  links?: { next?: string }
+}
+
+// Get ALL lists with profile counts and pagination
 async function getLists(apiKey: string) {
-  const response = await klaviyoRequest<{
-    data: Array<{
-      id: string
-      attributes: { name: string; profile_count: number; created: string }
-    }>
-  }>(apiKey, "/lists/")
+  const allLists: Array<{
+    id: string
+    name: string
+    profileCount: number
+    created: string
+  }> = []
 
-  if (!response?.data) return { totalLists: 0, totalSubscribers: 0, lists: [] }
+  let nextPage: string | null = "/lists/?page[size]=100"
 
-  const lists = response.data
-  const totalSubscribers = lists.reduce((sum, l) => sum + (l.attributes.profile_count || 0), 0)
+  while (nextPage) {
+    const response: ListsResponse | null = await klaviyoRequest<ListsResponse>(apiKey, nextPage)
+
+    if (!response?.data) break
+
+    for (const l of response.data) {
+      allLists.push({
+        id: l.id,
+        name: l.attributes.name,
+        profileCount: l.attributes.profile_count || 0,
+        created: l.attributes.created
+      })
+    }
+
+    // Get next page URL if exists
+    nextPage = response.links?.next ? response.links.next.replace(KLAVIYO_API_URL, "") : null
+
+    // Rate limit between pages
+    if (nextPage) await sleep(500)
+  }
+
+  const totalSubscribers = allLists.reduce((sum, l) => sum + l.profileCount, 0)
+
+  console.log(`[Klaviyo] Fetched ${allLists.length} total lists with ${totalSubscribers} subscribers`)
 
   return {
-    totalLists: lists.length,
+    totalLists: allLists.length,
     totalSubscribers,
-    lists: lists.map(l => ({
-      id: l.id,
-      name: l.attributes.name,
-      profileCount: l.attributes.profile_count || 0,
-      created: l.attributes.created
-    })).sort((a, b) => b.profileCount - a.profileCount)
+    lists: allLists.sort((a, b) => b.profileCount - a.profileCount)
   }
 }
 
-// Get flows
+// Get ALL flows with pagination
 async function getFlows(apiKey: string) {
-  const response = await klaviyoRequest<{
-    data: Array<{
-      id: string
-      attributes: { name: string; status: string; created: string; trigger_type: string }
-    }>
-  }>(apiKey, "/flows")
+  const allFlows: Array<{
+    id: string
+    name: string
+    status: string
+    triggerType: string
+    created: string
+  }> = []
 
-  if (!response?.data) return []
+  let nextPage: string | null = "/flows?page[size]=100"
 
-  return response.data.map(f => ({
-    id: f.id,
-    name: f.attributes.name,
-    status: f.attributes.status,
-    triggerType: f.attributes.trigger_type,
-    created: f.attributes.created
-  }))
+  while (nextPage) {
+    const response: FlowsResponse | null = await klaviyoRequest<FlowsResponse>(apiKey, nextPage)
+
+    if (!response?.data) break
+
+    for (const f of response.data) {
+      allFlows.push({
+        id: f.id,
+        name: f.attributes.name,
+        status: f.attributes.status,
+        triggerType: f.attributes.trigger_type,
+        created: f.attributes.created
+      })
+    }
+
+    // Get next page URL if exists
+    nextPage = response.links?.next ? response.links.next.replace(KLAVIYO_API_URL, "") : null
+
+    // Rate limit between pages
+    if (nextPage) await sleep(500)
+  }
+
+  console.log(`[Klaviyo] Fetched ${allFlows.length} total flows`)
+  return allFlows
 }
 
-// Get campaigns - filter by email channel
+// Get ALL campaigns with pagination - filter by email channel
 async function getCampaigns(apiKey: string) {
-  // Per Klaviyo docs: filter by email channel
-  const response = await klaviyoRequest<{
-    data: Array<{
-      id: string
-      attributes: {
-        name: string
-        status: string
-        send_time: string | null
-        created_at: string
-        archived: boolean
-      }
-    }>
-  }>(apiKey, '/campaigns?filter=equals(messages.channel,"email")')
+  const allCampaigns: Array<{
+    id: string
+    name: string
+    status: string
+    sendTime: string | null
+    createdAt: string
+    archived: boolean
+  }> = []
 
-  if (!response?.data) return []
+  // Per Klaviyo docs: filter by email channel with pagination
+  let nextPage: string | null = '/campaigns?filter=equals(messages.channel,"email")&page[size]=100'
 
-  return response.data.map(c => ({
-    id: c.id,
-    name: c.attributes.name,
-    status: c.attributes.status,
-    sendTime: c.attributes.send_time,
-    createdAt: c.attributes.created_at,
-    archived: c.attributes.archived
-  }))
+  while (nextPage) {
+    const response: CampaignsResponse | null = await klaviyoRequest<CampaignsResponse>(apiKey, nextPage)
+
+    if (!response?.data) break
+
+    for (const c of response.data) {
+      allCampaigns.push({
+        id: c.id,
+        name: c.attributes.name,
+        status: c.attributes.status,
+        sendTime: c.attributes.send_time,
+        createdAt: c.attributes.created_at,
+        archived: c.attributes.archived
+      })
+    }
+
+    // Get next page URL if exists
+    nextPage = response.links?.next ? response.links.next.replace(KLAVIYO_API_URL, "") : null
+
+    // Rate limit between pages
+    if (nextPage) await sleep(500)
+  }
+
+  console.log(`[Klaviyo] Fetched ${allCampaigns.length} total campaigns`)
+  return allCampaigns
 }
 
 // Query Flow Values Report - per Klaviyo Reporting API docs
@@ -440,11 +524,8 @@ async function getCampaignValuesReport(
     return { totalRevenue: 0, totalConversions: 0, campaigns: [], stats: {} }
   }
 
-  // Limit campaigns to avoid timeout - get most recent ones
-  const MAX_CAMPAIGNS = 10
-  const limitedCampaigns = campaignIds.slice(0, MAX_CAMPAIGNS)
-
-  console.log(`[Klaviyo] Getting campaign values report for ${limitedCampaigns.length} campaigns (limited from ${campaignIds.length})`)
+  // Process ALL campaigns - no limit with extended Vercel timeout
+  console.log(`[Klaviyo] Getting campaign values report for ALL ${campaignIds.length} campaigns`)
 
   // Simplified statistics - only what we need for revenue
   const statistics = [
@@ -473,15 +554,18 @@ async function getCampaignValuesReport(
     clickRate: number
   }> = []
 
-  // Process campaigns in parallel batches of 3 with delay between batches
-  const BATCH_SIZE = 3
-  for (let i = 0; i < limitedCampaigns.length; i += BATCH_SIZE) {
-    const batch = limitedCampaigns.slice(i, i + BATCH_SIZE)
+  // Process campaigns in parallel batches of 5 with delay between batches
+  // Increased batch size since we have extended timeout (5 minutes)
+  const BATCH_SIZE = 5
+  for (let i = 0; i < campaignIds.length; i += BATCH_SIZE) {
+    const batch = campaignIds.slice(i, i + BATCH_SIZE)
 
     // Wait between batches to respect rate limits
     if (i > 0) {
       await sleep(1500) // 1.5 seconds between batches
     }
+
+    console.log(`[Klaviyo] Processing campaigns batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(campaignIds.length / BATCH_SIZE)}`)
 
     // Process batch in parallel
     const batchResults = await Promise.all(
@@ -704,9 +788,9 @@ export async function GET(request: NextRequest) {
           totalCampaigns: allCampaigns.length,
           sentCampaigns: allCampaigns.filter(c => c.status === "sent").length,
         },
-        lists: listMetrics.lists.slice(0, 10),
-        flows: allFlows.slice(0, 10),
-        campaigns: allCampaigns.filter(c => c.status === "sent").slice(0, 10),
+        lists: listMetrics.lists, // ALL lists
+        flows: allFlows, // ALL flows
+        campaigns: allCampaigns.filter(c => c.status === "sent"), // ALL sent campaigns
         integrations: { hasEcommerce: false }
       }, { headers: corsHeaders() })
     }
@@ -825,7 +909,7 @@ export async function GET(request: NextRequest) {
         totalDelivered: campaignReport.totalDelivered,
         avgOpenRate: campaignReport.stats.openRate || 0,
         avgClickRate: campaignReport.stats.clickRate || 0,
-        campaigns: campaignsWithNames.sort((a, b) => b.revenue - a.revenue).slice(0, 10),
+        campaigns: campaignsWithNames.sort((a, b) => b.revenue - a.revenue), // ALL campaigns
       },
 
       flowPerformance: {
@@ -834,24 +918,24 @@ export async function GET(request: NextRequest) {
         totalDelivered: flowReport.totalDelivered,
         avgOpenRate: flowReport.stats.openRate || 0,
         avgClickRate: flowReport.stats.clickRate || 0,
-        flows: flowsWithNames.sort((a, b) => b.revenue - a.revenue).slice(0, 10),
+        flows: flowsWithNames.sort((a, b) => b.revenue - a.revenue), // ALL flows
       },
 
-      lists: listMetrics.lists.slice(0, 10),
+      lists: listMetrics.lists, // ALL lists
 
       flows: allFlows.map(f => ({
         id: f.id,
         name: f.name,
         status: f.status,
         triggerType: f.triggerType
-      })).slice(0, 20),
+      })), // ALL flows
 
       campaigns: campaignsInPeriod.map(c => ({
         id: c.id,
         name: c.name,
         status: c.status,
         sendTime: c.sendTime
-      })).slice(0, 20),
+      })), // ALL campaigns in period
 
       integrations: {
         hasEcommerce: true,
