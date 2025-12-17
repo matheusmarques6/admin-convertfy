@@ -197,8 +197,6 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
       if (form.url) storeData.store_url = form.url
       // Platform is an ENUM - convert to lowercase
       if (form.platform) storeData.platform = form.platform.toLowerCase()
-      // Currency
-      if (form.currency) storeData.currency = form.currency
 
       // Shopify fields
       if (form.shopify_store_domain) storeData.shopify_store_domain = form.shopify_store_domain
@@ -657,18 +655,18 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
 
       {/* Add/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Store className="h-5 w-5" />
               {editStore ? "Editar Loja" : "Nova Loja"}
             </DialogTitle>
             <DialogDescription>
-              Configure os dados da loja e integração Klaviyo
+              Configure os dados da loja e integrações
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4 max-h-[60vh] overflow-y-auto">
+          <div className="space-y-4 py-4 overflow-y-auto flex-1 pr-2">
             <div className="space-y-2">
               <Label>Nome da Loja *</Label>
               <Input
