@@ -1,7 +1,26 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 
-const SHOPIFY_API_VERSION = "2024-01"
+// Use a more recent API version - Shopify deprecates old versions after ~12 months
+const SHOPIFY_API_VERSION = "2024-10"
+
+// Helper to normalize Shopify domain
+function normalizeShopifyDomain(domain: string): string {
+  // Remove protocol and trailing slashes
+  let clean = domain
+    .trim()
+    .replace(/^https?:\/\//, "")
+    .replace(/\/$/, "")
+
+  // If it doesn't contain .myshopify.com, add it
+  if (!clean.includes(".myshopify.com")) {
+    // Remove any other domain suffixes if present
+    clean = clean.replace(/\.(com|com\.br|net|org|store|shop)$/i, "")
+    clean = `${clean}.myshopify.com`
+  }
+
+  return clean
+}
 
 // CORS headers helper
 function corsHeaders() {
@@ -409,15 +428,18 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Loja não encontrada" }, { status: 404 })
     }
 
-    const { shopify_store_domain: storeDomain, shopify_access_token: accessToken } = store
+    const { shopify_store_domain, shopify_access_token: accessToken } = store
 
-    if (!storeDomain || !accessToken) {
+    if (!shopify_store_domain || !accessToken) {
       return NextResponse.json({
         success: false,
         connected: false,
         error: "Credenciais Shopify não configuradas",
       })
     }
+
+    // Normalize the domain
+    const storeDomain = normalizeShopifyDomain(shopify_store_domain)
 
     // Calculate date range
     const now = new Date()

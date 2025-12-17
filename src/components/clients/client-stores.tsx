@@ -379,7 +379,12 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
             : "A API da Shopify está funcionando corretamente",
         })
       } else {
-        throw new Error(data.error || "Falha na conexão")
+        // Show more detailed error message
+        const errorMsg = data.error || "Falha na conexão"
+        const details = data.details?.domain
+          ? ` (Domínio: ${data.details.domain})`
+          : ""
+        throw new Error(errorMsg + details)
       }
     } catch (error) {
       toast({
@@ -387,6 +392,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
         title: "Erro na conexão Shopify",
         description: error instanceof Error ? error.message : "Verifique as credenciais da Shopify",
       })
+      console.error("Shopify connection error:", error)
     } finally {
       setTestingShopify(null)
     }
