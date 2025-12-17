@@ -512,39 +512,96 @@ async function getFlowValuesReport(
 
 // Query Campaign Values Report - per Klaviyo Reporting API docs
 // https://developers.klaviyo.com/en/reference/query_campaign_values
-// Process campaigns in parallel batches to avoid timeout
+// Query ALL campaigns at once (like flows) for better accuracy
 async function getCampaignValuesReport(
   apiKey: string,
-  campaignIds: string[],
   metricId: string,
   startDate: string,
   endDate: string
 ) {
-  if (campaignIds.length === 0) {
-    return { totalRevenue: 0, totalConversions: 0, campaigns: [], stats: {} }
-  }
+  console.log(`[Klaviyo] Getting campaign values report: ${startDate} to ${endDate}`)
 
-  // Process ALL campaigns - no limit with extended Vercel timeout
-  console.log(`[Klaviyo] Getting campaign values report for ALL ${campaignIds.length} campaigns`)
-
-  // Simplified statistics - only what we need for revenue
+  // Use same statistics as flows for consistency
   const statistics = [
+    "average_order_value",
+    "bounce_rate",
+    "click_rate",
+    "click_to_open_rate",
+    "clicks",
+    "clicks_unique",
+    "conversion_rate",
+    "conversion_uniques",
     "conversion_value",
     "conversions",
     "delivered",
-    "opens_unique",
-    "clicks_unique",
+    "delivery_rate",
     "open_rate",
-    "click_rate"
+    "opens",
+    "opens_unique",
+    "recipients",
+    "revenue_per_recipient",
+    "unsubscribe_rate"
   ]
 
-  let totalRevenue = 0
-  let totalConversions = 0
-  let totalDelivered = 0
-  let totalOpens = 0
-  let totalClicks = 0
-  const campaignResults: Array<{
-    campaignId: string
+  // Query ALL campaigns at once (no filter) - same approach as flows
+  const body = {
+    data: {
+      type: "campaign-values-report",
+      attributes: {
+        timeframe: {
+          start: `${startDate}T00:00:00+00:00`,
+          end: `${endDate}T23:59:59+00:00`
+        },
+        conversion_metric_id: metricId,
+        statistics
+      }
+    }
+  }
+
+  await sleep(MIN_REQUEST_INTERVAL)
+
+  const response = await klaviyoRequest<{
+    data: {
+      attributes: {
+        results: Array<{
+          groupings: {
+            campaign_id: string
+            send_channel: string
+          }
+          statistics: {
+            delivered?: number
+            opens?: number
+            opens_unique?: number
+            clicks?: number
+            clicks_unique?: number
+            conversion_value?: number
+            conversions?: number
+            conversion_uniques?: number
+            recipients?: number
+            delivery_rate?: number
+            bounce_rate?: number
+            open_rate?: number
+            click_rate?: number
+            unsubscribe_rate?: number
+            click_to_open_rate?: number
+            average_order_value?: number
+            revenue_per_recipient?: number
+          }
+        }>
+      }
+    }
+  }>(apiKey, "/campaign-values-reports/", { method: "POST", body })
+
+  if (!response?.data?.attributes?.results) {
+    console.log("[Klaviyo] No campaign results returned")
+    return { totalRevenue: 0, totalConversions: 0, campaigns: [], stats: {} }
+  }
+
+  const results = response.data.attributes.results
+  console.log(`[Klaviyo] Campaign results: ${results.length} entries`)
+
+  // Aggregate by campaign_id
+  const campaignMap = new Map<string, {
     revenue: number
     conversions: number
     delivered: number
@@ -552,92 +609,61 @@ async function getCampaignValuesReport(
     clicks: number
     openRate: number
     clickRate: number
-  }> = []
+    bounceRate: number
+    unsubscribeRate: number
+  }>()
 
-  // Process campaigns in parallel batches of 5 with delay between batches
-  // Increased batch size since we have extended timeout (5 minutes)
-  const BATCH_SIZE = 5
-  for (let i = 0; i < campaignIds.length; i += BATCH_SIZE) {
-    const batch = campaignIds.slice(i, i + BATCH_SIZE)
+  let totalRevenue = 0
+  let totalConversions = 0
+  let totalDelivered = 0
+  let totalOpens = 0
+  let totalClicks = 0
+  let sumBounceRate = 0
+  let sumUnsubscribeRate = 0
+  let rateCount = 0
 
-    // Wait between batches to respect rate limits
-    if (i > 0) {
-      await sleep(1500) // 1.5 seconds between batches
+  for (const r of results) {
+    const campaignId = r.groupings.campaign_id
+    const stats = r.statistics
+
+    console.log(`[Klaviyo] Campaign ${campaignId}: conversion_value=${stats.conversion_value}, delivered=${stats.delivered}`)
+
+    totalRevenue += stats.conversion_value || 0
+    totalConversions += stats.conversions || 0
+    totalDelivered += stats.delivered || 0
+    totalOpens += stats.opens_unique || 0
+    totalClicks += stats.clicks_unique || 0
+
+    if (stats.bounce_rate !== undefined) {
+      sumBounceRate += stats.bounce_rate
+      rateCount++
+    }
+    if (stats.unsubscribe_rate !== undefined) {
+      sumUnsubscribeRate += stats.unsubscribe_rate
     }
 
-    console.log(`[Klaviyo] Processing campaigns batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(campaignIds.length / BATCH_SIZE)}`)
-
-    // Process batch in parallel
-    const batchResults = await Promise.all(
-      batch.map(async (campaignId) => {
-        const body = {
-          data: {
-            type: "campaign-values-report",
-            attributes: {
-              timeframe: {
-                start: `${startDate}T00:00:00+00:00`,
-                end: `${endDate}T23:59:59+00:00`
-              },
-              conversion_metric_id: metricId,
-              filter: `equals(campaign_id,"${campaignId}")`,
-              statistics
-            }
-          }
-        }
-
-        const response = await klaviyoRequest<{
-          data: {
-            attributes: {
-              results: Array<{
-                statistics: {
-                  delivered?: number
-                  opens_unique?: number
-                  clicks_unique?: number
-                  conversion_value?: number
-                  conversions?: number
-                  open_rate?: number
-                  click_rate?: number
-                }
-              }>
-            }
-          }
-        }>(apiKey, "/campaign-values-reports/", { method: "POST", body })
-
-        if (response?.data?.attributes?.results?.[0]) {
-          const stats = response.data.attributes.results[0].statistics
-          return {
-            campaignId,
-            revenue: stats.conversion_value || 0,
-            conversions: stats.conversions || 0,
-            delivered: stats.delivered || 0,
-            opens: stats.opens_unique || 0,
-            clicks: stats.clicks_unique || 0,
-            openRate: stats.open_rate || 0,
-            clickRate: stats.click_rate || 0
-          }
-        }
-        return null
-      })
-    )
-
-    // Aggregate results
-    for (const result of batchResults) {
-      if (result) {
-        totalRevenue += result.revenue
-        totalConversions += result.conversions
-        totalDelivered += result.delivered
-        totalOpens += result.opens
-        totalClicks += result.clicks
-
-        if (result.revenue > 0 || result.conversions > 0 || result.delivered > 0) {
-          campaignResults.push(result)
-          console.log(`[Klaviyo] Campaign ${result.campaignId}: Revenue=${result.revenue.toFixed(2)}`)
-        }
-      }
+    const existing = campaignMap.get(campaignId) || {
+      revenue: 0, conversions: 0, delivered: 0, opens: 0, clicks: 0,
+      openRate: 0, clickRate: 0, bounceRate: 0, unsubscribeRate: 0
     }
+
+    campaignMap.set(campaignId, {
+      revenue: existing.revenue + (stats.conversion_value || 0),
+      conversions: existing.conversions + (stats.conversions || 0),
+      delivered: existing.delivered + (stats.delivered || 0),
+      opens: existing.opens + (stats.opens_unique || 0),
+      clicks: existing.clicks + (stats.clicks_unique || 0),
+      openRate: stats.open_rate || existing.openRate,
+      clickRate: stats.click_rate || existing.clickRate,
+      bounceRate: stats.bounce_rate || existing.bounceRate,
+      unsubscribeRate: stats.unsubscribe_rate || existing.unsubscribeRate
+    })
   }
 
   console.log(`[Klaviyo] Campaign totals - Revenue: ${totalRevenue.toFixed(2)}, Conversions: ${totalConversions}`)
+
+  const avgBounceRate = rateCount > 0 ? sumBounceRate / rateCount : 0
+  const avgUnsubscribeRate = rateCount > 0 ? sumUnsubscribeRate / rateCount : 0
 
   return {
     totalRevenue,
@@ -645,14 +671,17 @@ async function getCampaignValuesReport(
     totalDelivered,
     totalOpens,
     totalClicks,
-    avgBounceRate: 0,
-    avgUnsubscribeRate: 0,
-    campaigns: campaignResults,
+    avgBounceRate,
+    avgUnsubscribeRate,
+    campaigns: Array.from(campaignMap.entries()).map(([campaignId, stats]) => ({
+      campaignId,
+      ...stats
+    })),
     stats: {
       openRate: totalDelivered > 0 ? (totalOpens / totalDelivered) * 100 : 0,
       clickRate: totalDelivered > 0 ? (totalClicks / totalDelivered) * 100 : 0,
-      bounceRate: 0,
-      unsubscribeRate: 0
+      bounceRate: avgBounceRate,
+      unsubscribeRate: avgUnsubscribeRate
     }
   }
 }
@@ -807,18 +836,39 @@ export async function GET(request: NextRequest) {
     const fim = new Date(endDateStr)
     fim.setHours(23, 59, 59, 999)
 
-    const campaignsInPeriod = allCampaigns.filter(c => {
-      if (!c.sendTime) return false
-      const sendDate = new Date(c.sendTime)
-      return sendDate >= inicio && sendDate <= fim
+    console.log(`[Klaviyo] Total campaigns fetched: ${allCampaigns.length}`)
+    console.log(`[Klaviyo] Filtering for period: ${inicio.toISOString()} to ${fim.toISOString()}`)
+
+    // Log all campaigns with send times for debugging
+    const sentCampaigns = allCampaigns.filter(c => c.status === "sent")
+    console.log(`[Klaviyo] Sent campaigns: ${sentCampaigns.length}`)
+    sentCampaigns.forEach(c => {
+      console.log(`[Klaviyo] Campaign: ${c.name} | sendTime: ${c.sendTime} | status: ${c.status}`)
     })
 
-    console.log(`[Klaviyo] Campaigns in period: ${campaignsInPeriod.length} of ${allCampaigns.length}`)
+    const campaignsInPeriod = allCampaigns.filter(c => {
+      if (!c.sendTime) {
+        console.log(`[Klaviyo] Campaign "${c.name}" has no sendTime, skipping`)
+        return false
+      }
+      const sendDate = new Date(c.sendTime)
+      const isInPeriod = sendDate >= inicio && sendDate <= fim
+      if (!isInPeriod) {
+        console.log(`[Klaviyo] Campaign "${c.name}" sendTime ${c.sendTime} is outside period`)
+      }
+      return isInPeriod
+    })
 
-    // Get reporting data
+    console.log(`[Klaviyo] Campaigns in period: ${campaignsInPeriod.length} of ${allCampaigns.length} total`)
+    campaignsInPeriod.forEach(c => {
+      console.log(`[Klaviyo] -> Campaign in period: ${c.name} (${c.id}) | sendTime: ${c.sendTime}`)
+    })
+
+    // Get reporting data - query ALL flows and campaigns at once (no filtering)
+    // This matches Klaviyo dashboard behavior for the selected period
     const [flowReport, campaignReport] = await Promise.all([
       getFlowValuesReport(apiKey, metricId, startDateStr, endDateStr),
-      getCampaignValuesReport(apiKey, campaignsInPeriod.map(c => c.id), metricId, startDateStr, endDateStr)
+      getCampaignValuesReport(apiKey, metricId, startDateStr, endDateStr)
     ])
 
     // Merge flow data with names
@@ -831,15 +881,15 @@ export async function GET(request: NextRequest) {
       }
     }).filter(f => f.revenue > 0 || f.delivered > 0)
 
-    // Merge campaign data with names
+    // Merge campaign data with names (search ALL campaigns, not just filtered)
     const campaignsWithNames = campaignReport.campaigns.map(cr => {
-      const campInfo = campaignsInPeriod.find(c => c.id === cr.campaignId)
+      const campInfo = allCampaigns.find(c => c.id === cr.campaignId)
       return {
         ...cr,
         name: campInfo?.name || "Unknown Campaign",
         sendTime: campInfo?.sendTime
       }
-    })
+    }).filter(c => c.revenue > 0 || c.delivered > 0)
 
     // Calculate totals
     const totalKlaviyoRevenue = flowReport.totalRevenue + campaignReport.totalRevenue
