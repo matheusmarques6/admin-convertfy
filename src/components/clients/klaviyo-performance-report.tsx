@@ -323,13 +323,41 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
     }
   }
 
+  // Get period label showing actual dates from API response (matches Klaviyo dashboard)
   const getPeriodLabel = () => {
+    // Use actual dates from API response
+    if (reportData?.dateRange?.start && reportData?.dateRange?.end) {
+      const startDate = new Date(reportData.dateRange.start)
+      const endDate = new Date(reportData.dateRange.end)
+      const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
+
+      // Format like Klaviyo: "16 de nov. de 2025 – 16 de dez. de 2025"
+      const formatDate = (d: Date) => {
+        const day = d.getDate()
+        const month = months[d.getMonth()].substring(0, 3).toLowerCase()
+        const year = d.getFullYear()
+        return `${day} de ${month}. de ${year}`
+      }
+
+      return `${formatDate(startDate)} – ${formatDate(endDate)}`
+    }
+
+    // Fallback to current month
     const now = new Date()
     const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro']
     return `${months[now.getMonth()].toUpperCase()} ${now.getFullYear()}`
   }
 
+  // Get date range for display (uses actual API dates)
   const getDateRangeLabel = () => {
+    // Use actual dates from API response
+    if (reportData?.dateRange?.start && reportData?.dateRange?.end) {
+      const start = new Date(reportData.dateRange.start).toLocaleDateString('pt-BR')
+      const end = new Date(reportData.dateRange.end).toLocaleDateString('pt-BR')
+      return `${start} - ${end}`
+    }
+
+    // Fallback to calculated dates
     const now = new Date()
     const labels: Record<DateRange, string> = {
       "7d": `${new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toLocaleDateString('pt-BR')} - ${now.toLocaleDateString('pt-BR')}`,

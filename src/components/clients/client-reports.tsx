@@ -338,18 +338,20 @@ export function ClientReports({ clientId }: ClientReportsProps) {
   }
 
   const getPeriodLabel = (period: string, dateRange?: { start: string; end: string }) => {
+    // Always show actual dates if available (matches Klaviyo dashboard format)
+    if (dateRange?.start && dateRange?.end) {
+      const start = new Date(dateRange.start).toLocaleDateString('pt-BR')
+      const end = new Date(dateRange.end).toLocaleDateString('pt-BR')
+      return `${start} - ${end}`
+    }
+
+    // Fallback to period labels if no dates available
     switch (period) {
-      case "7d": return "7 dias"
-      case "30d": return "30 dias"
-      case "90d": return "90 dias"
-      case "all": return "12 meses"
-      case "custom":
-        if (dateRange?.start && dateRange?.end) {
-          const start = new Date(dateRange.start).toLocaleDateString('pt-BR')
-          const end = new Date(dateRange.end).toLocaleDateString('pt-BR')
-          return `${start} - ${end}`
-        }
-        return "Personalizado"
+      case "7d": return "Últimos 7 dias"
+      case "30d": return "Últimos 30 dias"
+      case "90d": return "Últimos 90 dias"
+      case "all": return "Últimos 12 meses"
+      case "custom": return "Personalizado"
       default: return period
     }
   }
