@@ -114,7 +114,7 @@ function getCurrencySymbol(currency: string): string {
   return symbols[currency] || currency
 }
 
-// Get account info
+// Get account info including timezone
 async function getAccountInfo(apiKey: string) {
   const response = await klaviyoRequest<{
     data: Array<{
@@ -122,6 +122,7 @@ async function getAccountInfo(apiKey: string) {
       attributes: {
         preferred_currency: string
         locale: string
+        timezone: string
         test_account: boolean
         contact_information: { organization_name: string }
       }
@@ -129,14 +130,45 @@ async function getAccountInfo(apiKey: string) {
   }>(apiKey, "/accounts/")
 
   if (!response?.data?.[0]) {
-    return { currency: "BRL", locale: "pt-BR", orgName: "" }
+    return { currency: "BRL", locale: "pt-BR", orgName: "", timezone: "America/Sao_Paulo" }
   }
 
+  const attrs = response.data[0].attributes
+  console.log(`[Klaviyo] Account timezone: ${attrs.timezone}`)
+
   return {
-    currency: response.data[0].attributes.preferred_currency || "BRL",
-    locale: response.data[0].attributes.locale || "pt-BR",
-    orgName: response.data[0].attributes.contact_information?.organization_name || ""
+    currency: attrs.preferred_currency || "BRL",
+    locale: attrs.locale || "pt-BR",
+    orgName: attrs.contact_information?.organization_name || "",
+    timezone: attrs.timezone || "America/Sao_Paulo"
   }
+}
+
+// Convert timezone to UTC offset string (e.g., "America/Sao_Paulo" -> "-03:00")
+function getTimezoneOffset(timezone: string): string {
+  try {
+    // Create a date and format it with the timezone to get the offset
+    const now = new Date()
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      timeZoneName: 'shortOffset'
+    })
+    const parts = formatter.formatToParts(now)
+    const offsetPart = parts.find(p => p.type === 'timeZoneName')
+
+    if (offsetPart?.value) {
+      // Convert "GMT-3" to "-03:00" format
+      const match = offsetPart.value.match(/GMT([+-])(\d+)/)
+      if (match) {
+        const sign = match[1]
+        const hours = match[2].padStart(2, '0')
+        return `${sign}${hours}:00`
+      }
+    }
+  } catch (e) {
+    console.log(`[Klaviyo] Error parsing timezone ${timezone}, using UTC`)
+  }
+  return "+00:00"
 }
 
 // Get all metrics to find Placed Order metric ID
@@ -340,9 +372,10 @@ async function getFlowValuesReport(
   apiKey: string,
   metricId: string,
   startDate: string,
-  endDate: string
+  endDate: string,
+  timezoneOffset: string = "+00:00"
 ) {
-  console.log(`[Klaviyo] Getting flow values report: ${startDate} to ${endDate}`)
+  console.log(`[Klaviyo] Getting flow values report: ${startDate} to ${endDate} (timezone: ${timezoneOffset})`)
 
   // Valid statistics per Klaviyo Reporting API
   // Note: bounces, unsubscribes, spam_complaints are NOT valid for flow-values-reports
@@ -368,14 +401,15 @@ async function getFlowValuesReport(
   ]
 
   // Timeframe format per docs: ISO 8601 with timezone
+  // Use account timezone to match Klaviyo dashboard
   // https://developers.klaviyo.com/en/reference/query_flow_values
   const body = {
     data: {
       type: "flow-values-report",
       attributes: {
         timeframe: {
-          start: `${startDate}T00:00:00+00:00`,
-          end: `${endDate}T23:59:59+00:00`
+          start: `${startDate}T00:00:00${timezoneOffset}`,
+          end: `${endDate}T23:59:59${timezoneOffset}`
         },
         conversion_metric_id: metricId,
         statistics
@@ -517,9 +551,10 @@ async function getCampaignValuesReport(
   apiKey: string,
   metricId: string,
   startDate: string,
-  endDate: string
+  endDate: string,
+  timezoneOffset: string = "+00:00"
 ) {
-  console.log(`[Klaviyo] Getting campaign values report: ${startDate} to ${endDate}`)
+  console.log(`[Klaviyo] Getting campaign values report: ${startDate} to ${endDate} (timezone: ${timezoneOffset})`)
 
   // Use same statistics as flows for consistency
   const statistics = [
@@ -544,13 +579,14 @@ async function getCampaignValuesReport(
   ]
 
   // Query ALL campaigns at once (no filter) - same approach as flows
+  // Use account timezone to match Klaviyo dashboard
   const body = {
     data: {
       type: "campaign-values-report",
       attributes: {
         timeframe: {
-          start: `${startDate}T00:00:00+00:00`,
-          end: `${endDate}T23:59:59+00:00`
+          start: `${startDate}T00:00:00${timezoneOffset}`,
+          end: `${endDate}T23:59:59${timezoneOffset}`
         },
         conversion_metric_id: metricId,
         statistics
@@ -864,11 +900,15 @@ export async function GET(request: NextRequest) {
       console.log(`[Klaviyo] -> Campaign in period: ${c.name} (${c.id}) | sendTime: ${c.sendTime}`)
     })
 
+    // Get timezone offset from account settings to match Klaviyo dashboard
+    const timezoneOffset = getTimezoneOffset(accountInfo.timezone)
+    console.log(`[Klaviyo] Using timezone offset: ${timezoneOffset} (from ${accountInfo.timezone})`)
+
     // Get reporting data - query ALL flows and campaigns at once (no filtering)
     // This matches Klaviyo dashboard behavior for the selected period
     const [flowReport, campaignReport] = await Promise.all([
-      getFlowValuesReport(apiKey, metricId, startDateStr, endDateStr),
-      getCampaignValuesReport(apiKey, metricId, startDateStr, endDateStr)
+      getFlowValuesReport(apiKey, metricId, startDateStr, endDateStr, timezoneOffset),
+      getCampaignValuesReport(apiKey, metricId, startDateStr, endDateStr, timezoneOffset)
     ])
 
     // Merge flow data with names
