@@ -25,7 +25,6 @@ import {
   MousePointerClick,
   AlertCircle,
   Lightbulb,
-  PieChart,
   MailOpen,
   Send,
   Package,
