@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
 
-// Use a more recent API version - Shopify deprecates old versions
-const SHOPIFY_API_VERSION = "2024-10"
-
 // CORS headers helper
 function corsHeaders() {
   return {
