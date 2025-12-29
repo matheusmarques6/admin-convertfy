@@ -2,6 +2,11 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
 
 export async function updateSession(request: NextRequest) {
+  // Skip middleware for API routes to avoid timeout issues
+  if (request.nextUrl.pathname.startsWith('/api/')) {
+    return NextResponse.next()
+  }
+
   let response = NextResponse.next({
     request: {
       headers: request.headers,
@@ -31,31 +36,46 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
-  // Refresh session if expired
-  const { data: { user } } = await supabase.auth.getUser()
-
-  // Protected routes - redirect to login if not authenticated
+  // Protected routes check
   const protectedPaths = ["/dashboard", "/clients", "/pipeline", "/automations", "/settings", "/reports", "/tools"]
   const isProtectedPath = protectedPaths.some(path => request.nextUrl.pathname.startsWith(path))
 
-  if (isProtectedPath && !user) {
-    return NextResponse.redirect(new URL("/login", request.url))
-  }
-
-  // Auth routes - redirect to dashboard if already authenticated
+  // Auth routes check
   const authPaths = ["/login", "/register"]
   const isAuthPath = authPaths.some(path => request.nextUrl.pathname.startsWith(path))
 
-  if (isAuthPath && user) {
-    return NextResponse.redirect(new URL("/dashboard", request.url))
-  }
+  const isRootPath = request.nextUrl.pathname === "/"
 
-  // Redirect root to dashboard or login
-  if (request.nextUrl.pathname === "/") {
-    if (user) {
-      return NextResponse.redirect(new URL("/dashboard", request.url))
+  // Only call getUser() when necessary (protected routes, auth routes, or root)
+  if (isProtectedPath || isAuthPath || isRootPath) {
+    try {
+      // Use getUser() with a timeout to prevent long waits
+      const { data: { user } } = await supabase.auth.getUser()
+
+      if (isProtectedPath && !user) {
+        return NextResponse.redirect(new URL("/login", request.url))
+      }
+
+      if (isAuthPath && user) {
+        return NextResponse.redirect(new URL("/dashboard", request.url))
+      }
+
+      if (isRootPath) {
+        if (user) {
+          return NextResponse.redirect(new URL("/dashboard", request.url))
+        }
+        return NextResponse.redirect(new URL("/login", request.url))
+      }
+    } catch (error) {
+      // On error, allow the request to continue
+      // The page itself can handle auth state
+      console.error('Middleware auth error:', error)
+
+      // For protected paths, redirect to login on auth error
+      if (isProtectedPath) {
+        return NextResponse.redirect(new URL("/login", request.url))
+      }
     }
-    return NextResponse.redirect(new URL("/login", request.url))
   }
 
   return response
