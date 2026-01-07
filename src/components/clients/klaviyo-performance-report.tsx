@@ -13,10 +13,8 @@ import {
   Calendar,
   DollarSign,
   TrendingUp,
-  TrendingDown,
   Send,
   Repeat,
-  Store,
   XCircle,
   X,
   MessageSquare,
@@ -29,7 +27,6 @@ import {
   BarChart3,
   ArrowUpRight,
   ArrowDownRight,
-  Percent,
   CreditCard,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
