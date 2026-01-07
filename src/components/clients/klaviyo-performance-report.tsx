@@ -25,9 +25,6 @@ import {
   Sparkles,
   Maximize2,
   BarChart3,
-  ArrowUpRight,
-  ArrowDownRight,
-  CreditCard,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -219,141 +216,6 @@ const formatPercent = (value: number | undefined | null): string => {
   return `${num.toFixed(2)}%`
 }
 
-// ============ METRIC CARD COMPONENT ============
-const MetricCard = ({
-  title,
-  value,
-  subtitle,
-  icon: Icon,
-  trend,
-  trendValue,
-  color = 'emerald',
-  size = 'default'
-}: {
-  title: string
-  value: string
-  subtitle?: string
-  icon: React.ElementType
-  trend?: 'up' | 'down' | 'neutral'
-  trendValue?: string
-  color?: 'emerald' | 'violet' | 'blue' | 'amber' | 'cyan' | 'rose' | 'zinc'
-  size?: 'default' | 'large'
-}) => {
-  const colorClasses = {
-    emerald: { bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', text: 'text-emerald-400', icon: 'text-emerald-400' },
-    violet: { bg: 'bg-violet-500/10', border: 'border-violet-500/20', text: 'text-violet-400', icon: 'text-violet-400' },
-    blue: { bg: 'bg-blue-500/10', border: 'border-blue-500/20', text: 'text-blue-400', icon: 'text-blue-400' },
-    amber: { bg: 'bg-amber-500/10', border: 'border-amber-500/20', text: 'text-amber-400', icon: 'text-amber-400' },
-    cyan: { bg: 'bg-cyan-500/10', border: 'border-cyan-500/20', text: 'text-cyan-400', icon: 'text-cyan-400' },
-    rose: { bg: 'bg-rose-500/10', border: 'border-rose-500/20', text: 'text-rose-400', icon: 'text-rose-400' },
-    zinc: { bg: 'bg-zinc-700/50', border: 'border-zinc-600/50', text: 'text-zinc-300', icon: 'text-zinc-400' },
-  }
-  const c = colorClasses[color]
-
-  return (
-    <div className={`rounded-xl border ${c.border} ${c.bg} p-4 ${size === 'large' ? 'p-6' : ''}`}>
-      <div className="flex items-start justify-between mb-3">
-        <div className={`w-10 h-10 rounded-xl ${c.bg} border ${c.border} flex items-center justify-center`}>
-          <Icon className={`w-5 h-5 ${c.icon}`} />
-        </div>
-        {trend && trendValue && (
-          <div className={`flex items-center gap-1 text-xs px-2 py-1 rounded-lg ${
-            trend === 'up' ? 'bg-emerald-500/10 text-emerald-400' :
-            trend === 'down' ? 'bg-rose-500/10 text-rose-400' :
-            'bg-zinc-700/50 text-zinc-400'
-          }`}>
-            {trend === 'up' ? <ArrowUpRight className="w-3 h-3" /> :
-             trend === 'down' ? <ArrowDownRight className="w-3 h-3" /> : null}
-            {trendValue}
-          </div>
-        )}
-      </div>
-      <p className={`${size === 'large' ? 'text-3xl' : 'text-2xl'} font-bold ${c.text} mb-1`}>{value}</p>
-      <p className="text-xs text-zinc-400 uppercase tracking-wide">{title}</p>
-      {subtitle && <p className="text-xs text-zinc-500 mt-1">{subtitle}</p>}
-    </div>
-  )
-}
-
-// ============ CIRCULAR PROGRESS ============
-const CircularProgress = ({
-  value,
-  size = 80,
-  strokeWidth = 6,
-  color = '#10b981',
-  label,
-}: {
-  value: number
-  size?: number
-  strokeWidth?: number
-  color?: string
-  label?: string
-}) => {
-  const radius = (size - strokeWidth) / 2
-  const circumference = radius * 2 * Math.PI
-  const offset = circumference - (Math.min(value, 100) / 100) * circumference
-
-  return (
-    <div className="flex flex-col items-center">
-      <div className="relative">
-        <svg width={size} height={size} className="transform -rotate-90">
-          <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="#27272a" strokeWidth={strokeWidth} />
-          <circle
-            cx={size / 2} cy={size / 2} r={radius} fill="none" stroke={color} strokeWidth={strokeWidth}
-            strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="round"
-            className="transition-all duration-1000"
-          />
-        </svg>
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className="text-lg font-bold text-white">{value.toFixed(1)}%</span>
-        </div>
-      </div>
-      {label && <p className="text-xs text-zinc-400 mt-2 text-center">{label}</p>}
-    </div>
-  )
-}
-
-// ============ PROGRESS BAR ============
-const ProgressBar = ({
-  value,
-  label,
-  amount,
-  color = 'emerald',
-  icon: Icon,
-}: {
-  value: number
-  label: string
-  amount: string
-  color?: string
-  icon: React.ElementType
-}) => {
-  const colorClasses: Record<string, string> = {
-    emerald: 'from-emerald-500 to-emerald-400',
-    violet: 'from-violet-500 to-violet-400',
-    blue: 'from-blue-500 to-blue-400',
-    amber: 'from-amber-500 to-amber-400',
-    cyan: 'from-cyan-500 to-cyan-400',
-  }
-
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Icon className={`w-4 h-4 text-${color}-400`} />
-          <span className="text-sm text-zinc-300">{label}</span>
-        </div>
-        <span className="text-sm font-semibold text-white">{amount}</span>
-      </div>
-      <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
-        <div
-          className={`h-full bg-gradient-to-r ${colorClasses[color] || colorClasses.emerald} rounded-full transition-all duration-1000`}
-          style={{ width: `${Math.min(value, 100)}%` }}
-        />
-      </div>
-    </div>
-  )
-}
-
 // ============ MAIN COMPONENT ============
 export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }: KlaviyoPerformanceReportProps) {
   const [reportData, setReportData] = useState<KlaviyoReportData | null>(null)
@@ -445,10 +307,10 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
     try {
       const html2pdf = (await import("html2pdf.js")).default
       await html2pdf().set({
-        margin: [8, 8, 8, 8],
+        margin: [10, 10, 10, 10],
         filename: `relatorio-${storeName.replace(/\s+/g, '-').toLowerCase()}-${new Date().toISOString().split('T')[0]}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#09090b' },
+        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#18181b' },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
       }).from(reportRef.current).save()
     } catch (err) {
@@ -532,220 +394,371 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
   const delivered = reportData.emailPerformance?.delivered || 0
   const bounced = reportData.emailPerformance?.bounced || 0
   const unsubscribed = reportData.emailPerformance?.unsubscribed || 0
+  const bounceRate = delivered > 0 ? (bounced / delivered) * 100 : 0
 
   const liveFlows = reportData.automation?.liveFlows || 0
   const totalFlows = reportData.automation?.totalFlows || 0
   const sentCampaigns = reportData.campaigns?.sent || 0
 
+  // ============ CARD STYLES ============
+  const cardBase = "bg-zinc-900/80 border border-zinc-800/60 rounded-xl p-5 transition-all duration-200 hover:translate-y-[-2px] hover:shadow-lg hover:shadow-zinc-900/50 hover:border-zinc-700/60"
+  const cardSmall = "bg-zinc-900/80 border border-zinc-800/60 rounded-lg p-4 transition-all duration-200 hover:translate-y-[-2px] hover:shadow-lg hover:shadow-zinc-900/50 hover:border-zinc-700/60"
+
   // ============ REPORT CONTENT ============
   const ReportContent = () => (
-    <div ref={reportRef} className="bg-zinc-950 text-white p-6 space-y-6">
+    <div ref={reportRef} className="bg-zinc-900 text-white p-8 space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-zinc-800 pb-6">
+      <div className="flex items-center justify-between pb-6 border-b border-zinc-800/60">
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center">
-            <BarChart3 className="w-6 h-6 text-white" />
+          <div className="w-14 h-14 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
+            <BarChart3 className="w-7 h-7 text-emerald-500" />
           </div>
           <div>
-            <h1 className="text-xl font-bold">{storeName}</h1>
-            <p className="text-sm text-zinc-400">{getFormattedDateRange()}</p>
+            <h1 className="text-2xl font-bold text-white">{storeName}</h1>
+            <p className="text-sm text-zinc-500">{getFormattedDateRange()}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Sparkles className="w-5 h-5 text-emerald-400" />
-          <span className="text-sm font-medium text-emerald-400">Relatório Convertfy</span>
+        <div className="flex items-center gap-2 bg-emerald-500/10 px-4 py-2 rounded-lg border border-emerald-500/20">
+          <Sparkles className="w-4 h-4 text-emerald-500" />
+          <span className="text-sm font-medium text-emerald-500">Relatório Convertfy</span>
         </div>
       </div>
 
       {/* Hero - Resultado Convertfy */}
-      <div className="rounded-2xl bg-gradient-to-br from-emerald-500/10 via-emerald-600/5 to-zinc-900 border border-emerald-500/20 p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <Sparkles className="w-5 h-5 text-emerald-400" />
-          <h2 className="text-lg font-bold text-emerald-400">Resultado Convertfy (Email + SMS)</h2>
+      <div className={`${cardBase} !p-6 bg-gradient-to-br from-zinc-900 via-zinc-900 to-emerald-950/20 border-emerald-500/20`}>
+        <div className="flex items-center gap-2 mb-6">
+          <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+            <Sparkles className="w-4 h-4 text-emerald-500" />
+          </div>
+          <h2 className="text-base font-semibold text-white">Resultado Convertfy (Email + SMS)</h2>
         </div>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-4 gap-8">
           <div>
-            <p className="text-3xl font-bold text-white">{formatCurrency(convertfyRevenue)}</p>
-            <p className="text-sm text-zinc-400">Receita Atribuída</p>
+            <p className="text-3xl font-bold text-white tracking-tight">{formatCurrency(convertfyRevenue)}</p>
+            <p className="text-sm text-zinc-500 mt-1">Receita Atribuída</p>
           </div>
           <div>
-            <p className="text-3xl font-bold text-emerald-400">{formatPercent(convertfyPercent)}</p>
-            <p className="text-sm text-zinc-400">do Faturamento Total</p>
+            <p className="text-3xl font-bold text-emerald-500 tracking-tight">{formatPercent(convertfyPercent)}</p>
+            <p className="text-sm text-zinc-500 mt-1">do Faturamento Total</p>
           </div>
           <div>
-            <p className="text-3xl font-bold text-white">{formatNumber(convertfyOrders)}</p>
-            <p className="text-sm text-zinc-400">Pedidos Atribuídos</p>
+            <p className="text-3xl font-bold text-white tracking-tight">{formatNumber(convertfyOrders)}</p>
+            <p className="text-sm text-zinc-500 mt-1">Pedidos Atribuídos</p>
           </div>
-          <div className="flex items-center gap-4">
-            <CircularProgress value={convertfyPercent} size={70} color="#10b981" />
+          <div className="flex items-center justify-center">
+            <div className="relative w-20 h-20">
+              <svg className="w-20 h-20 transform -rotate-90" viewBox="0 0 80 80">
+                <circle cx="40" cy="40" r="34" fill="none" stroke="#27272a" strokeWidth="6" />
+                <circle
+                  cx="40" cy="40" r="34" fill="none" stroke="#10b981" strokeWidth="6"
+                  strokeDasharray={`${Math.min(convertfyPercent, 100) * 2.136} 213.6`}
+                  strokeLinecap="round"
+                  className="transition-all duration-1000"
+                />
+              </svg>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className="text-lg font-bold text-white">{convertfyPercent.toFixed(1)}%</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Main Metrics Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <MetricCard title="Faturamento Total" value={formatCurrencyCompact(totalRevenue)} icon={DollarSign} color="emerald" />
-        <MetricCard title="Receita Email" value={formatCurrencyCompact(emailRevenue)} subtitle={`${formatPercent(emailPercent)} do total`} icon={Mail} color="violet" />
-        <MetricCard title="Receita SMS" value={formatCurrencyCompact(smsRevenue)} subtitle={`${formatPercent(smsPercent)} do total`} icon={MessageSquare} color="cyan" />
-        <MetricCard title="Ticket Médio" value={formatCurrency(avgTicket)} icon={CreditCard} color="amber" />
-      </div>
-
-      {/* Orders & Customers */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <MetricCard title="Total de Pedidos" value={formatNumber(totalOrders)} icon={ShoppingCart} color="blue" />
-        <MetricCard title="Total de Clientes" value={formatNumber(totalCustomers)} icon={Users} color="violet" />
-        <MetricCard title="Taxa Recorrência" value={formatPercent(recurringRate)} subtitle={`${formatNumber(recurringCustomers)} retornaram`} icon={Repeat} color="emerald" />
-        <MetricCard title="Novos Clientes" value={formatNumber(newCustomers)} icon={TrendingUp} color="cyan" />
-      </div>
-
-      {/* Revenue Breakdown */}
-      <div className="grid lg:grid-cols-2 gap-6">
-        <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-6">
-          <h3 className="text-lg font-semibold mb-6 flex items-center gap-2">
-            <BarChart3 className="w-5 h-5 text-emerald-400" />
-            Receita por Canal
-          </h3>
-          <div className="space-y-4">
-            <ProgressBar value={convertfyRevenue > 0 ? (campaignRevenue / convertfyRevenue) * 100 : 0} label="Campanhas" amount={formatCurrencyCompact(campaignRevenue)} color="blue" icon={Send} />
-            <ProgressBar value={convertfyRevenue > 0 ? (flowRevenue / convertfyRevenue) * 100 : 0} label="Automações (Flows)" amount={formatCurrencyCompact(flowRevenue)} color="amber" icon={Zap} />
-            {smsRevenue > 0 && <ProgressBar value={convertfyRevenue > 0 ? (smsRevenue / convertfyRevenue) * 100 : 0} label="SMS Marketing" amount={formatCurrencyCompact(smsRevenue)} color="cyan" icon={MessageSquare} />}
+      {/* Metrics Grid - Row 1 */}
+      <div className="grid grid-cols-4 gap-4">
+        <div className={cardSmall}>
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 rounded-lg bg-zinc-800 flex items-center justify-center">
+              <DollarSign className="w-5 h-5 text-zinc-400" />
+            </div>
           </div>
-          <div className="mt-6 pt-4 border-t border-zinc-800 flex justify-between text-sm">
-            <span className="text-zinc-400">Total Convertfy</span>
-            <span className="font-bold text-emerald-400">{formatCurrency(convertfyRevenue)}</span>
+          <p className="text-2xl font-bold text-white">{formatCurrencyCompact(totalRevenue)}</p>
+          <p className="text-xs text-zinc-500 uppercase tracking-wide mt-1">Faturamento Total</p>
+        </div>
+
+        <div className={cardSmall}>
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 rounded-lg bg-zinc-800 flex items-center justify-center">
+              <Mail className="w-5 h-5 text-zinc-400" />
+            </div>
+          </div>
+          <p className="text-2xl font-bold text-white">{formatCurrencyCompact(emailRevenue)}</p>
+          <p className="text-xs text-zinc-500 uppercase tracking-wide mt-1">Receita Email</p>
+          <p className="text-xs text-zinc-600 mt-0.5">{formatPercent(emailPercent)} do total</p>
+        </div>
+
+        <div className={cardSmall}>
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 rounded-lg bg-zinc-800 flex items-center justify-center">
+              <MessageSquare className="w-5 h-5 text-zinc-400" />
+            </div>
+          </div>
+          <p className="text-2xl font-bold text-white">{formatCurrencyCompact(smsRevenue)}</p>
+          <p className="text-xs text-zinc-500 uppercase tracking-wide mt-1">Receita SMS</p>
+          <p className="text-xs text-zinc-600 mt-0.5">{formatPercent(smsPercent)} do total</p>
+        </div>
+
+        <div className={cardSmall}>
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 rounded-lg bg-zinc-800 flex items-center justify-center">
+              <ShoppingCart className="w-5 h-5 text-zinc-400" />
+            </div>
+          </div>
+          <p className="text-2xl font-bold text-white">{formatCurrency(avgTicket)}</p>
+          <p className="text-xs text-zinc-500 uppercase tracking-wide mt-1">Ticket Médio</p>
+        </div>
+      </div>
+
+      {/* Metrics Grid - Row 2 */}
+      <div className="grid grid-cols-4 gap-4">
+        <div className={cardSmall}>
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 rounded-lg bg-zinc-800 flex items-center justify-center">
+              <Package className="w-5 h-5 text-zinc-400" />
+            </div>
+          </div>
+          <p className="text-2xl font-bold text-white">{formatNumber(totalOrders)}</p>
+          <p className="text-xs text-zinc-500 uppercase tracking-wide mt-1">Total de Pedidos</p>
+        </div>
+
+        <div className={cardSmall}>
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 rounded-lg bg-zinc-800 flex items-center justify-center">
+              <Users className="w-5 h-5 text-zinc-400" />
+            </div>
+          </div>
+          <p className="text-2xl font-bold text-white">{formatNumber(totalCustomers)}</p>
+          <p className="text-xs text-zinc-500 uppercase tracking-wide mt-1">Total de Clientes</p>
+        </div>
+
+        <div className={cardSmall}>
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 rounded-lg bg-zinc-800 flex items-center justify-center">
+              <Repeat className="w-5 h-5 text-zinc-400" />
+            </div>
+          </div>
+          <p className="text-2xl font-bold text-emerald-500">{formatPercent(recurringRate)}</p>
+          <p className="text-xs text-zinc-500 uppercase tracking-wide mt-1">Taxa Recorrência</p>
+          <p className="text-xs text-zinc-600 mt-0.5">{formatNumber(recurringCustomers)} retornaram</p>
+        </div>
+
+        <div className={cardSmall}>
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 rounded-lg bg-zinc-800 flex items-center justify-center">
+              <TrendingUp className="w-5 h-5 text-zinc-400" />
+            </div>
+          </div>
+          <p className="text-2xl font-bold text-white">{formatNumber(newCustomers)}</p>
+          <p className="text-xs text-zinc-500 uppercase tracking-wide mt-1">Novos Clientes</p>
+        </div>
+      </div>
+
+      {/* Two Column Layout */}
+      <div className="grid grid-cols-2 gap-6">
+        {/* Revenue Breakdown */}
+        <div className={cardBase}>
+          <div className="flex items-center gap-2 mb-6">
+            <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center">
+              <BarChart3 className="w-4 h-4 text-zinc-400" />
+            </div>
+            <h3 className="text-base font-semibold text-white">Receita por Canal</h3>
+          </div>
+          <div className="space-y-5">
+            {/* Campaigns */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Send className="w-4 h-4 text-zinc-500" />
+                  <span className="text-sm text-zinc-400">Campanhas</span>
+                </div>
+                <span className="text-sm font-semibold text-white">{formatCurrencyCompact(campaignRevenue)}</span>
+              </div>
+              <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
+                <div className="h-full bg-emerald-500 rounded-full transition-all duration-1000"
+                  style={{ width: `${convertfyRevenue > 0 ? Math.min((campaignRevenue / convertfyRevenue) * 100, 100) : 0}%` }} />
+              </div>
+            </div>
+            {/* Flows */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-zinc-500" />
+                  <span className="text-sm text-zinc-400">Automações (Flows)</span>
+                </div>
+                <span className="text-sm font-semibold text-white">{formatCurrencyCompact(flowRevenue)}</span>
+              </div>
+              <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
+                <div className="h-full bg-emerald-500 rounded-full transition-all duration-1000"
+                  style={{ width: `${convertfyRevenue > 0 ? Math.min((flowRevenue / convertfyRevenue) * 100, 100) : 0}%` }} />
+              </div>
+            </div>
+            {/* SMS */}
+            {smsRevenue > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <MessageSquare className="w-4 h-4 text-zinc-500" />
+                    <span className="text-sm text-zinc-400">SMS Marketing</span>
+                  </div>
+                  <span className="text-sm font-semibold text-white">{formatCurrencyCompact(smsRevenue)}</span>
+                </div>
+                <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
+                  <div className="h-full bg-emerald-500 rounded-full transition-all duration-1000"
+                    style={{ width: `${convertfyRevenue > 0 ? Math.min((smsRevenue / convertfyRevenue) * 100, 100) : 0}%` }} />
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="mt-6 pt-4 border-t border-zinc-800/60 flex justify-between">
+            <span className="text-sm text-zinc-500">Total Convertfy</span>
+            <span className="text-sm font-bold text-emerald-500">{formatCurrency(convertfyRevenue)}</span>
           </div>
         </div>
 
-        <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-6">
-          <h3 className="text-lg font-semibold mb-6 flex items-center gap-2">
-            <Mail className="w-5 h-5 text-violet-400" />
-            Performance de Email
-          </h3>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-zinc-800/50 rounded-xl p-4 text-center">
-              <Eye className="w-6 h-6 text-emerald-400 mx-auto mb-2" />
-              <p className="text-2xl font-bold text-emerald-400">{formatPercent(openRate)}</p>
-              <p className="text-xs text-zinc-400">Taxa Abertura</p>
+        {/* Email Performance */}
+        <div className={cardBase}>
+          <div className="flex items-center gap-2 mb-6">
+            <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center">
+              <Mail className="w-4 h-4 text-zinc-400" />
             </div>
-            <div className="bg-zinc-800/50 rounded-xl p-4 text-center">
-              <MousePointer className="w-6 h-6 text-violet-400 mx-auto mb-2" />
-              <p className="text-2xl font-bold text-violet-400">{formatPercent(clickRate)}</p>
-              <p className="text-xs text-zinc-400">Taxa Clique</p>
+            <h3 className="text-base font-semibold text-white">Performance de Email</h3>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-zinc-800/50 rounded-lg p-4 text-center transition-all duration-200 hover:bg-zinc-800/70">
+              <Eye className="w-5 h-5 text-zinc-500 mx-auto mb-2" />
+              <p className="text-xl font-bold text-white">{formatPercent(openRate)}</p>
+              <p className="text-xs text-zinc-500 mt-1">Taxa Abertura</p>
             </div>
-            <div className="bg-zinc-800/50 rounded-xl p-4 text-center">
-              <Target className="w-6 h-6 text-blue-400 mx-auto mb-2" />
-              <p className="text-2xl font-bold text-blue-400">{formatPercent(ctor)}</p>
-              <p className="text-xs text-zinc-400">CTOR</p>
+            <div className="bg-zinc-800/50 rounded-lg p-4 text-center transition-all duration-200 hover:bg-zinc-800/70">
+              <MousePointer className="w-5 h-5 text-zinc-500 mx-auto mb-2" />
+              <p className="text-xl font-bold text-white">{formatPercent(clickRate)}</p>
+              <p className="text-xs text-zinc-500 mt-1">Taxa Clique</p>
             </div>
-            <div className="bg-zinc-800/50 rounded-xl p-4 text-center">
-              <Send className="w-6 h-6 text-zinc-400 mx-auto mb-2" />
-              <p className="text-2xl font-bold text-white">{formatNumber(delivered)}</p>
-              <p className="text-xs text-zinc-400">Entregues</p>
+            <div className="bg-zinc-800/50 rounded-lg p-4 text-center transition-all duration-200 hover:bg-zinc-800/70">
+              <Target className="w-5 h-5 text-zinc-500 mx-auto mb-2" />
+              <p className="text-xl font-bold text-white">{formatPercent(ctor)}</p>
+              <p className="text-xs text-zinc-500 mt-1">CTOR</p>
+            </div>
+            <div className="bg-zinc-800/50 rounded-lg p-4 text-center transition-all duration-200 hover:bg-zinc-800/70">
+              <Send className="w-5 h-5 text-zinc-500 mx-auto mb-2" />
+              <p className="text-xl font-bold text-white">{formatNumber(delivered)}</p>
+              <p className="text-xs text-zinc-500 mt-1">Entregues</p>
             </div>
           </div>
-          <div className="mt-4 flex justify-between text-xs text-zinc-500">
-            <span>Bounces: {formatNumber(bounced)}</span>
+          <div className="mt-4 flex justify-between text-xs text-zinc-600">
+            <span>Bounces: {formatNumber(bounced)} ({formatPercent(bounceRate)})</span>
             <span>Descadastros: {formatNumber(unsubscribed)}</span>
           </div>
         </div>
       </div>
 
-      {/* Audience & Automation */}
-      <div className="grid lg:grid-cols-3 gap-4">
-        <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-6">
-          <h3 className="text-base font-semibold mb-4 flex items-center gap-2">
-            <Users className="w-4 h-4 text-emerald-400" />
-            Audiência
-          </h3>
-          <div className="space-y-3">
-            <div className="flex justify-between py-2 border-b border-zinc-800">
-              <span className="text-sm text-zinc-400">Total de Contatos</span>
-              <span className="font-semibold">{formatNumber(totalLeads)}</span>
+      {/* Three Column Stats */}
+      <div className="grid grid-cols-3 gap-4">
+        {/* Audience */}
+        <div className={cardBase}>
+          <div className="flex items-center gap-2 mb-5">
+            <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center">
+              <Users className="w-4 h-4 text-zinc-400" />
             </div>
-            <div className="flex justify-between py-2 border-b border-zinc-800">
-              <span className="text-sm text-zinc-400">Engajados (90d)</span>
-              <span className="font-semibold text-emerald-400">{formatNumber(engagedLeads)}</span>
+            <h3 className="text-sm font-semibold text-white">Audiência</h3>
+          </div>
+          <div className="space-y-3">
+            <div className="flex justify-between py-2 border-b border-zinc-800/60">
+              <span className="text-sm text-zinc-500">Total de Contatos</span>
+              <span className="text-sm font-semibold text-white">{formatNumber(totalLeads)}</span>
+            </div>
+            <div className="flex justify-between py-2 border-b border-zinc-800/60">
+              <span className="text-sm text-zinc-500">Engajados (90d)</span>
+              <span className="text-sm font-semibold text-emerald-500">{formatNumber(engagedLeads)}</span>
             </div>
             <div className="flex justify-between py-2">
-              <span className="text-sm text-zinc-400">Taxa Engajamento</span>
-              <span className="font-semibold text-violet-400">{formatPercent(engagementRate)}</span>
+              <span className="text-sm text-zinc-500">Taxa Engajamento</span>
+              <span className="text-sm font-semibold text-white">{formatPercent(engagementRate)}</span>
             </div>
           </div>
         </div>
 
-        <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-6">
-          <h3 className="text-base font-semibold mb-4 flex items-center gap-2">
-            <Zap className="w-4 h-4 text-amber-400" />
-            Automações
-          </h3>
-          <div className="space-y-3">
-            <div className="flex justify-between py-2 border-b border-zinc-800">
-              <span className="text-sm text-zinc-400">Flows Ativos</span>
-              <span className="font-semibold text-emerald-400">{liveFlows}</span>
+        {/* Automations */}
+        <div className={cardBase}>
+          <div className="flex items-center gap-2 mb-5">
+            <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center">
+              <Zap className="w-4 h-4 text-zinc-400" />
             </div>
-            <div className="flex justify-between py-2 border-b border-zinc-800">
-              <span className="text-sm text-zinc-400">Total de Flows</span>
-              <span className="font-semibold">{totalFlows}</span>
+            <h3 className="text-sm font-semibold text-white">Automações</h3>
+          </div>
+          <div className="space-y-3">
+            <div className="flex justify-between py-2 border-b border-zinc-800/60">
+              <span className="text-sm text-zinc-500">Flows Ativos</span>
+              <span className="text-sm font-semibold text-emerald-500">{liveFlows}</span>
+            </div>
+            <div className="flex justify-between py-2 border-b border-zinc-800/60">
+              <span className="text-sm text-zinc-500">Total de Flows</span>
+              <span className="text-sm font-semibold text-white">{totalFlows}</span>
             </div>
             <div className="flex justify-between py-2">
-              <span className="text-sm text-zinc-400">Receita Flows</span>
-              <span className="font-semibold text-amber-400">{formatCurrencyCompact(flowRevenue)}</span>
+              <span className="text-sm text-zinc-500">Receita Flows</span>
+              <span className="text-sm font-semibold text-white">{formatCurrencyCompact(flowRevenue)}</span>
             </div>
           </div>
         </div>
 
-        <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-6">
-          <h3 className="text-base font-semibold mb-4 flex items-center gap-2">
-            <Send className="w-4 h-4 text-blue-400" />
-            Campanhas
-          </h3>
-          <div className="space-y-3">
-            <div className="flex justify-between py-2 border-b border-zinc-800">
-              <span className="text-sm text-zinc-400">Enviadas</span>
-              <span className="font-semibold text-emerald-400">{sentCampaigns}</span>
+        {/* Campaigns */}
+        <div className={cardBase}>
+          <div className="flex items-center gap-2 mb-5">
+            <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center">
+              <Send className="w-4 h-4 text-zinc-400" />
             </div>
-            <div className="flex justify-between py-2 border-b border-zinc-800">
-              <span className="text-sm text-zinc-400">Entregues</span>
-              <span className="font-semibold">{formatNumber(reportData.campaignPerformance?.totalDelivered)}</span>
+            <h3 className="text-sm font-semibold text-white">Campanhas</h3>
+          </div>
+          <div className="space-y-3">
+            <div className="flex justify-between py-2 border-b border-zinc-800/60">
+              <span className="text-sm text-zinc-500">Enviadas</span>
+              <span className="text-sm font-semibold text-emerald-500">{sentCampaigns}</span>
+            </div>
+            <div className="flex justify-between py-2 border-b border-zinc-800/60">
+              <span className="text-sm text-zinc-500">Entregues</span>
+              <span className="text-sm font-semibold text-white">{formatNumber(reportData.campaignPerformance?.totalDelivered)}</span>
             </div>
             <div className="flex justify-between py-2">
-              <span className="text-sm text-zinc-400">Receita</span>
-              <span className="font-semibold text-blue-400">{formatCurrencyCompact(campaignRevenue)}</span>
+              <span className="text-sm text-zinc-500">Receita</span>
+              <span className="text-sm font-semibold text-white">{formatCurrencyCompact(campaignRevenue)}</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Top Flows */}
+      {/* Top Flows Table */}
       {reportData.flowPerformance?.flows && reportData.flowPerformance.flows.length > 0 && (
-        <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-6">
-          <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <Zap className="w-5 h-5 text-amber-400" />
-            Top Automações por Receita
-          </h3>
+        <div className={cardBase}>
+          <div className="flex items-center gap-2 mb-5">
+            <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center">
+              <Zap className="w-4 h-4 text-zinc-400" />
+            </div>
+            <h3 className="text-base font-semibold text-white">Top Automações por Receita</h3>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-zinc-800 text-left">
-                  <th className="pb-3 text-xs text-zinc-500 font-medium">#</th>
-                  <th className="pb-3 text-xs text-zinc-500 font-medium">Nome</th>
-                  <th className="pb-3 text-xs text-zinc-500 font-medium text-right">Entregues</th>
-                  <th className="pb-3 text-xs text-zinc-500 font-medium text-right">Abertura</th>
-                  <th className="pb-3 text-xs text-zinc-500 font-medium text-right">Cliques</th>
-                  <th className="pb-3 text-xs text-zinc-500 font-medium text-right">Receita</th>
+                <tr className="border-b border-zinc-800/60">
+                  <th className="pb-3 text-xs text-zinc-600 font-medium text-left">#</th>
+                  <th className="pb-3 text-xs text-zinc-600 font-medium text-left">Nome</th>
+                  <th className="pb-3 text-xs text-zinc-600 font-medium text-right">Entregues</th>
+                  <th className="pb-3 text-xs text-zinc-600 font-medium text-right">Abertura</th>
+                  <th className="pb-3 text-xs text-zinc-600 font-medium text-right">Cliques</th>
+                  <th className="pb-3 text-xs text-zinc-600 font-medium text-right">Receita</th>
                 </tr>
               </thead>
               <tbody>
                 {reportData.flowPerformance.flows.slice(0, 8).map((flow, i) => (
-                  <tr key={flow.flowId} className="border-b border-zinc-800/50 last:border-0">
+                  <tr key={flow.flowId} className="border-b border-zinc-800/30 last:border-0 hover:bg-zinc-800/30 transition-colors">
                     <td className="py-3 text-sm">
-                      <span className={`w-6 h-6 rounded flex items-center justify-center text-xs font-bold ${i < 3 ? 'bg-amber-500/20 text-amber-400' : 'bg-zinc-800 text-zinc-500'}`}>{i + 1}</span>
+                      <span className={`w-6 h-6 rounded flex items-center justify-center text-xs font-bold ${i < 3 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-zinc-800 text-zinc-500'}`}>{i + 1}</span>
                     </td>
-                    <td className="py-3 text-sm font-medium">{flow.name}</td>
+                    <td className="py-3 text-sm font-medium text-white">{flow.name}</td>
                     <td className="py-3 text-sm text-right text-zinc-400">{formatNumber(flow.delivered)}</td>
-                    <td className="py-3 text-sm text-right text-emerald-400">{formatPercent(flow.openRate)}</td>
-                    <td className="py-3 text-sm text-right text-violet-400">{formatPercent(flow.clickRate)}</td>
-                    <td className="py-3 text-sm text-right font-semibold text-emerald-400">{formatCurrency(flow.revenue)}</td>
+                    <td className="py-3 text-sm text-right text-zinc-400">{formatPercent(flow.openRate)}</td>
+                    <td className="py-3 text-sm text-right text-zinc-400">{formatPercent(flow.clickRate)}</td>
+                    <td className="py-3 text-sm text-right font-semibold text-emerald-500">{formatCurrency(flow.revenue)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -754,32 +767,34 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
         </div>
       )}
 
-      {/* Best Sellers */}
+      {/* Best Sellers Table */}
       {shopifyData?.bestSellingProducts && shopifyData.bestSellingProducts.length > 0 && (
-        <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-6">
-          <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <Package className="w-5 h-5 text-emerald-400" />
-            Produtos Mais Vendidos
-          </h3>
+        <div className={cardBase}>
+          <div className="flex items-center gap-2 mb-5">
+            <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center">
+              <Package className="w-4 h-4 text-zinc-400" />
+            </div>
+            <h3 className="text-base font-semibold text-white">Produtos Mais Vendidos</h3>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-zinc-800 text-left">
-                  <th className="pb-3 text-xs text-zinc-500 font-medium">#</th>
-                  <th className="pb-3 text-xs text-zinc-500 font-medium">Produto</th>
-                  <th className="pb-3 text-xs text-zinc-500 font-medium text-right">Qtd</th>
-                  <th className="pb-3 text-xs text-zinc-500 font-medium text-right">Receita</th>
+                <tr className="border-b border-zinc-800/60">
+                  <th className="pb-3 text-xs text-zinc-600 font-medium text-left">#</th>
+                  <th className="pb-3 text-xs text-zinc-600 font-medium text-left">Produto</th>
+                  <th className="pb-3 text-xs text-zinc-600 font-medium text-right">Qtd</th>
+                  <th className="pb-3 text-xs text-zinc-600 font-medium text-right">Receita</th>
                 </tr>
               </thead>
               <tbody>
                 {shopifyData.bestSellingProducts.slice(0, 5).map((product, i) => (
-                  <tr key={product.productId} className="border-b border-zinc-800/50 last:border-0">
+                  <tr key={product.productId} className="border-b border-zinc-800/30 last:border-0 hover:bg-zinc-800/30 transition-colors">
                     <td className="py-3 text-sm">
-                      <span className={`w-6 h-6 rounded flex items-center justify-center text-xs font-bold ${i < 3 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-zinc-800 text-zinc-500'}`}>{i + 1}</span>
+                      <span className={`w-6 h-6 rounded flex items-center justify-center text-xs font-bold ${i < 3 ? 'bg-emerald-500/10 text-emerald-500' : 'bg-zinc-800 text-zinc-500'}`}>{i + 1}</span>
                     </td>
-                    <td className="py-3 text-sm font-medium">{product.title}</td>
+                    <td className="py-3 text-sm font-medium text-white">{product.title}</td>
                     <td className="py-3 text-sm text-right text-zinc-400">{formatNumber(product.quantitySold)}</td>
-                    <td className="py-3 text-sm text-right font-semibold text-emerald-400">{formatCurrency(product.revenue)}</td>
+                    <td className="py-3 text-sm text-right font-semibold text-emerald-500">{formatCurrency(product.revenue)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -789,10 +804,10 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
       )}
 
       {/* Footer */}
-      <div className="text-center pt-6 border-t border-zinc-800">
+      <div className="text-center pt-6 border-t border-zinc-800/60">
         <div className="flex items-center justify-center gap-2 mb-2">
-          <Sparkles className="w-4 h-4 text-emerald-400" />
-          <span className="text-sm text-zinc-400">Relatório gerado por <span className="text-emerald-400 font-semibold">Convertfy</span></span>
+          <Sparkles className="w-4 h-4 text-emerald-500" />
+          <span className="text-sm text-zinc-500">Relatório gerado por <span className="text-emerald-500 font-semibold">Convertfy</span></span>
         </div>
         <p className="text-xs text-zinc-600">{new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
       </div>
@@ -803,14 +818,26 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
   const FullscreenModal = () => {
     if (!mounted) return null
     return createPortal(
-      <div className="fixed inset-0 z-[9999] overflow-auto bg-zinc-950">
-        <Button variant="outline" size="icon" onClick={toggleFullscreen} className="fixed top-4 right-4 z-[10000] bg-zinc-900 border-zinc-700 h-10 w-10">
-          <X className="w-5 h-5" />
-        </Button>
-        <Button onClick={handleExportPDF} disabled={isExporting} className="fixed top-4 right-16 z-[10000] bg-emerald-600 hover:bg-emerald-700 h-10 px-4">
-          {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-          <span className="ml-2">PDF</span>
-        </Button>
+      <div className="fixed inset-0 z-[9999] bg-zinc-950 overflow-y-auto">
+        <div className="sticky top-0 z-[10000] bg-zinc-950/90 backdrop-blur-sm border-b border-zinc-800/60 px-6 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+              <BarChart3 className="w-4 h-4 text-emerald-500" />
+            </div>
+            <span className="font-semibold text-white">{storeName}</span>
+            <span className="text-sm text-zinc-500">•</span>
+            <span className="text-sm text-zinc-500">{getFormattedDateRange()}</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <Button onClick={handleExportPDF} disabled={isExporting} className="bg-emerald-600 hover:bg-emerald-700 h-9 px-4">
+              {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              <span className="ml-2">Exportar PDF</span>
+            </Button>
+            <Button variant="outline" size="icon" onClick={toggleFullscreen} className="bg-zinc-900 border-zinc-700 h-9 w-9 hover:bg-zinc-800">
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
         <div className="max-w-5xl mx-auto py-8 px-4">
           <ReportContent />
         </div>
@@ -832,16 +859,16 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
             <div className="flex items-center rounded-xl bg-zinc-900 border border-zinc-800 p-1">
               {(["7d", "30d", "90d", "all"] as DateRange[]).map(range => (
                 <button key={range} onClick={() => handleDateRangeChange(range)}
-                  className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-all ${dateRange === range ? 'bg-emerald-500 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'}`}>
+                  className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-all ${dateRange === range ? 'bg-emerald-600 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'}`}>
                   {range === "7d" ? "7D" : range === "30d" ? "30D" : range === "90d" ? "90D" : "1A"}
                 </button>
               ))}
             </div>
           )}
-          <Button variant="outline" size="icon" onClick={() => loadAllData()} disabled={isLoading} className="bg-zinc-900 border-zinc-800 h-9 w-9">
+          <Button variant="outline" size="icon" onClick={() => loadAllData()} disabled={isLoading} className="bg-zinc-900 border-zinc-800 h-9 w-9 hover:bg-zinc-800">
             <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
           </Button>
-          <Button variant="outline" size="icon" onClick={toggleFullscreen} className="bg-zinc-900 border-zinc-800 h-9 w-9">
+          <Button variant="outline" size="icon" onClick={toggleFullscreen} className="bg-zinc-900 border-zinc-800 h-9 w-9 hover:bg-zinc-800">
             <Maximize2 className="w-4 h-4" />
           </Button>
           <Button onClick={handleExportPDF} disabled={isExporting} className="bg-emerald-600 hover:bg-emerald-700 h-9 px-4">
