@@ -18,6 +18,7 @@ import {
   DollarSign,
   Calendar,
   Store,
+  Rocket,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -46,6 +47,7 @@ import { toast } from "@/lib/hooks/use-toast"
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Clientes", href: "/clients", icon: Users },
+  { name: "Onboarding", href: "/onboarding", icon: Rocket },
   { name: "Lojas", href: "/stores", icon: Store },
   { name: "Pipeline", href: "/pipeline", icon: Kanban },
   { name: "Financeiro", href: "/financial", icon: DollarSign },
