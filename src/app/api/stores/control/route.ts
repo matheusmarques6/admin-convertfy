@@ -57,7 +57,7 @@ export async function GET(request: Request) {
           status
         ),
         profiles:last_feedback_by (
-          full_name
+          name
         )
       `)
       .order('store_name')
@@ -78,7 +78,7 @@ export async function GET(request: Request) {
       (stores || []).map(async (store) => {
         // Handle the relationship data (can be object or null)
         const clientData = store.clients as unknown as { id: string; name: string; company: string; status: string } | null
-        const profileData = store.profiles as unknown as { full_name: string } | null
+        const profileData = store.profiles as unknown as { name: string } | null
         const client = clientData || { id: '', name: 'N/A', company: '', status: '' }
         const profile = profileData
 
@@ -174,7 +174,7 @@ export async function GET(request: Request) {
           last_feedback_date: store.last_feedback_date,
           next_feedback_date: store.next_feedback_date,
           last_feedback_by: store.last_feedback_by,
-          last_feedback_by_name: profile?.full_name || null,
+          last_feedback_by_name: profile?.name || null,
           feedback_status: feedbackStatus,
           days_until_feedback: daysUntilFeedback,
           has_shopify: hasShopify,

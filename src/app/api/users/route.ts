@@ -7,8 +7,8 @@ export async function GET() {
 
     const { data: users, error } = await supabase
       .from('profiles')
-      .select('id, full_name, email, avatar_url, role')
-      .order('full_name')
+      .select('id, name, email, avatar_url, role')
+      .order('name')
 
     if (error) {
       console.error('Error fetching users:', error)
