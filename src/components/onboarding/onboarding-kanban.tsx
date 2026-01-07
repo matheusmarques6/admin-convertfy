@@ -22,7 +22,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -48,7 +48,6 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { toast } from "@/lib/hooks/use-toast"
 import { getInitials } from "@/lib/utils"
 import type { OnboardingClient } from "@/app/api/onboarding/route"
@@ -164,7 +163,7 @@ export function OnboardingKanban() {
           ? "Onboarding concluído! Feedback agendado para 30 dias."
           : `Cliente movido para ${stageName}.`,
       })
-    } catch (error) {
+    } catch {
       // Revert on error
       fetchClients()
       toast({
@@ -204,7 +203,7 @@ export function OnboardingKanban() {
       })
 
       setShowAssignDialog(false)
-    } catch (error) {
+    } catch {
       toast({
         variant: "destructive",
         title: "Erro ao atribuir responsável",
@@ -239,7 +238,7 @@ export function OnboardingKanban() {
         contact_phone: '',
       })
       fetchClients()
-    } catch (error) {
+    } catch {
       toast({
         variant: "destructive",
         title: "Erro ao criar cliente",
