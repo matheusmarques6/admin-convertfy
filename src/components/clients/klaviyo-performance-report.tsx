@@ -494,12 +494,10 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
   const avgTicket = totalOrders > 0 ? totalRevenue / totalOrders : 0
 
   const emailRevenue = reportData.revenue?.klaviyoAttributedRevenue || 0
-  const emailOrders = reportData.revenue?.klaviyoAttributedOrders || 0
   const emailPercent = totalRevenue > 0 ? (emailRevenue / totalRevenue) * 100 : 0
   const trafficPercent = 100 - emailPercent
 
   const smsRevenue = shopifyData?.orders?.smsMarketing?.revenue || 0
-  const smsOrders = shopifyData?.orders?.smsMarketing?.orders || 0
 
   const convertfyRevenue = emailRevenue + smsRevenue
   const convertfyPercent = totalRevenue > 0 ? (convertfyRevenue / totalRevenue) * 100 : 0
