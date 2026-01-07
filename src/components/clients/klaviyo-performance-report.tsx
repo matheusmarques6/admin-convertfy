@@ -419,8 +419,7 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
             backgroundColor: '#0d0d1a',
             logging: false,
           },
-          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-          pagebreak: { mode: 'avoid-all' }
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
         })
         .from(element)
         .save()
