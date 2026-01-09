@@ -293,16 +293,13 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
   useEffect(() => { setMounted(true) }, [])
 
   const toggleFullscreen = useCallback(() => {
-    setIsFullscreen(prev => {
-      document.body.style.overflow = !prev ? 'hidden' : ''
-      return !prev
-    })
+    setIsFullscreen(prev => !prev)
   }, [])
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => { if (e.key === 'Escape' && isFullscreen) toggleFullscreen() }
     window.addEventListener('keydown', handleEscape)
-    return () => { window.removeEventListener('keydown', handleEscape); document.body.style.overflow = '' }
+    return () => { window.removeEventListener('keydown', handleEscape) }
   }, [isFullscreen, toggleFullscreen])
 
   const loadAllData = useCallback(async (period: DateRange = dateRange) => {
@@ -878,8 +875,11 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
   const FullscreenModal = () => {
     if (!mounted) return null
     return createPortal(
-      <div className="fixed inset-0 z-[9999] bg-slate-950 flex flex-col h-screen">
-        <div className="flex-shrink-0 bg-slate-950/95 backdrop-blur-md border-b border-slate-800/60 px-6 py-3 flex items-center justify-between">
+      <div
+        className="fixed inset-0 z-[9999] bg-slate-950 overflow-y-auto"
+        style={{ height: '100vh', overflowY: 'scroll' }}
+      >
+        <div className="sticky top-0 z-[10000] bg-slate-950/95 backdrop-blur-md border-b border-slate-800/60 px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1">
               <Star className="w-3 h-3 text-blue-400 fill-blue-400" />
@@ -900,9 +900,7 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
             </Button>
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto">
-          <ReportContent />
-        </div>
+        <ReportContent />
       </div>,
       document.body
     )
