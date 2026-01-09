@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
-import { createPortal } from "react-dom"
+import { useRouter, useParams } from "next/navigation"
 import {
   Users,
   Mail,
@@ -16,14 +16,13 @@ import {
   Send,
   Repeat,
   XCircle,
-  X,
+  ExternalLink,
   MessageSquare,
   Eye,
   MousePointer,
   Package,
   Target,
   Sparkles,
-  Maximize2,
   Star,
   UserCheck,
   BarChart2,
@@ -279,6 +278,10 @@ const CircularProgress = ({
 
 // ============ MAIN COMPONENT ============
 export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }: KlaviyoPerformanceReportProps) {
+  const router = useRouter()
+  const params = useParams()
+  const clientId = params.id as string
+
   const [reportData, setReportData] = useState<KlaviyoReportData | null>(null)
   const [shopifyData, setShopifyData] = useState<ShopifyReportData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -286,21 +289,11 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
   const [isExporting, setIsExporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [dateRange, setDateRange] = useState<DateRange>("30d")
-  const [isFullscreen, setIsFullscreen] = useState(false)
-  const [mounted, setMounted] = useState(false)
   const reportRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => { setMounted(true) }, [])
-
-  const toggleFullscreen = useCallback(() => {
-    setIsFullscreen(prev => !prev)
-  }, [])
-
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => { if (e.key === 'Escape' && isFullscreen) toggleFullscreen() }
-    window.addEventListener('keydown', handleEscape)
-    return () => { window.removeEventListener('keydown', handleEscape) }
-  }, [isFullscreen, toggleFullscreen])
+  const openFullscreenReport = useCallback(() => {
+    router.push(`/clients/${clientId}/report?store_id=${storeId}&period=${dateRange}`)
+  }, [router, clientId, storeId, dateRange])
 
   const loadAllData = useCallback(async (period: DateRange = dateRange) => {
     setIsLoading(true)
@@ -871,41 +864,6 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
     </div>
   )
 
-  // Fullscreen Modal
-  const FullscreenModal = () => {
-    if (!mounted) return null
-    return createPortal(
-      <div
-        className="fixed inset-0 z-[9999] bg-slate-950 overflow-y-auto"
-        style={{ height: '100vh', overflowY: 'scroll' }}
-      >
-        <div className="sticky top-0 z-[10000] bg-slate-950/95 backdrop-blur-md border-b border-slate-800/60 px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1">
-              <Star className="w-3 h-3 text-blue-400 fill-blue-400" />
-              <Star className="w-4 h-4 text-blue-400 fill-blue-400" />
-              <Star className="w-3 h-3 text-blue-400 fill-blue-400" />
-            </div>
-            <span className="font-semibold text-white">{storeName}</span>
-            <span className="text-sm text-slate-500">•</span>
-            <span className="text-sm text-slate-400">{getFormattedDateRange()}</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <Button onClick={handleExportPDF} disabled={isExporting} className="bg-blue-600 hover:bg-blue-700 h-9 px-4">
-              {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-              <span className="ml-2">Exportar PDF</span>
-            </Button>
-            <Button variant="outline" size="icon" onClick={toggleFullscreen} className="bg-slate-900 border-slate-700 h-9 w-9 hover:bg-slate-800">
-              <X className="w-4 h-4" />
-            </Button>
-          </div>
-        </div>
-        <ReportContent />
-      </div>,
-      document.body
-    )
-  }
-
   // Main Render
   return (
     <>
@@ -928,8 +886,8 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
           <Button variant="outline" size="icon" onClick={() => loadAllData()} disabled={isLoading} className="bg-slate-900 border-slate-800 h-9 w-9 hover:bg-slate-800">
             <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
           </Button>
-          <Button variant="outline" size="icon" onClick={toggleFullscreen} className="bg-slate-900 border-slate-800 h-9 w-9 hover:bg-slate-800">
-            <Maximize2 className="w-4 h-4" />
+          <Button variant="outline" size="icon" onClick={openFullscreenReport} className="bg-slate-900 border-slate-800 h-9 w-9 hover:bg-slate-800" title="Abrir em nova página">
+            <ExternalLink className="w-4 h-4" />
           </Button>
           <Button onClick={handleExportPDF} disabled={isExporting} className="bg-blue-600 hover:bg-blue-700 h-9 px-4">
             {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
@@ -940,7 +898,6 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
       <div className="rounded-2xl overflow-hidden border border-slate-800">
         <ReportContent />
       </div>
-      {isFullscreen && <FullscreenModal />}
     </>
   )
 }
