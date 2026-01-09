@@ -585,7 +585,7 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
 
           <div className="p-6">
             {/* Main financial metrics */}
-            <div className="grid grid-cols-3 gap-4 mb-6">
+            <div className="grid grid-cols-4 gap-4 mb-6">
               <div className="bg-slate-800/30 rounded-xl p-5 border border-slate-700/30 text-center transition-all hover:border-blue-500/30">
                 <div className="w-12 h-12 rounded-xl bg-slate-700/50 flex items-center justify-center mx-auto mb-3">
                   <DollarSign className="w-6 h-6 text-slate-400" />
@@ -608,6 +608,14 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
                 </div>
                 <p className="text-2xl font-bold text-white">{formatNumber(totalOrders)}</p>
                 <p className="text-xs text-slate-500 uppercase tracking-wider mt-1">Total de Pedidos</p>
+              </div>
+
+              <div className="bg-slate-800/30 rounded-xl p-5 border border-slate-700/30 text-center transition-all hover:border-blue-500/30">
+                <div className="w-12 h-12 rounded-xl bg-slate-700/50 flex items-center justify-center mx-auto mb-3">
+                  <Users className="w-6 h-6 text-slate-400" />
+                </div>
+                <p className="text-2xl font-bold text-white">{formatNumber(totalCustomers)}</p>
+                <p className="text-xs text-slate-500 uppercase tracking-wider mt-1">Total de Clientes</p>
               </div>
             </div>
 
