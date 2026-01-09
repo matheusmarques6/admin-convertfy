@@ -314,7 +314,7 @@ export function KlaviyoFullscreenReport({ storeId, storeName, period }: KlaviyoF
     try {
       const html2pdf = (await import("html2pdf.js")).default
       await html2pdf().set({
-        margin: [5, 5, 5, 5],
+        margin: 0,
         filename: `relatorio-${storeName.replace(/\s+/g, '-').toLowerCase()}-${new Date().toISOString().split('T')[0]}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
         html2canvas: { scale: 2, useCORS: true, backgroundColor: '#0f172a' },
