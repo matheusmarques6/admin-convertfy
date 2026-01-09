@@ -1,14 +1,12 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useParams, useSearchParams } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { KlaviyoFullscreenReport } from "@/components/clients/klaviyo-fullscreen-report"
 
 export default function ReportPage() {
-  const params = useParams()
   const searchParams = useSearchParams()
-  const clientId = params.id as string
   const storeId = searchParams.get("store_id")
   const period = searchParams.get("period") || "30d"
 

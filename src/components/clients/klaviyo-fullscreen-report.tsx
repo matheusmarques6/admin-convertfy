@@ -16,7 +16,6 @@ import {
   Send,
   Repeat,
   XCircle,
-  X,
   MessageSquare,
   Eye,
   MousePointer,
