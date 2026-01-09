@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
-import { useRouter, useParams } from "next/navigation"
 import {
   Users,
   Mail,
@@ -278,10 +277,6 @@ const CircularProgress = ({
 
 // ============ MAIN COMPONENT ============
 export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }: KlaviyoPerformanceReportProps) {
-  const router = useRouter()
-  const params = useParams()
-  const clientId = params.id as string
-
   const [reportData, setReportData] = useState<KlaviyoReportData | null>(null)
   const [shopifyData, setShopifyData] = useState<ShopifyReportData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -292,8 +287,8 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
   const reportRef = useRef<HTMLDivElement>(null)
 
   const openFullscreenReport = useCallback(() => {
-    router.push(`/clients/${clientId}/report?store_id=${storeId}&period=${dateRange}`)
-  }, [router, clientId, storeId, dateRange])
+    window.open(`/report?store_id=${storeId}&period=${dateRange}`, '_blank')
+  }, [storeId, dateRange])
 
   const loadAllData = useCallback(async (period: DateRange = dateRange) => {
     setIsLoading(true)
