@@ -57,6 +57,7 @@ interface KlaviyoReportData {
     liveFlows: number
     totalCampaigns: number
     sentCampaigns: number
+    campaignsInPeriod?: number
     totalTemplates: number
   }
   emailPerformance: {
