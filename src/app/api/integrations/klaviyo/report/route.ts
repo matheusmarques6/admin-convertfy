@@ -244,32 +244,6 @@ type CampaignsResponse = {
   links?: { next?: string }
 }
 
-// Get total profiles count
-async function getTotalProfiles(apiKey: string): Promise<number> {
-  console.log("[Klaviyo] Fetching total profiles count...")
-
-  // Use the profiles endpoint with page size 1 to get the count from pagination
-  const response = await klaviyoRequest<{
-    data: Array<{ id: string }>
-    links?: { next?: string }
-  }>(apiKey, "/profiles/?page[size]=1")
-
-  if (!response) {
-    console.log("[Klaviyo] Failed to fetch profiles count")
-    return 0
-  }
-
-  // Try to get count from a separate count request or estimate from pagination
-  // Klaviyo doesn't have a direct count endpoint, so we'll use a different approach
-  // We'll fetch profiles in batches to count, or use the first page data
-
-  // Alternative: Use segments to get a more accurate count
-  // The "All Subscribers" or similar segment would have the total count
-  // For now, return 0 and let the caller use list totals as fallback
-
-  return 0
-}
-
 // Get ALL lists with profile counts and pagination
 async function getLists(apiKey: string) {
   const allLists: Array<{
