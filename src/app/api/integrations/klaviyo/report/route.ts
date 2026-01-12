@@ -253,7 +253,9 @@ async function getLists(apiKey: string) {
     created: string
   }> = []
 
-  let nextPage: string | null = "/lists/?page[size]=100"
+  // Per Klaviyo API docs: use additional-fields to get profile_count
+  // https://developers.klaviyo.com/en/reference/get_lists
+  let nextPage: string | null = "/lists/?page[size]=100&additional-fields[list]=profile_count"
 
   while (nextPage) {
     const response: ListsResponse | null = await klaviyoRequest<ListsResponse>(apiKey, nextPage)
@@ -261,10 +263,12 @@ async function getLists(apiKey: string) {
     if (!response?.data) break
 
     for (const l of response.data) {
+      const profileCount = l.attributes.profile_count || 0
+      console.log(`[Klaviyo] List: "${l.attributes.name}" - ${profileCount} profiles`)
       allLists.push({
         id: l.id,
         name: l.attributes.name,
-        profileCount: l.attributes.profile_count || 0,
+        profileCount,
         created: l.attributes.created
       })
     }
@@ -344,7 +348,9 @@ async function getSegments(apiKey: string) {
     created: string
   }> = []
 
-  let nextPage: string | null = "/segments/?page[size]=100"
+  // Per Klaviyo API docs: use additional-fields to get profile_count
+  // https://developers.klaviyo.com/en/reference/get_segments
+  let nextPage: string | null = "/segments/?page[size]=100&additional-fields[segment]=profile_count"
 
   while (nextPage) {
     const response: SegmentsResponse | null = await klaviyoRequest<SegmentsResponse>(apiKey, nextPage)
@@ -422,8 +428,15 @@ async function getSegments(apiKey: string) {
   }
 
   // If no specific segment found, use the largest segment as an approximation
-  const largestSegment = allSegments.reduce((max, s) => s.profileCount > max.profileCount ? s : max, allSegments[0])
-  console.log(`[Klaviyo] Largest segment: "${largestSegment?.name}" with ${largestSegment?.profileCount} profiles`)
+  const largestSegment = allSegments.length > 0
+    ? allSegments.reduce((max, s) => s.profileCount > max.profileCount ? s : max, allSegments[0])
+    : null
+
+  if (largestSegment) {
+    console.log(`[Klaviyo] Largest segment: "${largestSegment.name}" with ${largestSegment.profileCount} profiles`)
+  } else {
+    console.log(`[Klaviyo] No segments found`)
+  }
 
   return {
     totalSegments: allSegments.length,
@@ -433,6 +446,55 @@ async function getSegments(apiKey: string) {
     totalActiveProfiles: totalProfilesSegment?.profileCount || largestSegment?.profileCount || 0,
     totalActiveProfilesSource: totalProfilesSegment?.name || largestSegment?.name || null
   }
+}
+
+// Get total profiles count as fallback
+// Uses the profiles endpoint with pagination to count all profiles
+async function getTotalProfilesCount(apiKey: string): Promise<number> {
+  console.log("[Klaviyo] Getting total profiles count via profiles API...")
+
+  // First request to get total count from meta
+  const response = await klaviyoRequest<{
+    data: Array<{ id: string }>
+    links?: { next?: string }
+  }>(apiKey, "/profiles/?page[size]=1")
+
+  if (!response?.data) {
+    console.log("[Klaviyo] Could not fetch profiles count")
+    return 0
+  }
+
+  // Count profiles by paginating through (more accurate)
+  type ProfilePageResponse = {
+    data: Array<{ id: string }>
+    links?: { next?: string }
+  }
+
+  let totalCount = 0
+  let nextPage: string | null = "/profiles/?page[size]=100"
+
+  while (nextPage) {
+    const pageResponse: ProfilePageResponse | null = await klaviyoRequest<ProfilePageResponse>(apiKey, nextPage)
+
+    if (!pageResponse?.data) break
+
+    totalCount += pageResponse.data.length
+
+    // Get next page URL if exists
+    nextPage = pageResponse.links?.next ? pageResponse.links.next.replace(KLAVIYO_API_URL, "") : null
+
+    // Rate limit between pages
+    if (nextPage) await sleep(300)
+
+    // Limit to first 10,000 profiles to avoid timeout
+    if (totalCount >= 10000) {
+      console.log(`[Klaviyo] Profiles count capped at ${totalCount} for performance`)
+      break
+    }
+  }
+
+  console.log(`[Klaviyo] Total profiles count: ${totalCount}`)
+  return totalCount
 }
 
 // Get ALL campaigns with pagination - filter by email channel
@@ -936,6 +998,17 @@ export async function GET(request: NextRequest) {
         getCampaigns(apiKey)
       ])
 
+      // Calculate total subscribers with fallback to profiles count
+      let errorCaseTotalSubscribers = listMetrics.totalSubscribers || segmentMetrics.totalActiveProfiles
+      console.log(`[Klaviyo] Error case initial totalSubscribers: ${errorCaseTotalSubscribers}`)
+
+      if (errorCaseTotalSubscribers === 0) {
+        console.log("[Klaviyo] Error case: using profiles API fallback...")
+        errorCaseTotalSubscribers = await getTotalProfilesCount(apiKey)
+      }
+
+      console.log(`[Klaviyo] Error case final totalSubscribers: ${errorCaseTotalSubscribers}`)
+
       return NextResponse.json({
         success: true,
         connected: true,
@@ -957,19 +1030,20 @@ export async function GET(request: NextRequest) {
           totalOrders: 0,
         },
         overview: {
-          totalSubscribers: segmentMetrics.totalActiveProfiles || listMetrics.totalSubscribers,
+          totalSubscribers: errorCaseTotalSubscribers,
           totalLists: listMetrics.totalLists,
           totalSegments: segmentMetrics.totalSegments,
           totalFlows: allFlows.length,
           liveFlows: allFlows.filter(f => f.status === "live").length,
           totalCampaigns: allCampaigns.length,
           sentCampaigns: allCampaigns.filter(c => c.status === "sent").length,
+          campaignsInPeriod: 0, // No period filter for error case
           totalTemplates: 0,
         },
         engagement: {
           engagedProfiles: segmentMetrics.engaged90dProfiles,
-          engagementRate: (segmentMetrics.totalActiveProfiles || listMetrics.totalSubscribers) > 0
-            ? ((segmentMetrics.engaged90dProfiles / (segmentMetrics.totalActiveProfiles || listMetrics.totalSubscribers)) * 100).toFixed(1)
+          engagementRate: errorCaseTotalSubscribers > 0
+            ? ((segmentMetrics.engaged90dProfiles / errorCaseTotalSubscribers) * 100).toFixed(1)
             : "0",
           engaged90dSegmentName: segmentMetrics.engaged90dSegmentName,
         },
@@ -996,6 +1070,18 @@ export async function GET(request: NextRequest) {
       getFlows(apiKey),
       getCampaigns(apiKey)
     ])
+
+    // Calculate total subscribers with fallback to profiles count
+    let totalSubscribers = listMetrics.totalSubscribers || segmentMetrics.totalActiveProfiles
+    console.log(`[Klaviyo] Initial totalSubscribers: ${totalSubscribers} (lists: ${listMetrics.totalSubscribers}, segments: ${segmentMetrics.totalActiveProfiles})`)
+
+    // If both lists and segments returned 0, use profiles API as fallback
+    if (totalSubscribers === 0) {
+      console.log("[Klaviyo] totalSubscribers is 0, using profiles API fallback...")
+      totalSubscribers = await getTotalProfilesCount(apiKey)
+    }
+
+    console.log(`[Klaviyo] Final totalSubscribers: ${totalSubscribers}`)
 
     // Filter campaigns by send_time in period
     const inicio = new Date(startDateStr)
@@ -1114,7 +1200,7 @@ export async function GET(request: NextRequest) {
       },
 
       overview: {
-        totalSubscribers: segmentMetrics.totalActiveProfiles || listMetrics.totalSubscribers,
+        totalSubscribers: totalSubscribers, // Uses calculated value with fallback
         totalLists: listMetrics.totalLists,
         totalSegments: segmentMetrics.totalSegments,
         totalFlows: allFlows.length,
@@ -1128,8 +1214,8 @@ export async function GET(request: NextRequest) {
       // Engagement data - uses segment data for accurate counts
       engagement: {
         engagedProfiles: segmentMetrics.engaged90dProfiles,
-        engagementRate: (segmentMetrics.totalActiveProfiles || listMetrics.totalSubscribers) > 0
-          ? ((segmentMetrics.engaged90dProfiles / (segmentMetrics.totalActiveProfiles || listMetrics.totalSubscribers)) * 100).toFixed(1)
+        engagementRate: totalSubscribers > 0
+          ? ((segmentMetrics.engaged90dProfiles / totalSubscribers) * 100).toFixed(1)
           : "0",
         engaged90dSegmentName: segmentMetrics.engaged90dSegmentName,
       },
