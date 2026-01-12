@@ -511,13 +511,24 @@ async function getProductsSummary(storeDomain: string, accessToken: string) {
   }
 }
 
-// Get customers summary
-async function getCustomersSummary(storeDomain: string, accessToken: string) {
+// Get customers summary with proper counts using date-filtered API
+async function getCustomersSummary(
+  storeDomain: string,
+  accessToken: string,
+  dateRange: { start: string; end: string }
+) {
   try {
+    // Get total customers count
     const countResponse = await shopifyRequest<{
       count: number
     }>(storeDomain, accessToken, "/customers/count.json")
 
+    // Get new customers count for the period using date filter
+    const newCustomersCountResponse = await shopifyRequest<{
+      count: number
+    }>(storeDomain, accessToken, `/customers/count.json?created_at_min=${dateRange.start}`)
+
+    // Get sample of customers for metrics calculation (most recent)
     const customersResponse = await shopifyRequest<{
       customers: Array<{
         id: number
@@ -526,9 +537,11 @@ async function getCustomersSummary(storeDomain: string, accessToken: string) {
         created_at: string
         accepts_marketing: boolean
       }>
-    }>(storeDomain, accessToken, "/customers.json?limit=250")
+    }>(storeDomain, accessToken, "/customers.json?limit=250&order=created_at desc")
 
     const customers = customersResponse.customers || []
+    const totalCustomersCount = countResponse.count || 0
+    const newCustomersInPeriod = newCustomersCountResponse.count || 0
 
     const totalSpent = customers.reduce((sum, c) => sum + parseFloat(c.total_spent || "0"), 0)
     const totalOrders = customers.reduce((sum, c) => sum + (c.orders_count || 0), 0)
@@ -536,27 +549,26 @@ async function getCustomersSummary(storeDomain: string, accessToken: string) {
     const firstTimeCustomers = customers.filter(c => (c.orders_count || 0) === 1).length
     const marketingOptIn = customers.filter(c => c.accepts_marketing).length
 
-    // Recurring customer rate (customers with more than 1 order / total customers)
-    const totalCustomersCount = countResponse.count || customers.length
-    const recurringCustomerRate = totalCustomersCount > 0 ? (returningCustomers / totalCustomersCount) * 100 : 0
+    // Calculate recurring customer rate based on sample
+    // This is an approximation since we're using a sample of 250 customers
+    const sampleSize = customers.length
+    const recurringRate = sampleSize > 0 ? (returningCustomers / sampleSize) * 100 : 0
 
-    // New customers in last 30 days
-    const thirtyDaysAgo = new Date()
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
-    const newCustomers = customers.filter(c => new Date(c.created_at) >= thirtyDaysAgo).length
+    console.log(`[Shopify] Customers - Total: ${totalCustomersCount}, New in period: ${newCustomersInPeriod}, Sample: ${sampleSize}`)
+    console.log(`[Shopify] Sample metrics - Returning: ${returningCustomers}, First-time: ${firstTimeCustomers}, Marketing: ${marketingOptIn}`)
 
     return {
       totalCustomers: totalCustomersCount,
       totalSpent,
       totalOrders,
-      averageOrdersPerCustomer: customers.length > 0 ? totalOrders / customers.length : 0,
-      averageSpentPerCustomer: customers.length > 0 ? totalSpent / customers.length : 0,
+      averageOrdersPerCustomer: sampleSize > 0 ? totalOrders / sampleSize : 0,
+      averageSpentPerCustomer: sampleSize > 0 ? totalSpent / sampleSize : 0,
       returningCustomers,
       firstTimeCustomers,
-      recurringCustomerRate,
-      newCustomersLast30Days: newCustomers,
+      recurringCustomerRate: recurringRate,
+      newCustomersLast30Days: newCustomersInPeriod,
       marketingOptIn,
-      marketingOptInRate: customers.length > 0 ? (marketingOptIn / customers.length) * 100 : 0,
+      marketingOptInRate: sampleSize > 0 ? (marketingOptIn / sampleSize) * 100 : 0,
     }
   } catch (error) {
     console.error("Error fetching customers:", error)
@@ -658,7 +670,7 @@ export async function GET(request: NextRequest) {
       getShopInfo(storeDomain, accessToken),
       getOrdersSummary(storeDomain, accessToken, dateRange),
       getProductsSummary(storeDomain, accessToken),
-      getCustomersSummary(storeDomain, accessToken),
+      getCustomersSummary(storeDomain, accessToken, dateRange),
     ])
 
     const reportData = {

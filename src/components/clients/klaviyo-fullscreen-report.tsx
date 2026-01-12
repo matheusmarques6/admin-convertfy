@@ -415,7 +415,7 @@ export function KlaviyoFullscreenReport({ storeId, storeName, period }: KlaviyoF
   const delivered = reportData.emailPerformance?.delivered || 0
   const bounced = reportData.emailPerformance?.bounced || 0
 
-  const sentCampaigns = reportData.campaigns?.sent || 0
+  const sentCampaigns = reportData.overview?.campaignsInPeriod || reportData.campaigns?.sent || 0
   const liveFlows = reportData.automation?.liveFlows || 0
   const totalFlows = reportData.automation?.totalFlows || 0
 

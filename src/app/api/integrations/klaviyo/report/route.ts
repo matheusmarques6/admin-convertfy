@@ -244,6 +244,32 @@ type CampaignsResponse = {
   links?: { next?: string }
 }
 
+// Get total profiles count
+async function getTotalProfiles(apiKey: string): Promise<number> {
+  console.log("[Klaviyo] Fetching total profiles count...")
+
+  // Use the profiles endpoint with page size 1 to get the count from pagination
+  const response = await klaviyoRequest<{
+    data: Array<{ id: string }>
+    links?: { next?: string }
+  }>(apiKey, "/profiles/?page[size]=1")
+
+  if (!response) {
+    console.log("[Klaviyo] Failed to fetch profiles count")
+    return 0
+  }
+
+  // Try to get count from a separate count request or estimate from pagination
+  // Klaviyo doesn't have a direct count endpoint, so we'll use a different approach
+  // We'll fetch profiles in batches to count, or use the first page data
+
+  // Alternative: Use segments to get a more accurate count
+  // The "All Subscribers" or similar segment would have the total count
+  // For now, return 0 and let the caller use list totals as fallback
+
+  return 0
+}
+
 // Get ALL lists with profile counts and pagination
 async function getLists(apiKey: string) {
   const allLists: Array<{
@@ -371,21 +397,67 @@ async function getSegments(apiKey: string) {
 
   console.log(`[Klaviyo] Fetched ${allSegments.length} total segments`)
 
-  // Find engaged 90d segment (common naming patterns)
-  const engaged90dSegment = allSegments.find(s => {
-    const nameLower = s.name.toLowerCase()
-    return nameLower.includes('engajado') ||
-           nameLower.includes('engaged') ||
-           nameLower.includes('90d') ||
-           nameLower.includes('90 dias') ||
-           nameLower.includes('ativos')
+  // Log all segments for debugging
+  allSegments.forEach(s => {
+    console.log(`[Klaviyo] Segment: "${s.name}" - ${s.profileCount} profiles`)
   })
+
+  // Find engaged segment with priority order (most specific to least specific)
+  // Priority 1: Exact matches for common engaged segment names
+  const engagedPatterns = [
+    /engajados?\s*90\s*d/i,           // "Engajados 90d", "Engajado 90D"
+    /engaged\s*90\s*d/i,              // "Engaged 90d", "Engaged 90D"
+    /leads?\s*engajados?\s*\(?\s*\d+\s*d\s*\)?/i,  // "Leads Engajados (180d)", "Lead Engajado 90d"
+    /engajados?\s*\d+\s*d/i,          // "Engajados 180d"
+    /engaged\s*\d+\s*d/i,             // "Engaged 180d"
+    /ativos?\s*\d+\s*d/i,             // "Ativos 90d"
+    /active\s*\d+\s*d/i,              // "Active 90d"
+    /engajados?/i,                    // "Engajados", "Engajado"
+    /engaged/i,                       // "Engaged"
+    /ativos?$/i,                      // "Ativos" (exact)
+  ]
+
+  let engaged90dSegment = null
+  for (const pattern of engagedPatterns) {
+    engaged90dSegment = allSegments.find(s => pattern.test(s.name))
+    if (engaged90dSegment) {
+      console.log(`[Klaviyo] Found engaged segment: "${engaged90dSegment.name}" with ${engaged90dSegment.profileCount} profiles`)
+      break
+    }
+  }
+
+  // Find a segment that represents total active profiles
+  // Look for "Newsletter", "All Subscribers", "Master List", etc.
+  const totalProfilesPatterns = [
+    /newsletter/i,
+    /all\s*(subscribers?|contacts?|profiles?)/i,
+    /master\s*list/i,
+    /main\s*list/i,
+    /todos?\s*(os\s*)?(contatos?|inscritos?)/i,
+    /lista\s*principal/i,
+    /base\s*(completa|total|geral)/i,
+  ]
+
+  let totalProfilesSegment = null
+  for (const pattern of totalProfilesPatterns) {
+    totalProfilesSegment = allSegments.find(s => pattern.test(s.name))
+    if (totalProfilesSegment) {
+      console.log(`[Klaviyo] Found total profiles segment: "${totalProfilesSegment.name}" with ${totalProfilesSegment.profileCount} profiles`)
+      break
+    }
+  }
+
+  // If no specific segment found, use the largest segment as an approximation
+  const largestSegment = allSegments.reduce((max, s) => s.profileCount > max.profileCount ? s : max, allSegments[0])
+  console.log(`[Klaviyo] Largest segment: "${largestSegment?.name}" with ${largestSegment?.profileCount} profiles`)
 
   return {
     totalSegments: allSegments.length,
     segments: allSegments.sort((a, b) => b.profileCount - a.profileCount),
     engaged90dProfiles: engaged90dSegment?.profileCount || 0,
-    engaged90dSegmentName: engaged90dSegment?.name || null
+    engaged90dSegmentName: engaged90dSegment?.name || null,
+    totalActiveProfiles: totalProfilesSegment?.profileCount || largestSegment?.profileCount || 0,
+    totalActiveProfilesSource: totalProfilesSegment?.name || largestSegment?.name || null
   }
 }
 
@@ -911,7 +983,7 @@ export async function GET(request: NextRequest) {
           totalOrders: 0,
         },
         overview: {
-          totalSubscribers: listMetrics.totalSubscribers,
+          totalSubscribers: segmentMetrics.totalActiveProfiles || listMetrics.totalSubscribers,
           totalLists: listMetrics.totalLists,
           totalSegments: segmentMetrics.totalSegments,
           totalFlows: allFlows.length,
@@ -922,8 +994,8 @@ export async function GET(request: NextRequest) {
         },
         engagement: {
           engagedProfiles: segmentMetrics.engaged90dProfiles,
-          engagementRate: listMetrics.totalSubscribers > 0
-            ? ((segmentMetrics.engaged90dProfiles / listMetrics.totalSubscribers) * 100).toFixed(1)
+          engagementRate: (segmentMetrics.totalActiveProfiles || listMetrics.totalSubscribers) > 0
+            ? ((segmentMetrics.engaged90dProfiles / (segmentMetrics.totalActiveProfiles || listMetrics.totalSubscribers)) * 100).toFixed(1)
             : "0",
           engaged90dSegmentName: segmentMetrics.engaged90dSegmentName,
         },
@@ -1068,7 +1140,7 @@ export async function GET(request: NextRequest) {
       },
 
       overview: {
-        totalSubscribers: listMetrics.totalSubscribers,
+        totalSubscribers: segmentMetrics.totalActiveProfiles || listMetrics.totalSubscribers,
         totalLists: listMetrics.totalLists,
         totalSegments: segmentMetrics.totalSegments,
         totalFlows: allFlows.length,
@@ -1082,8 +1154,8 @@ export async function GET(request: NextRequest) {
       // Engagement data - uses segment data for accurate counts
       engagement: {
         engagedProfiles: segmentMetrics.engaged90dProfiles,
-        engagementRate: listMetrics.totalSubscribers > 0
-          ? ((segmentMetrics.engaged90dProfiles / listMetrics.totalSubscribers) * 100).toFixed(1)
+        engagementRate: (segmentMetrics.totalActiveProfiles || listMetrics.totalSubscribers) > 0
+          ? ((segmentMetrics.engaged90dProfiles / (segmentMetrics.totalActiveProfiles || listMetrics.totalSubscribers)) * 100).toFixed(1)
           : "0",
         engaged90dSegmentName: segmentMetrics.engaged90dSegmentName,
       },
