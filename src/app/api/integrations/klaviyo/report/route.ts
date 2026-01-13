@@ -448,56 +448,7 @@ async function getSegments(apiKey: string) {
   }
 }
 
-// Get total profiles count as fallback
-// Uses the profiles endpoint with pagination to count all profiles
-async function getTotalProfilesCount(apiKey: string): Promise<number> {
-  console.log("[Klaviyo] Getting total profiles count via profiles API...")
-
-  // First request to get total count from meta
-  const response = await klaviyoRequest<{
-    data: Array<{ id: string }>
-    links?: { next?: string }
-  }>(apiKey, "/profiles/?page[size]=1")
-
-  if (!response?.data) {
-    console.log("[Klaviyo] Could not fetch profiles count")
-    return 0
-  }
-
-  // Count profiles by paginating through (more accurate)
-  type ProfilePageResponse = {
-    data: Array<{ id: string }>
-    links?: { next?: string }
-  }
-
-  let totalCount = 0
-  let nextPage: string | null = "/profiles/?page[size]=100"
-
-  while (nextPage) {
-    const pageResponse: ProfilePageResponse | null = await klaviyoRequest<ProfilePageResponse>(apiKey, nextPage)
-
-    if (!pageResponse?.data) break
-
-    totalCount += pageResponse.data.length
-
-    // Get next page URL if exists
-    nextPage = pageResponse.links?.next ? pageResponse.links.next.replace(KLAVIYO_API_URL, "") : null
-
-    // Rate limit between pages
-    if (nextPage) await sleep(300)
-
-    // Limit to first 10,000 profiles to avoid timeout
-    if (totalCount >= 10000) {
-      console.log(`[Klaviyo] Profiles count capped at ${totalCount} for performance`)
-      break
-    }
-  }
-
-  console.log(`[Klaviyo] Total profiles count: ${totalCount}`)
-  return totalCount
-}
-
-// Get ALL campaigns with pagination - filter by email channel
+// Get ALL campaigns with pagination
 async function getCampaigns(apiKey: string) {
   const allCampaigns: Array<{
     id: string
@@ -508,8 +459,8 @@ async function getCampaigns(apiKey: string) {
     archived: boolean
   }> = []
 
-  // Per Klaviyo docs: filter by email channel with pagination
-  let nextPage: string | null = '/campaigns?filter=equals(messages.channel,"email")&page[size]=100'
+  // Get all campaigns (not filtered by channel to include SMS too)
+  let nextPage: string | null = '/campaigns?page[size]=100'
 
   while (nextPage) {
     const response: CampaignsResponse | null = await klaviyoRequest<CampaignsResponse>(apiKey, nextPage)
@@ -517,11 +468,15 @@ async function getCampaigns(apiKey: string) {
     if (!response?.data) break
 
     for (const c of response.data) {
+      const status = c.attributes.status
+      const sendTime = c.attributes.send_time
+      console.log(`[Klaviyo] Campaign: "${c.attributes.name}" | status: ${status} | sendTime: ${sendTime || 'null'}`)
+
       allCampaigns.push({
         id: c.id,
         name: c.attributes.name,
-        status: c.attributes.status,
-        sendTime: c.attributes.send_time,
+        status,
+        sendTime,
         createdAt: c.attributes.created_at,
         archived: c.attributes.archived
       })
@@ -531,10 +486,11 @@ async function getCampaigns(apiKey: string) {
     nextPage = response.links?.next ? response.links.next.replace(KLAVIYO_API_URL, "") : null
 
     // Rate limit between pages
-    if (nextPage) await sleep(500)
+    if (nextPage) await sleep(300)
   }
 
-  console.log(`[Klaviyo] Fetched ${allCampaigns.length} total campaigns`)
+  const sentCount = allCampaigns.filter(c => c.status === 'sent').length
+  console.log(`[Klaviyo] Fetched ${allCampaigns.length} total campaigns (${sentCount} sent)`)
   return allCampaigns
 }
 
@@ -998,16 +954,11 @@ export async function GET(request: NextRequest) {
         getCampaigns(apiKey)
       ])
 
-      // Calculate total subscribers with fallback to profiles count
-      let errorCaseTotalSubscribers = listMetrics.totalSubscribers || segmentMetrics.totalActiveProfiles
-      console.log(`[Klaviyo] Error case initial totalSubscribers: ${errorCaseTotalSubscribers}`)
-
-      if (errorCaseTotalSubscribers === 0) {
-        console.log("[Klaviyo] Error case: using profiles API fallback...")
-        errorCaseTotalSubscribers = await getTotalProfilesCount(apiKey)
-      }
-
-      console.log(`[Klaviyo] Error case final totalSubscribers: ${errorCaseTotalSubscribers}`)
+      // Calculate total subscribers - use largest list or segment profile count
+      // (summing can double-count profiles in multiple lists)
+      const largestListCount = listMetrics.lists.length > 0 ? listMetrics.lists[0].profileCount : 0
+      const errorCaseTotalSubscribers = largestListCount || segmentMetrics.totalActiveProfiles || listMetrics.totalSubscribers
+      console.log(`[Klaviyo] Error case totalSubscribers: ${errorCaseTotalSubscribers} (largest list: ${largestListCount}, segment: ${segmentMetrics.totalActiveProfiles})`)
 
       return NextResponse.json({
         success: true,
@@ -1071,17 +1022,11 @@ export async function GET(request: NextRequest) {
       getCampaigns(apiKey)
     ])
 
-    // Calculate total subscribers with fallback to profiles count
-    let totalSubscribers = listMetrics.totalSubscribers || segmentMetrics.totalActiveProfiles
-    console.log(`[Klaviyo] Initial totalSubscribers: ${totalSubscribers} (lists: ${listMetrics.totalSubscribers}, segments: ${segmentMetrics.totalActiveProfiles})`)
-
-    // If both lists and segments returned 0, use profiles API as fallback
-    if (totalSubscribers === 0) {
-      console.log("[Klaviyo] totalSubscribers is 0, using profiles API fallback...")
-      totalSubscribers = await getTotalProfilesCount(apiKey)
-    }
-
-    console.log(`[Klaviyo] Final totalSubscribers: ${totalSubscribers}`)
+    // Calculate total subscribers - use largest list or segment profile count
+    // (summing can double-count profiles in multiple lists)
+    const largestListCount = listMetrics.lists.length > 0 ? listMetrics.lists[0].profileCount : 0
+    const totalSubscribers = largestListCount || segmentMetrics.totalActiveProfiles || listMetrics.totalSubscribers
+    console.log(`[Klaviyo] totalSubscribers: ${totalSubscribers} (largest list: ${largestListCount}, segment: ${segmentMetrics.totalActiveProfiles}, lists sum: ${listMetrics.totalSubscribers})`)
 
     // Filter campaigns by send_time in period
     const inicio = new Date(startDateStr)
