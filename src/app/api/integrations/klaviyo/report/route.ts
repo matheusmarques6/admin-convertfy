@@ -257,13 +257,22 @@ async function getLists(apiKey: string) {
   // https://developers.klaviyo.com/en/reference/get_lists
   let nextPage: string | null = "/lists/?page[size]=100&additional-fields[list]=profile_count"
 
+  console.log("[Klaviyo] Fetching lists...")
+
   while (nextPage) {
     const response: ListsResponse | null = await klaviyoRequest<ListsResponse>(apiKey, nextPage)
 
-    if (!response?.data) break
+    if (!response?.data) {
+      console.log("[Klaviyo] No data in lists response")
+      break
+    }
+
+    console.log(`[Klaviyo] Lists page returned ${response.data.length} lists`)
 
     for (const l of response.data) {
-      const profileCount = l.attributes.profile_count || 0
+      // Log raw attributes for debugging
+      console.log(`[Klaviyo] Raw list attributes:`, JSON.stringify(l.attributes))
+      const profileCount = l.attributes.profile_count ?? 0
       console.log(`[Klaviyo] List: "${l.attributes.name}" - ${profileCount} profiles`)
       allLists.push({
         id: l.id,
@@ -352,16 +361,26 @@ async function getSegments(apiKey: string) {
   // https://developers.klaviyo.com/en/reference/get_segments
   let nextPage: string | null = "/segments/?page[size]=100&additional-fields[segment]=profile_count"
 
+  console.log("[Klaviyo] Fetching segments...")
+
   while (nextPage) {
     const response: SegmentsResponse | null = await klaviyoRequest<SegmentsResponse>(apiKey, nextPage)
 
-    if (!response?.data) break
+    if (!response?.data) {
+      console.log("[Klaviyo] No data in segments response")
+      break
+    }
+
+    console.log(`[Klaviyo] Segments page returned ${response.data.length} segments`)
 
     for (const s of response.data) {
+      // Log raw attributes for debugging
+      console.log(`[Klaviyo] Raw segment attributes:`, JSON.stringify(s.attributes))
+      const profileCount = s.attributes.profile_count ?? 0
       allSegments.push({
         id: s.id,
         name: s.attributes.name,
-        profileCount: s.attributes.profile_count || 0,
+        profileCount,
         isActive: s.attributes.is_active,
         isStarred: s.attributes.is_starred,
         created: s.attributes.created
