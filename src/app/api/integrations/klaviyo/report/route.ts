@@ -435,6 +435,122 @@ type SegmentsResponse = {
   links?: { next?: string }
 }
 
+// Search for engaged segment specifically using Klaviyo API filters
+// This is more reliable than fetching all segments and searching locally
+// https://developers.klaviyo.com/en/reference/get_segments
+async function findEngagedSegment(apiKey: string): Promise<{
+  id: string
+  name: string
+  profileCount: number
+} | null> {
+  console.log("[Klaviyo] ========== SEARCHING FOR ENGAGED SEGMENT ==========")
+
+  // Try multiple filter patterns to find the engaged segment
+  const filterPatterns = [
+    'contains(name,"Engajados")',
+    'contains(name,"engajados")',
+    'contains(name,"Engaged")',
+    'contains(name,"engaged")',
+    'contains(name,"90d")',
+    'contains(name,"90D")',
+  ]
+
+  for (const filter of filterPatterns) {
+    console.log(`[Klaviyo] Trying filter: ${filter}`)
+
+    const encodedFilter = encodeURIComponent(filter)
+    const response = await klaviyoRequest<{
+      data: Array<{
+        id: string
+        attributes: { name: string; profile_count?: number }
+      }>
+    }>(apiKey, `/segments/?filter=${encodedFilter}&additional-fields[segment]=profile_count`)
+
+    if (response?.data && response.data.length > 0) {
+      console.log(`[Klaviyo] Filter "${filter}" returned ${response.data.length} segments:`)
+      response.data.forEach(s => {
+        console.log(`[Klaviyo] -> "${s.attributes.name}" (ID: ${s.id}) profile_count: ${s.attributes.profile_count}`)
+      })
+
+      // Look for segment with both "engajados/engaged" AND "90" in name
+      const engagedSegment = response.data.find(s => {
+        const name = s.attributes.name.toLowerCase()
+        const hasEngajados = name.includes("engajados") || name.includes("engaged")
+        const has90 = name.includes("90")
+        return hasEngajados && has90
+      })
+
+      if (engagedSegment) {
+        console.log(`[Klaviyo] ✓ Found engaged segment: "${engagedSegment.attributes.name}" (ID: ${engagedSegment.id})`)
+
+        // Now count profiles directly - don't rely on profile_count attribute
+        const profileCount = await countSegmentProfiles(apiKey, engagedSegment.id)
+
+        return {
+          id: engagedSegment.id,
+          name: engagedSegment.attributes.name,
+          profileCount
+        }
+      }
+    }
+
+    await sleep(200) // Rate limit between filter attempts
+  }
+
+  console.log("[Klaviyo] ✗ No engaged segment found via filters")
+  return null
+}
+
+// Count profiles in a segment by paginating through all profiles
+// This is the most reliable method as profile_count attribute can be stale/unavailable
+async function countSegmentProfiles(apiKey: string, segmentId: string): Promise<number> {
+  console.log(`[Klaviyo] Counting profiles for segment ${segmentId}...`)
+
+  type ProfilesResponse = {
+    data: Array<{ id: string }>
+    links?: { next?: string }
+  }
+
+  let totalProfiles = 0
+  let nextPage: string | null = `/segments/${segmentId}/profiles/?page[size]=100`
+  let pageCount = 0
+  const maxPages = 500 // Up to 50,000 profiles
+
+  while (nextPage && pageCount < maxPages) {
+    const response: ProfilesResponse | null = await klaviyoRequest<ProfilesResponse>(apiKey, nextPage)
+
+    if (!response) {
+      console.log(`[Klaviyo] API request failed at page ${pageCount}`)
+      break
+    }
+
+    if (!response.data || response.data.length === 0) {
+      console.log(`[Klaviyo] No data at page ${pageCount}, stopping`)
+      break
+    }
+
+    totalProfiles += response.data.length
+    pageCount++
+
+    // Log progress every 20 pages
+    if (pageCount % 20 === 0) {
+      console.log(`[Klaviyo] Profile count progress: ${totalProfiles} (page ${pageCount})`)
+    }
+
+    const nextUrl: string | undefined = response.links?.next
+    if (!nextUrl) {
+      console.log(`[Klaviyo] No next page link at page ${pageCount}`)
+      break
+    }
+
+    nextPage = nextUrl.replace(KLAVIYO_API_URL, "")
+    await sleep(30) // Fast pagination
+  }
+
+  console.log(`[Klaviyo] ✓ Total profiles counted: ${totalProfiles} (${pageCount} pages)`)
+  return totalProfiles
+}
+
 async function getSegments(apiKey: string) {
   const allSegments: Array<{
     id: string
@@ -484,120 +600,16 @@ async function getSegments(apiKey: string) {
 
   console.log(`[Klaviyo] Fetched ${allSegments.length} total segments`)
 
-  // Log all segments for debugging
-  allSegments.forEach(s => {
-    console.log(`[Klaviyo] Segment: "${s.name}" - ${s.profileCount} profiles`)
+  // Log ALL segments for debugging
+  console.log(`[Klaviyo] ========== ALL SEGMENTS ==========`)
+  allSegments.forEach((s, i) => {
+    console.log(`[Klaviyo] [${i}] "${s.name}" (ID: ${s.id}) - profileCount: ${s.profileCount}`)
   })
+  console.log(`[Klaviyo] ==================================`)
 
-  // Find engaged segment - normalize names for comparison
-  // User confirmed segment is "Leads Engajados (90d)" with 15,245 members
-
-  // Helper to normalize segment names for comparison
-  const normalizeName = (name: string) => {
-    return name
-      .toLowerCase()
-      .replace(/\s+/g, '') // Remove all whitespace
-      .replace(/[()[\]{}]/g, '') // Remove brackets
-      .replace(/[^a-z0-9]/g, '') // Keep only alphanumeric
-  }
-
-  const targetNormalized = normalizeName("Leads Engajados 90d")
-  console.log(`[Klaviyo] Looking for engaged segment, target normalized: "${targetNormalized}"`)
-
-  let engaged90dSegment = null
-
-  // First try to find by normalized name containing "engajados" and "90"
-  engaged90dSegment = allSegments.find(s => {
-    const normalized = normalizeName(s.name)
-    const hasEngajados = normalized.includes("engajados") || normalized.includes("engaged")
-    const has90 = normalized.includes("90")
-    if (hasEngajados && has90) {
-      console.log(`[Klaviyo] ✓ Found by normalized match: "${s.name}" (normalized: ${normalized})`)
-      return true
-    }
-    return false
-  })
-
-  // If not found, try broader search
-  if (!engaged90dSegment) {
-    console.log(`[Klaviyo] Normalized match failed, trying broader search...`)
-
-    // Try finding any segment with "engajados" in name
-    engaged90dSegment = allSegments.find(s =>
-      s.name.toLowerCase().includes("engajados") ||
-      s.name.toLowerCase().includes("engaged")
-    )
-
-    if (engaged90dSegment) {
-      console.log(`[Klaviyo] ✓ Found by broad search: "${engaged90dSegment.name}"`)
-    }
-  }
-
-  // If still not found, try exact patterns
-  if (!engaged90dSegment) {
-    console.log(`[Klaviyo] Broad search failed, trying exact patterns...`)
-
-    const patterns = [
-      /leads\s*engajados/i,
-      /engajados?\s*\(?90/i,
-      /engaged/i,
-    ]
-
-    for (const pattern of patterns) {
-      engaged90dSegment = allSegments.find(s => pattern.test(s.name))
-      if (engaged90dSegment) {
-        console.log(`[Klaviyo] ✓ Found by pattern ${pattern}: "${engaged90dSegment.name}"`)
-        break
-      }
-    }
-  }
-
-  if (!engaged90dSegment) {
-    console.log(`[Klaviyo] ✗ No engaged segment found! Available segments: ${allSegments.map(s => `"${s.name}"`).join(', ')}`)
-  } else {
-    console.log(`[Klaviyo] Found engaged segment: "${engaged90dSegment.name}" (ID: ${engaged90dSegment.id})`)
-
-    // ALWAYS count profiles directly - the profile_count API field is unreliable
-    console.log(`[Klaviyo] Counting profiles in segment "${engaged90dSegment.name}" directly...`)
-    let profileCount = 0
-    let profilesPage: string | null = `/segments/${engaged90dSegment.id}/profiles/?page[size]=100`
-    let pageCount = 0
-    const maxPages = 200 // Up to 20,000 profiles
-
-    type ProfilesPageResponse = {
-      data: Array<{ id: string }>
-      links?: { next?: string }
-    } | null
-
-    while (profilesPage && pageCount < maxPages) {
-      const profilesResponse: ProfilesPageResponse = await klaviyoRequest<{
-        data: Array<{ id: string }>
-        links?: { next?: string }
-      }>(apiKey, profilesPage)
-
-      if (!profilesResponse?.data) {
-        console.log(`[Klaviyo] No data in response at page ${pageCount}`)
-        break
-      }
-
-      profileCount += profilesResponse.data.length
-      pageCount++
-
-      // Log progress every 10 pages
-      if (pageCount % 10 === 0) {
-        console.log(`[Klaviyo] Segment profiles counted: ${profileCount} (page ${pageCount})`)
-      }
-
-      const nextUrl: string | undefined = profilesResponse.links?.next
-      if (!nextUrl) break
-      profilesPage = nextUrl.replace(KLAVIYO_API_URL, "")
-
-      await sleep(30) // Fast rate limit
-    }
-
-    engaged90dSegment.profileCount = profileCount
-    console.log(`[Klaviyo] ✓ Engaged segment "${engaged90dSegment.name}" has ${profileCount} profiles (counted ${pageCount} pages)`)
-  }
+  // Use dedicated function to find and count engaged segment
+  // This uses API filters for more reliable search
+  const engagedResult = await findEngagedSegment(apiKey)
 
   // Find a segment that represents total active profiles
   // Look for "Newsletter", "All Subscribers", "Master List", etc.
@@ -647,12 +659,6 @@ async function getSegments(apiKey: string) {
 
     // Re-find largest after individual fetches
     largestSegment = allSegments.reduce((max, s) => s.profileCount > max.profileCount ? s : max, allSegments[0])
-
-    // Also update engaged segment if found
-    if (engaged90dSegment) {
-      const updated = allSegments.find(s => s.id === engaged90dSegment!.id)
-      if (updated) engaged90dSegment = updated
-    }
   }
 
   if (largestSegment) {
@@ -661,11 +667,16 @@ async function getSegments(apiKey: string) {
     console.log(`[Klaviyo] No segments found`)
   }
 
+  // Log final engaged result
+  console.log(`[Klaviyo] ========== ENGAGED SEGMENT FINAL ==========`)
+  console.log(`[Klaviyo] engagedResult: ${engagedResult ? JSON.stringify(engagedResult) : 'null'}`)
+  console.log(`[Klaviyo] ==============================================`)
+
   return {
     totalSegments: allSegments.length,
     segments: allSegments.sort((a, b) => b.profileCount - a.profileCount),
-    engaged90dProfiles: engaged90dSegment?.profileCount || 0,
-    engaged90dSegmentName: engaged90dSegment?.name || null,
+    engaged90dProfiles: engagedResult?.profileCount || 0,
+    engaged90dSegmentName: engagedResult?.name || null,
     totalActiveProfiles: totalProfilesSegment?.profileCount || largestSegment?.profileCount || 0,
     totalActiveProfilesSource: totalProfilesSegment?.name || largestSegment?.name || null
   }
