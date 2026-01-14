@@ -291,28 +291,52 @@ async function getOrdersSummary(
       0
     )
 
-    // Unique customers and recurring customer calculation
-    // Count orders per customer email (more reliable than customer.id which may be null for guest orders)
-    const ordersByCustomer = new Map<string, number>()
+    // Recurring customer rate calculation - using Shopify's definition:
+    // "Taxa de clientes recorrentes = clientes recorrentes / clientes"
+    // A "recurring customer" is one who has orders_count > 1 (has ordered before historically)
+
+    // Track unique customers and their recurring status
+    const customerData = new Map<string, { isRecurring: boolean; ordersInPeriod: number }>()
+
     orders.forEach(order => {
       const customerKey = order.customer?.email?.toLowerCase() || order.customer?.id?.toString()
       if (customerKey) {
-        ordersByCustomer.set(customerKey, (ordersByCustomer.get(customerKey) || 0) + 1)
+        const existing = customerData.get(customerKey)
+        // A customer is recurring if orders_count > 1 (they've ordered before)
+        const isRecurring = (order.customer?.orders_count || 0) > 1
+
+        if (existing) {
+          existing.ordersInPeriod += 1
+          // Keep the recurring status (once recurring, always recurring)
+          if (isRecurring) existing.isRecurring = true
+        } else {
+          customerData.set(customerKey, { isRecurring, ordersInPeriod: 1 })
+        }
       }
     })
 
-    const uniqueCustomers = ordersByCustomer.size
+    const uniqueCustomers = customerData.size
 
-    // Recurring customers = customers with more than 1 order in the period
-    const recurringCustomers = Array.from(ordersByCustomer.values()).filter(count => count > 1).length
+    // Count customers who are recurring (have orders_count > 1 historically)
+    const recurringCustomers = Array.from(customerData.values()).filter(c => c.isRecurring).length
+
+    // Shopify formula: recurring customers / total customers
     const recurringCustomerRate = uniqueCustomers > 0 ? (recurringCustomers / uniqueCustomers) * 100 : 0
 
-    console.log(`[Shopify] Recurring customers: ${recurringCustomers} of ${uniqueCustomers} unique customers (${recurringCustomerRate.toFixed(1)}%)`)
+    console.log(`[Shopify] Unique customers: ${uniqueCustomers}`)
+    console.log(`[Shopify] Recurring customers (orders_count > 1): ${recurringCustomers}`)
+    console.log(`[Shopify] Recurring rate: ${recurringCustomerRate.toFixed(2)}%`)
+
+    // Debug: log sample of customer data
+    const sampleCustomers = Array.from(customerData.entries()).slice(0, 5)
+    sampleCustomers.forEach(([key, data]) => {
+      console.log(`[Shopify] Customer ${key}: recurring=${data.isRecurring}, ordersInPeriod=${data.ordersInPeriod}`)
+    })
 
     // Also track orders from recurring customers (alternative metric)
     const ordersFromRecurringCustomers = orders.filter(o => {
       const customerKey = o.customer?.email?.toLowerCase() || o.customer?.id?.toString()
-      return customerKey && (ordersByCustomer.get(customerKey) || 0) > 1
+      return customerKey && customerData.get(customerKey)?.isRecurring
     }).length
 
     // SMS Attribution - detect orders from YSMS or other SMS marketing

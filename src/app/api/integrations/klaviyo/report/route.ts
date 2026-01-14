@@ -502,34 +502,56 @@ async function getSegments(apiKey: string) {
     console.log(`[Klaviyo] Segment: "${s.name}" - ${s.profileCount} profiles`)
   })
 
-  // Find engaged segment - exact match first for "Leads Engajados (90d)"
-  // Then try other patterns
-  const engagedPatterns = [
-    /^Leads\s+Engajados\s*\(\s*90\s*d\s*\)$/i,  // EXACT: "Leads Engajados (90d)"
-    /leads\s+engajados\s*\(\s*\d+\s*d\s*\)/i,   // "Leads Engajados (180d)", etc.
-    /engajados?\s*\(\s*\d+\s*d\s*\)/i,          // "Engajados (90d)"
-    /engajados?\s*90\s*d/i,                      // "Engajados 90d"
-    /engaged\s*90\s*d/i,                         // "Engaged 90d"
-    /engajados?\s*\d+\s*d/i,                     // "Engajados 180d"
-    /engaged\s*\d+\s*d/i,                        // "Engaged 180d"
-    /engajados?/i,                               // "Engajados"
-    /engaged/i,                                  // "Engaged"
+  // Find engaged segment - try exact matches first, then patterns
+  // User confirmed segment is always named "Leads Engajados (90d)"
+  const exactNames = [
+    "Leads Engajados (90d)",
+    "Leads Engajados(90d)",
+    "Leads Engajados (90 d)",
+    "Leads Engajados 90d",
+    "Leads Engajados - 90d",
   ]
 
   let engaged90dSegment = null
-  for (const pattern of engagedPatterns) {
-    engaged90dSegment = allSegments.find(s => pattern.test(s.name))
+
+  // First try exact name matches (case-insensitive)
+  for (const exactName of exactNames) {
+    engaged90dSegment = allSegments.find(s =>
+      s.name.trim().toLowerCase() === exactName.toLowerCase()
+    )
     if (engaged90dSegment) {
-      console.log(`[Klaviyo] ✓ Found engaged segment: "${engaged90dSegment.name}" with ${engaged90dSegment.profileCount} profiles (pattern: ${pattern})`)
+      console.log(`[Klaviyo] ✓ Found engaged segment by exact name: "${engaged90dSegment.name}" with ${engaged90dSegment.profileCount} profiles`)
       break
+    }
+  }
+
+  // If not found, try pattern matching
+  if (!engaged90dSegment) {
+    console.log(`[Klaviyo] Exact name match failed, trying patterns...`)
+
+    const engagedPatterns = [
+      /leads\s*engajados\s*\(?\s*90\s*d?\s*\)?/i,  // Flexible: "Leads Engajados (90d)", "Leads Engajados 90d", etc.
+      /leads\s*engajados/i,                         // Any "Leads Engajados" segment
+      /engajados?\s*\(?\s*\d+\s*d?\s*\)?/i,        // "Engajados (90d)", "Engajados 90d"
+      /engaged\s*\(?\s*\d+\s*d?\s*\)?/i,           // "Engaged (90d)", "Engaged 90d"
+      /engajados?/i,                                // "Engajados"
+      /engaged/i,                                   // "Engaged"
+    ]
+
+    for (const pattern of engagedPatterns) {
+      engaged90dSegment = allSegments.find(s => pattern.test(s.name))
+      if (engaged90dSegment) {
+        console.log(`[Klaviyo] ✓ Found engaged segment by pattern: "${engaged90dSegment.name}" with ${engaged90dSegment.profileCount} profiles (pattern: ${pattern})`)
+        break
+      }
     }
   }
 
   if (!engaged90dSegment) {
     console.log(`[Klaviyo] ✗ No engaged segment found! Available segments: ${allSegments.map(s => `"${s.name}"`).join(', ')}`)
-  } else if (engaged90dSegment.profileCount === 0) {
-    // Fetch profile count individually for engaged segment
-    console.log(`[Klaviyo] Engaged segment has 0 profiles, fetching individually...`)
+  } else if (!engaged90dSegment.profileCount || engaged90dSegment.profileCount <= 0) {
+    // Fetch profile count individually for engaged segment (if not returned in bulk or is 0)
+    console.log(`[Klaviyo] Engaged segment "${engaged90dSegment.name}" has ${engaged90dSegment.profileCount} profiles, fetching individually...`)
     const detailResponse = await klaviyoRequest<{
       data: {
         id: string
@@ -537,12 +559,13 @@ async function getSegments(apiKey: string) {
       }
     }>(apiKey, `/segments/${engaged90dSegment.id}/?additional-fields[segment]=profile_count`)
 
-    if (detailResponse?.data?.attributes?.profile_count) {
-      engaged90dSegment.profileCount = detailResponse.data.attributes.profile_count
+    const individualCount = detailResponse?.data?.attributes?.profile_count
+    if (individualCount && individualCount > 0) {
+      engaged90dSegment.profileCount = individualCount
       console.log(`[Klaviyo] ✓ Engaged segment individual count: ${engaged90dSegment.profileCount}`)
     } else {
-      // Last resort: count profiles in segment directly
-      console.log(`[Klaviyo] profile_count still 0, counting profiles in segment directly...`)
+      // Last resort: count profiles in segment directly via pagination
+      console.log(`[Klaviyo] Individual fetch returned ${individualCount}, counting profiles in segment directly...`)
       let profileCount = 0
       let profilesPage: string | null = `/segments/${engaged90dSegment.id}/profiles/?page[size]=100`
       let pageCount = 0
@@ -1270,22 +1293,8 @@ export async function GET(request: NextRequest) {
       console.log(`[Klaviyo] Campaign: ${c.name} | sendTime: ${c.sendTime} | createdAt: ${c.createdAt} | status: ${c.status}`)
     })
 
-    // Filter sent campaigns by date - use sendTime if available, otherwise use createdAt
-    const campaignsInPeriod = sentCampaigns.filter(c => {
-      // Use sendTime if available, otherwise use createdAt as fallback
-      const campaignDate = c.sendTime ? new Date(c.sendTime) : new Date(c.createdAt)
-      const isInPeriod = campaignDate >= inicio && campaignDate <= fim
-
-      if (!isInPeriod) {
-        console.log(`[Klaviyo] Campaign "${c.name}" date ${campaignDate.toISOString()} is outside period`)
-      }
-      return isInPeriod
-    })
-
-    console.log(`[Klaviyo] Campaigns in period: ${campaignsInPeriod.length} of ${sentCampaigns.length} sent campaigns`)
-    campaignsInPeriod.forEach(c => {
-      console.log(`[Klaviyo] -> Campaign in period: ${c.name} (${c.id}) | sendTime: ${c.sendTime}`)
-    })
+    // We'll determine campaigns in period after getting reporting data
+    // The Reporting API is more reliable as it filters by actual activity in the timeframe
 
     // Get timezone offset from account settings to match Klaviyo dashboard
     const timezoneOffset = getTimezoneOffset(accountInfo.timezone)
@@ -1317,6 +1326,27 @@ export async function GET(request: NextRequest) {
         sendTime: campInfo?.sendTime
       }
     }).filter(c => c.revenue > 0 || c.delivered > 0)
+
+    // Count campaigns in period based on Reporting API data
+    // This is more reliable than filtering by send_time as it shows actual activity
+    const campaignsInPeriodCount = campaignReport.campaigns.length
+    console.log(`[Klaviyo] Campaigns with activity in period (from Reporting API): ${campaignsInPeriodCount}`)
+
+    // Also create a list of campaign IDs that had activity for reference
+    const campaignsInPeriod = campaignReport.campaigns.map(cr => {
+      const campInfo = allCampaigns.find(c => c.id === cr.campaignId)
+      return {
+        id: cr.campaignId,
+        name: campInfo?.name || "Unknown Campaign",
+        status: campInfo?.status || "sent",
+        sendTime: campInfo?.sendTime,
+        delivered: cr.delivered || 0
+      }
+    })
+    console.log(`[Klaviyo] Campaigns in period details:`)
+    campaignsInPeriod.forEach(c => {
+      console.log(`[Klaviyo] -> ${c.name} (${c.id}): delivered=${c.delivered}`)
+    })
 
     // Calculate totals
     const totalKlaviyoRevenue = flowReport.totalRevenue + campaignReport.totalRevenue
@@ -1378,7 +1408,7 @@ export async function GET(request: NextRequest) {
         liveFlows: allFlows.filter(f => f.status === "live").length,
         totalCampaigns: allCampaigns.length,
         sentCampaigns: allCampaigns.filter(c => c.status === "sent").length,
-        campaignsInPeriod: campaignsInPeriod.length,
+        campaignsInPeriod: campaignsInPeriodCount,
         totalTemplates: 0, // Templates not fetched currently
       },
 
@@ -1403,7 +1433,7 @@ export async function GET(request: NextRequest) {
 
       // Growth metrics
       growth: {
-        campaignsLast30Days: campaignsInPeriod.length,
+        campaignsLast30Days: campaignsInPeriodCount,
       },
 
       campaignPerformance: {
