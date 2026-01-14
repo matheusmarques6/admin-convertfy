@@ -312,9 +312,8 @@ async function getOrdersSummary(
     // Fetch customers in batches (up to 50 at a time to avoid rate limits)
     const customerIds = Array.from(uniqueCustomerIds)
     const batchSize = 50
-    const maxCustomersToFetch = 250 // Limit to avoid too many API calls
-
-    const customersToFetch = customerIds.slice(0, maxCustomersToFetch)
+    // Fetch ALL customers to get accurate recurring rate
+    const customersToFetch = customerIds
     console.log(`[Shopify] Fetching orders_count for ${customersToFetch.length} customers...`)
 
     for (let i = 0; i < customersToFetch.length; i += batchSize) {

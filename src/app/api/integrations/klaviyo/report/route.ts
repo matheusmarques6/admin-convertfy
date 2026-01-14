@@ -136,38 +136,19 @@ async function testApiConnection(apiKey: string): Promise<boolean> {
 }
 
 // Get total profiles count using profiles endpoint
-// Uses a quick estimation approach for speed
+// Counts ALL profiles for accurate count
 async function getTotalProfilesFromAPI(apiKey: string): Promise<number> {
-  console.log("[Klaviyo] Fetching total profiles count (quick estimation)...")
+  console.log("[Klaviyo] Fetching total profiles count (full count)...")
 
-  // First page to get an idea of count
-  const firstPage = await klaviyoRequest<{
-    data: Array<{ id: string }>
-    links?: { next?: string }
-  }>(apiKey, "/profiles/?page[size]=100")
+  let totalCount = 0
+  let nextPage: string | null = "/profiles/?page[size]=100"
+  let pagesChecked = 0
+  const maxPages = 1000 // Up to 100,000 profiles
 
-  if (!firstPage?.data) {
-    console.log("[Klaviyo] No profiles found")
-    return 0
-  }
+  type ProfilePage = { data: Array<{ id: string }>; links?: { next?: string } } | null
 
-  let totalCount = firstPage.data.length
-
-  // If there's no next page, we're done
-  if (!firstPage.links?.next) {
-    console.log(`[Klaviyo] Total profiles: ${totalCount}`)
-    return totalCount
-  }
-
-  // Count a few more pages to get better estimate
-  let nextPage: string | null = firstPage.links.next.replace(KLAVIYO_API_URL, "")
-  let pagesChecked = 1
-  const maxQuickPages = 30 // Check up to 30 pages quickly (3000 profiles)
-
-  type QuickPage = { data: Array<{ id: string }>; links?: { next?: string } } | null
-
-  while (nextPage && pagesChecked < maxQuickPages) {
-    const page: QuickPage = await klaviyoRequest<{
+  while (nextPage && pagesChecked < maxPages) {
+    const page: ProfilePage = await klaviyoRequest<{
       data: Array<{ id: string }>
       links?: { next?: string }
     }>(apiKey, nextPage)
@@ -177,20 +158,16 @@ async function getTotalProfilesFromAPI(apiKey: string): Promise<number> {
     totalCount += page.data.length
     pagesChecked++
 
+    // Log progress every 50 pages
+    if (pagesChecked % 50 === 0) {
+      console.log(`[Klaviyo] Profiles counted: ${totalCount} (page ${pagesChecked})`)
+    }
+
     const nextLink: string | undefined = page.links?.next
     if (!nextLink) break
     nextPage = nextLink.replace(KLAVIYO_API_URL, "")
 
-    await sleep(50) // Minimal delay
-  }
-
-  // If we hit the limit, estimate based on average page size
-  if (nextPage && pagesChecked >= maxQuickPages) {
-    const avgPerPage = totalCount / pagesChecked
-    // Estimate: assume 2x more pages than we checked
-    const estimatedTotal = Math.round(totalCount * 2)
-    console.log(`[Klaviyo] Estimated total profiles: ${estimatedTotal} (checked ${pagesChecked} pages, avg ${avgPerPage}/page)`)
-    return estimatedTotal
+    await sleep(30) // Fast rate limit
   }
 
   console.log(`[Klaviyo] Total profiles: ${totalCount} (${pagesChecked} pages)`)
@@ -1293,18 +1270,24 @@ export async function GET(request: NextRequest) {
       getCampaigns(apiKey)
     ])
 
-    // Calculate total subscribers - use largest list or segment profile count
-    // (summing can double-count profiles in multiple lists)
+    // Calculate total subscribers - always get accurate count from profiles API
+    // List/segment profile_count can be capped or outdated
     const largestListCount = listMetrics.lists.length > 0 ? listMetrics.lists[0].profileCount : 0
-    let totalSubscribers = largestListCount || segmentMetrics.totalActiveProfiles || listMetrics.totalSubscribers
+    const segmentCount = segmentMetrics.totalActiveProfiles || 0
 
-    // If still 0, use profiles API directly
+    console.log(`[Klaviyo] List counts: largest=${largestListCount}, segment=${segmentCount}, sum=${listMetrics.totalSubscribers}`)
+
+    // Always fetch from profiles API for accurate count
+    console.log("[Klaviyo] Fetching accurate profile count from API...")
+    let totalSubscribers = await getTotalProfilesFromAPI(apiKey)
+
+    // If API count failed, fall back to list/segment count
     if (totalSubscribers === 0) {
-      console.log("[Klaviyo] All counts are 0, fetching from profiles API...")
-      totalSubscribers = await getTotalProfilesFromAPI(apiKey)
+      totalSubscribers = largestListCount || segmentCount || listMetrics.totalSubscribers
+      console.log(`[Klaviyo] API returned 0, using fallback: ${totalSubscribers}`)
     }
 
-    console.log(`[Klaviyo] totalSubscribers: ${totalSubscribers} (largest list: ${largestListCount}, segment: ${segmentMetrics.totalActiveProfiles}, lists sum: ${listMetrics.totalSubscribers})`)
+    console.log(`[Klaviyo] totalSubscribers: ${totalSubscribers}`)
 
     // Filter campaigns by send_time in period
     const inicio = new Date(startDateStr)
