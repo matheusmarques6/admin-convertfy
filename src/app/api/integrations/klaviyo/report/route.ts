@@ -136,54 +136,49 @@ async function testApiConnection(apiKey: string): Promise<boolean> {
 }
 
 // Get total profiles count using profiles endpoint
+// Counts ALL profiles by paginating through the entire list
 async function getTotalProfilesFromAPI(apiKey: string): Promise<number> {
-  console.log("[Klaviyo] Fetching total profiles count...")
+  console.log("[Klaviyo] Fetching total profiles count (full count)...")
 
-  // Get first page to check if there are profiles
-  const firstPage = await klaviyoRequest<{
+  let totalCount = 0
+  let nextPage: string | null = "/profiles/?page[size]=100"
+  let pagesChecked = 0
+  const maxPages = 200 // Up to 20,000 profiles (200 * 100)
+
+  type ProfilesPage = {
     data: Array<{ id: string }>
     links?: { next?: string }
-  }>(apiKey, "/profiles/?page[size]=100")
+  } | null
 
-  if (!firstPage?.data) {
-    console.log("[Klaviyo] No profiles found")
-    return 0
-  }
+  while (nextPage && pagesChecked < maxPages) {
+    const page: ProfilesPage = await klaviyoRequest<{
+      data: Array<{ id: string }>
+      links?: { next?: string }
+    }>(apiKey, nextPage)
 
-  let totalCount = firstPage.data.length
-  const hasMore = !!firstPage.links?.next
+    if (!page?.data) break
 
-  // Estimate: if there's more pages, count more accurately
-  if (hasMore) {
-    let nextPage = firstPage.links?.next?.replace(KLAVIYO_API_URL, "") || null
-    let pagesChecked = 1
+    totalCount += page.data.length
+    pagesChecked++
 
-    // Check up to 10 pages to get a better estimate
-    while (nextPage && pagesChecked < 10) {
-      await sleep(200)
-      const page = await klaviyoRequest<{
-        data: Array<{ id: string }>
-        links?: { next?: string }
-      }>(apiKey, nextPage)
-
-      if (!page?.data) break
-
-      totalCount += page.data.length
-      nextPage = page.links?.next?.replace(KLAVIYO_API_URL, "") || null
-      pagesChecked++
-
-      if (!page.links?.next) break
+    // Log progress every 10 pages
+    if (pagesChecked % 10 === 0) {
+      console.log(`[Klaviyo] Profiles counted: ${totalCount} (page ${pagesChecked})`)
     }
 
-    // If still more pages, estimate based on pages checked
-    if (nextPage) {
-      // Estimate remaining (assume 50% more pages)
-      totalCount = Math.round(totalCount * 1.5)
-      console.log(`[Klaviyo] Estimated total profiles: ${totalCount} (checked ${pagesChecked} pages)`)
-    }
+    const nextUrl: string | undefined = page.links?.next
+    nextPage = nextUrl ? nextUrl.replace(KLAVIYO_API_URL, "") : null
+
+    if (!nextPage) break
+    await sleep(100) // Fast rate limiting since burst is 75/s
   }
 
-  console.log(`[Klaviyo] Total profiles: ${totalCount}`)
+  // If we hit the max pages limit, estimate remaining
+  if (nextPage && pagesChecked >= maxPages) {
+    console.log(`[Klaviyo] Warning: Hit max pages limit (${maxPages}), count may be underestimated`)
+  }
+
+  console.log(`[Klaviyo] Total profiles counted: ${totalCount} (${pagesChecked} pages)`)
   return totalCount
 }
 

@@ -295,22 +295,75 @@ async function getOrdersSummary(
     // "Taxa de clientes recorrentes = clientes recorrentes / clientes"
     // A "recurring customer" is one who has orders_count > 1 (has ordered before historically)
 
-    // Track unique customers and their recurring status
-    const customerData = new Map<string, { isRecurring: boolean; ordersInPeriod: number }>()
+    // First, collect unique customer IDs from orders
+    const uniqueCustomerIds = new Set<number>()
+    orders.forEach(order => {
+      if (order.customer?.id) {
+        uniqueCustomerIds.add(order.customer.id)
+      }
+    })
+
+    console.log(`[Shopify] Found ${uniqueCustomerIds.size} unique customers in orders`)
+
+    // Fetch customer data to get accurate orders_count
+    // The REST API doesn't return orders_count in the order's customer object anymore
+    const customerOrdersCounts = new Map<number, number>()
+
+    // Fetch customers in batches (up to 50 at a time to avoid rate limits)
+    const customerIds = Array.from(uniqueCustomerIds)
+    const batchSize = 50
+    const maxCustomersToFetch = 250 // Limit to avoid too many API calls
+
+    const customersToFetch = customerIds.slice(0, maxCustomersToFetch)
+    console.log(`[Shopify] Fetching orders_count for ${customersToFetch.length} customers...`)
+
+    for (let i = 0; i < customersToFetch.length; i += batchSize) {
+      const batch = customersToFetch.slice(i, i + batchSize)
+      const idsParam = batch.join(',')
+
+      try {
+        const customersResponse = await shopifyRequest<{
+          customers: Array<{
+            id: number
+            orders_count: number
+          }>
+        }>(storeDomain, accessToken, `/customers.json?ids=${idsParam}&fields=id,orders_count`)
+
+        if (customersResponse?.customers) {
+          customersResponse.customers.forEach(c => {
+            customerOrdersCounts.set(c.id, c.orders_count || 0)
+          })
+        }
+      } catch (error) {
+        console.error(`[Shopify] Error fetching customer batch:`, error)
+      }
+
+      // Small delay between batches
+      if (i + batchSize < customersToFetch.length) {
+        await new Promise(resolve => setTimeout(resolve, 200))
+      }
+    }
+
+    console.log(`[Shopify] Fetched orders_count for ${customerOrdersCounts.size} customers`)
+
+    // Now calculate recurring customers using the fetched data
+    const customerData = new Map<string, { id: number; isRecurring: boolean; ordersInPeriod: number }>()
 
     orders.forEach(order => {
-      const customerKey = order.customer?.email?.toLowerCase() || order.customer?.id?.toString()
-      if (customerKey) {
+      const customerId = order.customer?.id
+      const customerKey = order.customer?.email?.toLowerCase() || customerId?.toString()
+
+      if (customerKey && customerId) {
         const existing = customerData.get(customerKey)
-        // A customer is recurring if orders_count > 1 (they've ordered before)
-        const isRecurring = (order.customer?.orders_count || 0) > 1
+        // Check orders_count from our fetched data, or from the order if available
+        const ordersCount = customerOrdersCounts.get(customerId) ?? (order.customer?.orders_count || 0)
+        const isRecurring = ordersCount > 1
 
         if (existing) {
           existing.ordersInPeriod += 1
-          // Keep the recurring status (once recurring, always recurring)
           if (isRecurring) existing.isRecurring = true
         } else {
-          customerData.set(customerKey, { isRecurring, ordersInPeriod: 1 })
+          customerData.set(customerKey, { id: customerId, isRecurring, ordersInPeriod: 1 })
         }
       }
     })
@@ -330,7 +383,8 @@ async function getOrdersSummary(
     // Debug: log sample of customer data
     const sampleCustomers = Array.from(customerData.entries()).slice(0, 5)
     sampleCustomers.forEach(([key, data]) => {
-      console.log(`[Shopify] Customer ${key}: recurring=${data.isRecurring}, ordersInPeriod=${data.ordersInPeriod}`)
+      const ordersCount = customerOrdersCounts.get(data.id) || 0
+      console.log(`[Shopify] Customer ${key}: id=${data.id}, orders_count=${ordersCount}, recurring=${data.isRecurring}`)
     })
 
     // Also track orders from recurring customers (alternative metric)
