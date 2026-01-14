@@ -489,64 +489,64 @@ async function getSegments(apiKey: string) {
     console.log(`[Klaviyo] Segment: "${s.name}" - ${s.profileCount} profiles`)
   })
 
-  // Find engaged segment - try exact matches first, then contains, then patterns
-  // User confirmed segment is always named "Leads Engajados (90d)"
-  const exactNames = [
-    "Leads Engajados (90d)",
-    "Leads Engajados(90d)",
-    "Leads Engajados (90 d)",
-    "Leads Engajados 90d",
-    "Leads Engajados - 90d",
-    "Engajados (90d)",
-    "Engajados 90d",
-  ]
+  // Find engaged segment - normalize names for comparison
+  // User confirmed segment is "Leads Engajados (90d)" with 15,245 members
+
+  // Helper to normalize segment names for comparison
+  const normalizeName = (name: string) => {
+    return name
+      .toLowerCase()
+      .replace(/\s+/g, '') // Remove all whitespace
+      .replace(/[()[\]{}]/g, '') // Remove brackets
+      .replace(/[^a-z0-9]/g, '') // Keep only alphanumeric
+  }
+
+  const targetNormalized = normalizeName("Leads Engajados 90d")
+  console.log(`[Klaviyo] Looking for engaged segment, target normalized: "${targetNormalized}"`)
 
   let engaged90dSegment = null
 
-  // First try exact name matches (case-insensitive)
-  for (const exactName of exactNames) {
+  // First try to find by normalized name containing "engajados" and "90"
+  engaged90dSegment = allSegments.find(s => {
+    const normalized = normalizeName(s.name)
+    const hasEngajados = normalized.includes("engajados") || normalized.includes("engaged")
+    const has90 = normalized.includes("90")
+    if (hasEngajados && has90) {
+      console.log(`[Klaviyo] ✓ Found by normalized match: "${s.name}" (normalized: ${normalized})`)
+      return true
+    }
+    return false
+  })
+
+  // If not found, try broader search
+  if (!engaged90dSegment) {
+    console.log(`[Klaviyo] Normalized match failed, trying broader search...`)
+
+    // Try finding any segment with "engajados" in name
     engaged90dSegment = allSegments.find(s =>
-      s.name.trim().toLowerCase() === exactName.toLowerCase()
+      s.name.toLowerCase().includes("engajados") ||
+      s.name.toLowerCase().includes("engaged")
     )
+
     if (engaged90dSegment) {
-      console.log(`[Klaviyo] ✓ Found engaged segment by exact name: "${engaged90dSegment.name}" with ${engaged90dSegment.profileCount} profiles`)
-      break
+      console.log(`[Klaviyo] ✓ Found by broad search: "${engaged90dSegment.name}"`)
     }
   }
 
-  // Try contains-based search
+  // If still not found, try exact patterns
   if (!engaged90dSegment) {
-    console.log(`[Klaviyo] Exact name match failed, trying contains search...`)
+    console.log(`[Klaviyo] Broad search failed, trying exact patterns...`)
 
-    const containsTerms = ["engajados", "engaged", "90d", "90 d"]
-    for (const term of containsTerms) {
-      engaged90dSegment = allSegments.find(s =>
-        s.name.toLowerCase().includes(term.toLowerCase())
-      )
-      if (engaged90dSegment) {
-        console.log(`[Klaviyo] ✓ Found engaged segment by contains "${term}": "${engaged90dSegment.name}" with ${engaged90dSegment.profileCount} profiles`)
-        break
-      }
-    }
-  }
-
-  // If not found, try pattern matching
-  if (!engaged90dSegment) {
-    console.log(`[Klaviyo] Contains search failed, trying patterns...`)
-
-    const engagedPatterns = [
-      /leads\s*engajados\s*\(?\s*90\s*d?\s*\)?/i,
+    const patterns = [
       /leads\s*engajados/i,
-      /engajados?\s*\(?\s*\d+\s*d?\s*\)?/i,
-      /engaged\s*\(?\s*\d+\s*d?\s*\)?/i,
-      /engajados?/i,
+      /engajados?\s*\(?90/i,
       /engaged/i,
     ]
 
-    for (const pattern of engagedPatterns) {
+    for (const pattern of patterns) {
       engaged90dSegment = allSegments.find(s => pattern.test(s.name))
       if (engaged90dSegment) {
-        console.log(`[Klaviyo] ✓ Found engaged segment by pattern: "${engaged90dSegment.name}" with ${engaged90dSegment.profileCount} profiles`)
+        console.log(`[Klaviyo] ✓ Found by pattern ${pattern}: "${engaged90dSegment.name}"`)
         break
       }
     }
