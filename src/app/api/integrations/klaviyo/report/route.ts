@@ -45,7 +45,9 @@ async function klaviyoRequest<T>(
 ): Promise<T | null> {
   const { method = "GET", body } = options || {}
   const url = `${KLAVIYO_API_URL}${endpoint}`
-  const maxRetries = 5
+  const maxRetries = 3
+
+  console.log(`[Klaviyo] REQUEST: ${method} ${endpoint}`)
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     // Wait before request (rate limiting)
@@ -66,6 +68,8 @@ async function klaviyoRequest<T>(
         },
         ...(body && { body: JSON.stringify(body) }),
       })
+
+      console.log(`[Klaviyo] RESPONSE: ${response.status} ${response.statusText}`)
 
       // Handle rate limiting (429)
       if (response.status === 429) {
@@ -90,13 +94,15 @@ async function klaviyoRequest<T>(
       const responseText = await response.text()
 
       if (!response.ok) {
-        console.error(`[Klaviyo] API error ${response.status}:`, responseText.substring(0, 300))
+        console.error(`[Klaviyo] API ERROR ${response.status}:`, responseText.substring(0, 500))
         return null
       }
 
-      return JSON.parse(responseText) as T
+      const data = JSON.parse(responseText) as T
+      console.log(`[Klaviyo] SUCCESS: Got response with data`)
+      return data
     } catch (error) {
-      console.error(`[Klaviyo] Request error:`, error)
+      console.error(`[Klaviyo] REQUEST ERROR:`, error)
       if (attempt < maxRetries) continue
       return null
     }
@@ -112,6 +118,73 @@ function getCurrencySymbol(currency: string): string {
     "AUD": "A$", "CAD": "C$", "JPY": "¥", "MXN": "MX$",
   }
   return symbols[currency] || currency
+}
+
+// Test API connection and get basic info
+async function testApiConnection(apiKey: string): Promise<boolean> {
+  console.log("[Klaviyo] Testing API connection...")
+  const response = await klaviyoRequest<{
+    data: Array<{ id: string }>
+  }>(apiKey, "/accounts/")
+
+  if (response?.data) {
+    console.log("[Klaviyo] ✓ API connection successful")
+    return true
+  }
+  console.error("[Klaviyo] ✗ API connection failed")
+  return false
+}
+
+// Get total profiles count using profiles endpoint
+async function getTotalProfilesFromAPI(apiKey: string): Promise<number> {
+  console.log("[Klaviyo] Fetching total profiles count...")
+
+  // Get first page to check if there are profiles
+  const firstPage = await klaviyoRequest<{
+    data: Array<{ id: string }>
+    links?: { next?: string }
+  }>(apiKey, "/profiles/?page[size]=100")
+
+  if (!firstPage?.data) {
+    console.log("[Klaviyo] No profiles found")
+    return 0
+  }
+
+  let totalCount = firstPage.data.length
+  const hasMore = !!firstPage.links?.next
+
+  // Estimate: if there's more pages, count more accurately
+  if (hasMore) {
+    let nextPage = firstPage.links?.next?.replace(KLAVIYO_API_URL, "") || null
+    let pagesChecked = 1
+
+    // Check up to 10 pages to get a better estimate
+    while (nextPage && pagesChecked < 10) {
+      await sleep(200)
+      const page = await klaviyoRequest<{
+        data: Array<{ id: string }>
+        links?: { next?: string }
+      }>(apiKey, nextPage)
+
+      if (!page?.data) break
+
+      totalCount += page.data.length
+      nextPage = page.links?.next?.replace(KLAVIYO_API_URL, "") || null
+      pagesChecked++
+
+      if (!page.links?.next) break
+    }
+
+    // If still more pages, estimate based on pages checked
+    if (nextPage) {
+      // Estimate remaining (assume 50% more pages)
+      totalCount = Math.round(totalCount * 1.5)
+      console.log(`[Klaviyo] Estimated total profiles: ${totalCount} (checked ${pagesChecked} pages)`)
+    }
+  }
+
+  console.log(`[Klaviyo] Total profiles: ${totalCount}`)
+  return totalCount
 }
 
 // Get account info including timezone
@@ -1032,6 +1105,16 @@ export async function GET(request: NextRequest) {
 
     console.log(`[Klaviyo] Date range: ${startDateStr} to ${endDateStr}`)
 
+    // Test API connection first
+    const isConnected = await testApiConnection(apiKey)
+    if (!isConnected) {
+      return NextResponse.json({
+        success: false,
+        connected: false,
+        error: "Não foi possível conectar à API do Klaviyo. Verifique a API Key.",
+      }, { status: 401, headers: corsHeaders() })
+    }
+
     // Get account info first
     const accountInfo = await getAccountInfo(apiKey)
     console.log("[Klaviyo] Account currency:", accountInfo.currency)
@@ -1051,7 +1134,14 @@ export async function GET(request: NextRequest) {
       // Calculate total subscribers - use largest list or segment profile count
       // (summing can double-count profiles in multiple lists)
       const largestListCount = listMetrics.lists.length > 0 ? listMetrics.lists[0].profileCount : 0
-      const errorCaseTotalSubscribers = largestListCount || segmentMetrics.totalActiveProfiles || listMetrics.totalSubscribers
+      let errorCaseTotalSubscribers = largestListCount || segmentMetrics.totalActiveProfiles || listMetrics.totalSubscribers
+
+      // If still 0, use profiles API directly
+      if (errorCaseTotalSubscribers === 0) {
+        console.log("[Klaviyo] All counts are 0, fetching from profiles API...")
+        errorCaseTotalSubscribers = await getTotalProfilesFromAPI(apiKey)
+      }
+
       console.log(`[Klaviyo] Error case totalSubscribers: ${errorCaseTotalSubscribers} (largest list: ${largestListCount}, segment: ${segmentMetrics.totalActiveProfiles})`)
 
       return NextResponse.json({
@@ -1119,7 +1209,14 @@ export async function GET(request: NextRequest) {
     // Calculate total subscribers - use largest list or segment profile count
     // (summing can double-count profiles in multiple lists)
     const largestListCount = listMetrics.lists.length > 0 ? listMetrics.lists[0].profileCount : 0
-    const totalSubscribers = largestListCount || segmentMetrics.totalActiveProfiles || listMetrics.totalSubscribers
+    let totalSubscribers = largestListCount || segmentMetrics.totalActiveProfiles || listMetrics.totalSubscribers
+
+    // If still 0, use profiles API directly
+    if (totalSubscribers === 0) {
+      console.log("[Klaviyo] All counts are 0, fetching from profiles API...")
+      totalSubscribers = await getTotalProfilesFromAPI(apiKey)
+    }
+
     console.log(`[Klaviyo] totalSubscribers: ${totalSubscribers} (largest list: ${largestListCount}, segment: ${segmentMetrics.totalActiveProfiles}, lists sum: ${listMetrics.totalSubscribers})`)
 
     // Filter campaigns by send_time in period
