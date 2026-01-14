@@ -289,14 +289,42 @@ async function getLists(apiKey: string) {
     if (nextPage) await sleep(500)
   }
 
-  const totalSubscribers = allLists.reduce((sum, l) => sum + l.profileCount, 0)
+  let totalSubscribers = allLists.reduce((sum, l) => sum + l.profileCount, 0)
 
-  console.log(`[Klaviyo] Fetched ${allLists.length} total lists with ${totalSubscribers} subscribers`)
+  console.log(`[Klaviyo] Fetched ${allLists.length} total lists with ${totalSubscribers} subscribers (from bulk)`)
+
+  // If profile_count is 0 for all lists, fetch count individually for the largest lists
+  if (totalSubscribers === 0 && allLists.length > 0) {
+    console.log("[Klaviyo] profile_count not in bulk response, fetching individually...")
+
+    // Fetch profile count for up to 5 lists to find the one with most profiles
+    const listsToCheck = allLists.slice(0, 5)
+    for (const list of listsToCheck) {
+      const detailResponse = await klaviyoRequest<{
+        data: {
+          id: string
+          attributes: { name: string; profile_count?: number }
+        }
+      }>(apiKey, `/lists/${list.id}/?additional-fields[list]=profile_count`)
+
+      if (detailResponse?.data?.attributes?.profile_count) {
+        list.profileCount = detailResponse.data.attributes.profile_count
+        console.log(`[Klaviyo] List "${list.name}" individual count: ${list.profileCount}`)
+      }
+      await sleep(200)
+    }
+
+    totalSubscribers = allLists.reduce((sum, l) => sum + l.profileCount, 0)
+    console.log(`[Klaviyo] Total after individual fetch: ${totalSubscribers}`)
+  }
+
+  // Sort by profileCount descending
+  const sortedLists = allLists.sort((a, b) => b.profileCount - a.profileCount)
 
   return {
     totalLists: allLists.length,
     totalSubscribers,
-    lists: allLists.sort((a, b) => b.profileCount - a.profileCount)
+    lists: sortedLists
   }
 }
 
@@ -401,27 +429,44 @@ async function getSegments(apiKey: string) {
     console.log(`[Klaviyo] Segment: "${s.name}" - ${s.profileCount} profiles`)
   })
 
-  // Find engaged segment with priority order (most specific to least specific)
-  // Priority 1: Exact matches for common engaged segment names
+  // Find engaged segment - exact match first for "Leads Engajados (90d)"
+  // Then try other patterns
   const engagedPatterns = [
-    /engajados?\s*90\s*d/i,           // "Engajados 90d", "Engajado 90D"
-    /engaged\s*90\s*d/i,              // "Engaged 90d", "Engaged 90D"
-    /leads?\s*engajados?\s*\(?\s*\d+\s*d\s*\)?/i,  // "Leads Engajados (180d)", "Lead Engajado 90d"
-    /engajados?\s*\d+\s*d/i,          // "Engajados 180d"
-    /engaged\s*\d+\s*d/i,             // "Engaged 180d"
-    /ativos?\s*\d+\s*d/i,             // "Ativos 90d"
-    /active\s*\d+\s*d/i,              // "Active 90d"
-    /engajados?/i,                    // "Engajados", "Engajado"
-    /engaged/i,                       // "Engaged"
-    /ativos?$/i,                      // "Ativos" (exact)
+    /^Leads\s+Engajados\s*\(\s*90\s*d\s*\)$/i,  // EXACT: "Leads Engajados (90d)"
+    /leads\s+engajados\s*\(\s*\d+\s*d\s*\)/i,   // "Leads Engajados (180d)", etc.
+    /engajados?\s*\(\s*\d+\s*d\s*\)/i,          // "Engajados (90d)"
+    /engajados?\s*90\s*d/i,                      // "Engajados 90d"
+    /engaged\s*90\s*d/i,                         // "Engaged 90d"
+    /engajados?\s*\d+\s*d/i,                     // "Engajados 180d"
+    /engaged\s*\d+\s*d/i,                        // "Engaged 180d"
+    /engajados?/i,                               // "Engajados"
+    /engaged/i,                                  // "Engaged"
   ]
 
   let engaged90dSegment = null
   for (const pattern of engagedPatterns) {
     engaged90dSegment = allSegments.find(s => pattern.test(s.name))
     if (engaged90dSegment) {
-      console.log(`[Klaviyo] Found engaged segment: "${engaged90dSegment.name}" with ${engaged90dSegment.profileCount} profiles`)
+      console.log(`[Klaviyo] ✓ Found engaged segment: "${engaged90dSegment.name}" with ${engaged90dSegment.profileCount} profiles (pattern: ${pattern})`)
       break
+    }
+  }
+
+  if (!engaged90dSegment) {
+    console.log(`[Klaviyo] ✗ No engaged segment found! Available segments: ${allSegments.map(s => `"${s.name}"`).join(', ')}`)
+  } else if (engaged90dSegment.profileCount === 0) {
+    // Fetch profile count individually for engaged segment
+    console.log(`[Klaviyo] Engaged segment has 0 profiles, fetching individually...`)
+    const detailResponse = await klaviyoRequest<{
+      data: {
+        id: string
+        attributes: { name: string; profile_count?: number }
+      }
+    }>(apiKey, `/segments/${engaged90dSegment.id}/?additional-fields[segment]=profile_count`)
+
+    if (detailResponse?.data?.attributes?.profile_count) {
+      engaged90dSegment.profileCount = detailResponse.data.attributes.profile_count
+      console.log(`[Klaviyo] ✓ Engaged segment individual count: ${engaged90dSegment.profileCount}`)
     }
   }
 
@@ -447,9 +492,39 @@ async function getSegments(apiKey: string) {
   }
 
   // If no specific segment found, use the largest segment as an approximation
-  const largestSegment = allSegments.length > 0
+  let largestSegment = allSegments.length > 0
     ? allSegments.reduce((max, s) => s.profileCount > max.profileCount ? s : max, allSegments[0])
     : null
+
+  // If all segments have 0 profiles, fetch counts individually for up to 5 segments
+  const allZero = allSegments.every(s => s.profileCount === 0)
+  if (allZero && allSegments.length > 0) {
+    console.log("[Klaviyo] All segments have 0 profiles, fetching individually...")
+    const segmentsToCheck = allSegments.slice(0, 5)
+    for (const seg of segmentsToCheck) {
+      const detailResponse = await klaviyoRequest<{
+        data: {
+          id: string
+          attributes: { name: string; profile_count?: number }
+        }
+      }>(apiKey, `/segments/${seg.id}/?additional-fields[segment]=profile_count`)
+
+      if (detailResponse?.data?.attributes?.profile_count) {
+        seg.profileCount = detailResponse.data.attributes.profile_count
+        console.log(`[Klaviyo] Segment "${seg.name}" individual count: ${seg.profileCount}`)
+      }
+      await sleep(200)
+    }
+
+    // Re-find largest after individual fetches
+    largestSegment = allSegments.reduce((max, s) => s.profileCount > max.profileCount ? s : max, allSegments[0])
+
+    // Also update engaged segment if found
+    if (engaged90dSegment) {
+      const updated = allSegments.find(s => s.id === engaged90dSegment!.id)
+      if (updated) engaged90dSegment = updated
+    }
+  }
 
   if (largestSegment) {
     console.log(`[Klaviyo] Largest segment: "${largestSegment.name}" with ${largestSegment.profileCount} profiles`)
