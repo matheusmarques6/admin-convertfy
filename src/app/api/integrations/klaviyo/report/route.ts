@@ -136,22 +136,38 @@ async function testApiConnection(apiKey: string): Promise<boolean> {
 }
 
 // Get total profiles count using profiles endpoint
-// Counts ALL profiles by paginating through the entire list
+// Uses a quick estimation approach for speed
 async function getTotalProfilesFromAPI(apiKey: string): Promise<number> {
-  console.log("[Klaviyo] Fetching total profiles count (full count)...")
+  console.log("[Klaviyo] Fetching total profiles count (quick estimation)...")
 
-  let totalCount = 0
-  let nextPage: string | null = "/profiles/?page[size]=100"
-  let pagesChecked = 0
-  const maxPages = 200 // Up to 20,000 profiles (200 * 100)
-
-  type ProfilesPage = {
+  // First page to get an idea of count
+  const firstPage = await klaviyoRequest<{
     data: Array<{ id: string }>
     links?: { next?: string }
-  } | null
+  }>(apiKey, "/profiles/?page[size]=100")
 
-  while (nextPage && pagesChecked < maxPages) {
-    const page: ProfilesPage = await klaviyoRequest<{
+  if (!firstPage?.data) {
+    console.log("[Klaviyo] No profiles found")
+    return 0
+  }
+
+  let totalCount = firstPage.data.length
+
+  // If there's no next page, we're done
+  if (!firstPage.links?.next) {
+    console.log(`[Klaviyo] Total profiles: ${totalCount}`)
+    return totalCount
+  }
+
+  // Count a few more pages to get better estimate
+  let nextPage: string | null = firstPage.links.next.replace(KLAVIYO_API_URL, "")
+  let pagesChecked = 1
+  const maxQuickPages = 30 // Check up to 30 pages quickly (3000 profiles)
+
+  type QuickPage = { data: Array<{ id: string }>; links?: { next?: string } } | null
+
+  while (nextPage && pagesChecked < maxQuickPages) {
+    const page: QuickPage = await klaviyoRequest<{
       data: Array<{ id: string }>
       links?: { next?: string }
     }>(apiKey, nextPage)
@@ -161,24 +177,23 @@ async function getTotalProfilesFromAPI(apiKey: string): Promise<number> {
     totalCount += page.data.length
     pagesChecked++
 
-    // Log progress every 10 pages
-    if (pagesChecked % 10 === 0) {
-      console.log(`[Klaviyo] Profiles counted: ${totalCount} (page ${pagesChecked})`)
-    }
+    const nextLink: string | undefined = page.links?.next
+    if (!nextLink) break
+    nextPage = nextLink.replace(KLAVIYO_API_URL, "")
 
-    const nextUrl: string | undefined = page.links?.next
-    nextPage = nextUrl ? nextUrl.replace(KLAVIYO_API_URL, "") : null
-
-    if (!nextPage) break
-    await sleep(100) // Fast rate limiting since burst is 75/s
+    await sleep(50) // Minimal delay
   }
 
-  // If we hit the max pages limit, estimate remaining
-  if (nextPage && pagesChecked >= maxPages) {
-    console.log(`[Klaviyo] Warning: Hit max pages limit (${maxPages}), count may be underestimated`)
+  // If we hit the limit, estimate based on average page size
+  if (nextPage && pagesChecked >= maxQuickPages) {
+    const avgPerPage = totalCount / pagesChecked
+    // Estimate: assume 2x more pages than we checked
+    const estimatedTotal = Math.round(totalCount * 2)
+    console.log(`[Klaviyo] Estimated total profiles: ${estimatedTotal} (checked ${pagesChecked} pages, avg ${avgPerPage}/page)`)
+    return estimatedTotal
   }
 
-  console.log(`[Klaviyo] Total profiles counted: ${totalCount} (${pagesChecked} pages)`)
+  console.log(`[Klaviyo] Total profiles: ${totalCount} (${pagesChecked} pages)`)
   return totalCount
 }
 
@@ -497,7 +512,7 @@ async function getSegments(apiKey: string) {
     console.log(`[Klaviyo] Segment: "${s.name}" - ${s.profileCount} profiles`)
   })
 
-  // Find engaged segment - try exact matches first, then patterns
+  // Find engaged segment - try exact matches first, then contains, then patterns
   // User confirmed segment is always named "Leads Engajados (90d)"
   const exactNames = [
     "Leads Engajados (90d)",
@@ -505,6 +520,8 @@ async function getSegments(apiKey: string) {
     "Leads Engajados (90 d)",
     "Leads Engajados 90d",
     "Leads Engajados - 90d",
+    "Engajados (90d)",
+    "Engajados 90d",
   ]
 
   let engaged90dSegment = null
@@ -520,23 +537,39 @@ async function getSegments(apiKey: string) {
     }
   }
 
+  // Try contains-based search
+  if (!engaged90dSegment) {
+    console.log(`[Klaviyo] Exact name match failed, trying contains search...`)
+
+    const containsTerms = ["engajados", "engaged", "90d", "90 d"]
+    for (const term of containsTerms) {
+      engaged90dSegment = allSegments.find(s =>
+        s.name.toLowerCase().includes(term.toLowerCase())
+      )
+      if (engaged90dSegment) {
+        console.log(`[Klaviyo] ✓ Found engaged segment by contains "${term}": "${engaged90dSegment.name}" with ${engaged90dSegment.profileCount} profiles`)
+        break
+      }
+    }
+  }
+
   // If not found, try pattern matching
   if (!engaged90dSegment) {
-    console.log(`[Klaviyo] Exact name match failed, trying patterns...`)
+    console.log(`[Klaviyo] Contains search failed, trying patterns...`)
 
     const engagedPatterns = [
-      /leads\s*engajados\s*\(?\s*90\s*d?\s*\)?/i,  // Flexible: "Leads Engajados (90d)", "Leads Engajados 90d", etc.
-      /leads\s*engajados/i,                         // Any "Leads Engajados" segment
-      /engajados?\s*\(?\s*\d+\s*d?\s*\)?/i,        // "Engajados (90d)", "Engajados 90d"
-      /engaged\s*\(?\s*\d+\s*d?\s*\)?/i,           // "Engaged (90d)", "Engaged 90d"
-      /engajados?/i,                                // "Engajados"
-      /engaged/i,                                   // "Engaged"
+      /leads\s*engajados\s*\(?\s*90\s*d?\s*\)?/i,
+      /leads\s*engajados/i,
+      /engajados?\s*\(?\s*\d+\s*d?\s*\)?/i,
+      /engaged\s*\(?\s*\d+\s*d?\s*\)?/i,
+      /engajados?/i,
+      /engaged/i,
     ]
 
     for (const pattern of engagedPatterns) {
       engaged90dSegment = allSegments.find(s => pattern.test(s.name))
       if (engaged90dSegment) {
-        console.log(`[Klaviyo] ✓ Found engaged segment by pattern: "${engaged90dSegment.name}" with ${engaged90dSegment.profileCount} profiles (pattern: ${pattern})`)
+        console.log(`[Klaviyo] ✓ Found engaged segment by pattern: "${engaged90dSegment.name}" with ${engaged90dSegment.profileCount} profiles`)
         break
       }
     }
@@ -570,7 +603,7 @@ async function getSegments(apiKey: string) {
         links?: { next?: string }
       } | null
 
-      while (profilesPage && pageCount < 20) {
+      while (profilesPage && pageCount < 50) {
         const profilesResponse: ProfilesPageResponse = await klaviyoRequest<{
           data: Array<{ id: string }>
           links?: { next?: string }
