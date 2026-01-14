@@ -291,12 +291,29 @@ async function getOrdersSummary(
       0
     )
 
-    // Unique customers
-    const uniqueCustomers = new Set(orders.map(o => o.customer?.id).filter(Boolean)).size
+    // Unique customers and recurring customer calculation
+    // Count orders per customer email (more reliable than customer.id which may be null for guest orders)
+    const ordersByCustomer = new Map<string, number>()
+    orders.forEach(order => {
+      const customerKey = order.customer?.email?.toLowerCase() || order.customer?.id?.toString()
+      if (customerKey) {
+        ordersByCustomer.set(customerKey, (ordersByCustomer.get(customerKey) || 0) + 1)
+      }
+    })
 
-    // Recurring customers in this period (customers with more than 1 order historically)
-    const recurringCustomersInPeriod = orders.filter(o => o.customer && o.customer.orders_count > 1).length
-    const recurringCustomerRate = totalOrders > 0 ? (recurringCustomersInPeriod / totalOrders) * 100 : 0
+    const uniqueCustomers = ordersByCustomer.size
+
+    // Recurring customers = customers with more than 1 order in the period
+    const recurringCustomers = Array.from(ordersByCustomer.values()).filter(count => count > 1).length
+    const recurringCustomerRate = uniqueCustomers > 0 ? (recurringCustomers / uniqueCustomers) * 100 : 0
+
+    console.log(`[Shopify] Recurring customers: ${recurringCustomers} of ${uniqueCustomers} unique customers (${recurringCustomerRate.toFixed(1)}%)`)
+
+    // Also track orders from recurring customers (alternative metric)
+    const ordersFromRecurringCustomers = orders.filter(o => {
+      const customerKey = o.customer?.email?.toLowerCase() || o.customer?.id?.toString()
+      return customerKey && (ordersByCustomer.get(customerKey) || 0) > 1
+    }).length
 
     // SMS Attribution - detect orders from YSMS or other SMS marketing
     // Check tags, source_name, referring_site for SMS-related keywords
@@ -404,7 +421,8 @@ async function getOrdersSummary(
       totalItems,
       uniqueCustomers,
       averageOrderValue: totalOrders > 0 ? totalRevenue / totalOrders : 0,
-      recurringCustomersInPeriod,
+      recurringCustomersInPeriod: recurringCustomers,
+      ordersFromRecurringCustomers,
       recurringCustomerRate,
       bestSellingProducts,
       fulfillment: {
@@ -439,6 +457,7 @@ async function getOrdersSummary(
       uniqueCustomers: 0,
       averageOrderValue: 0,
       recurringCustomersInPeriod: 0,
+      ordersFromRecurringCustomers: 0,
       recurringCustomerRate: 0,
       bestSellingProducts: [],
       fulfillment: { fulfilled: 0, unfulfilled: 0, partiallyFulfilled: 0 },

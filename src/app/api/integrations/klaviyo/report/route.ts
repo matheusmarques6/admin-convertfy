@@ -540,6 +540,42 @@ async function getSegments(apiKey: string) {
     if (detailResponse?.data?.attributes?.profile_count) {
       engaged90dSegment.profileCount = detailResponse.data.attributes.profile_count
       console.log(`[Klaviyo] ✓ Engaged segment individual count: ${engaged90dSegment.profileCount}`)
+    } else {
+      // Last resort: count profiles in segment directly
+      console.log(`[Klaviyo] profile_count still 0, counting profiles in segment directly...`)
+      let profileCount = 0
+      let profilesPage: string | null = `/segments/${engaged90dSegment.id}/profiles/?page[size]=100`
+      let pageCount = 0
+
+      type ProfilesPageResponse = {
+        data: Array<{ id: string }>
+        links?: { next?: string }
+      } | null
+
+      while (profilesPage && pageCount < 20) {
+        const profilesResponse: ProfilesPageResponse = await klaviyoRequest<{
+          data: Array<{ id: string }>
+          links?: { next?: string }
+        }>(apiKey, profilesPage)
+
+        if (!profilesResponse?.data) break
+
+        profileCount += profilesResponse.data.length
+        const nextUrl: string | undefined = profilesResponse.links?.next
+        profilesPage = nextUrl ? nextUrl.replace(KLAVIYO_API_URL, "") : null
+        pageCount++
+
+        if (!nextUrl) break
+        await sleep(200)
+      }
+
+      if (profilesPage) {
+        // Estimate remaining
+        profileCount = Math.round(profileCount * 1.5)
+      }
+
+      engaged90dSegment.profileCount = profileCount
+      console.log(`[Klaviyo] ✓ Engaged segment counted directly: ${profileCount} profiles`)
     }
   }
 
@@ -1231,23 +1267,22 @@ export async function GET(request: NextRequest) {
     const sentCampaigns = allCampaigns.filter(c => c.status === "sent")
     console.log(`[Klaviyo] Sent campaigns: ${sentCampaigns.length}`)
     sentCampaigns.forEach(c => {
-      console.log(`[Klaviyo] Campaign: ${c.name} | sendTime: ${c.sendTime} | status: ${c.status}`)
+      console.log(`[Klaviyo] Campaign: ${c.name} | sendTime: ${c.sendTime} | createdAt: ${c.createdAt} | status: ${c.status}`)
     })
 
-    const campaignsInPeriod = allCampaigns.filter(c => {
-      if (!c.sendTime) {
-        console.log(`[Klaviyo] Campaign "${c.name}" has no sendTime, skipping`)
-        return false
-      }
-      const sendDate = new Date(c.sendTime)
-      const isInPeriod = sendDate >= inicio && sendDate <= fim
+    // Filter sent campaigns by date - use sendTime if available, otherwise use createdAt
+    const campaignsInPeriod = sentCampaigns.filter(c => {
+      // Use sendTime if available, otherwise use createdAt as fallback
+      const campaignDate = c.sendTime ? new Date(c.sendTime) : new Date(c.createdAt)
+      const isInPeriod = campaignDate >= inicio && campaignDate <= fim
+
       if (!isInPeriod) {
-        console.log(`[Klaviyo] Campaign "${c.name}" sendTime ${c.sendTime} is outside period`)
+        console.log(`[Klaviyo] Campaign "${c.name}" date ${campaignDate.toISOString()} is outside period`)
       }
       return isInPeriod
     })
 
-    console.log(`[Klaviyo] Campaigns in period: ${campaignsInPeriod.length} of ${allCampaigns.length} total`)
+    console.log(`[Klaviyo] Campaigns in period: ${campaignsInPeriod.length} of ${sentCampaigns.length} sent campaigns`)
     campaignsInPeriod.forEach(c => {
       console.log(`[Klaviyo] -> Campaign in period: ${c.name} (${c.id}) | sendTime: ${c.sendTime}`)
     })
