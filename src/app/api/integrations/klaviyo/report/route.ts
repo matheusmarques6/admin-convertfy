@@ -555,63 +555,48 @@ async function getSegments(apiKey: string) {
   if (!engaged90dSegment) {
     console.log(`[Klaviyo] ✗ No engaged segment found! Available segments: ${allSegments.map(s => `"${s.name}"`).join(', ')}`)
   } else {
-    console.log(`[Klaviyo] Found engaged segment: "${engaged90dSegment.name}" with initial profileCount: ${engaged90dSegment.profileCount}`)
+    console.log(`[Klaviyo] Found engaged segment: "${engaged90dSegment.name}" (ID: ${engaged90dSegment.id})`)
 
-    // ALWAYS try to get accurate profile count - the bulk API often returns 0
-    // First try individual fetch with additional-fields
-    console.log(`[Klaviyo] Fetching profile count individually for segment ${engaged90dSegment.id}...`)
-    const detailResponse = await klaviyoRequest<{
-      data: {
-        id: string
-        attributes: { name: string; profile_count?: number }
-      }
-    }>(apiKey, `/segments/${engaged90dSegment.id}/?additional-fields[segment]=profile_count`)
+    // ALWAYS count profiles directly - the profile_count API field is unreliable
+    console.log(`[Klaviyo] Counting profiles in segment "${engaged90dSegment.name}" directly...`)
+    let profileCount = 0
+    let profilesPage: string | null = `/segments/${engaged90dSegment.id}/profiles/?page[size]=100`
+    let pageCount = 0
+    const maxPages = 200 // Up to 20,000 profiles
 
-    const individualCount = detailResponse?.data?.attributes?.profile_count
-    console.log(`[Klaviyo] Individual fetch returned profile_count: ${individualCount}`)
+    type ProfilesPageResponse = {
+      data: Array<{ id: string }>
+      links?: { next?: string }
+    } | null
 
-    if (individualCount && individualCount > 0) {
-      engaged90dSegment.profileCount = individualCount
-      console.log(`[Klaviyo] ✓ Using individual count: ${engaged90dSegment.profileCount}`)
-    } else if (!engaged90dSegment.profileCount || engaged90dSegment.profileCount <= 0) {
-      // Last resort: count profiles in segment directly via pagination
-      console.log(`[Klaviyo] Counting profiles in segment directly (this may take a while)...`)
-      let profileCount = 0
-      let profilesPage: string | null = `/segments/${engaged90dSegment.id}/profiles/?page[size]=100`
-      let pageCount = 0
-      const maxPages = 200 // Up to 20,000 profiles
-
-      type ProfilesPageResponse = {
+    while (profilesPage && pageCount < maxPages) {
+      const profilesResponse: ProfilesPageResponse = await klaviyoRequest<{
         data: Array<{ id: string }>
         links?: { next?: string }
-      } | null
+      }>(apiKey, profilesPage)
 
-      while (profilesPage && pageCount < maxPages) {
-        const profilesResponse: ProfilesPageResponse = await klaviyoRequest<{
-          data: Array<{ id: string }>
-          links?: { next?: string }
-        }>(apiKey, profilesPage)
-
-        if (!profilesResponse?.data) break
-
-        profileCount += profilesResponse.data.length
-        pageCount++
-
-        // Log progress every 20 pages
-        if (pageCount % 20 === 0) {
-          console.log(`[Klaviyo] Segment profiles counted: ${profileCount} (page ${pageCount})`)
-        }
-
-        const nextUrl: string | undefined = profilesResponse.links?.next
-        if (!nextUrl) break
-        profilesPage = nextUrl.replace(KLAVIYO_API_URL, "")
-
-        await sleep(50) // Fast rate limit
+      if (!profilesResponse?.data) {
+        console.log(`[Klaviyo] No data in response at page ${pageCount}`)
+        break
       }
 
-      engaged90dSegment.profileCount = profileCount
-      console.log(`[Klaviyo] ✓ Engaged segment counted directly: ${profileCount} profiles (${pageCount} pages)`)
+      profileCount += profilesResponse.data.length
+      pageCount++
+
+      // Log progress every 10 pages
+      if (pageCount % 10 === 0) {
+        console.log(`[Klaviyo] Segment profiles counted: ${profileCount} (page ${pageCount})`)
+      }
+
+      const nextUrl: string | undefined = profilesResponse.links?.next
+      if (!nextUrl) break
+      profilesPage = nextUrl.replace(KLAVIYO_API_URL, "")
+
+      await sleep(30) // Fast rate limit
     }
+
+    engaged90dSegment.profileCount = profileCount
+    console.log(`[Klaviyo] ✓ Engaged segment "${engaged90dSegment.name}" has ${profileCount} profiles (counted ${pageCount} pages)`)
   }
 
   // Find a segment that represents total active profiles
