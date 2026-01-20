@@ -17,6 +17,7 @@ import {
   Bell,
   DollarSign,
   Calendar,
+  CalendarDays,
   Store,
   Rocket,
 } from "lucide-react"
@@ -52,6 +53,7 @@ const navigation = [
   { name: "Pipeline", href: "/pipeline", icon: Kanban },
   { name: "Financeiro", href: "/financial", icon: DollarSign },
   { name: "Reuniões", href: "/meetings", icon: Calendar },
+  { name: "Campanhas", href: "/campaigns", icon: CalendarDays },
   { name: "Relatórios", href: "/reports", icon: BarChart3 },
   { name: "Automações", href: "/automations", icon: Zap },
   { name: "Ferramentas", href: "/tools", icon: Wrench },
