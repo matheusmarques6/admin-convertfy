@@ -105,7 +105,7 @@ export async function GET(
 
     // Get campaigns for this store
     const now = new Date()
-    let startDate = new Date()
+    const startDate = new Date()
     switch (period) {
       case "7d":
         startDate.setDate(now.getDate() - 7)

@@ -62,7 +62,7 @@ export default function PortalSettingsPage() {
       const data = await response.json()
       setProfile(data.profile)
       setNotifications(data.notifications)
-    } catch (err) {
+    } catch {
       setError("Não foi possível carregar as configurações")
     } finally {
       setLoading(false)
@@ -87,7 +87,7 @@ export default function PortalSettingsPage() {
 
       if (!response.ok) throw new Error("Erro ao salvar")
       setSuccess("Perfil atualizado com sucesso!")
-    } catch (err) {
+    } catch {
       setError("Erro ao salvar as alterações")
     } finally {
       setSaving(false)
@@ -109,7 +109,7 @@ export default function PortalSettingsPage() {
 
       if (!response.ok) throw new Error("Erro ao salvar")
       setSuccess("Preferências de notificação atualizadas!")
-    } catch (err) {
+    } catch {
       setError("Erro ao salvar as preferências")
     } finally {
       setSaving(false)
@@ -152,8 +152,8 @@ export default function PortalSettingsPage() {
       setCurrentPassword("")
       setNewPassword("")
       setConfirmPassword("")
-    } catch (err: any) {
-      setError(err.message || "Erro ao alterar a senha")
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Erro ao alterar a senha")
     } finally {
       setChangingPassword(false)
     }

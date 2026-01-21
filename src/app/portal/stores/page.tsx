@@ -5,7 +5,6 @@ import Link from "next/link"
 import {
   Store,
   ExternalLink,
-  RefreshCw,
   AlertCircle,
   TrendingUp,
   Users,
@@ -30,12 +29,6 @@ interface StoreData {
 
 interface StoresResponse {
   stores: StoreData[]
-}
-
-const platformIcons = {
-  shopify: "https://cdn.shopify.com/shopifycloud/brochure/assets/brand-assets/shopify-logo-primary-logo-456baa801ee66a0a435671082365958316831c9960c480451dd0330bcdae304f.svg",
-  nuvemshop: "https://d26lpennugtm8s.cloudfront.net/assets/common/nuvemshop-logo-0d8d2e52a52b2f4cb47a38f52dd54aa04b7a0f83ecfbee3b3d6b3f6e3c0e0e0c.svg",
-  woocommerce: "https://woocommerce.com/wp-content/themes/flavor-developer/assets/images/logo-woocommerce@2x.png",
 }
 
 export default function PortalStoresPage() {

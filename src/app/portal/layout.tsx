@@ -11,7 +11,6 @@ import {
   Settings,
   LogOut,
   Menu,
-  X,
   User,
   Bell,
 } from "lucide-react"
