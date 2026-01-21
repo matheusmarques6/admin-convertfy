@@ -14,6 +14,7 @@ import { ClientReports } from "@/components/clients/client-reports"
 import { ClientTimeline } from "@/components/clients/client-timeline"
 import { ClientStores } from "@/components/clients/client-stores"
 import { ClientKlaviyoReports } from "@/components/clients/client-klaviyo-reports"
+import { ClientPortalUsers } from "@/components/clients/client-portal-users"
 import { getInitials, getHealthScoreColor, getHealthScoreEmoji } from "@/lib/utils"
 
 export const dynamic = "force-dynamic"
@@ -139,6 +140,7 @@ export default async function ClientPage({
           <TabsTrigger value="meetings">Reuniões</TabsTrigger>
           <TabsTrigger value="reports">Relatórios</TabsTrigger>
           <TabsTrigger value="timeline">Timeline</TabsTrigger>
+          <TabsTrigger value="portal">Portal</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview">
@@ -171,6 +173,10 @@ export default async function ClientPage({
 
         <TabsContent value="timeline">
           <ClientTimeline activities={client.activities || []} />
+        </TabsContent>
+
+        <TabsContent value="portal">
+          <ClientPortalUsers clientId={client.id} clientName={client.name} />
         </TabsContent>
       </Tabs>
     </div>
