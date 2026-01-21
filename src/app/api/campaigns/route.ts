@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { Campaign, CampaignFormData } from "@/types"
+import { CampaignFormData } from "@/types"
 
 // CORS headers
 function corsHeaders() {

@@ -1,14 +1,11 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { useRouter } from "next/navigation"
 import {
   ChevronLeft,
   ChevronRight,
   Plus,
-  Filter,
   RefreshCw,
-  Calendar as CalendarIcon,
   Mail,
   MessageSquare,
   Bell,
@@ -51,7 +48,6 @@ interface StoreWithClient extends ClientStore {
 }
 
 export default function CampaignsCalendarPage() {
-  const router = useRouter()
   const [currentDate, setCurrentDate] = useState(new Date())
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [stores, setStores] = useState<StoreWithClient[]>([])
