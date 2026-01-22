@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { createClient } from "@/lib/supabase/client"
 
 export default function PortalLoginPage() {
   const [email, setEmail] = useState("")
@@ -21,34 +22,52 @@ export default function PortalLoginPage() {
     setLoading(true)
 
     try {
-      const response = await fetch("/api/portal/auth", {
+      // Use browser Supabase client for authentication
+      const supabase = createClient()
+
+      // Sign in with Supabase
+      const { data: authData, error: signInError } = await supabase.auth.signInWithPassword({
+        email: email.toLowerCase(),
+        password,
+      })
+
+      if (signInError) {
+        console.error("Sign in error:", signInError)
+        setError("Email ou senha incorretos")
+        setLoading(false)
+        return
+      }
+
+      // Check if this is a portal user by calling the API
+      const response = await fetch("/api/portal/auth/verify", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ userId: authData.user.id }),
       })
 
       const data = await response.json()
 
       if (!response.ok) {
-        setError(data.error || "Erro ao fazer login")
+        // Not a portal user, sign out
+        await supabase.auth.signOut()
+        setError(data.error || "Esta conta não tem acesso ao portal")
+        setLoading(false)
         return
       }
 
       // Check if password change is required
-      // Use window.location for hard navigation to ensure cookies are sent
       if (data.mustChangePassword) {
         window.location.href = "/portal/change-password"
         return
       }
 
-      // Redirect to dashboard with hard navigation
+      // Redirect to dashboard
       window.location.href = "/portal/dashboard"
     } catch (err) {
       console.error("Login error:", err)
       setError("Erro de conexão. Tente novamente.")
-    } finally {
       setLoading(false)
     }
   }
