@@ -51,9 +51,6 @@ export async function updateSession(request: NextRequest) {
 
   // Portal routes check
   const isPortalPath = request.nextUrl.pathname.startsWith("/portal")
-  const isPortalLoginPath = request.nextUrl.pathname === "/portal/login"
-  const isPortalChangePasswordPath = request.nextUrl.pathname === "/portal/change-password"
-  const isPortalProtectedPath = isPortalPath && !isPortalLoginPath
 
   // Only call getUser() when necessary
   if (isProtectedPath || isAuthPath || isRootPath || isChangePasswordPath || isPortalPath) {
