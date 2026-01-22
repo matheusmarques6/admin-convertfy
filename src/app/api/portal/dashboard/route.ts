@@ -40,14 +40,21 @@ export async function GET(request: NextRequest) {
     const clientId = portalUser.client_id
     const searchParams = request.nextUrl.searchParams
     const period = searchParams.get("period") || "30d"
+    const storeId = searchParams.get("store_id")
 
     // Calculate date range
     const now = new Date()
     const startDate = new Date()
 
     switch (period) {
+      case "1d":
+        startDate.setDate(now.getDate() - 1)
+        break
       case "7d":
         startDate.setDate(now.getDate() - 7)
+        break
+      case "15d":
+        startDate.setDate(now.getDate() - 15)
         break
       case "30d":
         startDate.setDate(now.getDate() - 30)
@@ -65,14 +72,13 @@ export async function GET(request: NextRequest) {
     const startDateStr = startDate.toISOString().split("T")[0]
     const endDateStr = now.toISOString().split("T")[0]
 
-    // Fetch all data in parallel using admin client to bypass RLS
+    // Fetch all base data in parallel using admin client to bypass RLS
     const [
       clientData,
       storesData,
-      campaignsData,
       invoicesData,
       meetingsData,
-      contractData,
+      upcomingCampaignsData,
     ] = await Promise.all([
       // Client info
       adminClient
@@ -84,20 +90,10 @@ export async function GET(request: NextRequest) {
       // Stores with credentials
       adminClient
         .from("client_stores")
-        .select("id, store_name, platform, store_url, is_active, created_at")
+        .select("id, store_name, platform, store_url, is_active, klaviyo_private_key, klaviyo_api_key, shopify_access_token, shopify_store_domain")
         .eq("client_id", clientId)
         .eq("is_active", true)
         .order("store_name"),
-
-      // Recent campaigns
-      adminClient
-        .from("campaigns")
-        .select("*")
-        .eq("client_id", clientId)
-        .gte("scheduled_date", startDateStr)
-        .lte("scheduled_date", endDateStr)
-        .order("scheduled_date", { ascending: false })
-        .limit(10),
 
       // Invoices
       adminClient
@@ -117,22 +113,22 @@ export async function GET(request: NextRequest) {
         .order("scheduled_at")
         .limit(5),
 
-      // Active contract
+      // Upcoming campaigns (scheduled)
       adminClient
-        .from("contracts")
+        .from("campaigns")
         .select("*")
         .eq("client_id", clientId)
-        .eq("status", "active")
-        .order("created_at", { ascending: false })
-        .limit(1),
+        .eq("status", "scheduled")
+        .gte("scheduled_date", new Date().toISOString().split("T")[0])
+        .order("scheduled_date")
+        .limit(10),
     ])
 
     const client = clientData.data
     const stores = storesData.data || []
-    const campaigns = campaignsData.data || []
     const invoices = invoicesData.data || []
     const meetings = meetingsData.data || []
-    const contract = contractData.data?.[0] || null
+    const upcomingCampaigns = upcomingCampaignsData.data || []
 
     // Calculate invoice stats
     const pendingInvoices = invoices.filter((i) => i.status === "pending")
@@ -143,97 +139,183 @@ export async function GET(request: NextRequest) {
     const totalOverdue = overdueInvoices.reduce((sum, i) => sum + (i.amount || 0), 0)
     const totalPaid = paidInvoices.reduce((sum, i) => sum + (i.amount || 0), 0)
 
-    // Campaign stats
-    const sentCampaigns = campaigns.filter((c) => c.status === "sent")
-    const scheduledCampaigns = campaigns.filter((c) => c.status === "scheduled")
-    const totalCampaignRevenue = sentCampaigns.reduce((sum, c) => sum + (c.revenue || 0), 0)
+    // Prepare the base response
+    const response: Record<string, unknown> = {
+      success: true,
+      period,
+      dateRange: { start: startDateStr, end: endDateStr },
+
+      client: {
+        id: client?.id,
+        name: client?.name,
+        company: client?.company,
+        status: client?.status,
+        healthScore: client?.health_score,
+      },
+
+      stores: stores.map((s) => ({
+        id: s.id,
+        name: s.store_name,
+        platform: s.platform,
+        url: s.store_url,
+        isActive: s.is_active,
+      })),
+
+      invoices: {
+        pending: pendingInvoices.length,
+        overdue: overdueInvoices.length,
+        totalPending,
+        totalOverdue,
+        totalPaid,
+        recent: invoices.slice(0, 10).map((i) => ({
+          id: i.id,
+          amount: i.amount,
+          dueDate: i.due_date,
+          status: i.status,
+          description: i.description,
+        })),
+      },
+
+      upcomingCampaigns: upcomingCampaigns.map((c) => ({
+        id: c.id,
+        name: c.name,
+        channel: c.channel,
+        status: c.status,
+        scheduledDate: c.scheduled_date,
+      })),
+
+      meetings: meetings.map((m) => ({
+        id: m.id,
+        title: m.title,
+        scheduledAt: m.scheduled_at,
+        duration: m.duration_minutes,
+        meetingUrl: m.meeting_url,
+      })),
+
+      lastUpdated: new Date().toISOString(),
+    }
+
+    // If a specific store is selected, fetch Klaviyo and Shopify data
+    if (storeId && storeId !== "all") {
+      const selectedStore = stores.find((s) => s.id === storeId)
+
+      if (selectedStore) {
+        response.selectedStore = {
+          id: selectedStore.id,
+          name: selectedStore.store_name,
+          platform: selectedStore.platform,
+        }
+
+        // Fetch Klaviyo data if configured
+        const hasKlaviyo = !!(selectedStore.klaviyo_private_key || selectedStore.klaviyo_api_key)
+        if (hasKlaviyo) {
+          try {
+            const baseUrl = request.nextUrl.origin
+            const klaviyoResponse = await fetch(
+              `${baseUrl}/api/integrations/klaviyo/report?store_id=${storeId}&period=${period}`,
+              {
+                headers: {
+                  Cookie: request.headers.get("cookie") || "",
+                },
+              }
+            )
+
+            if (klaviyoResponse.ok) {
+              const klaviyoData = await klaviyoResponse.json()
+
+              if (klaviyoData.success && klaviyoData.connected) {
+                // Map Klaviyo data to the dashboard format
+                response.klaviyo = {
+                  totalLeads: klaviyoData.overview?.totalSubscribers || 0,
+                  engagedLeads: klaviyoData.engagement?.engagedProfiles || 0,
+                  engagementRate: parseFloat(klaviyoData.engagement?.engagementRate || "0"),
+                  totalRevenue: klaviyoData.revenue?.totalRevenue || 0,
+                  campaignRevenue: klaviyoData.revenue?.campaignRevenue || 0,
+                  flowRevenue: klaviyoData.revenue?.flowRevenue || 0,
+                  emailsSent: klaviyoData.emailPerformance?.delivered || 0,
+                  openRate: klaviyoData.emailPerformance?.openRate || 0,
+                  clickRate: klaviyoData.emailPerformance?.clickRate || 0,
+                  conversionRate: klaviyoData.emailPerformance?.clickToOpenRate || 0,
+                  unsubscribeRate: klaviyoData.emailPerformance?.unsubscribeRate || 0,
+                  bounceRate: klaviyoData.emailPerformance?.bounceRate || 0,
+                  recentCampaigns: (klaviyoData.campaignPerformance?.campaigns || []).slice(0, 10).map((c: Record<string, unknown>) => ({
+                    id: c.campaignId,
+                    name: c.name,
+                    status: "sent",
+                    sentAt: c.sendTime || new Date().toISOString(),
+                    recipients: c.delivered || 0,
+                    delivered: c.delivered || 0,
+                    opened: c.opens || 0,
+                    clicked: c.clicks || 0,
+                    revenue: c.revenue || 0,
+                    openRate: c.openRate || 0,
+                    clickRate: c.clickRate || 0,
+                  })),
+                  topFlows: (klaviyoData.flowPerformance?.flows || []).slice(0, 10).map((f: Record<string, unknown>) => ({
+                    id: f.flowId,
+                    name: f.name,
+                    revenue: f.revenue || 0,
+                    recipients: f.delivered || 0,
+                    openRate: f.openRate || 0,
+                    clickRate: f.clickRate || 0,
+                  })),
+                }
+              }
+            }
+          } catch (error) {
+            console.error("[Portal Dashboard] Klaviyo fetch error:", error)
+          }
+        }
+
+        // Fetch Shopify data if configured
+        const hasShopify = !!(selectedStore.shopify_access_token && selectedStore.shopify_store_domain)
+        if (hasShopify) {
+          try {
+            const baseUrl = request.nextUrl.origin
+            const shopifyResponse = await fetch(
+              `${baseUrl}/api/integrations/shopify/report?store_id=${storeId}&period=${period}`,
+              {
+                headers: {
+                  Cookie: request.headers.get("cookie") || "",
+                },
+              }
+            )
+
+            if (shopifyResponse.ok) {
+              const shopifyData = await shopifyResponse.json()
+
+              if (shopifyData.success && shopifyData.connected) {
+                // Map Shopify data to the dashboard format
+                response.shopify = {
+                  totalOrders: shopifyData.orders?.totalOrders || 0,
+                  totalRevenue: shopifyData.orders?.totalRevenue || 0,
+                  averageOrderValue: shopifyData.orders?.averageOrderValue || 0,
+                  recurringCustomerRate: shopifyData.orders?.recurringCustomerRate || 0,
+                  newCustomers: shopifyData.customers?.newCustomersLast30Days || 0,
+                  topProducts: (shopifyData.bestSellingProducts || []).slice(0, 10).map((p: Record<string, unknown>) => ({
+                    name: p.title || "Unknown Product",
+                    quantity: p.quantitySold || 0,
+                    revenue: p.revenue || 0,
+                  })),
+                }
+              }
+            }
+          } catch (error) {
+            console.error("[Portal Dashboard] Shopify fetch error:", error)
+          }
+        }
+      }
+    }
 
     // Log activity
     await adminClient.from("client_portal_activity").insert({
       portal_user_id: portalUser.id,
       client_id: clientId,
       action: "view_dashboard",
-      metadata: { period },
+      metadata: { period, storeId },
     })
 
-    return NextResponse.json(
-      {
-        success: true,
-        period,
-        dateRange: { start: startDateStr, end: endDateStr },
-
-        client: {
-          id: client?.id,
-          name: client?.name,
-          company: client?.company,
-          status: client?.status,
-          healthScore: client?.health_score,
-        },
-
-        stores: stores.map((s) => ({
-          id: s.id,
-          name: s.store_name,
-          platform: s.platform,
-          url: s.store_url,
-          isActive: s.is_active,
-        })),
-
-        summary: {
-          totalStores: stores.length,
-          totalCampaigns: campaigns.length,
-          sentCampaigns: sentCampaigns.length,
-          scheduledCampaigns: scheduledCampaigns.length,
-          campaignRevenue: totalCampaignRevenue,
-        },
-
-        invoices: {
-          pending: pendingInvoices.length,
-          overdue: overdueInvoices.length,
-          totalPending,
-          totalOverdue,
-          totalPaid,
-          recent: invoices.slice(0, 5).map((i) => ({
-            id: i.id,
-            amount: i.amount,
-            dueDate: i.due_date,
-            status: i.status,
-            description: i.description,
-          })),
-        },
-
-        campaigns: {
-          recent: campaigns.slice(0, 5).map((c) => ({
-            id: c.id,
-            name: c.name,
-            channel: c.channel,
-            status: c.status,
-            scheduledDate: c.scheduled_date,
-            revenue: c.revenue,
-          })),
-        },
-
-        meetings: meetings.map((m) => ({
-          id: m.id,
-          title: m.title,
-          scheduledAt: m.scheduled_at,
-          duration: m.duration_minutes,
-          meetingUrl: m.meeting_url,
-        })),
-
-        contract: contract
-          ? {
-              planName: contract.plan_name,
-              monthlyValue: contract.monthly_value,
-              startDate: contract.start_date,
-              endDate: contract.end_date,
-              status: contract.status,
-            }
-          : null,
-
-        lastUpdated: new Date().toISOString(),
-      },
-      { headers: corsHeaders() }
-    )
+    return NextResponse.json(response, { headers: corsHeaders() })
   } catch (error) {
     console.error("[Portal Dashboard] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
