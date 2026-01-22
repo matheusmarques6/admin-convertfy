@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 
 function corsHeaders() {
   return {
@@ -13,26 +13,25 @@ export async function OPTIONS() {
   return NextResponse.json({}, { headers: corsHeaders() })
 }
 
-// Helper to get portal user from auth
-async function getPortalUser(supabase: ReturnType<typeof createClient> extends Promise<infer T> ? T : never) {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-
-  const { data: portalUser } = await supabase
-    .from("client_portal_users")
-    .select("*, client:clients(*)")
-    .eq("auth_user_id", user.id)
-    .eq("is_active", true)
-    .single()
-
-  return portalUser
-}
-
 // GET - Get portal dashboard data
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const portalUser = await getPortalUser(supabase)
+    const adminClient = createAdminClient()
+
+    // Get current user
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      return NextResponse.json({ error: "Não autenticado" }, { status: 401, headers: corsHeaders() })
+    }
+
+    // Get portal user using admin client to bypass RLS
+    const { data: portalUser } = await adminClient
+      .from("client_portal_users")
+      .select("*, client:clients(*)")
+      .eq("auth_user_id", user.id)
+      .eq("is_active", true)
+      .single()
 
     if (!portalUser) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
@@ -66,7 +65,7 @@ export async function GET(request: NextRequest) {
     const startDateStr = startDate.toISOString().split("T")[0]
     const endDateStr = now.toISOString().split("T")[0]
 
-    // Fetch all data in parallel
+    // Fetch all data in parallel using admin client to bypass RLS
     const [
       clientData,
       storesData,
@@ -76,14 +75,14 @@ export async function GET(request: NextRequest) {
       contractData,
     ] = await Promise.all([
       // Client info
-      supabase
+      adminClient
         .from("clients")
         .select("*")
         .eq("id", clientId)
         .single(),
 
       // Stores with credentials
-      supabase
+      adminClient
         .from("client_stores")
         .select("id, store_name, platform, store_url, is_active, created_at")
         .eq("client_id", clientId)
@@ -91,7 +90,7 @@ export async function GET(request: NextRequest) {
         .order("store_name"),
 
       // Recent campaigns
-      supabase
+      adminClient
         .from("campaigns")
         .select("*")
         .eq("client_id", clientId)
@@ -101,7 +100,7 @@ export async function GET(request: NextRequest) {
         .limit(10),
 
       // Invoices
-      supabase
+      adminClient
         .from("invoices")
         .select("*")
         .eq("client_id", clientId)
@@ -109,7 +108,7 @@ export async function GET(request: NextRequest) {
         .limit(20),
 
       // Upcoming meetings
-      supabase
+      adminClient
         .from("meetings")
         .select("*")
         .eq("client_id", clientId)
@@ -119,7 +118,7 @@ export async function GET(request: NextRequest) {
         .limit(5),
 
       // Active contract
-      supabase
+      adminClient
         .from("contracts")
         .select("*")
         .eq("client_id", clientId)
@@ -150,7 +149,7 @@ export async function GET(request: NextRequest) {
     const totalCampaignRevenue = sentCampaigns.reduce((sum, c) => sum + (c.revenue || 0), 0)
 
     // Log activity
-    await supabase.from("client_portal_activity").insert({
+    await adminClient.from("client_portal_activity").insert({
       portal_user_id: portalUser.id,
       client_id: clientId,
       action: "view_dashboard",

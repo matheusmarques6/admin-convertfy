@@ -4,9 +4,6 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import {
   DollarSign,
-  ShoppingCart,
-  Users,
-  TrendingUp,
   Store,
   Calendar,
   FileText,
@@ -21,45 +18,67 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Progress } from "@/components/ui/progress"
 
 interface DashboardData {
   client: {
+    id: string
     name: string
     company?: string
     status: string
+    healthScore?: number
   }
   stores: Array<{
     id: string
-    store_name: string
-    platform: string
-    is_active: boolean
-  }>
-  recentCampaigns: Array<{
-    id: string
     name: string
-    status: string
-    scheduled_date: string
-    channel: string
-    revenue?: number
-    store?: { store_name: string }
+    platform: string
+    url?: string
+    isActive: boolean
   }>
-  upcomingInvoices: Array<{
+  campaigns: {
+    recent: Array<{
+      id: string
+      name: string
+      status: string
+      scheduledDate: string
+      channel: string
+      revenue?: number
+    }>
+  }
+  invoices: {
+    pending: number
+    overdue: number
+    totalPending: number
+    totalOverdue: number
+    totalPaid: number
+    recent: Array<{
+      id: string
+      amount: number
+      dueDate: string
+      status: string
+      description?: string
+    }>
+  }
+  summary: {
+    totalStores: number
+    totalCampaigns: number
+    sentCampaigns: number
+    scheduledCampaigns: number
+    campaignRevenue: number
+  }
+  meetings: Array<{
     id: string
-    amount: number
-    due_date: string
-    status: string
+    title: string
+    scheduledAt: string
+    duration?: number
+    meetingUrl?: string
   }>
-  pendingInvoices: Array<{
-    id: string
-    amount: number
-    due_date: string
+  contract?: {
+    planName: string
+    monthlyValue: number
+    startDate: string
+    endDate?: string
     status: string
-  }>
-  totalRevenue: number
-  totalOrders: number
-  totalLeads: number
-  engagedLeads: number
+  } | null
   lastUpdated: string
 }
 
@@ -152,10 +171,6 @@ export default function PortalDashboardPage() {
 
   if (!data) return null
 
-  const engagementRate = (data.totalLeads || 0) > 0
-    ? (((data.engagedLeads || 0) / data.totalLeads) * 100).toFixed(1)
-    : "0"
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -163,7 +178,7 @@ export default function PortalDashboardPage() {
         <div>
           <h1 className="text-2xl font-bold">Dashboard</h1>
           <p className="text-muted-foreground">
-            Acompanhe os resultados de suas lojas em tempo real
+            Bem-vindo, {data.client?.name || data.client?.company || "Cliente"}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -186,11 +201,11 @@ export default function PortalDashboardPage() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Receita Total</CardTitle>
+            <CardTitle className="text-sm font-medium">Receita Campanhas</CardTitle>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(data.totalRevenue)}</div>
+            <div className="text-2xl font-bold">{formatCurrency(data.summary?.campaignRevenue || 0)}</div>
             <p className="text-xs text-muted-foreground">
               Receita atribuída via email marketing
             </p>
@@ -199,44 +214,40 @@ export default function PortalDashboardPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total de Pedidos</CardTitle>
-            <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Lojas Ativas</CardTitle>
+            <Store className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{(data.totalOrders || 0).toLocaleString("pt-BR")}</div>
+            <div className="text-2xl font-bold">{data.summary?.totalStores || 0}</div>
             <p className="text-xs text-muted-foreground">
-              Pedidos no período
+              Lojas configuradas
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total de Leads</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Campanhas Enviadas</CardTitle>
+            <Mail className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{(data.totalLeads || 0).toLocaleString("pt-BR")}</div>
+            <div className="text-2xl font-bold">{data.summary?.sentCampaigns || 0}</div>
             <p className="text-xs text-muted-foreground">
-              Contatos na base
+              No período selecionado
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Engajados 90d</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Faturas Pendentes</CardTitle>
+            <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{(data.engagedLeads || 0).toLocaleString("pt-BR")}</div>
-            <div className="mt-2">
-              <div className="flex items-center justify-between text-xs mb-1">
-                <span className="text-muted-foreground">Taxa de engajamento</span>
-                <span className="font-medium">{engagementRate}%</span>
-              </div>
-              <Progress value={parseFloat(engagementRate)} className="h-1" />
-            </div>
+            <div className="text-2xl font-bold">{formatCurrency(data.invoices?.totalPending || 0)}</div>
+            <p className="text-xs text-muted-foreground">
+              {data.invoices?.pending || 0} fatura(s) a pagar
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -258,7 +269,7 @@ export default function PortalDashboardPage() {
             </Button>
           </CardHeader>
           <CardContent>
-            {data.stores.length === 0 ? (
+            {(data.stores?.length || 0) === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <Store className="h-8 w-8 mx-auto mb-2 opacity-50" />
                 <p>Nenhuma loja configurada</p>
@@ -276,14 +287,14 @@ export default function PortalDashboardPage() {
                         <Store className="h-5 w-5 text-primary" />
                       </div>
                       <div>
-                        <p className="font-medium">{store.store_name}</p>
+                        <p className="font-medium">{store.name}</p>
                         <p className="text-xs text-muted-foreground capitalize">
                           {store.platform}
                         </p>
                       </div>
                     </div>
-                    <Badge variant={store.is_active ? "default" : "secondary"}>
-                      {store.is_active ? "Ativa" : "Inativa"}
+                    <Badge variant={store.isActive ? "default" : "secondary"}>
+                      {store.isActive ? "Ativa" : "Inativa"}
                     </Badge>
                   </Link>
                 ))}
@@ -307,14 +318,14 @@ export default function PortalDashboardPage() {
             </Button>
           </CardHeader>
           <CardContent>
-            {data.recentCampaigns.length === 0 ? (
+            {(data.campaigns?.recent?.length || 0) === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <Mail className="h-8 w-8 mx-auto mb-2 opacity-50" />
                 <p>Nenhuma campanha encontrada</p>
               </div>
             ) : (
               <div className="space-y-3">
-                {data.recentCampaigns.slice(0, 5).map((campaign) => (
+                {data.campaigns.recent.slice(0, 5).map((campaign) => (
                   <div
                     key={campaign.id}
                     className="flex items-center justify-between p-3 rounded-lg border"
@@ -326,8 +337,7 @@ export default function PortalDashboardPage() {
                       <div className="flex-1 min-w-0">
                         <p className="font-medium truncate">{campaign.name}</p>
                         <p className="text-xs text-muted-foreground">
-                          {formatDate(campaign.scheduled_date)}
-                          {campaign.store && ` • ${campaign.store.store_name}`}
+                          {formatDate(campaign.scheduledDate)}
                         </p>
                       </div>
                     </div>
@@ -352,12 +362,12 @@ export default function PortalDashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Pending Invoices */}
+        {/* Recent Invoices */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
-              <CardTitle>Faturas Pendentes</CardTitle>
-              <CardDescription>Pagamentos aguardando</CardDescription>
+              <CardTitle>Faturas Recentes</CardTitle>
+              <CardDescription>Últimas faturas</CardDescription>
             </div>
             <Button variant="ghost" size="sm" asChild>
               <Link href="/portal/invoices">
@@ -367,15 +377,15 @@ export default function PortalDashboardPage() {
             </Button>
           </CardHeader>
           <CardContent>
-            {data.pendingInvoices.length === 0 ? (
+            {(data.invoices?.recent?.length || 0) === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <CheckCircle className="h-8 w-8 mx-auto mb-2 text-green-500 opacity-50" />
-                <p>Nenhuma fatura pendente</p>
+                <p>Nenhuma fatura encontrada</p>
               </div>
             ) : (
               <div className="space-y-3">
-                {data.pendingInvoices.slice(0, 4).map((invoice) => {
-                  const isOverdue = new Date(invoice.due_date) < new Date() && invoice.status !== "paid"
+                {data.invoices.recent.slice(0, 4).map((invoice) => {
+                  const isOverdue = new Date(invoice.dueDate) < new Date() && invoice.status !== "paid"
                   return (
                     <div
                       key={invoice.id}
@@ -383,9 +393,12 @@ export default function PortalDashboardPage() {
                     >
                       <div className="flex items-center gap-3">
                         <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                          invoice.status === "paid" ? "bg-green-100" :
                           isOverdue ? "bg-red-100" : "bg-yellow-100"
                         }`}>
-                          {isOverdue ? (
+                          {invoice.status === "paid" ? (
+                            <CheckCircle className="h-5 w-5 text-green-600" />
+                          ) : isOverdue ? (
                             <AlertCircle className="h-5 w-5 text-red-600" />
                           ) : (
                             <Clock className="h-5 w-5 text-yellow-600" />
@@ -394,16 +407,16 @@ export default function PortalDashboardPage() {
                         <div>
                           <p className="font-medium">{formatCurrency(invoice.amount)}</p>
                           <p className="text-xs text-muted-foreground">
-                            Vencimento: {formatDate(invoice.due_date)}
+                            Vencimento: {formatDate(invoice.dueDate)}
                           </p>
                         </div>
                       </div>
                       <Badge
-                        className={invoiceStatusColors[isOverdue ? "overdue" : invoice.status as keyof typeof invoiceStatusColors] || ""}
+                        className={invoiceStatusColors[isOverdue && invoice.status !== "paid" ? "overdue" : invoice.status as keyof typeof invoiceStatusColors] || ""}
                       >
-                        {isOverdue ? "Vencida" :
-                         invoice.status === "pending" ? "Pendente" :
-                         invoice.status === "paid" ? "Paga" : invoice.status}
+                        {invoice.status === "paid" ? "Paga" :
+                         isOverdue ? "Vencida" :
+                         invoice.status === "pending" ? "Pendente" : invoice.status}
                       </Badge>
                     </div>
                   )
@@ -413,39 +426,46 @@ export default function PortalDashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Upcoming Invoices */}
+        {/* Upcoming Meetings */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
-              <CardTitle>Próximas Faturas</CardTitle>
-              <CardDescription>Vencimentos futuros</CardDescription>
+              <CardTitle>Próximas Reuniões</CardTitle>
+              <CardDescription>Reuniões agendadas</CardDescription>
             </div>
           </CardHeader>
           <CardContent>
-            {data.upcomingInvoices.length === 0 ? (
+            {(data.meetings?.length || 0) === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <Calendar className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                <p>Nenhuma fatura programada</p>
+                <p>Nenhuma reunião agendada</p>
               </div>
             ) : (
               <div className="space-y-3">
-                {data.upcomingInvoices.slice(0, 4).map((invoice) => (
+                {data.meetings.slice(0, 4).map((meeting) => (
                   <div
-                    key={invoice.id}
+                    key={meeting.id}
                     className="flex items-center justify-between p-3 rounded-lg border"
                   >
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
-                        <FileText className="h-5 w-5 text-blue-600" />
+                        <Calendar className="h-5 w-5 text-blue-600" />
                       </div>
                       <div>
-                        <p className="font-medium">{formatCurrency(invoice.amount)}</p>
+                        <p className="font-medium">{meeting.title}</p>
                         <p className="text-xs text-muted-foreground">
-                          Vencimento: {formatDate(invoice.due_date)}
+                          {formatDate(meeting.scheduledAt)}
+                          {meeting.duration && ` • ${meeting.duration} min`}
                         </p>
                       </div>
                     </div>
-                    <Badge variant="outline">Programada</Badge>
+                    {meeting.meetingUrl && (
+                      <Button variant="outline" size="sm" asChild>
+                        <a href={meeting.meetingUrl} target="_blank" rel="noopener noreferrer">
+                          Entrar
+                        </a>
+                      </Button>
+                    )}
                   </div>
                 ))}
               </div>
