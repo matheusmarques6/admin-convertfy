@@ -69,7 +69,7 @@ export default function RegisterPage() {
       })
 
       router.push("/login")
-    } catch (error) {
+    } catch {
       toast({
         variant: "destructive",
         title: "Erro inesperado",

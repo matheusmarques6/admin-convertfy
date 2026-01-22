@@ -1,7 +1,7 @@
 "use client"
 
 import { Globe, Mail, Phone, Building, User, Calendar } from "lucide-react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { formatCurrency, formatDate, getInitials } from "@/lib/utils"
 import type { Client, Contract, Invoice, Meeting, User as UserType } from "@/types"

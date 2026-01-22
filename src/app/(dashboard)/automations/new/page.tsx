@@ -7,7 +7,6 @@ import {
   ArrowLeft,
   Save,
   Zap,
-  Filter,
   Play,
   Mail,
   MessageSquare,
@@ -15,7 +14,6 @@ import {
   Bell,
   Webhook,
   Clock,
-  Plus,
   Trash2,
   ChevronRight,
 } from "lucide-react"
