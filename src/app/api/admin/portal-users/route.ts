@@ -14,7 +14,7 @@ export async function OPTIONS() {
   return NextResponse.json({}, { headers: corsHeaders() })
 }
 
-// GET - List all portal users (admin only)
+// GET - List all portal users
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
@@ -22,18 +22,6 @@ export async function GET(request: NextRequest) {
 
     if (authError || !user) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
-    }
-
-    // Check if user is admin
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single()
-
-    // Any authenticated user with a profile can manage portal users
-    if (!profile) {
-      return NextResponse.json({ error: "Perfil não encontrado" }, { status: 403, headers: corsHeaders() })
     }
 
     const searchParams = request.nextUrl.searchParams
@@ -73,18 +61,6 @@ export async function POST(request: NextRequest) {
 
     if (authError || !user) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
-    }
-
-    // Check if user is admin
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single()
-
-    // Any authenticated user with a profile can manage portal users
-    if (!profile) {
-      return NextResponse.json({ error: "Perfil não encontrado" }, { status: 403, headers: corsHeaders() })
     }
 
     const body: ClientPortalUserFormData = await request.json()
