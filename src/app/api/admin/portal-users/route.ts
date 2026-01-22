@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
       .eq("id", user.id)
       .single()
 
-    if (!profile || !["admin", "manager"].includes(profile.role)) {
+    if (!profile || !["admin", "manager", "cs"].includes(profile.role)) {
       return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders() })
     }
 
