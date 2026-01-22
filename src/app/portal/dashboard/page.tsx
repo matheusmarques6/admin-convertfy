@@ -152,8 +152,8 @@ export default function PortalDashboardPage() {
 
   if (!data) return null
 
-  const engagementRate = data.totalLeads > 0
-    ? ((data.engagedLeads / data.totalLeads) * 100).toFixed(1)
+  const engagementRate = (data.totalLeads || 0) > 0
+    ? (((data.engagedLeads || 0) / data.totalLeads) * 100).toFixed(1)
     : "0"
 
   return (
@@ -203,7 +203,7 @@ export default function PortalDashboardPage() {
             <ShoppingCart className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{data.totalOrders.toLocaleString("pt-BR")}</div>
+            <div className="text-2xl font-bold">{(data.totalOrders || 0).toLocaleString("pt-BR")}</div>
             <p className="text-xs text-muted-foreground">
               Pedidos no período
             </p>
@@ -216,7 +216,7 @@ export default function PortalDashboardPage() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{data.totalLeads.toLocaleString("pt-BR")}</div>
+            <div className="text-2xl font-bold">{(data.totalLeads || 0).toLocaleString("pt-BR")}</div>
             <p className="text-xs text-muted-foreground">
               Contatos na base
             </p>
@@ -229,7 +229,7 @@ export default function PortalDashboardPage() {
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{data.engagedLeads.toLocaleString("pt-BR")}</div>
+            <div className="text-2xl font-bold">{(data.engagedLeads || 0).toLocaleString("pt-BR")}</div>
             <div className="mt-2">
               <div className="flex items-center justify-between text-xs mb-1">
                 <span className="text-muted-foreground">Taxa de engajamento</span>
