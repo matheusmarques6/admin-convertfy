@@ -12,6 +12,7 @@ import { ClientContracts } from "@/components/clients/client-contracts"
 import { ClientMeetings } from "@/components/clients/client-meetings"
 import { ClientReports } from "@/components/clients/client-reports"
 import { ClientTimeline } from "@/components/clients/client-timeline"
+import { ClientPortalAccess } from "@/components/clients/client-portal-access"
 import { getInitials, getHealthScoreColor, getHealthScoreEmoji } from "@/lib/utils"
 
 export const dynamic = "force-dynamic"
@@ -134,6 +135,7 @@ export default async function ClientPage({
           <TabsTrigger value="contracts">Contratos</TabsTrigger>
           <TabsTrigger value="meetings">Reuniões</TabsTrigger>
           <TabsTrigger value="reports">Relatórios</TabsTrigger>
+          <TabsTrigger value="portal">Portal</TabsTrigger>
           <TabsTrigger value="timeline">Timeline</TabsTrigger>
         </TabsList>
 
@@ -155,6 +157,10 @@ export default async function ClientPage({
 
         <TabsContent value="reports">
           <ClientReports reports={client.reports || []} clientId={client.id} />
+        </TabsContent>
+
+        <TabsContent value="portal">
+          <ClientPortalAccess clientId={client.id} clientName={client.name} />
         </TabsContent>
 
         <TabsContent value="timeline">

@@ -43,11 +43,17 @@ export async function updateSession(request: NextRequest) {
   }
 
   // Auth routes - redirect to dashboard if already authenticated
+  // Note: change-password is a special auth route that authenticated users CAN access
   const authPaths = ["/login", "/register"]
   const isAuthPath = authPaths.some(path => request.nextUrl.pathname.startsWith(path))
 
   if (isAuthPath && user) {
     return NextResponse.redirect(new URL("/dashboard", request.url))
+  }
+
+  // Change password route - requires authentication but is not a dashboard route
+  if (request.nextUrl.pathname.startsWith("/change-password") && !user) {
+    return NextResponse.redirect(new URL("/login", request.url))
   }
 
   // Redirect root to dashboard or login

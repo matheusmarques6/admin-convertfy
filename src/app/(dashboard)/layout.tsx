@@ -15,6 +15,17 @@ export default async function DashboardLayout({
     redirect("/login")
   }
 
+  // Check if user is a portal user who needs to change password
+  const { data: portalUser } = await supabase
+    .from("client_portal_users")
+    .select("must_change_password")
+    .eq("auth_user_id", user.id)
+    .single()
+
+  if (portalUser?.must_change_password) {
+    redirect("/change-password")
+  }
+
   // Fetch user profile
   const { data: profile } = await supabase
     .from("profiles")

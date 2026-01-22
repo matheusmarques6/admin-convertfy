@@ -14,6 +14,29 @@ export interface User {
 // Client Types
 export type ClientStatus = "active" | "inactive" | "churned" | "prospect" | "onboarding"
 
+export interface ClientPortalUserPermissions {
+  view_reports: boolean
+  view_invoices: boolean
+  view_campaigns: boolean
+  edit_profile: boolean
+}
+
+export interface ClientPortalUser {
+  id: string
+  client_id: string
+  auth_user_id?: string
+  email: string
+  name: string
+  phone?: string
+  is_primary_contact: boolean
+  must_change_password: boolean
+  last_login?: string
+  permissions: ClientPortalUserPermissions
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
 export interface Client {
   id: string
   name: string
