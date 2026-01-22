@@ -5,7 +5,6 @@ import Link from "next/link"
 import {
   DollarSign,
   Store,
-  FileText,
   ArrowRight,
   Clock,
   AlertCircle,
@@ -17,18 +16,23 @@ import {
   ShoppingCart,
   Eye,
   MousePointerClick,
-  Percent,
   BarChart3,
   CreditCard,
   CalendarDays,
   Video,
+  Zap,
+  Send,
+  Target,
+  Award,
+  Package,
+  UserPlus,
+  Repeat,
+  Download,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Progress } from "@/components/ui/progress"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Select,
   SelectContent,
@@ -36,6 +40,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 
 interface StoreOption {
   id: string
@@ -45,18 +57,40 @@ interface StoreOption {
 }
 
 interface KlaviyoData {
+  // Overview metrics
   totalLeads: number
   engagedLeads: number
   engagementRate: number
+
+  // Revenue metrics
   totalRevenue: number
   campaignRevenue: number
   flowRevenue: number
+  smsRevenue: number
+
+  // Email performance
   emailsSent: number
+  delivered: number
   openRate: number
   clickRate: number
+  clickToOpenRate: number
   conversionRate: number
   unsubscribeRate: number
   bounceRate: number
+  bounces: number
+
+  // Campaigns
+  campaignsCount: number
+  campaignDelivered: number
+  campaignRevenuePercent: number
+
+  // Flows
+  flowsCount: number
+  activeFlows: number
+  flowDelivered: number
+  flowRevenuePercent: number
+
+  // Recent campaigns with full metrics
   recentCampaigns: Array<{
     id: string
     name: string
@@ -70,22 +104,30 @@ interface KlaviyoData {
     openRate: number
     clickRate: number
   }>
+
+  // Top flows with full metrics
   topFlows: Array<{
     id: string
     name: string
     revenue: number
-    recipients: number
+    delivered: number
     openRate: number
     clickRate: number
   }>
 }
 
 interface ShopifyData {
-  totalOrders: number
+  // Revenue metrics
   totalRevenue: number
+  totalOrders: number
   averageOrderValue: number
-  recurringCustomerRate: number
+  totalCustomers: number
+
+  // Customer metrics
   newCustomers: number
+  recurringCustomerRate: number
+
+  // Top products
   topProducts: Array<{
     name: string
     quantity: number
@@ -142,14 +184,11 @@ interface DashboardData {
   upcomingCampaigns: Campaign[]
   meetings: Meeting[]
   period: string
+  dateRange?: {
+    start: string
+    end: string
+  }
   lastUpdated: string
-}
-
-const statusColors = {
-  draft: "bg-gray-100 text-gray-700",
-  scheduled: "bg-yellow-100 text-yellow-700",
-  sent: "bg-green-100 text-green-700",
-  cancelled: "bg-red-100 text-red-700",
 }
 
 const invoiceStatusColors = {
@@ -160,6 +199,19 @@ const invoiceStatusColors = {
 }
 
 function formatCurrency(value: number): string {
+  if (value >= 1000000) {
+    return `R$ ${(value / 1000000).toFixed(1)}M`
+  }
+  if (value >= 1000) {
+    return `R$ ${(value / 1000).toFixed(1)}K`
+  }
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(value)
+}
+
+function formatCurrencyFull(value: number): string {
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
     currency: "BRL",
@@ -171,7 +223,7 @@ function formatNumber(value: number): string {
 }
 
 function formatPercent(value: number): string {
-  return `${(value || 0).toFixed(1)}%`
+  return `${(value || 0).toFixed(2)}%`
 }
 
 function formatDate(dateStr: string): string {
@@ -187,6 +239,13 @@ function formatDateTime(dateStr: string): string {
   })
 }
 
+function formatDateRange(start: string, end: string): string {
+  const startDate = new Date(start)
+  const endDate = new Date(end)
+  const formatOpts: Intl.DateTimeFormatOptions = { day: "2-digit", month: "2-digit", year: "numeric" }
+  return `${startDate.toLocaleDateString("pt-BR", formatOpts)} - ${endDate.toLocaleDateString("pt-BR", formatOpts)}`
+}
+
 export default function PortalDashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -194,7 +253,6 @@ export default function PortalDashboardPage() {
   const [error, setError] = useState<string | null>(null)
   const [selectedStoreId, setSelectedStoreId] = useState<string>("all")
   const [period, setPeriod] = useState("30d")
-  const [activeTab, setActiveTab] = useState("overview")
 
   const fetchDashboard = useCallback(async (showRefresh = false) => {
     if (showRefresh) setRefreshing(true)
@@ -264,15 +322,31 @@ export default function PortalDashboardPage() {
   const klaviyo = data.klaviyo
   const shopify = data.shopify
 
+  // Calculate attribution percentage
+  const totalShopifyRevenue = shopify?.totalRevenue || 0
+  const totalKlaviyoRevenue = klaviyo?.totalRevenue || 0
+  const attributionPercent = totalShopifyRevenue > 0
+    ? ((totalKlaviyoRevenue / totalShopifyRevenue) * 100)
+    : 0
+
   return (
     <div className="space-y-6">
       {/* Header with Store Selector and Filters */}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Dashboard</h1>
-          <p className="text-muted-foreground">
-            Bem-vindo, {data.client?.name || data.client?.company || "Cliente"}
-          </p>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Award className="h-6 w-6 text-yellow-500" />
+            <Award className="h-6 w-6 text-yellow-500" />
+            <Award className="h-6 w-6 text-yellow-500" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold">{data.selectedStore?.name || data.client?.name || "Dashboard"}</h1>
+            {data.dateRange && (
+              <p className="text-sm text-muted-foreground">
+                {formatDateRange(data.dateRange.start, data.dateRange.end)}
+              </p>
+            )}
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -317,130 +391,432 @@ export default function PortalDashboardPage() {
             <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
             Atualizar
           </Button>
+
+          {/* Export PDF Button */}
+          <Button variant="default" size="sm">
+            <Download className="h-4 w-4 mr-2" />
+            Exportar PDF
+          </Button>
         </div>
       </div>
 
-      {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-grid">
-          <TabsTrigger value="overview">Visão Geral</TabsTrigger>
-          <TabsTrigger value="email">Email Marketing</TabsTrigger>
-          <TabsTrigger value="ecommerce">E-commerce</TabsTrigger>
-          <TabsTrigger value="financial">Financeiro</TabsTrigger>
-        </TabsList>
-
-        {/* Overview Tab */}
-        <TabsContent value="overview" className="space-y-6">
-          {/* Key Metrics */}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total de Leads</CardTitle>
-                <Users className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  {formatNumber(klaviyo?.totalLeads || 0)}
+      {selectedStoreId === "all" ? (
+        // Show message to select a store
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-16">
+            <Store className="h-16 w-16 text-muted-foreground mb-6" />
+            <h3 className="text-xl font-semibold mb-2">Selecione uma loja</h3>
+            <p className="text-muted-foreground text-center max-w-md mb-6">
+              Para visualizar os dados detalhados do relatório, selecione uma loja específica no menu acima.
+            </p>
+            {data.stores && data.stores.length > 0 && (
+              <div className="flex flex-wrap gap-2 justify-center">
+                {data.stores.map((store) => (
+                  <Button
+                    key={store.id}
+                    variant="outline"
+                    onClick={() => setSelectedStoreId(store.id)}
+                  >
+                    <Store className="h-4 w-4 mr-2" />
+                    {store.name}
+                  </Button>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ) : (
+        // Show full report when store is selected
+        <div className="space-y-6">
+          {/* CAMPANHAS E ENGAJAMENTO Section */}
+          <Card>
+            <CardHeader className="pb-4">
+              <div className="flex items-center gap-2">
+                <Send className="h-5 w-5 text-primary" />
+                <CardTitle className="text-lg">CAMPANHAS E ENGAJAMENTO</CardTitle>
+              </div>
+              <CardDescription>Visão geral do alcance e engajamento das suas campanhas</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Top row metrics */}
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <div className="p-4 rounded-lg border bg-card">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Mail className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">Campanhas Enviadas</span>
+                  </div>
+                  <p className="text-3xl font-bold">{klaviyo?.campaignsCount || 0}</p>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Contatos na base
-                </p>
+
+                <div className="p-4 rounded-lg border bg-card">
+                  <div className="flex items-center gap-2 mb-2">
+                    <TrendingUp className="h-4 w-4 text-blue-500" />
+                    <span className="text-sm text-muted-foreground">Taxa de Engajamento</span>
+                  </div>
+                  <p className="text-3xl font-bold text-blue-500">{formatPercent(klaviyo?.engagementRate || 0)}</p>
+                </div>
+
+                <div className="p-4 rounded-lg border bg-card">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Repeat className="h-4 w-4 text-blue-500" />
+                    <span className="text-sm text-muted-foreground">Taxa Recorrência</span>
+                  </div>
+                  <p className="text-3xl font-bold text-blue-500">{formatPercent(shopify?.recurringCustomerRate || 0)}</p>
+                </div>
+
+                <div className="p-4 rounded-lg border bg-card">
+                  <div className="flex items-center gap-2 mb-2">
+                    <UserPlus className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">Novos Clientes</span>
+                  </div>
+                  <p className="text-3xl font-bold">{formatNumber(shopify?.newCustomers || 0)}</p>
+                </div>
+              </div>
+
+              {/* Leads section */}
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="p-6 rounded-lg border bg-card">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-muted-foreground uppercase tracking-wide">TOTAL DE LEADS</p>
+                      <p className="text-4xl font-bold mt-2">{formatNumber(klaviyo?.totalLeads || 0)}</p>
+                      <p className="text-sm text-muted-foreground mt-1">Contatos na base</p>
+                    </div>
+                    <Users className="h-12 w-12 text-muted-foreground/30" />
+                  </div>
+                </div>
+
+                <div className="p-6 rounded-lg border bg-card">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-blue-500 uppercase tracking-wide">LEADS ENGAJADOS 90D</p>
+                      <p className="text-4xl font-bold mt-2">{formatNumber(klaviyo?.engagedLeads || 0)}</p>
+                      <p className="text-sm text-muted-foreground mt-1">{formatPercent(klaviyo?.engagementRate || 0)} de engajamento</p>
+                    </div>
+                    <div className="relative w-20 h-20">
+                      <svg className="transform -rotate-90 w-20 h-20">
+                        <circle cx="40" cy="40" r="35" stroke="currentColor" strokeWidth="6" fill="none" className="text-muted/20" />
+                        <circle
+                          cx="40" cy="40" r="35"
+                          stroke="currentColor"
+                          strokeWidth="6"
+                          fill="none"
+                          className="text-blue-500"
+                          strokeDasharray={`${(klaviyo?.engagementRate || 0) * 2.2} 220`}
+                        />
+                      </svg>
+                      <span className="absolute inset-0 flex items-center justify-center text-sm font-bold">
+                        {formatPercent(klaviyo?.engagementRate || 0).replace('%', '')}%
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* RESULTADOS FINANCEIROS Section */}
+          <Card>
+            <CardHeader className="pb-4">
+              <div className="flex items-center gap-2">
+                <DollarSign className="h-5 w-5 text-primary" />
+                <CardTitle className="text-lg">RESULTADOS FINANCEIROS</CardTitle>
+              </div>
+              <CardDescription>Faturamento e atribuição de receita por canal</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Main financial metrics */}
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <div className="p-4 rounded-lg border bg-card flex flex-col items-center text-center">
+                  <DollarSign className="h-8 w-8 text-muted-foreground mb-2" />
+                  <p className="text-2xl font-bold">{formatCurrency(shopify?.totalRevenue || 0)}</p>
+                  <p className="text-sm text-muted-foreground uppercase">FATURAMENTO TOTAL</p>
+                </div>
+
+                <div className="p-4 rounded-lg border bg-card flex flex-col items-center text-center">
+                  <ShoppingCart className="h-8 w-8 text-muted-foreground mb-2" />
+                  <p className="text-2xl font-bold">{formatCurrencyFull(shopify?.averageOrderValue || 0)}</p>
+                  <p className="text-sm text-muted-foreground uppercase">TICKET MÉDIO</p>
+                </div>
+
+                <div className="p-4 rounded-lg border bg-card flex flex-col items-center text-center">
+                  <Package className="h-8 w-8 text-muted-foreground mb-2" />
+                  <p className="text-2xl font-bold">{formatNumber(shopify?.totalOrders || 0)}</p>
+                  <p className="text-sm text-muted-foreground uppercase">TOTAL DE PEDIDOS</p>
+                </div>
+
+                <div className="p-4 rounded-lg border bg-card flex flex-col items-center text-center">
+                  <Users className="h-8 w-8 text-muted-foreground mb-2" />
+                  <p className="text-2xl font-bold">{formatNumber(shopify?.totalCustomers || 0)}</p>
+                  <p className="text-sm text-muted-foreground uppercase">TOTAL DE CLIENTES</p>
+                </div>
+              </div>
+
+              {/* Receita Atribuída Convertfy */}
+              <div className="p-6 rounded-lg border bg-gradient-to-r from-primary/5 to-primary/10">
+                <div className="flex items-center gap-2 mb-4">
+                  <Zap className="h-5 w-5 text-primary" />
+                  <h3 className="font-semibold">Receita Atribuída Convertfy</h3>
+                </div>
+                <div className="grid gap-6 md:grid-cols-4">
+                  <div>
+                    <p className="text-3xl font-bold text-primary">{formatCurrency(klaviyo?.totalRevenue || 0)}</p>
+                    <p className="text-sm text-muted-foreground">Email + SMS</p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-blue-500">{formatPercent(attributionPercent)}</p>
+                    <p className="text-sm text-muted-foreground">do Faturamento</p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold">{formatNumber(klaviyo?.topFlows?.reduce((sum, f) => sum + (f.delivered || 0), 0) || 0)}</p>
+                    <p className="text-sm text-muted-foreground">Pedidos</p>
+                  </div>
+                  <div className="flex items-center justify-center">
+                    <div className="relative w-20 h-20">
+                      <svg className="transform -rotate-90 w-20 h-20">
+                        <circle cx="40" cy="40" r="35" stroke="currentColor" strokeWidth="6" fill="none" className="text-muted/20" />
+                        <circle
+                          cx="40" cy="40" r="35"
+                          stroke="currentColor"
+                          strokeWidth="6"
+                          fill="none"
+                          className="text-primary"
+                          strokeDasharray={`${Math.min(attributionPercent, 100) * 2.2} 220`}
+                        />
+                      </svg>
+                      <span className="absolute inset-0 flex items-center justify-center text-sm font-bold">
+                        {attributionPercent.toFixed(1)}%
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground ml-2 uppercase">PARTICIPAÇÃO</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Email vs SMS breakdown */}
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="p-4 rounded-lg border bg-card flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                    <Mail className="h-6 w-6 text-blue-600" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm text-muted-foreground">Faturamento Email</p>
+                    <p className="text-xl font-bold">{formatCurrency(klaviyo?.totalRevenue || 0)}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-lg font-bold text-blue-500">{formatPercent(attributionPercent)}</p>
+                    <p className="text-xs text-muted-foreground">do total</p>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-lg border bg-card flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                    <Send className="h-6 w-6 text-green-600" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm text-muted-foreground">Faturamento SMS</p>
+                    <p className="text-xl font-bold">{formatCurrency(klaviyo?.smsRevenue || 0)}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-lg font-bold text-green-500">{formatPercent(shopify?.totalRevenue ? ((klaviyo?.smsRevenue || 0) / shopify.totalRevenue) * 100 : 0)}</p>
+                    <p className="text-xs text-muted-foreground">do total</p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* PERFORMANCE DE EMAIL Section */}
+          <Card>
+            <CardHeader className="pb-4">
+              <div className="flex items-center gap-2">
+                <Mail className="h-5 w-5 text-primary" />
+                <CardTitle className="text-lg">PERFORMANCE DE EMAIL</CardTitle>
+              </div>
+              <CardDescription>Métricas de entrega, abertura e cliques</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-4 md:grid-cols-5">
+                <div className="p-4 rounded-lg border bg-card text-center">
+                  <Send className="h-6 w-6 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-2xl font-bold">{formatNumber(klaviyo?.delivered || 0)}</p>
+                  <p className="text-sm text-muted-foreground">Entregues</p>
+                </div>
+
+                <div className="p-4 rounded-lg border bg-card text-center">
+                  <Eye className="h-6 w-6 text-blue-500 mx-auto mb-2" />
+                  <p className="text-2xl font-bold text-blue-500">{formatPercent(klaviyo?.openRate || 0)}</p>
+                  <p className="text-sm text-muted-foreground">Taxa Abertura</p>
+                </div>
+
+                <div className="p-4 rounded-lg border bg-card text-center">
+                  <MousePointerClick className="h-6 w-6 text-yellow-500 mx-auto mb-2" />
+                  <p className="text-2xl font-bold text-yellow-500">{formatPercent(klaviyo?.clickRate || 0)}</p>
+                  <p className="text-sm text-muted-foreground">Taxa Clique</p>
+                </div>
+
+                <div className="p-4 rounded-lg border bg-card text-center">
+                  <Target className="h-6 w-6 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-2xl font-bold">{formatPercent(klaviyo?.clickToOpenRate || 0)}</p>
+                  <p className="text-sm text-muted-foreground">CTOR</p>
+                </div>
+
+                <div className="p-4 rounded-lg border bg-card text-center">
+                  <AlertCircle className="h-6 w-6 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-2xl font-bold">{formatNumber(klaviyo?.bounces || 0)}</p>
+                  <p className="text-sm text-muted-foreground">Bounces</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* AUTOMAÇÕES & CAMPANHAS Section */}
+          <div className="grid gap-6 md:grid-cols-2">
+            {/* Automações (Flows) */}
+            <Card>
+              <CardHeader className="pb-4">
+                <div className="flex items-center gap-2">
+                  <Zap className="h-5 w-5 text-primary" />
+                  <CardTitle className="text-lg">AUTOMAÇÕES (FLOWS)</CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex justify-between items-center py-2 border-b">
+                  <span className="text-muted-foreground">Flows Ativos</span>
+                  <span className="font-bold text-blue-500">{klaviyo?.activeFlows || 0}</span>
+                </div>
+                <div className="flex justify-between items-center py-2 border-b">
+                  <span className="text-muted-foreground">Total de Flows</span>
+                  <span className="font-bold">{klaviyo?.flowsCount || 0}</span>
+                </div>
+                <div className="flex justify-between items-center py-2 border-b">
+                  <span className="text-muted-foreground">Receita de Flows</span>
+                  <span className="font-bold">{formatCurrency(klaviyo?.flowRevenue || 0)}</span>
+                </div>
+                <div className="flex justify-between items-center py-2">
+                  <span className="text-muted-foreground">% da Receita Convertfy</span>
+                  <span className="font-bold text-blue-500">{formatPercent(klaviyo?.flowRevenuePercent || (klaviyo?.totalRevenue ? ((klaviyo.flowRevenue || 0) / klaviyo.totalRevenue) * 100 : 0))}</span>
+                </div>
               </CardContent>
             </Card>
 
+            {/* Campanhas */}
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Leads Engajados</CardTitle>
-                <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              <CardHeader className="pb-4">
+                <div className="flex items-center gap-2">
+                  <Send className="h-5 w-5 text-primary" />
+                  <CardTitle className="text-lg">CAMPANHAS</CardTitle>
+                </div>
               </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  {formatNumber(klaviyo?.engagedLeads || 0)}
+              <CardContent className="space-y-4">
+                <div className="flex justify-between items-center py-2 border-b">
+                  <span className="text-muted-foreground">Campanhas Enviadas</span>
+                  <span className="font-bold text-blue-500">{klaviyo?.campaignsCount || 0}</span>
                 </div>
-                <div className="flex items-center text-xs text-muted-foreground">
-                  <span>{formatPercent(klaviyo?.engagementRate || 0)} de engajamento</span>
+                <div className="flex justify-between items-center py-2 border-b">
+                  <span className="text-muted-foreground">Entregues</span>
+                  <span className="font-bold">{formatNumber(klaviyo?.campaignDelivered || 0)}</span>
                 </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Receita Email</CardTitle>
-                <DollarSign className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-green-600">
-                  {formatCurrency(klaviyo?.totalRevenue || 0)}
+                <div className="flex justify-between items-center py-2 border-b">
+                  <span className="text-muted-foreground">Receita de Campanhas</span>
+                  <span className="font-bold">{formatCurrency(klaviyo?.campaignRevenue || 0)}</span>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Atribuída via email marketing
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Pedidos</CardTitle>
-                <ShoppingCart className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  {formatNumber(shopify?.totalOrders || 0)}
+                <div className="flex justify-between items-center py-2">
+                  <span className="text-muted-foreground">% da Receita Convertfy</span>
+                  <span className="font-bold text-blue-500">{formatPercent(klaviyo?.campaignRevenuePercent || (klaviyo?.totalRevenue ? ((klaviyo.campaignRevenue || 0) / klaviyo.totalRevenue) * 100 : 0))}</span>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  No período selecionado
-                </p>
               </CardContent>
             </Card>
           </div>
 
-          {/* Email Performance Summary */}
-          {klaviyo && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Performance de Email</CardTitle>
-                <CardDescription>Métricas de engajamento no período</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid gap-6 md:grid-cols-4">
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm text-muted-foreground">Taxa de Abertura</span>
-                      <Eye className="h-4 w-4 text-muted-foreground" />
-                    </div>
-                    <div className="text-2xl font-bold">{formatPercent(klaviyo.openRate)}</div>
-                    <Progress value={klaviyo.openRate} className="mt-2 h-2" />
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm text-muted-foreground">Taxa de Clique</span>
-                      <MousePointerClick className="h-4 w-4 text-muted-foreground" />
-                    </div>
-                    <div className="text-2xl font-bold">{formatPercent(klaviyo.clickRate)}</div>
-                    <Progress value={klaviyo.clickRate} className="mt-2 h-2" />
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm text-muted-foreground">Taxa de Conversão</span>
-                      <Percent className="h-4 w-4 text-muted-foreground" />
-                    </div>
-                    <div className="text-2xl font-bold">{formatPercent(klaviyo.conversionRate)}</div>
-                    <Progress value={klaviyo.conversionRate} className="mt-2 h-2" />
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm text-muted-foreground">Emails Enviados</span>
-                      <Mail className="h-4 w-4 text-muted-foreground" />
-                    </div>
-                    <div className="text-2xl font-bold">{formatNumber(klaviyo.emailsSent)}</div>
-                    <p className="text-xs text-muted-foreground mt-2">No período</p>
-                  </div>
+          {/* TOP AUTOMAÇÕES POR RECEITA Section */}
+          <Card>
+            <CardHeader className="pb-4">
+              <div className="flex items-center gap-2">
+                <BarChart3 className="h-5 w-5 text-primary" />
+                <CardTitle className="text-lg">TOP AUTOMAÇÕES POR RECEITA</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {!klaviyo?.topFlows || klaviyo.topFlows.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Zap className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p>Nenhum flow com receita no período</p>
                 </div>
-              </CardContent>
-            </Card>
-          )}
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-12">#</TableHead>
+                      <TableHead>Nome do Flow</TableHead>
+                      <TableHead className="text-right">Entregues</TableHead>
+                      <TableHead className="text-right">Abertura</TableHead>
+                      <TableHead className="text-right">Cliques</TableHead>
+                      <TableHead className="text-right">Receita</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {klaviyo.topFlows.slice(0, 10).map((flow, index) => (
+                      <TableRow key={flow.id}>
+                        <TableCell>
+                          <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">
+                            {index + 1}
+                          </div>
+                        </TableCell>
+                        <TableCell className="font-medium">{flow.name}</TableCell>
+                        <TableCell className="text-right">{formatNumber(flow.delivered || 0)}</TableCell>
+                        <TableCell className="text-right">{formatPercent(flow.openRate || 0)}</TableCell>
+                        <TableCell className="text-right">{formatPercent(flow.clickRate || 0)}</TableCell>
+                        <TableCell className="text-right font-bold text-blue-500">{formatCurrencyFull(flow.revenue || 0)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
 
-          {/* Grid with Upcoming Items */}
+          {/* TOP PRODUTOS MAIS VENDIDOS Section */}
+          <Card>
+            <CardHeader className="pb-4">
+              <div className="flex items-center gap-2">
+                <Package className="h-5 w-5 text-primary" />
+                <CardTitle className="text-lg">TOP 5 PRODUTOS MAIS VENDIDOS</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {!shopify?.topProducts || shopify.topProducts.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <ShoppingCart className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p>Nenhum produto vendido no período</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {shopify.topProducts.slice(0, 5).map((product, index) => (
+                    <div
+                      key={product.name}
+                      className="flex items-center gap-4 p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
+                    >
+                      <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-sm font-bold text-primary-foreground">
+                        {index + 1}
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="font-medium">{product.name}</h4>
+                        <p className="text-sm text-muted-foreground">
+                          {formatNumber(product.quantity)} unidades vendidas
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-lg font-bold">{formatCurrencyFull(product.revenue)}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Upcoming Campaigns & Meetings */}
           <div className="grid gap-6 md:grid-cols-2">
             {/* Upcoming Campaigns */}
             <Card>
@@ -470,7 +846,7 @@ export default function PortalDashboardPage() {
                         className="flex items-center justify-between p-3 rounded-lg border"
                       >
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+                          <div className="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
                             <Mail className="h-5 w-5 text-blue-600" />
                           </div>
                           <div>
@@ -480,8 +856,8 @@ export default function PortalDashboardPage() {
                             </p>
                           </div>
                         </div>
-                        <Badge className={statusColors[campaign.status as keyof typeof statusColors] || ""}>
-                          {campaign.status === "scheduled" ? "Agendada" : campaign.status}
+                        <Badge variant="outline" className="bg-yellow-100 text-yellow-700">
+                          Agendada
                         </Badge>
                       </div>
                     ))}
@@ -510,7 +886,7 @@ export default function PortalDashboardPage() {
                         className="flex items-center justify-between p-3 rounded-lg border"
                       >
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
+                          <div className="w-10 h-10 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
                             <Video className="h-5 w-5 text-purple-600" />
                           </div>
                           <div>
@@ -536,388 +912,15 @@ export default function PortalDashboardPage() {
             </Card>
           </div>
 
-          {/* Revenue Breakdown */}
-          {klaviyo && (
-            <div className="grid gap-6 md:grid-cols-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Receita por Canal</CardTitle>
-                  <CardDescription>Distribuição de receita atribuída</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium">Campanhas</span>
-                      <span className="text-sm font-bold">{formatCurrency(klaviyo.campaignRevenue)}</span>
-                    </div>
-                    <Progress
-                      value={(klaviyo.campaignRevenue / (klaviyo.totalRevenue || 1)) * 100}
-                      className="h-2"
-                    />
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium">Automações (Flows)</span>
-                      <span className="text-sm font-bold">{formatCurrency(klaviyo.flowRevenue)}</span>
-                    </div>
-                    <Progress
-                      value={(klaviyo.flowRevenue / (klaviyo.totalRevenue || 1)) * 100}
-                      className="h-2"
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-
-              {shopify && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Métricas E-commerce</CardTitle>
-                    <CardDescription>Resumo da loja</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Receita Total</span>
-                      <span className="font-bold">{formatCurrency(shopify.totalRevenue)}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Ticket Médio</span>
-                      <span className="font-bold">{formatCurrency(shopify.averageOrderValue)}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Clientes Recorrentes</span>
-                      <span className="font-bold">{formatPercent(shopify.recurringCustomerRate)}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Novos Clientes</span>
-                      <span className="font-bold">{formatNumber(shopify.newCustomers)}</span>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
-          )}
-        </TabsContent>
-
-        {/* Email Marketing Tab */}
-        <TabsContent value="email" className="space-y-6">
-          {klaviyo ? (
-            <>
-              {/* Email Metrics */}
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Emails Enviados</CardTitle>
-                    <Mail className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{formatNumber(klaviyo.emailsSent)}</div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Taxa de Abertura</CardTitle>
-                    <Eye className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{formatPercent(klaviyo.openRate)}</div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Taxa de Clique</CardTitle>
-                    <MousePointerClick className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{formatPercent(klaviyo.clickRate)}</div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Receita Total</CardTitle>
-                    <DollarSign className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold text-green-600">{formatCurrency(klaviyo.totalRevenue)}</div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Recent Campaigns */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Campanhas Recentes</CardTitle>
-                  <CardDescription>Últimos emails enviados</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {(klaviyo.recentCampaigns?.length || 0) === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground">
-                      <Mail className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                      <p>Nenhuma campanha no período</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {klaviyo.recentCampaigns.map((campaign) => (
-                        <div key={campaign.id} className="p-4 border rounded-lg">
-                          <div className="flex items-start justify-between mb-3">
-                            <div>
-                              <h4 className="font-medium">{campaign.name}</h4>
-                              <p className="text-sm text-muted-foreground">
-                                Enviada em {formatDate(campaign.sentAt)}
-                              </p>
-                            </div>
-                            <Badge variant="outline" className="bg-green-50 text-green-700">
-                              {formatCurrency(campaign.revenue)}
-                            </Badge>
-                          </div>
-                          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
-                            <div>
-                              <p className="text-muted-foreground">Enviados</p>
-                              <p className="font-medium">{formatNumber(campaign.recipients)}</p>
-                            </div>
-                            <div>
-                              <p className="text-muted-foreground">Entregues</p>
-                              <p className="font-medium">{formatNumber(campaign.delivered)}</p>
-                            </div>
-                            <div>
-                              <p className="text-muted-foreground">Aberturas</p>
-                              <p className="font-medium">{formatPercent(campaign.openRate)}</p>
-                            </div>
-                            <div>
-                              <p className="text-muted-foreground">Cliques</p>
-                              <p className="font-medium">{formatPercent(campaign.clickRate)}</p>
-                            </div>
-                            <div>
-                              <p className="text-muted-foreground">Receita</p>
-                              <p className="font-medium text-green-600">{formatCurrency(campaign.revenue)}</p>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Top Flows */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Top Automações</CardTitle>
-                  <CardDescription>Flows com melhor performance</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {(klaviyo.topFlows?.length || 0) === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground">
-                      <BarChart3 className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                      <p>Nenhum flow ativo no período</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {klaviyo.topFlows.map((flow, index) => (
-                        <div key={flow.id} className="flex items-center gap-4 p-4 border rounded-lg">
-                          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-bold text-primary">
-                            {index + 1}
-                          </div>
-                          <div className="flex-1">
-                            <h4 className="font-medium">{flow.name}</h4>
-                            <p className="text-sm text-muted-foreground">
-                              {formatNumber(flow.recipients)} destinatários
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <p className="font-bold text-green-600">{formatCurrency(flow.revenue)}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {formatPercent(flow.openRate)} abertura
-                            </p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </>
-          ) : (
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center py-12">
-                <Mail className="h-12 w-12 text-muted-foreground mb-4" />
-                <h3 className="text-lg font-medium mb-2">Dados não disponíveis</h3>
-                <p className="text-muted-foreground text-center max-w-md">
-                  Selecione uma loja para ver os dados de email marketing.
-                </p>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
-
-        {/* E-commerce Tab */}
-        <TabsContent value="ecommerce" className="space-y-6">
-          {shopify ? (
-            <>
-              {/* E-commerce Metrics */}
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Receita Total</CardTitle>
-                    <DollarSign className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{formatCurrency(shopify.totalRevenue)}</div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Total de Pedidos</CardTitle>
-                    <ShoppingCart className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{formatNumber(shopify.totalOrders)}</div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Ticket Médio</CardTitle>
-                    <BarChart3 className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{formatCurrency(shopify.averageOrderValue)}</div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Clientes Recorrentes</CardTitle>
-                    <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{formatPercent(shopify.recurringCustomerRate)}</div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Top Products */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Produtos Mais Vendidos</CardTitle>
-                  <CardDescription>Top produtos no período</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {(shopify.topProducts?.length || 0) === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground">
-                      <ShoppingCart className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                      <p>Nenhum produto vendido no período</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {shopify.topProducts.map((product, index) => (
-                        <div key={product.name} className="flex items-center gap-4 p-4 border rounded-lg">
-                          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-bold text-primary">
-                            {index + 1}
-                          </div>
-                          <div className="flex-1">
-                            <h4 className="font-medium">{product.name}</h4>
-                            <p className="text-sm text-muted-foreground">
-                              {formatNumber(product.quantity)} unidades vendidas
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <p className="font-bold">{formatCurrency(product.revenue)}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </>
-          ) : (
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center py-12">
-                <ShoppingCart className="h-12 w-12 text-muted-foreground mb-4" />
-                <h3 className="text-lg font-medium mb-2">Dados não disponíveis</h3>
-                <p className="text-muted-foreground text-center max-w-md">
-                  Selecione uma loja para ver os dados de e-commerce.
-                </p>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
-
-        {/* Financial Tab */}
-        <TabsContent value="financial" className="space-y-6">
-          {/* Financial Summary */}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Pendente</CardTitle>
-                <Clock className="h-4 w-4 text-yellow-600" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-yellow-600">
-                  {formatCurrency(data.invoices?.totalPending || 0)}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {data.invoices?.pending || 0} fatura(s) pendente(s)
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Vencido</CardTitle>
-                <AlertCircle className="h-4 w-4 text-red-600" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-red-600">
-                  {formatCurrency(data.invoices?.totalOverdue || 0)}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {data.invoices?.overdue || 0} fatura(s) vencida(s)
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Pago</CardTitle>
-                <CheckCircle className="h-4 w-4 text-green-600" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-green-600">
-                  {formatCurrency(data.invoices?.totalPaid || 0)}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Pagamentos realizados
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Faturas Totais</CardTitle>
-                <CreditCard className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  {(data.invoices?.recent?.length || 0)}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Últimas faturas
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Invoices List */}
+          {/* Financial Tab */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
-                <CardTitle>Faturas</CardTitle>
-                <CardDescription>Histórico de faturas</CardDescription>
+                <div className="flex items-center gap-2">
+                  <CreditCard className="h-5 w-5 text-primary" />
+                  <CardTitle className="text-lg">FINANCEIRO</CardTitle>
+                </div>
+                <CardDescription>Controle de faturas e pagamentos</CardDescription>
               </div>
               <Button variant="ghost" size="sm" asChild>
                 <Link href="/portal/invoices">
@@ -926,25 +929,64 @@ export default function PortalDashboardPage() {
                 </Link>
               </Button>
             </CardHeader>
-            <CardContent>
-              {(data.invoices?.recent?.length || 0) === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <FileText className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                  <p>Nenhuma fatura encontrada</p>
+            <CardContent className="space-y-6">
+              {/* Financial Summary */}
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="p-4 rounded-lg border bg-yellow-50 dark:bg-yellow-900/10">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Clock className="h-4 w-4 text-yellow-600" />
+                    <span className="text-sm text-yellow-700 dark:text-yellow-500">Total Pendente</span>
+                  </div>
+                  <p className="text-2xl font-bold text-yellow-700 dark:text-yellow-500">
+                    {formatCurrencyFull(data.invoices?.totalPending || 0)}
+                  </p>
+                  <p className="text-xs text-yellow-600 dark:text-yellow-600">
+                    {data.invoices?.pending || 0} fatura(s)
+                  </p>
                 </div>
-              ) : (
+
+                <div className="p-4 rounded-lg border bg-red-50 dark:bg-red-900/10">
+                  <div className="flex items-center gap-2 mb-2">
+                    <AlertCircle className="h-4 w-4 text-red-600" />
+                    <span className="text-sm text-red-700 dark:text-red-500">Total Vencido</span>
+                  </div>
+                  <p className="text-2xl font-bold text-red-700 dark:text-red-500">
+                    {formatCurrencyFull(data.invoices?.totalOverdue || 0)}
+                  </p>
+                  <p className="text-xs text-red-600 dark:text-red-600">
+                    {data.invoices?.overdue || 0} fatura(s)
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-lg border bg-green-50 dark:bg-green-900/10">
+                  <div className="flex items-center gap-2 mb-2">
+                    <CheckCircle className="h-4 w-4 text-green-600" />
+                    <span className="text-sm text-green-700 dark:text-green-500">Total Pago</span>
+                  </div>
+                  <p className="text-2xl font-bold text-green-700 dark:text-green-500">
+                    {formatCurrencyFull(data.invoices?.totalPaid || 0)}
+                  </p>
+                  <p className="text-xs text-green-600 dark:text-green-600">
+                    Pagamentos realizados
+                  </p>
+                </div>
+              </div>
+
+              {/* Recent Invoices */}
+              {data.invoices?.recent && data.invoices.recent.length > 0 && (
                 <div className="space-y-3">
-                  {data.invoices.recent.map((invoice) => {
+                  <h4 className="font-medium text-sm text-muted-foreground uppercase">Últimas Faturas</h4>
+                  {data.invoices.recent.slice(0, 5).map((invoice) => {
                     const isOverdue = new Date(invoice.dueDate) < new Date() && invoice.status !== "paid"
                     return (
                       <div
                         key={invoice.id}
-                        className="flex items-center justify-between p-4 rounded-lg border"
+                        className="flex items-center justify-between p-3 rounded-lg border"
                       >
-                        <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-3">
                           <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                            invoice.status === "paid" ? "bg-green-100" :
-                            isOverdue ? "bg-red-100" : "bg-yellow-100"
+                            invoice.status === "paid" ? "bg-green-100 dark:bg-green-900/30" :
+                            isOverdue ? "bg-red-100 dark:bg-red-900/30" : "bg-yellow-100 dark:bg-yellow-900/30"
                           }`}>
                             {invoice.status === "paid" ? (
                               <CheckCircle className="h-5 w-5 text-green-600" />
@@ -955,10 +997,7 @@ export default function PortalDashboardPage() {
                             )}
                           </div>
                           <div>
-                            <p className="font-medium">{formatCurrency(invoice.amount)}</p>
-                            <p className="text-sm text-muted-foreground">
-                              {invoice.description || `Fatura`}
-                            </p>
+                            <p className="font-medium">{formatCurrencyFull(invoice.amount)}</p>
                             <p className="text-xs text-muted-foreground">
                               Vencimento: {formatDate(invoice.dueDate)}
                             </p>
@@ -978,8 +1017,8 @@ export default function PortalDashboardPage() {
               )}
             </CardContent>
           </Card>
-        </TabsContent>
-      </Tabs>
+        </div>
+      )}
 
       {/* Last Updated */}
       <p className="text-sm text-muted-foreground text-center">

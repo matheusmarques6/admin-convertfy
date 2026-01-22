@@ -224,20 +224,46 @@ export async function GET(request: NextRequest) {
               const klaviyoData = await klaviyoResponse.json()
 
               if (klaviyoData.success && klaviyoData.connected) {
-                // Map Klaviyo data to the dashboard format
+                // Map Klaviyo data to the dashboard format with all metrics
+                const totalKlaviyoRevenue = klaviyoData.revenue?.totalRevenue || 0
+                const flowRevenue = klaviyoData.revenue?.flowRevenue || 0
+                const campaignRevenue = klaviyoData.revenue?.campaignRevenue || 0
+
                 response.klaviyo = {
+                  // Overview metrics
                   totalLeads: klaviyoData.overview?.totalSubscribers || 0,
                   engagedLeads: klaviyoData.engagement?.engagedProfiles || 0,
                   engagementRate: parseFloat(klaviyoData.engagement?.engagementRate || "0"),
-                  totalRevenue: klaviyoData.revenue?.totalRevenue || 0,
-                  campaignRevenue: klaviyoData.revenue?.campaignRevenue || 0,
-                  flowRevenue: klaviyoData.revenue?.flowRevenue || 0,
+
+                  // Revenue metrics
+                  totalRevenue: totalKlaviyoRevenue,
+                  campaignRevenue: campaignRevenue,
+                  flowRevenue: flowRevenue,
+                  smsRevenue: 0, // SMS data if available
+
+                  // Email performance
                   emailsSent: klaviyoData.emailPerformance?.delivered || 0,
+                  delivered: klaviyoData.emailPerformance?.delivered || 0,
                   openRate: klaviyoData.emailPerformance?.openRate || 0,
                   clickRate: klaviyoData.emailPerformance?.clickRate || 0,
+                  clickToOpenRate: klaviyoData.emailPerformance?.clickToOpenRate || 0,
                   conversionRate: klaviyoData.emailPerformance?.clickToOpenRate || 0,
                   unsubscribeRate: klaviyoData.emailPerformance?.unsubscribeRate || 0,
                   bounceRate: klaviyoData.emailPerformance?.bounceRate || 0,
+                  bounces: Math.round((klaviyoData.emailPerformance?.bounceRate || 0) * (klaviyoData.emailPerformance?.delivered || 0) / 100),
+
+                  // Campaigns
+                  campaignsCount: klaviyoData.overview?.campaignsInPeriod || klaviyoData.campaigns?.sent || 0,
+                  campaignDelivered: klaviyoData.campaignPerformance?.totalDelivered || 0,
+                  campaignRevenuePercent: totalKlaviyoRevenue > 0 ? (campaignRevenue / totalKlaviyoRevenue) * 100 : 0,
+
+                  // Flows
+                  flowsCount: klaviyoData.overview?.totalFlows || 0,
+                  activeFlows: klaviyoData.overview?.liveFlows || 0,
+                  flowDelivered: klaviyoData.flowPerformance?.totalDelivered || 0,
+                  flowRevenuePercent: totalKlaviyoRevenue > 0 ? (flowRevenue / totalKlaviyoRevenue) * 100 : 0,
+
+                  // Recent campaigns with full metrics
                   recentCampaigns: (klaviyoData.campaignPerformance?.campaigns || []).slice(0, 10).map((c: Record<string, unknown>) => ({
                     id: c.campaignId,
                     name: c.name,
@@ -251,11 +277,13 @@ export async function GET(request: NextRequest) {
                     openRate: c.openRate || 0,
                     clickRate: c.clickRate || 0,
                   })),
+
+                  // Top flows with full metrics
                   topFlows: (klaviyoData.flowPerformance?.flows || []).slice(0, 10).map((f: Record<string, unknown>) => ({
                     id: f.flowId,
                     name: f.name,
                     revenue: f.revenue || 0,
-                    recipients: f.delivered || 0,
+                    delivered: f.delivered || 0,
                     openRate: f.openRate || 0,
                     clickRate: f.clickRate || 0,
                   })),
@@ -285,13 +313,19 @@ export async function GET(request: NextRequest) {
               const shopifyData = await shopifyResponse.json()
 
               if (shopifyData.success && shopifyData.connected) {
-                // Map Shopify data to the dashboard format
+                // Map Shopify data to the dashboard format with all metrics
                 response.shopify = {
-                  totalOrders: shopifyData.orders?.totalOrders || 0,
+                  // Revenue metrics
                   totalRevenue: shopifyData.orders?.totalRevenue || 0,
+                  totalOrders: shopifyData.orders?.totalOrders || 0,
                   averageOrderValue: shopifyData.orders?.averageOrderValue || 0,
-                  recurringCustomerRate: shopifyData.orders?.recurringCustomerRate || 0,
+                  totalCustomers: shopifyData.customers?.totalCustomers || 0,
+
+                  // Customer metrics
                   newCustomers: shopifyData.customers?.newCustomersLast30Days || 0,
+                  recurringCustomerRate: shopifyData.orders?.recurringCustomerRate || 0,
+
+                  // Top products
                   topProducts: (shopifyData.bestSellingProducts || []).slice(0, 10).map((p: Record<string, unknown>) => ({
                     name: p.title || "Unknown Product",
                     quantity: p.quantitySold || 0,
@@ -308,12 +342,16 @@ export async function GET(request: NextRequest) {
     }
 
     // Log activity
-    await adminClient.from("client_portal_activity").insert({
-      portal_user_id: portalUser.id,
-      client_id: clientId,
-      action: "view_dashboard",
-      metadata: { period, storeId },
-    })
+    try {
+      await adminClient.from("client_portal_activity").insert({
+        portal_user_id: portalUser.id,
+        client_id: clientId,
+        action: "view_dashboard",
+        metadata: { period, storeId },
+      })
+    } catch {
+      // Ignore activity logging errors
+    }
 
     return NextResponse.json(response, { headers: corsHeaders() })
   } catch (error) {
