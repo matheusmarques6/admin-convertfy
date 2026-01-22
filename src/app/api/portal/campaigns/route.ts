@@ -46,6 +46,7 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get("start_date")
     const endDate = searchParams.get("end_date")
     const status = searchParams.get("status")
+    const channel = searchParams.get("channel")
 
     // Build query
     let query = supabase
@@ -55,9 +56,10 @@ export async function GET(request: NextRequest) {
         store:client_stores(id, store_name, platform)
       `)
       .eq("client_id", portalUser.client_id)
-      .order("scheduled_date", { ascending: false })
+      .order("scheduled_date", { ascending: true })
+      .order("scheduled_time", { ascending: true })
 
-    if (storeId) {
+    if (storeId && storeId !== "all") {
       query = query.eq("store_id", storeId)
     }
 
@@ -71,6 +73,10 @@ export async function GET(request: NextRequest) {
 
     if (status && status !== "all") {
       query = query.eq("status", status)
+    }
+
+    if (channel && channel !== "all") {
+      query = query.eq("channel", channel)
     }
 
     const { data: campaigns, error } = await query
