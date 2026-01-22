@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { ClientPortalUserFormData } from "@/types"
 
 function corsHeaders() {
@@ -111,8 +111,11 @@ export async function POST(request: NextRequest) {
     // Generate temporary password
     const tempPassword = generateTempPassword()
 
+    // Use admin client for auth operations (requires service role key)
+    const adminClient = createAdminClient()
+
     // Create auth user in Supabase
-    const { data: authUser, error: signUpError } = await supabase.auth.admin.createUser({
+    const { data: authUser, error: signUpError } = await adminClient.auth.admin.createUser({
       email: body.email.toLowerCase(),
       password: tempPassword,
       email_confirm: true,
@@ -141,7 +144,7 @@ export async function POST(request: NextRequest) {
       ...body.permissions,
     }
 
-    const { data: portalUser, error: insertError } = await supabase
+    const { data: portalUser, error: insertError } = await adminClient
       .from("client_portal_users")
       .insert({
         client_id: body.client_id,
@@ -153,6 +156,7 @@ export async function POST(request: NextRequest) {
         permissions: defaultPermissions,
         invited_by: user.id,
         email_verified_at: new Date().toISOString(),
+        must_change_password: true, // Require password change on first login
       })
       .select(`
         *,
@@ -163,7 +167,7 @@ export async function POST(request: NextRequest) {
     if (insertError) {
       console.error("[Portal Users] Insert error:", insertError)
       // Try to delete auth user if portal user creation fails
-      await supabase.auth.admin.deleteUser(authUser.user.id)
+      await adminClient.auth.admin.deleteUser(authUser.user.id)
       return NextResponse.json(
         { error: "Erro ao criar usuário do portal" },
         { status: 500, headers: corsHeaders() }

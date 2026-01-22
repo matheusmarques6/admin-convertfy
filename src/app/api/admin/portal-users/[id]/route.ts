@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 
 function corsHeaders() {
   return {
@@ -149,10 +149,11 @@ export async function DELETE(
       return NextResponse.json({ error: "Erro ao excluir" }, { status: 500, headers: corsHeaders() })
     }
 
-    // Delete auth user if exists
+    // Delete auth user if exists (requires admin client with service role)
     if (portalUser?.auth_user_id) {
       try {
-        await supabase.auth.admin.deleteUser(portalUser.auth_user_id)
+        const adminClient = createAdminClient()
+        await adminClient.auth.admin.deleteUser(portalUser.auth_user_id)
       } catch (e) {
         console.error("[Portal Users] Error deleting auth user:", e)
       }

@@ -65,8 +65,8 @@ export default function PortalLayout({
   // Check authentication
   useEffect(() => {
     const checkAuth = async () => {
-      // Skip auth check for login page
-      if (pathname === "/portal/login") {
+      // Skip auth check for login and change-password pages
+      if (pathname === "/portal/login" || pathname === "/portal/change-password") {
         setLoading(false)
         return
       }
@@ -82,6 +82,13 @@ export default function PortalLayout({
         }
 
         const data = await response.json()
+
+        // Check if user needs to change password
+        if (data.user?.mustChangePassword) {
+          router.push("/portal/change-password")
+          return
+        }
+
         setUser(data.user)
       } catch (error) {
         console.error("Auth check failed:", error)
@@ -106,8 +113,8 @@ export default function PortalLayout({
     }
   }
 
-  // Show login page without layout
-  if (pathname === "/portal/login") {
+  // Show login and change-password pages without layout
+  if (pathname === "/portal/login" || pathname === "/portal/change-password") {
     return <>{children}</>
   }
 

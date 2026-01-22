@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 
 function corsHeaders() {
   return {
@@ -53,8 +53,11 @@ export async function POST(
     // Generate new temporary password
     const tempPassword = generateTempPassword()
 
+    // Use admin client for auth operations (requires service role key)
+    const adminClient = createAdminClient()
+
     // Update password in Supabase Auth
-    const { error: updateError } = await supabase.auth.admin.updateUserById(
+    const { error: updateError } = await adminClient.auth.admin.updateUserById(
       portalUser.auth_user_id,
       { password: tempPassword }
     )
@@ -66,6 +69,12 @@ export async function POST(
         { status: 500, headers: corsHeaders() }
       )
     }
+
+    // Set must_change_password flag so user is required to change password on login
+    await adminClient
+      .from("client_portal_users")
+      .update({ must_change_password: true })
+      .eq("id", id)
 
     return NextResponse.json(
       {

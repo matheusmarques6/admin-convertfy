@@ -39,7 +39,7 @@ export default function PortalLoginPage() {
       }
 
       // Check if password change is required
-      if (data.requirePasswordChange) {
+      if (data.mustChangePassword) {
         router.push("/portal/change-password")
         return
       }

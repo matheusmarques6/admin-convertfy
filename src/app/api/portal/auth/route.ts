@@ -69,7 +69,14 @@ export async function GET() {
       {
         authenticated: true,
         isPortalUser: true,
-        user: portalUser,
+        user: {
+          id: portalUser.id,
+          name: portalUser.name,
+          email: portalUser.email,
+          clientName: portalUser.client?.name || portalUser.client?.company || "",
+          clientId: portalUser.client_id,
+          mustChangePassword: portalUser.must_change_password || false,
+        },
       },
       { headers: corsHeaders() }
     )
@@ -135,14 +142,17 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Update last login
-    await supabase
-      .from("client_portal_users")
-      .update({
-        last_login_at: new Date().toISOString(),
-        login_count: (portalUser.login_count || 0) + 1,
-      })
-      .eq("id", portalUser.id)
+    // Only update last login if not required to change password
+    // This way must_change_password stays true until they actually change it
+    if (!portalUser.must_change_password) {
+      await supabase
+        .from("client_portal_users")
+        .update({
+          last_login_at: new Date().toISOString(),
+          login_count: (portalUser.login_count || 0) + 1,
+        })
+        .eq("id", portalUser.id)
+    }
 
     // Log activity
     await supabase.from("client_portal_activity").insert({
@@ -157,7 +167,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         success: true,
-        user: portalUser,
+        user: {
+          id: portalUser.id,
+          name: portalUser.name,
+          email: portalUser.email,
+          clientName: portalUser.client?.name || portalUser.client?.company || "",
+          clientId: portalUser.client_id,
+        },
+        mustChangePassword: portalUser.must_change_password || false,
         session: authData.session,
       },
       { headers: corsHeaders() }
