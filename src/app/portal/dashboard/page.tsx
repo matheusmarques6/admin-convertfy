@@ -5,7 +5,6 @@ import Link from "next/link"
 import {
   DollarSign,
   Store,
-  ArrowRight,
   Clock,
   AlertCircle,
   CheckCircle,
@@ -23,16 +22,18 @@ import {
   Zap,
   Send,
   Target,
-  Award,
   Package,
-  UserPlus,
-  Repeat,
   Download,
+  ArrowUpRight,
+  ArrowDownRight,
+  PiggyBank,
+  Receipt,
+  ChevronRight,
 } from "lucide-react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Progress } from "@/components/ui/progress"
 import {
   Select,
   SelectContent,
@@ -57,18 +58,13 @@ interface StoreOption {
 }
 
 interface KlaviyoData {
-  // Overview metrics
   totalLeads: number
   engagedLeads: number
   engagementRate: number
-
-  // Revenue metrics
   totalRevenue: number
   campaignRevenue: number
   flowRevenue: number
   smsRevenue: number
-
-  // Email performance
   emailsSent: number
   delivered: number
   openRate: number
@@ -78,19 +74,13 @@ interface KlaviyoData {
   unsubscribeRate: number
   bounceRate: number
   bounces: number
-
-  // Campaigns
   campaignsCount: number
   campaignDelivered: number
   campaignRevenuePercent: number
-
-  // Flows
   flowsCount: number
   activeFlows: number
   flowDelivered: number
   flowRevenuePercent: number
-
-  // Recent campaigns with full metrics
   recentCampaigns: Array<{
     id: string
     name: string
@@ -104,8 +94,6 @@ interface KlaviyoData {
     openRate: number
     clickRate: number
   }>
-
-  // Top flows with full metrics
   topFlows: Array<{
     id: string
     name: string
@@ -117,17 +105,12 @@ interface KlaviyoData {
 }
 
 interface ShopifyData {
-  // Revenue metrics
   totalRevenue: number
   totalOrders: number
   averageOrderValue: number
   totalCustomers: number
-
-  // Customer metrics
   newCustomers: number
   recurringCustomerRate: number
-
-  // Top products
   topProducts: Array<{
     name: string
     quantity: number
@@ -191,12 +174,9 @@ interface DashboardData {
   lastUpdated: string
 }
 
-const invoiceStatusColors = {
-  pending: "bg-yellow-100 text-yellow-700",
-  paid: "bg-green-100 text-green-700",
-  overdue: "bg-red-100 text-red-700",
-  cancelled: "bg-gray-100 text-gray-700",
-}
+// ============================================
+// UTILITY FUNCTIONS
+// ============================================
 
 function formatCurrency(value: number): string {
   if (value >= 1000000) {
@@ -219,11 +199,17 @@ function formatCurrencyFull(value: number): string {
 }
 
 function formatNumber(value: number): string {
+  if (value >= 1000000) {
+    return `${(value / 1000000).toFixed(1)}M`
+  }
+  if (value >= 1000) {
+    return `${(value / 1000).toFixed(1)}K`
+  }
   return new Intl.NumberFormat("pt-BR").format(value)
 }
 
 function formatPercent(value: number): string {
-  return `${(value || 0).toFixed(2)}%`
+  return `${(value || 0).toFixed(1)}%`
 }
 
 function formatDate(dateStr: string): string {
@@ -245,6 +231,142 @@ function formatDateRange(start: string, end: string): string {
   const formatOpts: Intl.DateTimeFormatOptions = { day: "2-digit", month: "2-digit", year: "numeric" }
   return `${startDate.toLocaleDateString("pt-BR", formatOpts)} - ${endDate.toLocaleDateString("pt-BR", formatOpts)}`
 }
+
+// ============================================
+// CUSTOM CHART COMPONENTS
+// ============================================
+
+// Circular Progress Ring Component
+function CircularProgress({
+  value,
+  size = 120,
+  strokeWidth = 10,
+  color = "#10b981",
+  bgColor = "#1f2937",
+  label,
+  sublabel
+}: {
+  value: number
+  size?: number
+  strokeWidth?: number
+  color?: string
+  bgColor?: string
+  label?: string
+  sublabel?: string
+}) {
+  const radius = (size - strokeWidth) / 2
+  const circumference = 2 * Math.PI * radius
+  const strokeDashoffset = circumference - (Math.min(value, 100) / 100) * circumference
+
+  return (
+    <div className="relative inline-flex items-center justify-center">
+      <svg width={size} height={size} className="transform -rotate-90">
+        {/* Background circle */}
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke={bgColor}
+          strokeWidth={strokeWidth}
+          fill="none"
+        />
+        {/* Progress circle */}
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke={color}
+          strokeWidth={strokeWidth}
+          fill="none"
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={strokeDashoffset}
+          style={{ transition: "stroke-dashoffset 0.5s ease" }}
+        />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="text-2xl font-bold text-white">{value.toFixed(1)}%</span>
+        {label && <span className="text-xs text-gray-400">{label}</span>}
+        {sublabel && <span className="text-[10px] text-gray-500">{sublabel}</span>}
+      </div>
+    </div>
+  )
+}
+
+// Metric Card with dark theme
+function MetricCard({
+  title,
+  value,
+  subtitle,
+  icon: Icon,
+  iconColor = "text-emerald-400",
+  iconBgColor = "bg-emerald-400/10",
+  trend,
+  trendValue,
+}: {
+  title: string
+  value: string | number
+  subtitle?: string
+  icon: React.ElementType
+  iconColor?: string
+  iconBgColor?: string
+  trend?: "up" | "down" | "neutral"
+  trendValue?: string
+}) {
+  return (
+    <div className="rounded-xl bg-slate-800/50 border border-slate-700/50 p-5 hover:bg-slate-800/70 transition-all">
+      <div className="flex items-start justify-between mb-3">
+        <div className={`rounded-lg p-2.5 ${iconBgColor}`}>
+          <Icon className={`h-5 w-5 ${iconColor}`} />
+        </div>
+        {trend && trendValue && (
+          <div className={`flex items-center gap-1 text-xs font-medium ${
+            trend === "up" ? "text-emerald-400" : trend === "down" ? "text-red-400" : "text-gray-400"
+          }`}>
+            {trend === "up" ? <ArrowUpRight className="h-3 w-3" /> : trend === "down" ? <ArrowDownRight className="h-3 w-3" /> : null}
+            {trendValue}
+          </div>
+        )}
+      </div>
+      <p className="text-2xl font-bold text-white mb-1">{value}</p>
+      <p className="text-xs text-gray-400 uppercase tracking-wide">{title}</p>
+      {subtitle && <p className="text-xs text-gray-500 mt-1">{subtitle}</p>}
+    </div>
+  )
+}
+
+
+// Section Header Component
+function SectionHeader({
+  title,
+  icon: Icon,
+  description,
+  action
+}: {
+  title: string
+  icon: React.ElementType
+  description?: string
+  action?: React.ReactNode
+}) {
+  return (
+    <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center gap-3">
+        <div className="rounded-lg bg-emerald-500/10 p-2">
+          <Icon className="h-5 w-5 text-emerald-400" />
+        </div>
+        <div>
+          <h2 className="text-lg font-semibold text-white">{title}</h2>
+          {description && <p className="text-sm text-gray-400">{description}</p>}
+        </div>
+      </div>
+      {action}
+    </div>
+  )
+}
+
+// ============================================
+// MAIN COMPONENT
+// ============================================
 
 export default function PortalDashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null)
@@ -286,33 +408,45 @@ export default function PortalDashboardPage() {
     setPeriod(value)
   }
 
+  // Loading state with dark theme
   if (loading) {
     return (
-      <div className="space-y-6">
+      <div className="min-h-screen bg-slate-900 p-6 space-y-6">
         <div className="flex items-center justify-between">
-          <Skeleton className="h-8 w-48" />
-          <div className="flex gap-2">
-            <Skeleton className="h-10 w-32" />
-            <Skeleton className="h-10 w-32" />
+          <Skeleton className="h-10 w-64 bg-slate-800" />
+          <div className="flex gap-3">
+            <Skeleton className="h-10 w-40 bg-slate-800" />
+            <Skeleton className="h-10 w-32 bg-slate-800" />
           </div>
         </div>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {[1, 2, 3, 4].map((i) => (
-            <Skeleton key={i} className="h-32" />
+            <Skeleton key={i} className="h-32 rounded-xl bg-slate-800" />
           ))}
         </div>
-        <Skeleton className="h-96" />
+        <div className="grid gap-6 md:grid-cols-2">
+          <Skeleton className="h-64 rounded-xl bg-slate-800" />
+          <Skeleton className="h-64 rounded-xl bg-slate-800" />
+        </div>
+        <Skeleton className="h-96 rounded-xl bg-slate-800" />
       </div>
     )
   }
 
+  // Error state
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[400px] text-center">
-        <AlertCircle className="h-12 w-12 text-destructive mb-4" />
-        <h2 className="text-xl font-semibold mb-2">Erro ao carregar</h2>
-        <p className="text-muted-foreground mb-4">{error}</p>
-        <Button onClick={() => fetchDashboard()}>Tentar novamente</Button>
+      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6">
+        <div className="rounded-xl bg-slate-800/50 border border-slate-700/50 p-8 text-center max-w-md">
+          <div className="rounded-full bg-red-500/10 p-4 w-fit mx-auto mb-4">
+            <AlertCircle className="h-10 w-10 text-red-400" />
+          </div>
+          <h2 className="text-xl font-semibold text-white mb-2">Erro ao carregar</h2>
+          <p className="text-gray-400 mb-6">{error}</p>
+          <Button onClick={() => fetchDashboard()} className="bg-emerald-500 hover:bg-emerald-600">
+            Tentar novamente
+          </Button>
+        </div>
       </div>
     )
   }
@@ -322,100 +456,111 @@ export default function PortalDashboardPage() {
   const klaviyo = data.klaviyo
   const shopify = data.shopify
 
-  // Calculate attribution percentage
+  // Calculate metrics
   const totalShopifyRevenue = shopify?.totalRevenue || 0
   const totalKlaviyoRevenue = klaviyo?.totalRevenue || 0
-  const attributionPercent = totalShopifyRevenue > 0
-    ? ((totalKlaviyoRevenue / totalShopifyRevenue) * 100)
-    : 0
+  const attributionPercent = totalShopifyRevenue > 0 ? ((totalKlaviyoRevenue / totalShopifyRevenue) * 100) : 0
+
+  // Estimated profit (assuming 30% margin on Convertfy attributed revenue)
+  const estimatedMargin = 0.30
+  const estimatedProfit = totalKlaviyoRevenue * estimatedMargin
+
+  // ROI calculation (revenue generated / estimated investment)
+  const estimatedInvestment = 3000 // placeholder - could come from invoices
+  const roi = estimatedInvestment > 0 ? ((totalKlaviyoRevenue - estimatedInvestment) / estimatedInvestment) * 100 : 0
 
   return (
-    <div className="space-y-6">
-      {/* Header with Store Selector and Filters */}
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <Award className="h-6 w-6 text-yellow-500" />
-            <Award className="h-6 w-6 text-yellow-500" />
-            <Award className="h-6 w-6 text-yellow-500" />
+    <div className="min-h-screen bg-slate-900 text-white">
+      <div className="max-w-[1600px] mx-auto p-6 space-y-6">
+
+        {/* ========== HEADER ========== */}
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-1">
+              <div className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-white">
+                {data.selectedStore?.name || data.client?.name || "Dashboard"}
+              </h1>
+              {data.dateRange && (
+                <p className="text-sm text-gray-400">
+                  {formatDateRange(data.dateRange.start, data.dateRange.end)}
+                </p>
+              )}
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl font-bold">{data.selectedStore?.name || data.client?.name || "Dashboard"}</h1>
-            {data.dateRange && (
-              <p className="text-sm text-muted-foreground">
-                {formatDateRange(data.dateRange.start, data.dateRange.end)}
-              </p>
-            )}
+
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Store Selector */}
+            <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
+              <SelectTrigger className="w-[180px] bg-slate-800 border-slate-700 text-white">
+                <Store className="h-4 w-4 mr-2 text-gray-400" />
+                <SelectValue placeholder="Selecione a loja" />
+              </SelectTrigger>
+              <SelectContent className="bg-slate-800 border-slate-700">
+                <SelectItem value="all" className="text-white hover:bg-slate-700">Todas as lojas</SelectItem>
+                {data.stores?.map((store) => (
+                  <SelectItem key={store.id} value={store.id} className="text-white hover:bg-slate-700">
+                    {store.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Period Selector */}
+            <Select value={period} onValueChange={handlePeriodChange}>
+              <SelectTrigger className="w-[140px] bg-slate-800 border-slate-700 text-white">
+                <CalendarDays className="h-4 w-4 mr-2 text-gray-400" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-slate-800 border-slate-700">
+                <SelectItem value="1d" className="text-white hover:bg-slate-700">Hoje</SelectItem>
+                <SelectItem value="7d" className="text-white hover:bg-slate-700">7 dias</SelectItem>
+                <SelectItem value="15d" className="text-white hover:bg-slate-700">15 dias</SelectItem>
+                <SelectItem value="30d" className="text-white hover:bg-slate-700">30 dias</SelectItem>
+                <SelectItem value="90d" className="text-white hover:bg-slate-700">90 dias</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {/* Refresh Button */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => fetchDashboard(true)}
+              disabled={refreshing}
+              className="bg-slate-800 border-slate-700 text-white hover:bg-slate-700"
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
+              Atualizar
+            </Button>
+
+            {/* Export Button */}
+            <Button size="sm" className="bg-emerald-500 hover:bg-emerald-600 text-white">
+              <Download className="h-4 w-4 mr-2" />
+              Exportar PDF
+            </Button>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Store Selector */}
-          <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
-            <SelectTrigger className="w-[180px]">
-              <Store className="h-4 w-4 mr-2" />
-              <SelectValue placeholder="Selecione a loja" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todas as lojas</SelectItem>
-              {data.stores?.map((store) => (
-                <SelectItem key={store.id} value={store.id}>
-                  {store.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          {/* Period Selector */}
-          <Select value={period} onValueChange={handlePeriodChange}>
-            <SelectTrigger className="w-[140px]">
-              <CalendarDays className="h-4 w-4 mr-2" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="1d">Hoje</SelectItem>
-              <SelectItem value="7d">7 dias</SelectItem>
-              <SelectItem value="15d">15 dias</SelectItem>
-              <SelectItem value="30d">30 dias</SelectItem>
-              <SelectItem value="90d">90 dias</SelectItem>
-            </SelectContent>
-          </Select>
-
-          {/* Refresh Button */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => fetchDashboard(true)}
-            disabled={refreshing}
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
-            Atualizar
-          </Button>
-
-          {/* Export PDF Button */}
-          <Button variant="default" size="sm">
-            <Download className="h-4 w-4 mr-2" />
-            Exportar PDF
-          </Button>
-        </div>
-      </div>
-
-      {selectedStoreId === "all" ? (
-        // Show message to select a store
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-16">
-            <Store className="h-16 w-16 text-muted-foreground mb-6" />
-            <h3 className="text-xl font-semibold mb-2">Selecione uma loja</h3>
-            <p className="text-muted-foreground text-center max-w-md mb-6">
-              Para visualizar os dados detalhados do relatório, selecione uma loja específica no menu acima.
+        {selectedStoreId === "all" ? (
+          // ========== SELECT STORE MESSAGE ==========
+          <div className="rounded-xl bg-slate-800/50 border border-slate-700/50 p-16 text-center">
+            <div className="rounded-full bg-slate-700/50 p-6 w-fit mx-auto mb-6">
+              <Store className="h-12 w-12 text-gray-400" />
+            </div>
+            <h3 className="text-xl font-semibold text-white mb-2">Selecione uma loja</h3>
+            <p className="text-gray-400 max-w-md mx-auto mb-8">
+              Para visualizar os dados detalhados do relatório e acompanhar os resultados da Convertfy, selecione uma loja específica.
             </p>
             {data.stores && data.stores.length > 0 && (
-              <div className="flex flex-wrap gap-2 justify-center">
+              <div className="flex flex-wrap gap-3 justify-center">
                 {data.stores.map((store) => (
                   <Button
                     key={store.id}
                     variant="outline"
                     onClick={() => setSelectedStoreId(store.id)}
+                    className="bg-slate-800 border-slate-600 text-white hover:bg-slate-700"
                   >
                     <Store className="h-4 w-4 mr-2" />
                     {store.name}
@@ -423,482 +568,437 @@ export default function PortalDashboardPage() {
                 ))}
               </div>
             )}
-          </CardContent>
-        </Card>
-      ) : (
-        // Show full report when store is selected
-        <div className="space-y-6">
-          {/* CAMPANHAS E ENGAJAMENTO Section */}
-          <Card>
-            <CardHeader className="pb-4">
-              <div className="flex items-center gap-2">
-                <Send className="h-5 w-5 text-primary" />
-                <CardTitle className="text-lg">CAMPANHAS E ENGAJAMENTO</CardTitle>
-              </div>
-              <CardDescription>Visão geral do alcance e engajamento das suas campanhas</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Top row metrics */}
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <div className="p-4 rounded-lg border bg-card">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Mail className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">Campanhas Enviadas</span>
-                  </div>
-                  <p className="text-3xl font-bold">{klaviyo?.campaignsCount || 0}</p>
-                </div>
-
-                <div className="p-4 rounded-lg border bg-card">
-                  <div className="flex items-center gap-2 mb-2">
-                    <TrendingUp className="h-4 w-4 text-blue-500" />
-                    <span className="text-sm text-muted-foreground">Taxa de Engajamento</span>
-                  </div>
-                  <p className="text-3xl font-bold text-blue-500">{formatPercent(klaviyo?.engagementRate || 0)}</p>
-                </div>
-
-                <div className="p-4 rounded-lg border bg-card">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Repeat className="h-4 w-4 text-blue-500" />
-                    <span className="text-sm text-muted-foreground">Taxa Recorrência</span>
-                  </div>
-                  <p className="text-3xl font-bold text-blue-500">{formatPercent(shopify?.recurringCustomerRate || 0)}</p>
-                </div>
-
-                <div className="p-4 rounded-lg border bg-card">
-                  <div className="flex items-center gap-2 mb-2">
-                    <UserPlus className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">Novos Clientes</span>
-                  </div>
-                  <p className="text-3xl font-bold">{formatNumber(shopify?.newCustomers || 0)}</p>
-                </div>
-              </div>
-
-              {/* Leads section */}
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="p-6 rounded-lg border bg-card">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-muted-foreground uppercase tracking-wide">TOTAL DE LEADS</p>
-                      <p className="text-4xl font-bold mt-2">{formatNumber(klaviyo?.totalLeads || 0)}</p>
-                      <p className="text-sm text-muted-foreground mt-1">Contatos na base</p>
-                    </div>
-                    <Users className="h-12 w-12 text-muted-foreground/30" />
-                  </div>
-                </div>
-
-                <div className="p-6 rounded-lg border bg-card">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-blue-500 uppercase tracking-wide">LEADS ENGAJADOS 90D</p>
-                      <p className="text-4xl font-bold mt-2">{formatNumber(klaviyo?.engagedLeads || 0)}</p>
-                      <p className="text-sm text-muted-foreground mt-1">{formatPercent(klaviyo?.engagementRate || 0)} de engajamento</p>
-                    </div>
-                    <div className="relative w-20 h-20">
-                      <svg className="transform -rotate-90 w-20 h-20">
-                        <circle cx="40" cy="40" r="35" stroke="currentColor" strokeWidth="6" fill="none" className="text-muted/20" />
-                        <circle
-                          cx="40" cy="40" r="35"
-                          stroke="currentColor"
-                          strokeWidth="6"
-                          fill="none"
-                          className="text-blue-500"
-                          strokeDasharray={`${(klaviyo?.engagementRate || 0) * 2.2} 220`}
-                        />
-                      </svg>
-                      <span className="absolute inset-0 flex items-center justify-center text-sm font-bold">
-                        {formatPercent(klaviyo?.engagementRate || 0).replace('%', '')}%
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* RESULTADOS FINANCEIROS Section */}
-          <Card>
-            <CardHeader className="pb-4">
-              <div className="flex items-center gap-2">
-                <DollarSign className="h-5 w-5 text-primary" />
-                <CardTitle className="text-lg">RESULTADOS FINANCEIROS</CardTitle>
-              </div>
-              <CardDescription>Faturamento e atribuição de receita por canal</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Main financial metrics */}
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <div className="p-4 rounded-lg border bg-card flex flex-col items-center text-center">
-                  <DollarSign className="h-8 w-8 text-muted-foreground mb-2" />
-                  <p className="text-2xl font-bold">{formatCurrency(shopify?.totalRevenue || 0)}</p>
-                  <p className="text-sm text-muted-foreground uppercase">FATURAMENTO TOTAL</p>
-                </div>
-
-                <div className="p-4 rounded-lg border bg-card flex flex-col items-center text-center">
-                  <ShoppingCart className="h-8 w-8 text-muted-foreground mb-2" />
-                  <p className="text-2xl font-bold">{formatCurrencyFull(shopify?.averageOrderValue || 0)}</p>
-                  <p className="text-sm text-muted-foreground uppercase">TICKET MÉDIO</p>
-                </div>
-
-                <div className="p-4 rounded-lg border bg-card flex flex-col items-center text-center">
-                  <Package className="h-8 w-8 text-muted-foreground mb-2" />
-                  <p className="text-2xl font-bold">{formatNumber(shopify?.totalOrders || 0)}</p>
-                  <p className="text-sm text-muted-foreground uppercase">TOTAL DE PEDIDOS</p>
-                </div>
-
-                <div className="p-4 rounded-lg border bg-card flex flex-col items-center text-center">
-                  <Users className="h-8 w-8 text-muted-foreground mb-2" />
-                  <p className="text-2xl font-bold">{formatNumber(shopify?.totalCustomers || 0)}</p>
-                  <p className="text-sm text-muted-foreground uppercase">TOTAL DE CLIENTES</p>
-                </div>
-              </div>
-
-              {/* Receita Atribuída Convertfy */}
-              <div className="p-6 rounded-lg border bg-gradient-to-r from-primary/5 to-primary/10">
-                <div className="flex items-center gap-2 mb-4">
-                  <Zap className="h-5 w-5 text-primary" />
-                  <h3 className="font-semibold">Receita Atribuída Convertfy</h3>
-                </div>
-                <div className="grid gap-6 md:grid-cols-4">
-                  <div>
-                    <p className="text-3xl font-bold text-primary">{formatCurrency(klaviyo?.totalRevenue || 0)}</p>
-                    <p className="text-sm text-muted-foreground">Email + SMS</p>
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold text-blue-500">{formatPercent(attributionPercent)}</p>
-                    <p className="text-sm text-muted-foreground">do Faturamento</p>
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold">{formatNumber(klaviyo?.topFlows?.reduce((sum, f) => sum + (f.delivered || 0), 0) || 0)}</p>
-                    <p className="text-sm text-muted-foreground">Pedidos</p>
-                  </div>
-                  <div className="flex items-center justify-center">
-                    <div className="relative w-20 h-20">
-                      <svg className="transform -rotate-90 w-20 h-20">
-                        <circle cx="40" cy="40" r="35" stroke="currentColor" strokeWidth="6" fill="none" className="text-muted/20" />
-                        <circle
-                          cx="40" cy="40" r="35"
-                          stroke="currentColor"
-                          strokeWidth="6"
-                          fill="none"
-                          className="text-primary"
-                          strokeDasharray={`${Math.min(attributionPercent, 100) * 2.2} 220`}
-                        />
-                      </svg>
-                      <span className="absolute inset-0 flex items-center justify-center text-sm font-bold">
-                        {attributionPercent.toFixed(1)}%
-                      </span>
-                    </div>
-                    <p className="text-xs text-muted-foreground ml-2 uppercase">PARTICIPAÇÃO</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Email vs SMS breakdown */}
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="p-4 rounded-lg border bg-card flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                    <Mail className="h-6 w-6 text-blue-600" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm text-muted-foreground">Faturamento Email</p>
-                    <p className="text-xl font-bold">{formatCurrency(klaviyo?.totalRevenue || 0)}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-lg font-bold text-blue-500">{formatPercent(attributionPercent)}</p>
-                    <p className="text-xs text-muted-foreground">do total</p>
-                  </div>
-                </div>
-
-                <div className="p-4 rounded-lg border bg-card flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                    <Send className="h-6 w-6 text-green-600" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm text-muted-foreground">Faturamento SMS</p>
-                    <p className="text-xl font-bold">{formatCurrency(klaviyo?.smsRevenue || 0)}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-lg font-bold text-green-500">{formatPercent(shopify?.totalRevenue ? ((klaviyo?.smsRevenue || 0) / shopify.totalRevenue) * 100 : 0)}</p>
-                    <p className="text-xs text-muted-foreground">do total</p>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* PERFORMANCE DE EMAIL Section */}
-          <Card>
-            <CardHeader className="pb-4">
-              <div className="flex items-center gap-2">
-                <Mail className="h-5 w-5 text-primary" />
-                <CardTitle className="text-lg">PERFORMANCE DE EMAIL</CardTitle>
-              </div>
-              <CardDescription>Métricas de entrega, abertura e cliques</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-4 md:grid-cols-5">
-                <div className="p-4 rounded-lg border bg-card text-center">
-                  <Send className="h-6 w-6 text-muted-foreground mx-auto mb-2" />
-                  <p className="text-2xl font-bold">{formatNumber(klaviyo?.delivered || 0)}</p>
-                  <p className="text-sm text-muted-foreground">Entregues</p>
-                </div>
-
-                <div className="p-4 rounded-lg border bg-card text-center">
-                  <Eye className="h-6 w-6 text-blue-500 mx-auto mb-2" />
-                  <p className="text-2xl font-bold text-blue-500">{formatPercent(klaviyo?.openRate || 0)}</p>
-                  <p className="text-sm text-muted-foreground">Taxa Abertura</p>
-                </div>
-
-                <div className="p-4 rounded-lg border bg-card text-center">
-                  <MousePointerClick className="h-6 w-6 text-yellow-500 mx-auto mb-2" />
-                  <p className="text-2xl font-bold text-yellow-500">{formatPercent(klaviyo?.clickRate || 0)}</p>
-                  <p className="text-sm text-muted-foreground">Taxa Clique</p>
-                </div>
-
-                <div className="p-4 rounded-lg border bg-card text-center">
-                  <Target className="h-6 w-6 text-muted-foreground mx-auto mb-2" />
-                  <p className="text-2xl font-bold">{formatPercent(klaviyo?.clickToOpenRate || 0)}</p>
-                  <p className="text-sm text-muted-foreground">CTOR</p>
-                </div>
-
-                <div className="p-4 rounded-lg border bg-card text-center">
-                  <AlertCircle className="h-6 w-6 text-muted-foreground mx-auto mb-2" />
-                  <p className="text-2xl font-bold">{formatNumber(klaviyo?.bounces || 0)}</p>
-                  <p className="text-sm text-muted-foreground">Bounces</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* AUTOMAÇÕES & CAMPANHAS Section */}
-          <div className="grid gap-6 md:grid-cols-2">
-            {/* Automações (Flows) */}
-            <Card>
-              <CardHeader className="pb-4">
-                <div className="flex items-center gap-2">
-                  <Zap className="h-5 w-5 text-primary" />
-                  <CardTitle className="text-lg">AUTOMAÇÕES (FLOWS)</CardTitle>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex justify-between items-center py-2 border-b">
-                  <span className="text-muted-foreground">Flows Ativos</span>
-                  <span className="font-bold text-blue-500">{klaviyo?.activeFlows || 0}</span>
-                </div>
-                <div className="flex justify-between items-center py-2 border-b">
-                  <span className="text-muted-foreground">Total de Flows</span>
-                  <span className="font-bold">{klaviyo?.flowsCount || 0}</span>
-                </div>
-                <div className="flex justify-between items-center py-2 border-b">
-                  <span className="text-muted-foreground">Receita de Flows</span>
-                  <span className="font-bold">{formatCurrency(klaviyo?.flowRevenue || 0)}</span>
-                </div>
-                <div className="flex justify-between items-center py-2">
-                  <span className="text-muted-foreground">% da Receita Convertfy</span>
-                  <span className="font-bold text-blue-500">{formatPercent(klaviyo?.flowRevenuePercent || (klaviyo?.totalRevenue ? ((klaviyo.flowRevenue || 0) / klaviyo.totalRevenue) * 100 : 0))}</span>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Campanhas */}
-            <Card>
-              <CardHeader className="pb-4">
-                <div className="flex items-center gap-2">
-                  <Send className="h-5 w-5 text-primary" />
-                  <CardTitle className="text-lg">CAMPANHAS</CardTitle>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex justify-between items-center py-2 border-b">
-                  <span className="text-muted-foreground">Campanhas Enviadas</span>
-                  <span className="font-bold text-blue-500">{klaviyo?.campaignsCount || 0}</span>
-                </div>
-                <div className="flex justify-between items-center py-2 border-b">
-                  <span className="text-muted-foreground">Entregues</span>
-                  <span className="font-bold">{formatNumber(klaviyo?.campaignDelivered || 0)}</span>
-                </div>
-                <div className="flex justify-between items-center py-2 border-b">
-                  <span className="text-muted-foreground">Receita de Campanhas</span>
-                  <span className="font-bold">{formatCurrency(klaviyo?.campaignRevenue || 0)}</span>
-                </div>
-                <div className="flex justify-between items-center py-2">
-                  <span className="text-muted-foreground">% da Receita Convertfy</span>
-                  <span className="font-bold text-blue-500">{formatPercent(klaviyo?.campaignRevenuePercent || (klaviyo?.totalRevenue ? ((klaviyo.campaignRevenue || 0) / klaviyo.totalRevenue) * 100 : 0))}</span>
-                </div>
-              </CardContent>
-            </Card>
           </div>
+        ) : (
+          // ========== FULL DASHBOARD ==========
+          <div className="space-y-6">
 
-          {/* TOP AUTOMAÇÕES POR RECEITA Section */}
-          <Card>
-            <CardHeader className="pb-4">
-              <div className="flex items-center gap-2">
-                <BarChart3 className="h-5 w-5 text-primary" />
-                <CardTitle className="text-lg">TOP AUTOMAÇÕES POR RECEITA</CardTitle>
+            {/* ========== FINANCIAL OVERVIEW - Main Focus ========== */}
+            <div className="rounded-xl bg-gradient-to-br from-emerald-900/30 via-slate-800/50 to-slate-900 border border-emerald-500/20 p-6">
+              <SectionHeader
+                title="RESULTADOS CONVERTFY"
+                icon={Zap}
+                description="Receita gerada através de email marketing e automações"
+              />
+
+              <div className="grid gap-6 lg:grid-cols-12 mt-6">
+                {/* Main Revenue Metric */}
+                <div className="lg:col-span-4 flex flex-col items-center justify-center p-6 rounded-xl bg-slate-800/50 border border-emerald-500/20">
+                  <CircularProgress
+                    value={attributionPercent}
+                    size={140}
+                    strokeWidth={12}
+                    color="#10b981"
+                    bgColor="#1e293b"
+                    label="do Faturamento"
+                    sublabel="Total"
+                  />
+                  <p className="text-3xl font-bold text-emerald-400 mt-4">{formatCurrency(totalKlaviyoRevenue)}</p>
+                  <p className="text-sm text-gray-400">Receita Atribuída Convertfy</p>
+                </div>
+
+                {/* Financial Metrics Grid */}
+                <div className="lg:col-span-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  <MetricCard
+                    title="RECEITA TOTAL LOJA"
+                    value={formatCurrency(totalShopifyRevenue)}
+                    icon={DollarSign}
+                    iconColor="text-blue-400"
+                    iconBgColor="bg-blue-400/10"
+                    subtitle="Faturamento Shopify"
+                  />
+                  <MetricCard
+                    title="LUCRO ESTIMADO"
+                    value={formatCurrency(estimatedProfit)}
+                    icon={PiggyBank}
+                    iconColor="text-emerald-400"
+                    iconBgColor="bg-emerald-400/10"
+                    subtitle="30% margem média"
+                    trend="up"
+                    trendValue={`+${formatPercent(estimatedMargin * 100)}`}
+                  />
+                  <MetricCard
+                    title="ROI CONVERTFY"
+                    value={`${roi.toFixed(0)}%`}
+                    icon={TrendingUp}
+                    iconColor="text-purple-400"
+                    iconBgColor="bg-purple-400/10"
+                    trend={roi > 0 ? "up" : "down"}
+                    trendValue={roi > 0 ? "Positivo" : "Negativo"}
+                  />
+                  <MetricCard
+                    title="TICKET MÉDIO"
+                    value={formatCurrencyFull(shopify?.averageOrderValue || 0)}
+                    icon={Receipt}
+                    iconColor="text-amber-400"
+                    iconBgColor="bg-amber-400/10"
+                  />
+                  <MetricCard
+                    title="TOTAL PEDIDOS"
+                    value={formatNumber(shopify?.totalOrders || 0)}
+                    icon={ShoppingCart}
+                    iconColor="text-cyan-400"
+                    iconBgColor="bg-cyan-400/10"
+                  />
+                  <MetricCard
+                    title="CLIENTES"
+                    value={formatNumber(shopify?.totalCustomers || 0)}
+                    icon={Users}
+                    iconColor="text-pink-400"
+                    iconBgColor="bg-pink-400/10"
+                    subtitle={`${formatNumber(shopify?.newCustomers || 0)} novos`}
+                  />
+                </div>
               </div>
-            </CardHeader>
-            <CardContent>
+
+              {/* Revenue Breakdown Bar */}
+              <div className="mt-6 p-4 rounded-xl bg-slate-800/50">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm font-medium text-gray-400">Distribuição da Receita Convertfy</span>
+                  <span className="text-sm text-emerald-400">{formatCurrency(totalKlaviyoRevenue)}</span>
+                </div>
+                <div className="flex h-4 rounded-full overflow-hidden bg-slate-700">
+                  {klaviyo?.flowRevenue && klaviyo.flowRevenue > 0 && (
+                    <div
+                      className="bg-emerald-500 transition-all"
+                      style={{ width: `${(klaviyo.flowRevenue / totalKlaviyoRevenue) * 100}%` }}
+                      title={`Flows: ${formatCurrency(klaviyo.flowRevenue)}`}
+                    />
+                  )}
+                  {klaviyo?.campaignRevenue && klaviyo.campaignRevenue > 0 && (
+                    <div
+                      className="bg-blue-500 transition-all"
+                      style={{ width: `${(klaviyo.campaignRevenue / totalKlaviyoRevenue) * 100}%` }}
+                      title={`Campanhas: ${formatCurrency(klaviyo.campaignRevenue)}`}
+                    />
+                  )}
+                  {klaviyo?.smsRevenue && klaviyo.smsRevenue > 0 && (
+                    <div
+                      className="bg-amber-500 transition-all"
+                      style={{ width: `${(klaviyo.smsRevenue / totalKlaviyoRevenue) * 100}%` }}
+                      title={`SMS: ${formatCurrency(klaviyo.smsRevenue)}`}
+                    />
+                  )}
+                </div>
+                <div className="flex gap-6 mt-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-emerald-500" />
+                    <span className="text-xs text-gray-400">Flows {formatCurrency(klaviyo?.flowRevenue || 0)}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-blue-500" />
+                    <span className="text-xs text-gray-400">Campanhas {formatCurrency(klaviyo?.campaignRevenue || 0)}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-amber-500" />
+                    <span className="text-xs text-gray-400">SMS {formatCurrency(klaviyo?.smsRevenue || 0)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* ========== ENGAGEMENT & LEADS ========== */}
+            <div className="grid gap-6 lg:grid-cols-2">
+              {/* Leads Overview */}
+              <div className="rounded-xl bg-slate-800/50 border border-slate-700/50 p-6">
+                <SectionHeader title="BASE DE LEADS" icon={Users} description="Contatos e engajamento" />
+
+                <div className="grid gap-4 sm:grid-cols-2 mt-4">
+                  <div className="p-4 rounded-xl bg-slate-900/50 border border-slate-700/30">
+                    <Users className="h-8 w-8 text-blue-400 mb-3" />
+                    <p className="text-3xl font-bold text-white">{formatNumber(klaviyo?.totalLeads || 0)}</p>
+                    <p className="text-sm text-gray-400">Total de Leads</p>
+                  </div>
+                  <div className="p-4 rounded-xl bg-slate-900/50 border border-slate-700/30">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-3xl font-bold text-emerald-400">{formatNumber(klaviyo?.engagedLeads || 0)}</p>
+                        <p className="text-sm text-gray-400">Leads Engajados 90d</p>
+                      </div>
+                      <CircularProgress
+                        value={klaviyo?.engagementRate || 0}
+                        size={70}
+                        strokeWidth={6}
+                        color="#10b981"
+                        bgColor="#1e293b"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 p-4 rounded-xl bg-slate-900/50 border border-slate-700/30">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-sm text-gray-400">Taxa de Engajamento</span>
+                    <span className="text-sm font-medium text-emerald-400">{formatPercent(klaviyo?.engagementRate || 0)}</span>
+                  </div>
+                  <Progress value={klaviyo?.engagementRate || 0} className="h-2 bg-slate-700" />
+                </div>
+              </div>
+
+              {/* Email Performance */}
+              <div className="rounded-xl bg-slate-800/50 border border-slate-700/50 p-6">
+                <SectionHeader title="PERFORMANCE DE EMAIL" icon={Mail} description="Métricas de entrega e engajamento" />
+
+                <div className="grid grid-cols-5 gap-3 mt-4">
+                  {[
+                    { label: "Entregues", value: klaviyo?.delivered || 0, icon: Send, color: "text-blue-400" },
+                    { label: "Abertura", value: `${(klaviyo?.openRate || 0).toFixed(1)}%`, icon: Eye, color: "text-emerald-400" },
+                    { label: "Cliques", value: `${(klaviyo?.clickRate || 0).toFixed(1)}%`, icon: MousePointerClick, color: "text-amber-400" },
+                    { label: "CTOR", value: `${(klaviyo?.clickToOpenRate || 0).toFixed(1)}%`, icon: Target, color: "text-purple-400" },
+                    { label: "Bounces", value: klaviyo?.bounces || 0, icon: AlertCircle, color: "text-red-400" },
+                  ].map((metric) => (
+                    <div key={metric.label} className="text-center p-3 rounded-xl bg-slate-900/50 border border-slate-700/30">
+                      <metric.icon className={`h-5 w-5 mx-auto mb-2 ${metric.color}`} />
+                      <p className="text-lg font-bold text-white">
+                        {typeof metric.value === "number" ? formatNumber(metric.value) : metric.value}
+                      </p>
+                      <p className="text-[10px] text-gray-500 uppercase">{metric.label}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Open Rate Progress */}
+                <div className="mt-4 space-y-3">
+                  {[
+                    { label: "Taxa de Abertura", value: klaviyo?.openRate || 0, color: "bg-emerald-500" },
+                    { label: "Taxa de Clique", value: klaviyo?.clickRate || 0, color: "bg-amber-500" },
+                    { label: "Click-to-Open Rate", value: klaviyo?.clickToOpenRate || 0, color: "bg-purple-500" },
+                  ].map((item) => (
+                    <div key={item.label} className="flex items-center gap-3">
+                      <span className="text-xs text-gray-400 w-32">{item.label}</span>
+                      <div className="flex-1 h-2 rounded-full bg-slate-700 overflow-hidden">
+                        <div className={`h-full ${item.color}`} style={{ width: `${Math.min(item.value, 100)}%` }} />
+                      </div>
+                      <span className="text-xs font-medium text-white w-12 text-right">{item.value.toFixed(1)}%</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* ========== FLOWS & CAMPAIGNS ========== */}
+            <div className="grid gap-6 lg:grid-cols-2">
+              {/* Flows */}
+              <div className="rounded-xl bg-slate-800/50 border border-slate-700/50 p-6">
+                <SectionHeader title="AUTOMAÇÕES (FLOWS)" icon={Zap} />
+
+                <div className="grid grid-cols-2 gap-4 mt-4">
+                  <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                    <p className="text-3xl font-bold text-emerald-400">{klaviyo?.activeFlows || 0}</p>
+                    <p className="text-sm text-gray-400">Flows Ativos</p>
+                  </div>
+                  <div className="p-4 rounded-xl bg-slate-900/50 border border-slate-700/30">
+                    <p className="text-3xl font-bold text-white">{klaviyo?.flowsCount || 0}</p>
+                    <p className="text-sm text-gray-400">Total de Flows</p>
+                  </div>
+                </div>
+
+                <div className="mt-4 p-4 rounded-xl bg-slate-900/50 border border-slate-700/30">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-2xl font-bold text-emerald-400">{formatCurrency(klaviyo?.flowRevenue || 0)}</p>
+                      <p className="text-sm text-gray-400">Receita de Flows</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-lg font-bold text-white">
+                        {formatPercent(klaviyo?.totalRevenue ? ((klaviyo.flowRevenue || 0) / klaviyo.totalRevenue) * 100 : 0)}
+                      </p>
+                      <p className="text-xs text-gray-500">da Receita Convertfy</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Campaigns */}
+              <div className="rounded-xl bg-slate-800/50 border border-slate-700/50 p-6">
+                <SectionHeader title="CAMPANHAS" icon={Send} />
+
+                <div className="grid grid-cols-2 gap-4 mt-4">
+                  <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-500/20">
+                    <p className="text-3xl font-bold text-blue-400">{klaviyo?.campaignsCount || 0}</p>
+                    <p className="text-sm text-gray-400">Enviadas</p>
+                  </div>
+                  <div className="p-4 rounded-xl bg-slate-900/50 border border-slate-700/30">
+                    <p className="text-3xl font-bold text-white">{formatNumber(klaviyo?.campaignDelivered || 0)}</p>
+                    <p className="text-sm text-gray-400">Entregues</p>
+                  </div>
+                </div>
+
+                <div className="mt-4 p-4 rounded-xl bg-slate-900/50 border border-slate-700/30">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-2xl font-bold text-blue-400">{formatCurrency(klaviyo?.campaignRevenue || 0)}</p>
+                      <p className="text-sm text-gray-400">Receita de Campanhas</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-lg font-bold text-white">
+                        {formatPercent(klaviyo?.totalRevenue ? ((klaviyo.campaignRevenue || 0) / klaviyo.totalRevenue) * 100 : 0)}
+                      </p>
+                      <p className="text-xs text-gray-500">da Receita Convertfy</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* ========== TOP FLOWS TABLE ========== */}
+            <div className="rounded-xl bg-slate-800/50 border border-slate-700/50 p-6">
+              <SectionHeader title="TOP AUTOMAÇÕES POR RECEITA" icon={BarChart3} />
+
               {!klaviyo?.topFlows || klaviyo.topFlows.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <Zap className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                  <p>Nenhum flow com receita no período</p>
+                <div className="text-center py-12">
+                  <Zap className="h-12 w-12 mx-auto mb-3 text-gray-600" />
+                  <p className="text-gray-400">Nenhum flow com receita no período</p>
                 </div>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-12">#</TableHead>
-                      <TableHead>Nome do Flow</TableHead>
-                      <TableHead className="text-right">Entregues</TableHead>
-                      <TableHead className="text-right">Abertura</TableHead>
-                      <TableHead className="text-right">Cliques</TableHead>
-                      <TableHead className="text-right">Receita</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {klaviyo.topFlows.slice(0, 10).map((flow, index) => (
-                      <TableRow key={flow.id}>
-                        <TableCell>
-                          <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">
-                            {index + 1}
-                          </div>
-                        </TableCell>
-                        <TableCell className="font-medium">{flow.name}</TableCell>
-                        <TableCell className="text-right">{formatNumber(flow.delivered || 0)}</TableCell>
-                        <TableCell className="text-right">{formatPercent(flow.openRate || 0)}</TableCell>
-                        <TableCell className="text-right">{formatPercent(flow.clickRate || 0)}</TableCell>
-                        <TableCell className="text-right font-bold text-blue-500">{formatCurrencyFull(flow.revenue || 0)}</TableCell>
+                <div className="mt-4 overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="border-slate-700 hover:bg-transparent">
+                        <TableHead className="text-gray-400 w-12">#</TableHead>
+                        <TableHead className="text-gray-400">Nome do Flow</TableHead>
+                        <TableHead className="text-gray-400 text-right">Entregues</TableHead>
+                        <TableHead className="text-gray-400 text-right">Abertura</TableHead>
+                        <TableHead className="text-gray-400 text-right">Cliques</TableHead>
+                        <TableHead className="text-gray-400 text-right">Receita</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {klaviyo.topFlows.slice(0, 10).map((flow, index) => (
+                        <TableRow key={flow.id} className="border-slate-700/50 hover:bg-slate-700/30">
+                          <TableCell>
+                            <div className="w-7 h-7 rounded-full bg-emerald-500/20 flex items-center justify-center text-xs font-bold text-emerald-400">
+                              {index + 1}
+                            </div>
+                          </TableCell>
+                          <TableCell className="font-medium text-white">{flow.name}</TableCell>
+                          <TableCell className="text-right text-gray-300">{formatNumber(flow.delivered || 0)}</TableCell>
+                          <TableCell className="text-right text-gray-300">{formatPercent(flow.openRate || 0)}</TableCell>
+                          <TableCell className="text-right text-gray-300">{formatPercent(flow.clickRate || 0)}</TableCell>
+                          <TableCell className="text-right font-bold text-emerald-400">{formatCurrencyFull(flow.revenue || 0)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
 
-          {/* TOP PRODUTOS MAIS VENDIDOS Section */}
-          <Card>
-            <CardHeader className="pb-4">
-              <div className="flex items-center gap-2">
-                <Package className="h-5 w-5 text-primary" />
-                <CardTitle className="text-lg">TOP 5 PRODUTOS MAIS VENDIDOS</CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent>
+            {/* ========== TOP PRODUCTS ========== */}
+            <div className="rounded-xl bg-slate-800/50 border border-slate-700/50 p-6">
+              <SectionHeader title="TOP 5 PRODUTOS MAIS VENDIDOS" icon={Package} />
+
               {!shopify?.topProducts || shopify.topProducts.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <ShoppingCart className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                  <p>Nenhum produto vendido no período</p>
+                <div className="text-center py-12">
+                  <ShoppingCart className="h-12 w-12 mx-auto mb-3 text-gray-600" />
+                  <p className="text-gray-400">Nenhum produto vendido no período</p>
                 </div>
               ) : (
-                <div className="space-y-3">
+                <div className="mt-4 space-y-3">
                   {shopify.topProducts.slice(0, 5).map((product, index) => (
                     <div
                       key={product.name}
-                      className="flex items-center gap-4 p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
+                      className="flex items-center gap-4 p-4 rounded-xl bg-slate-900/50 border border-slate-700/30 hover:bg-slate-700/30 transition-colors"
                     >
-                      <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-sm font-bold text-primary-foreground">
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold ${
+                        index === 0 ? "bg-amber-500/20 text-amber-400" :
+                        index === 1 ? "bg-gray-400/20 text-gray-400" :
+                        index === 2 ? "bg-orange-500/20 text-orange-400" :
+                        "bg-slate-600/20 text-slate-400"
+                      }`}>
                         {index + 1}
                       </div>
-                      <div className="flex-1">
-                        <h4 className="font-medium">{product.name}</h4>
-                        <p className="text-sm text-muted-foreground">
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-medium text-white truncate">{product.name}</h4>
+                        <p className="text-sm text-gray-500">
                           {formatNumber(product.quantity)} unidades vendidas
                         </p>
                       </div>
                       <div className="text-right">
-                        <p className="text-lg font-bold">{formatCurrencyFull(product.revenue)}</p>
+                        <p className="text-lg font-bold text-emerald-400">{formatCurrencyFull(product.revenue)}</p>
                       </div>
                     </div>
                   ))}
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
 
-          {/* Upcoming Campaigns & Meetings */}
-          <div className="grid gap-6 md:grid-cols-2">
-            {/* Upcoming Campaigns */}
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <div>
-                  <CardTitle>Próximas Campanhas</CardTitle>
-                  <CardDescription>Campanhas agendadas</CardDescription>
+            {/* ========== UPCOMING CAMPAIGNS & MEETINGS ========== */}
+            <div className="grid gap-6 lg:grid-cols-2">
+              {/* Upcoming Campaigns */}
+              <div className="rounded-xl bg-slate-800/50 border border-slate-700/50 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <SectionHeader title="PRÓXIMAS CAMPANHAS" icon={CalendarDays} />
+                  <Button variant="ghost" size="sm" asChild className="text-gray-400 hover:text-white hover:bg-slate-700">
+                    <Link href="/portal/campaigns">
+                      Ver todas
+                      <ChevronRight className="ml-1 h-4 w-4" />
+                    </Link>
+                  </Button>
                 </div>
-                <Button variant="ghost" size="sm" asChild>
-                  <Link href="/portal/campaigns">
-                    Ver todas
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Link>
-                </Button>
-              </CardHeader>
-              <CardContent>
+
                 {(data.upcomingCampaigns?.length || 0) === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <Mail className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                    <p>Nenhuma campanha agendada</p>
+                  <div className="text-center py-8">
+                    <Mail className="h-10 w-10 mx-auto mb-2 text-gray-600" />
+                    <p className="text-gray-400">Nenhuma campanha agendada</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
                     {data.upcomingCampaigns.slice(0, 4).map((campaign) => (
                       <div
                         key={campaign.id}
-                        className="flex items-center justify-between p-3 rounded-lg border"
+                        className="flex items-center justify-between p-4 rounded-xl bg-slate-900/50 border border-slate-700/30"
                       >
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                            <Mail className="h-5 w-5 text-blue-600" />
+                          <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
+                            <Mail className="h-5 w-5 text-blue-400" />
                           </div>
                           <div>
-                            <p className="font-medium">{campaign.name}</p>
-                            <p className="text-xs text-muted-foreground">
+                            <p className="font-medium text-white">{campaign.name}</p>
+                            <p className="text-xs text-gray-500">
                               {formatDateTime(campaign.scheduledDate)}
                             </p>
                           </div>
                         </div>
-                        <Badge variant="outline" className="bg-yellow-100 text-yellow-700">
+                        <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30">
                           Agendada
                         </Badge>
                       </div>
                     ))}
                   </div>
                 )}
-              </CardContent>
-            </Card>
+              </div>
 
-            {/* Upcoming Meetings */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Próximas Reuniões</CardTitle>
-                <CardDescription>Reuniões agendadas com a equipe</CardDescription>
-              </CardHeader>
-              <CardContent>
+              {/* Upcoming Meetings */}
+              <div className="rounded-xl bg-slate-800/50 border border-slate-700/50 p-6">
+                <SectionHeader title="PRÓXIMAS REUNIÕES" icon={Video} description="Reuniões agendadas com a equipe" />
+
                 {(data.meetings?.length || 0) === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <Video className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                    <p>Nenhuma reunião agendada</p>
+                  <div className="text-center py-8">
+                    <Video className="h-10 w-10 mx-auto mb-2 text-gray-600" />
+                    <p className="text-gray-400">Nenhuma reunião agendada</p>
                   </div>
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-3 mt-4">
                     {data.meetings.slice(0, 4).map((meeting) => (
                       <div
                         key={meeting.id}
-                        className="flex items-center justify-between p-3 rounded-lg border"
+                        className="flex items-center justify-between p-4 rounded-xl bg-slate-900/50 border border-slate-700/30"
                       >
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
-                            <Video className="h-5 w-5 text-purple-600" />
+                          <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
+                            <Video className="h-5 w-5 text-purple-400" />
                           </div>
                           <div>
-                            <p className="font-medium">{meeting.title}</p>
-                            <p className="text-xs text-muted-foreground">
+                            <p className="font-medium text-white">{meeting.title}</p>
+                            <p className="text-xs text-gray-500">
                               {formatDateTime(meeting.scheduledAt)}
                               {meeting.duration && ` • ${meeting.duration} min`}
                             </p>
                           </div>
                         </div>
                         {meeting.meetingUrl && (
-                          <Button variant="outline" size="sm" asChild>
+                          <Button size="sm" className="bg-purple-500 hover:bg-purple-600 text-white" asChild>
                             <a href={meeting.meetingUrl} target="_blank" rel="noopener noreferrer">
                               Entrar
                             </a>
@@ -908,65 +1008,58 @@ export default function PortalDashboardPage() {
                     ))}
                   </div>
                 )}
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Financial Tab */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <CreditCard className="h-5 w-5 text-primary" />
-                  <CardTitle className="text-lg">FINANCEIRO</CardTitle>
-                </div>
-                <CardDescription>Controle de faturas e pagamentos</CardDescription>
               </div>
-              <Button variant="ghost" size="sm" asChild>
-                <Link href="/portal/invoices">
-                  Ver todas
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Financial Summary */}
-              <div className="grid gap-4 md:grid-cols-3">
-                <div className="p-4 rounded-lg border bg-yellow-50 dark:bg-yellow-900/10">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Clock className="h-4 w-4 text-yellow-600" />
-                    <span className="text-sm text-yellow-700 dark:text-yellow-500">Total Pendente</span>
+            </div>
+
+            {/* ========== FINANCIAL SECTION ========== */}
+            <div className="rounded-xl bg-slate-800/50 border border-slate-700/50 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <SectionHeader title="FINANCEIRO" icon={CreditCard} description="Controle de faturas e pagamentos" />
+                <Button variant="ghost" size="sm" asChild className="text-gray-400 hover:text-white hover:bg-slate-700">
+                  <Link href="/portal/invoices">
+                    Ver todas
+                    <ChevronRight className="ml-1 h-4 w-4" />
+                  </Link>
+                </Button>
+              </div>
+
+              {/* Financial Summary Cards */}
+              <div className="grid gap-4 sm:grid-cols-3 mt-4">
+                <div className="p-5 rounded-xl bg-amber-500/10 border border-amber-500/20">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Clock className="h-5 w-5 text-amber-400" />
+                    <span className="text-sm text-amber-400">Total Pendente</span>
                   </div>
-                  <p className="text-2xl font-bold text-yellow-700 dark:text-yellow-500">
+                  <p className="text-2xl font-bold text-amber-400">
                     {formatCurrencyFull(data.invoices?.totalPending || 0)}
                   </p>
-                  <p className="text-xs text-yellow-600 dark:text-yellow-600">
+                  <p className="text-xs text-amber-500/70 mt-1">
                     {data.invoices?.pending || 0} fatura(s)
                   </p>
                 </div>
 
-                <div className="p-4 rounded-lg border bg-red-50 dark:bg-red-900/10">
-                  <div className="flex items-center gap-2 mb-2">
-                    <AlertCircle className="h-4 w-4 text-red-600" />
-                    <span className="text-sm text-red-700 dark:text-red-500">Total Vencido</span>
+                <div className="p-5 rounded-xl bg-red-500/10 border border-red-500/20">
+                  <div className="flex items-center gap-2 mb-3">
+                    <AlertCircle className="h-5 w-5 text-red-400" />
+                    <span className="text-sm text-red-400">Total Vencido</span>
                   </div>
-                  <p className="text-2xl font-bold text-red-700 dark:text-red-500">
+                  <p className="text-2xl font-bold text-red-400">
                     {formatCurrencyFull(data.invoices?.totalOverdue || 0)}
                   </p>
-                  <p className="text-xs text-red-600 dark:text-red-600">
+                  <p className="text-xs text-red-500/70 mt-1">
                     {data.invoices?.overdue || 0} fatura(s)
                   </p>
                 </div>
 
-                <div className="p-4 rounded-lg border bg-green-50 dark:bg-green-900/10">
-                  <div className="flex items-center gap-2 mb-2">
-                    <CheckCircle className="h-4 w-4 text-green-600" />
-                    <span className="text-sm text-green-700 dark:text-green-500">Total Pago</span>
+                <div className="p-5 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                  <div className="flex items-center gap-2 mb-3">
+                    <CheckCircle className="h-5 w-5 text-emerald-400" />
+                    <span className="text-sm text-emerald-400">Total Pago</span>
                   </div>
-                  <p className="text-2xl font-bold text-green-700 dark:text-green-500">
+                  <p className="text-2xl font-bold text-emerald-400">
                     {formatCurrencyFull(data.invoices?.totalPaid || 0)}
                   </p>
-                  <p className="text-xs text-green-600 dark:text-green-600">
+                  <p className="text-xs text-emerald-500/70 mt-1">
                     Pagamentos realizados
                   </p>
                 </div>
@@ -974,56 +1067,62 @@ export default function PortalDashboardPage() {
 
               {/* Recent Invoices */}
               {data.invoices?.recent && data.invoices.recent.length > 0 && (
-                <div className="space-y-3">
-                  <h4 className="font-medium text-sm text-muted-foreground uppercase">Últimas Faturas</h4>
-                  {data.invoices.recent.slice(0, 5).map((invoice) => {
-                    const isOverdue = new Date(invoice.dueDate) < new Date() && invoice.status !== "paid"
-                    return (
-                      <div
-                        key={invoice.id}
-                        className="flex items-center justify-between p-3 rounded-lg border"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                            invoice.status === "paid" ? "bg-green-100 dark:bg-green-900/30" :
-                            isOverdue ? "bg-red-100 dark:bg-red-900/30" : "bg-yellow-100 dark:bg-yellow-900/30"
-                          }`}>
-                            {invoice.status === "paid" ? (
-                              <CheckCircle className="h-5 w-5 text-green-600" />
-                            ) : isOverdue ? (
-                              <AlertCircle className="h-5 w-5 text-red-600" />
-                            ) : (
-                              <Clock className="h-5 w-5 text-yellow-600" />
-                            )}
-                          </div>
-                          <div>
-                            <p className="font-medium">{formatCurrencyFull(invoice.amount)}</p>
-                            <p className="text-xs text-muted-foreground">
-                              Vencimento: {formatDate(invoice.dueDate)}
-                            </p>
-                          </div>
-                        </div>
-                        <Badge
-                          className={invoiceStatusColors[isOverdue && invoice.status !== "paid" ? "overdue" : invoice.status as keyof typeof invoiceStatusColors] || ""}
+                <div className="mt-6">
+                  <h4 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">Últimas Faturas</h4>
+                  <div className="space-y-2">
+                    {data.invoices.recent.slice(0, 5).map((invoice) => {
+                      const isOverdue = new Date(invoice.dueDate) < new Date() && invoice.status !== "paid"
+                      return (
+                        <div
+                          key={invoice.id}
+                          className="flex items-center justify-between p-4 rounded-xl bg-slate-900/50 border border-slate-700/30"
                         >
-                          {invoice.status === "paid" ? "Paga" :
-                           isOverdue ? "Vencida" :
-                           invoice.status === "pending" ? "Pendente" : invoice.status}
-                        </Badge>
-                      </div>
-                    )
-                  })}
+                          <div className="flex items-center gap-3">
+                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                              invoice.status === "paid" ? "bg-emerald-500/20" :
+                              isOverdue ? "bg-red-500/20" : "bg-amber-500/20"
+                            }`}>
+                              {invoice.status === "paid" ? (
+                                <CheckCircle className="h-5 w-5 text-emerald-400" />
+                              ) : isOverdue ? (
+                                <AlertCircle className="h-5 w-5 text-red-400" />
+                              ) : (
+                                <Clock className="h-5 w-5 text-amber-400" />
+                              )}
+                            </div>
+                            <div>
+                              <p className="font-medium text-white">{formatCurrencyFull(invoice.amount)}</p>
+                              <p className="text-xs text-gray-500">
+                                Vencimento: {formatDate(invoice.dueDate)}
+                              </p>
+                            </div>
+                          </div>
+                          <Badge className={
+                            invoice.status === "paid" ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" :
+                            isOverdue ? "bg-red-500/20 text-red-400 border-red-500/30" :
+                            "bg-amber-500/20 text-amber-400 border-amber-500/30"
+                          }>
+                            {invoice.status === "paid" ? "Paga" :
+                             isOverdue ? "Vencida" :
+                             invoice.status === "pending" ? "Pendente" : invoice.status}
+                          </Badge>
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
               )}
-            </CardContent>
-          </Card>
-        </div>
-      )}
+            </div>
+          </div>
+        )}
 
-      {/* Last Updated */}
-      <p className="text-sm text-muted-foreground text-center">
-        Última atualização: {data.lastUpdated ? formatDateTime(data.lastUpdated) : "Agora"}
-      </p>
+        {/* Last Updated Footer */}
+        <div className="text-center py-4">
+          <p className="text-sm text-gray-500">
+            Última atualização: {data.lastUpdated ? formatDateTime(data.lastUpdated) : "Agora"}
+          </p>
+        </div>
+      </div>
     </div>
   )
 }
