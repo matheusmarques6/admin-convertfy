@@ -31,8 +31,9 @@ export async function GET(request: NextRequest) {
       .eq("id", user.id)
       .single()
 
-    if (!profile || !["admin", "manager", "cs"].includes(profile.role)) {
-      return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders() })
+    // Any authenticated user with a profile can manage portal users
+    if (!profile) {
+      return NextResponse.json({ error: "Perfil não encontrado" }, { status: 403, headers: corsHeaders() })
     }
 
     const searchParams = request.nextUrl.searchParams
@@ -81,8 +82,9 @@ export async function POST(request: NextRequest) {
       .eq("id", user.id)
       .single()
 
-    if (!profile || !["admin", "manager", "cs"].includes(profile.role)) {
-      return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders() })
+    // Any authenticated user with a profile can manage portal users
+    if (!profile) {
+      return NextResponse.json({ error: "Perfil não encontrado" }, { status: 403, headers: corsHeaders() })
     }
 
     const body: ClientPortalUserFormData = await request.json()
