@@ -26,12 +26,15 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
+import { createClient } from "@/lib/supabase/client"
 
 interface PortalUser {
   id: string
   name: string
   email: string
   clientName: string
+  clientId: string
+  mustChangePassword: boolean
 }
 
 const navigation = [
@@ -62,7 +65,7 @@ export default function PortalLayout({
   const [loading, setLoading] = useState(true)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
-  // Check authentication
+  // Check authentication using browser Supabase client
   useEffect(() => {
     const checkAuth = async () => {
       // Skip auth check for login and change-password pages
@@ -72,44 +75,68 @@ export default function PortalLayout({
       }
 
       try {
-        const response = await fetch("/api/portal/auth", {
-          method: "GET",
+        const supabase = createClient()
+
+        // Get current session from browser
+        const { data: { user: authUser }, error: authError } = await supabase.auth.getUser()
+
+        if (authError || !authUser) {
+          console.log("[Portal Layout] No auth user found")
+          window.location.href = "/portal/login"
+          return
+        }
+
+        // Verify portal user via API (which uses admin client to bypass RLS)
+        const response = await fetch("/api/portal/auth/verify", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ userId: authUser.id }),
         })
 
         if (!response.ok) {
-          router.push("/portal/login")
+          console.log("[Portal Layout] User is not a portal user")
+          await supabase.auth.signOut()
+          window.location.href = "/portal/login"
           return
         }
 
         const data = await response.json()
 
         // Check if user needs to change password
-        if (data.user?.mustChangePassword) {
-          router.push("/portal/change-password")
+        if (data.mustChangePassword && pathname !== "/portal/change-password") {
+          window.location.href = "/portal/change-password"
           return
         }
 
-        setUser(data.user)
+        setUser({
+          id: data.user.id,
+          name: data.user.name,
+          email: data.user.email,
+          clientName: data.user.clientName,
+          clientId: data.user.clientId,
+          mustChangePassword: data.mustChangePassword,
+        })
       } catch (error) {
         console.error("Auth check failed:", error)
-        router.push("/portal/login")
+        window.location.href = "/portal/login"
       } finally {
         setLoading(false)
       }
     }
 
     checkAuth()
-  }, [pathname, router])
+  }, [pathname])
 
   const handleLogout = async () => {
     try {
-      await fetch("/api/portal/auth", {
-        method: "DELETE",
-      })
+      const supabase = createClient()
+      await supabase.auth.signOut()
     } catch (error) {
       console.error("Logout error:", error)
     } finally {
-      router.push("/portal/login")
+      window.location.href = "/portal/login"
     }
   }
 
