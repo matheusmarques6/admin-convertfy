@@ -3,10 +3,23 @@ import { createClient } from "@/lib/supabase/server"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { formatCurrency } from "@/lib/utils"
+import type { Report } from "@/types"
 
 export const dynamic = "force-dynamic"
 
-async function getReports() {
+interface ReportWithRelations extends Report {
+  client?: {
+    id: string
+    name: string
+    company?: string
+  }
+  user?: {
+    id: string
+    name: string
+  }
+}
+
+async function getReports(): Promise<ReportWithRelations[]> {
   const supabase = await createClient()
 
   const { data: reports } = await supabase
