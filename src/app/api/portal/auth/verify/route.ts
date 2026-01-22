@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/server"
 
 function corsHeaders() {
   return {
@@ -16,7 +16,8 @@ export async function OPTIONS() {
 // POST - Verify if user is a portal user
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient()
+    // Use admin client to bypass RLS
+    const adminClient = createAdminClient()
     const body = await request.json()
 
     const { userId } = body
@@ -29,7 +30,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if this is a portal user
-    const { data: portalUser, error: portalError } = await supabase
+    const { data: portalUser, error: portalError } = await adminClient
       .from("client_portal_users")
       .select(`
         *,
@@ -39,6 +40,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (portalError || !portalUser) {
+      console.log("[Portal Auth Verify] Portal user not found for auth_user_id:", userId, "Error:", portalError)
       return NextResponse.json(
         { error: "Esta conta não tem acesso ao portal do cliente" },
         { status: 403, headers: corsHeaders() }
@@ -54,7 +56,7 @@ export async function POST(request: NextRequest) {
 
     // Update last login if not required to change password
     if (!portalUser.must_change_password) {
-      await supabase
+      await adminClient
         .from("client_portal_users")
         .update({
           last_login_at: new Date().toISOString(),
@@ -64,7 +66,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Log activity
-    await supabase.from("client_portal_activity").insert({
+    await adminClient.from("client_portal_activity").insert({
       portal_user_id: portalUser.id,
       client_id: portalUser.client_id,
       action: "login",

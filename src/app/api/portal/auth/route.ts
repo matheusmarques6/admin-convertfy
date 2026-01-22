@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 
 function corsHeaders() {
   return {
@@ -26,20 +26,24 @@ export async function GET() {
       )
     }
 
+    // Use admin client to bypass RLS when checking portal user
+    const adminClient = createAdminClient()
+
     // Check if this is a portal user
-    const { data: portalUser, error: portalError } = await supabase
+    const { data: portalUser, error: portalError } = await adminClient
       .from("client_portal_users")
       .select(`
         *,
-        client:clients(id, name, company, email, status),
-        notification_preferences:client_notification_preferences(*)
+        client:clients(id, name, company, email, status)
       `)
       .eq("auth_user_id", user.id)
       .single()
 
     if (portalError || !portalUser) {
+      console.log("[Portal Auth] Portal user not found for auth_user_id:", user.id, "Error:", portalError)
+
       // Check if this is an admin user instead
-      const { data: profile } = await supabase
+      const { data: profile } = await adminClient
         .from("profiles")
         .select("role")
         .eq("id", user.id)
