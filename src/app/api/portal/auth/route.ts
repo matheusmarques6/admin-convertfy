@@ -39,25 +39,12 @@ export async function GET() {
       .eq("auth_user_id", user.id)
       .single()
 
+    // For portal auth endpoint, we ONLY check portal users
+    // Don't fall back to profiles table - this is specifically for the client portal
     if (portalError || !portalUser) {
       console.log("[Portal Auth] Portal user not found for auth_user_id:", user.id, "Error:", portalError)
-
-      // Check if this is an admin user instead
-      const { data: profile } = await adminClient
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .single()
-
-      if (profile) {
-        return NextResponse.json(
-          { authenticated: true, isAdmin: true, role: profile.role },
-          { headers: corsHeaders() }
-        )
-      }
-
       return NextResponse.json(
-        { authenticated: false, error: "Usuário não é do portal" },
+        { authenticated: false, error: "Esta conta não tem acesso ao portal do cliente" },
         { status: 403, headers: corsHeaders() }
       )
     }

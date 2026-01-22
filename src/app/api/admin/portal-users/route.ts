@@ -131,6 +131,7 @@ export async function POST(request: NextRequest) {
         name: body.name,
         phone: body.phone || null,
         is_primary: body.is_primary || false,
+        is_active: true, // Ensure user is active
         permissions: defaultPermissions,
         invited_by: user.id,
         email_verified_at: new Date().toISOString(),
