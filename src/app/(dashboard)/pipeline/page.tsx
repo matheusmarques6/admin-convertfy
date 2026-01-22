@@ -74,7 +74,7 @@ export default async function PipelinePage() {
     <div className="space-y-6 h-full flex flex-col">
       {/* Header */}
       <PipelineHeader
-        pipelines={data.pipelines}
+        pipelines={data.pipelines || []}
         currentPipeline={data.pipeline}
       />
 
@@ -82,8 +82,8 @@ export default async function PipelinePage() {
       <div className="flex-1 min-h-0">
         <Suspense fallback={<BoardSkeleton />}>
           <PipelineBoard
-            stages={data.stages}
-            deals={data.deals}
+            stages={data.stages || []}
+            deals={data.deals || []}
             pipelineId={data.pipeline?.id}
           />
         </Suspense>
