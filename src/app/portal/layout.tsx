@@ -127,9 +127,14 @@ export default function PortalLayout({
     )
   }
 
-  // If not authenticated, don't render anything (will redirect)
+  // If not authenticated, redirect to login
   if (!user) {
-    return null
+    router.push("/portal/login")
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+      </div>
+    )
   }
 
   return (

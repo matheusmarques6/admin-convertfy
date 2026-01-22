@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server"
 function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
   }
 }
@@ -182,5 +182,34 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("[Portal Auth] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+  }
+}
+
+// DELETE - Logout from portal
+export async function DELETE() {
+  try {
+    const supabase = await createClient()
+
+    // Sign out the user
+    const { error } = await supabase.auth.signOut()
+
+    if (error) {
+      console.error("[Portal Auth] Logout error:", error)
+      return NextResponse.json(
+        { error: "Erro ao fazer logout" },
+        { status: 500, headers: corsHeaders() }
+      )
+    }
+
+    return NextResponse.json(
+      { success: true, message: "Logout realizado com sucesso" },
+      { headers: corsHeaders() }
+    )
+  } catch (error) {
+    console.error("[Portal Auth] Logout error:", error)
+    return NextResponse.json(
+      { error: "Erro interno" },
+      { status: 500, headers: corsHeaders() }
+    )
   }
 }
