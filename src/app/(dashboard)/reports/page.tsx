@@ -8,15 +8,8 @@ import type { Report } from "@/types"
 export const dynamic = "force-dynamic"
 
 interface ReportWithRelations extends Report {
-  client?: {
-    id: string
-    name: string
-    company?: string
-  }
-  user?: {
-    id: string
-    name: string
-  }
+  client?: { id: string; name: string; company?: string } | null
+  user?: { id: string; name: string } | null
 }
 
 async function getReports(): Promise<ReportWithRelations[]> {

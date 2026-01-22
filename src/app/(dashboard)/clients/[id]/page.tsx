@@ -12,7 +12,9 @@ import { ClientContracts } from "@/components/clients/client-contracts"
 import { ClientMeetings } from "@/components/clients/client-meetings"
 import { ClientReports } from "@/components/clients/client-reports"
 import { ClientTimeline } from "@/components/clients/client-timeline"
-import { ClientPortalAccess } from "@/components/clients/client-portal-access"
+import { ClientStores } from "@/components/clients/client-stores"
+import { ClientKlaviyoReports } from "@/components/clients/client-klaviyo-reports"
+import { ClientPortalUsers } from "@/components/clients/client-portal-users"
 import { getInitials, getHealthScoreColor, getHealthScoreEmoji } from "@/lib/utils"
 
 export const dynamic = "force-dynamic"
@@ -132,6 +134,8 @@ export default async function ClientPage({
         <TabsList>
           <TabsTrigger value="overview">Visão Geral</TabsTrigger>
           <TabsTrigger value="financial">Financeiro</TabsTrigger>
+          <TabsTrigger value="stores">Lojas</TabsTrigger>
+          <TabsTrigger value="klaviyo">Klaviyo</TabsTrigger>
           <TabsTrigger value="contracts">Contratos</TabsTrigger>
           <TabsTrigger value="meetings">Reuniões</TabsTrigger>
           <TabsTrigger value="reports">Relatórios</TabsTrigger>
@@ -144,7 +148,15 @@ export default async function ClientPage({
         </TabsContent>
 
         <TabsContent value="financial">
-          <ClientFinancial invoices={client.invoices || []} />
+          <ClientFinancial clientId={client.id} clientName={client.name} />
+        </TabsContent>
+
+        <TabsContent value="stores">
+          <ClientStores clientId={client.id} clientName={client.name} />
+        </TabsContent>
+
+        <TabsContent value="klaviyo">
+          <ClientKlaviyoReports clientId={client.id} />
         </TabsContent>
 
         <TabsContent value="contracts">
@@ -156,11 +168,11 @@ export default async function ClientPage({
         </TabsContent>
 
         <TabsContent value="reports">
-          <ClientReports reports={client.reports || []} clientId={client.id} />
+          <ClientReports clientId={client.id} />
         </TabsContent>
 
         <TabsContent value="portal">
-          <ClientPortalAccess clientId={client.id} clientName={client.name} />
+          <ClientPortalUsers clientId={client.id} clientName={client.name} />
         </TabsContent>
 
         <TabsContent value="timeline">

@@ -3,10 +3,16 @@ import { createClient } from "@/lib/supabase/server"
 import { PipelineBoard } from "@/components/pipeline/pipeline-board"
 import { PipelineHeader } from "@/components/pipeline/pipeline-header"
 import { Skeleton } from "@/components/ui/skeleton"
+import type { Pipeline, PipelineStage, Deal } from "@/types"
 
 export const dynamic = "force-dynamic"
 
-async function getPipelineData() {
+async function getPipelineData(): Promise<{
+  pipelines: Pipeline[]
+  pipeline: Pipeline | null
+  stages: PipelineStage[]
+  deals: Deal[]
+}> {
   const supabase = await createClient()
 
   // Fetch pipelines
@@ -16,10 +22,10 @@ async function getPipelineData() {
     .order("created_at", { ascending: true })
 
   // Get default or first pipeline
-  const defaultPipeline = pipelines?.find((p) => p.is_default) || pipelines?.[0]
+  const defaultPipeline = pipelines?.find((p: Pipeline) => p.is_default) || pipelines?.[0]
 
   if (!defaultPipeline) {
-    return { pipeline: null, stages: [], deals: [] }
+    return { pipelines: [], pipeline: null, stages: [], deals: [] }
   }
 
   // Fetch stages

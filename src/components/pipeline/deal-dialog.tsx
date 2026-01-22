@@ -107,6 +107,7 @@ export function DealDialog({
         setSelectedStageId(stageId || "")
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, deal, stageId, reset])
 
   async function loadData() {

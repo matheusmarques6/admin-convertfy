@@ -44,6 +44,17 @@ export interface Client {
   phone?: string
   company?: string
   website?: string
+  cpf_cnpj?: string
+  asaas_customer_id?: string
+  address?: {
+    street?: string
+    number?: string
+    complement?: string
+    neighborhood?: string
+    postal_code?: string
+    city?: string
+    state?: string
+  }
   status: ClientStatus
   health_score: number
   tags: string[]
@@ -286,6 +297,7 @@ export type IntegrationType =
   | "instagram"
   | "whatsapp"
   | "google_calendar"
+  | "wise"
 
 export interface Integration {
   id: string
@@ -387,3 +399,228 @@ export interface PaginatedResponse<T> {
   per_page: number
   total_pages: number
 }
+
+// Campaign Types
+export type CampaignStatus = "draft" | "scheduled" | "sent" | "cancelled"
+export type CampaignChannel = "email" | "sms" | "push" | "whatsapp"
+export type CampaignType = "promotional" | "newsletter" | "transactional" | "automation" | "seasonal" | "launch" | "other"
+
+export interface Campaign {
+  id: string
+  store_id: string
+  client_id: string
+  name: string
+  description?: string
+  scheduled_date: string // YYYY-MM-DD
+  scheduled_time?: string // HH:MM
+  send_datetime?: string
+  channel: CampaignChannel
+  campaign_type: CampaignType
+  status: CampaignStatus
+  subject_line?: string
+  preview_text?: string
+  template_id?: string
+  segment_id?: string
+  segment_name?: string
+  estimated_recipients?: number
+  recipients?: number
+  delivered?: number
+  opened?: number
+  clicked?: number
+  converted?: number
+  revenue?: number
+  klaviyo_campaign_id?: string
+  external_id?: string
+  tags: string[]
+  color: string
+  notes?: string
+  created_by?: string
+  created_at: string
+  updated_at: string
+  // Joined data
+  store?: ClientStore
+  client?: Client
+}
+
+export interface CampaignFormData {
+  store_id: string
+  client_id: string
+  name: string
+  description?: string
+  scheduled_date: string
+  scheduled_time?: string
+  channel: CampaignChannel
+  campaign_type: CampaignType
+  status: CampaignStatus
+  subject_line?: string
+  preview_text?: string
+  segment_name?: string
+  estimated_recipients?: number
+  tags?: string[]
+  color?: string
+  notes?: string
+}
+
+export interface CalendarCampaign {
+  id: string
+  name: string
+  scheduled_date: string
+  scheduled_time?: string
+  channel: CampaignChannel
+  campaign_type: CampaignType
+  status: CampaignStatus
+  color: string
+  store_id: string
+  store_name: string
+  client_name: string
+}
+
+// ===========================================
+// Client Portal Types
+// ===========================================
+
+export interface ClientPortalPermissions {
+  view_reports: boolean
+  view_invoices: boolean
+  view_campaigns: boolean
+  edit_profile: boolean
+  manage_stores: boolean
+}
+
+export interface ClientPortalUser {
+  id: string
+  client_id: string
+  auth_user_id?: string
+  email: string
+  name: string
+  phone?: string
+  avatar_url?: string
+  is_active: boolean
+  is_primary: boolean
+  permissions: ClientPortalPermissions
+  last_login_at?: string
+  login_count: number
+  email_verified_at?: string
+  invited_by?: string
+  invited_at: string
+  created_at: string
+  updated_at: string
+  // Joined data
+  client?: Client
+}
+
+export interface ClientPortalSession {
+  id: string
+  portal_user_id: string
+  session_token: string
+  user_agent?: string
+  ip_address?: string
+  expires_at: string
+  revoked_at?: string
+  created_at: string
+}
+
+export interface ClientPortalActivity {
+  id: string
+  portal_user_id: string
+  client_id: string
+  action: string
+  resource_type?: string
+  resource_id?: string
+  metadata?: Record<string, unknown>
+  ip_address?: string
+  user_agent?: string
+  created_at: string
+}
+
+export interface ClientNotificationPreferences {
+  id: string
+  portal_user_id: string
+  email_report_weekly: boolean
+  email_report_monthly: boolean
+  email_invoice_reminder: boolean
+  email_invoice_paid: boolean
+  email_campaign_sent: boolean
+  email_performance_alerts: boolean
+  whatsapp_enabled: boolean
+  whatsapp_number?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface ClientReportToken {
+  id: string
+  client_id: string
+  store_id?: string
+  token: string
+  expires_at?: string
+  max_views?: number
+  view_count: number
+  report_type: "full" | "summary" | "custom"
+  allowed_sections?: string[]
+  created_by?: string
+  last_viewed_at?: string
+  created_at: string
+}
+
+// Form data for creating portal users
+export interface ClientPortalUserFormData {
+  client_id: string
+  email: string
+  name: string
+  phone?: string
+  is_primary?: boolean
+  permissions?: Partial<ClientPortalPermissions>
+  send_invitation?: boolean
+}
+
+// Portal dashboard data
+export interface PortalDashboardData {
+  client: Client
+  stores: ClientStore[]
+  recentCampaigns: Campaign[]
+  upcomingInvoices: Invoice[]
+  pendingInvoices: Invoice[]
+  totalRevenue: number
+  totalOrders: number
+  totalLeads: number
+  engagedLeads: number
+  lastUpdated: string
+}
+
+// Portal store report
+export interface PortalStoreReport {
+  store: ClientStore
+  klaviyo?: {
+    totalLeads: number
+    engagedLeads: number
+    engagementRate: number
+    totalRevenue: number
+    campaignRevenue: number
+    flowRevenue: number
+    emailsSent: number
+    openRate: number
+    clickRate: number
+    lists: Array<{ name: string; count: number }>
+    recentCampaigns: Array<{
+      name: string
+      status: string
+      revenue: number
+      openRate: number
+      clickRate: number
+    }>
+  }
+  shopify?: {
+    totalOrders: number
+    totalRevenue: number
+    averageOrderValue: number
+    recurringCustomerRate: number
+    topProducts: Array<{
+      name: string
+      quantity: number
+      revenue: number
+    }>
+  }
+  lastSyncedAt?: string
+}
+

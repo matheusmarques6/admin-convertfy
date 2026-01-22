@@ -1,0 +1,234 @@
+import { AsaasCustomer, AsaasPayment, AsaasPaymentStatus } from "./types"
+
+const SANDBOX_URL = "https://sandbox.asaas.com/api/v3"
+const PRODUCTION_URL = "https://api.asaas.com/v3"
+
+export interface AsaasConfig {
+  apiKey: string
+  environment?: "sandbox" | "production"
+}
+
+export class AsaasService {
+  private apiKey: string
+  private baseUrl: string
+
+  constructor(config: AsaasConfig) {
+    this.apiKey = config.apiKey
+    this.baseUrl = config.environment === "production" ? PRODUCTION_URL : SANDBOX_URL
+  }
+
+  private async request<T>(
+    endpoint: string,
+    options: RequestInit = {}
+  ): Promise<T> {
+    const response = await fetch(`${this.baseUrl}${endpoint}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        access_token: this.apiKey,
+        ...options.headers,
+      },
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}))
+      throw new Error(error.errors?.[0]?.description || `Asaas API error: ${response.status}`)
+    }
+
+    return response.json()
+  }
+
+  // Test connection
+  async testConnection(): Promise<{ success: boolean; error?: string }> {
+    try {
+      await this.request("/myAccount")
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : "Connection failed" }
+    }
+  }
+
+  // Customers
+  async createCustomer(customer: Omit<AsaasCustomer, "id">): Promise<AsaasCustomer> {
+    return this.request("/customers", {
+      method: "POST",
+      body: JSON.stringify(customer),
+    })
+  }
+
+  async getCustomer(id: string): Promise<AsaasCustomer> {
+    return this.request(`/customers/${id}`)
+  }
+
+  async getCustomerByExternalReference(reference: string): Promise<{ data: AsaasCustomer[] }> {
+    return this.request(`/customers?externalReference=${reference}`)
+  }
+
+  async updateCustomer(id: string, data: Partial<AsaasCustomer>): Promise<AsaasCustomer> {
+    return this.request(`/customers/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  }
+
+  async listCustomers(params?: {
+    offset?: number
+    limit?: number
+    email?: string
+    cpfCnpj?: string
+  }): Promise<{ data: AsaasCustomer[]; totalCount: number }> {
+    const queryParams = new URLSearchParams()
+    if (params?.offset) queryParams.set("offset", params.offset.toString())
+    if (params?.limit) queryParams.set("limit", params.limit.toString())
+    if (params?.email) queryParams.set("email", params.email)
+    if (params?.cpfCnpj) queryParams.set("cpfCnpj", params.cpfCnpj)
+
+    return this.request(`/customers?${queryParams.toString()}`)
+  }
+
+  // Payments
+  async createPayment(payment: {
+    customer: string
+    billingType: "BOLETO" | "CREDIT_CARD" | "PIX" | "UNDEFINED"
+    value: number
+    dueDate: string
+    description?: string
+    externalReference?: string
+    postalService?: boolean
+  }): Promise<AsaasPayment> {
+    return this.request("/payments", {
+      method: "POST",
+      body: JSON.stringify(payment),
+    })
+  }
+
+  async getPayment(id: string): Promise<AsaasPayment> {
+    return this.request(`/payments/${id}`)
+  }
+
+  async listPayments(params?: {
+    customer?: string
+    billingType?: string
+    status?: AsaasPaymentStatus
+    offset?: number
+    limit?: number
+    dateCreated?: string
+    paymentDate?: string
+  }): Promise<{ data: AsaasPayment[]; totalCount: number }> {
+    const queryParams = new URLSearchParams()
+    if (params?.customer) queryParams.set("customer", params.customer)
+    if (params?.billingType) queryParams.set("billingType", params.billingType)
+    if (params?.status) queryParams.set("status", params.status)
+    if (params?.offset) queryParams.set("offset", params.offset.toString())
+    if (params?.limit) queryParams.set("limit", params.limit.toString())
+
+    return this.request(`/payments?${queryParams.toString()}`)
+  }
+
+  async getPaymentPixQrCode(id: string): Promise<{
+    encodedImage: string
+    payload: string
+    expirationDate: string
+  }> {
+    return this.request(`/payments/${id}/pixQrCode`)
+  }
+
+  async getPaymentBankSlip(id: string): Promise<{ url: string }> {
+    return this.request(`/payments/${id}/identificationField`)
+  }
+
+  async cancelPayment(id: string): Promise<AsaasPayment> {
+    return this.request(`/payments/${id}`, { method: "DELETE" })
+  }
+
+  async refundPayment(id: string, value?: number): Promise<AsaasPayment> {
+    return this.request(`/payments/${id}/refund`, {
+      method: "POST",
+      body: value ? JSON.stringify({ value }) : undefined,
+    })
+  }
+
+  // Subscriptions
+  async createSubscription(subscription: {
+    customer: string
+    billingType: "BOLETO" | "CREDIT_CARD" | "PIX" | "UNDEFINED"
+    value: number
+    nextDueDate: string
+    cycle: "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "BIMONTHLY" | "QUARTERLY" | "SEMIANNUALLY" | "YEARLY"
+    description?: string
+    externalReference?: string
+  }): Promise<{ id: string; customer: string; value: number; nextDueDate: string; status: string }> {
+    return this.request("/subscriptions", {
+      method: "POST",
+      body: JSON.stringify(subscription),
+    })
+  }
+
+  async getSubscription(id: string): Promise<{ id: string; customer: string; value: number; status: string }> {
+    return this.request(`/subscriptions/${id}`)
+  }
+
+  async cancelSubscription(id: string): Promise<{ id: string; deleted: boolean }> {
+    return this.request(`/subscriptions/${id}`, { method: "DELETE" })
+  }
+
+  // Webhook validation
+  static validateWebhook(
+    payload: string,
+    signature: string,
+    secret: string
+  ): boolean {
+    // Asaas uses a simple token comparison
+    return signature === secret
+  }
+
+  // Account info
+  async getAccountInfo(): Promise<{
+    id: string
+    name: string
+    email: string
+    loginEmail: string
+    cpfCnpj: string
+    company: string
+    walletBalance: number
+  }> {
+    return this.request("/myAccount")
+  }
+
+  async getBalance(): Promise<{ balance: number }> {
+    return this.request("/finance/balance")
+  }
+}
+
+// Factory function
+export function createAsaasService(credentials: Record<string, string>): AsaasService {
+  if (!credentials.api_key) {
+    throw new Error("Asaas API Key is required")
+  }
+
+  return new AsaasService({
+    apiKey: credentials.api_key,
+    environment: (credentials.environment as "sandbox" | "production") || "sandbox",
+  })
+}
+
+// Map Asaas status to internal status
+export function mapAsaasStatusToInternal(status: AsaasPaymentStatus): "pending" | "paid" | "overdue" | "cancelled" | "refunded" {
+  const statusMap: Record<AsaasPaymentStatus, "pending" | "paid" | "overdue" | "cancelled" | "refunded"> = {
+    PENDING: "pending",
+    RECEIVED: "paid",
+    CONFIRMED: "paid",
+    OVERDUE: "overdue",
+    REFUNDED: "refunded",
+    RECEIVED_IN_CASH: "paid",
+    REFUND_REQUESTED: "pending",
+    REFUND_IN_PROGRESS: "pending",
+    CHARGEBACK_REQUESTED: "pending",
+    CHARGEBACK_DISPUTE: "pending",
+    AWAITING_CHARGEBACK_REVERSAL: "pending",
+    DUNNING_REQUESTED: "overdue",
+    DUNNING_RECEIVED: "paid",
+    AWAITING_RISK_ANALYSIS: "pending",
+  }
+  return statusMap[status]
+}
