@@ -84,9 +84,9 @@ export default function ChangePasswordPage() {
 
       setSuccess(true)
 
-      // Redirect to dashboard after short delay
+      // Redirect to dashboard after short delay with hard navigation
       setTimeout(() => {
-        router.push("/portal/dashboard")
+        window.location.href = "/portal/dashboard"
       }, 2000)
     } catch (err) {
       console.error("Change password error:", err)

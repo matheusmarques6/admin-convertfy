@@ -12,6 +12,7 @@ export const config = {
      * - Root path
      * - Protected routes (dashboard, clients, etc.)
      * - Auth routes (login, register)
+     * - Portal routes (client portal)
      * Excludes: static files, api routes, images, etc.
      */
     "/",
@@ -24,5 +25,6 @@ export const config = {
     "/tools/:path*",
     "/login",
     "/register",
+    "/portal/:path*",
   ],
 }

@@ -36,11 +36,11 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
-  // Protected routes check
+  // Protected routes check (admin)
   const protectedPaths = ["/dashboard", "/clients", "/pipeline", "/automations", "/settings", "/reports", "/tools"]
   const isProtectedPath = protectedPaths.some(path => request.nextUrl.pathname.startsWith(path))
 
-  // Auth routes check
+  // Auth routes check (admin)
   const authPaths = ["/login", "/register"]
   const isAuthPath = authPaths.some(path => request.nextUrl.pathname.startsWith(path))
 
@@ -49,12 +49,19 @@ export async function updateSession(request: NextRequest) {
   // Change password route - requires authentication but is not a dashboard route
   const isChangePasswordPath = request.nextUrl.pathname.startsWith("/change-password")
 
-  // Only call getUser() when necessary (protected routes, auth routes, root, or change-password)
-  if (isProtectedPath || isAuthPath || isRootPath || isChangePasswordPath) {
+  // Portal routes check
+  const isPortalPath = request.nextUrl.pathname.startsWith("/portal")
+  const isPortalLoginPath = request.nextUrl.pathname === "/portal/login"
+  const isPortalChangePasswordPath = request.nextUrl.pathname === "/portal/change-password"
+  const isPortalProtectedPath = isPortalPath && !isPortalLoginPath
+
+  // Only call getUser() when necessary
+  if (isProtectedPath || isAuthPath || isRootPath || isChangePasswordPath || isPortalPath) {
     try {
       // Use getUser() with a timeout to prevent long waits
       const { data: { user } } = await supabase.auth.getUser()
 
+      // Admin protected routes
       if (isProtectedPath && !user) {
         return NextResponse.redirect(new URL("/login", request.url))
       }
@@ -64,16 +71,22 @@ export async function updateSession(request: NextRequest) {
         return NextResponse.redirect(new URL("/login", request.url))
       }
 
+      // Admin auth routes - redirect to dashboard if already logged in
       if (isAuthPath && user) {
         return NextResponse.redirect(new URL("/dashboard", request.url))
       }
 
+      // Root path handling
       if (isRootPath) {
         if (user) {
           return NextResponse.redirect(new URL("/dashboard", request.url))
         }
         return NextResponse.redirect(new URL("/login", request.url))
       }
+
+      // Portal routes - let the portal layout handle auth checking
+      // This ensures the session cookies are refreshed for portal routes
+      // The portal has its own auth logic that checks if user is a portal user
     } catch (error) {
       // On error, allow the request to continue
       // The page itself can handle auth state

@@ -39,13 +39,14 @@ export default function PortalLoginPage() {
       }
 
       // Check if password change is required
+      // Use window.location for hard navigation to ensure cookies are sent
       if (data.mustChangePassword) {
-        router.push("/portal/change-password")
+        window.location.href = "/portal/change-password"
         return
       }
 
-      // Redirect to dashboard
-      router.push("/portal/dashboard")
+      // Redirect to dashboard with hard navigation
+      window.location.href = "/portal/dashboard"
     } catch (err) {
       console.error("Login error:", err)
       setError("Erro de conexão. Tente novamente.")
