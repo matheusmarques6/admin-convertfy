@@ -396,6 +396,19 @@ function MiniBarChart({ value, max, color }: { value: number; max: number; color
   )
 }
 
+// Loading overlay for sections
+function SectionLoadingOverlay({ show }: { show: boolean }) {
+  if (!show) return null
+  return (
+    <div className="absolute inset-0 bg-zinc-900/80 backdrop-blur-sm rounded-xl flex items-center justify-center z-10">
+      <div className="flex items-center gap-2 text-zinc-400">
+        <RefreshCw className="h-4 w-4 animate-spin" />
+        <span className="text-sm">Atualizando...</span>
+      </div>
+    </div>
+  )
+}
+
 // Gráfico de linha simples (sparkline)
 function SimpleLineChart({ data, color = "emerald" }: { data: number[]; color?: string }) {
   if (!data || data.length === 0) return null
@@ -453,9 +466,12 @@ export default function PortalDashboardPage() {
   const [error, setError] = useState<string | null>(null)
   const [selectedStoreId, setSelectedStoreId] = useState<string>("all")
   const [period, setPeriod] = useState("30d")
+  const [loadingMetrics, setLoadingMetrics] = useState(false)
 
-  const fetchDashboard = useCallback(async (showRefresh = false) => {
+  const fetchDashboard = useCallback(async (showRefresh = false, isMetricsOnly = false) => {
     if (showRefresh) setRefreshing(true)
+    if (isMetricsOnly) setLoadingMetrics(true)
+
     try {
       const params = new URLSearchParams({
         period,
@@ -475,6 +491,7 @@ export default function PortalDashboardPage() {
     } finally {
       setLoading(false)
       setRefreshing(false)
+      setLoadingMetrics(false)
     }
   }, [period, selectedStoreId])
 
@@ -482,28 +499,54 @@ export default function PortalDashboardPage() {
     fetchDashboard()
   }, [fetchDashboard])
 
-  // Loading state
+  // Loading state - show minimal skeleton with dashboard structure
   if (loading) {
     return (
       <div className="min-h-screen bg-black p-6 space-y-6">
+        {/* Header skeleton with visible structure */}
         <div className="flex items-center justify-between">
-          <Skeleton className="h-8 w-48 bg-zinc-900" />
+          <div>
+            <h1 className="text-2xl font-bold text-white">Dashboard</h1>
+            <p className="text-sm text-zinc-500">Carregando dados...</p>
+          </div>
           <div className="flex gap-3">
             <Skeleton className="h-10 w-36 bg-zinc-900" />
             <Skeleton className="h-10 w-32 bg-zinc-900" />
           </div>
         </div>
-        <Skeleton className="h-32 rounded-xl bg-zinc-900" />
-        <div className="grid grid-cols-5 gap-4">
+
+        {/* Hero skeleton with loading indicator */}
+        <div className="rounded-xl bg-gradient-to-r from-emerald-950/40 via-emerald-900/20 to-zinc-900 border border-emerald-500/10 p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <RefreshCw className="h-5 w-5 text-emerald-400 animate-spin" />
+            <span className="text-emerald-300/70">Carregando métricas...</span>
+          </div>
+          <Skeleton className="h-10 w-48 bg-zinc-800/50 mb-2" />
+          <Skeleton className="h-4 w-32 bg-zinc-800/50" />
+        </div>
+
+        {/* Cards skeleton */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           {[1, 2, 3, 4, 5].map((i) => (
-            <Skeleton key={i} className="h-24 rounded-xl bg-zinc-900" />
+            <div key={i} className="rounded-xl bg-zinc-900/50 border border-zinc-800 p-4">
+              <Skeleton className="h-4 w-16 bg-zinc-800 mb-2" />
+              <Skeleton className="h-8 w-24 bg-zinc-800" />
+            </div>
           ))}
         </div>
-        <Skeleton className="h-12 rounded-xl bg-zinc-900" />
-        <div className="grid grid-cols-3 gap-6">
-          <Skeleton className="h-64 rounded-xl bg-zinc-900" />
-          <Skeleton className="h-64 rounded-xl bg-zinc-900" />
-          <Skeleton className="h-64 rounded-xl bg-zinc-900" />
+
+        {/* Main sections skeleton */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="rounded-xl bg-zinc-900 border border-zinc-800 p-5 h-64">
+              <Skeleton className="h-5 w-24 bg-zinc-800 mb-4" />
+              <div className="space-y-3">
+                {[1, 2, 3, 4].map((j) => (
+                  <Skeleton key={j} className="h-8 w-full bg-zinc-800/50" />
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     )
@@ -557,9 +600,17 @@ export default function PortalDashboardPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-white">Dashboard</h1>
-            {data.dateRange && (
-              <p className="text-sm text-zinc-500">{formatDateRange(data.dateRange.start, data.dateRange.end)}</p>
-            )}
+            <div className="flex items-center gap-2">
+              {data.dateRange && (
+                <p className="text-sm text-zinc-500">{formatDateRange(data.dateRange.start, data.dateRange.end)}</p>
+              )}
+              {refreshing && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 text-xs">
+                  <RefreshCw className="h-3 w-3 animate-spin" />
+                  Atualizando...
+                </span>
+              )}
+            </div>
           </div>
 
           <div className="flex items-center gap-3">
@@ -600,6 +651,7 @@ export default function PortalDashboardPage() {
               onClick={() => fetchDashboard(true)}
               disabled={refreshing}
               className="bg-zinc-900 border-zinc-800 text-white hover:bg-zinc-800"
+              title="Atualizar dados"
             >
               <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
             </Button>

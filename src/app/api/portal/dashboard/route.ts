@@ -1,6 +1,16 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 
+// Cache TTL in minutes based on period
+const CACHE_TTL: Record<string, number> = {
+  "1d": 5,    // 5 minutes for daily data
+  "7d": 15,   // 15 minutes for weekly data
+  "15d": 20,  // 20 minutes for bi-weekly data
+  "30d": 30,  // 30 minutes for monthly data
+  "90d": 60,  // 1 hour for quarterly data
+  "12m": 120, // 2 hours for yearly data
+}
+
 function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
@@ -195,7 +205,52 @@ export async function GET(request: NextRequest) {
       lastUpdated: new Date().toISOString(),
     }
 
-    // Helper function to fetch store data
+    // Helper to get cached data
+    const getCachedData = async (storeId: string, cacheType: string) => {
+      try {
+        const { data } = await adminClient
+          .from("dashboard_cache")
+          .select("data, expires_at")
+          .eq("store_id", storeId)
+          .eq("cache_type", cacheType)
+          .eq("period", period)
+          .single()
+
+        if (data && new Date(data.expires_at) > new Date()) {
+          console.log(`[Cache HIT] ${cacheType} for store ${storeId}`)
+          return data.data
+        }
+        console.log(`[Cache MISS] ${cacheType} for store ${storeId}`)
+        return null
+      } catch {
+        return null
+      }
+    }
+
+    // Helper to save data to cache
+    const saveToCache = async (storeId: string, cacheType: string, data: Record<string, unknown>) => {
+      try {
+        const ttlMinutes = CACHE_TTL[period] || 30
+        const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000).toISOString()
+
+        await adminClient
+          .from("dashboard_cache")
+          .upsert({
+            store_id: storeId,
+            cache_type: cacheType,
+            period,
+            data,
+            expires_at: expiresAt,
+          }, {
+            onConflict: "store_id,cache_type,period"
+          })
+        console.log(`[Cache SAVE] ${cacheType} for store ${storeId}, TTL: ${ttlMinutes}min`)
+      } catch (error) {
+        console.error(`[Cache ERROR] Failed to save ${cacheType} for store ${storeId}:`, error)
+      }
+    }
+
+    // Helper function to fetch store data with caching
     const fetchStoreData = async (store: typeof stores[0], baseUrl: string, cookieHeader: string) => {
       const storeData: {
         klaviyo: Record<string, unknown> | null
@@ -205,38 +260,54 @@ export async function GET(request: NextRequest) {
       // Fetch Klaviyo data if configured
       const hasKlaviyo = !!(store.klaviyo_private_key || store.klaviyo_api_key)
       if (hasKlaviyo) {
-        try {
-          const klaviyoResponse = await fetch(
-            `${baseUrl}/api/integrations/klaviyo/report?store_id=${store.id}&period=${period}`,
-            { headers: { Cookie: cookieHeader } }
-          )
-          if (klaviyoResponse.ok) {
-            const data = await klaviyoResponse.json()
-            if (data.success && data.connected) {
-              storeData.klaviyo = data
+        // Try cache first
+        const cachedKlaviyo = await getCachedData(store.id, "klaviyo")
+        if (cachedKlaviyo) {
+          storeData.klaviyo = cachedKlaviyo as Record<string, unknown>
+        } else {
+          try {
+            const klaviyoResponse = await fetch(
+              `${baseUrl}/api/integrations/klaviyo/report?store_id=${store.id}&period=${period}`,
+              { headers: { Cookie: cookieHeader } }
+            )
+            if (klaviyoResponse.ok) {
+              const data = await klaviyoResponse.json()
+              if (data.success && data.connected) {
+                storeData.klaviyo = data
+                // Save to cache in background
+                saveToCache(store.id, "klaviyo", data)
+              }
             }
+          } catch (error) {
+            console.error(`[Portal Dashboard] Klaviyo fetch error for store ${store.id}:`, error)
           }
-        } catch (error) {
-          console.error(`[Portal Dashboard] Klaviyo fetch error for store ${store.id}:`, error)
         }
       }
 
       // Fetch Shopify data if configured
       const hasShopify = !!(store.shopify_access_token && store.shopify_store_domain)
       if (hasShopify) {
-        try {
-          const shopifyResponse = await fetch(
-            `${baseUrl}/api/integrations/shopify/report?store_id=${store.id}&period=${period}`,
-            { headers: { Cookie: cookieHeader } }
-          )
-          if (shopifyResponse.ok) {
-            const data = await shopifyResponse.json()
-            if (data.success && data.connected) {
-              storeData.shopify = data
+        // Try cache first
+        const cachedShopify = await getCachedData(store.id, "shopify")
+        if (cachedShopify) {
+          storeData.shopify = cachedShopify as Record<string, unknown>
+        } else {
+          try {
+            const shopifyResponse = await fetch(
+              `${baseUrl}/api/integrations/shopify/report?store_id=${store.id}&period=${period}`,
+              { headers: { Cookie: cookieHeader } }
+            )
+            if (shopifyResponse.ok) {
+              const data = await shopifyResponse.json()
+              if (data.success && data.connected) {
+                storeData.shopify = data
+                // Save to cache in background
+                saveToCache(store.id, "shopify", data)
+              }
             }
+          } catch (error) {
+            console.error(`[Portal Dashboard] Shopify fetch error for store ${store.id}:`, error)
           }
-        } catch (error) {
-          console.error(`[Portal Dashboard] Shopify fetch error for store ${store.id}:`, error)
         }
       }
 
