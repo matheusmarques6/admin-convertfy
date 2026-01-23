@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 
 function corsHeaders() {
   return {
@@ -17,6 +17,8 @@ export async function OPTIONS() {
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
+    const adminClient = createAdminClient()
+
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
@@ -27,7 +29,8 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get("status")
     const limit = parseInt(searchParams.get("limit") || "50")
 
-    let query = supabase
+    // Use admin client to bypass RLS
+    let query = adminClient
       .from("campaign_batches")
       .select(`
         *,
@@ -52,11 +55,11 @@ export async function GET(request: NextRequest) {
     }
 
     // Enrich with store names
-    const storeIds = Array.from(new Set(batches?.flatMap(b => b.store_ids) || []))
+    const storeIds = Array.from(new Set(batches?.flatMap(b => b.store_ids || []) || []))
 
     let storeNames: Record<string, string> = {}
     if (storeIds.length > 0) {
-      const { data: stores } = await supabase
+      const { data: stores } = await adminClient
         .from("client_stores")
         .select("id, store_name")
         .in("id", storeIds)
@@ -67,7 +70,7 @@ export async function GET(request: NextRequest) {
     // Add store names to each batch
     const enrichedBatches = batches?.map(batch => ({
       ...batch,
-      store_names: batch.store_ids.map((id: string) => storeNames[id] || "Loja desconhecida"),
+      store_names: (batch.store_ids || []).map((id: string) => storeNames[id] || "Loja desconhecida"),
     }))
 
     return NextResponse.json({
@@ -84,10 +87,23 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
+    const adminClient = createAdminClient()
+
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+    }
+
+    // Verify user is admin
+    const { data: profile } = await adminClient
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single()
+
+    if (!profile || profile.role !== "admin") {
+      return NextResponse.json({ error: "Acesso negado - apenas admins" }, { status: 403, headers: corsHeaders() })
     }
 
     const body = await request.json()
@@ -150,8 +166,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Verify all store_ids exist
-    const { data: validStores, error: storeError } = await supabase
+    // Verify all store_ids exist (using admin client to bypass RLS)
+    const { data: validStores, error: storeError } = await adminClient
       .from("client_stores")
       .select("id")
       .in("id", store_ids)
@@ -163,8 +179,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Create the campaign batch
-    const { data: newBatch, error: insertError } = await supabase
+    // Create the campaign batch (using admin client to bypass RLS)
+    const { data: newBatch, error: insertError } = await adminClient
       .from("campaign_batches")
       .insert({
         name: name.trim(),
@@ -182,10 +198,12 @@ export async function POST(request: NextRequest) {
     if (insertError) {
       console.error("[Campaign Batches] Error creating:", insertError)
       return NextResponse.json(
-        { error: "Erro ao criar campanha" },
+        { error: "Erro ao criar campanha: " + insertError.message },
         { status: 500, headers: corsHeaders() }
       )
     }
+
+    console.log("[Campaign Batches] Created:", newBatch)
 
     return NextResponse.json({
       success: true,
