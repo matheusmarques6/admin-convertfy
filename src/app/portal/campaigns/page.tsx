@@ -536,7 +536,7 @@ export default function PortalCampaignsPage() {
       days.push(
         <div
           key={`empty-${i}`}
-          className="min-h-[120px] bg-zinc-900/30 border border-zinc-800/50"
+          className="min-h-[120px] bg-black/50 border border-zinc-800/30"
         />
       )
     }
@@ -552,9 +552,9 @@ export default function PortalCampaignsPage() {
           key={day}
           onClick={() => handleDayClick(date)}
           className={`
-            min-h-[120px] border border-zinc-800/50 p-2 cursor-pointer transition-all
-            hover:bg-zinc-800/50
-            ${dayIsToday ? "bg-emerald-500/10 border-emerald-500/40" : "bg-zinc-900/50"}
+            min-h-[120px] border border-zinc-800/30 p-2 cursor-pointer transition-all
+            hover:bg-zinc-900/50
+            ${dayIsToday ? "bg-emerald-500/10 border-emerald-500/40" : "bg-black"}
           `}
         >
           <div className="flex items-center justify-between mb-2">
@@ -606,7 +606,7 @@ export default function PortalCampaignsPage() {
                 min-h-[400px] rounded-xl border p-3
                 ${dayIsToday
                   ? "bg-emerald-500/10 border-emerald-500/40"
-                  : "bg-zinc-900/50 border-zinc-800/50"
+                  : "bg-black border-zinc-800/50"
                 }
               `}
             >
@@ -899,11 +899,11 @@ export default function PortalCampaignsPage() {
         </div>
 
         {/* ========== CALENDAR ========== */}
-        <div className="rounded-xl bg-zinc-900 border border-zinc-800 overflow-hidden">
+        <div className="rounded-xl bg-black border border-zinc-800 overflow-hidden">
           {viewMode === "month" ? (
             <>
               {/* Week days header */}
-              <div className="grid grid-cols-7 bg-zinc-900">
+              <div className="grid grid-cols-7 bg-black">
                 {WEEK_DAYS.map((day, index) => (
                   <div
                     key={day}
