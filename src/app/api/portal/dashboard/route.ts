@@ -530,6 +530,7 @@ export async function GET(request: NextRequest) {
           }>()
           shopifyDataList.forEach((s) => {
             (s.topCustomers || []).forEach((c) => {
+              if (!c.email) return // Skip customers without email
               const email = c.email.toLowerCase()
               const existing = customerMap.get(email)
               if (existing) {
