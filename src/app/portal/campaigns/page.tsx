@@ -377,7 +377,10 @@ export default function PortalCampaignsPage() {
   const startingDayOfWeek = firstDayOfMonth.getDay()
 
   // Week calculations - memoized to prevent infinite loops
+  // We use currentDate.getTime() as a primitive dependency to avoid object comparison issues
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const weekStart = useMemo(() => getStartOfWeek(currentDate), [currentDate.getTime()])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const weekEnd = useMemo(() => getEndOfWeek(currentDate), [currentDate.getTime()])
   const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart])
 

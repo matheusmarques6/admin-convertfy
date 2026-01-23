@@ -15,8 +15,6 @@ import {
   ExternalLink,
   QrCode,
   Copy,
-  Wallet,
-  CreditCard,
   Receipt,
   ArrowRight,
   Banknote,
@@ -403,6 +401,7 @@ function PixModal({
           {/* QR Code */}
           <div className="flex justify-center">
             <div className="bg-white p-4 rounded-xl">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={`data:image/png;base64,${invoice.pix_qr_code.encodedImage}`}
                 alt="QR Code PIX"
@@ -492,6 +491,7 @@ export default function PortalInvoicesPage() {
 
   useEffect(() => {
     fetchInvoices()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter])
 
   // Filter invoices by search
