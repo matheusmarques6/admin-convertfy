@@ -84,12 +84,6 @@ interface Stats {
   totalClicks: number
 }
 
-interface CampaignsResponse {
-  campaigns: Campaign[]
-  stores: StoreOption[]
-  stats: Stats
-}
-
 // ============================================
 // CONSTANTS
 // ============================================

@@ -2,12 +2,10 @@
 
 import { useState, useEffect, useCallback } from "react"
 import {
-  X,
   Mail,
   MessageSquare,
   Bell,
   Calendar,
-  Clock,
   Store,
   FileText,
   Loader2,

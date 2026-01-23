@@ -396,19 +396,6 @@ function MiniBarChart({ value, max, color }: { value: number; max: number; color
   )
 }
 
-// Loading overlay for sections
-function SectionLoadingOverlay({ show }: { show: boolean }) {
-  if (!show) return null
-  return (
-    <div className="absolute inset-0 bg-zinc-900/80 backdrop-blur-sm rounded-xl flex items-center justify-center z-10">
-      <div className="flex items-center gap-2 text-zinc-400">
-        <RefreshCw className="h-4 w-4 animate-spin" />
-        <span className="text-sm">Atualizando...</span>
-      </div>
-    </div>
-  )
-}
-
 // Gráfico de linha simples (sparkline)
 function SimpleLineChart({ data, color = "emerald" }: { data: number[]; color?: string }) {
   if (!data || data.length === 0) return null
@@ -466,11 +453,9 @@ export default function PortalDashboardPage() {
   const [error, setError] = useState<string | null>(null)
   const [selectedStoreId, setSelectedStoreId] = useState<string>("all")
   const [period, setPeriod] = useState("30d")
-  const [loadingMetrics, setLoadingMetrics] = useState(false)
 
-  const fetchDashboard = useCallback(async (showRefresh = false, isMetricsOnly = false) => {
+  const fetchDashboard = useCallback(async (showRefresh = false) => {
     if (showRefresh) setRefreshing(true)
-    if (isMetricsOnly) setLoadingMetrics(true)
 
     try {
       const params = new URLSearchParams({
@@ -491,7 +476,6 @@ export default function PortalDashboardPage() {
     } finally {
       setLoading(false)
       setRefreshing(false)
-      setLoadingMetrics(false)
     }
   }, [period, selectedStoreId])
 
