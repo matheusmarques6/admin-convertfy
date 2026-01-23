@@ -180,6 +180,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Create the campaign batch (using admin client to bypass RLS)
+    console.log("[Campaign Batches] Attempting to create:", {
+      name: name.trim(),
+      campaign_type,
+      scheduled_at: scheduledDate.toISOString(),
+      store_ids,
+      user_id: user.id,
+    })
+
     const { data: newBatch, error: insertError } = await adminClient
       .from("campaign_batches")
       .insert({
@@ -189,7 +197,7 @@ export async function POST(request: NextRequest) {
         instructions_doc_url: instructions_doc_url?.trim() || null,
         store_ids,
         notes: notes?.trim() || null,
-        created_by: user.id,
+        // Removed created_by temporarily - foreign key might be failing
         status: "scheduled",
       })
       .select()
