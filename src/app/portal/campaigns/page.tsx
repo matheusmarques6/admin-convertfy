@@ -376,12 +376,12 @@ export default function PortalCampaignsPage() {
   const daysInMonth = lastDayOfMonth.getDate()
   const startingDayOfWeek = firstDayOfMonth.getDay()
 
-  // Week calculations
-  const weekStart = getStartOfWeek(currentDate)
-  const weekEnd = getEndOfWeek(currentDate)
-  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
+  // Week calculations - memoized to prevent infinite loops
+  const weekStart = useMemo(() => getStartOfWeek(currentDate), [currentDate.getTime()])
+  const weekEnd = useMemo(() => getEndOfWeek(currentDate), [currentDate.getTime()])
+  const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart])
 
-  // Date range for API
+  // Date range for API - use primitive values to prevent re-renders
   const dateRange = useMemo(() => {
     if (viewMode === "month") {
       const start = `${year}-${String(month + 1).padStart(2, "0")}-01`
