@@ -398,6 +398,63 @@ export default function PortalCampaignsPage() {
     }
   }, [viewMode, year, month, daysInMonth, weekStart, weekEnd])
 
+  // Transform API data to calendar format
+  const transformCampaignData = (apiCampaign: {
+    id: string
+    name: string
+    campaign_type: string
+    scheduled_at: string
+    status: string
+    store_ids: string[]
+    store_names: string[]
+    stores_count: number
+  }): Campaign => {
+    const scheduledDate = new Date(apiCampaign.scheduled_at)
+    const dateStr = formatDateKey(scheduledDate)
+    const timeStr = scheduledDate.toTimeString().substring(0, 5)
+
+    // Map API status to calendar status
+    const statusMap: Record<string, "draft" | "scheduled" | "sent" | "cancelled"> = {
+      scheduled: "scheduled",
+      processing: "scheduled",
+      completed: "sent",
+      failed: "cancelled",
+      cancelled: "cancelled",
+    }
+
+    // Map campaign_type to channel
+    const channelMap: Record<string, "email" | "sms" | "push"> = {
+      email: "email",
+      sms: "sms",
+      push: "push",
+      whatsapp: "sms", // Map whatsapp to sms for display
+    }
+
+    // Color based on campaign type
+    const colorMap: Record<string, string> = {
+      email: "#3b82f6",
+      sms: "#10b981",
+      push: "#8b5cf6",
+      whatsapp: "#25d366",
+    }
+
+    return {
+      id: apiCampaign.id,
+      name: apiCampaign.name,
+      channel: channelMap[apiCampaign.campaign_type] || "email",
+      type: apiCampaign.campaign_type,
+      status: statusMap[apiCampaign.status] || "scheduled",
+      scheduledDate: dateStr,
+      scheduledTime: timeStr,
+      color: colorMap[apiCampaign.campaign_type] || "#3b82f6",
+      segmentName: apiCampaign.store_names.join(", "),
+      store: apiCampaign.store_names.length > 0 ? {
+        id: apiCampaign.store_ids[0],
+        store_name: apiCampaign.store_names[0],
+      } : undefined,
+    }
+  }
+
   // Fetch campaigns
   const fetchCampaigns = useCallback(async () => {
     setLoading(true)
@@ -417,10 +474,36 @@ export default function PortalCampaignsPage() {
         throw new Error("Erro ao carregar campanhas")
       }
 
-      const data: CampaignsResponse = await response.json()
-      setCampaigns(data.campaigns)
-      setStores(data.stores)
-      setStats(data.stats)
+      const data = await response.json()
+
+      // Transform API response to calendar format
+      const transformedCampaigns = (data.campaigns || []).map(transformCampaignData)
+
+      // Extract unique stores from campaigns for filter
+      const uniqueStores = new Map<string, StoreOption>()
+      data.campaigns?.forEach((c: { store_ids: string[], store_names: string[] }) => {
+        c.store_ids.forEach((id, index) => {
+          if (!uniqueStores.has(id)) {
+            uniqueStores.set(id, { id, store_name: c.store_names[index] || "Loja" })
+          }
+        })
+      })
+
+      // Calculate stats
+      const calculatedStats: Stats = {
+        total: transformedCampaigns.length,
+        sent: transformedCampaigns.filter((c: Campaign) => c.status === "sent").length,
+        scheduled: transformedCampaigns.filter((c: Campaign) => c.status === "scheduled").length,
+        draft: transformedCampaigns.filter((c: Campaign) => c.status === "draft").length,
+        totalRevenue: 0,
+        totalRecipients: 0,
+        totalOpens: 0,
+        totalClicks: 0,
+      }
+
+      setCampaigns(transformedCampaigns)
+      setStores(Array.from(uniqueStores.values()))
+      setStats(calculatedStats)
     } catch (err) {
       console.error("Error fetching campaigns:", err)
       setError("Não foi possível carregar as campanhas")
