@@ -248,12 +248,12 @@ function StatCard({
   iconBgColor?: string
 }) {
   return (
-    <div className="rounded-xl bg-slate-800/50 border border-slate-700/50 p-5">
+    <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-5">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm text-gray-400 mb-1">{title}</p>
+          <p className="text-sm text-zinc-400 mb-1">{title}</p>
           <p className="text-2xl font-bold text-white">{value}</p>
-          {subtitle && <p className="text-xs text-gray-500 mt-1">{subtitle}</p>}
+          {subtitle && <p className="text-xs text-zinc-500 mt-1">{subtitle}</p>}
         </div>
         <div className={`rounded-xl p-3 ${iconBgColor}`}>
           <Icon className={`h-6 w-6 ${iconColor}`} />
@@ -301,7 +301,7 @@ function CampaignCard({
   return (
     <div
       onClick={onClick}
-      className="rounded-lg bg-slate-700/50 border border-slate-600/50 p-3 cursor-pointer hover:bg-slate-700 transition-all group"
+      className="rounded-lg bg-zinc-800/80 border border-zinc-700/50 p-3 cursor-pointer hover:bg-zinc-800 transition-all group"
     >
       <div className="flex items-start gap-3">
         <div
@@ -313,7 +313,7 @@ function CampaignCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             {campaign.scheduledTime && (
-              <span className="text-xs text-gray-400 font-medium">
+              <span className="text-xs text-zinc-400 font-medium">
                 {formatTime(campaign.scheduledTime)}
               </span>
             )}
@@ -325,12 +325,12 @@ function CampaignCard({
             {campaign.name}
           </p>
           {campaign.segmentName && (
-            <p className="text-xs text-gray-500 truncate mt-0.5">
+            <p className="text-xs text-zinc-500 truncate mt-0.5">
               {campaign.segmentName}
             </p>
           )}
           {campaign.recipients && (
-            <p className="text-xs text-gray-400 mt-1">
+            <p className="text-xs text-zinc-400 mt-1">
               <Users className="h-3 w-3 inline mr-1" />
               {formatNumber(campaign.recipients)} destinatários
             </p>
@@ -489,18 +489,18 @@ export default function PortalCampaignsPage() {
   // ============================================
   if (loading && campaigns.length === 0) {
     return (
-      <div className="min-h-screen bg-slate-900 p-6 space-y-6">
+      <div className="min-h-screen bg-black p-6 space-y-6">
         <div className="flex items-center justify-between">
-          <Skeleton className="h-10 w-64 bg-slate-800" />
-          <Skeleton className="h-10 w-32 bg-slate-800" />
+          <Skeleton className="h-10 w-64 bg-zinc-900" />
+          <Skeleton className="h-10 w-32 bg-zinc-900" />
         </div>
         <div className="grid gap-4 md:grid-cols-4">
           {[1, 2, 3, 4].map((i) => (
-            <Skeleton key={i} className="h-24 rounded-xl bg-slate-800" />
+            <Skeleton key={i} className="h-24 rounded-xl bg-zinc-900" />
           ))}
         </div>
-        <Skeleton className="h-12 rounded-xl bg-slate-800" />
-        <Skeleton className="h-[500px] rounded-xl bg-slate-800" />
+        <Skeleton className="h-12 rounded-xl bg-zinc-900" />
+        <Skeleton className="h-[500px] rounded-xl bg-zinc-900" />
       </div>
     )
   }
@@ -510,13 +510,13 @@ export default function PortalCampaignsPage() {
   // ============================================
   if (error) {
     return (
-      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6">
-        <div className="rounded-xl bg-slate-800/50 border border-slate-700/50 p-8 text-center max-w-md">
+      <div className="min-h-screen bg-black flex flex-col items-center justify-center p-6">
+        <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-8 text-center max-w-md">
           <div className="rounded-full bg-red-500/10 p-4 w-fit mx-auto mb-4">
             <AlertCircle className="h-10 w-10 text-red-400" />
           </div>
           <h2 className="text-xl font-semibold text-white mb-2">Erro ao carregar</h2>
-          <p className="text-gray-400 mb-6">{error}</p>
+          <p className="text-zinc-400 mb-6">{error}</p>
           <Button onClick={fetchCampaigns} className="bg-emerald-500 hover:bg-emerald-600">
             Tentar novamente
           </Button>
@@ -536,7 +536,7 @@ export default function PortalCampaignsPage() {
       days.push(
         <div
           key={`empty-${i}`}
-          className="min-h-[120px] bg-slate-800/20 border border-slate-700/30"
+          className="min-h-[120px] bg-zinc-900/30 border border-zinc-800/50"
         />
       )
     }
@@ -552,22 +552,22 @@ export default function PortalCampaignsPage() {
           key={day}
           onClick={() => handleDayClick(date)}
           className={`
-            min-h-[120px] border border-slate-700/30 p-2 cursor-pointer transition-all
-            hover:bg-slate-700/30
-            ${dayIsToday ? "bg-emerald-500/5 border-emerald-500/30" : "bg-slate-800/30"}
+            min-h-[120px] border border-zinc-800/50 p-2 cursor-pointer transition-all
+            hover:bg-zinc-800/50
+            ${dayIsToday ? "bg-emerald-500/10 border-emerald-500/40" : "bg-zinc-900/50"}
           `}
         >
           <div className="flex items-center justify-between mb-2">
             <span
               className={`
                 text-sm font-medium w-7 h-7 flex items-center justify-center rounded-full
-                ${dayIsToday ? "bg-emerald-500 text-white" : "text-gray-300"}
+                ${dayIsToday ? "bg-emerald-500 text-white" : "text-zinc-300"}
               `}
             >
               {day}
             </span>
             {dayCampaigns.length > 3 && (
-              <span className="text-xs text-gray-500 bg-slate-700/50 px-1.5 py-0.5 rounded">
+              <span className="text-xs text-zinc-500 bg-zinc-800 px-1.5 py-0.5 rounded">
                 +{dayCampaigns.length - 3}
               </span>
             )}
@@ -605,14 +605,14 @@ export default function PortalCampaignsPage() {
               className={`
                 min-h-[400px] rounded-xl border p-3
                 ${dayIsToday
-                  ? "bg-emerald-500/5 border-emerald-500/30"
-                  : "bg-slate-800/30 border-slate-700/30"
+                  ? "bg-emerald-500/10 border-emerald-500/40"
+                  : "bg-zinc-900/50 border-zinc-800/50"
                 }
               `}
             >
               {/* Day Header */}
-              <div className="text-center mb-3 pb-3 border-b border-slate-700/30">
-                <p className="text-xs text-gray-500 uppercase tracking-wide">
+              <div className="text-center mb-3 pb-3 border-b border-zinc-800/50">
+                <p className="text-xs text-zinc-500 uppercase tracking-wide">
                   {WEEK_DAYS[date.getDay()]}
                 </p>
                 <p
@@ -623,7 +623,7 @@ export default function PortalCampaignsPage() {
                 >
                   {date.getDate()}
                 </p>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-zinc-500">
                   {MONTH_NAMES[date.getMonth()].substring(0, 3)}
                 </p>
               </div>
@@ -631,7 +631,7 @@ export default function PortalCampaignsPage() {
               {/* Campaigns */}
               <div className="space-y-2">
                 {dayCampaigns.length === 0 ? (
-                  <p className="text-xs text-gray-600 text-center py-4">
+                  <p className="text-xs text-zinc-600 text-center py-4">
                     Sem campanhas
                   </p>
                 ) : (
@@ -655,14 +655,14 @@ export default function PortalCampaignsPage() {
   // RENDER: Main
   // ============================================
   return (
-    <div className="min-h-screen bg-slate-900 text-white">
+    <div className="min-h-screen bg-black text-white">
       <div className="max-w-[1600px] mx-auto p-6 space-y-6">
 
         {/* ========== HEADER ========== */}
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-white">Calendário de Campanhas</h1>
-            <p className="text-gray-400">
+            <p className="text-zinc-400">
               Acompanhe todas as campanhas de marketing programadas
             </p>
           </div>
@@ -670,7 +670,7 @@ export default function PortalCampaignsPage() {
             variant="outline"
             onClick={fetchCampaigns}
             disabled={loading}
-            className="bg-slate-800 border-slate-700 text-white hover:bg-slate-700"
+            className="bg-zinc-900 border-zinc-800 text-white hover:bg-zinc-800"
           >
             <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
             Atualizar
@@ -716,20 +716,20 @@ export default function PortalCampaignsPage() {
         )}
 
         {/* ========== FILTERS & NAVIGATION ========== */}
-        <div className="rounded-xl bg-slate-800/50 border border-slate-700/50 p-4">
+        <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
 
             {/* Left: View Toggle + Navigation */}
             <div className="flex items-center gap-3">
               {/* View Toggle */}
-              <div className="flex rounded-lg bg-slate-700/50 p-1">
+              <div className="flex rounded-lg bg-zinc-800 p-1">
                 <button
                   onClick={() => setViewMode("month")}
                   className={`
                     flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all
                     ${viewMode === "month"
                       ? "bg-emerald-500 text-white"
-                      : "text-gray-400 hover:text-white"
+                      : "text-zinc-400 hover:text-white"
                     }
                   `}
                 >
@@ -742,7 +742,7 @@ export default function PortalCampaignsPage() {
                     flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all
                     ${viewMode === "week"
                       ? "bg-emerald-500 text-white"
-                      : "text-gray-400 hover:text-white"
+                      : "text-zinc-400 hover:text-white"
                     }
                   `}
                 >
@@ -757,7 +757,7 @@ export default function PortalCampaignsPage() {
                   variant="outline"
                   size="icon"
                   onClick={goToPrev}
-                  className="bg-slate-700/50 border-slate-600 text-white hover:bg-slate-600"
+                  className="bg-zinc-800 border-zinc-700 text-white hover:bg-zinc-700"
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
@@ -770,7 +770,7 @@ export default function PortalCampaignsPage() {
                   variant="outline"
                   size="icon"
                   onClick={goToNext}
-                  className="bg-slate-700/50 border-slate-600 text-white hover:bg-slate-600"
+                  className="bg-zinc-800 border-zinc-700 text-white hover:bg-zinc-700"
                 >
                   <ChevronRight className="h-4 w-4" />
                 </Button>
@@ -778,7 +778,7 @@ export default function PortalCampaignsPage() {
                   variant="ghost"
                   size="sm"
                   onClick={goToToday}
-                  className="text-gray-400 hover:text-white hover:bg-slate-700"
+                  className="text-zinc-400 hover:text-white hover:bg-zinc-800"
                 >
                   Hoje
                 </Button>
@@ -789,19 +789,19 @@ export default function PortalCampaignsPage() {
             <div className="flex flex-wrap items-center gap-3">
               {/* Store Filter */}
               <Select value={selectedStore} onValueChange={setSelectedStore}>
-                <SelectTrigger className="w-[160px] bg-slate-700/50 border-slate-600 text-white">
-                  <Store className="h-4 w-4 mr-2 text-gray-400" />
+                <SelectTrigger className="w-[160px] bg-zinc-800 border-zinc-700 text-white">
+                  <Store className="h-4 w-4 mr-2 text-zinc-400" />
                   <SelectValue placeholder="Loja" />
                 </SelectTrigger>
-                <SelectContent className="bg-slate-800 border-slate-700">
-                  <SelectItem value="all" className="text-white hover:bg-slate-700">
+                <SelectContent className="bg-zinc-900 border-zinc-800">
+                  <SelectItem value="all" className="text-white hover:bg-zinc-800">
                     Todas as lojas
                   </SelectItem>
                   {stores.map((store) => (
                     <SelectItem
                       key={store.id}
                       value={store.id}
-                      className="text-white hover:bg-slate-700"
+                      className="text-white hover:bg-zinc-800"
                     >
                       {store.store_name}
                     </SelectItem>
@@ -811,21 +811,21 @@ export default function PortalCampaignsPage() {
 
               {/* Channel Filter */}
               <Select value={selectedChannel} onValueChange={setSelectedChannel}>
-                <SelectTrigger className="w-[140px] bg-slate-700/50 border-slate-600 text-white">
-                  <Mail className="h-4 w-4 mr-2 text-gray-400" />
+                <SelectTrigger className="w-[140px] bg-zinc-800 border-zinc-700 text-white">
+                  <Mail className="h-4 w-4 mr-2 text-zinc-400" />
                   <SelectValue placeholder="Canal" />
                 </SelectTrigger>
-                <SelectContent className="bg-slate-800 border-slate-700">
-                  <SelectItem value="all" className="text-white hover:bg-slate-700">
+                <SelectContent className="bg-zinc-900 border-zinc-800">
+                  <SelectItem value="all" className="text-white hover:bg-zinc-800">
                     Todos os canais
                   </SelectItem>
-                  <SelectItem value="email" className="text-white hover:bg-slate-700">
+                  <SelectItem value="email" className="text-white hover:bg-zinc-800">
                     <div className="flex items-center gap-2">
                       <Mail className="h-4 w-4 text-blue-400" />
                       Email
                     </div>
                   </SelectItem>
-                  <SelectItem value="sms" className="text-white hover:bg-slate-700">
+                  <SelectItem value="sms" className="text-white hover:bg-zinc-800">
                     <div className="flex items-center gap-2">
                       <MessageSquare className="h-4 w-4 text-emerald-400" />
                       SMS
@@ -836,33 +836,33 @@ export default function PortalCampaignsPage() {
 
               {/* Status Filter */}
               <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-                <SelectTrigger className="w-[150px] bg-slate-700/50 border-slate-600 text-white">
-                  <Filter className="h-4 w-4 mr-2 text-gray-400" />
+                <SelectTrigger className="w-[150px] bg-zinc-800 border-zinc-700 text-white">
+                  <Filter className="h-4 w-4 mr-2 text-zinc-400" />
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
-                <SelectContent className="bg-slate-800 border-slate-700">
-                  <SelectItem value="all" className="text-white hover:bg-slate-700">
+                <SelectContent className="bg-zinc-900 border-zinc-800">
+                  <SelectItem value="all" className="text-white hover:bg-zinc-800">
                     Todos os status
                   </SelectItem>
-                  <SelectItem value="scheduled" className="text-white hover:bg-slate-700">
+                  <SelectItem value="scheduled" className="text-white hover:bg-zinc-800">
                     <div className="flex items-center gap-2">
                       <div className="w-2 h-2 rounded-full bg-amber-400" />
                       Agendada
                     </div>
                   </SelectItem>
-                  <SelectItem value="sent" className="text-white hover:bg-slate-700">
+                  <SelectItem value="sent" className="text-white hover:bg-zinc-800">
                     <div className="flex items-center gap-2">
                       <div className="w-2 h-2 rounded-full bg-emerald-400" />
                       Enviada
                     </div>
                   </SelectItem>
-                  <SelectItem value="draft" className="text-white hover:bg-slate-700">
+                  <SelectItem value="draft" className="text-white hover:bg-zinc-800">
                     <div className="flex items-center gap-2">
                       <div className="w-2 h-2 rounded-full bg-slate-400" />
                       Rascunho
                     </div>
                   </SelectItem>
-                  <SelectItem value="cancelled" className="text-white hover:bg-slate-700">
+                  <SelectItem value="cancelled" className="text-white hover:bg-zinc-800">
                     <div className="flex items-center gap-2">
                       <div className="w-2 h-2 rounded-full bg-red-400" />
                       Cancelada
@@ -877,40 +877,40 @@ export default function PortalCampaignsPage() {
         {/* ========== LEGEND ========== */}
         <div className="flex flex-wrap items-center gap-6 px-2">
           <div className="flex items-center gap-4">
-            <span className="text-xs text-gray-500 uppercase tracking-wide">Canal:</span>
+            <span className="text-xs text-zinc-500 uppercase tracking-wide">Canal:</span>
             <div className="flex items-center gap-1.5">
               <div className="w-3 h-3 rounded bg-blue-500" />
-              <span className="text-xs text-gray-400">Email</span>
+              <span className="text-xs text-zinc-400">Email</span>
             </div>
             <div className="flex items-center gap-1.5">
               <div className="w-3 h-3 rounded bg-emerald-500" />
-              <span className="text-xs text-gray-400">SMS</span>
+              <span className="text-xs text-zinc-400">SMS</span>
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <span className="text-xs text-gray-500 uppercase tracking-wide">Status:</span>
+            <span className="text-xs text-zinc-500 uppercase tracking-wide">Status:</span>
             {Object.entries(STATUS_CONFIG).map(([key, config]) => (
               <div key={key} className="flex items-center gap-1.5">
                 <div className={`w-2 h-2 rounded-full ${config.dotColor}`} />
-                <span className="text-xs text-gray-400">{config.label}</span>
+                <span className="text-xs text-zinc-400">{config.label}</span>
               </div>
             ))}
           </div>
         </div>
 
         {/* ========== CALENDAR ========== */}
-        <div className="rounded-xl bg-slate-800/30 border border-slate-700/50 overflow-hidden">
+        <div className="rounded-xl bg-zinc-900 border border-zinc-800 overflow-hidden">
           {viewMode === "month" ? (
             <>
               {/* Week days header */}
-              <div className="grid grid-cols-7 bg-slate-800/50">
+              <div className="grid grid-cols-7 bg-zinc-900">
                 {WEEK_DAYS.map((day, index) => (
                   <div
                     key={day}
                     className={`
-                      py-3 text-center text-sm font-medium text-gray-400
-                      border-r border-slate-700/30 last:border-r-0
-                      ${index === 0 || index === 6 ? "text-gray-500" : ""}
+                      py-3 text-center text-sm font-medium text-zinc-400
+                      border-r border-zinc-800 last:border-r-0
+                      ${index === 0 || index === 6 ? "text-zinc-500" : ""}
                     `}
                   >
                     {day}
@@ -931,7 +931,7 @@ export default function PortalCampaignsPage() {
 
         {/* ========== CAMPAIGN DETAIL MODAL ========== */}
         <Dialog open={!!selectedCampaign} onOpenChange={() => setSelectedCampaign(null)}>
-          <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-lg">
+          <DialogContent className="bg-zinc-900 border-zinc-800 text-white max-w-lg">
             {selectedCampaign && (
               <>
                 <DialogHeader>
@@ -949,7 +949,7 @@ export default function PortalCampaignsPage() {
                       <DialogTitle className="text-xl text-white">
                         {selectedCampaign.name}
                       </DialogTitle>
-                      <p className="text-sm text-gray-400 mt-1">
+                      <p className="text-sm text-zinc-400 mt-1">
                         {selectedCampaign.store?.store_name || "Loja"} •{" "}
                         {formatDate(selectedCampaign.scheduledDate)}
                         {selectedCampaign.scheduledTime && ` às ${formatTime(selectedCampaign.scheduledTime)}`}
@@ -971,10 +971,10 @@ export default function PortalCampaignsPage() {
 
                   {/* Subject Line */}
                   {selectedCampaign.subjectLine && (
-                    <div className="rounded-lg bg-slate-700/50 p-4">
+                    <div className="rounded-lg bg-zinc-800 p-4">
                       <div className="flex items-center gap-2 mb-2">
-                        <FileText className="h-4 w-4 text-gray-400" />
-                        <p className="text-xs text-gray-400 uppercase tracking-wide">Assunto</p>
+                        <FileText className="h-4 w-4 text-zinc-400" />
+                        <p className="text-xs text-zinc-400 uppercase tracking-wide">Assunto</p>
                       </div>
                       <p className="text-sm text-white">{selectedCampaign.subjectLine}</p>
                     </div>
@@ -982,10 +982,10 @@ export default function PortalCampaignsPage() {
 
                   {/* Segment */}
                   {selectedCampaign.segmentName && (
-                    <div className="rounded-lg bg-slate-700/50 p-4">
+                    <div className="rounded-lg bg-zinc-800 p-4">
                       <div className="flex items-center gap-2 mb-2">
-                        <Target className="h-4 w-4 text-gray-400" />
-                        <p className="text-xs text-gray-400 uppercase tracking-wide">Segmento</p>
+                        <Target className="h-4 w-4 text-zinc-400" />
+                        <p className="text-xs text-zinc-400 uppercase tracking-wide">Segmento</p>
                       </div>
                       <p className="text-sm text-white">{selectedCampaign.segmentName}</p>
                     </div>
@@ -994,47 +994,47 @@ export default function PortalCampaignsPage() {
                   {/* Description */}
                   {selectedCampaign.description && (
                     <div>
-                      <p className="text-xs text-gray-400 uppercase tracking-wide mb-2">Descrição</p>
-                      <p className="text-sm text-gray-300">{selectedCampaign.description}</p>
+                      <p className="text-xs text-zinc-400 uppercase tracking-wide mb-2">Descrição</p>
+                      <p className="text-sm text-zinc-300">{selectedCampaign.description}</p>
                     </div>
                   )}
 
                   {/* Performance Metrics (only for sent campaigns) */}
                   {selectedCampaign.status === "sent" && (
-                    <div className="border-t border-slate-700 pt-5">
-                      <p className="text-xs text-gray-400 uppercase tracking-wide mb-4">Performance</p>
+                    <div className="border-t border-zinc-800 pt-5">
+                      <p className="text-xs text-zinc-400 uppercase tracking-wide mb-4">Performance</p>
                       <div className="grid grid-cols-2 gap-4">
-                        <div className="rounded-lg bg-slate-700/50 p-3">
+                        <div className="rounded-lg bg-zinc-800 p-3">
                           <div className="flex items-center gap-2">
                             <Users className="h-4 w-4 text-blue-400" />
-                            <span className="text-xs text-gray-400">Enviados</span>
+                            <span className="text-xs text-zinc-400">Enviados</span>
                           </div>
                           <p className="text-lg font-bold text-white mt-1">
                             {formatNumber(selectedCampaign.recipients || 0)}
                           </p>
                         </div>
-                        <div className="rounded-lg bg-slate-700/50 p-3">
+                        <div className="rounded-lg bg-zinc-800 p-3">
                           <div className="flex items-center gap-2">
                             <Eye className="h-4 w-4 text-emerald-400" />
-                            <span className="text-xs text-gray-400">Abertura</span>
+                            <span className="text-xs text-zinc-400">Abertura</span>
                           </div>
                           <p className="text-lg font-bold text-white mt-1">
                             {formatPercent(selectedCampaign.opened || 0, selectedCampaign.delivered || 0)}
                           </p>
                         </div>
-                        <div className="rounded-lg bg-slate-700/50 p-3">
+                        <div className="rounded-lg bg-zinc-800 p-3">
                           <div className="flex items-center gap-2">
                             <MousePointerClick className="h-4 w-4 text-amber-400" />
-                            <span className="text-xs text-gray-400">Cliques</span>
+                            <span className="text-xs text-zinc-400">Cliques</span>
                           </div>
                           <p className="text-lg font-bold text-white mt-1">
                             {formatPercent(selectedCampaign.clicked || 0, selectedCampaign.delivered || 0)}
                           </p>
                         </div>
-                        <div className="rounded-lg bg-slate-700/50 p-3">
+                        <div className="rounded-lg bg-zinc-800 p-3">
                           <div className="flex items-center gap-2">
                             <TrendingUp className="h-4 w-4 text-purple-400" />
-                            <span className="text-xs text-gray-400">Conversões</span>
+                            <span className="text-xs text-zinc-400">Conversões</span>
                           </div>
                           <p className="text-lg font-bold text-white mt-1">
                             {formatNumber(selectedCampaign.converted || 0)}
@@ -1046,7 +1046,7 @@ export default function PortalCampaignsPage() {
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
                               <DollarSign className="h-5 w-5 text-emerald-400" />
-                              <span className="text-sm text-gray-400">Receita Gerada</span>
+                              <span className="text-sm text-zinc-400">Receita Gerada</span>
                             </div>
                             <p className="text-xl font-bold text-emerald-400">
                               {formatCurrency(selectedCampaign.revenue || 0)}
@@ -1067,7 +1067,7 @@ export default function PortalCampaignsPage() {
           open={!!selectedDayCampaigns && !selectedCampaign}
           onOpenChange={() => setSelectedDayCampaigns(null)}
         >
-          <DialogContent className="bg-slate-800 border-slate-700 text-white">
+          <DialogContent className="bg-zinc-900 border-zinc-800 text-white">
             <DialogHeader>
               <DialogTitle className="text-white">
                 Campanhas em {selectedDayDate ? formatDate(selectedDayDate) : ""}
@@ -1084,7 +1084,7 @@ export default function PortalCampaignsPage() {
                       setSelectedDayCampaigns(null)
                       setSelectedCampaign(campaign)
                     }}
-                    className="flex items-center gap-4 p-4 rounded-xl bg-slate-700/50 border border-slate-600/50 cursor-pointer hover:bg-slate-700 transition-all"
+                    className="flex items-center gap-4 p-4 rounded-xl bg-zinc-800 border border-zinc-700/50 cursor-pointer hover:bg-zinc-700 transition-all"
                   >
                     <div
                       className="w-12 h-12 rounded-xl flex items-center justify-center"
@@ -1094,7 +1094,7 @@ export default function PortalCampaignsPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-white truncate">{campaign.name}</p>
-                      <p className="text-sm text-gray-400">
+                      <p className="text-sm text-zinc-400">
                         {campaign.scheduledTime ? formatTime(campaign.scheduledTime) : "Sem horário"} •{" "}
                         {campaign.store?.store_name || "Loja"}
                       </p>
