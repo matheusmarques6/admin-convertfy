@@ -432,6 +432,9 @@ export default function PortalCampaignsPage() {
       whatsapp: "#25d366",
     }
 
+    const storeIds = apiCampaign.store_ids || []
+    const storeNames = apiCampaign.store_names || []
+
     return {
       id: apiCampaign.id,
       name: apiCampaign.name,
@@ -441,10 +444,10 @@ export default function PortalCampaignsPage() {
       scheduledDate: dateStr,
       scheduledTime: timeStr,
       color: colorMap[apiCampaign.campaign_type] || "#3b82f6",
-      segmentName: apiCampaign.store_names.join(", "),
-      store: apiCampaign.store_names.length > 0 ? {
-        id: apiCampaign.store_ids[0],
-        store_name: apiCampaign.store_names[0],
+      segmentName: storeNames.join(", "),
+      store: storeNames.length > 0 ? {
+        id: storeIds[0],
+        store_name: storeNames[0],
       } : undefined,
     }
   }
@@ -475,10 +478,12 @@ export default function PortalCampaignsPage() {
 
       // Extract unique stores from campaigns for filter
       const uniqueStores = new Map<string, StoreOption>()
-      data.campaigns?.forEach((c: { store_ids: string[], store_names: string[] }) => {
-        c.store_ids.forEach((id, index) => {
+      data.campaigns?.forEach((c: { store_ids?: string[], store_names?: string[] }) => {
+        const ids = c.store_ids || []
+        const names = c.store_names || []
+        ids.forEach((id, index) => {
           if (!uniqueStores.has(id)) {
-            uniqueStores.set(id, { id, store_name: c.store_names[index] || "Loja" })
+            uniqueStores.set(id, { id, store_name: names[index] || "Loja" })
           }
         })
       })

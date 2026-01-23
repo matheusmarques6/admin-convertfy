@@ -116,8 +116,9 @@ export async function GET(request: NextRequest) {
     // Also exclude internal fields (instructions_doc_url, notes)
     const filteredCampaigns = campaigns?.map(campaign => {
       // Filter to only show stores that belong to this client
-      const relevantStoreIds = campaign.store_ids.filter((id: string) => clientStoreIds.includes(id))
-      const relevantStoreNames = relevantStoreIds.map((id: string) => storeNameMap[id])
+      const storeIds = campaign.store_ids || []
+      const relevantStoreIds = storeIds.filter((id: string) => clientStoreIds.includes(id))
+      const relevantStoreNames = relevantStoreIds.map((id: string) => storeNameMap[id] || "Loja")
 
       return {
         id: campaign.id,
