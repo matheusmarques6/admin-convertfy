@@ -305,6 +305,7 @@ export async function GET(request: NextRequest) {
       const customers = shopifyData.customers as Record<string, unknown> || {}
       const coupons = orders.coupons as Record<string, unknown> || {}
       const utmConversions = orders.utmConversions as Record<string, unknown> || {}
+      const topCustomers = (orders.topCustomers as Array<Record<string, unknown>>) || []
 
       return {
         totalRevenue: (orders.totalRevenue as number) || 0,
@@ -318,6 +319,15 @@ export async function GET(request: NextRequest) {
           name: (p.title as string) || "Unknown Product",
           quantity: (p.quantitySold as number) || 0,
           revenue: (p.revenue as number) || 0,
+        })),
+        // Top customers by revenue
+        topCustomers: topCustomers.slice(0, 10).map((c) => ({
+          email: (c.email as string) || "",
+          name: (c.name as string) || "",
+          ordersCount: (c.ordersCount as number) || 0,
+          totalSpent: (c.totalSpent as number) || 0,
+          averageOrderValue: (c.averageOrderValue as number) || 0,
+          lastOrderDate: (c.lastOrderDate as string) || "",
         })),
         // Coupon data
         coupons: {
@@ -509,6 +519,37 @@ export async function GET(request: NextRequest) {
             })
           })
 
+          // Aggregate Top Customers
+          const customerMap = new Map<string, {
+            email: string
+            name: string
+            ordersCount: number
+            totalSpent: number
+            averageOrderValue: number
+            lastOrderDate: string
+          }>()
+          shopifyDataList.forEach((s) => {
+            (s.topCustomers || []).forEach((c) => {
+              const email = c.email.toLowerCase()
+              const existing = customerMap.get(email)
+              if (existing) {
+                existing.ordersCount += c.ordersCount
+                existing.totalSpent += c.totalSpent
+                existing.averageOrderValue = existing.ordersCount > 0
+                  ? existing.totalSpent / existing.ordersCount
+                  : 0
+                if (c.lastOrderDate > existing.lastOrderDate) {
+                  existing.lastOrderDate = c.lastOrderDate
+                }
+              } else {
+                customerMap.set(email, { ...c, email })
+              }
+            })
+          })
+          const topCustomersAggregated = Array.from(customerMap.values())
+            .sort((a, b) => b.totalSpent - a.totalSpent)
+            .slice(0, 10)
+
           const totalOrders = shopifyDataList.reduce((sum, s) => sum + (s.totalOrders || 0), 0)
           const paidOrders = shopifyDataList.reduce((sum, s) => sum + (s.paidOrders || 0), 0)
           const totalRevenue = shopifyDataList.reduce((sum, s) => sum + (s.totalRevenue || 0), 0)
@@ -526,6 +567,7 @@ export async function GET(request: NextRequest) {
               ? shopifyDataList.reduce((sum, s) => sum + (s.recurringCustomerRate || 0), 0) / shopifyDataList.length
               : 0,
             topProducts: topProductsAggregated,
+            topCustomers: topCustomersAggregated,
             coupons: {
               totalOrdersWithCoupon,
               couponUsageRate: paidOrders > 0 ? (totalOrdersWithCoupon / paidOrders) * 100 : 0,

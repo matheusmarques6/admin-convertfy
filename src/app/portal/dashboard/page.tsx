@@ -26,6 +26,7 @@ import {
   Link2,
   Ticket,
   Globe,
+  Crown,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -110,6 +111,15 @@ interface UtmSourceData {
   revenue: number
 }
 
+interface TopCustomerData {
+  email: string
+  name: string
+  ordersCount: number
+  totalSpent: number
+  averageOrderValue: number
+  lastOrderDate: string
+}
+
 interface ShopifyData {
   totalRevenue: number
   totalOrders: number
@@ -123,6 +133,7 @@ interface ShopifyData {
     quantity: number
     revenue: number
   }>
+  topCustomers?: TopCustomerData[]
   coupons?: {
     totalOrdersWithCoupon: number
     couponUsageRate: number
@@ -598,11 +609,11 @@ export default function PortalDashboardPage() {
         {/* ========== FULL DASHBOARD ========== */}
         <div className="space-y-6">
 
-            {/* ========== HERO SECTION ========== */}
-            <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-6">
-              <div className="flex items-start justify-between">
+            {/* ========== HERO SECTION WITH GRADIENT ========== */}
+            <div className="rounded-xl bg-gradient-to-r from-emerald-950/80 via-emerald-900/40 to-zinc-900 border border-emerald-500/20 p-6">
+              <div className="flex items-start justify-between mb-6">
                 <div>
-                  <p className="text-sm text-zinc-400 mb-1">Receita Convertfy</p>
+                  <p className="text-sm text-emerald-300/70 mb-1">Receita Convertfy</p>
                   <div className="flex items-center gap-3 mb-2">
                     <h2 className="text-4xl font-bold text-white">{formatCurrency(totalKlaviyoRevenue)}</h2>
                     <VariationBadge value={attributionPercent} type="percent" />
@@ -610,19 +621,50 @@ export default function PortalDashboardPage() {
                       <VariationBadge value={totalKlaviyoRevenue * 0.08} type="currency" />
                     )}
                   </div>
-                  <p className="text-sm text-zinc-500">
+                  <p className="text-sm text-zinc-400">
                     vs Receita Total: {formatCurrency(totalShopifyRevenue)}
-                    {data.dateRange && (
-                      <span className="ml-2">
-                        <ChevronDown className="inline h-3 w-3" />
-                      </span>
-                    )}
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="text-xs text-zinc-500 mb-1">Atribuição</p>
+                  <p className="text-xs text-zinc-400 mb-1">Atribuição</p>
                   <p className="text-3xl font-bold text-emerald-400">{attributionPercent.toFixed(1)}%</p>
                   <p className="text-xs text-zinc-500">do faturamento</p>
+                </div>
+              </div>
+
+              {/* Revenue Distribution - Integrated */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="p-3 rounded-lg bg-black/30 border border-emerald-500/10">
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                    <span className="text-xs text-zinc-400">Flows</span>
+                  </div>
+                  <p className="text-lg font-bold text-white">{formatCurrencyCompact(flowRevenue)}</p>
+                  <p className="text-xs text-emerald-400">{flowPercent.toFixed(0)}% da receita</p>
+                </div>
+                <div className="p-3 rounded-lg bg-black/30 border border-emerald-500/10">
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="w-2 h-2 rounded-full bg-blue-500" />
+                    <span className="text-xs text-zinc-400">Campanhas</span>
+                  </div>
+                  <p className="text-lg font-bold text-white">{formatCurrencyCompact(campaignRevenue)}</p>
+                  <p className="text-xs text-blue-400">{campaignPercent.toFixed(0)}% da receita</p>
+                </div>
+                <div className="p-3 rounded-lg bg-black/30 border border-emerald-500/10">
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="w-2 h-2 rounded-full bg-amber-500" />
+                    <span className="text-xs text-zinc-400">SMS</span>
+                  </div>
+                  <p className="text-lg font-bold text-white">{formatCurrencyCompact(smsRevenue)}</p>
+                  <p className="text-xs text-amber-400">{smsPercent.toFixed(0)}% da receita</p>
+                </div>
+                <div className="p-3 rounded-lg bg-black/30 border border-emerald-500/10">
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="w-2 h-2 rounded-full bg-purple-500" />
+                    <span className="text-xs text-zinc-400">Lucro Estimado</span>
+                  </div>
+                  <p className="text-lg font-bold text-white">{formatCurrencyCompact(estimatedProfit)}</p>
+                  <p className="text-xs text-purple-400">30% margem</p>
                 </div>
               </div>
             </div>
@@ -660,37 +702,6 @@ export default function PortalDashboardPage() {
                 subtitle="dos leads"
                 icon={Users}
               />
-            </div>
-
-            {/* ========== METRICS BAR ========== */}
-            <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-4">
-              <div className="flex items-center justify-between flex-wrap gap-4">
-                <div className="flex items-center gap-6">
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-emerald-500" />
-                    <span className="text-sm text-zinc-300">{formatCurrencyCompact(flowRevenue)}</span>
-                    <span className="text-xs text-zinc-500">Flows {flowPercent.toFixed(0)}%</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-blue-500" />
-                    <span className="text-sm text-zinc-300">{formatCurrencyCompact(campaignRevenue)}</span>
-                    <span className="text-xs text-zinc-500">Campanhas {campaignPercent.toFixed(0)}%</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-amber-500" />
-                    <span className="text-sm text-zinc-300">{formatCurrencyCompact(smsRevenue)}</span>
-                    <span className="text-xs text-zinc-500">SMS {smsPercent.toFixed(0)}%</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-purple-500" />
-                    <span className="text-sm text-zinc-300">{formatCurrencyCompact(estimatedProfit)}</span>
-                    <span className="text-xs text-zinc-500">Lucro Est.</span>
-                  </div>
-                </div>
-                <Button variant="outline" size="sm" className="bg-zinc-800 border-zinc-700 text-white hover:bg-zinc-700">
-                  Detalhes
-                </Button>
-              </div>
             </div>
 
             {/* ========== THREE COLUMNS SECTION ========== */}
@@ -1070,6 +1081,100 @@ export default function PortalDashboardPage() {
                 </div>
               </div>
             )}
+
+            {/* ========== TOP CUSTOMERS & TOP PRODUCTS SECTION ========== */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+              {/* Top Customers */}
+              <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-medium text-white flex items-center gap-2">
+                    <Crown className="h-4 w-4 text-amber-400" />
+                    Top Clientes
+                  </h3>
+                  <span className="text-xs text-zinc-500">Por receita no período</span>
+                </div>
+
+                <div className="space-y-2 max-h-[320px] overflow-y-auto">
+                  {shopify?.topCustomers && shopify.topCustomers.length > 0 ? (
+                    shopify.topCustomers.slice(0, 10).map((customer, index) => (
+                      <div key={customer.email} className="flex items-center gap-3 py-3 border-b border-zinc-800/50 last:border-0">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
+                          index === 0 ? "bg-amber-500/20 text-amber-400" :
+                          index === 1 ? "bg-zinc-400/20 text-zinc-300" :
+                          index === 2 ? "bg-orange-700/20 text-orange-400" :
+                          "bg-zinc-800 text-zinc-400"
+                        }`}>
+                          {index < 3 ? <Crown className="h-3.5 w-3.5" /> : index + 1}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-white truncate">
+                            {customer.email}
+                          </p>
+                          <div className="flex items-center gap-3 text-xs text-zinc-500">
+                            <span>{customer.ordersCount} pedidos</span>
+                            <span>Ticket: {formatCurrency(customer.averageOrderValue)}</span>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-bold text-amber-400">{formatCurrencyCompact(customer.totalSpent)}</p>
+                          <p className="text-[10px] text-zinc-600">
+                            {customer.lastOrderDate ? new Date(customer.lastOrderDate).toLocaleDateString("pt-BR") : ""}
+                          </p>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-8">
+                      <Crown className="h-10 w-10 mx-auto mb-2 text-zinc-700" />
+                      <p className="text-sm text-zinc-500">Nenhum cliente no período</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Top Products */}
+              <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-medium text-white flex items-center gap-2">
+                    <ShoppingCart className="h-4 w-4 text-emerald-400" />
+                    Top Produtos
+                  </h3>
+                  <span className="text-xs text-zinc-500">Por receita no período</span>
+                </div>
+
+                <div className="space-y-2 max-h-[320px] overflow-y-auto">
+                  {shopify?.topProducts && shopify.topProducts.length > 0 ? (
+                    shopify.topProducts.slice(0, 10).map((product, index) => (
+                      <div key={product.name} className="flex items-center gap-3 py-3 border-b border-zinc-800/50 last:border-0">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
+                          index === 0 ? "bg-emerald-500/20 text-emerald-400" :
+                          index === 1 ? "bg-blue-500/20 text-blue-400" :
+                          index === 2 ? "bg-purple-500/20 text-purple-400" :
+                          "bg-zinc-800 text-zinc-400"
+                        }`}>
+                          {index + 1}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-white truncate">
+                            {product.name}
+                          </p>
+                          <p className="text-xs text-zinc-500">{product.quantity} unidades</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-bold text-emerald-400">{formatCurrencyCompact(product.revenue)}</p>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-8">
+                      <ShoppingCart className="h-10 w-10 mx-auto mb-2 text-zinc-700" />
+                      <p className="text-sm text-zinc-500">Nenhum produto no período</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
 
             {/* ========== FOOTER ROW ========== */}
             <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-4">

@@ -480,6 +480,56 @@ async function getOrdersSummary(
       orderSources[source].revenue += parseFloat(order.total_price || "0")
     })
 
+    // ========== TOP CUSTOMERS ANALYSIS (from orders in period) ==========
+    const topCustomersMap: Record<string, {
+      customerId: number
+      email: string
+      name: string
+      ordersCount: number
+      totalSpent: number
+      averageOrderValue: number
+      lastOrderDate: string
+    }> = {}
+
+    paidOrders.forEach(order => {
+      if (!order.customer?.id || !order.customer?.email) return
+
+      const customerId = order.customer.id
+      const customerKey = order.customer.email.toLowerCase()
+
+      if (!topCustomersMap[customerKey]) {
+        topCustomersMap[customerKey] = {
+          customerId,
+          email: order.customer.email,
+          name: order.customer.email.split('@')[0], // Will be enriched later
+          ordersCount: 0,
+          totalSpent: 0,
+          averageOrderValue: 0,
+          lastOrderDate: order.created_at,
+        }
+      }
+
+      topCustomersMap[customerKey].ordersCount += 1
+      topCustomersMap[customerKey].totalSpent += parseFloat(order.total_price || "0")
+
+      // Track most recent order
+      if (order.created_at > topCustomersMap[customerKey].lastOrderDate) {
+        topCustomersMap[customerKey].lastOrderDate = order.created_at
+      }
+    })
+
+    // Calculate average order value for each customer
+    Object.values(topCustomersMap).forEach(customer => {
+      customer.averageOrderValue = customer.ordersCount > 0
+        ? customer.totalSpent / customer.ordersCount
+        : 0
+    })
+
+    // Sort by total spent and get top 10
+    const topCustomers = Object.values(topCustomersMap)
+      .sort((a, b) => b.totalSpent - a.totalSpent)
+      .slice(0, 10)
+
     // Calculate best-selling products from order line items
     const productSales: Record<number, {
       productId: number
@@ -585,6 +635,8 @@ async function getOrdersSummary(
       orderSources: Object.entries(orderSources)
         .map(([source, data]) => ({ source, ...data }))
         .sort((a, b) => b.revenue - a.revenue),
+      // Top customers by revenue in period
+      topCustomers,
     }
   } catch (error) {
     console.error("Error fetching orders:", error)
@@ -610,6 +662,7 @@ async function getOrdersSummary(
       coupons: { totalOrdersWithCoupon: 0, couponUsageRate: 0, topCoupons: [], totalDiscount: 0 },
       utmConversions: { totalOrdersWithUtm: 0, utmTrackingRate: 0, bySource: [], byMedium: [], byCampaign: [] },
       orderSources: [],
+      topCustomers: [],
     }
   }
 }
