@@ -72,6 +72,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch campaigns that include any of the client's stores
+    // Using a different approach: fetch all and filter in JS (more reliable than .overlaps())
     let query = adminClient
       .from("campaign_batches")
       .select(`
@@ -83,7 +84,6 @@ export async function GET(request: NextRequest) {
         store_ids,
         created_at
       `)
-      .overlaps("store_ids", filterStoreIds)
       .order("scheduled_at", { ascending: true })
 
     // Apply date filters if provided
@@ -105,12 +105,28 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const { data: campaigns, error } = await query
+    const { data: allCampaigns, error } = await query
+
+    console.log("[Portal Campaigns] Client ID:", clientId)
+    console.log("[Portal Campaigns] Client Store IDs:", clientStoreIds)
+    console.log("[Portal Campaigns] All campaigns found:", allCampaigns?.length || 0)
 
     if (error) {
       console.error("[Portal Campaigns] Error fetching:", error)
       return NextResponse.json({ error: "Erro ao buscar campanhas" }, { status: 500, headers: corsHeaders() })
     }
+
+    // Filter campaigns that have at least one store belonging to this client
+    const campaigns = allCampaigns?.filter(campaign => {
+      const campaignStoreIds = campaign.store_ids || []
+      const hasMatchingStore = campaignStoreIds.some((id: string) => filterStoreIds.includes(id))
+      if (hasMatchingStore) {
+        console.log("[Portal Campaigns] Campaign matches:", campaign.name, campaign.store_ids)
+      }
+      return hasMatchingStore
+    }) || []
+
+    console.log("[Portal Campaigns] Filtered campaigns:", campaigns.length)
 
     // Filter store_ids to only show client's stores and add store names
     // Also exclude internal fields (instructions_doc_url, notes)
