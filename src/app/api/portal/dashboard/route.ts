@@ -196,7 +196,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Helper function to fetch store data
-    async function fetchStoreData(store: typeof stores[0], baseUrl: string, cookieHeader: string) {
+    const fetchStoreData = async (store: typeof stores[0], baseUrl: string, cookieHeader: string) => {
       const storeData: {
         klaviyo: Record<string, unknown> | null
         shopify: Record<string, unknown> | null
@@ -244,7 +244,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Helper to map Klaviyo data to dashboard format
-    function mapKlaviyoData(klaviyoData: Record<string, unknown>) {
+    const mapKlaviyoData = (klaviyoData: Record<string, unknown>) => {
       const totalKlaviyoRevenue = (klaviyoData.revenue as Record<string, number>)?.totalRevenue || 0
       const flowRevenue = (klaviyoData.revenue as Record<string, number>)?.flowRevenue || 0
       const campaignRevenue = (klaviyoData.revenue as Record<string, number>)?.campaignRevenue || 0
@@ -300,7 +300,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Helper to map Shopify data to dashboard format
-    function mapShopifyData(shopifyData: Record<string, unknown>) {
+    const mapShopifyData = (shopifyData: Record<string, unknown>) => {
       const orders = shopifyData.orders as Record<string, unknown> || {}
       const customers = shopifyData.customers as Record<string, unknown> || {}
       const coupons = orders.coupons as Record<string, unknown> || {}
