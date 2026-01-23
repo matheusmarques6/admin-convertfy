@@ -95,15 +95,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
     }
 
-    // Verify user is admin
-    const { data: profile } = await adminClient
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
+    // Verify user is NOT a portal user (only internal staff can create campaigns)
+    const { data: portalUser } = await adminClient
+      .from("client_portal_users")
+      .select("id")
+      .eq("auth_user_id", user.id)
       .single()
 
-    if (!profile || profile.role !== "admin") {
-      return NextResponse.json({ error: "Acesso negado - apenas admins" }, { status: 403, headers: corsHeaders() })
+    if (portalUser) {
+      return NextResponse.json({ error: "Acesso negado - clientes não podem criar campanhas" }, { status: 403, headers: corsHeaders() })
     }
 
     const body = await request.json()
