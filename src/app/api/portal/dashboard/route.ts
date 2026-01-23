@@ -195,8 +195,154 @@ export async function GET(request: NextRequest) {
       lastUpdated: new Date().toISOString(),
     }
 
-    // If a specific store is selected, fetch Klaviyo and Shopify data
+    // Helper function to fetch store data
+    async function fetchStoreData(store: typeof stores[0], baseUrl: string, cookieHeader: string) {
+      const storeData: {
+        klaviyo: Record<string, unknown> | null
+        shopify: Record<string, unknown> | null
+      } = { klaviyo: null, shopify: null }
+
+      // Fetch Klaviyo data if configured
+      const hasKlaviyo = !!(store.klaviyo_private_key || store.klaviyo_api_key)
+      if (hasKlaviyo) {
+        try {
+          const klaviyoResponse = await fetch(
+            `${baseUrl}/api/integrations/klaviyo/report?store_id=${store.id}&period=${period}`,
+            { headers: { Cookie: cookieHeader } }
+          )
+          if (klaviyoResponse.ok) {
+            const data = await klaviyoResponse.json()
+            if (data.success && data.connected) {
+              storeData.klaviyo = data
+            }
+          }
+        } catch (error) {
+          console.error(`[Portal Dashboard] Klaviyo fetch error for store ${store.id}:`, error)
+        }
+      }
+
+      // Fetch Shopify data if configured
+      const hasShopify = !!(store.shopify_access_token && store.shopify_store_domain)
+      if (hasShopify) {
+        try {
+          const shopifyResponse = await fetch(
+            `${baseUrl}/api/integrations/shopify/report?store_id=${store.id}&period=${period}`,
+            { headers: { Cookie: cookieHeader } }
+          )
+          if (shopifyResponse.ok) {
+            const data = await shopifyResponse.json()
+            if (data.success && data.connected) {
+              storeData.shopify = data
+            }
+          }
+        } catch (error) {
+          console.error(`[Portal Dashboard] Shopify fetch error for store ${store.id}:`, error)
+        }
+      }
+
+      return storeData
+    }
+
+    // Helper to map Klaviyo data to dashboard format
+    function mapKlaviyoData(klaviyoData: Record<string, unknown>) {
+      const totalKlaviyoRevenue = (klaviyoData.revenue as Record<string, number>)?.totalRevenue || 0
+      const flowRevenue = (klaviyoData.revenue as Record<string, number>)?.flowRevenue || 0
+      const campaignRevenue = (klaviyoData.revenue as Record<string, number>)?.campaignRevenue || 0
+
+      return {
+        totalLeads: (klaviyoData.overview as Record<string, number>)?.totalSubscribers || 0,
+        engagedLeads: (klaviyoData.engagement as Record<string, number>)?.engagedProfiles || 0,
+        engagementRate: parseFloat(String((klaviyoData.engagement as Record<string, unknown>)?.engagementRate || "0")),
+        totalRevenue: totalKlaviyoRevenue,
+        campaignRevenue,
+        flowRevenue,
+        smsRevenue: 0,
+        emailsSent: (klaviyoData.emailPerformance as Record<string, number>)?.delivered || 0,
+        delivered: (klaviyoData.emailPerformance as Record<string, number>)?.delivered || 0,
+        opened: Math.round(((klaviyoData.emailPerformance as Record<string, number>)?.openRate || 0) * ((klaviyoData.emailPerformance as Record<string, number>)?.delivered || 0) / 100),
+        clicked: Math.round(((klaviyoData.emailPerformance as Record<string, number>)?.clickRate || 0) * ((klaviyoData.emailPerformance as Record<string, number>)?.delivered || 0) / 100),
+        openRate: (klaviyoData.emailPerformance as Record<string, number>)?.openRate || 0,
+        clickRate: (klaviyoData.emailPerformance as Record<string, number>)?.clickRate || 0,
+        clickToOpenRate: (klaviyoData.emailPerformance as Record<string, number>)?.clickToOpenRate || 0,
+        conversionRate: (klaviyoData.emailPerformance as Record<string, number>)?.clickToOpenRate || 0,
+        unsubscribeRate: (klaviyoData.emailPerformance as Record<string, number>)?.unsubscribeRate || 0,
+        bounceRate: (klaviyoData.emailPerformance as Record<string, number>)?.bounceRate || 0,
+        bounces: Math.round(((klaviyoData.emailPerformance as Record<string, number>)?.bounceRate || 0) * ((klaviyoData.emailPerformance as Record<string, number>)?.delivered || 0) / 100),
+        campaignsCount: (klaviyoData.overview as Record<string, number>)?.campaignsInPeriod || (klaviyoData.campaigns as Record<string, number>)?.sent || 0,
+        campaignDelivered: (klaviyoData.campaignPerformance as Record<string, number>)?.totalDelivered || 0,
+        campaignRevenuePercent: totalKlaviyoRevenue > 0 ? (campaignRevenue / totalKlaviyoRevenue) * 100 : 0,
+        flowsCount: (klaviyoData.overview as Record<string, number>)?.totalFlows || 0,
+        activeFlows: (klaviyoData.overview as Record<string, number>)?.liveFlows || 0,
+        flowDelivered: (klaviyoData.flowPerformance as Record<string, number>)?.totalDelivered || 0,
+        flowRevenuePercent: totalKlaviyoRevenue > 0 ? (flowRevenue / totalKlaviyoRevenue) * 100 : 0,
+        recentCampaigns: ((klaviyoData.campaignPerformance as Record<string, unknown>)?.campaigns as Array<Record<string, unknown>> || []).slice(0, 10).map((c) => ({
+          id: c.campaignId,
+          name: c.name,
+          status: "sent",
+          sentAt: c.sendTime || new Date().toISOString(),
+          recipients: c.delivered || 0,
+          delivered: c.delivered || 0,
+          opened: c.opens || 0,
+          clicked: c.clicks || 0,
+          revenue: c.revenue || 0,
+          openRate: c.openRate || 0,
+          clickRate: c.clickRate || 0,
+        })),
+        topFlows: ((klaviyoData.flowPerformance as Record<string, unknown>)?.flows as Array<Record<string, unknown>> || []).slice(0, 10).map((f) => ({
+          id: f.flowId,
+          name: f.name,
+          revenue: f.revenue || 0,
+          delivered: f.delivered || 0,
+          openRate: f.openRate || 0,
+          clickRate: f.clickRate || 0,
+        })),
+      }
+    }
+
+    // Helper to map Shopify data to dashboard format
+    function mapShopifyData(shopifyData: Record<string, unknown>) {
+      const orders = shopifyData.orders as Record<string, unknown> || {}
+      const customers = shopifyData.customers as Record<string, unknown> || {}
+      const coupons = orders.coupons as Record<string, unknown> || {}
+      const utmConversions = orders.utmConversions as Record<string, unknown> || {}
+
+      return {
+        totalRevenue: (orders.totalRevenue as number) || 0,
+        totalOrders: (orders.totalOrders as number) || 0,
+        paidOrders: (orders.paidOrders as number) || 0,
+        averageOrderValue: (orders.averageOrderValue as number) || 0,
+        totalCustomers: (customers.totalCustomers as number) || 0,
+        newCustomers: (customers.newCustomersLast30Days as number) || 0,
+        recurringCustomerRate: (orders.recurringCustomerRate as number) || 0,
+        topProducts: ((shopifyData.bestSellingProducts as Array<Record<string, unknown>>) || []).slice(0, 10).map((p) => ({
+          name: (p.title as string) || "Unknown Product",
+          quantity: (p.quantitySold as number) || 0,
+          revenue: (p.revenue as number) || 0,
+        })),
+        // Coupon data
+        coupons: {
+          totalOrdersWithCoupon: (coupons.totalOrdersWithCoupon as number) || 0,
+          couponUsageRate: (coupons.couponUsageRate as number) || 0,
+          topCoupons: (coupons.topCoupons as Array<Record<string, unknown>>) || [],
+          totalDiscount: (coupons.totalDiscount as number) || 0,
+        },
+        // UTM data
+        utmConversions: {
+          totalOrdersWithUtm: (utmConversions.totalOrdersWithUtm as number) || 0,
+          utmTrackingRate: (utmConversions.utmTrackingRate as number) || 0,
+          bySource: (utmConversions.bySource as Array<Record<string, unknown>>) || [],
+          byMedium: (utmConversions.byMedium as Array<Record<string, unknown>>) || [],
+          byCampaign: (utmConversions.byCampaign as Array<Record<string, unknown>>) || [],
+        },
+      }
+    }
+
+    const baseUrl = request.nextUrl.origin
+    const cookieHeader = request.headers.get("cookie") || ""
+
+    // Fetch data for stores
     if (storeId && storeId !== "all") {
+      // Single store selected
       const selectedStore = stores.find((s) => s.id === storeId)
 
       if (selectedStore) {
@@ -206,137 +352,200 @@ export async function GET(request: NextRequest) {
           platform: selectedStore.platform,
         }
 
-        // Fetch Klaviyo data if configured
-        const hasKlaviyo = !!(selectedStore.klaviyo_private_key || selectedStore.klaviyo_api_key)
-        if (hasKlaviyo) {
-          try {
-            const baseUrl = request.nextUrl.origin
-            const klaviyoResponse = await fetch(
-              `${baseUrl}/api/integrations/klaviyo/report?store_id=${storeId}&period=${period}`,
-              {
-                headers: {
-                  Cookie: request.headers.get("cookie") || "",
-                },
-              }
-            )
+        const storeData = await fetchStoreData(selectedStore, baseUrl, cookieHeader)
 
-            if (klaviyoResponse.ok) {
-              const klaviyoData = await klaviyoResponse.json()
+        if (storeData.klaviyo) {
+          response.klaviyo = mapKlaviyoData(storeData.klaviyo)
+        }
 
-              if (klaviyoData.success && klaviyoData.connected) {
-                // Map Klaviyo data to the dashboard format with all metrics
-                const totalKlaviyoRevenue = klaviyoData.revenue?.totalRevenue || 0
-                const flowRevenue = klaviyoData.revenue?.flowRevenue || 0
-                const campaignRevenue = klaviyoData.revenue?.campaignRevenue || 0
+        if (storeData.shopify) {
+          response.shopify = mapShopifyData(storeData.shopify)
+        }
+      }
+    } else {
+      // "All stores" selected - aggregate data from all stores
+      const storesWithIntegrations = stores.filter(
+        (s) => (s.klaviyo_private_key || s.klaviyo_api_key) || (s.shopify_access_token && s.shopify_store_domain)
+      )
 
-                response.klaviyo = {
-                  // Overview metrics
-                  totalLeads: klaviyoData.overview?.totalSubscribers || 0,
-                  engagedLeads: klaviyoData.engagement?.engagedProfiles || 0,
-                  engagementRate: parseFloat(klaviyoData.engagement?.engagementRate || "0"),
+      if (storesWithIntegrations.length > 0) {
+        // Fetch data from all stores in parallel
+        const allStoreData = await Promise.all(
+          storesWithIntegrations.map((store) => fetchStoreData(store, baseUrl, cookieHeader))
+        )
 
-                  // Revenue metrics
-                  totalRevenue: totalKlaviyoRevenue,
-                  campaignRevenue: campaignRevenue,
-                  flowRevenue: flowRevenue,
-                  smsRevenue: 0, // SMS data if available
+        // Aggregate Klaviyo data
+        const klaviyoDataList = allStoreData.filter((d) => d.klaviyo).map((d) => mapKlaviyoData(d.klaviyo!))
+        if (klaviyoDataList.length > 0) {
+          // Aggregate all flows from all stores
+          const allFlows: Array<Record<string, unknown>> = []
+          klaviyoDataList.forEach((k) => {
+            if (k.topFlows) allFlows.push(...(k.topFlows as Array<Record<string, unknown>>))
+          })
+          // Sort by revenue and take top 10
+          const topFlowsAggregated = allFlows
+            .sort((a, b) => ((b.revenue as number) || 0) - ((a.revenue as number) || 0))
+            .slice(0, 10)
 
-                  // Email performance
-                  emailsSent: klaviyoData.emailPerformance?.delivered || 0,
-                  delivered: klaviyoData.emailPerformance?.delivered || 0,
-                  openRate: klaviyoData.emailPerformance?.openRate || 0,
-                  clickRate: klaviyoData.emailPerformance?.clickRate || 0,
-                  clickToOpenRate: klaviyoData.emailPerformance?.clickToOpenRate || 0,
-                  conversionRate: klaviyoData.emailPerformance?.clickToOpenRate || 0,
-                  unsubscribeRate: klaviyoData.emailPerformance?.unsubscribeRate || 0,
-                  bounceRate: klaviyoData.emailPerformance?.bounceRate || 0,
-                  bounces: Math.round((klaviyoData.emailPerformance?.bounceRate || 0) * (klaviyoData.emailPerformance?.delivered || 0) / 100),
+          // Aggregate all campaigns
+          const allCampaigns: Array<Record<string, unknown>> = []
+          klaviyoDataList.forEach((k) => {
+            if (k.recentCampaigns) allCampaigns.push(...(k.recentCampaigns as Array<Record<string, unknown>>))
+          })
+          const recentCampaignsAggregated = allCampaigns
+            .sort((a, b) => new Date((b.sentAt as string) || 0).getTime() - new Date((a.sentAt as string) || 0).getTime())
+            .slice(0, 10)
 
-                  // Campaigns
-                  campaignsCount: klaviyoData.overview?.campaignsInPeriod || klaviyoData.campaigns?.sent || 0,
-                  campaignDelivered: klaviyoData.campaignPerformance?.totalDelivered || 0,
-                  campaignRevenuePercent: totalKlaviyoRevenue > 0 ? (campaignRevenue / totalKlaviyoRevenue) * 100 : 0,
+          const totalDelivered = klaviyoDataList.reduce((sum, k) => sum + (k.delivered || 0), 0)
+          const totalOpened = klaviyoDataList.reduce((sum, k) => sum + (k.opened || 0), 0)
+          const totalClicked = klaviyoDataList.reduce((sum, k) => sum + (k.clicked || 0), 0)
 
-                  // Flows
-                  flowsCount: klaviyoData.overview?.totalFlows || 0,
-                  activeFlows: klaviyoData.overview?.liveFlows || 0,
-                  flowDelivered: klaviyoData.flowPerformance?.totalDelivered || 0,
-                  flowRevenuePercent: totalKlaviyoRevenue > 0 ? (flowRevenue / totalKlaviyoRevenue) * 100 : 0,
+          response.klaviyo = {
+            totalLeads: klaviyoDataList.reduce((sum, k) => sum + (k.totalLeads || 0), 0),
+            engagedLeads: klaviyoDataList.reduce((sum, k) => sum + (k.engagedLeads || 0), 0),
+            engagementRate: klaviyoDataList.length > 0
+              ? klaviyoDataList.reduce((sum, k) => sum + (k.engagementRate || 0), 0) / klaviyoDataList.length
+              : 0,
+            totalRevenue: klaviyoDataList.reduce((sum, k) => sum + (k.totalRevenue || 0), 0),
+            campaignRevenue: klaviyoDataList.reduce((sum, k) => sum + (k.campaignRevenue || 0), 0),
+            flowRevenue: klaviyoDataList.reduce((sum, k) => sum + (k.flowRevenue || 0), 0),
+            smsRevenue: klaviyoDataList.reduce((sum, k) => sum + (k.smsRevenue || 0), 0),
+            emailsSent: totalDelivered,
+            delivered: totalDelivered,
+            opened: totalOpened,
+            clicked: totalClicked,
+            openRate: totalDelivered > 0 ? (totalOpened / totalDelivered) * 100 : 0,
+            clickRate: totalDelivered > 0 ? (totalClicked / totalDelivered) * 100 : 0,
+            clickToOpenRate: totalOpened > 0 ? (totalClicked / totalOpened) * 100 : 0,
+            conversionRate: 0,
+            unsubscribeRate: klaviyoDataList.length > 0
+              ? klaviyoDataList.reduce((sum, k) => sum + (k.unsubscribeRate || 0), 0) / klaviyoDataList.length
+              : 0,
+            bounceRate: klaviyoDataList.length > 0
+              ? klaviyoDataList.reduce((sum, k) => sum + (k.bounceRate || 0), 0) / klaviyoDataList.length
+              : 0,
+            bounces: klaviyoDataList.reduce((sum, k) => sum + (k.bounces || 0), 0),
+            campaignsCount: klaviyoDataList.reduce((sum, k) => sum + (k.campaignsCount || 0), 0),
+            campaignDelivered: klaviyoDataList.reduce((sum, k) => sum + (k.campaignDelivered || 0), 0),
+            campaignRevenuePercent: 0,
+            flowsCount: klaviyoDataList.reduce((sum, k) => sum + (k.flowsCount || 0), 0),
+            activeFlows: klaviyoDataList.reduce((sum, k) => sum + (k.activeFlows || 0), 0),
+            flowDelivered: klaviyoDataList.reduce((sum, k) => sum + (k.flowDelivered || 0), 0),
+            flowRevenuePercent: 0,
+            recentCampaigns: recentCampaignsAggregated,
+            topFlows: topFlowsAggregated,
+          }
 
-                  // Recent campaigns with full metrics
-                  recentCampaigns: (klaviyoData.campaignPerformance?.campaigns || []).slice(0, 10).map((c: Record<string, unknown>) => ({
-                    id: c.campaignId,
-                    name: c.name,
-                    status: "sent",
-                    sentAt: c.sendTime || new Date().toISOString(),
-                    recipients: c.delivered || 0,
-                    delivered: c.delivered || 0,
-                    opened: c.opens || 0,
-                    clicked: c.clicks || 0,
-                    revenue: c.revenue || 0,
-                    openRate: c.openRate || 0,
-                    clickRate: c.clickRate || 0,
-                  })),
-
-                  // Top flows with full metrics
-                  topFlows: (klaviyoData.flowPerformance?.flows || []).slice(0, 10).map((f: Record<string, unknown>) => ({
-                    id: f.flowId,
-                    name: f.name,
-                    revenue: f.revenue || 0,
-                    delivered: f.delivered || 0,
-                    openRate: f.openRate || 0,
-                    clickRate: f.clickRate || 0,
-                  })),
-                }
-              }
-            }
-          } catch (error) {
-            console.error("[Portal Dashboard] Klaviyo fetch error:", error)
+          // Recalculate percentages
+          const totalKlaviyoRevenue = (response.klaviyo as Record<string, unknown>).totalRevenue as number
+          if (totalKlaviyoRevenue > 0) {
+            (response.klaviyo as Record<string, unknown>).campaignRevenuePercent =
+              (((response.klaviyo as Record<string, unknown>).campaignRevenue as number) / totalKlaviyoRevenue) * 100;
+            (response.klaviyo as Record<string, unknown>).flowRevenuePercent =
+              (((response.klaviyo as Record<string, unknown>).flowRevenue as number) / totalKlaviyoRevenue) * 100
           }
         }
 
-        // Fetch Shopify data if configured
-        const hasShopify = !!(selectedStore.shopify_access_token && selectedStore.shopify_store_domain)
-        if (hasShopify) {
-          try {
-            const baseUrl = request.nextUrl.origin
-            const shopifyResponse = await fetch(
-              `${baseUrl}/api/integrations/shopify/report?store_id=${storeId}&period=${period}`,
-              {
-                headers: {
-                  Cookie: request.headers.get("cookie") || "",
-                },
+        // Aggregate Shopify data
+        const shopifyDataList = allStoreData.filter((d) => d.shopify).map((d) => mapShopifyData(d.shopify!))
+        if (shopifyDataList.length > 0) {
+          // Aggregate all products
+          const productMap = new Map<string, { name: string; quantity: number; revenue: number }>()
+          shopifyDataList.forEach((s) => {
+            (s.topProducts || []).forEach((p) => {
+              const existing = productMap.get(p.name)
+              if (existing) {
+                existing.quantity += p.quantity
+                existing.revenue += p.revenue
+              } else {
+                productMap.set(p.name, { ...p })
               }
-            )
+            })
+          })
+          const topProductsAggregated = Array.from(productMap.values())
+            .sort((a, b) => b.revenue - a.revenue)
+            .slice(0, 10)
 
-            if (shopifyResponse.ok) {
-              const shopifyData = await shopifyResponse.json()
-
-              if (shopifyData.success && shopifyData.connected) {
-                // Map Shopify data to the dashboard format with all metrics
-                response.shopify = {
-                  // Revenue metrics
-                  totalRevenue: shopifyData.orders?.totalRevenue || 0,
-                  totalOrders: shopifyData.orders?.totalOrders || 0,
-                  averageOrderValue: shopifyData.orders?.averageOrderValue || 0,
-                  totalCustomers: shopifyData.customers?.totalCustomers || 0,
-
-                  // Customer metrics
-                  newCustomers: shopifyData.customers?.newCustomersLast30Days || 0,
-                  recurringCustomerRate: shopifyData.orders?.recurringCustomerRate || 0,
-
-                  // Top products
-                  topProducts: (shopifyData.bestSellingProducts || []).slice(0, 10).map((p: Record<string, unknown>) => ({
-                    name: p.title || "Unknown Product",
-                    quantity: p.quantitySold || 0,
-                    revenue: p.revenue || 0,
-                  })),
-                }
+          // Aggregate coupons
+          const couponMap = new Map<string, { code: string; orders: number; revenue: number; discount: number }>()
+          shopifyDataList.forEach((s) => {
+            ((s.coupons?.topCoupons || []) as Array<Record<string, unknown>>).forEach((c) => {
+              const code = (c.code as string) || ''
+              const existing = couponMap.get(code)
+              if (existing) {
+                existing.orders += (c.orders as number) || 0
+                existing.revenue += (c.revenue as number) || 0
+                existing.discount += (c.discount as number) || 0
+              } else {
+                couponMap.set(code, {
+                  code,
+                  orders: (c.orders as number) || 0,
+                  revenue: (c.revenue as number) || 0,
+                  discount: (c.discount as number) || 0,
+                })
               }
-            }
-          } catch (error) {
-            console.error("[Portal Dashboard] Shopify fetch error:", error)
+            })
+          })
+          const topCouponsAggregated = Array.from(couponMap.values())
+            .sort((a, b) => b.revenue - a.revenue)
+            .slice(0, 20)
+
+          // Aggregate UTM sources
+          const utmSourceMap = new Map<string, { source: string; orders: number; revenue: number }>()
+          shopifyDataList.forEach((s) => {
+            ((s.utmConversions?.bySource || []) as Array<Record<string, unknown>>).forEach((u) => {
+              const source = (u.source as string) || ''
+              const existing = utmSourceMap.get(source)
+              if (existing) {
+                existing.orders += (u.orders as number) || 0
+                existing.revenue += (u.revenue as number) || 0
+              } else {
+                utmSourceMap.set(source, {
+                  source,
+                  orders: (u.orders as number) || 0,
+                  revenue: (u.revenue as number) || 0,
+                })
+              }
+            })
+          })
+
+          const totalOrders = shopifyDataList.reduce((sum, s) => sum + (s.totalOrders || 0), 0)
+          const paidOrders = shopifyDataList.reduce((sum, s) => sum + (s.paidOrders || 0), 0)
+          const totalRevenue = shopifyDataList.reduce((sum, s) => sum + (s.totalRevenue || 0), 0)
+          const totalOrdersWithCoupon = shopifyDataList.reduce((sum, s) => sum + (s.coupons?.totalOrdersWithCoupon || 0), 0)
+          const totalOrdersWithUtm = shopifyDataList.reduce((sum, s) => sum + (s.utmConversions?.totalOrdersWithUtm || 0), 0)
+
+          response.shopify = {
+            totalRevenue,
+            totalOrders,
+            paidOrders,
+            averageOrderValue: totalOrders > 0 ? totalRevenue / totalOrders : 0,
+            totalCustomers: shopifyDataList.reduce((sum, s) => sum + (s.totalCustomers || 0), 0),
+            newCustomers: shopifyDataList.reduce((sum, s) => sum + (s.newCustomers || 0), 0),
+            recurringCustomerRate: shopifyDataList.length > 0
+              ? shopifyDataList.reduce((sum, s) => sum + (s.recurringCustomerRate || 0), 0) / shopifyDataList.length
+              : 0,
+            topProducts: topProductsAggregated,
+            coupons: {
+              totalOrdersWithCoupon,
+              couponUsageRate: paidOrders > 0 ? (totalOrdersWithCoupon / paidOrders) * 100 : 0,
+              topCoupons: topCouponsAggregated,
+              totalDiscount: shopifyDataList.reduce((sum, s) => sum + (s.coupons?.totalDiscount || 0), 0),
+            },
+            utmConversions: {
+              totalOrdersWithUtm,
+              utmTrackingRate: paidOrders > 0 ? (totalOrdersWithUtm / paidOrders) * 100 : 0,
+              bySource: Array.from(utmSourceMap.values()).sort((a, b) => b.revenue - a.revenue).slice(0, 10),
+              byMedium: [],
+              byCampaign: [],
+            },
           }
+        }
+
+        response.selectedStore = {
+          id: "all",
+          name: "Todas as Lojas",
+          platform: "aggregated",
         }
       }
     }

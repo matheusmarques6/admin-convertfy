@@ -120,12 +120,8 @@ async function shopifyPaginatedRequest<T>(
   return { data, nextPageUrl }
 }
 
-// Fetch all orders with pagination
-async function fetchAllOrders(
-  storeDomain: string,
-  accessToken: string,
-  dateRange: { start: string; end: string }
-): Promise<Array<{
+// Order type definition
+interface ShopifyOrder {
   id: number
   total_price: string
   subtotal_price: string
@@ -138,6 +134,11 @@ async function fetchAllOrders(
   source_name: string
   referring_site: string | null
   landing_site: string | null
+  discount_codes: Array<{
+    code: string
+    amount: string
+    type: string
+  }>
   line_items: Array<{
     product_id: number
     variant_id: number
@@ -152,35 +153,40 @@ async function fetchAllOrders(
     email: string
     orders_count: number
   }
-}>> {
-  const allOrders: Array<{
-    id: number
-    total_price: string
-    subtotal_price: string
-    total_tax: string
-    total_discounts: string
-    financial_status: string
-    fulfillment_status: string | null
-    created_at: string
-    tags: string
-    source_name: string
-    referring_site: string | null
-    landing_site: string | null
-    line_items: Array<{
-      product_id: number
-      variant_id: number
-      title: string
-      variant_title: string
-      quantity: number
-      price: string
-      sku: string
-    }>
-    customer?: {
-      id: number
-      email: string
-      orders_count: number
-    }
-  }> = []
+}
+
+// Helper to extract UTM params from URL
+function extractUtmParams(url: string | null): {
+  utm_source?: string
+  utm_medium?: string
+  utm_campaign?: string
+  utm_content?: string
+  utm_term?: string
+} | null {
+  if (!url) return null
+  try {
+    const urlObj = new URL(url.startsWith('http') ? url : `https://${url}`)
+    const params: Record<string, string> = {}
+
+    const utmParams = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term']
+    utmParams.forEach(param => {
+      const value = urlObj.searchParams.get(param)
+      if (value) params[param] = value
+    })
+
+    return Object.keys(params).length > 0 ? params : null
+  } catch {
+    return null
+  }
+}
+
+// Fetch all orders with pagination
+async function fetchAllOrders(
+  storeDomain: string,
+  accessToken: string,
+  dateRange: { start: string; end: string }
+): Promise<ShopifyOrder[]> {
+  const allOrders: ShopifyOrder[] = []
 
   let endpoint = `/orders.json?status=any&created_at_min=${dateRange.start}&created_at_max=${dateRange.end}&limit=250`
   let pageCount = 0
@@ -191,34 +197,7 @@ async function fetchAllOrders(
     console.log(`Fetching orders page ${pageCount}...`)
 
     const { data, nextPageUrl } = await shopifyPaginatedRequest<{
-      orders: Array<{
-        id: number
-        total_price: string
-        subtotal_price: string
-        total_tax: string
-        total_discounts: string
-        financial_status: string
-        fulfillment_status: string | null
-        created_at: string
-        tags: string
-        source_name: string
-        referring_site: string | null
-        landing_site: string | null
-        line_items: Array<{
-          product_id: number
-          variant_id: number
-          title: string
-          variant_title: string
-          quantity: number
-          price: string
-          sku: string
-        }>
-        customer?: {
-          id: number
-          email: string
-          orders_count: number
-        }
-      }>
+      orders: ShopifyOrder[]
     }>(storeDomain, accessToken, endpoint)
 
     if (data.orders && data.orders.length > 0) {
@@ -412,6 +391,84 @@ async function getOrdersSummary(
     const smsRevenue = smsOrders.reduce((sum, o) => sum + parseFloat(o.total_price || "0"), 0)
     const smsOrdersCount = smsOrders.length
 
+    // ========== COUPON ANALYSIS (Paid Orders Only) ==========
+    const couponStats: Record<string, { code: string; orders: number; revenue: number; discount: number }> = {}
+    paidOrders.forEach(order => {
+      if (order.discount_codes && order.discount_codes.length > 0) {
+        order.discount_codes.forEach(dc => {
+          const code = dc.code.toUpperCase()
+          if (!couponStats[code]) {
+            couponStats[code] = { code, orders: 0, revenue: 0, discount: 0 }
+          }
+          couponStats[code].orders += 1
+          couponStats[code].revenue += parseFloat(order.total_price || "0")
+          couponStats[code].discount += parseFloat(dc.amount || "0")
+        })
+      }
+    })
+
+    const couponConversions = Object.values(couponStats)
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 20)
+
+    const totalOrdersWithCoupon = paidOrders.filter(o => o.discount_codes && o.discount_codes.length > 0).length
+    const couponUsageRate = paidOrders.length > 0 ? (totalOrdersWithCoupon / paidOrders.length) * 100 : 0
+
+    // ========== UTM ANALYSIS (Paid Orders Only) ==========
+    const utmSourceStats: Record<string, { source: string; orders: number; revenue: number }> = {}
+    const utmMediumStats: Record<string, { medium: string; orders: number; revenue: number }> = {}
+    const utmCampaignStats: Record<string, { campaign: string; orders: number; revenue: number }> = {}
+
+    let ordersWithUtm = 0
+
+    paidOrders.forEach(order => {
+      // Try landing_site first, then referring_site
+      const utmParams = extractUtmParams(order.landing_site) || extractUtmParams(order.referring_site)
+
+      if (utmParams) {
+        ordersWithUtm++
+        const revenue = parseFloat(order.total_price || "0")
+
+        // UTM Source
+        if (utmParams.utm_source) {
+          const source = utmParams.utm_source.toLowerCase()
+          if (!utmSourceStats[source]) {
+            utmSourceStats[source] = { source, orders: 0, revenue: 0 }
+          }
+          utmSourceStats[source].orders += 1
+          utmSourceStats[source].revenue += revenue
+        }
+
+        // UTM Medium
+        if (utmParams.utm_medium) {
+          const medium = utmParams.utm_medium.toLowerCase()
+          if (!utmMediumStats[medium]) {
+            utmMediumStats[medium] = { medium, orders: 0, revenue: 0 }
+          }
+          utmMediumStats[medium].orders += 1
+          utmMediumStats[medium].revenue += revenue
+        }
+
+        // UTM Campaign
+        if (utmParams.utm_campaign) {
+          const campaign = utmParams.utm_campaign.toLowerCase()
+          if (!utmCampaignStats[campaign]) {
+            utmCampaignStats[campaign] = { campaign, orders: 0, revenue: 0 }
+          }
+          utmCampaignStats[campaign].orders += 1
+          utmCampaignStats[campaign].revenue += revenue
+        }
+      }
+    })
+
+    const utmConversions = {
+      totalOrdersWithUtm: ordersWithUtm,
+      utmTrackingRate: paidOrders.length > 0 ? (ordersWithUtm / paidOrders.length) * 100 : 0,
+      bySource: Object.values(utmSourceStats).sort((a, b) => b.revenue - a.revenue).slice(0, 10),
+      byMedium: Object.values(utmMediumStats).sort((a, b) => b.revenue - a.revenue).slice(0, 10),
+      byCampaign: Object.values(utmCampaignStats).sort((a, b) => b.revenue - a.revenue).slice(0, 10),
+    }
+
     // Collect unique sources for debugging/analysis
     const orderSources: Record<string, { count: number; revenue: number }> = {}
     orders.forEach(order => {
@@ -515,6 +572,15 @@ async function getOrdersSummary(
         orders: smsOrdersCount,
         percentage: totalRevenue > 0 ? (smsRevenue / totalRevenue) * 100 : 0,
       },
+      // Coupon/Discount Code Analysis (Paid Orders Only)
+      coupons: {
+        totalOrdersWithCoupon,
+        couponUsageRate,
+        topCoupons: couponConversions,
+        totalDiscount: couponConversions.reduce((sum, c) => sum + c.discount, 0),
+      },
+      // UTM Tracking Analysis (Paid Orders Only)
+      utmConversions,
       // Order sources breakdown for analysis
       orderSources: Object.entries(orderSources)
         .map(([source, data]) => ({ source, ...data }))
@@ -541,6 +607,8 @@ async function getOrdersSummary(
       financialStatus: { paid: 0, pending: 0, refunded: 0, voided: 0 },
       timeSeries: [],
       smsMarketing: { revenue: 0, orders: 0, percentage: 0 },
+      coupons: { totalOrdersWithCoupon: 0, couponUsageRate: 0, topCoupons: [], totalDiscount: 0 },
+      utmConversions: { totalOrdersWithUtm: 0, utmTrackingRate: 0, bySource: [], byMedium: [], byCampaign: [] },
       orderSources: [],
     }
   }

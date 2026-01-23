@@ -22,6 +22,10 @@ import {
   Flame,
   Award,
   BarChart3,
+  Tag,
+  Link2,
+  Ticket,
+  Globe,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -93,9 +97,23 @@ interface KlaviyoData {
   }>
 }
 
+interface CouponData {
+  code: string
+  orders: number
+  revenue: number
+  discount: number
+}
+
+interface UtmSourceData {
+  source: string
+  orders: number
+  revenue: number
+}
+
 interface ShopifyData {
   totalRevenue: number
   totalOrders: number
+  paidOrders?: number
   averageOrderValue: number
   totalCustomers: number
   newCustomers: number
@@ -105,6 +123,19 @@ interface ShopifyData {
     quantity: number
     revenue: number
   }>
+  coupons?: {
+    totalOrdersWithCoupon: number
+    couponUsageRate: number
+    topCoupons: CouponData[]
+    totalDiscount: number
+  }
+  utmConversions?: {
+    totalOrdersWithUtm: number
+    utmTrackingRate: number
+    bySource: UtmSourceData[]
+    byMedium: Array<{ medium: string; orders: number; revenue: number }>
+    byCampaign: Array<{ campaign: string; orders: number; revenue: number }>
+  }
 }
 
 interface DashboardData {
@@ -564,35 +595,8 @@ export default function PortalDashboardPage() {
           </div>
         </div>
 
-        {selectedStoreId === "all" ? (
-          /* ========== SELECT STORE MESSAGE ========== */
-          <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-16 text-center">
-            <div className="rounded-full bg-zinc-800 p-6 w-fit mx-auto mb-6">
-              <Store className="h-12 w-12 text-zinc-500" />
-            </div>
-            <h3 className="text-xl font-semibold text-white mb-2">Selecione uma loja</h3>
-            <p className="text-zinc-400 max-w-md mx-auto mb-8">
-              Para visualizar os dados detalhados, selecione uma loja específica.
-            </p>
-            {data.stores && data.stores.length > 0 && (
-              <div className="flex flex-wrap gap-3 justify-center">
-                {data.stores.map((store) => (
-                  <Button
-                    key={store.id}
-                    variant="outline"
-                    onClick={() => setSelectedStoreId(store.id)}
-                    className="bg-zinc-800 border-zinc-700 text-white hover:bg-zinc-700"
-                  >
-                    <Store className="h-4 w-4 mr-2" />
-                    {store.name}
-                  </Button>
-                ))}
-              </div>
-            )}
-          </div>
-        ) : (
-          /* ========== FULL DASHBOARD ========== */
-          <div className="space-y-6">
+        {/* ========== FULL DASHBOARD ========== */}
+        <div className="space-y-6">
 
             {/* ========== HERO SECTION ========== */}
             <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-6">
@@ -947,6 +951,126 @@ export default function PortalDashboardPage() {
               </div>
             </div>
 
+            {/* ========== UTM & COUPONS SECTION ========== */}
+            {(shopify?.coupons || shopify?.utmConversions) && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+                {/* Coupon Conversions */}
+                <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-5">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-medium text-white flex items-center gap-2">
+                      <Ticket className="h-4 w-4 text-pink-400" />
+                      Conversões por Cupom
+                    </h3>
+                    <span className="text-xs text-zinc-500">Pedidos pagos</span>
+                  </div>
+
+                  {/* Coupon Summary */}
+                  <div className="grid grid-cols-2 gap-3 mb-4">
+                    <div className="p-3 rounded-lg bg-zinc-800/50">
+                      <p className="text-xl font-bold text-white">
+                        {shopify?.coupons?.totalOrdersWithCoupon || 0}
+                      </p>
+                      <p className="text-xs text-zinc-500">Pedidos com cupom</p>
+                    </div>
+                    <div className="p-3 rounded-lg bg-zinc-800/50">
+                      <p className="text-xl font-bold text-pink-400">
+                        {formatPercent(shopify?.coupons?.couponUsageRate || 0)}
+                      </p>
+                      <p className="text-xs text-zinc-500">Taxa de uso</p>
+                    </div>
+                  </div>
+
+                  {/* Top Coupons List */}
+                  <div className="space-y-2 max-h-[200px] overflow-y-auto">
+                    {shopify?.coupons?.topCoupons && shopify.coupons.topCoupons.length > 0 ? (
+                      shopify.coupons.topCoupons.slice(0, 5).map((coupon, index) => (
+                        <div key={coupon.code} className="flex items-center gap-3 py-2 border-b border-zinc-800/50 last:border-0">
+                          <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                            index === 0 ? "bg-pink-500/20 text-pink-400" : "bg-zinc-800 text-zinc-400"
+                          }`}>
+                            {index + 1}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-white truncate flex items-center gap-1">
+                              <Tag className="h-3 w-3" />
+                              {coupon.code}
+                            </p>
+                            <p className="text-xs text-zinc-500">{coupon.orders} pedidos</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm font-bold text-pink-400">{formatCurrencyCompact(coupon.revenue)}</p>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-center py-6">
+                        <Ticket className="h-8 w-8 mx-auto mb-2 text-zinc-700" />
+                        <p className="text-sm text-zinc-500">Nenhum cupom utilizado</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* UTM Conversions */}
+                <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-5">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-medium text-white flex items-center gap-2">
+                      <Link2 className="h-4 w-4 text-cyan-400" />
+                      Conversões por UTM
+                    </h3>
+                    <span className="text-xs text-zinc-500">Pedidos pagos</span>
+                  </div>
+
+                  {/* UTM Summary */}
+                  <div className="grid grid-cols-2 gap-3 mb-4">
+                    <div className="p-3 rounded-lg bg-zinc-800/50">
+                      <p className="text-xl font-bold text-white">
+                        {shopify?.utmConversions?.totalOrdersWithUtm || 0}
+                      </p>
+                      <p className="text-xs text-zinc-500">Pedidos com UTM</p>
+                    </div>
+                    <div className="p-3 rounded-lg bg-zinc-800/50">
+                      <p className="text-xl font-bold text-cyan-400">
+                        {formatPercent(shopify?.utmConversions?.utmTrackingRate || 0)}
+                      </p>
+                      <p className="text-xs text-zinc-500">Taxa de rastreio</p>
+                    </div>
+                  </div>
+
+                  {/* Top UTM Sources List */}
+                  <div className="space-y-2 max-h-[200px] overflow-y-auto">
+                    {shopify?.utmConversions?.bySource && shopify.utmConversions.bySource.length > 0 ? (
+                      shopify.utmConversions.bySource.slice(0, 5).map((utm, index) => (
+                        <div key={utm.source} className="flex items-center gap-3 py-2 border-b border-zinc-800/50 last:border-0">
+                          <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                            index === 0 ? "bg-cyan-500/20 text-cyan-400" : "bg-zinc-800 text-zinc-400"
+                          }`}>
+                            {index + 1}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-white truncate flex items-center gap-1">
+                              <Globe className="h-3 w-3" />
+                              {utm.source}
+                            </p>
+                            <p className="text-xs text-zinc-500">{utm.orders} pedidos</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm font-bold text-cyan-400">{formatCurrencyCompact(utm.revenue)}</p>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-center py-6">
+                        <Link2 className="h-8 w-8 mx-auto mb-2 text-zinc-700" />
+                        <p className="text-sm text-zinc-500">Nenhum UTM rastreado</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* ========== FOOTER ROW ========== */}
             <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-4">
               <div className="flex items-center justify-between flex-wrap gap-4">
@@ -975,7 +1099,6 @@ export default function PortalDashboardPage() {
             </div>
 
           </div>
-        )}
       </div>
     </div>
   )
