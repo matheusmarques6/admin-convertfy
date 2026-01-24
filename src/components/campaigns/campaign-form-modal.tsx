@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { X, Loader2, Search, Globe, FileText, Store } from "lucide-react"
+import { X, Loader2, Search, FileText, Store } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -175,6 +175,7 @@ export function CampaignFormModal({
 
   // Quick filter handlers
   const selectByLanguage = (language: string) => {
+    if (!allStores || allStores.length === 0) return
     const storeIds = allStores
       .filter(s => (s.language || "pt-BR") === language)
       .map(s => s.id)
@@ -182,6 +183,7 @@ export function CampaignFormModal({
   }
 
   const selectAll = () => {
+    if (!allStores || allStores.length === 0) return
     setSelectedStoreIds(allStores.map(s => s.id))
   }
 
@@ -195,6 +197,11 @@ export function CampaignFormModal({
         ? prev.filter(id => id !== storeId)
         : [...prev, storeId]
     )
+  }
+
+  // Helper function to get flag
+  const getFlag = (lang: string) => {
+    return languageFlags[lang] || "🌐"
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -479,7 +486,7 @@ export function CampaignFormModal({
             <div className="space-y-2">
               <Label>Filtros Rápidos</Label>
               <div className="flex flex-wrap gap-2">
-                {languages.map((lang) => (
+                {languages.length > 0 && languages.map((lang) => (
                   <Button
                     key={lang}
                     type="button"
@@ -488,8 +495,8 @@ export function CampaignFormModal({
                     onClick={() => selectByLanguage(lang)}
                     className="gap-1"
                   >
-                    {languageFlags[lang] || <Globe className="h-3 w-3" />}
-                    {lang}
+                    <span>{getFlag(lang)}</span>
+                    <span>{lang}</span>
                     <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-xs">
                       {languageCounts[lang] || 0}
                     </Badge>
@@ -564,7 +571,7 @@ export function CampaignFormModal({
                           </p>
                         </div>
                         <Badge variant="outline" className="text-xs">
-                          {languageFlags[store.language] || "🌐"} {store.language || "pt-BR"}
+                          {getFlag(store.language || "pt-BR")} {store.language || "pt-BR"}
                         </Badge>
                       </div>
                     ))}
