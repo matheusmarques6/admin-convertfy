@@ -7,9 +7,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Badge } from "@/components/ui/badge"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Select,
   SelectContent,
@@ -568,7 +565,7 @@ export function CampaignFormModal({
                 </div>
               </div>
 
-              <ScrollArea className="h-48 border rounded-md">
+              <div className="h-48 border rounded-md overflow-y-auto">
                 {loadingStores ? (
                   <div className="flex items-center justify-center h-full">
                     <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -594,11 +591,9 @@ export function CampaignFormModal({
                           }`}
                           onClick={() => toggleStore(store.id)}
                         >
-                          <Checkbox
-                            checked={isSelected}
-                            tabIndex={-1}
-                            className="pointer-events-none"
-                          />
+                          <div className={`w-4 h-4 rounded border flex items-center justify-center ${isSelected ? "bg-primary border-primary" : "border-input"}`}>
+                            {isSelected && <span className="text-primary-foreground text-xs">✓</span>}
+                          </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium truncate">
                               {store.store_name || "Loja sem nome"}
@@ -607,15 +602,15 @@ export function CampaignFormModal({
                               {clientDisplay}
                             </p>
                           </div>
-                          <Badge variant="outline" className="text-xs">
+                          <span className="text-xs border rounded px-1.5 py-0.5">
                             {getFlag(storeLang)} {storeLang}
-                          </Badge>
+                          </span>
                         </div>
                       )
                     })}
                   </div>
                 )}
-              </ScrollArea>
+              </div>
             </div>
 
             {/* Notes */}
