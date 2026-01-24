@@ -511,22 +511,21 @@ export function CampaignFormModal({
             <div className="space-y-2">
               <Label>Filtros Rápidos</Label>
               <div className="flex flex-wrap gap-2">
-                {languages.length > 0 && languages.map((lang) => (
-                  <Button
-                    key={lang}
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => selectByLanguage(lang)}
-                    className="gap-1"
-                  >
-                    <span>{getFlag(lang)}</span>
-                    <span>{lang}</span>
-                    <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-xs">
-                      {languageCounts[lang] || 0}
-                    </Badge>
-                  </Button>
-                ))}
+                {languages.map((lang) => {
+                  const flag = getFlag(lang)
+                  const count = languageCounts[lang] || 0
+                  return (
+                    <Button
+                      key={lang}
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => selectByLanguage(lang)}
+                    >
+                      {flag} {lang} ({count})
+                    </Button>
+                  )
+                })}
                 <Button
                   type="button"
                   variant="outline"
@@ -580,18 +579,20 @@ export function CampaignFormModal({
                       const client = Array.isArray(store.client) ? store.client[0] : store.client
                       const clientDisplay = client?.company || client?.name || "Sem cliente"
                       const storeLang = store.language || "pt-BR"
+                      const isSelected = selectedStoreIds.includes(store.id)
 
                       return (
                         <div
                           key={store.id}
                           className={`flex items-center gap-3 p-2 rounded-md cursor-pointer hover:bg-accent transition-colors ${
-                            selectedStoreIds.includes(store.id) ? "bg-accent" : ""
+                            isSelected ? "bg-accent" : ""
                           }`}
                           onClick={() => toggleStore(store.id)}
                         >
                           <Checkbox
-                            checked={selectedStoreIds.includes(store.id)}
-                            onCheckedChange={() => toggleStore(store.id)}
+                            checked={isSelected}
+                            tabIndex={-1}
+                            className="pointer-events-none"
                           />
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium truncate">
