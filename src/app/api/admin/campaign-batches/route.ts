@@ -95,15 +95,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
     }
 
-    // Verify user is NOT a portal user (only internal staff can create campaigns)
-    const { data: portalUser } = await adminClient
-      .from("client_portal_users")
-      .select("id")
-      .eq("auth_user_id", user.id)
+    // Verify user exists in profiles table (internal staff)
+    // Users in profiles table can create campaigns, even if they're also portal users
+    const { data: profile } = await adminClient
+      .from("profiles")
+      .select("id, role")
+      .eq("id", user.id)
       .single()
 
-    if (portalUser) {
-      return NextResponse.json({ error: "Acesso negado - clientes não podem criar campanhas" }, { status: 403, headers: corsHeaders() })
+    if (!profile) {
+      return NextResponse.json({ error: "Acesso negado - usuário não encontrado" }, { status: 403, headers: corsHeaders() })
     }
 
     const body = await request.json()
