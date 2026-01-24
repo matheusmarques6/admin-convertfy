@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { X, Loader2, Search, FileText, Store } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -96,10 +96,25 @@ export function CampaignFormModal({
 
   // Store data
   const [allStores, setAllStores] = useState<StoreItem[]>(initialStores || [])
-  const [languages, setLanguages] = useState<string[]>([])
-  const [languageCounts, setLanguageCounts] = useState<Record<string, number>>({})
   const [selectedStoreIds, setSelectedStoreIds] = useState<string[]>([])
   const [searchQuery, setSearchQuery] = useState("")
+
+  // Compute languages and counts from stores using useMemo (prevents infinite loops)
+  const { languages, languageCounts } = useMemo(() => {
+    const langs = new Set<string>()
+    const counts: Record<string, number> = {}
+
+    allStores.forEach(store => {
+      const lang = store.language || "pt-BR"
+      langs.add(lang)
+      counts[lang] = (counts[lang] || 0) + 1
+    })
+
+    return {
+      languages: Array.from(langs),
+      languageCounts: counts,
+    }
+  }, [allStores])
 
   // Form data
   const [formData, setFormData] = useState({
@@ -132,8 +147,6 @@ export function CampaignFormModal({
       if (response.ok) {
         const data = await response.json()
         setAllStores(data.stores || [])
-        setLanguages(data.languages || [])
-        setLanguageCounts(data.languageCounts || {})
       }
     } catch (err) {
       console.error("Error fetching stores:", err)
@@ -145,23 +158,6 @@ export function CampaignFormModal({
   useEffect(() => {
     fetchStores()
   }, [fetchStores])
-
-  // Calculate languages from stores if not provided by API
-  useEffect(() => {
-    if (allStores.length > 0 && languages.length === 0) {
-      const langs = new Set<string>()
-      const counts: Record<string, number> = {}
-
-      allStores.forEach(store => {
-        const lang = store.language || "pt-BR"
-        langs.add(lang)
-        counts[lang] = (counts[lang] || 0) + 1
-      })
-
-      setLanguages(Array.from(langs))
-      setLanguageCounts(counts)
-    }
-  }, [allStores, languages.length])
 
   // Filter stores by search query
   const filteredStores = allStores.filter(store => {
