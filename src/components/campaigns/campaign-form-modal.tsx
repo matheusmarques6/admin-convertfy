@@ -101,17 +101,22 @@ export function CampaignFormModal({
 
   // Compute languages and counts from stores using useMemo (prevents infinite loops)
   const { languages, languageCounts } = useMemo(() => {
+    if (!allStores || !Array.isArray(allStores) || allStores.length === 0) {
+      return { languages: [], languageCounts: {} }
+    }
+
     const langs = new Set<string>()
     const counts: Record<string, number> = {}
 
     allStores.forEach(store => {
+      if (!store) return
       const lang = store.language || "pt-BR"
       langs.add(lang)
       counts[lang] = (counts[lang] || 0) + 1
     })
 
     return {
-      languages: Array.from(langs),
+      languages: Array.from(langs).sort(),
       languageCounts: counts,
     }
   }, [allStores])
@@ -159,41 +164,65 @@ export function CampaignFormModal({
     fetchStores()
   }, [fetchStores])
 
-  // Filter stores by search query
-  const filteredStores = allStores.filter(store => {
-    const query = searchQuery.toLowerCase()
-    return (
-      store.store_name.toLowerCase().includes(query) ||
-      store.client?.name?.toLowerCase().includes(query) ||
-      store.client?.company?.toLowerCase().includes(query)
-    )
-  })
+  // Filter stores by search query (with defensive null checks)
+  const filteredStores = useMemo(() => {
+    if (!allStores || !Array.isArray(allStores)) return []
+    const query = searchQuery?.toLowerCase() || ""
+    if (!query) return allStores
 
-  // Quick filter handlers
-  const selectByLanguage = (language: string) => {
-    if (!allStores || allStores.length === 0) return
-    const storeIds = allStores
-      .filter(s => (s.language || "pt-BR") === language)
-      .map(s => s.id)
-    setSelectedStoreIds(storeIds)
-  }
+    return allStores.filter(store => {
+      if (!store) return false
+      const storeName = store.store_name?.toLowerCase() || ""
+      // Handle client as object or array (Supabase can return either)
+      const client = Array.isArray(store.client) ? store.client[0] : store.client
+      const clientName = client?.name?.toLowerCase() || ""
+      const clientCompany = client?.company?.toLowerCase() || ""
 
-  const selectAll = () => {
-    if (!allStores || allStores.length === 0) return
-    setSelectedStoreIds(allStores.map(s => s.id))
-  }
+      return (
+        storeName.includes(query) ||
+        clientName.includes(query) ||
+        clientCompany.includes(query)
+      )
+    })
+  }, [allStores, searchQuery])
 
-  const clearSelection = () => {
+  // Quick filter handlers (with defensive checks)
+  const selectByLanguage = useCallback((language: string) => {
+    if (!allStores || !Array.isArray(allStores) || allStores.length === 0) return
+    try {
+      const storeIds = allStores
+        .filter(s => s && (s.language || "pt-BR") === language)
+        .map(s => s.id)
+        .filter(Boolean)
+      setSelectedStoreIds(storeIds)
+    } catch (err) {
+      console.error("Error selecting by language:", err)
+    }
+  }, [allStores])
+
+  const selectAll = useCallback(() => {
+    if (!allStores || !Array.isArray(allStores) || allStores.length === 0) return
+    try {
+      const storeIds = allStores.map(s => s?.id).filter(Boolean) as string[]
+      setSelectedStoreIds(storeIds)
+    } catch (err) {
+      console.error("Error selecting all:", err)
+    }
+  }, [allStores])
+
+  const clearSelection = useCallback(() => {
     setSelectedStoreIds([])
-  }
+  }, [])
 
-  const toggleStore = (storeId: string) => {
-    setSelectedStoreIds(prev =>
-      prev.includes(storeId)
-        ? prev.filter(id => id !== storeId)
-        : [...prev, storeId]
-    )
-  }
+  const toggleStore = useCallback((storeId: string) => {
+    if (!storeId) return
+    setSelectedStoreIds(prev => {
+      const prevArray = Array.isArray(prev) ? prev : []
+      return prevArray.includes(storeId)
+        ? prevArray.filter(id => id !== storeId)
+        : [...prevArray, storeId]
+    })
+  }, [])
 
   // Helper function to get flag
   const getFlag = (lang: string) => {
@@ -546,31 +575,38 @@ export function CampaignFormModal({
                   </div>
                 ) : (
                   <div className="p-2 space-y-1">
-                    {filteredStores.map((store) => (
-                      <div
-                        key={store.id}
-                        className={`flex items-center gap-3 p-2 rounded-md cursor-pointer hover:bg-accent transition-colors ${
-                          selectedStoreIds.includes(store.id) ? "bg-accent" : ""
-                        }`}
-                        onClick={() => toggleStore(store.id)}
-                      >
-                        <Checkbox
-                          checked={selectedStoreIds.includes(store.id)}
-                          onCheckedChange={() => toggleStore(store.id)}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">
-                            {store.store_name}
-                          </p>
-                          <p className="text-xs text-muted-foreground truncate">
-                            {store.client?.company || store.client?.name || "Sem cliente"}
-                          </p>
+                    {filteredStores.map((store) => {
+                      // Handle client as object or array
+                      const client = Array.isArray(store.client) ? store.client[0] : store.client
+                      const clientDisplay = client?.company || client?.name || "Sem cliente"
+                      const storeLang = store.language || "pt-BR"
+
+                      return (
+                        <div
+                          key={store.id}
+                          className={`flex items-center gap-3 p-2 rounded-md cursor-pointer hover:bg-accent transition-colors ${
+                            selectedStoreIds.includes(store.id) ? "bg-accent" : ""
+                          }`}
+                          onClick={() => toggleStore(store.id)}
+                        >
+                          <Checkbox
+                            checked={selectedStoreIds.includes(store.id)}
+                            onCheckedChange={() => toggleStore(store.id)}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">
+                              {store.store_name || "Loja sem nome"}
+                            </p>
+                            <p className="text-xs text-muted-foreground truncate">
+                              {clientDisplay}
+                            </p>
+                          </div>
+                          <Badge variant="outline" className="text-xs">
+                            {getFlag(storeLang)} {storeLang}
+                          </Badge>
                         </div>
-                        <Badge variant="outline" className="text-xs">
-                          {getFlag(store.language || "pt-BR")} {store.language || "pt-BR"}
-                        </Badge>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
               </ScrollArea>
