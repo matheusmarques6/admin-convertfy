@@ -511,37 +511,42 @@ export function CampaignFormModal({
             <div className="space-y-2">
               <Label>Filtros Rápidos</Label>
               <div className="flex flex-wrap gap-2">
-                {languages.map((lang) => {
-                  const flag = getFlag(lang)
-                  const count = languageCounts[lang] || 0
-                  return (
-                    <Button
-                      key={lang}
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => selectByLanguage(lang)}
-                    >
-                      {flag} {lang} ({count})
-                    </Button>
-                  )
-                })}
-                <Button
+                {languages.length > 0 ? languages.map((lang) => (
+                  <button
+                    key={lang}
+                    type="button"
+                    className="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      selectByLanguage(lang)
+                    }}
+                  >
+                    {getFlag(lang)} {lang} ({languageCounts[lang] || 0})
+                  </button>
+                )) : null}
+                <button
                   type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={selectAll}
+                  className="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    selectAll()
+                  }}
                 >
                   Todas ({allStores.length})
-                </Button>
-                <Button
+                </button>
+                <button
                   type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={clearSelection}
+                  className="inline-flex items-center justify-center rounded-md text-sm font-medium hover:bg-accent hover:text-accent-foreground h-9 px-3"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    clearSelection()
+                  }}
                 >
                   Limpar
-                </Button>
+                </button>
               </div>
             </div>
 
