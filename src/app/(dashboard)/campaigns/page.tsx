@@ -482,9 +482,7 @@ export default function CampaignsCalendarPage() {
       {/* Campaign Form Modal */}
       {showFormModal && (
         <CampaignFormModal
-          stores={stores}
           initialDate={selectedDate || undefined}
-          campaign={selectedCampaign || undefined}
           onClose={() => {
             setShowFormModal(false)
             setSelectedDate(null)

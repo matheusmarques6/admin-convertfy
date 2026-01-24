@@ -1,10 +1,8 @@
 "use client"
 
-import { useState } from "react"
 import Link from "next/link"
-import { Plus, UserPlus, Calendar, FileText, Zap, Send } from "lucide-react"
+import { Plus, UserPlus, Calendar, FileText, Zap } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { CampaignBatchModal } from "@/components/campaigns/campaign-batch-modal"
 
 const linkActions = [
   {
@@ -40,41 +38,16 @@ const linkActions = [
 ]
 
 export function QuickActions() {
-  const [campaignModalOpen, setCampaignModalOpen] = useState(false)
-
   return (
-    <>
-      <div className="flex flex-wrap gap-2">
-        {/* Campaign Batch Button */}
-        <Button
-          variant="default"
-          size="sm"
-          onClick={() => setCampaignModalOpen(true)}
-          className="bg-emerald-600 hover:bg-emerald-700"
-        >
-          <Send className="mr-2 h-4 w-4" />
-          Nova Campanha em Lote
+    <div className="flex flex-wrap gap-2">
+      {linkActions.map((action) => (
+        <Button key={action.label} variant={action.variant} size="sm" asChild>
+          <Link href={action.href}>
+            <action.icon className="mr-2 h-4 w-4" />
+            {action.label}
+          </Link>
         </Button>
-
-        {/* Link Actions */}
-        {linkActions.map((action) => (
-          <Button key={action.label} variant={action.variant} size="sm" asChild>
-            <Link href={action.href}>
-              <action.icon className="mr-2 h-4 w-4" />
-              {action.label}
-            </Link>
-          </Button>
-        ))}
-      </div>
-
-      {/* Campaign Batch Modal */}
-      <CampaignBatchModal
-        open={campaignModalOpen}
-        onOpenChange={setCampaignModalOpen}
-        onSuccess={() => {
-          // Could add a toast notification here
-        }}
-      />
-    </>
+      ))}
+    </div>
   )
 }

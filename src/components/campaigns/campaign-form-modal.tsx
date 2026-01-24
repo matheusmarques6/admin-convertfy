@@ -1,12 +1,15 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { X, Loader2 } from "lucide-react"
+import { useState, useEffect, useCallback } from "react"
+import { X, Loader2, Search, Globe, FileText, Store } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Badge } from "@/components/ui/badge"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Select,
   SelectContent,
@@ -14,24 +17,35 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Campaign, ClientStore, CampaignChannel, CampaignType, CampaignStatus } from "@/types"
+
+interface StoreItem {
+  id: string
+  store_name: string
+  platform: string
+  language: string
+  client_id: string
+  client?: {
+    id: string
+    name: string
+    company: string
+  }
+}
 
 interface CampaignFormModalProps {
-  stores: ClientStore[]
+  stores?: StoreItem[]
   initialDate?: string
-  campaign?: Campaign
   onClose: () => void
   onSave: () => void
 }
 
-const channelOptions: { value: CampaignChannel; label: string }[] = [
+const channelOptions = [
   { value: "email", label: "Email" },
   { value: "sms", label: "SMS" },
   { value: "push", label: "Push Notification" },
   { value: "whatsapp", label: "WhatsApp" },
 ]
 
-const typeOptions: { value: CampaignType; label: string }[] = [
+const typeOptions = [
   { value: "promotional", label: "Promocional" },
   { value: "newsletter", label: "Newsletter" },
   { value: "transactional", label: "Transacional" },
@@ -41,7 +55,7 @@ const typeOptions: { value: CampaignType; label: string }[] = [
   { value: "other", label: "Outro" },
 ]
 
-const statusOptions: { value: CampaignStatus; label: string }[] = [
+const statusOptions = [
   { value: "draft", label: "Rascunho" },
   { value: "scheduled", label: "Agendada" },
   { value: "sent", label: "Enviada" },
@@ -59,77 +73,193 @@ const colorOptions = [
   { value: "#f97316", label: "Laranja" },
 ]
 
+const languageFlags: Record<string, string> = {
+  "pt-BR": "🇧🇷",
+  "en-US": "🇺🇸",
+  "es": "🇪🇸",
+  "es-ES": "🇪🇸",
+  "es-MX": "🇲🇽",
+  "fr": "🇫🇷",
+  "de": "🇩🇪",
+  "it": "🇮🇹",
+}
+
 export function CampaignFormModal({
-  stores,
+  stores: initialStores,
   initialDate,
-  campaign,
   onClose,
   onSave,
 }: CampaignFormModalProps) {
   const [loading, setLoading] = useState(false)
+  const [loadingStores, setLoadingStores] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // Store data
+  const [allStores, setAllStores] = useState<StoreItem[]>(initialStores || [])
+  const [languages, setLanguages] = useState<string[]>([])
+  const [languageCounts, setLanguageCounts] = useState<Record<string, number>>({})
+  const [selectedStoreIds, setSelectedStoreIds] = useState<string[]>([])
+  const [searchQuery, setSearchQuery] = useState("")
+
+  // Form data
   const [formData, setFormData] = useState({
-    store_id: campaign?.store_id || "",
-    client_id: campaign?.client_id || "",
-    name: campaign?.name || "",
-    description: campaign?.description || "",
-    scheduled_date: campaign?.scheduled_date || initialDate || "",
-    scheduled_time: campaign?.scheduled_time || "",
-    channel: campaign?.channel || "email" as CampaignChannel,
-    campaign_type: campaign?.campaign_type || "promotional" as CampaignType,
-    status: campaign?.status || "draft" as CampaignStatus,
-    subject_line: campaign?.subject_line || "",
-    preview_text: campaign?.preview_text || "",
-    segment_name: campaign?.segment_name || "",
-    estimated_recipients: campaign?.estimated_recipients || "",
-    color: campaign?.color || "#3b82f6",
-    notes: campaign?.notes || "",
+    name: "",
+    description: "",
+    scheduled_date: initialDate || "",
+    scheduled_time: "10:00",
+    channel: "email",
+    campaign_type: "promotional",
+    status: "scheduled",
+    subject_line: "",
+    preview_text: "",
+    segment_name: "",
+    estimated_recipients: "",
+    color: "#3b82f6",
+    notes: "",
+    instructions_doc_url: "",
   })
 
-  const isEditing = !!campaign
-
-  // Update client_id when store changes
-  useEffect(() => {
-    if (formData.store_id) {
-      const store = stores.find(s => s.id === formData.store_id)
-      if (store) {
-        setFormData(prev => ({ ...prev, client_id: store.client_id }))
-      }
+  // Fetch stores from API if not provided
+  const fetchStores = useCallback(async () => {
+    if (initialStores && initialStores.length > 0) {
+      setAllStores(initialStores)
+      return
     }
-  }, [formData.store_id, stores])
+
+    setLoadingStores(true)
+    try {
+      const response = await fetch("/api/admin/stores")
+      if (response.ok) {
+        const data = await response.json()
+        setAllStores(data.stores || [])
+        setLanguages(data.languages || [])
+        setLanguageCounts(data.languageCounts || {})
+      }
+    } catch (err) {
+      console.error("Error fetching stores:", err)
+    } finally {
+      setLoadingStores(false)
+    }
+  }, [initialStores])
+
+  useEffect(() => {
+    fetchStores()
+  }, [fetchStores])
+
+  // Calculate languages from stores if not provided by API
+  useEffect(() => {
+    if (allStores.length > 0 && languages.length === 0) {
+      const langs = new Set<string>()
+      const counts: Record<string, number> = {}
+
+      allStores.forEach(store => {
+        const lang = store.language || "pt-BR"
+        langs.add(lang)
+        counts[lang] = (counts[lang] || 0) + 1
+      })
+
+      setLanguages(Array.from(langs))
+      setLanguageCounts(counts)
+    }
+  }, [allStores, languages.length])
+
+  // Filter stores by search query
+  const filteredStores = allStores.filter(store => {
+    const query = searchQuery.toLowerCase()
+    return (
+      store.store_name.toLowerCase().includes(query) ||
+      store.client?.name?.toLowerCase().includes(query) ||
+      store.client?.company?.toLowerCase().includes(query)
+    )
+  })
+
+  // Quick filter handlers
+  const selectByLanguage = (language: string) => {
+    const storeIds = allStores
+      .filter(s => (s.language || "pt-BR") === language)
+      .map(s => s.id)
+    setSelectedStoreIds(storeIds)
+  }
+
+  const selectAll = () => {
+    setSelectedStoreIds(allStores.map(s => s.id))
+  }
+
+  const clearSelection = () => {
+    setSelectedStoreIds([])
+  }
+
+  const toggleStore = (storeId: string) => {
+    setSelectedStoreIds(prev =>
+      prev.includes(storeId)
+        ? prev.filter(id => id !== storeId)
+        : [...prev, storeId]
+    )
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setError(null)
     setLoading(true)
 
-    try {
-      const url = isEditing
-        ? `/api/campaigns/${campaign.id}`
-        : "/api/campaigns"
+    // Validations
+    if (!formData.name || formData.name.trim().length < 3) {
+      setError("Nome da campanha deve ter pelo menos 3 caracteres")
+      setLoading(false)
+      return
+    }
 
-      const method = isEditing ? "PUT" : "POST"
+    if (!formData.scheduled_date) {
+      setError("Selecione a data de envio")
+      setLoading(false)
+      return
+    }
 
-      const body = {
-        ...formData,
-        estimated_recipients: formData.estimated_recipients
-          ? parseInt(String(formData.estimated_recipients))
-          : null,
+    if (selectedStoreIds.length === 0) {
+      setError("Selecione pelo menos uma loja")
+      setLoading(false)
+      return
+    }
+
+    // Build scheduled_at datetime
+    const scheduledAt = new Date(`${formData.scheduled_date}T${formData.scheduled_time}:00`)
+
+    // Validate URL if provided
+    if (formData.instructions_doc_url && formData.instructions_doc_url.trim()) {
+      try {
+        new URL(formData.instructions_doc_url)
+      } catch {
+        setError("URL do documento de instruções inválida")
+        setLoading(false)
+        return
       }
+    }
 
-      const response = await fetch(url, {
-        method,
+    try {
+      const response = await fetch("/api/admin/campaign-batches", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          name: formData.name.trim(),
+          campaign_type: formData.channel, // Using channel as campaign_type for the API
+          scheduled_at: scheduledAt.toISOString(),
+          instructions_doc_url: formData.instructions_doc_url?.trim() || null,
+          store_ids: selectedStoreIds,
+          notes: formData.notes?.trim() || null,
+        }),
       })
 
-      if (response.ok) {
-        onSave()
-      } else {
-        const error = await response.json()
-        alert(`Erro: ${error.error}`)
+      const data = await response.json()
+
+      if (!response.ok) {
+        setError(data.error || "Erro ao criar campanha")
+        return
       }
-    } catch (error) {
-      console.error("Error saving campaign:", error)
-      alert("Erro ao salvar campanha")
+
+      onSave()
+    } catch (err) {
+      console.error("Error saving campaign:", err)
+      setError("Erro ao salvar campanha")
     } finally {
       setLoading(false)
     }
@@ -137,48 +267,22 @@ export function CampaignFormModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <CardHeader className="flex flex-row items-center justify-between sticky top-0 bg-card z-10">
-          <CardTitle>
-            {isEditing ? "Editar Campanha" : "Nova Campanha"}
-          </CardTitle>
+      <Card className="w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+        <CardHeader className="flex flex-row items-center justify-between sticky top-0 bg-card z-10 border-b">
+          <CardTitle>Nova Campanha</CardTitle>
           <Button variant="ghost" size="icon" onClick={onClose}>
             <X className="h-4 w-4" />
           </Button>
         </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Store Selection */}
-            <div className="space-y-2">
-              <Label htmlFor="store">Loja *</Label>
-              <Select
-                value={formData.store_id}
-                onValueChange={(value) =>
-                  setFormData({ ...formData, store_id: value })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione a loja" />
-                </SelectTrigger>
-                <SelectContent>
-                  {stores.map((store) => (
-                    <SelectItem key={store.id} value={store.id}>
-                      {store.store_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
+        <CardContent className="overflow-y-auto flex-1 p-6">
+          <form onSubmit={handleSubmit} className="space-y-6">
             {/* Campaign Name */}
             <div className="space-y-2">
               <Label htmlFor="name">Nome da Campanha *</Label>
               <Input
                 id="name"
                 value={formData.name}
-                onChange={(e) =>
-                  setFormData({ ...formData, name: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 placeholder="Ex: Black Friday 2024"
                 required
               />
@@ -190,25 +294,21 @@ export function CampaignFormModal({
               <Textarea
                 id="description"
                 value={formData.description}
-                onChange={(e) =>
-                  setFormData({ ...formData, description: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 placeholder="Descreva a campanha..."
                 rows={2}
               />
             </div>
 
-            {/* Date and Time */}
-            <div className="grid grid-cols-2 gap-4">
+            {/* Date, Time and Channel */}
+            <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="scheduled_date">Data *</Label>
                 <Input
                   id="scheduled_date"
                   type="date"
                   value={formData.scheduled_date}
-                  onChange={(e) =>
-                    setFormData({ ...formData, scheduled_date: e.target.value })
-                  }
+                  onChange={(e) => setFormData({ ...formData, scheduled_date: e.target.value })}
                   required
                 />
               </div>
@@ -218,22 +318,14 @@ export function CampaignFormModal({
                   id="scheduled_time"
                   type="time"
                   value={formData.scheduled_time}
-                  onChange={(e) =>
-                    setFormData({ ...formData, scheduled_time: e.target.value })
-                  }
+                  onChange={(e) => setFormData({ ...formData, scheduled_time: e.target.value })}
                 />
               </div>
-            </div>
-
-            {/* Channel and Type */}
-            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Canal *</Label>
                 <Select
                   value={formData.channel}
-                  onValueChange={(value: CampaignChannel) =>
-                    setFormData({ ...formData, channel: value })
-                  }
+                  onValueChange={(value) => setFormData({ ...formData, channel: value })}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -247,13 +339,15 @@ export function CampaignFormModal({
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+
+            {/* Type, Status and Color */}
+            <div className="grid grid-cols-3 gap-4">
               <div className="space-y-2">
-                <Label>Tipo *</Label>
+                <Label>Tipo</Label>
                 <Select
                   value={formData.campaign_type}
-                  onValueChange={(value: CampaignType) =>
-                    setFormData({ ...formData, campaign_type: value })
-                  }
+                  onValueChange={(value) => setFormData({ ...formData, campaign_type: value })}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -267,17 +361,11 @@ export function CampaignFormModal({
                   </SelectContent>
                 </Select>
               </div>
-            </div>
-
-            {/* Status and Color */}
-            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Status</Label>
                 <Select
                   value={formData.status}
-                  onValueChange={(value: CampaignStatus) =>
-                    setFormData({ ...formData, status: value })
-                  }
+                  onValueChange={(value) => setFormData({ ...formData, status: value })}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -292,12 +380,10 @@ export function CampaignFormModal({
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Cor no Calendário</Label>
+                <Label>Cor</Label>
                 <Select
                   value={formData.color}
-                  onValueChange={(value) =>
-                    setFormData({ ...formData, color: value })
-                  }
+                  onValueChange={(value) => setFormData({ ...formData, color: value })}
                 >
                   <SelectTrigger>
                     <div className="flex items-center gap-2">
@@ -327,15 +413,13 @@ export function CampaignFormModal({
 
             {/* Email specific fields */}
             {formData.channel === "email" && (
-              <>
+              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="subject_line">Assunto do Email</Label>
                   <Input
                     id="subject_line"
                     value={formData.subject_line}
-                    onChange={(e) =>
-                      setFormData({ ...formData, subject_line: e.target.value })
-                    }
+                    onChange={(e) => setFormData({ ...formData, subject_line: e.target.value })}
                     placeholder="Ex: 🔥 Últimas horas! Até 70% OFF"
                   />
                 </div>
@@ -344,13 +428,11 @@ export function CampaignFormModal({
                   <Input
                     id="preview_text"
                     value={formData.preview_text}
-                    onChange={(e) =>
-                      setFormData({ ...formData, preview_text: e.target.value })
-                    }
-                    placeholder="Texto que aparece na prévia do email"
+                    onChange={(e) => setFormData({ ...formData, preview_text: e.target.value })}
+                    placeholder="Texto que aparece na prévia"
                   />
                 </div>
-              </>
+              </div>
             )}
 
             {/* Segment info */}
@@ -360,9 +442,7 @@ export function CampaignFormModal({
                 <Input
                   id="segment_name"
                   value={formData.segment_name}
-                  onChange={(e) =>
-                    setFormData({ ...formData, segment_name: e.target.value })
-                  }
+                  onChange={(e) => setFormData({ ...formData, segment_name: e.target.value })}
                   placeholder="Ex: Compradores VIP"
                 />
               </div>
@@ -372,36 +452,157 @@ export function CampaignFormModal({
                   id="estimated_recipients"
                   type="number"
                   value={formData.estimated_recipients}
-                  onChange={(e) =>
-                    setFormData({ ...formData, estimated_recipients: e.target.value })
-                  }
+                  onChange={(e) => setFormData({ ...formData, estimated_recipients: e.target.value })}
                   placeholder="Ex: 5000"
                 />
               </div>
             </div>
 
+            {/* Instructions Doc URL (Internal) */}
+            <div className="space-y-2">
+              <Label htmlFor="docUrl" className="flex items-center gap-2">
+                <FileText className="h-4 w-4" />
+                Link do Documento de Instruções
+              </Label>
+              <Input
+                id="docUrl"
+                value={formData.instructions_doc_url}
+                onChange={(e) => setFormData({ ...formData, instructions_doc_url: e.target.value })}
+                placeholder="https://docs.google.com/document/d/..."
+              />
+              <p className="text-xs text-muted-foreground">
+                Este link é interno e NÃO será visível para os clientes
+              </p>
+            </div>
+
+            {/* Quick Filters for Stores */}
+            <div className="space-y-2">
+              <Label>Filtros Rápidos</Label>
+              <div className="flex flex-wrap gap-2">
+                {languages.map((lang) => (
+                  <Button
+                    key={lang}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => selectByLanguage(lang)}
+                    className="gap-1"
+                  >
+                    {languageFlags[lang] || <Globe className="h-3 w-3" />}
+                    {lang}
+                    <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-xs">
+                      {languageCounts[lang] || 0}
+                    </Badge>
+                  </Button>
+                ))}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={selectAll}
+                >
+                  Todas ({allStores.length})
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearSelection}
+                >
+                  Limpar
+                </Button>
+              </div>
+            </div>
+
+            {/* Store Selection */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="flex items-center gap-2">
+                  <Store className="h-4 w-4" />
+                  Lojas Selecionadas ({selectedStoreIds.length}/{allStores.length}) *
+                </Label>
+                <div className="relative w-64">
+                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar loja ou cliente..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-8 h-9"
+                  />
+                </div>
+              </div>
+
+              <ScrollArea className="h-48 border rounded-md">
+                {loadingStores ? (
+                  <div className="flex items-center justify-center h-full">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : filteredStores.length === 0 ? (
+                  <div className="flex items-center justify-center h-full text-muted-foreground">
+                    Nenhuma loja encontrada
+                  </div>
+                ) : (
+                  <div className="p-2 space-y-1">
+                    {filteredStores.map((store) => (
+                      <div
+                        key={store.id}
+                        className={`flex items-center gap-3 p-2 rounded-md cursor-pointer hover:bg-accent transition-colors ${
+                          selectedStoreIds.includes(store.id) ? "bg-accent" : ""
+                        }`}
+                        onClick={() => toggleStore(store.id)}
+                      >
+                        <Checkbox
+                          checked={selectedStoreIds.includes(store.id)}
+                          onCheckedChange={() => toggleStore(store.id)}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">
+                            {store.store_name}
+                          </p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {store.client?.company || store.client?.name || "Sem cliente"}
+                          </p>
+                        </div>
+                        <Badge variant="outline" className="text-xs">
+                          {languageFlags[store.language] || "🌐"} {store.language || "pt-BR"}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </ScrollArea>
+            </div>
+
             {/* Notes */}
             <div className="space-y-2">
-              <Label htmlFor="notes">Notas</Label>
+              <Label htmlFor="notes">Notas (interno)</Label>
               <Textarea
                 id="notes"
                 value={formData.notes}
-                onChange={(e) =>
-                  setFormData({ ...formData, notes: e.target.value })
-                }
-                placeholder="Notas adicionais sobre a campanha..."
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                placeholder="Notas internas sobre a campanha..."
                 rows={2}
               />
+              <p className="text-xs text-muted-foreground">
+                Estas notas são internas e NÃO serão visíveis para os clientes
+              </p>
             </div>
 
+            {/* Error Message */}
+            {error && (
+              <div className="p-3 rounded-md bg-destructive/10 text-destructive text-sm">
+                {error}
+              </div>
+            )}
+
             {/* Actions */}
-            <div className="flex justify-end gap-2 pt-4">
+            <div className="flex justify-end gap-2 pt-4 border-t">
               <Button type="button" variant="outline" onClick={onClose}>
                 Cancelar
               </Button>
-              <Button type="submit" disabled={loading || !formData.store_id}>
+              <Button type="submit" disabled={loading || selectedStoreIds.length === 0}>
                 {loading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                {isEditing ? "Salvar" : "Criar Campanha"}
+                Criar Campanha ({selectedStoreIds.length} lojas)
               </Button>
             </div>
           </form>
