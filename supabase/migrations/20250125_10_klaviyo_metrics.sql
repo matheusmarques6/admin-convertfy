@@ -469,8 +469,7 @@ SELECT
   kc.tags,
   kc.campaign_type,
   kc.synced_at,
-  cs.name as store_name,
-  cs.url as store_url,
+  cs.store_name,
   c.name as client_name,
   cm.recipients,
   cm.delivered,
@@ -499,7 +498,7 @@ SELECT
   kc.name,
   kc.send_time,
   kc.channel,
-  cs.name as store_name,
+  cs.store_name,
   c.name as client_name,
   cm.revenue,
   cm.conversions,
@@ -520,7 +519,7 @@ CREATE OR REPLACE VIEW v_unread_alerts AS
 SELECT
   ca.*,
   kc.name as campaign_name,
-  cs.name as store_name,
+  cs.store_name,
   c.name as client_name
 FROM campaign_alerts ca
 JOIN klaviyo_campaigns kc ON kc.id = ca.campaign_id
