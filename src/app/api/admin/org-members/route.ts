@@ -127,35 +127,45 @@ export async function POST(request: NextRequest) {
     const supabase = await createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
+    console.log("[Org Members POST] Auth check:", { userId: user?.id, authError })
+
     if (authError || !user) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
     }
 
     const body: OrgMemberFormData = await request.json()
+    console.log("[Org Members POST] Body received:", { org_id: body.org_id, role: body.role, email: body.email })
 
     // Check if user has permission: system admin OR org owner/admin
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("role")
       .eq("id", user.id)
       .single()
+
+    console.log("[Org Members POST] Profile check:", { profile, profileError })
 
     const isSystemAdmin = profile?.role === "admin"
 
     // Check if user is owner/admin of the target organization
     let isOrgAdmin = false
     if (body.org_id) {
-      const { data: orgMember } = await supabase
+      const { data: orgMember, error: orgMemberError } = await supabase
         .from("org_members")
         .select("role")
         .eq("org_id", body.org_id)
         .eq("profile_id", user.id)
         .single()
 
+      console.log("[Org Members POST] OrgMember check:", { orgMember, orgMemberError, org_id: body.org_id, profile_id: user.id })
+
       isOrgAdmin = orgMember?.role === "owner" || orgMember?.role === "manager"
     }
 
+    console.log("[Org Members POST] Permission result:", { isSystemAdmin, isOrgAdmin })
+
     if (!isSystemAdmin && !isOrgAdmin) {
+      console.log("[Org Members POST] ACCESS DENIED - User has no permission")
       return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders() })
     }
 
