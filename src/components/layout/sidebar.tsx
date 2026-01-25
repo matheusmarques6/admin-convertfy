@@ -8,6 +8,7 @@ import {
   Users,
   Users2,
   Kanban,
+  ClipboardList,
   Zap,
   BarChart3,
   Settings,
@@ -48,6 +49,7 @@ import { toast } from "@/lib/hooks/use-toast"
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { name: "Board", href: "/board", icon: ClipboardList },
   { name: "Clientes", href: "/clients", icon: Users },
   { name: "Equipe", href: "/team", icon: Users2 },
   { name: "Onboarding", href: "/onboarding", icon: Rocket },
