@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
       .from("org_members")
       .select("org_id, role")
       .eq("profile_id", user.id)
-      .in("role", ["owner", "admin"])
+      .in("role", ["owner", "manager"])
 
     const adminOrgIds = userOrgMemberships?.map((m) => m.org_id) || []
 
@@ -152,7 +152,7 @@ export async function POST(request: NextRequest) {
         .eq("profile_id", user.id)
         .single()
 
-      isOrgAdmin = orgMember?.role === "owner" || orgMember?.role === "admin"
+      isOrgAdmin = orgMember?.role === "owner" || orgMember?.role === "manager"
     }
 
     if (!isSystemAdmin && !isOrgAdmin) {

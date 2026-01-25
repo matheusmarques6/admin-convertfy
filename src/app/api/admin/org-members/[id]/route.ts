@@ -114,7 +114,7 @@ export async function PUT(
       .eq("profile_id", user.id)
       .single()
 
-    const isOrgAdmin = userOrgMember?.role === "owner" || userOrgMember?.role === "admin"
+    const isOrgAdmin = userOrgMember?.role === "owner" || userOrgMember?.role === "manager"
 
     if (!isSystemAdmin && !isOrgAdmin) {
       return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders() })
@@ -243,7 +243,7 @@ export async function DELETE(
       .eq("profile_id", user.id)
       .single()
 
-    const isOrgAdmin = userOrgMember?.role === "owner" || userOrgMember?.role === "admin"
+    const isOrgAdmin = userOrgMember?.role === "owner" || userOrgMember?.role === "manager"
 
     if (!isSystemAdmin && !isOrgAdmin) {
       return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders() })
