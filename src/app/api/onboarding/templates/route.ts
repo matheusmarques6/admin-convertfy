@@ -44,11 +44,15 @@ export async function GET(request: NextRequest) {
     }
 
     // Sort steps by position if included
-    const sortedTemplates = (templates || []).map(template => {
+    interface TemplateWithSteps {
+      steps?: Array<{ position: number }>
+      [key: string]: unknown
+    }
+    const sortedTemplates = ((templates || []) as unknown as TemplateWithSteps[]).map(template => {
       if (template.steps) {
         return {
           ...template,
-          steps: template.steps.sort((a: { position: number }, b: { position: number }) => a.position - b.position)
+          steps: template.steps.sort((a, b) => a.position - b.position)
         }
       }
       return template

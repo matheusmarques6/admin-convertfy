@@ -50,16 +50,37 @@ import {
 import { getInitials } from "@/lib/utils"
 import { toast } from "@/lib/hooks/use-toast"
 import { TeamMemberDialog } from "./team-member-dialog"
-import type { OrgMember, FeatureCatalog, Organization, ClientStore, User } from "@/types"
+import type { FeatureCatalog, Organization, OrgRole } from "@/types"
 
-interface MemberWithDetails extends OrgMember {
+interface UserProfile {
+  id: string
+  name: string
+  email: string
+  avatar_url?: string
+}
+
+interface MemberWithDetails {
+  id: string
+  org_id: string
+  profile_id: string
+  role: OrgRole
+  is_active: boolean
+  invited_at?: string
+  joined_at?: string
+  created_at: string
+  updated_at: string
+  job_title?: string
   organization?: Organization
-  profile?: User
+  profile?: UserProfile
   enabled_features?: string[]
   store_access_count?: number
 }
 
-interface StoreWithClient extends ClientStore {
+interface StoreWithClient {
+  id: string
+  store_name: string
+  store_url?: string
+  platform?: string
   client?: { id: string; name: string }
 }
 

@@ -25,20 +25,38 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { cn, getInitials } from "@/lib/utils"
-import type { Task, OrgMember, Client, ClientStore, User, TaskStatus } from "@/types"
+import type { Task, TaskStatus } from "@/types"
 
-interface MemberWithProfile extends OrgMember {
-  profile?: User
+interface UserProfile {
+  id: string
+  name: string
+  email: string
+  avatar_url?: string
 }
 
-interface StoreWithClient extends ClientStore {
+interface MemberWithProfile {
+  id: string
+  role: string
+  profile?: UserProfile
+}
+
+interface ClientInfo {
+  id: string
+  name: string
+  company?: string
+}
+
+interface StoreWithClient {
+  id: string
+  store_name: string
+  platform?: string
   client?: { id: string; name: string }
 }
 
-interface TaskWithRelations extends Task {
+interface TaskWithRelations extends Omit<Task, "assignee" | "client" | "store" | "creator"> {
   assignee?: MemberWithProfile
-  creator?: User
-  client?: Client
+  creator?: UserProfile
+  client?: ClientInfo
   store?: StoreWithClient
   comments_count?: number
 }

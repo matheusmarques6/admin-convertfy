@@ -91,7 +91,11 @@ async function getStores() {
     .eq("is_active", true)
     .order("store_name", { ascending: true })
 
-  return stores || []
+  // Transform client from array to single object (Supabase quirk)
+  return (stores || []).map(s => ({
+    ...s,
+    client: Array.isArray(s.client) ? s.client[0] : s.client
+  }))
 }
 
 function TableSkeleton() {

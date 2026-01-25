@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
 
     let query = supabase
       .from("client_onboardings")
-      .select(\`
+      .select(`
         *,
         client:clients(id, name, company, email),
         store:client_stores(id, store_name, platform),
@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
           role,
           profile:profiles(id, name, email, avatar_url)
         )
-      \`)
+      `)
       .order("created_at", { ascending: false })
 
     if (clientId) {
@@ -121,10 +121,10 @@ export async function POST(request: NextRequest) {
     // Get default template
     const { data: template } = await supabase
       .from("onboarding_templates")
-      .select(\`
+      .select(`
         *,
         steps:onboarding_template_steps(*)
-      \`)
+      `)
       .eq("is_default", true)
       .eq("is_active", true)
       .single()
@@ -201,12 +201,12 @@ export async function POST(request: NextRequest) {
     // Fetch complete onboarding with steps
     const { data: completeOnboarding } = await supabase
       .from("client_onboardings")
-      .select(\`
+      .select(`
         *,
         client:clients(id, name, company),
         store:client_stores(id, store_name),
         steps:client_onboarding_steps(*)
-      \`)
+      `)
       .eq("id", onboarding.id)
       .single()
 

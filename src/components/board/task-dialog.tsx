@@ -36,22 +36,40 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { cn, getInitials } from "@/lib/utils"
 import { toast } from "@/lib/hooks/use-toast"
-import type { Task, OrgMember, Client, ClientStore, User, TaskType, TaskPriority } from "@/types"
+import type { Task, TaskType, TaskPriority } from "@/types"
 
-interface MemberWithProfile extends OrgMember {
-  profile?: User
+interface UserProfile {
+  id: string
+  name: string
+  email: string
+  avatar_url?: string
 }
 
-interface StoreWithClient extends ClientStore {
+interface MemberWithProfile {
+  id: string
+  role: string
+  profile?: UserProfile
+}
+
+interface ClientInfo {
+  id: string
+  name: string
+  company?: string
+}
+
+interface StoreWithClient {
+  id: string
+  store_name: string
+  platform?: string
   client?: { id: string; name: string }
 }
 
-interface TaskWithRelations extends Task {
+interface TaskWithRelations extends Omit<Task, "assignee" | "client" | "store" | "checklists" | "creator"> {
   assignee?: MemberWithProfile
-  creator?: User
-  client?: Client
+  creator?: UserProfile
+  client?: ClientInfo
   store?: StoreWithClient
-  comments?: Array<{ id: string; content: string; author?: User; created_at: string }>
+  comments?: Array<{ id: string; content: string; author?: UserProfile; created_at: string }>
   checklists?: Array<{ id: string; title: string; is_completed: boolean }>
 }
 
@@ -61,7 +79,7 @@ interface TaskDialogProps {
   onSuccess: () => void
   task: TaskWithRelations | null
   members: MemberWithProfile[]
-  clients: Client[]
+  clients: ClientInfo[]
   stores: StoreWithClient[]
 }
 
@@ -106,7 +124,7 @@ export function TaskDialog({
   const [dueDate, setDueDate] = useState<Date | undefined>()
   const [activeTab, setActiveTab] = useState("details")
   const [newComment, setNewComment] = useState("")
-  const [comments, setComments] = useState<Array<{ id: string; content: string; author?: User; created_at: string }>>([])
+  const [comments, setComments] = useState<Array<{ id: string; content: string; author?: UserProfile; created_at: string }>>([])
   const [checklists, setChecklists] = useState<Array<{ id: string; title: string; is_completed: boolean }>>([])
   const [newChecklistItem, setNewChecklistItem] = useState("")
 

@@ -11,18 +11,22 @@ import {
   Plus,
   MoreHorizontal,
   User,
-  ExternalLink,
-  FileText,
   CheckCircle2,
-  Clock,
   Building2,
   Loader2,
   RefreshCw,
+  PlayCircle,
+  PauseCircle,
+  Circle,
+  Store,
+  Calendar,
+  AlertCircle,
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Progress } from "@/components/ui/progress"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -46,67 +50,134 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Input } from "@/components/ui/input"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { toast } from "@/lib/hooks/use-toast"
-import { getInitials } from "@/lib/utils"
-import type { OnboardingClient } from "@/app/api/onboarding/route"
+import { cn, getInitials } from "@/lib/utils"
+import type { OnboardingStatus, Client } from "@/types"
 
-type OnboardingStage = 'entrada' | 'design_producao' | 'implementando' | 'estrutura_pronta' | 'concluido'
+interface OnboardingWithRelations {
+  id: string
+  client_id: string
+  store_id?: string
+  template_id?: string
+  status: OnboardingStatus
+  progress_percent: number
+  assigned_to?: string
+  started_at?: string
+  target_completion_date?: string
+  completed_at?: string
+  notes?: string
+  created_at: string
+  updated_at: string
+  client?: {
+    id: string
+    name: string
+    company?: string
+    email?: string
+  }
+  store?: {
+    id: string
+    store_name: string
+    platform?: string
+  }
+  assignee?: {
+    id: string
+    role: string
+    profile?: {
+      id: string
+      name: string
+      email: string
+      avatar_url?: string
+    }
+  }
+}
+
+interface StepWithAssignee {
+  id: string
+  onboarding_id: string
+  name: string
+  description?: string
+  category: string
+  position: number
+  status: "pending" | "in_progress" | "completed" | "blocked" | "skipped"
+  started_at?: string
+  completed_at?: string
+  assignee?: {
+    id: string
+    role: string
+    profile?: {
+      id: string
+      name: string
+      email: string
+      avatar_url?: string
+    }
+  }
+}
+
+interface OrgMember {
+  id: string
+  role: string
+  profile?: {
+    id: string
+    name: string
+    email: string
+    avatar_url?: string
+  }
+}
 
 interface StageConfig {
-  id: OnboardingStage
+  id: OnboardingStatus
   name: string
   color: string
   icon: React.ReactNode
 }
 
 const STAGES: StageConfig[] = [
-  { id: 'entrada', name: 'Entrada', color: '#94A3B8', icon: <Clock className="h-4 w-4" /> },
-  { id: 'design_producao', name: 'Design em Produção', color: '#F59E0B', icon: <FileText className="h-4 w-4" /> },
-  { id: 'implementando', name: 'Implementando', color: '#3B82F6', icon: <Building2 className="h-4 w-4" /> },
-  { id: 'estrutura_pronta', name: 'Estrutura Implementada', color: '#8B5CF6', icon: <CheckCircle2 className="h-4 w-4" /> },
-  { id: 'concluido', name: 'Cliente ✅', color: '#22C55E', icon: <CheckCircle2 className="h-4 w-4" /> },
+  { id: "not_started", name: "Não Iniciado", color: "#94A3B8", icon: <Circle className="h-4 w-4" /> },
+  { id: "in_progress", name: "Em Andamento", color: "#3B82F6", icon: <PlayCircle className="h-4 w-4" /> },
+  { id: "paused", name: "Pausado", color: "#F59E0B", icon: <PauseCircle className="h-4 w-4" /> },
+  { id: "completed", name: "Concluído", color: "#22C55E", icon: <CheckCircle2 className="h-4 w-4" /> },
 ]
 
-interface User {
-  id: string
-  name: string
-  email: string
-  avatar_url?: string
+const STEP_CATEGORIES: Record<string, { label: string; color: string }> = {
+  preparacao: { label: "Preparação", color: "#6366F1" },
+  integracao: { label: "Integração", color: "#8B5CF6" },
+  configuracao: { label: "Configuração", color: "#EC4899" },
+  lancamento: { label: "Lançamento", color: "#10B981" },
 }
 
 export function OnboardingKanban() {
-  const [clients, setClients] = useState<OnboardingClient[]>([])
-  const [users, setUsers] = useState<User[]>([])
+  const [onboardings, setOnboardings] = useState<OnboardingWithRelations[]>([])
+  const [orgMembers, setOrgMembers] = useState<OrgMember[]>([])
+  const [clients, setClients] = useState<Client[]>([])
   const [loading, setLoading] = useState(true)
-  const [showNewClient, setShowNewClient] = useState(false)
-  const [selectedClient, setSelectedClient] = useState<OnboardingClient | null>(null)
-  const [showClientDetails, setShowClientDetails] = useState(false)
+
+  // Dialog states
+  const [selectedOnboarding, setSelectedOnboarding] = useState<OnboardingWithRelations | null>(null)
+  const [showDetailsDialog, setShowDetailsDialog] = useState(false)
+  const [showNewOnboardingDialog, setShowNewOnboardingDialog] = useState(false)
   const [showAssignDialog, setShowAssignDialog] = useState(false)
 
-  // New client form state
-  const [newClientForm, setNewClientForm] = useState({
-    name: '',
-    email: '',
-    company: '',
-    store_url: '',
-    platform: 'shopify',
-    contact_phone: '',
-  })
+  // Steps state
+  const [steps, setSteps] = useState<StepWithAssignee[]>([])
+  const [loadingSteps, setLoadingSteps] = useState(false)
 
-  const fetchClients = useCallback(async () => {
+  // New onboarding form
+  const [newOnboardingClientId, setNewOnboardingClientId] = useState("")
+
+  const fetchOnboardings = useCallback(async () => {
     try {
-      const res = await fetch('/api/onboarding?include_completed=true')
+      const res = await fetch("/api/onboarding")
       const data = await res.json()
-      if (data.success) {
-        setClients(data.clients)
+      if (data.onboardings) {
+        setOnboardings(data.onboardings)
       }
     } catch (error) {
-      console.error('Error fetching onboarding clients:', error)
+      console.error("Error fetching onboardings:", error)
       toast({
         variant: "destructive",
-        title: "Erro ao carregar clientes",
+        title: "Erro ao carregar onboardings",
         description: "Tente novamente.",
       })
     } finally {
@@ -114,92 +185,141 @@ export function OnboardingKanban() {
     }
   }, [])
 
-  const fetchUsers = useCallback(async () => {
+  const fetchOrgMembers = useCallback(async () => {
     try {
-      const res = await fetch('/api/users')
+      const res = await fetch("/api/admin/org-members")
       const data = await res.json()
-      if (data.success) {
-        setUsers(data.users)
+      if (data.members) {
+        setOrgMembers(data.members)
       }
     } catch (error) {
-      console.error('Error fetching users:', error)
+      console.error("Error fetching org members:", error)
+    }
+  }, [])
+
+  const fetchClients = useCallback(async () => {
+    try {
+      const res = await fetch("/api/clients?status=lead,active")
+      const data = await res.json()
+      if (data.clients) {
+        // Filter clients that don't have an active onboarding
+        const clientsWithoutOnboarding = data.clients.filter(
+          (client: Client) => !onboardings.some(
+            (o) => o.client_id === client.id && o.status !== "completed"
+          )
+        )
+        setClients(clientsWithoutOnboarding)
+      }
+    } catch (error) {
+      console.error("Error fetching clients:", error)
+    }
+  }, [onboardings])
+
+  const fetchSteps = useCallback(async (onboardingId: string) => {
+    setLoadingSteps(true)
+    try {
+      const res = await fetch(`/api/onboarding/${onboardingId}/steps`)
+      const data = await res.json()
+      if (data.steps) {
+        setSteps(data.steps)
+      }
+    } catch (error) {
+      console.error("Error fetching steps:", error)
+      toast({
+        variant: "destructive",
+        title: "Erro ao carregar etapas",
+        description: "Tente novamente.",
+      })
+    } finally {
+      setLoadingSteps(false)
     }
   }, [])
 
   useEffect(() => {
-    fetchClients()
-    fetchUsers()
-  }, [fetchClients, fetchUsers])
+    fetchOnboardings()
+    fetchOrgMembers()
+  }, [fetchOnboardings, fetchOrgMembers])
+
+  useEffect(() => {
+    if (showNewOnboardingDialog) {
+      fetchClients()
+    }
+  }, [showNewOnboardingDialog, fetchClients])
+
+  useEffect(() => {
+    if (selectedOnboarding && showDetailsDialog) {
+      fetchSteps(selectedOnboarding.id)
+    }
+  }, [selectedOnboarding, showDetailsDialog, fetchSteps])
 
   async function handleDragEnd(result: DropResult) {
     if (!result.destination) return
 
     const { draggableId, destination } = result
-    const newStage = destination.droppableId as OnboardingStage
+    const newStatus = destination.droppableId as OnboardingStatus
 
     // Optimistic update
-    setClients((prev) =>
-      prev.map((client) =>
-        client.id === draggableId ? { ...client, onboarding_stage: newStage } : client
+    setOnboardings((prev) =>
+      prev.map((onboarding) =>
+        onboarding.id === draggableId ? { ...onboarding, status: newStatus } : onboarding
       )
     )
 
-    // Update in database
     try {
       const res = await fetch(`/api/onboarding/${draggableId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ onboarding_stage: newStage }),
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
       })
 
       const data = await res.json()
-      if (!data.success) throw new Error(data.error)
+      if (!res.ok) throw new Error(data.error)
 
-      const stageName = STAGES.find(s => s.id === newStage)?.name || newStage
+      const stageName = STAGES.find((s) => s.id === newStatus)?.name || newStatus
 
       toast({
-        title: "Cliente movido",
-        description: newStage === 'concluido'
-          ? "Onboarding concluído! Feedback agendado para 30 dias."
-          : `Cliente movido para ${stageName}.`,
+        title: "Status atualizado",
+        description: `Onboarding movido para "${stageName}".`,
       })
     } catch {
       // Revert on error
-      fetchClients()
+      fetchOnboardings()
       toast({
         variant: "destructive",
-        title: "Erro ao mover cliente",
+        title: "Erro ao atualizar status",
         description: "Tente novamente.",
       })
     }
   }
 
-  async function handleAssignUser(clientId: string, userId: string | null) {
+  async function handleAssignOnboarding(onboardingId: string, memberId: string | null) {
     try {
-      const res = await fetch(`/api/onboarding/${clientId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ onboarding_assigned_to: userId }),
+      const res = await fetch(`/api/onboarding/${onboardingId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assigned_to: memberId }),
       })
 
       const data = await res.json()
-      if (!data.success) throw new Error(data.error)
+      if (!res.ok) throw new Error(data.error)
 
-      setClients((prev) =>
-        prev.map((client) =>
-          client.id === clientId
+      const member = orgMembers.find((m) => m.id === memberId)
+
+      setOnboardings((prev) =>
+        prev.map((onboarding) =>
+          onboarding.id === onboardingId
             ? {
-                ...client,
-                onboarding_assigned_to: userId,
-                onboarding_assigned_to_name: users.find(u => u.id === userId)?.name || null
+                ...onboarding,
+                assigned_to: memberId || undefined,
+                assignee: member,
               }
-            : client
+            : onboarding
         )
       )
 
       toast({
         title: "Responsável atribuído",
-        description: userId ? "Responsável atualizado com sucesso." : "Responsável removido.",
+        description: memberId ? "Responsável atualizado com sucesso." : "Responsável removido.",
       })
 
       setShowAssignDialog(false)
@@ -212,57 +332,117 @@ export function OnboardingKanban() {
     }
   }
 
-  async function handleCreateClient() {
+  async function handleCreateOnboarding() {
+    if (!newOnboardingClientId) return
+
     try {
-      const res = await fetch('/api/onboarding', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newClientForm),
+      const res = await fetch("/api/onboarding", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ client_id: newOnboardingClientId }),
       })
 
       const data = await res.json()
-      if (!data.success) throw new Error(data.error)
+      if (!res.ok) throw new Error(data.error)
 
       toast({
-        title: "Cliente criado",
-        description: "Novo cliente adicionado ao onboarding.",
+        title: "Onboarding iniciado",
+        description: "Novo onboarding criado com sucesso.",
       })
 
-      setShowNewClient(false)
-      setNewClientForm({
-        name: '',
-        email: '',
-        company: '',
-        store_url: '',
-        platform: 'shopify',
-        contact_phone: '',
-      })
-      fetchClients()
-    } catch {
+      setShowNewOnboardingDialog(false)
+      setNewOnboardingClientId("")
+      fetchOnboardings()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Tente novamente."
       toast({
         variant: "destructive",
-        title: "Erro ao criar cliente",
+        title: "Erro ao criar onboarding",
+        description: message,
+      })
+    }
+  }
+
+  async function handleToggleStep(stepId: string, currentStatus: string) {
+    if (!selectedOnboarding) return
+
+    const newStatus = currentStatus === "completed" ? "pending" : "completed"
+
+    // Optimistic update
+    setSteps((prev) =>
+      prev.map((step) =>
+        step.id === stepId ? { ...step, status: newStatus as "pending" | "in_progress" | "completed" | "blocked" | "skipped" } : step
+      )
+    )
+
+    try {
+      const res = await fetch(`/api/onboarding/${selectedOnboarding.id}/steps`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ step_id: stepId, status: newStatus }),
+      })
+
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+
+      // Update onboarding progress
+      setOnboardings((prev) =>
+        prev.map((o) =>
+          o.id === selectedOnboarding.id
+            ? { ...o, progress_percent: data.onboarding_progress, status: data.onboarding_status }
+            : o
+        )
+      )
+
+      // Update selected onboarding
+      setSelectedOnboarding((prev) =>
+        prev
+          ? { ...prev, progress_percent: data.onboarding_progress, status: data.onboarding_status }
+          : prev
+      )
+
+      toast({
+        title: newStatus === "completed" ? "Etapa concluída" : "Etapa reaberta",
+        description: data.message,
+      })
+    } catch {
+      // Revert on error
+      if (selectedOnboarding) {
+        fetchSteps(selectedOnboarding.id)
+      }
+      toast({
+        variant: "destructive",
+        title: "Erro ao atualizar etapa",
         description: "Tente novamente.",
       })
     }
   }
 
-  function getClientsForStage(stageId: OnboardingStage) {
-    return clients.filter((client) => {
-      if (stageId === 'entrada') {
-        return client.onboarding_stage === 'entrada' || client.onboarding_stage === null
-      }
-      return client.onboarding_stage === stageId
+  function getOnboardingsForStage(status: OnboardingStatus) {
+    return onboardings.filter((o) => o.status === status)
+  }
+
+  function formatDate(dateString: string | undefined) {
+    if (!dateString) return null
+    return new Date(dateString).toLocaleDateString("pt-BR", {
+      day: "2-digit",
+      month: "short",
     })
   }
 
-  function formatDate(dateString: string | null) {
-    if (!dateString) return null
-    return new Date(dateString).toLocaleDateString('pt-BR', {
-      day: '2-digit',
-      month: 'short',
-    })
+  function isOverdue(targetDate: string | undefined) {
+    if (!targetDate) return false
+    return new Date(targetDate) < new Date()
   }
+
+  // Group steps by category
+  const groupedSteps = steps.reduce((acc, step) => {
+    if (!acc[step.category]) {
+      acc[step.category] = []
+    }
+    acc[step.category].push(step)
+    return acc
+  }, {} as Record<string, StepWithAssignee[]>)
 
   if (loading) {
     return (
@@ -279,17 +459,17 @@ export function OnboardingKanban() {
         <div>
           <h2 className="text-2xl font-bold">Onboarding de Clientes</h2>
           <p className="text-muted-foreground">
-            {clients.filter(c => c.onboarding_stage !== 'concluido').length} clientes em onboarding
+            {onboardings.filter((o) => o.status !== "completed").length} clientes em onboarding
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={fetchClients}>
+          <Button variant="outline" size="sm" onClick={fetchOnboardings}>
             <RefreshCw className="h-4 w-4 mr-2" />
             Atualizar
           </Button>
-          <Button onClick={() => setShowNewClient(true)}>
+          <Button onClick={() => setShowNewOnboardingDialog(true)}>
             <Plus className="h-4 w-4 mr-2" />
-            Novo Cliente
+            Novo Onboarding
           </Button>
         </div>
       </div>
@@ -298,7 +478,7 @@ export function OnboardingKanban() {
       <DragDropContext onDragEnd={handleDragEnd}>
         <div className="flex gap-4 overflow-x-auto pb-4 h-[calc(100vh-220px)]">
           {STAGES.map((stage) => {
-            const stageClients = getClientsForStage(stage.id)
+            const stageOnboardings = getOnboardingsForStage(stage.id)
 
             return (
               <div
@@ -315,15 +495,15 @@ export function OnboardingKanban() {
                       <span style={{ color: stage.color }}>{stage.icon}</span>
                       <h3 className="font-semibold">{stage.name}</h3>
                       <Badge variant="secondary" className="rounded-full">
-                        {stageClients.length}
+                        {stageOnboardings.length}
                       </Badge>
                     </div>
-                    {stage.id === 'entrada' && (
+                    {stage.id === "not_started" && (
                       <Button
                         variant="ghost"
                         size="icon"
                         className="h-8 w-8"
-                        onClick={() => setShowNewClient(true)}
+                        onClick={() => setShowNewOnboardingDialog(true)}
                       >
                         <Plus className="h-4 w-4" />
                       </Button>
@@ -331,21 +511,22 @@ export function OnboardingKanban() {
                   </div>
                 </div>
 
-                {/* Clients */}
+                {/* Onboardings */}
                 <Droppable droppableId={stage.id}>
                   {(provided, snapshot) => (
                     <ScrollArea className="flex-1">
                       <div
                         ref={provided.innerRef}
                         {...provided.droppableProps}
-                        className={`p-2 min-h-[200px] transition-colors ${
-                          snapshot.isDraggingOver ? "bg-zinc-800/50" : ""
-                        }`}
+                        className={cn(
+                          "p-2 min-h-[200px] transition-colors",
+                          snapshot.isDraggingOver && "bg-zinc-800/50"
+                        )}
                       >
-                        {stageClients.map((client, index) => (
+                        {stageOnboardings.map((onboarding, index) => (
                           <Draggable
-                            key={client.id}
-                            draggableId={client.id}
+                            key={onboarding.id}
+                            draggableId={onboarding.id}
                             index={index}
                           >
                             {(provided, snapshot) => (
@@ -353,21 +534,26 @@ export function OnboardingKanban() {
                                 ref={provided.innerRef}
                                 {...provided.draggableProps}
                                 {...provided.dragHandleProps}
-                                className={`mb-2 cursor-grab active:cursor-grabbing transition-shadow bg-zinc-900 border-zinc-800 hover:border-zinc-700 ${
-                                  snapshot.isDragging ? "shadow-lg shadow-black/50" : ""
-                                }`}
+                                className={cn(
+                                  "mb-2 cursor-grab active:cursor-grabbing transition-shadow bg-zinc-900 border-zinc-800 hover:border-zinc-700",
+                                  snapshot.isDragging && "shadow-lg shadow-black/50",
+                                  isOverdue(onboarding.target_completion_date) &&
+                                    onboarding.status !== "completed" &&
+                                    "border-red-500/50"
+                                )}
                               >
                                 <CardContent className="p-3">
                                   <div className="flex items-start justify-between gap-2">
                                     <div className="flex-1 min-w-0">
                                       <p className="font-medium truncate">
-                                        {client.name}
+                                        {onboarding.client?.name || "Cliente"}
                                       </p>
-                                      {client.company && client.company !== client.name && (
-                                        <p className="text-sm text-muted-foreground truncate">
-                                          {client.company}
-                                        </p>
-                                      )}
+                                      {onboarding.client?.company &&
+                                        onboarding.client.company !== onboarding.client.name && (
+                                          <p className="text-sm text-muted-foreground truncate">
+                                            {onboarding.client.company}
+                                          </p>
+                                        )}
                                     </div>
                                     <DropdownMenu>
                                       <DropdownMenuTrigger asChild>
@@ -382,75 +568,66 @@ export function OnboardingKanban() {
                                       <DropdownMenuContent align="end">
                                         <DropdownMenuItem
                                           onClick={() => {
-                                            setSelectedClient(client)
-                                            setShowClientDetails(true)
+                                            setSelectedOnboarding(onboarding)
+                                            setShowDetailsDialog(true)
                                           }}
                                         >
-                                          <FileText className="mr-2 h-4 w-4" />
-                                          Ver Detalhes
+                                          <CheckCircle2 className="mr-2 h-4 w-4" />
+                                          Ver Etapas
                                         </DropdownMenuItem>
                                         <DropdownMenuItem
                                           onClick={() => {
-                                            setSelectedClient(client)
+                                            setSelectedOnboarding(onboarding)
                                             setShowAssignDialog(true)
                                           }}
                                         >
                                           <User className="mr-2 h-4 w-4" />
                                           Atribuir Responsável
                                         </DropdownMenuItem>
-                                        {client.store_url && (
-                                          <DropdownMenuItem asChild>
-                                            <a href={client.store_url} target="_blank" rel="noopener noreferrer">
-                                              <ExternalLink className="mr-2 h-4 w-4" />
-                                              Abrir Loja
-                                            </a>
-                                          </DropdownMenuItem>
-                                        )}
                                         <DropdownMenuSeparator />
                                         <DropdownMenuItem asChild>
-                                          <a href={`/clients/${client.id}`}>
-                                            Ver Painel do Cliente
+                                          <a href={`/clients/${onboarding.client_id}`}>
+                                            Ver Cliente
                                           </a>
                                         </DropdownMenuItem>
                                       </DropdownMenuContent>
                                     </DropdownMenu>
                                   </div>
 
-                                  {/* Client Info */}
-                                  <div className="flex flex-wrap gap-1 mt-2">
-                                    {client.platform && (
-                                      <Badge variant="outline" className="text-xs">
-                                        {client.platform}
-                                      </Badge>
-                                    )}
-                                    {client.has_briefing && (
-                                      <Badge variant="secondary" className="text-xs">
-                                        Briefing ✓
-                                      </Badge>
-                                    )}
-                                    {client.has_integrations && (
-                                      <Badge className="text-xs bg-emerald-500/20 text-emerald-400 border-emerald-500/30">
-                                        Integrado
-                                      </Badge>
-                                    )}
-                                    {client.stores_count > 0 && (
-                                      <Badge variant="outline" className="text-xs">
-                                        {client.stores_count} loja{client.stores_count > 1 ? 's' : ''}
-                                      </Badge>
-                                    )}
+                                  {/* Store info */}
+                                  {onboarding.store && (
+                                    <div className="flex items-center gap-1 mt-2 text-xs text-muted-foreground">
+                                      <Store className="h-3 w-3" />
+                                      <span className="truncate">{onboarding.store.store_name}</span>
+                                      {onboarding.store.platform && (
+                                        <Badge variant="outline" className="text-[10px] ml-1">
+                                          {onboarding.store.platform}
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {/* Progress bar */}
+                                  <div className="mt-3">
+                                    <div className="flex items-center justify-between text-xs mb-1">
+                                      <span className="text-muted-foreground">Progresso</span>
+                                      <span className="font-medium">{onboarding.progress_percent}%</span>
+                                    </div>
+                                    <Progress value={onboarding.progress_percent} className="h-1.5" />
                                   </div>
 
                                   {/* Footer */}
                                   <div className="flex items-center justify-between mt-3 pt-2 border-t border-zinc-800">
-                                    {client.onboarding_assigned_to_name ? (
+                                    {onboarding.assignee?.profile ? (
                                       <div className="flex items-center gap-1.5">
                                         <Avatar className="h-5 w-5">
+                                          <AvatarImage src={onboarding.assignee.profile.avatar_url} />
                                           <AvatarFallback className="text-[10px]">
-                                            {getInitials(client.onboarding_assigned_to_name)}
+                                            {getInitials(onboarding.assignee.profile.name)}
                                           </AvatarFallback>
                                         </Avatar>
                                         <span className="text-xs text-muted-foreground truncate max-w-[100px]">
-                                          {client.onboarding_assigned_to_name}
+                                          {onboarding.assignee.profile.name}
                                         </span>
                                       </div>
                                     ) : (
@@ -459,7 +636,7 @@ export function OnboardingKanban() {
                                         size="sm"
                                         className="h-6 text-xs text-muted-foreground"
                                         onClick={() => {
-                                          setSelectedClient(client)
+                                          setSelectedOnboarding(onboarding)
                                           setShowAssignDialog(true)
                                         }}
                                       >
@@ -467,10 +644,25 @@ export function OnboardingKanban() {
                                         Atribuir
                                       </Button>
                                     )}
-                                    {client.onboarding_started_at && (
-                                      <span className="text-xs text-muted-foreground">
-                                        {formatDate(client.onboarding_started_at)}
-                                      </span>
+
+                                    {onboarding.target_completion_date && (
+                                      <div
+                                        className={cn(
+                                          "flex items-center gap-1 text-xs",
+                                          isOverdue(onboarding.target_completion_date) &&
+                                            onboarding.status !== "completed"
+                                            ? "text-red-500"
+                                            : "text-muted-foreground"
+                                        )}
+                                      >
+                                        {isOverdue(onboarding.target_completion_date) &&
+                                        onboarding.status !== "completed" ? (
+                                          <AlertCircle className="h-3 w-3" />
+                                        ) : (
+                                          <Calendar className="h-3 w-3" />
+                                        )}
+                                        {formatDate(onboarding.target_completion_date)}
+                                      </div>
                                     )}
                                   </div>
                                 </CardContent>
@@ -489,110 +681,81 @@ export function OnboardingKanban() {
         </div>
       </DragDropContext>
 
-      {/* New Client Dialog */}
-      <Dialog open={showNewClient} onOpenChange={setShowNewClient}>
+      {/* New Onboarding Dialog */}
+      <Dialog open={showNewOnboardingDialog} onOpenChange={setShowNewOnboardingDialog}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Novo Cliente</DialogTitle>
+            <DialogTitle>Novo Onboarding</DialogTitle>
             <DialogDescription>
-              Adicione um novo cliente ao processo de onboarding.
+              Selecione um cliente para iniciar o processo de onboarding.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Nome / Empresa *</Label>
-              <Input
-                value={newClientForm.name}
-                onChange={(e) => setNewClientForm(prev => ({ ...prev, name: e.target.value }))}
-                placeholder="Nome da loja ou empresa"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Email</Label>
-              <Input
-                type="email"
-                value={newClientForm.email}
-                onChange={(e) => setNewClientForm(prev => ({ ...prev, email: e.target.value }))}
-                placeholder="email@exemplo.com"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>URL da Loja</Label>
-              <Input
-                value={newClientForm.store_url}
-                onChange={(e) => setNewClientForm(prev => ({ ...prev, store_url: e.target.value }))}
-                placeholder="https://minhaloja.com.br"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Plataforma</Label>
-                <Select
-                  value={newClientForm.platform}
-                  onValueChange={(v) => setNewClientForm(prev => ({ ...prev, platform: v }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="shopify">Shopify</SelectItem>
-                    <SelectItem value="nuvemshop">Nuvemshop</SelectItem>
-                    <SelectItem value="woocommerce">WooCommerce</SelectItem>
-                    <SelectItem value="other">Outra</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Telefone</Label>
-                <Input
-                  value={newClientForm.contact_phone}
-                  onChange={(e) => setNewClientForm(prev => ({ ...prev, contact_phone: e.target.value }))}
-                  placeholder="(00) 00000-0000"
-                />
-              </div>
+              <Label>Cliente</Label>
+              <Select value={newOnboardingClientId} onValueChange={setNewOnboardingClientId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione um cliente" />
+                </SelectTrigger>
+                <SelectContent>
+                  {clients.length === 0 ? (
+                    <div className="p-2 text-sm text-muted-foreground text-center">
+                      Nenhum cliente disponível
+                    </div>
+                  ) : (
+                    clients.map((client) => (
+                      <SelectItem key={client.id} value={client.id}>
+                        {client.name}
+                        {client.company && client.company !== client.name && (
+                          <span className="text-muted-foreground ml-1">({client.company})</span>
+                        )}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowNewClient(false)}>
+            <Button variant="outline" onClick={() => setShowNewOnboardingDialog(false)}>
               Cancelar
             </Button>
-            <Button onClick={handleCreateClient} disabled={!newClientForm.name}>
-              Criar Cliente
+            <Button onClick={handleCreateOnboarding} disabled={!newOnboardingClientId}>
+              Iniciar Onboarding
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Assign User Dialog */}
+      {/* Assign Dialog */}
       <Dialog open={showAssignDialog} onOpenChange={setShowAssignDialog}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Atribuir Responsável</DialogTitle>
             <DialogDescription>
-              Selecione quem será responsável pelo onboarding de {selectedClient?.name}.
+              Selecione quem será responsável pelo onboarding de{" "}
+              {selectedOnboarding?.client?.name}.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-2">
             <Label>Responsável</Label>
             <Select
-              value={selectedClient?.onboarding_assigned_to || 'none'}
-              onValueChange={(v) => handleAssignUser(selectedClient?.id || '', v === 'none' ? null : v)}
+              value={selectedOnboarding?.assigned_to || "none"}
+              onValueChange={(v) =>
+                handleAssignOnboarding(selectedOnboarding?.id || "", v === "none" ? null : v)
+              }
             >
               <SelectTrigger>
                 <SelectValue placeholder="Selecione um responsável" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">Nenhum</SelectItem>
-                {users.map((user) => (
-                  <SelectItem key={user.id} value={user.id}>
-                    {user.name}
+                {orgMembers.map((member) => (
+                  <SelectItem key={member.id} value={member.id}>
+                    {member.profile?.name || member.role}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -601,104 +764,131 @@ export function OnboardingKanban() {
         </DialogContent>
       </Dialog>
 
-      {/* Client Details Dialog */}
-      <Dialog open={showClientDetails} onOpenChange={setShowClientDetails}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+      {/* Steps Details Dialog */}
+      <Dialog open={showDetailsDialog} onOpenChange={setShowDetailsDialog}>
+        <DialogContent className="max-w-2xl max-h-[85vh]">
           <DialogHeader>
-            <DialogTitle>{selectedClient?.name}</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <Building2 className="h-5 w-5" />
+              {selectedOnboarding?.client?.name}
+            </DialogTitle>
             <DialogDescription>
-              Detalhes do cliente e progresso do onboarding.
+              Acompanhe o progresso das etapas do onboarding.
             </DialogDescription>
           </DialogHeader>
 
-          {selectedClient && (
-            <div className="space-y-6">
-              {/* Basic Info */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-muted-foreground">Email</Label>
-                  <p>{selectedClient.email || '-'}</p>
-                </div>
-                <div>
-                  <Label className="text-muted-foreground">Empresa</Label>
-                  <p>{selectedClient.company || '-'}</p>
-                </div>
-                <div>
-                  <Label className="text-muted-foreground">Plataforma</Label>
-                  <p>{selectedClient.platform || '-'}</p>
-                </div>
-                <div>
-                  <Label className="text-muted-foreground">URL da Loja</Label>
-                  {selectedClient.store_url ? (
-                    <a
-                      href={selectedClient.store_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary hover:underline flex items-center gap-1"
-                    >
-                      {selectedClient.store_url}
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  ) : (
-                    <p>-</p>
-                  )}
-                </div>
-              </div>
-
-              {/* Status */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-muted-foreground">Stage Atual</Label>
-                  <div className="flex items-center gap-2 mt-1">
-                    <Badge
-                      style={{
-                        backgroundColor: STAGES.find(s => s.id === selectedClient.onboarding_stage)?.color + '20',
-                        color: STAGES.find(s => s.id === selectedClient.onboarding_stage)?.color,
-                        borderColor: STAGES.find(s => s.id === selectedClient.onboarding_stage)?.color + '50',
-                      }}
-                    >
-                      {STAGES.find(s => s.id === selectedClient.onboarding_stage)?.name || 'Entrada'}
-                    </Badge>
+          {selectedOnboarding && (
+            <div className="space-y-4">
+              {/* Progress Summary */}
+              <div className="flex items-center gap-4 p-4 bg-zinc-900 rounded-lg border border-zinc-800">
+                <div className="flex-1">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium">Progresso Geral</span>
+                    <span className="text-lg font-bold">
+                      {selectedOnboarding.progress_percent}%
+                    </span>
                   </div>
+                  <Progress value={selectedOnboarding.progress_percent} className="h-2" />
                 </div>
-                <div>
-                  <Label className="text-muted-foreground">Responsável</Label>
-                  <p>{selectedClient.onboarding_assigned_to_name || 'Não atribuído'}</p>
-                </div>
-                <div>
-                  <Label className="text-muted-foreground">Início do Onboarding</Label>
-                  <p>
-                    {selectedClient.onboarding_started_at
-                      ? new Date(selectedClient.onboarding_started_at).toLocaleDateString('pt-BR')
-                      : '-'}
-                  </p>
-                </div>
-                <div>
-                  <Label className="text-muted-foreground">Conclusão</Label>
-                  <p>
-                    {selectedClient.onboarding_completed_at
-                      ? new Date(selectedClient.onboarding_completed_at).toLocaleDateString('pt-BR')
-                      : 'Em andamento'}
-                  </p>
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground">Status</p>
+                  <Badge
+                    style={{
+                      backgroundColor:
+                        STAGES.find((s) => s.id === selectedOnboarding.status)?.color + "20",
+                      color: STAGES.find((s) => s.id === selectedOnboarding.status)?.color,
+                    }}
+                  >
+                    {STAGES.find((s) => s.id === selectedOnboarding.status)?.name}
+                  </Badge>
                 </div>
               </div>
 
-              {/* Quick Actions */}
-              <div className="flex gap-2">
-                <Button variant="outline" asChild>
-                  <a href={`/clients/${selectedClient.id}`}>
-                    Ver Painel Completo
-                  </a>
-                </Button>
-                {selectedClient.store_url && (
-                  <Button variant="outline" asChild>
-                    <a href={selectedClient.store_url} target="_blank" rel="noopener noreferrer">
-                      <ExternalLink className="h-4 w-4 mr-2" />
-                      Abrir Loja
-                    </a>
-                  </Button>
+              {/* Steps List */}
+              <ScrollArea className="h-[400px] pr-4">
+                {loadingSteps ? (
+                  <div className="flex items-center justify-center h-32">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : Object.keys(groupedSteps).length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    Nenhuma etapa encontrada.
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {Object.entries(groupedSteps).map(([category, categorySteps]) => {
+                      const categoryConfig = STEP_CATEGORIES[category] || {
+                        label: category,
+                        color: "#6B7280",
+                      }
+                      const completedCount = categorySteps.filter(
+                        (s) => s.status === "completed"
+                      ).length
+
+                      return (
+                        <div key={category}>
+                          <div className="flex items-center gap-2 mb-3">
+                            <div
+                              className="w-2 h-2 rounded-full"
+                              style={{ backgroundColor: categoryConfig.color }}
+                            />
+                            <h4 className="font-medium">{categoryConfig.label}</h4>
+                            <span className="text-xs text-muted-foreground">
+                              {completedCount}/{categorySteps.length}
+                            </span>
+                          </div>
+
+                          <div className="space-y-2 ml-4">
+                            {categorySteps.map((step) => (
+                              <div
+                                key={step.id}
+                                className={cn(
+                                  "flex items-start gap-3 p-3 rounded-lg border transition-colors",
+                                  step.status === "completed"
+                                    ? "bg-zinc-900/50 border-zinc-800"
+                                    : "bg-zinc-900 border-zinc-700 hover:border-zinc-600"
+                                )}
+                              >
+                                <Checkbox
+                                  checked={step.status === "completed"}
+                                  onCheckedChange={() => handleToggleStep(step.id, step.status)}
+                                  className="mt-0.5"
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <p
+                                    className={cn(
+                                      "font-medium text-sm",
+                                      step.status === "completed" && "line-through text-muted-foreground"
+                                    )}
+                                  >
+                                    {step.name}
+                                  </p>
+                                  {step.description && (
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                      {step.description}
+                                    </p>
+                                  )}
+                                  {step.completed_at && (
+                                    <p className="text-xs text-emerald-500 mt-1">
+                                      Concluído em{" "}
+                                      {new Date(step.completed_at).toLocaleDateString("pt-BR")}
+                                    </p>
+                                  )}
+                                </div>
+                                {step.status === "blocked" && (
+                                  <Badge variant="destructive" className="text-xs">
+                                    Bloqueado
+                                  </Badge>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
                 )}
-              </div>
+              </ScrollArea>
             </div>
           )}
         </DialogContent>
