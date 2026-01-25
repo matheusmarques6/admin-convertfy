@@ -203,7 +203,7 @@ export async function POST(request: NextRequest) {
         // First check if auth user already exists (might be orphan from failed attempt)
         const { data: existingUsers } = await adminClient.auth.admin.listUsers()
         const existingAuthUser = existingUsers?.users?.find(
-          (u) => u.email?.toLowerCase() === body.email.toLowerCase()
+          (u) => u.email?.toLowerCase() === body.email?.toLowerCase()
         )
 
         let authUserId: string
