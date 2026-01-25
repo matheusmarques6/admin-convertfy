@@ -4,9 +4,7 @@ import {
   Calendar,
   MoreHorizontal,
   MessageSquare,
-  CheckSquare,
   AlertCircle,
-  Clock,
   Trash2,
   ArrowRight,
 } from "lucide-react"

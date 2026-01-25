@@ -6,7 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { CalendarIcon, Plus, X, MessageSquare, CheckSquare } from "lucide-react"
+import { CalendarIcon, Plus, MessageSquare, CheckSquare } from "lucide-react"
 import {
   Dialog,
   DialogContent,

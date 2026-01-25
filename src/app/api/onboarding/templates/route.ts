@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams
     const includeSteps = searchParams.get("include_steps") !== "false"
 
-    let query = supabase
+    const { data: templates, error } = await supabase
       .from("onboarding_templates")
       .select(includeSteps ? `
         *,
@@ -35,8 +35,6 @@ export async function GET(request: NextRequest) {
       .eq("is_active", true)
       .order("is_default", { ascending: false })
       .order("name", { ascending: true })
-
-    const { data: templates, error } = await query
 
     if (error) {
       console.error("[Templates] Error fetching:", error)

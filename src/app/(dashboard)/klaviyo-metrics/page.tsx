@@ -846,7 +846,7 @@ export default function KlaviyoMetricsPage() {
               <Card>
                 <CardHeader>
                   <CardTitle>
-                    Resultados para "{compareResult.search_term}"
+                    Resultados para &quot;{compareResult.search_term}&quot;
                   </CardTitle>
                   <CardDescription>
                     {compareResult.totals.total_campaigns} campanhas em{" "}
