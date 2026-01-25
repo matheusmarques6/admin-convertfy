@@ -232,7 +232,7 @@ export async function POST(request: NextRequest) {
             id: authUser.user.id,
             email: body.email.toLowerCase(),
             name: body.name,
-            role: "cs", // Default role in profiles table
+            // role uses default from database (sdr)
           })
           .select()
           .single()
