@@ -277,8 +277,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Check if member already exists in this org
-    const { data: existingMember } = await supabase
+    // Check if member already exists in this org (use adminClient to bypass RLS)
+    const adminClientForCheck = createAdminClient()
+    const { data: existingMember } = await adminClientForCheck
       .from("org_members")
       .select("id")
       .eq("org_id", body.org_id)
@@ -293,8 +294,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create org member
-    const adminClient = createAdminClient()
-    const { data: member, error: insertError } = await adminClient
+    const { data: member, error: insertError } = await adminClientForCheck
       .from("org_members")
       .insert({
         org_id: body.org_id,
@@ -307,14 +307,14 @@ export async function POST(request: NextRequest) {
       .select(`
         *,
         organization:organizations(id, name, slug),
-        profile:profiles(id, name, email, avatar_url)
+        profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url)
       `)
       .single()
 
     if (insertError) {
       console.error("[Org Members] Insert error:", insertError)
       return NextResponse.json(
-        { error: "Erro ao criar membro" },
+        { error: "Erro ao criar membro: " + insertError.message },
         { status: 500, headers: corsHeaders() }
       )
     }
@@ -328,7 +328,7 @@ export async function POST(request: NextRequest) {
         granted_by: user.id,
       }))
 
-      await adminClient
+      await adminClientForCheck
         .from("org_member_features")
         .insert(featureInserts)
     }
@@ -342,7 +342,7 @@ export async function POST(request: NextRequest) {
         assigned_by: user.id,
       }))
 
-      await adminClient
+      await adminClientForCheck
         .from("agent_store_access")
         .insert(accessInserts)
     }
