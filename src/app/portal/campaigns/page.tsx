@@ -112,11 +112,26 @@ const CHANNEL_CONFIG = {
   },
 }
 
-const STATUS_CONFIG = {
+const STATUS_CONFIG: Record<string, { label: string; color: string; dotColor: string }> = {
   draft: {
     label: "Rascunho",
     color: "bg-slate-500/20 text-slate-400 border-slate-500/30",
     dotColor: "bg-slate-400"
+  },
+  pending_review: {
+    label: "Em Revisão",
+    color: "bg-blue-500/20 text-blue-400 border-blue-500/30",
+    dotColor: "bg-blue-400"
+  },
+  approved: {
+    label: "Aprovada",
+    color: "bg-teal-500/20 text-teal-400 border-teal-500/30",
+    dotColor: "bg-teal-400"
+  },
+  rejected: {
+    label: "Rejeitada",
+    color: "bg-orange-500/20 text-orange-400 border-orange-500/30",
+    dotColor: "bg-orange-400"
   },
   scheduled: {
     label: "Agendada",

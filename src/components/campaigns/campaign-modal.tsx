@@ -17,11 +17,19 @@ import {
   MousePointer,
   Eye,
   DollarSign,
+  Send,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  History,
+  Loader2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,13 +41,23 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { Campaign } from "@/types"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { toast } from "@/lib/hooks/use-toast"
+import { Campaign, CampaignHistory } from "@/types"
 
 interface CampaignModalProps {
   campaign: Campaign
   onClose: () => void
   onEdit: () => void
   onDelete: () => void
+  onRefresh?: () => void
 }
 
 const channelConfig = {
@@ -49,8 +67,11 @@ const channelConfig = {
   whatsapp: { icon: MessageSquare, color: "bg-emerald-500", label: "WhatsApp" },
 }
 
-const statusConfig = {
+const statusConfig: Record<string, { color: string; label: string }> = {
   draft: { color: "bg-gray-100 text-gray-800", label: "Rascunho" },
+  pending_review: { color: "bg-blue-100 text-blue-800", label: "Aguardando Revisão" },
+  approved: { color: "bg-emerald-100 text-emerald-800", label: "Aprovada" },
+  rejected: { color: "bg-orange-100 text-orange-800", label: "Rejeitada" },
   scheduled: { color: "bg-yellow-100 text-yellow-800", label: "Agendada" },
   sent: { color: "bg-green-100 text-green-800", label: "Enviada" },
   cancelled: { color: "bg-red-100 text-red-800", label: "Cancelada" },
@@ -71,12 +92,110 @@ export function CampaignModal({
   onClose,
   onEdit,
   onDelete,
+  onRefresh,
 }: CampaignModalProps) {
   const [deleting, setDeleting] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [approving, setApproving] = useState(false)
+  const [rejecting, setRejecting] = useState(false)
+  const [showRejectDialog, setShowRejectDialog] = useState(false)
+  const [rejectReason, setRejectReason] = useState("")
+  const [showHistoryDialog, setShowHistoryDialog] = useState(false)
+  const [history, setHistory] = useState<CampaignHistory[]>([])
+  const [loadingHistory, setLoadingHistory] = useState(false)
 
   const ChannelIcon = channelConfig[campaign.channel]?.icon || Mail
   const channelInfo = channelConfig[campaign.channel]
   const statusInfo = statusConfig[campaign.status]
+
+  const canSubmit = ["draft", "rejected"].includes(campaign.status)
+  const canApprove = campaign.status === "pending_review"
+
+  // Submit for review
+  const handleSubmit = async () => {
+    setSubmitting(true)
+    try {
+      const res = await fetch(`/api/campaigns/${campaign.id}/submit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      toast({ title: "Sucesso", description: data.message })
+      onRefresh?.()
+      onClose()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro ao enviar"
+      toast({ variant: "destructive", title: "Erro", description: message })
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // Approve campaign
+  const handleApprove = async () => {
+    setApproving(true)
+    try {
+      const res = await fetch(`/api/campaigns/${campaign.id}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      toast({ title: "Sucesso", description: data.message })
+      onRefresh?.()
+      onClose()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro ao aprovar"
+      toast({ variant: "destructive", title: "Erro", description: message })
+    } finally {
+      setApproving(false)
+    }
+  }
+
+  // Reject campaign
+  const handleReject = async () => {
+    if (!rejectReason.trim()) {
+      toast({ variant: "destructive", title: "Erro", description: "Informe o motivo da rejeição" })
+      return
+    }
+    setRejecting(true)
+    try {
+      const res = await fetch(`/api/campaigns/${campaign.id}/reject`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: rejectReason }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      toast({ title: "Campanha Rejeitada", description: data.message })
+      setShowRejectDialog(false)
+      onRefresh?.()
+      onClose()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro ao rejeitar"
+      toast({ variant: "destructive", title: "Erro", description: message })
+    } finally {
+      setRejecting(false)
+    }
+  }
+
+  // Load history
+  const loadHistory = async () => {
+    setLoadingHistory(true)
+    try {
+      const res = await fetch(`/api/campaigns/${campaign.id}/history`)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setHistory(data.history || [])
+      setShowHistoryDialog(true)
+    } catch (error) {
+      console.error("Error loading history:", error)
+      toast({ variant: "destructive", title: "Erro", description: "Erro ao carregar histórico" })
+    } finally {
+      setLoadingHistory(false)
+    }
+  }
 
   const handleDelete = async () => {
     setDeleting(true)
@@ -313,6 +432,91 @@ export function CampaignModal({
             </>
           )}
 
+          {/* Rejection Reason */}
+          {campaign.status === "rejected" && campaign.rejection_reason && (
+            <>
+              <Separator />
+              <div className="bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800 p-4 rounded-lg">
+                <div className="flex items-center gap-2 text-orange-700 dark:text-orange-400 mb-2">
+                  <AlertTriangle className="h-5 w-5" />
+                  <span className="font-medium">Motivo da Rejeição</span>
+                </div>
+                <p className="text-orange-800 dark:text-orange-300 whitespace-pre-wrap">
+                  {campaign.rejection_reason}
+                </p>
+                {campaign.reviewer && (
+                  <p className="text-sm text-orange-600 dark:text-orange-500 mt-2">
+                    Rejeitada por {campaign.reviewer.name} em{" "}
+                    {campaign.reviewed_at
+                      ? new Date(campaign.reviewed_at).toLocaleDateString("pt-BR", {
+                          day: "2-digit",
+                          month: "long",
+                          year: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })
+                      : "data desconhecida"}
+                  </p>
+                )}
+              </div>
+            </>
+          )}
+
+          {/* Approval Info */}
+          {["approved", "scheduled"].includes(campaign.status) && campaign.reviewer && (
+            <>
+              <Separator />
+              <div className="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 p-4 rounded-lg">
+                <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400 mb-2">
+                  <CheckCircle2 className="h-5 w-5" />
+                  <span className="font-medium">Aprovada</span>
+                </div>
+                <p className="text-sm text-emerald-600 dark:text-emerald-500">
+                  Por {campaign.reviewer.name} em{" "}
+                  {campaign.reviewed_at
+                    ? new Date(campaign.reviewed_at).toLocaleDateString("pt-BR", {
+                        day: "2-digit",
+                        month: "long",
+                        year: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })
+                    : "data desconhecida"}
+                </p>
+                {campaign.approval_notes && (
+                  <p className="text-emerald-800 dark:text-emerald-300 mt-2 whitespace-pre-wrap">
+                    {campaign.approval_notes}
+                  </p>
+                )}
+              </div>
+            </>
+          )}
+
+          {/* Pending Review Info */}
+          {campaign.status === "pending_review" && campaign.submitter && (
+            <>
+              <Separator />
+              <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 p-4 rounded-lg">
+                <div className="flex items-center gap-2 text-blue-700 dark:text-blue-400 mb-2">
+                  <Clock className="h-5 w-5" />
+                  <span className="font-medium">Aguardando Revisão</span>
+                </div>
+                <p className="text-sm text-blue-600 dark:text-blue-500">
+                  Enviada por {campaign.submitter.name} em{" "}
+                  {campaign.submitted_at
+                    ? new Date(campaign.submitted_at).toLocaleDateString("pt-BR", {
+                        day: "2-digit",
+                        month: "long",
+                        year: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })
+                    : "data desconhecida"}
+                </p>
+              </div>
+            </>
+          )}
+
           {/* Notes */}
           {campaign.notes && (
             <>
@@ -336,38 +540,192 @@ export function CampaignModal({
 
           {/* Actions */}
           <Separator />
-          <div className="flex justify-between">
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="destructive" size="sm">
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Excluir
+          <div className="space-y-3">
+            {/* Approval Workflow Actions */}
+            {canApprove && (
+              <div className="flex gap-2">
+                <Button
+                  variant="default"
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                  onClick={handleApprove}
+                  disabled={approving}
+                >
+                  {approving ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="h-4 w-4 mr-2" />
+                  )}
+                  Aprovar
                 </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Excluir campanha?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    Esta ação não pode ser desfeita. A campanha será permanentemente excluída.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={handleDelete}
-                    className="bg-destructive text-destructive-foreground"
-                  >
-                    {deleting ? "Excluindo..." : "Excluir"}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+                <Button
+                  variant="outline"
+                  className="flex-1 border-orange-500 text-orange-600 hover:bg-orange-50"
+                  onClick={() => setShowRejectDialog(true)}
+                >
+                  <XCircle className="h-4 w-4 mr-2" />
+                  Rejeitar
+                </Button>
+              </div>
+            )}
 
-            <Button onClick={onEdit}>
-              <Edit className="h-4 w-4 mr-2" />
-              Editar
-            </Button>
+            {/* Submit for Review */}
+            {canSubmit && (
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={handleSubmit}
+                disabled={submitting}
+              >
+                {submitting ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4 mr-2" />
+                )}
+                Enviar para Revisão
+              </Button>
+            )}
+
+            {/* Standard Actions */}
+            <div className="flex justify-between">
+              <div className="flex gap-2">
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="destructive" size="sm">
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Excluir
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Excluir campanha?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Esta ação não pode ser desfeita. A campanha será permanentemente excluída.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={handleDelete}
+                        className="bg-destructive text-destructive-foreground"
+                      >
+                        {deleting ? "Excluindo..." : "Excluir"}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={loadHistory}
+                  disabled={loadingHistory}
+                >
+                  {loadingHistory ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <History className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+
+              <Button onClick={onEdit}>
+                <Edit className="h-4 w-4 mr-2" />
+                Editar
+              </Button>
+            </div>
           </div>
+
+          {/* Reject Dialog */}
+          <Dialog open={showRejectDialog} onOpenChange={setShowRejectDialog}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Rejeitar Campanha</DialogTitle>
+                <DialogDescription>
+                  Informe o motivo da rejeição para que o criador possa fazer as correções necessárias.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="reject-reason">Motivo da Rejeição</Label>
+                  <Textarea
+                    id="reject-reason"
+                    placeholder="Descreva o que precisa ser corrigido..."
+                    value={rejectReason}
+                    onChange={(e) => setRejectReason(e.target.value)}
+                    rows={4}
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setShowRejectDialog(false)}>
+                  Cancelar
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={handleReject}
+                  disabled={rejecting || !rejectReason.trim()}
+                >
+                  {rejecting ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <XCircle className="h-4 w-4 mr-2" />
+                  )}
+                  Rejeitar
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/* History Dialog */}
+          <Dialog open={showHistoryDialog} onOpenChange={setShowHistoryDialog}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Histórico da Campanha</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3 max-h-[400px] overflow-y-auto">
+                {history.length === 0 ? (
+                  <p className="text-muted-foreground text-center py-4">
+                    Nenhum histórico encontrado
+                  </p>
+                ) : (
+                  history.map((h) => (
+                    <div
+                      key={h.id}
+                      className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg"
+                    >
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          {h.from_status && (
+                            <>
+                              <Badge variant="outline" className="text-xs">
+                                {statusConfig[h.from_status]?.label || h.from_status}
+                              </Badge>
+                              <span className="text-muted-foreground">→</span>
+                            </>
+                          )}
+                          <Badge className={statusConfig[h.to_status]?.color || ""}>
+                            {statusConfig[h.to_status]?.label || h.to_status}
+                          </Badge>
+                        </div>
+                        {h.reason && (
+                          <p className="text-sm text-muted-foreground mt-1">{h.reason}</p>
+                        )}
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {h.changer?.name || "Sistema"} •{" "}
+                          {new Date(h.created_at).toLocaleDateString("pt-BR", {
+                            day: "2-digit",
+                            month: "short",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
         </CardContent>
       </Card>
     </div>

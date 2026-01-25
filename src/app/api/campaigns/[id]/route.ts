@@ -38,7 +38,9 @@ export async function GET(
       .select(`
         *,
         store:client_stores(id, store_name, platform, client_id),
-        client:clients(id, name, company, email)
+        client:clients(id, name, company, email),
+        submitter:profiles!campaigns_submitted_by_fkey(id, name, email, avatar_url),
+        reviewer:profiles!campaigns_reviewed_by_fkey(id, name, email, avatar_url)
       `)
       .eq("id", id)
       .single()
@@ -51,7 +53,16 @@ export async function GET(
       )
     }
 
-    return NextResponse.json({ campaign }, { headers: corsHeaders() })
+    // Transform relations from arrays to single objects
+    const transformedCampaign = {
+      ...campaign,
+      store: Array.isArray(campaign.store) ? campaign.store[0] : campaign.store,
+      client: Array.isArray(campaign.client) ? campaign.client[0] : campaign.client,
+      submitter: Array.isArray(campaign.submitter) ? campaign.submitter[0] : campaign.submitter,
+      reviewer: Array.isArray(campaign.reviewer) ? campaign.reviewer[0] : campaign.reviewer,
+    }
+
+    return NextResponse.json({ campaign: transformedCampaign }, { headers: corsHeaders() })
   } catch (error) {
     console.error("[Campaigns] Error:", error)
     return NextResponse.json(

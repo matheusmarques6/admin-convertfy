@@ -378,7 +378,7 @@ export interface PaginatedResponse<T> {
 }
 
 // Campaign Types
-export type CampaignStatus = "draft" | "scheduled" | "sent" | "cancelled"
+export type CampaignStatus = "draft" | "pending_review" | "approved" | "rejected" | "scheduled" | "sent" | "cancelled"
 export type CampaignChannel = "email" | "sms" | "push" | "whatsapp"
 export type CampaignType = "promotional" | "newsletter" | "transactional" | "automation" | "seasonal" | "launch" | "other"
 
@@ -412,11 +412,35 @@ export interface Campaign {
   color: string
   notes?: string
   created_by?: string
+  // Approval workflow fields
+  submitted_by?: string
+  submitted_at?: string
+  reviewed_by?: string
+  reviewed_at?: string
+  rejection_reason?: string
+  approval_notes?: string
+  // Timestamps
   created_at: string
   updated_at: string
   // Joined data
   store?: ClientStore
   client?: Client
+  submitter?: User
+  reviewer?: User
+}
+
+export interface CampaignHistory {
+  id: string
+  campaign_id: string
+  from_status?: CampaignStatus
+  to_status: CampaignStatus
+  changed_by?: string
+  reason?: string
+  notes?: string
+  metadata?: Record<string, unknown>
+  created_at: string
+  // Joined
+  changer?: User
 }
 
 export interface CampaignFormData {
