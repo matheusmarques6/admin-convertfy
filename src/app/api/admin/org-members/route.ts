@@ -1,0 +1,295 @@
+import { NextRequest, NextResponse } from "next/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { OrgMemberFormData } from "@/types"
+
+function corsHeaders() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  }
+}
+
+export async function OPTIONS() {
+  return NextResponse.json({}, { headers: corsHeaders() })
+}
+
+// GET - List org members
+export async function GET(request: NextRequest) {
+  try {
+    const supabase = await createClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+    }
+
+    // Check if user is admin or owner
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single()
+
+    if (!profile || profile.role !== "admin") {
+      return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders() })
+    }
+
+    const searchParams = request.nextUrl.searchParams
+    const orgId = searchParams.get("org_id")
+    const role = searchParams.get("role")
+    const isActive = searchParams.get("is_active")
+
+    let query = supabase
+      .from("org_members")
+      .select(`
+        *,
+        organization:organizations(id, name, slug),
+        profile:profiles(id, name, email, avatar_url, role)
+      `)
+      .order("created_at", { ascending: false })
+
+    if (orgId) {
+      query = query.eq("org_id", orgId)
+    }
+
+    if (role) {
+      query = query.eq("role", role)
+    }
+
+    if (isActive !== null) {
+      query = query.eq("is_active", isActive === "true")
+    }
+
+    const { data: members, error } = await query
+
+    if (error) {
+      console.error("[Org Members] Error fetching:", error)
+      return NextResponse.json({ error: "Erro ao buscar membros" }, { status: 500, headers: corsHeaders() })
+    }
+
+    // For each member, get their features and store access count
+    const membersWithDetails = await Promise.all(
+      (members || []).map(async (member) => {
+        const [featuresRes, accessRes] = await Promise.all([
+          supabase
+            .from("org_member_features")
+            .select("feature_key, enabled")
+            .eq("org_member_id", member.id)
+            .eq("enabled", true),
+          supabase
+            .from("agent_store_access")
+            .select("id")
+            .eq("org_member_id", member.id)
+            .eq("can_view", true),
+        ])
+
+        return {
+          ...member,
+          enabled_features: featuresRes.data?.map((f) => f.feature_key) || [],
+          store_access_count: accessRes.data?.length || 0,
+        }
+      })
+    )
+
+    return NextResponse.json({ members: membersWithDetails }, { headers: corsHeaders() })
+  } catch (error) {
+    console.error("[Org Members] Error:", error)
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+  }
+}
+
+// POST - Create new org member (invite)
+export async function POST(request: NextRequest) {
+  try {
+    const supabase = await createClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+    }
+
+    // Check if user is admin
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single()
+
+    if (!profile || profile.role !== "admin") {
+      return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders() })
+    }
+
+    const body: OrgMemberFormData = await request.json()
+
+    if (!body.org_id || !body.role) {
+      return NextResponse.json(
+        { error: "Campos obrigatórios: org_id, role" },
+        { status: 400, headers: corsHeaders() }
+      )
+    }
+
+    // If profile_id is provided, use it; otherwise, we need email and name to create a new user
+    let profileId = body.profile_id
+
+    if (!profileId) {
+      if (!body.email || !body.name) {
+        return NextResponse.json(
+          { error: "Se profile_id não for informado, email e name são obrigatórios" },
+          { status: 400, headers: corsHeaders() }
+        )
+      }
+
+      // Check if email already exists
+      const { data: existingProfile } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("email", body.email.toLowerCase())
+        .single()
+
+      if (existingProfile) {
+        profileId = existingProfile.id
+      } else {
+        // Create new auth user and profile
+        const adminClient = createAdminClient()
+        const tempPassword = generateTempPassword()
+
+        const { data: authUser, error: signUpError } = await adminClient.auth.admin.createUser({
+          email: body.email.toLowerCase(),
+          password: tempPassword,
+          email_confirm: true,
+          user_metadata: {
+            name: body.name,
+            is_agent: true,
+          },
+        })
+
+        if (signUpError) {
+          console.error("[Org Members] Auth error:", signUpError)
+          return NextResponse.json(
+            { error: "Erro ao criar conta: " + signUpError.message },
+            { status: 500, headers: corsHeaders() }
+          )
+        }
+
+        // Create profile
+        const { data: newProfile, error: profileError } = await adminClient
+          .from("profiles")
+          .insert({
+            id: authUser.user.id,
+            email: body.email.toLowerCase(),
+            name: body.name,
+            role: "cs", // Default role in profiles table
+          })
+          .select()
+          .single()
+
+        if (profileError) {
+          console.error("[Org Members] Profile error:", profileError)
+          await adminClient.auth.admin.deleteUser(authUser.user.id)
+          return NextResponse.json(
+            { error: "Erro ao criar perfil" },
+            { status: 500, headers: corsHeaders() }
+          )
+        }
+
+        profileId = newProfile.id
+      }
+    }
+
+    // Check if member already exists in this org
+    const { data: existingMember } = await supabase
+      .from("org_members")
+      .select("id")
+      .eq("org_id", body.org_id)
+      .eq("profile_id", profileId)
+      .single()
+
+    if (existingMember) {
+      return NextResponse.json(
+        { error: "Este usuário já é membro desta organização" },
+        { status: 400, headers: corsHeaders() }
+      )
+    }
+
+    // Create org member
+    const adminClient = createAdminClient()
+    const { data: member, error: insertError } = await adminClient
+      .from("org_members")
+      .insert({
+        org_id: body.org_id,
+        profile_id: profileId,
+        role: body.role,
+        job_title: body.job_title || null,
+        invited_by: user.id,
+        invite_accepted_at: new Date().toISOString(),
+      })
+      .select(`
+        *,
+        organization:organizations(id, name, slug),
+        profile:profiles(id, name, email, avatar_url)
+      `)
+      .single()
+
+    if (insertError) {
+      console.error("[Org Members] Insert error:", insertError)
+      return NextResponse.json(
+        { error: "Erro ao criar membro" },
+        { status: 500, headers: corsHeaders() }
+      )
+    }
+
+    // If features are provided, assign them
+    if (body.features && body.features.length > 0) {
+      const featureInserts = body.features.map((featureKey) => ({
+        org_member_id: member.id,
+        feature_key: featureKey,
+        enabled: true,
+        granted_by: user.id,
+      }))
+
+      await adminClient
+        .from("org_member_features")
+        .insert(featureInserts)
+    }
+
+    // If store_ids are provided, assign access
+    if (body.store_ids && body.store_ids.length > 0) {
+      const accessInserts = body.store_ids.map((storeId) => ({
+        org_member_id: member.id,
+        store_id: storeId,
+        can_view: true,
+        assigned_by: user.id,
+      }))
+
+      await adminClient
+        .from("agent_store_access")
+        .insert(accessInserts)
+    }
+
+    // Log activity
+    await supabase.from("activities").insert({
+      user_id: user.id,
+      type: "client_created", // Using existing type
+      description: `Membro "${member.profile?.name}" adicionado à organização`,
+      metadata: { member_id: member.id, role: body.role },
+    })
+
+    return NextResponse.json(
+      { member, message: "Membro criado com sucesso" },
+      { status: 201, headers: corsHeaders() }
+    )
+  } catch (error) {
+    console.error("[Org Members] Error:", error)
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+  }
+}
+
+function generateTempPassword(length = 12): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789"
+  let password = ""
+  for (let i = 0; i < length; i++) {
+    password += chars.charAt(Math.floor(Math.random() * chars.length))
+  }
+  return password
+}
