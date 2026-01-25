@@ -117,17 +117,25 @@ CREATE TABLE IF NOT EXISTS campaign_metrics_history (
 );
 
 -- 4. Tabela de alertas de campanhas
-CREATE TYPE alert_type AS ENUM (
-  'performance_drop',      -- Queda de performance
-  'performance_spike',     -- Aumento significativo
-  'high_bounce_rate',      -- Taxa de bounce alta
-  'high_unsubscribe_rate', -- Taxa de unsub alta
-  'low_open_rate',         -- Taxa de abertura baixa
-  'revenue_milestone',     -- Marco de receita atingido
-  'anomaly_detected'       -- Anomalia detectada
-);
+DO $$ BEGIN
+  CREATE TYPE alert_type AS ENUM (
+    'performance_drop',      -- Queda de performance
+    'performance_spike',     -- Aumento significativo
+    'high_bounce_rate',      -- Taxa de bounce alta
+    'high_unsubscribe_rate', -- Taxa de unsub alta
+    'low_open_rate',         -- Taxa de abertura baixa
+    'revenue_milestone',     -- Marco de receita atingido
+    'anomaly_detected'       -- Anomalia detectada
+  );
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
 
-CREATE TYPE alert_severity AS ENUM ('info', 'warning', 'critical');
+DO $$ BEGIN
+  CREATE TYPE alert_severity AS ENUM ('info', 'warning', 'critical');
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
 
 CREATE TABLE IF NOT EXISTS campaign_alerts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -157,7 +165,10 @@ CREATE TABLE IF NOT EXISTS campaign_alerts (
   dismissed_by UUID REFERENCES profiles(id),
 
   -- Timestamps
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+
+  -- Unique constraint para evitar alertas duplicados do mesmo tipo para mesma campanha/métrica
+  UNIQUE(campaign_id, alert_type, metric_name)
 );
 
 -- 5. Tabela de configurações de sync por loja
@@ -295,8 +306,12 @@ CREATE TRIGGER trigger_sync_config_updated
   FOR EACH ROW EXECUTE FUNCTION update_klaviyo_updated_at();
 
 -- Função para gerar alerta automaticamente quando métricas mudam significativamente
+-- SECURITY DEFINER permite que a função bypass RLS para inserir alertas
 CREATE OR REPLACE FUNCTION check_campaign_metrics_alerts()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+SECURITY DEFINER
+SET search_path = public
+AS $$
 DECLARE
   v_config klaviyo_sync_config%ROWTYPE;
   v_campaign klaviyo_campaigns%ROWTYPE;
@@ -395,8 +410,12 @@ CREATE TRIGGER trigger_check_metrics_alerts
   FOR EACH ROW EXECUTE FUNCTION check_campaign_metrics_alerts();
 
 -- Função para criar snapshot automático de métricas
+-- SECURITY DEFINER permite que a função bypass RLS para inserir histórico
 CREATE OR REPLACE FUNCTION create_metrics_snapshot()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+SECURITY DEFINER
+SET search_path = public
+AS $$
 BEGIN
   INSERT INTO campaign_metrics_history (
     campaign_id, snapshot_date, snapshot_hour,
@@ -494,7 +513,7 @@ FROM klaviyo_campaigns kc
 JOIN campaign_metrics cm ON cm.campaign_id = kc.id
 LEFT JOIN client_stores cs ON cs.id = kc.store_id
 LEFT JOIN clients c ON c.id = cs.client_id
-WHERE kc.status = 'sent' AND cm.revenue > 0;
+WHERE LOWER(kc.status) = 'sent' AND cm.revenue > 0;
 
 -- View de alertas não lidos
 CREATE OR REPLACE VIEW v_unread_alerts AS
@@ -603,9 +622,21 @@ CREATE POLICY "campaign_alerts_select" ON campaign_alerts
     is_admin(auth.uid()) OR has_store_access(auth.uid(), store_id)
   );
 
+DROP POLICY IF EXISTS "campaign_alerts_insert" ON campaign_alerts;
+CREATE POLICY "campaign_alerts_insert" ON campaign_alerts
+  FOR INSERT WITH CHECK (
+    is_admin(auth.uid()) OR has_store_access(auth.uid(), store_id)
+  );
+
 DROP POLICY IF EXISTS "campaign_alerts_update" ON campaign_alerts;
 CREATE POLICY "campaign_alerts_update" ON campaign_alerts
   FOR UPDATE USING (
+    is_admin(auth.uid()) OR has_store_access(auth.uid(), store_id)
+  );
+
+DROP POLICY IF EXISTS "campaign_alerts_delete" ON campaign_alerts;
+CREATE POLICY "campaign_alerts_delete" ON campaign_alerts
+  FOR DELETE USING (
     is_admin(auth.uid()) OR has_store_access(auth.uid(), store_id)
   );
 

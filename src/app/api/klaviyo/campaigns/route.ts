@@ -80,13 +80,12 @@ export async function GET(request: NextRequest) {
 
     // Transform data
     const transformedCampaigns = campaigns?.map((campaign) => {
-      const metrics = Array.isArray(campaign.campaign_metrics)
-        ? campaign.campaign_metrics[0]
-        : campaign.campaign_metrics
-      const store = campaign.client_stores
-      const client = Array.isArray(store?.clients)
-        ? store?.clients[0]
-        : store?.clients
+      const metricsRaw = campaign.campaign_metrics
+      const metrics = Array.isArray(metricsRaw) ? metricsRaw[0] : metricsRaw
+      const storeRaw = campaign.client_stores
+      const store = Array.isArray(storeRaw) ? storeRaw[0] : storeRaw
+      const clientRaw = store?.clients
+      const client = Array.isArray(clientRaw) ? clientRaw[0] : clientRaw
 
       return {
         id: campaign.id,

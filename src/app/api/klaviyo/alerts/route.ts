@@ -63,11 +63,12 @@ export async function GET(request: NextRequest) {
 
     // Transform data
     const transformedAlerts = alerts?.map((alert) => {
-      const campaign = alert.klaviyo_campaigns
-      const store = alert.client_stores
-      const client = Array.isArray(store?.clients)
-        ? store?.clients[0]
-        : store?.clients
+      const campaignRaw = alert.klaviyo_campaigns
+      const campaign = Array.isArray(campaignRaw) ? campaignRaw[0] : campaignRaw
+      const storeRaw = alert.client_stores
+      const store = Array.isArray(storeRaw) ? storeRaw[0] : storeRaw
+      const clientRaw = store?.clients
+      const client = Array.isArray(clientRaw) ? clientRaw[0] : clientRaw
 
       return {
         id: alert.id,

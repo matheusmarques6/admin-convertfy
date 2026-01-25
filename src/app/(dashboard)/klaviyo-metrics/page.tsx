@@ -6,7 +6,6 @@ import {
   RefreshCw,
   Store,
   TrendingUp,
-  TrendingDown,
   BarChart3,
   Bell,
   GitCompare,
@@ -22,10 +21,6 @@ import {
   Info,
   Check,
   X,
-  ChevronDown,
-  ChevronUp,
-  ExternalLink,
-  Filter,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"

@@ -276,7 +276,10 @@ class KlaviyoMetricsClient {
             start: startDate,
             end: endDate,
           },
+          // Filter to only these campaigns
           filter: `any(${campaignFilter})`,
+          // Group by campaign to get metrics per campaign
+          group_by: ["campaign_id"],
         },
       },
     }
