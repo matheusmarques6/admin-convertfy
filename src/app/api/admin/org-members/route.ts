@@ -213,26 +213,28 @@ export async function POST(request: NextRequest) {
           console.log("[Org Members] Found existing auth user:", existingAuthUser.id)
           authUserId = existingAuthUser.id
         } else {
-          // Create new auth user
-          const tempPassword = generateTempPassword()
-          const { data: authUser, error: signUpError } = await adminClient.auth.admin.createUser({
-            email: body.email.toLowerCase(),
-            password: tempPassword,
-            email_confirm: true,
-            user_metadata: {
-              name: body.name,
-              is_agent: true,
-            },
-          })
+          // Invite user by email - they will receive an email to set their password
+          const { data: inviteData, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(
+            body.email.toLowerCase(),
+            {
+              data: {
+                name: body.name,
+                is_agent: true,
+              },
+              redirectTo: `${process.env.NEXT_PUBLIC_APP_URL || 'https://admin-convertfy.vercel.app'}/login`,
+            }
+          )
 
-          if (signUpError) {
-            console.error("[Org Members] Auth error:", signUpError)
+          if (inviteError) {
+            console.error("[Org Members] Invite error:", inviteError)
             return NextResponse.json(
-              { error: "Erro ao criar conta: " + signUpError.message },
+              { error: "Erro ao enviar convite: " + inviteError.message },
               { status: 500, headers: corsHeaders() }
             )
           }
-          authUserId = authUser.user.id
+
+          console.log("[Org Members] User invited successfully:", inviteData.user.id)
+          authUserId = inviteData.user.id
         }
 
         // Check if profile already exists for this auth user
@@ -363,13 +365,4 @@ export async function POST(request: NextRequest) {
     console.error("[Org Members] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
   }
-}
-
-function generateTempPassword(length = 12): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789"
-  let password = ""
-  for (let i = 0; i < length; i++) {
-    password += chars.charAt(Math.floor(Math.random() * chars.length))
-  }
-  return password
 }
