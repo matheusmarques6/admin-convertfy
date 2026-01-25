@@ -199,57 +199,81 @@ export async function POST(request: NextRequest) {
       } else {
         // Create new auth user and profile
         const adminClient = createAdminClient()
-        const tempPassword = generateTempPassword()
 
-        const { data: authUser, error: signUpError } = await adminClient.auth.admin.createUser({
-          email: body.email.toLowerCase(),
-          password: tempPassword,
-          email_confirm: true,
-          user_metadata: {
-            name: body.name,
-            is_agent: true,
-          },
-        })
+        // First check if auth user already exists (might be orphan from failed attempt)
+        const { data: existingUsers } = await adminClient.auth.admin.listUsers()
+        const existingAuthUser = existingUsers?.users?.find(
+          (u) => u.email?.toLowerCase() === body.email.toLowerCase()
+        )
 
-        if (signUpError) {
-          console.error("[Org Members] Auth error:", signUpError)
-          return NextResponse.json(
-            { error: "Erro ao criar conta: " + signUpError.message },
-            { status: 500, headers: corsHeaders() }
-          )
+        let authUserId: string
+
+        if (existingAuthUser) {
+          // User exists in auth, use their ID
+          console.log("[Org Members] Found existing auth user:", existingAuthUser.id)
+          authUserId = existingAuthUser.id
+        } else {
+          // Create new auth user
+          const tempPassword = generateTempPassword()
+          const { data: authUser, error: signUpError } = await adminClient.auth.admin.createUser({
+            email: body.email.toLowerCase(),
+            password: tempPassword,
+            email_confirm: true,
+            user_metadata: {
+              name: body.name,
+              is_agent: true,
+            },
+          })
+
+          if (signUpError) {
+            console.error("[Org Members] Auth error:", signUpError)
+            return NextResponse.json(
+              { error: "Erro ao criar conta: " + signUpError.message },
+              { status: 500, headers: corsHeaders() }
+            )
+          }
+          authUserId = authUser.user.id
         }
 
-        // Create profile
-        console.log("[Org Members] Creating profile with:", {
-          id: authUser.user.id,
-          email: body.email.toLowerCase(),
-          name: body.name,
-        })
-
-        const { data: newProfile, error: profileError } = await adminClient
+        // Check if profile already exists for this auth user
+        const { data: existingProfileById } = await adminClient
           .from("profiles")
-          .insert({
-            id: authUser.user.id,
-            email: body.email.toLowerCase(),
-            name: body.name,
-            // role uses default from database (sdr)
-          })
-          .select()
+          .select("id")
+          .eq("id", authUserId)
           .single()
 
-        if (profileError) {
-          console.error("[Org Members] Profile error FULL:", JSON.stringify(profileError, null, 2))
-          console.error("[Org Members] Profile error code:", profileError.code)
-          console.error("[Org Members] Profile error message:", profileError.message)
-          console.error("[Org Members] Profile error details:", profileError.details)
-          await adminClient.auth.admin.deleteUser(authUser.user.id)
-          return NextResponse.json(
-            { error: "Erro ao criar perfil: " + profileError.message },
-            { status: 500, headers: corsHeaders() }
-          )
-        }
+        if (existingProfileById) {
+          // Profile exists, use it
+          profileId = existingProfileById.id
+        } else {
+          // Create profile
+          console.log("[Org Members] Creating profile with:", {
+            id: authUserId,
+            email: body.email.toLowerCase(),
+            name: body.name,
+          })
 
-        profileId = newProfile.id
+          const { data: newProfile, error: profileError } = await adminClient
+            .from("profiles")
+            .insert({
+              id: authUserId,
+              email: body.email.toLowerCase(),
+              name: body.name,
+              // role uses default from database
+            })
+            .select()
+            .single()
+
+          if (profileError) {
+            console.error("[Org Members] Profile error:", profileError.message)
+            return NextResponse.json(
+              { error: "Erro ao criar perfil: " + profileError.message },
+              { status: 500, headers: corsHeaders() }
+            )
+          }
+
+          profileId = newProfile.id
+        }
       }
     }
 
