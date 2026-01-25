@@ -220,6 +220,12 @@ export async function POST(request: NextRequest) {
         }
 
         // Create profile
+        console.log("[Org Members] Creating profile with:", {
+          id: authUser.user.id,
+          email: body.email.toLowerCase(),
+          name: body.name,
+        })
+
         const { data: newProfile, error: profileError } = await adminClient
           .from("profiles")
           .insert({
@@ -232,10 +238,13 @@ export async function POST(request: NextRequest) {
           .single()
 
         if (profileError) {
-          console.error("[Org Members] Profile error:", profileError)
+          console.error("[Org Members] Profile error FULL:", JSON.stringify(profileError, null, 2))
+          console.error("[Org Members] Profile error code:", profileError.code)
+          console.error("[Org Members] Profile error message:", profileError.message)
+          console.error("[Org Members] Profile error details:", profileError.details)
           await adminClient.auth.admin.deleteUser(authUser.user.id)
           return NextResponse.json(
-            { error: "Erro ao criar perfil" },
+            { error: "Erro ao criar perfil: " + profileError.message },
             { status: 500, headers: corsHeaders() }
           )
         }
