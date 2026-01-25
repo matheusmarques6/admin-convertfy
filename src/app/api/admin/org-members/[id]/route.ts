@@ -33,7 +33,7 @@ export async function GET(
       .select(`
         *,
         organization:organizations(id, name, slug, type),
-        profile:profiles(id, name, email, avatar_url, role)
+        profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url, role)
       `)
       .eq("id", id)
       .single()
@@ -87,14 +87,36 @@ export async function PUT(
       return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
     }
 
-    // Check if user is admin
+    // Get the member being updated to check org
+    const { data: targetMember } = await supabase
+      .from("org_members")
+      .select("org_id")
+      .eq("id", id)
+      .single()
+
+    if (!targetMember) {
+      return NextResponse.json({ error: "Membro não encontrado" }, { status: 404, headers: corsHeaders() })
+    }
+
+    // Check if user has permission: system admin OR org owner/admin
     const { data: profile } = await supabase
       .from("profiles")
       .select("role")
       .eq("id", user.id)
       .single()
 
-    if (!profile || profile.role !== "admin") {
+    const isSystemAdmin = profile?.role === "admin"
+
+    const { data: userOrgMember } = await supabase
+      .from("org_members")
+      .select("role")
+      .eq("org_id", targetMember.org_id)
+      .eq("profile_id", user.id)
+      .single()
+
+    const isOrgAdmin = userOrgMember?.role === "owner" || userOrgMember?.role === "admin"
+
+    if (!isSystemAdmin && !isOrgAdmin) {
       return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders() })
     }
 
@@ -114,7 +136,7 @@ export async function PUT(
       .select(`
         *,
         organization:organizations(id, name, slug),
-        profile:profiles(id, name, email, avatar_url)
+        profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url)
       `)
       .single()
 
@@ -194,14 +216,36 @@ export async function DELETE(
       return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
     }
 
-    // Check if user is admin
+    // Get the member being deleted to check org
+    const { data: targetMember } = await supabase
+      .from("org_members")
+      .select("org_id")
+      .eq("id", id)
+      .single()
+
+    if (!targetMember) {
+      return NextResponse.json({ error: "Membro não encontrado" }, { status: 404, headers: corsHeaders() })
+    }
+
+    // Check if user has permission: system admin OR org owner/admin
     const { data: profile } = await supabase
       .from("profiles")
       .select("role")
       .eq("id", user.id)
       .single()
 
-    if (!profile || profile.role !== "admin") {
+    const isSystemAdmin = profile?.role === "admin"
+
+    const { data: userOrgMember } = await supabase
+      .from("org_members")
+      .select("role")
+      .eq("org_id", targetMember.org_id)
+      .eq("profile_id", user.id)
+      .single()
+
+    const isOrgAdmin = userOrgMember?.role === "owner" || userOrgMember?.role === "admin"
+
+    if (!isSystemAdmin && !isOrgAdmin) {
       return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders() })
     }
 
@@ -210,7 +254,7 @@ export async function DELETE(
     // Get member info before deletion
     const { data: member } = await supabase
       .from("org_members")
-      .select("*, profile:profiles(name)")
+      .select("*, profile:profiles!org_members_profile_id_fkey(name)")
       .eq("id", id)
       .single()
 

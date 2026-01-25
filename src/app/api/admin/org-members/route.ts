@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
       .select(`
         *,
         organization:organizations(id, name, slug),
-        profile:profiles(id, name, email, avatar_url, role)
+        profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url, role)
       `)
       .order("created_at", { ascending: false })
 
