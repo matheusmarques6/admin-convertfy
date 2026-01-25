@@ -24,14 +24,26 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
     }
 
-    // Check if user is admin or owner
+    // Check if user is system admin
     const { data: profile } = await supabase
       .from("profiles")
       .select("role")
       .eq("id", user.id)
       .single()
 
-    if (!profile || profile.role !== "admin") {
+    const isSystemAdmin = profile?.role === "admin"
+
+    // Get organizations where user is owner/admin
+    const { data: userOrgMemberships } = await supabase
+      .from("org_members")
+      .select("org_id, role")
+      .eq("profile_id", user.id)
+      .in("role", ["owner", "admin"])
+
+    const adminOrgIds = userOrgMemberships?.map((m) => m.org_id) || []
+
+    // If not system admin and not admin of any org, deny access
+    if (!isSystemAdmin && adminOrgIds.length === 0) {
       return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders() })
     }
 
@@ -39,6 +51,11 @@ export async function GET(request: NextRequest) {
     const orgId = searchParams.get("org_id")
     const role = searchParams.get("role")
     const isActive = searchParams.get("is_active")
+
+    // If filtering by org_id, check permission for that specific org
+    if (orgId && !isSystemAdmin && !adminOrgIds.includes(orgId)) {
+      return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders() })
+    }
 
     let query = supabase
       .from("org_members")
@@ -48,6 +65,11 @@ export async function GET(request: NextRequest) {
         profile:profiles(id, name, email, avatar_url, role)
       `)
       .order("created_at", { ascending: false })
+
+    // System admin can see all, org admin can only see their orgs
+    if (!isSystemAdmin) {
+      query = query.in("org_id", adminOrgIds)
+    }
 
     if (orgId) {
       query = query.eq("org_id", orgId)
@@ -109,18 +131,33 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
     }
 
-    // Check if user is admin
+    const body: OrgMemberFormData = await request.json()
+
+    // Check if user has permission: system admin OR org owner/admin
     const { data: profile } = await supabase
       .from("profiles")
       .select("role")
       .eq("id", user.id)
       .single()
 
-    if (!profile || profile.role !== "admin") {
-      return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders() })
+    const isSystemAdmin = profile?.role === "admin"
+
+    // Check if user is owner/admin of the target organization
+    let isOrgAdmin = false
+    if (body.org_id) {
+      const { data: orgMember } = await supabase
+        .from("org_members")
+        .select("role")
+        .eq("org_id", body.org_id)
+        .eq("profile_id", user.id)
+        .single()
+
+      isOrgAdmin = orgMember?.role === "owner" || orgMember?.role === "admin"
     }
 
-    const body: OrgMemberFormData = await request.json()
+    if (!isSystemAdmin && !isOrgAdmin) {
+      return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders() })
+    }
 
     if (!body.org_id || !body.role) {
       return NextResponse.json(
