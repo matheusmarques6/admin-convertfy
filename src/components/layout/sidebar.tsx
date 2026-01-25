@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation"
 import {
   LayoutDashboard,
   Users,
+  Users2,
   Kanban,
   Zap,
   BarChart3,
@@ -48,6 +49,7 @@ import { toast } from "@/lib/hooks/use-toast"
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Clientes", href: "/clients", icon: Users },
+  { name: "Equipe", href: "/team", icon: Users2 },
   { name: "Onboarding", href: "/onboarding", icon: Rocket },
   { name: "Lojas", href: "/stores", icon: Store },
   { name: "Pipeline", href: "/pipeline", icon: Kanban },
