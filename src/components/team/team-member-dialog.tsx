@@ -122,6 +122,7 @@ export function TeamMemberDialog({
   const [selectedFeatures, setSelectedFeatures] = useState<string[]>([])
   const [selectedStores, setSelectedStores] = useState<string[]>([])
   const [activeTab, setActiveTab] = useState("info")
+  const [tempPassword, setTempPassword] = useState<string | null>(null)
 
   const isEditing = !!member
 
@@ -162,6 +163,7 @@ export function TeamMemberDialog({
         })
         setSelectedFeatures([])
         setSelectedStores([])
+        setTempPassword(null)
       }
       setActiveTab("info")
     }
@@ -203,6 +205,21 @@ export function TeamMemberDialog({
     setSelectedStores([])
   }
 
+  function copyTempPassword() {
+    if (tempPassword) {
+      navigator.clipboard.writeText(tempPassword)
+      toast({
+        title: "Copiado!",
+        description: "Senha copiada para a área de transferência",
+      })
+    }
+  }
+
+  function handleCloseWithPassword() {
+    setTempPassword(null)
+    onSuccess()
+  }
+
   async function onSubmit(data: FormData) {
     setIsSubmitting(true)
 
@@ -242,12 +259,20 @@ export function TeamMemberDialog({
         throw new Error(result.error || "Erro ao salvar")
       }
 
-      toast({
-        title: isEditing ? "Membro atualizado" : "Membro criado",
-        description: result.message,
-      })
-
-      onSuccess()
+      // Check if a temp password was returned (new user created)
+      if (result.temp_password) {
+        setTempPassword(result.temp_password)
+        toast({
+          title: "Membro criado",
+          description: "Anote a senha provisória antes de fechar.",
+        })
+      } else {
+        toast({
+          title: isEditing ? "Membro atualizado" : "Membro criado",
+          description: result.message,
+        })
+        onSuccess()
+      }
     } catch (error) {
       toast({
         variant: "destructive",
@@ -269,15 +294,41 @@ export function TeamMemberDialog({
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>
-            {isEditing ? "Editar Membro" : "Novo Membro"}
+            {tempPassword ? "Membro Criado com Sucesso" : isEditing ? "Editar Membro" : "Novo Membro"}
           </DialogTitle>
           <DialogDescription>
-            {isEditing
+            {tempPassword
+              ? "Anote a senha provisória abaixo. O usuário deverá alterá-la no primeiro login."
+              : isEditing
               ? "Atualize as informações e permissões do membro"
               : "Adicione um novo membro à equipe com suas permissões"}
           </DialogDescription>
         </DialogHeader>
 
+        {tempPassword ? (
+          <div className="flex-1 flex flex-col items-center justify-center py-8 space-y-6">
+            <div className="text-center space-y-2">
+              <p className="text-sm text-muted-foreground">Senha Provisória</p>
+              <div className="flex items-center gap-2 p-4 bg-muted rounded-lg">
+                <code className="text-2xl font-mono font-bold tracking-wider">{tempPassword}</code>
+                <Button type="button" variant="outline" size="sm" onClick={copyTempPassword}>
+                  Copiar
+                </Button>
+              </div>
+            </div>
+            <div className="text-center text-sm text-muted-foreground max-w-md">
+              <p>
+                O usuário deverá usar esta senha para fazer o primeiro login.
+                Ao entrar, será solicitada a troca para uma nova senha.
+              </p>
+            </div>
+            <DialogFooter className="w-full pt-4 border-t">
+              <Button type="button" onClick={handleCloseWithPassword}>
+                Fechar
+              </Button>
+            </DialogFooter>
+          </div>
+        ) : (
         <form onSubmit={handleSubmit(onSubmit)} className="flex-1 overflow-hidden flex flex-col">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 overflow-hidden flex flex-col">
             <TabsList className="grid w-full grid-cols-3">
@@ -491,6 +542,7 @@ export function TeamMemberDialog({
             </Button>
           </DialogFooter>
         </form>
+        )}
       </DialogContent>
     </Dialog>
   )

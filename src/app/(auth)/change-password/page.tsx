@@ -43,11 +43,22 @@ export default function ChangePasswordPage() {
     setIsLoading(true)
 
     try {
-      const response = await fetch("/api/portal-users/change-password", {
+      // Try the general auth endpoint first (for org members/agents)
+      // Falls back to portal-users endpoint for portal users
+      let response = await fetch("/api/auth/change-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ new_password: data.newPassword }),
       })
+
+      // If not found or unauthorized, try portal users endpoint
+      if (response.status === 404) {
+        response = await fetch("/api/portal-users/change-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ new_password: data.newPassword }),
+        })
+      }
 
       const result = await response.json()
 

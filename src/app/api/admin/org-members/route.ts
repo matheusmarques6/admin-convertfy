@@ -2,6 +2,16 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { OrgMemberFormData } from "@/types"
 
+// Generate a random temporary password
+function generateTempPassword(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789"
+  let password = ""
+  for (let i = 0; i < 12; i++) {
+    password += chars.charAt(Math.floor(Math.random() * chars.length))
+  }
+  return password
+}
+
 function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
@@ -178,6 +188,7 @@ export async function POST(request: NextRequest) {
 
     // If profile_id is provided, use it; otherwise, we need email and name to create a new user
     let profileId = body.profile_id
+    let tempPasswordForResponse: string | null = null
 
     if (!profileId) {
       if (!body.email || !body.name) {
@@ -213,28 +224,31 @@ export async function POST(request: NextRequest) {
           console.log("[Org Members] Found existing auth user:", existingAuthUser.id)
           authUserId = existingAuthUser.id
         } else {
-          // Invite user by email - they will receive an email to set their password
-          const { data: inviteData, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(
-            body.email.toLowerCase(),
-            {
-              data: {
-                name: body.name,
-                is_agent: true,
-              },
-              redirectTo: `${process.env.NEXT_PUBLIC_APP_URL || 'https://admin-convertfy.vercel.app'}/login`,
-            }
-          )
+          // Create user with temporary password
+          const tempPassword = generateTempPassword()
+          tempPasswordForResponse = tempPassword // Save for response to admin
 
-          if (inviteError) {
-            console.error("[Org Members] Invite error:", inviteError)
+          const { data: authUser, error: createError } = await adminClient.auth.admin.createUser({
+            email: body.email.toLowerCase(),
+            password: tempPassword,
+            email_confirm: true,
+            user_metadata: {
+              name: body.name,
+              is_agent: true,
+              must_change_password: true, // Flag to force password change on first login
+            },
+          })
+
+          if (createError) {
+            console.error("[Org Members] Create user error:", createError)
             return NextResponse.json(
-              { error: "Erro ao enviar convite: " + inviteError.message },
+              { error: "Erro ao criar usuário: " + createError.message },
               { status: 500, headers: corsHeaders() }
             )
           }
 
-          console.log("[Org Members] User invited successfully:", inviteData.user.id)
-          authUserId = inviteData.user.id
+          console.log("[Org Members] User created successfully:", authUser.user.id)
+          authUserId = authUser.user.id
         }
 
         // Check if profile already exists for this auth user
@@ -357,10 +371,23 @@ export async function POST(request: NextRequest) {
       metadata: { member_id: member.id, role: body.role },
     })
 
-    return NextResponse.json(
-      { member, message: "Membro criado com sucesso" },
-      { status: 201, headers: corsHeaders() }
-    )
+    // Build response with temp password if new user was created
+    const response: {
+      member: typeof member
+      message: string
+      temp_password?: string
+    } = {
+      member,
+      message: tempPasswordForResponse
+        ? "Membro criado com sucesso. Senha provisória gerada."
+        : "Membro criado com sucesso",
+    }
+
+    if (tempPasswordForResponse) {
+      response.temp_password = tempPasswordForResponse
+    }
+
+    return NextResponse.json(response, { status: 201, headers: corsHeaders() })
   } catch (error) {
     console.error("[Org Members] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })

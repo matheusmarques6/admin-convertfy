@@ -11,7 +11,7 @@ export const config = {
      * Match only paths that need auth checking:
      * - Root path
      * - Protected routes (dashboard, clients, etc.)
-     * - Auth routes (login, register)
+     * - Auth routes (login, register, change-password)
      * - Portal routes (client portal)
      * Excludes: static files, api routes, images, etc.
      */
@@ -23,8 +23,10 @@ export const config = {
     "/settings/:path*",
     "/reports/:path*",
     "/tools/:path*",
+    "/team/:path*",
     "/login",
     "/register",
+    "/change-password",
     "/portal/:path*",
   ],
 }
