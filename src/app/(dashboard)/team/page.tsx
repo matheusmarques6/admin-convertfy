@@ -15,7 +15,7 @@ async function getTeamMembers() {
     .select(`
       *,
       organization:organizations(id, name, slug),
-      profile:profiles(id, name, email, avatar_url, role)
+      profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url, role)
     `)
     .eq("is_active", true)
     .order("created_at", { ascending: false })
