@@ -22,6 +22,7 @@ import {
   CalendarDays,
   Store,
   Rocket,
+  TrendingUp,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -58,6 +59,7 @@ const navigation = [
   { name: "Financeiro", href: "/financial", icon: DollarSign },
   { name: "Reuniões", href: "/meetings", icon: Calendar },
   { name: "Campanhas", href: "/campaigns", icon: CalendarDays },
+  { name: "Métricas Klaviyo", href: "/klaviyo-metrics", icon: TrendingUp },
   { name: "Relatórios", href: "/reports", icon: BarChart3 },
   { name: "Automações", href: "/automations", icon: Zap },
   { name: "Ferramentas", href: "/tools", icon: Wrench },
