@@ -43,17 +43,12 @@ export async function GET(request: NextRequest) {
 
     const isSystemAdmin = profile?.role === "admin"
 
-    // Get organizations where user is owner/manager (for full admin access)
+    // Get organizations where user is a member (for read access)
     const { data: userOrgMemberships } = await supabase
       .from("org_members")
       .select("org_id, role")
       .eq("profile_id", user.id)
 
-    const adminOrgIds = userOrgMemberships
-      ?.filter((m) => m.role === "owner" || m.role === "manager")
-      .map((m) => m.org_id) || []
-
-    // All org IDs the user belongs to (for read access)
     const memberOrgIds = userOrgMemberships?.map((m) => m.org_id) || []
 
     // If not system admin and not member of any org, deny access

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, use } from "react"
+import { useState, useEffect, useCallback, use } from "react"
 import Link from "next/link"
 import {
   ArrowLeft,
@@ -126,7 +126,7 @@ export default function PortalStoreReportPage({
   const [error, setError] = useState<string | null>(null)
   const [period, setPeriod] = useState("30d")
 
-  const fetchReport = async (showRefresh = false) => {
+  const fetchReport = useCallback(async (showRefresh = false) => {
     if (showRefresh) setRefreshing(true)
     try {
       const response = await fetch(`/api/portal/stores/${id}/report?period=${period}`)
@@ -143,11 +143,11 @@ export default function PortalStoreReportPage({
       setLoading(false)
       setRefreshing(false)
     }
-  }
+  }, [id, period])
 
   useEffect(() => {
     fetchReport()
-  }, [id, period])
+  }, [fetchReport])
 
   if (loading) {
     return (
