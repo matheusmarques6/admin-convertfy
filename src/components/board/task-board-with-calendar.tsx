@@ -8,7 +8,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { TaskBoard } from "./task-board"
 import { BoardCalendarView } from "./board-calendar-view"
 import { TaskDialog } from "./task-dialog"
-import type { Task, TaskStatus, Meeting, MeetingStatus } from "@/types"
+import type { Task, Meeting } from "@/types"
 
 interface UserProfile {
   id: string
