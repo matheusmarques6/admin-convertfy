@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { createClient } from "@/lib/supabase/server"
 
 function corsHeaders() {
   return {
@@ -89,9 +89,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const adminClient = createAdminClient()
-
-    const { data: meeting, error: insertError } = await adminClient
+    const { data: meeting, error: insertError } = await supabase
       .from("meetings")
       .insert({
         title: body.title,

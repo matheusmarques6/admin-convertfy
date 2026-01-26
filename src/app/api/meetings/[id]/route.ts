@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { createClient } from "@/lib/supabase/server"
 
 function corsHeaders() {
   return {
@@ -72,8 +72,6 @@ export async function PUT(
     const { id } = await params
     const body = await request.json()
 
-    const adminClient = createAdminClient()
-
     // Build update object with only provided fields
     const updateData: Record<string, unknown> = {}
 
@@ -85,7 +83,7 @@ export async function PUT(
     if (body.meeting_url !== undefined) updateData.meeting_url = body.meeting_url || null
     if (body.notes !== undefined) updateData.notes = body.notes || null
 
-    const { data: meeting, error: updateError } = await adminClient
+    const { data: meeting, error: updateError } = await supabase
       .from("meetings")
       .update(updateData)
       .eq("id", id)
@@ -133,9 +131,7 @@ export async function DELETE(
 
     const { id } = await params
 
-    const adminClient = createAdminClient()
-
-    const { error: deleteError } = await adminClient
+    const { error: deleteError } = await supabase
       .from("meetings")
       .delete()
       .eq("id", id)
