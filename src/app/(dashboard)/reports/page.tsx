@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { formatCurrency } from "@/lib/utils"
 import type { Report } from "@/types"
+import { PagePermissionWrapper } from "@/components/page-permission-wrapper"
 
 export const dynamic = "force-dynamic"
 
@@ -69,6 +70,7 @@ export default async function ReportsPage() {
   const sortedMonths = Object.keys(groupedReports).sort((a, b) => b.localeCompare(a))
 
   return (
+    <PagePermissionWrapper requiredFeatures={["view_reports"]}>
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -199,5 +201,6 @@ export default async function ReportsPage() {
         ))
       )}
     </div>
+    </PagePermissionWrapper>
   )
 }

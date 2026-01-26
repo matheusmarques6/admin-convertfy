@@ -1,13 +1,15 @@
+"use client"
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ChargesManager } from "@/components/financial/charges-manager"
 import { SubscriptionsManager } from "@/components/financial/subscriptions-manager"
 import { WiseReconciliation } from "@/components/financial/wise-reconciliation"
 import { DollarSign, Repeat, Wallet } from "lucide-react"
-
-export const dynamic = "force-dynamic"
+import { PermissionGate } from "@/components/permission-gate"
 
 export default function FinancialPage() {
   return (
+    <PermissionGate requiredFeatures={["view_financial"]}>
     <div className="space-y-6">
       {/* Header */}
       <div>
@@ -47,5 +49,6 @@ export default function FinancialPage() {
         </TabsContent>
       </Tabs>
     </div>
+    </PermissionGate>
   )
 }

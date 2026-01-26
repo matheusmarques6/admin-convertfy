@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { PermissionGate } from "@/components/permission-gate"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Select,
@@ -270,6 +271,7 @@ export default function CampaignsCalendarPage() {
   }
 
   return (
+    <PermissionGate requiredFeatures={["campaign_control", "campaign_view"]}>
     <div className="p-6 space-y-6">
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -497,5 +499,6 @@ export default function CampaignsCalendarPage() {
         />
       )}
     </div>
+    </PermissionGate>
   )
 }

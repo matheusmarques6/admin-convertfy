@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
@@ -23,6 +23,7 @@ import {
   Store,
   Rocket,
   TrendingUp,
+  LucideIcon,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -47,25 +48,37 @@ import {
 import { createClient } from "@/lib/supabase/client"
 import { useUIStore } from "@/lib/store"
 import { toast } from "@/lib/hooks/use-toast"
+import { usePermissions } from "@/lib/hooks/use-permissions"
 
-const navigation = [
+interface NavItem {
+  name: string
+  href: string
+  icon: LucideIcon
+  // Features necessárias - se vazio, sempre visível
+  // Se array, precisa ter pelo menos UMA das features
+  requiredFeatures?: string[]
+  // Se true, verifica se tem acesso a alguma loja
+  requiresStoreAccess?: boolean
+}
+
+const navigation: NavItem[] = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { name: "Board", href: "/board", icon: ClipboardList },
-  { name: "Clientes", href: "/clients", icon: Users },
-  { name: "Equipe", href: "/team", icon: Users2 },
-  { name: "Onboarding", href: "/onboarding", icon: Rocket },
-  { name: "Lojas", href: "/stores", icon: Store },
-  { name: "Pipeline", href: "/pipeline", icon: Kanban },
-  { name: "Financeiro", href: "/financial", icon: DollarSign },
-  { name: "Reuniões", href: "/meetings", icon: Calendar },
-  { name: "Campanhas", href: "/campaigns", icon: CalendarDays },
-  { name: "Métricas Klaviyo", href: "/klaviyo-metrics", icon: TrendingUp },
-  { name: "Relatórios", href: "/reports", icon: BarChart3 },
-  { name: "Automações", href: "/automations", icon: Zap },
+  { name: "Board", href: "/board", icon: ClipboardList, requiredFeatures: ["request_control", "request_execute"] },
+  { name: "Clientes", href: "/clients", icon: Users, requiredFeatures: ["create_clients"] },
+  { name: "Equipe", href: "/team", icon: Users2, requiredFeatures: ["team_control", "team_view"] },
+  { name: "Onboarding", href: "/onboarding", icon: Rocket, requiredFeatures: ["onboarding_control", "onboarding_view"] },
+  { name: "Lojas", href: "/stores", icon: Store, requiresStoreAccess: true },
+  { name: "Pipeline", href: "/pipeline", icon: Kanban, requiredFeatures: ["request_control", "request_execute"] },
+  { name: "Financeiro", href: "/financial", icon: DollarSign, requiredFeatures: ["view_financial"] },
+  { name: "Reuniões", href: "/meetings", icon: Calendar, requiredFeatures: ["calendar_control"] },
+  { name: "Campanhas", href: "/campaigns", icon: CalendarDays, requiredFeatures: ["campaign_control", "campaign_view"] },
+  { name: "Métricas Klaviyo", href: "/klaviyo-metrics", icon: TrendingUp, requiredFeatures: ["campaign_view", "view_reports"] },
+  { name: "Relatórios", href: "/reports", icon: BarChart3, requiredFeatures: ["view_reports"] },
+  { name: "Automações", href: "/automations", icon: Zap, requiredFeatures: ["campaign_control"] },
   { name: "Ferramentas", href: "/tools", icon: Wrench },
 ]
 
-const bottomNavigation = [
+const bottomNavigation: NavItem[] = [
   { name: "Configurações", href: "/settings", icon: Settings },
 ]
 
@@ -82,6 +95,38 @@ export function Sidebar({ user }: SidebarProps) {
   const router = useRouter()
   const { sidebarCollapsed, setSidebarCollapsed } = useUIStore()
   const [isLoggingOut, setIsLoggingOut] = useState(false)
+  const { permissions, hasAnyFeature, isLoading } = usePermissions()
+
+  // Filtra itens de navegação baseado nas permissões
+  const filteredNavigation = useMemo(() => {
+    if (isLoading || !permissions) return []
+
+    // Admin e Owner veem tudo
+    if (permissions.isAdmin || permissions.isOrgOwner) {
+      return navigation
+    }
+
+    return navigation.filter(item => {
+      // Se não tem features requeridas, sempre mostra
+      if (!item.requiredFeatures || item.requiredFeatures.length === 0) {
+        // Caso especial: verifica acesso a lojas
+        if (item.requiresStoreAccess) {
+          return permissions.storeAccess.length > 0
+        }
+        return true
+      }
+
+      // Verifica se tem pelo menos uma das features requeridas
+      return hasAnyFeature(item.requiredFeatures)
+    })
+  }, [permissions, hasAnyFeature, isLoading])
+
+  const filteredBottomNavigation = useMemo(() => {
+    if (isLoading || !permissions) return []
+
+    // Configurações sempre visível para todos
+    return bottomNavigation
+  }, [permissions, isLoading])
 
   async function handleLogout() {
     setIsLoggingOut(true)
@@ -123,7 +168,7 @@ export function Sidebar({ user }: SidebarProps) {
         {/* Navigation */}
         <ScrollArea className="flex-1 py-4">
           <nav className="px-3 space-y-1">
-            {navigation.map((item) => {
+            {filteredNavigation.map((item) => {
               const isActive = pathname.startsWith(item.href)
               const Icon = item.icon
 
@@ -169,7 +214,7 @@ export function Sidebar({ user }: SidebarProps) {
         <div className="mt-auto">
           <Separator />
           <nav className="px-3 py-2">
-            {bottomNavigation.map((item) => {
+            {filteredBottomNavigation.map((item) => {
               const isActive = pathname.startsWith(item.href)
               const Icon = item.icon
 

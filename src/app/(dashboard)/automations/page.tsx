@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { Automation } from "@/types"
+import { PagePermissionWrapper } from "@/components/page-permission-wrapper"
 
 export const dynamic = "force-dynamic"
 
@@ -75,6 +76,7 @@ export default async function AutomationsPage() {
   const automations = await getAutomations()
 
   return (
+    <PagePermissionWrapper requiredFeatures={["campaign_control"]}>
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -229,5 +231,6 @@ export default async function AutomationsPage() {
         )}
       </Suspense>
     </div>
+    </PagePermissionWrapper>
   )
 }

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { formatDateTime } from "@/lib/utils"
+import { PagePermissionWrapper } from "@/components/page-permission-wrapper"
 
 export const dynamic = "force-dynamic"
 
@@ -48,6 +49,7 @@ export default async function MeetingsPage() {
   const { upcoming, past } = await getMeetings()
 
   return (
+    <PagePermissionWrapper requiredFeatures={["calendar_control"]}>
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -193,5 +195,6 @@ export default async function MeetingsPage() {
         </CardContent>
       </Card>
     </div>
+    </PagePermissionWrapper>
   )
 }

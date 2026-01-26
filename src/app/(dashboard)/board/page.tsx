@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server"
 import { Button } from "@/components/ui/button"
 import { TaskBoard } from "@/components/board/task-board"
 import { Skeleton } from "@/components/ui/skeleton"
+import { PagePermissionWrapper } from "@/components/page-permission-wrapper"
 
 export const dynamic = "force-dynamic"
 
@@ -113,6 +114,7 @@ export default async function BoardPage() {
   ])
 
   return (
+    <PagePermissionWrapper requiredFeatures={["request_control", "request_execute"]}>
     <div className="h-[calc(100vh-8rem)] flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
@@ -140,5 +142,6 @@ export default async function BoardPage() {
         </Suspense>
       </div>
     </div>
+    </PagePermissionWrapper>
   )
 }

@@ -1,6 +1,7 @@
 import { Metadata } from "next"
 import { Rocket, Clock, CheckCircle2 } from "lucide-react"
 import { OnboardingKanban } from "@/components/onboarding/onboarding-kanban"
+import { PagePermissionWrapper } from "@/components/page-permission-wrapper"
 
 export const metadata: Metadata = {
   title: "Onboarding | Convertfy Admin",
@@ -9,6 +10,7 @@ export const metadata: Metadata = {
 
 export default function OnboardingPage() {
   return (
+    <PagePermissionWrapper requiredFeatures={["onboarding_control", "onboarding_view"]}>
     <div className="flex-1 space-y-6 p-6">
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -40,5 +42,6 @@ export default function OnboardingPage() {
       {/* Onboarding Kanban */}
       <OnboardingKanban />
     </div>
+    </PagePermissionWrapper>
   )
 }

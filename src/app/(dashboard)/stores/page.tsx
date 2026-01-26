@@ -1,6 +1,7 @@
 import { Metadata } from "next"
 import { Store, TrendingUp, Phone } from "lucide-react"
 import { StoreControlPanel } from "@/components/stores/store-control-panel"
+import { PagePermissionWrapper } from "@/components/page-permission-wrapper"
 
 export const metadata: Metadata = {
   title: "Controle de Lojas | Convertfy Admin",
@@ -9,6 +10,7 @@ export const metadata: Metadata = {
 
 export default function StoresControlPage() {
   return (
+    <PagePermissionWrapper requiresStoreAccess>
     <div className="flex-1 space-y-6 p-6">
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -40,5 +42,6 @@ export default function StoresControlPage() {
       {/* Store Control Panel */}
       <StoreControlPanel />
     </div>
+    </PagePermissionWrapper>
   )
 }

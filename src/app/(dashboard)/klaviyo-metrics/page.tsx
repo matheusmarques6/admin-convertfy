@@ -23,6 +23,7 @@ import {
   X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { PermissionGate } from "@/components/permission-gate"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import {
@@ -442,6 +443,7 @@ export default function KlaviyoMetricsPage() {
   const totalAlerts = alertCounts.critical + alertCounts.warning + alertCounts.info
 
   return (
+    <PermissionGate requiredFeatures={["campaign_view", "view_reports"]}>
     <div className="p-6 space-y-6">
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -1171,5 +1173,6 @@ export default function KlaviyoMetricsPage() {
         </DialogContent>
       </Dialog>
     </div>
+    </PermissionGate>
   )
 }

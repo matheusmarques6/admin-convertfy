@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server"
 import { Button } from "@/components/ui/button"
 import { TeamTable } from "@/components/team/team-table"
 import { Skeleton } from "@/components/ui/skeleton"
+import { PagePermissionWrapper } from "@/components/page-permission-wrapper"
 
 export const dynamic = "force-dynamic"
 
@@ -116,6 +117,7 @@ export default async function TeamPage() {
   ])
 
   return (
+    <PagePermissionWrapper requiredFeatures={["team_control", "team_view"]}>
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -141,5 +143,6 @@ export default async function TeamPage() {
         />
       </Suspense>
     </div>
+    </PagePermissionWrapper>
   )
 }
