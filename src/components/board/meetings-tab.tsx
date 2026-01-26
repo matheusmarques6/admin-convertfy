@@ -1,0 +1,365 @@
+"use client"
+
+import { useState } from "react"
+import { useRouter } from "next/navigation"
+import { format, isToday, isTomorrow, isPast, isFuture } from "date-fns"
+import { ptBR } from "date-fns/locale"
+import {
+  Plus,
+  Video,
+  Calendar,
+  Clock,
+  CheckCircle,
+  XCircle,
+  AlertCircle,
+  ExternalLink,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+} from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { MeetingDialog } from "./meeting-dialog"
+import { toast } from "@/lib/hooks/use-toast"
+import { cn, getInitials } from "@/lib/utils"
+import type { Meeting, MeetingStatus } from "@/types"
+
+interface UserProfile {
+  id: string
+  name: string
+  email: string
+  avatar_url?: string
+}
+
+interface ClientInfo {
+  id: string
+  name: string
+  company?: string
+}
+
+interface MeetingWithRelations extends Omit<Meeting, "client" | "user"> {
+  client?: ClientInfo
+  user?: UserProfile
+}
+
+interface MeetingsTabProps {
+  meetings: MeetingWithRelations[]
+  clients: ClientInfo[]
+}
+
+const statusConfig: Record<MeetingStatus, { label: string; variant: "default" | "secondary" | "outline" | "destructive"; icon: React.ElementType }> = {
+  scheduled: { label: "Agendada", variant: "default", icon: Clock },
+  completed: { label: "Realizada", variant: "secondary", icon: CheckCircle },
+  cancelled: { label: "Cancelada", variant: "outline", icon: XCircle },
+  no_show: { label: "Não Compareceu", variant: "destructive", icon: AlertCircle },
+}
+
+function formatMeetingDate(date: string) {
+  const d = new Date(date)
+  if (isToday(d)) return `Hoje, ${format(d, "HH:mm")}`
+  if (isTomorrow(d)) return `Amanhã, ${format(d, "HH:mm")}`
+  return format(d, "dd/MM 'às' HH:mm", { locale: ptBR })
+}
+
+export function MeetingsTab({ meetings, clients }: MeetingsTabProps) {
+  const router = useRouter()
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [editingMeeting, setEditingMeeting] = useState<MeetingWithRelations | null>(null)
+
+  const now = new Date()
+
+  // Separate meetings
+  const upcomingMeetings = meetings
+    .filter((m) => m.status === "scheduled" && isFuture(new Date(m.scheduled_at)))
+    .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())
+
+  const todayMeetings = upcomingMeetings.filter((m) => isToday(new Date(m.scheduled_at)))
+
+  const pastMeetings = meetings
+    .filter((m) => m.status !== "scheduled" || isPast(new Date(m.scheduled_at)))
+    .sort((a, b) => new Date(b.scheduled_at).getTime() - new Date(a.scheduled_at).getTime())
+    .slice(0, 10)
+
+  const handleNewMeeting = () => {
+    setEditingMeeting(null)
+    setDialogOpen(true)
+  }
+
+  const handleEditMeeting = (meeting: MeetingWithRelations) => {
+    setEditingMeeting(meeting)
+    setDialogOpen(true)
+  }
+
+  const handleDialogClose = () => {
+    setDialogOpen(false)
+    setEditingMeeting(null)
+  }
+
+  const handleDialogSuccess = () => {
+    handleDialogClose()
+    router.refresh()
+  }
+
+  const handleDeleteMeeting = async (meetingId: string) => {
+    if (!confirm("Tem certeza que deseja excluir esta reunião?")) return
+
+    try {
+      const response = await fetch(`/api/meetings/${meetingId}`, { method: "DELETE" })
+      if (!response.ok) throw new Error("Erro ao excluir")
+
+      toast({ title: "Reunião excluída" })
+      router.refresh()
+    } catch {
+      toast({ variant: "destructive", title: "Erro ao excluir reunião" })
+    }
+  }
+
+  const handleStatusChange = async (meetingId: string, newStatus: MeetingStatus) => {
+    try {
+      const response = await fetch(`/api/meetings/${meetingId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      })
+      if (!response.ok) throw new Error("Erro ao atualizar")
+
+      toast({ title: "Status atualizado" })
+      router.refresh()
+    } catch {
+      toast({ variant: "destructive", title: "Erro ao atualizar status" })
+    }
+  }
+
+  return (
+    <>
+      <div className="h-full overflow-y-auto">
+        <div className="max-w-4xl mx-auto space-y-6 pb-6">
+          {/* Header com botão de nova reunião */}
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold">Reuniões</h2>
+              <p className="text-sm text-muted-foreground">
+                {upcomingMeetings.length} reuniões agendadas
+                {todayMeetings.length > 0 && ` (${todayMeetings.length} hoje)`}
+              </p>
+            </div>
+            <Button onClick={handleNewMeeting}>
+              <Plus className="mr-2 h-4 w-4" />
+              Nova Reunião
+            </Button>
+          </div>
+
+          {/* Stats Cards */}
+          <div className="grid gap-4 md:grid-cols-3">
+            <Card>
+              <CardContent className="flex items-center gap-4 pt-6">
+                <div className="rounded-lg p-3 bg-primary/10">
+                  <Calendar className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Próximas</p>
+                  <p className="text-2xl font-bold">{upcomingMeetings.length}</p>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="flex items-center gap-4 pt-6">
+                <div className="rounded-lg p-3 bg-emerald-500/10">
+                  <CheckCircle className="h-5 w-5 text-emerald-500" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Realizadas</p>
+                  <p className="text-2xl font-bold">
+                    {meetings.filter((m) => m.status === "completed").length}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="flex items-center gap-4 pt-6">
+                <div className="rounded-lg p-3 bg-amber-500/10">
+                  <Video className="h-5 w-5 text-amber-500" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Hoje</p>
+                  <p className="text-2xl font-bold">{todayMeetings.length}</p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Upcoming Meetings */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Calendar className="h-5 w-5 text-primary" />
+                Próximas Reuniões
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {upcomingMeetings.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Video className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                  <p>Nenhuma reunião agendada</p>
+                  <Button variant="link" onClick={handleNewMeeting}>
+                    Agendar primeira reunião
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {upcomingMeetings.map((meeting) => {
+                    const isHappeningNow =
+                      new Date(meeting.scheduled_at) <= now &&
+                      new Date(meeting.scheduled_at).getTime() + meeting.duration_minutes * 60000 > now.getTime()
+
+                    return (
+                      <div
+                        key={meeting.id}
+                        className={cn(
+                          "flex items-center justify-between p-4 rounded-lg border transition-colors",
+                          isHappeningNow && "border-primary bg-primary/5",
+                          isToday(new Date(meeting.scheduled_at)) && !isHappeningNow && "bg-amber-50/50 dark:bg-amber-950/20"
+                        )}
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className={cn(
+                            "rounded-lg p-2",
+                            isHappeningNow ? "bg-primary/20" : "bg-primary/10"
+                          )}>
+                            <Video className={cn(
+                              "h-4 w-4",
+                              isHappeningNow ? "text-primary animate-pulse" : "text-primary"
+                            )} />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <p className="font-medium">{meeting.title}</p>
+                              {isHappeningNow && (
+                                <Badge variant="default" className="text-xs">
+                                  Agora
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              {meeting.client && (
+                                <span>{meeting.client.name}</span>
+                              )}
+                              {meeting.client && <span>•</span>}
+                              <span>{formatMeetingDate(meeting.scheduled_at)}</span>
+                              <span>•</span>
+                              <span>{meeting.duration_minutes}min</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {meeting.meeting_url && (
+                            <Button variant="outline" size="sm" asChild>
+                              <a href={meeting.meeting_url} target="_blank" rel="noopener noreferrer">
+                                <ExternalLink className="mr-1 h-3 w-3" />
+                                Entrar
+                              </a>
+                            </Button>
+                          )}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => handleEditMeeting(meeting)}>
+                                <Pencil className="mr-2 h-4 w-4" />
+                                Editar
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleStatusChange(meeting.id, "completed")}>
+                                <CheckCircle className="mr-2 h-4 w-4" />
+                                Marcar como realizada
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleStatusChange(meeting.id, "no_show")}>
+                                <AlertCircle className="mr-2 h-4 w-4" />
+                                Marcar como no-show
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => handleStatusChange(meeting.id, "cancelled")}>
+                                <XCircle className="mr-2 h-4 w-4" />
+                                Cancelar
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => handleDeleteMeeting(meeting.id)}
+                                className="text-destructive"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Excluir
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Past Meetings */}
+          {pastMeetings.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Histórico</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {pastMeetings.map((meeting) => {
+                    const config = statusConfig[meeting.status]
+                    return (
+                      <div
+                        key={meeting.id}
+                        className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted/70 transition-colors cursor-pointer"
+                        onClick={() => handleEditMeeting(meeting)}
+                      >
+                        <div className="flex items-center gap-3">
+                          <config.icon className={cn(
+                            "h-4 w-4",
+                            meeting.status === "completed" && "text-emerald-500",
+                            meeting.status === "no_show" && "text-red-500",
+                            meeting.status === "cancelled" && "text-muted-foreground"
+                          )} />
+                          <div>
+                            <p className="text-sm font-medium">{meeting.title}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {meeting.client?.name && `${meeting.client.name} • `}
+                              {format(new Date(meeting.scheduled_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                            </p>
+                          </div>
+                        </div>
+                        <Badge variant={config.variant}>{config.label}</Badge>
+                      </div>
+                    )
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
+
+      <MeetingDialog
+        open={dialogOpen}
+        onClose={handleDialogClose}
+        onSuccess={handleDialogSuccess}
+        meeting={editingMeeting}
+        clients={clients}
+      />
+    </>
+  )
+}

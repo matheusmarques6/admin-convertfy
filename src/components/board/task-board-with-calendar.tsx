@@ -2,11 +2,12 @@
 
 import { useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { Plus, LayoutGrid, Calendar } from "lucide-react"
+import { Plus, LayoutGrid, Calendar, Video } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { TaskBoard } from "./task-board"
 import { BoardCalendarView } from "./board-calendar-view"
+import { MeetingsTab } from "./meetings-tab"
 import { TaskDialog } from "./task-dialog"
 import type { Task, Meeting } from "@/types"
 
@@ -56,7 +57,7 @@ interface TaskBoardWithCalendarProps {
   meetings: MeetingWithRelations[]
 }
 
-type ViewMode = "kanban" | "calendar"
+type ViewMode = "kanban" | "meetings" | "calendar"
 
 export function TaskBoardWithCalendar({
   tasks,
@@ -95,25 +96,35 @@ export function TaskBoardWithCalendar({
   const upcomingTasks = tasks.filter(t => t.due_date && new Date(t.due_date) >= today).length
   const upcomingMeetings = meetings.filter(m => m.status === "scheduled" && new Date(m.scheduled_at) >= today).length
 
+  const getSubtitle = () => {
+    switch (viewMode) {
+      case "kanban":
+        return "Gerencie suas tarefas no estilo Kanban"
+      case "meetings":
+        return `${upcomingMeetings} reuniões agendadas`
+      case "calendar":
+        return `${upcomingTasks} tarefas e ${upcomingMeetings} reuniões agendadas`
+    }
+  }
+
   return (
     <>
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold">Board</h1>
-          <p className="text-muted-foreground">
-            {viewMode === "kanban"
-              ? "Gerencie suas tarefas no estilo Kanban"
-              : `${upcomingTasks} tarefas e ${upcomingMeetings} reuniões agendadas`
-            }
-          </p>
+          <p className="text-muted-foreground">{getSubtitle()}</p>
         </div>
         <div className="flex items-center gap-3">
           <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)}>
             <TabsList>
               <TabsTrigger value="kanban" className="gap-2">
                 <LayoutGrid className="h-4 w-4" />
-                Kanban
+                Tarefas
+              </TabsTrigger>
+              <TabsTrigger value="meetings" className="gap-2">
+                <Video className="h-4 w-4" />
+                Reuniões
               </TabsTrigger>
               <TabsTrigger value="calendar" className="gap-2">
                 <Calendar className="h-4 w-4" />
@@ -121,16 +132,18 @@ export function TaskBoardWithCalendar({
               </TabsTrigger>
             </TabsList>
           </Tabs>
-          <Button onClick={handleNewTask}>
-            <Plus className="mr-2 h-4 w-4" />
-            Nova Tarefa
-          </Button>
+          {viewMode === "kanban" && (
+            <Button onClick={handleNewTask}>
+              <Plus className="mr-2 h-4 w-4" />
+              Nova Tarefa
+            </Button>
+          )}
         </div>
       </div>
 
       {/* Content */}
       <div className="flex-1 overflow-hidden">
-        {viewMode === "kanban" ? (
+        {viewMode === "kanban" && (
           <TaskBoard
             tasks={tasks}
             members={members}
@@ -140,7 +153,14 @@ export function TaskBoardWithCalendar({
             externalEditingTask={editingTask}
             onExternalDialogClose={handleDialogClose}
           />
-        ) : (
+        )}
+        {viewMode === "meetings" && (
+          <MeetingsTab
+            meetings={meetings}
+            clients={clients}
+          />
+        )}
+        {viewMode === "calendar" && (
           <BoardCalendarView
             tasks={tasks}
             meetings={meetings}
