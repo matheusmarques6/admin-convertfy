@@ -43,17 +43,21 @@ export async function GET(request: NextRequest) {
 
     const isSystemAdmin = profile?.role === "admin"
 
-    // Get organizations where user is owner/admin
+    // Get organizations where user is owner/manager (for full admin access)
     const { data: userOrgMemberships } = await supabase
       .from("org_members")
       .select("org_id, role")
       .eq("profile_id", user.id)
-      .in("role", ["owner", "manager"])
 
-    const adminOrgIds = userOrgMemberships?.map((m) => m.org_id) || []
+    const adminOrgIds = userOrgMemberships
+      ?.filter((m) => m.role === "owner" || m.role === "manager")
+      .map((m) => m.org_id) || []
 
-    // If not system admin and not admin of any org, deny access
-    if (!isSystemAdmin && adminOrgIds.length === 0) {
+    // All org IDs the user belongs to (for read access)
+    const memberOrgIds = userOrgMemberships?.map((m) => m.org_id) || []
+
+    // If not system admin and not member of any org, deny access
+    if (!isSystemAdmin && memberOrgIds.length === 0) {
       return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders() })
     }
 
@@ -62,8 +66,8 @@ export async function GET(request: NextRequest) {
     const role = searchParams.get("role")
     const isActive = searchParams.get("is_active")
 
-    // If filtering by org_id, check permission for that specific org
-    if (orgId && !isSystemAdmin && !adminOrgIds.includes(orgId)) {
+    // If filtering by org_id, check permission for that specific org (any member can read)
+    if (orgId && !isSystemAdmin && !memberOrgIds.includes(orgId)) {
       return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders() })
     }
 
@@ -76,9 +80,9 @@ export async function GET(request: NextRequest) {
       `)
       .order("created_at", { ascending: false })
 
-    // System admin can see all, org admin can only see their orgs
+    // System admin can see all, org members can only see their own orgs
     if (!isSystemAdmin) {
-      query = query.in("org_id", adminOrgIds)
+      query = query.in("org_id", memberOrgIds)
     }
 
     if (orgId) {

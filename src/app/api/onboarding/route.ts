@@ -29,7 +29,10 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get("status")
     const assignedToMe = searchParams.get("assigned_to_me") === "true"
 
-    let query = supabase
+    // Use adminClient to bypass RLS for reading onboardings data
+    const adminClient = createAdminClient()
+
+    let query = adminClient
       .from("client_onboardings")
       .select(`
         *,
@@ -56,7 +59,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (assignedToMe) {
-      const { data: orgMember } = await supabase
+      const { data: orgMember } = await adminClient
         .from("org_members")
         .select("id")
         .eq("profile_id", user.id)
