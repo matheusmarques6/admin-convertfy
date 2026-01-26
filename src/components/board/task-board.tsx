@@ -45,6 +45,9 @@ interface TaskBoardProps {
   members: MemberWithProfile[]
   clients: ClientInfo[]
   stores: StoreWithClient[]
+  externalDialogOpen?: boolean
+  externalEditingTask?: TaskWithRelations | null
+  onExternalDialogClose?: () => void
 }
 
 const columns: { id: TaskStatus; title: string; color: string }[] = [
@@ -54,25 +57,25 @@ const columns: { id: TaskStatus; title: string; color: string }[] = [
   { id: "review", title: "Em Revisão", color: "bg-amber-500" },
 ]
 
-export function TaskBoard({ tasks: initialTasks, members, clients, stores }: TaskBoardProps) {
+export function TaskBoard({
+  tasks: initialTasks,
+  members,
+  clients,
+  stores,
+  externalDialogOpen,
+  externalEditingTask,
+  onExternalDialogClose,
+}: TaskBoardProps) {
   const router = useRouter()
   const [tasks, setTasks] = useState<TaskWithRelations[]>(initialTasks)
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const [editingTask, setEditingTask] = useState<TaskWithRelations | null>(null)
+  const [internalDialogOpen, setInternalDialogOpen] = useState(false)
+  const [internalEditingTask, setInternalEditingTask] = useState<TaskWithRelations | null>(null)
   const [isDragging, setIsDragging] = useState(false)
 
-  // Listen for add task button click
-  useEffect(() => {
-    const addButton = document.getElementById("add-task-trigger")
-    if (addButton) {
-      const handleClick = () => {
-        setEditingTask(null)
-        setDialogOpen(true)
-      }
-      addButton.addEventListener("click", handleClick)
-      return () => addButton.removeEventListener("click", handleClick)
-    }
-  }, [])
+  // Use external state if provided, otherwise use internal
+  const isExternallyControlled = externalDialogOpen !== undefined
+  const dialogOpen = isExternallyControlled ? externalDialogOpen : internalDialogOpen
+  const editingTask = isExternallyControlled ? externalEditingTask : internalEditingTask
 
   // Group tasks by status
   const tasksByStatus = columns.reduce((acc, column) => {
@@ -83,14 +86,20 @@ export function TaskBoard({ tasks: initialTasks, members, clients, stores }: Tas
   }, {} as Record<TaskStatus, TaskWithRelations[]>)
 
   const handleTaskClick = useCallback((task: TaskWithRelations) => {
-    setEditingTask(task)
-    setDialogOpen(true)
-  }, [])
+    if (!isExternallyControlled) {
+      setInternalEditingTask(task)
+      setInternalDialogOpen(true)
+    }
+  }, [isExternallyControlled])
 
   const handleDialogClose = useCallback(() => {
-    setDialogOpen(false)
-    setEditingTask(null)
-  }, [])
+    if (isExternallyControlled && onExternalDialogClose) {
+      onExternalDialogClose()
+    } else {
+      setInternalDialogOpen(false)
+      setInternalEditingTask(null)
+    }
+  }, [isExternallyControlled, onExternalDialogClose])
 
   const handleDialogSuccess = useCallback(() => {
     handleDialogClose()
@@ -233,15 +242,17 @@ export function TaskBoard({ tasks: initialTasks, members, clients, stores }: Tas
         ))}
       </div>
 
-      <TaskDialog
-        open={dialogOpen}
-        onClose={handleDialogClose}
-        onSuccess={handleDialogSuccess}
-        task={editingTask}
-        members={members}
-        clients={clients}
-        stores={stores}
-      />
+      {!isExternallyControlled && (
+        <TaskDialog
+          open={dialogOpen}
+          onClose={handleDialogClose}
+          onSuccess={handleDialogSuccess}
+          task={editingTask ?? undefined}
+          members={members}
+          clients={clients}
+          stores={stores}
+        />
+      )}
     </>
   )
 }

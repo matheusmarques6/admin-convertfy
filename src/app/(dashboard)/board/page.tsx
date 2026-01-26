@@ -1,8 +1,6 @@
 import { Suspense } from "react"
-import { Plus } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
-import { Button } from "@/components/ui/button"
-import { TaskBoard } from "@/components/board/task-board"
+import { TaskBoardWithCalendar } from "@/components/board/task-board-with-calendar"
 import { Skeleton } from "@/components/ui/skeleton"
 import { PagePermissionWrapper } from "@/components/page-permission-wrapper"
 
@@ -88,6 +86,25 @@ async function getStores() {
   }))
 }
 
+async function getMeetings() {
+  const supabase = await createClient()
+
+  const { data: meetings } = await supabase
+    .from("meetings")
+    .select(`
+      *,
+      client:clients (id, name, company),
+      user:profiles!meetings_user_id_fkey (id, name, email, avatar_url)
+    `)
+    .order("scheduled_at", { ascending: true })
+
+  return (meetings || []).map(m => ({
+    ...m,
+    client: Array.isArray(m.client) ? m.client[0] : m.client,
+    user: Array.isArray(m.user) ? m.user[0] : m.user
+  }))
+}
+
 function BoardSkeleton() {
   return (
     <div className="flex gap-4 h-full">
@@ -106,42 +123,27 @@ function BoardSkeleton() {
 }
 
 export default async function BoardPage() {
-  const [tasks, members, clients, stores] = await Promise.all([
+  const [tasks, members, clients, stores, meetings] = await Promise.all([
     getTasks(),
     getTeamMembers(),
     getClients(),
     getStores(),
+    getMeetings(),
   ])
 
   return (
     <PagePermissionWrapper requiredFeatures={["request_control", "request_execute"]}>
-    <div className="h-[calc(100vh-8rem)] flex flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold">Board</h1>
-          <p className="text-muted-foreground">
-            Gerencie suas tarefas no estilo Kanban
-          </p>
-        </div>
-        <Button id="add-task-trigger">
-          <Plus className="mr-2 h-4 w-4" />
-          Nova Tarefa
-        </Button>
-      </div>
-
-      {/* Board */}
-      <div className="flex-1 overflow-hidden">
+      <div className="h-[calc(100vh-8rem)] flex flex-col">
         <Suspense fallback={<BoardSkeleton />}>
-          <TaskBoard
+          <TaskBoardWithCalendar
             tasks={tasks}
             members={members}
             clients={clients}
             stores={stores}
+            meetings={meetings}
           />
         </Suspense>
       </div>
-    </div>
     </PagePermissionWrapper>
   )
 }

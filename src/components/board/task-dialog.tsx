@@ -77,7 +77,7 @@ interface TaskDialogProps {
   open: boolean
   onClose: () => void
   onSuccess: () => void
-  task: TaskWithRelations | null
+  task?: TaskWithRelations | null
   members: MemberWithProfile[]
   clients: ClientInfo[]
   stores: StoreWithClient[]
