@@ -392,14 +392,14 @@ export function TaskDialog({
                 <div className="grid gap-2">
                   <Label>Responsável</Label>
                   <Select
-                    value={watch("assignee_id") || ""}
-                    onValueChange={(value) => setValue("assignee_id", value)}
+                    value={watch("assignee_id") || "_none"}
+                    onValueChange={(value) => setValue("assignee_id", value === "_none" ? "" : value)}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione um responsável" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Nenhum</SelectItem>
+                      <SelectItem value="_none">Nenhum</SelectItem>
                       {members.map((member) => (
                         <SelectItem key={member.id} value={member.id}>
                           <div className="flex items-center gap-2">
@@ -448,14 +448,14 @@ export function TaskDialog({
                   <div className="grid gap-2">
                     <Label>Cliente</Label>
                     <Select
-                      value={watch("client_id") || ""}
-                      onValueChange={(value) => setValue("client_id", value)}
+                      value={watch("client_id") || "_none"}
+                      onValueChange={(value) => setValue("client_id", value === "_none" ? "" : value)}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Selecione" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">Nenhum</SelectItem>
+                        <SelectItem value="_none">Nenhum</SelectItem>
                         {clients.map((client) => (
                           <SelectItem key={client.id} value={client.id}>
                             {client.name}
@@ -468,14 +468,14 @@ export function TaskDialog({
                   <div className="grid gap-2">
                     <Label>Loja</Label>
                     <Select
-                      value={watch("store_id") || ""}
-                      onValueChange={(value) => setValue("store_id", value)}
+                      value={watch("store_id") || "_none"}
+                      onValueChange={(value) => setValue("store_id", value === "_none" ? "" : value)}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Selecione" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">Nenhuma</SelectItem>
+                        <SelectItem value="_none">Nenhuma</SelectItem>
                         {stores.map((store) => (
                           <SelectItem key={store.id} value={store.id}>
                             {store.store_name}

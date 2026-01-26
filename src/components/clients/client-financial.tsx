@@ -1447,14 +1447,14 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                 <div className="space-y-2">
                   <Label>Método de Pagamento Real</Label>
                   <Select
-                    value={statusForm.actualPaymentMethod}
-                    onValueChange={(value) => setStatusForm({ ...statusForm, actualPaymentMethod: value })}
+                    value={statusForm.actualPaymentMethod || "_same"}
+                    onValueChange={(value) => setStatusForm({ ...statusForm, actualPaymentMethod: value === "_same" ? "" : value })}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione se diferente do original" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Mesmo método original</SelectItem>
+                      <SelectItem value="_same">Mesmo método original</SelectItem>
                       <SelectItem value="asaas">Asaas</SelectItem>
                       <SelectItem value="pix_direto">PIX Direto</SelectItem>
                       <SelectItem value="wise">Transferência Wise</SelectItem>
