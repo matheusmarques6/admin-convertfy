@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 
 function corsHeaders() {
   return {
@@ -33,7 +33,19 @@ export async function GET(
       .select(`
         *,
         client:clients(id, name, company),
-        user:profiles!meetings_user_id_fkey(id, name, email, avatar_url)
+        user:profiles!meetings_user_id_fkey(id, name, email, avatar_url),
+        participants:meeting_participants(
+          id,
+          participant_id,
+          participant_type,
+          is_organizer,
+          response_status,
+          profile:profiles!meeting_participants_participant_id_fkey(id, name, email, avatar_url),
+          org_member:org_members!meeting_participants_participant_id_fkey(
+            id,
+            profile:profiles(id, name, email, avatar_url)
+          )
+        )
       `)
       .eq("id", id)
       .single()
@@ -47,6 +59,11 @@ export async function GET(
       ...meeting,
       client: Array.isArray(meeting.client) ? meeting.client[0] : meeting.client,
       user: Array.isArray(meeting.user) ? meeting.user[0] : meeting.user,
+      participants: (meeting.participants || []).map((p: Record<string, unknown>) => ({
+        ...p,
+        profile: Array.isArray(p.profile) ? p.profile[0] : p.profile,
+        org_member: Array.isArray(p.org_member) ? p.org_member[0] : p.org_member,
+      })),
     }
 
     return NextResponse.json({ meeting: transformedMeeting }, { headers: corsHeaders() })
@@ -63,6 +80,7 @@ export async function PUT(
 ) {
   try {
     const supabase = await createClient()
+    const adminClient = createAdminClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
@@ -83,20 +101,93 @@ export async function PUT(
     if (body.meeting_url !== undefined) updateData.meeting_url = body.meeting_url || null
     if (body.notes !== undefined) updateData.notes = body.notes || null
 
-    const { data: meeting, error: updateError } = await supabase
+    const { error: updateError } = await supabase
       .from("meetings")
       .update(updateData)
       .eq("id", id)
-      .select(`
-        *,
-        client:clients(id, name, company),
-        user:profiles!meetings_user_id_fkey(id, name, email, avatar_url)
-      `)
-      .single()
 
     if (updateError) {
       console.error("[Meeting] Update error:", updateError)
       return NextResponse.json({ error: "Erro ao atualizar reunião" }, { status: 500, headers: corsHeaders() })
+    }
+
+    // Update participants if provided
+    if (body.participants !== undefined) {
+      // Get existing participants
+      const { data: existingParticipants } = await adminClient
+        .from("meeting_participants")
+        .select("*")
+        .eq("meeting_id", id)
+
+      const existing = existingParticipants || []
+      const newParticipants: Array<{ id: string; type: string }> = body.participants || []
+
+      // Find organizer (keep them)
+      const organizer = existing.find(p => p.is_organizer)
+
+      // Remove non-organizer participants that are not in the new list
+      const toRemove = existing.filter(p =>
+        !p.is_organizer &&
+        !newParticipants.some(np => np.id === p.participant_id && (np.type || "profile") === p.participant_type)
+      )
+
+      if (toRemove.length > 0) {
+        await adminClient
+          .from("meeting_participants")
+          .delete()
+          .in("id", toRemove.map(p => p.id))
+      }
+
+      // Add new participants that don't exist yet
+      const toAdd = newParticipants.filter(np =>
+        np.id !== organizer?.participant_id && // Don't add if it's the organizer
+        !existing.some(ep => ep.participant_id === np.id && ep.participant_type === (np.type || "profile"))
+      )
+
+      if (toAdd.length > 0) {
+        const participantInserts = toAdd.map((p) => ({
+          meeting_id: id,
+          participant_id: p.id,
+          participant_type: p.type || "profile",
+          is_organizer: false,
+          response_status: "pending",
+        }))
+
+        const { error: addError } = await adminClient
+          .from("meeting_participants")
+          .insert(participantInserts)
+
+        if (addError) {
+          console.error("[Meeting] Error adding participants:", addError)
+        }
+      }
+    }
+
+    // Fetch updated meeting with participants
+    const { data: meeting } = await supabase
+      .from("meetings")
+      .select(`
+        *,
+        client:clients(id, name, company),
+        user:profiles!meetings_user_id_fkey(id, name, email, avatar_url),
+        participants:meeting_participants(
+          id,
+          participant_id,
+          participant_type,
+          is_organizer,
+          response_status,
+          profile:profiles!meeting_participants_participant_id_fkey(id, name, email, avatar_url),
+          org_member:org_members!meeting_participants_participant_id_fkey(
+            id,
+            profile:profiles(id, name, email, avatar_url)
+          )
+        )
+      `)
+      .eq("id", id)
+      .single()
+
+    if (!meeting) {
+      return NextResponse.json({ error: "Reunião não encontrada" }, { status: 404, headers: corsHeaders() })
     }
 
     // Transform data
@@ -104,6 +195,11 @@ export async function PUT(
       ...meeting,
       client: Array.isArray(meeting.client) ? meeting.client[0] : meeting.client,
       user: Array.isArray(meeting.user) ? meeting.user[0] : meeting.user,
+      participants: (meeting.participants || []).map((p: Record<string, unknown>) => ({
+        ...p,
+        profile: Array.isArray(p.profile) ? p.profile[0] : p.profile,
+        org_member: Array.isArray(p.org_member) ? p.org_member[0] : p.org_member,
+      })),
     }
 
     return NextResponse.json(

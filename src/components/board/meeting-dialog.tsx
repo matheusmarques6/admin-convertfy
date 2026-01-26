@@ -6,7 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { CalendarIcon, Clock, Video, Link as LinkIcon } from "lucide-react"
+import { CalendarIcon, Clock, Video, Link as LinkIcon, Users, X } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -32,9 +32,13 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Badge } from "@/components/ui/badge"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
 import { toast } from "@/lib/hooks/use-toast"
-import type { Meeting, MeetingStatus } from "@/types"
+import type { Meeting, MeetingStatus, MeetingParticipant } from "@/types"
 
 interface UserProfile {
   id: string
@@ -49,9 +53,19 @@ interface ClientInfo {
   company?: string
 }
 
+interface ParticipantOption {
+  id: string
+  name: string
+  email?: string
+  avatar_url?: string
+  type: "profile" | "org_member"
+  role?: string
+}
+
 interface MeetingWithRelations extends Omit<Meeting, "client" | "user"> {
   client?: ClientInfo
   user?: UserProfile
+  participants?: MeetingParticipant[]
 }
 
 interface MeetingDialogProps {
@@ -60,6 +74,7 @@ interface MeetingDialogProps {
   onSuccess: () => void
   meeting?: MeetingWithRelations | null
   clients: ClientInfo[]
+  members?: ParticipantOption[]
 }
 
 const schema = z.object({
@@ -94,11 +109,13 @@ export function MeetingDialog({
   onSuccess,
   meeting,
   clients,
+  members = [],
 }: MeetingDialogProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [scheduledDate, setScheduledDate] = useState<Date | undefined>()
   const [scheduledTime, setScheduledTime] = useState("09:00")
   const [status, setStatus] = useState<MeetingStatus>("scheduled")
+  const [selectedParticipants, setSelectedParticipants] = useState<ParticipantOption[]>([])
 
   const isEditing = !!meeting
 
@@ -130,6 +147,33 @@ export function MeetingDialog({
         const date = new Date(meeting.scheduled_at)
         setScheduledDate(date)
         setScheduledTime(format(date, "HH:mm"))
+
+        // Load existing participants (excluding organizer)
+        if (meeting.participants) {
+          const existingParticipants = meeting.participants
+            .filter(p => !p.is_organizer)
+            .map(p => {
+              if (p.participant_type === "org_member" && p.org_member) {
+                return {
+                  id: p.participant_id,
+                  name: p.org_member.profile?.name || "Membro",
+                  email: p.org_member.profile?.email,
+                  avatar_url: p.org_member.profile?.avatar_url,
+                  type: "org_member" as const,
+                }
+              }
+              return {
+                id: p.participant_id,
+                name: p.profile?.name || "Usuário",
+                email: p.profile?.email,
+                avatar_url: p.profile?.avatar_url,
+                type: "profile" as const,
+              }
+            })
+          setSelectedParticipants(existingParticipants)
+        } else {
+          setSelectedParticipants([])
+        }
       } else {
         reset({
           title: "",
@@ -139,6 +183,7 @@ export function MeetingDialog({
           notes: "",
         })
         setStatus("scheduled")
+        setSelectedParticipants([])
         // Default to tomorrow at 9am
         const tomorrow = new Date()
         tomorrow.setDate(tomorrow.getDate() + 1)
@@ -176,6 +221,7 @@ export function MeetingDialog({
         duration_minutes: data.duration_minutes,
         meeting_url: data.meeting_url || null,
         notes: data.notes || null,
+        participants: selectedParticipants.map(p => ({ id: p.id, type: p.type })),
         ...(isEditing ? { status } : {}),
       }
 
@@ -253,6 +299,97 @@ export function MeetingDialog({
               </SelectContent>
             </Select>
           </div>
+
+          {/* Participants Multi-select */}
+          {members.length > 0 && (
+            <div className="grid gap-2">
+              <Label className="flex items-center gap-2">
+                <Users className="h-4 w-4" />
+                Participantes
+              </Label>
+
+              {/* Selected participants badges */}
+              {selectedParticipants.length > 0 && (
+                <div className="flex flex-wrap gap-1 mb-2">
+                  {selectedParticipants.map((participant) => (
+                    <Badge
+                      key={`${participant.type}-${participant.id}`}
+                      variant="secondary"
+                      className="flex items-center gap-1"
+                    >
+                      <Avatar className="h-4 w-4">
+                        <AvatarImage src={participant.avatar_url} />
+                        <AvatarFallback className="text-[8px]">
+                          {participant.name?.charAt(0).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="max-w-[100px] truncate">{participant.name}</span>
+                      <X
+                        className="h-3 w-3 cursor-pointer hover:text-destructive"
+                        onClick={() => {
+                          setSelectedParticipants(prev =>
+                            prev.filter(p => !(p.id === participant.id && p.type === participant.type))
+                          )
+                        }}
+                      />
+                    </Badge>
+                  ))}
+                </div>
+              )}
+
+              {/* Member list with checkboxes */}
+              <div className="border rounded-md">
+                <ScrollArea className="h-[150px]">
+                  <div className="p-2 space-y-1">
+                    {members.map((member) => {
+                      const isSelected = selectedParticipants.some(
+                        p => p.id === member.id && p.type === member.type
+                      )
+                      return (
+                        <label
+                          key={`${member.type}-${member.id}`}
+                          className="flex items-center gap-3 p-2 rounded-md hover:bg-accent cursor-pointer"
+                        >
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                setSelectedParticipants(prev => [...prev, member])
+                              } else {
+                                setSelectedParticipants(prev =>
+                                  prev.filter(p => !(p.id === member.id && p.type === member.type))
+                                )
+                              }
+                            }}
+                          />
+                          <Avatar className="h-6 w-6">
+                            <AvatarImage src={member.avatar_url} />
+                            <AvatarFallback className="text-xs">
+                              {member.name?.charAt(0).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex flex-col flex-1 min-w-0">
+                            <span className="text-sm truncate">{member.name}</span>
+                            {member.email && (
+                              <span className="text-xs text-muted-foreground truncate">{member.email}</span>
+                            )}
+                          </div>
+                          {member.type === "org_member" && member.role && (
+                            <Badge variant="outline" className="text-[10px] shrink-0">
+                              {member.role}
+                            </Badge>
+                          )}
+                        </label>
+                      )
+                    })}
+                  </div>
+                </ScrollArea>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Membros selecionados verão a reunião em seus calendários
+              </p>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <div className="grid gap-2">

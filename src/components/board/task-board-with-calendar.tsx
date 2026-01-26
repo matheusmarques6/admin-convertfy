@@ -158,6 +158,14 @@ export function TaskBoardWithCalendar({
           <MeetingsTab
             meetings={meetings}
             clients={clients}
+            members={members.map(m => ({
+              id: m.id,
+              name: m.profile?.name || "Membro",
+              email: m.profile?.email,
+              avatar_url: m.profile?.avatar_url,
+              type: "org_member" as const,
+              role: m.role,
+            }))}
           />
         )}
         {viewMode === "calendar" && (

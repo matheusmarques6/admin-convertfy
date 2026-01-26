@@ -30,7 +30,7 @@ import {
 import { MeetingDialog } from "./meeting-dialog"
 import { toast } from "@/lib/hooks/use-toast"
 import { cn } from "@/lib/utils"
-import type { Meeting, MeetingStatus } from "@/types"
+import type { Meeting, MeetingStatus, MeetingParticipant } from "@/types"
 
 interface UserProfile {
   id: string
@@ -45,14 +45,25 @@ interface ClientInfo {
   company?: string
 }
 
+interface ParticipantOption {
+  id: string
+  name: string
+  email?: string
+  avatar_url?: string
+  type: "profile" | "org_member"
+  role?: string
+}
+
 interface MeetingWithRelations extends Omit<Meeting, "client" | "user"> {
   client?: ClientInfo
   user?: UserProfile
+  participants?: MeetingParticipant[]
 }
 
 interface MeetingsTabProps {
   meetings: MeetingWithRelations[]
   clients: ClientInfo[]
+  members?: ParticipantOption[]
 }
 
 const statusConfig: Record<MeetingStatus, { label: string; variant: "default" | "secondary" | "outline" | "destructive"; icon: React.ElementType }> = {
@@ -69,7 +80,7 @@ function formatMeetingDate(date: string) {
   return format(d, "dd/MM 'às' HH:mm", { locale: ptBR })
 }
 
-export function MeetingsTab({ meetings, clients }: MeetingsTabProps) {
+export function MeetingsTab({ meetings, clients, members = [] }: MeetingsTabProps) {
   const router = useRouter()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingMeeting, setEditingMeeting] = useState<MeetingWithRelations | null>(null)
@@ -358,6 +369,7 @@ export function MeetingsTab({ meetings, clients }: MeetingsTabProps) {
         onSuccess={handleDialogSuccess}
         meeting={editingMeeting}
         clients={clients}
+        members={members}
       />
     </>
   )

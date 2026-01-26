@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 
 function corsHeaders() {
   return {
@@ -27,13 +27,26 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get("status")
     const clientId = searchParams.get("client_id")
     const upcoming = searchParams.get("upcoming") === "true"
+    const participantId = searchParams.get("participant_id")
 
     let query = supabase
       .from("meetings")
       .select(`
         *,
         client:clients(id, name, company),
-        user:profiles!meetings_user_id_fkey(id, name, email, avatar_url)
+        user:profiles!meetings_user_id_fkey(id, name, email, avatar_url),
+        participants:meeting_participants(
+          id,
+          participant_id,
+          participant_type,
+          is_organizer,
+          response_status,
+          profile:profiles!meeting_participants_participant_id_fkey(id, name, email, avatar_url),
+          org_member:org_members!meeting_participants_participant_id_fkey(
+            id,
+            profile:profiles(id, name, email, avatar_url)
+          )
+        )
       `)
       .order("scheduled_at", { ascending: true })
 
@@ -56,11 +69,25 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Erro ao buscar reuniões" }, { status: 500, headers: corsHeaders() })
     }
 
+    // If filtering by participant, filter meetings that include this participant
+    let filteredMeetings = meetings || []
+    if (participantId) {
+      filteredMeetings = filteredMeetings.filter(m => {
+        const participants = m.participants || []
+        return participants.some((p: { participant_id: string }) => p.participant_id === participantId) || m.user_id === participantId
+      })
+    }
+
     // Transform data to handle Supabase array quirk
-    const transformedMeetings = (meetings || []).map(m => ({
+    const transformedMeetings = filteredMeetings.map(m => ({
       ...m,
       client: Array.isArray(m.client) ? m.client[0] : m.client,
       user: Array.isArray(m.user) ? m.user[0] : m.user,
+      participants: (m.participants || []).map((p: Record<string, unknown>) => ({
+        ...p,
+        profile: Array.isArray(p.profile) ? p.profile[0] : p.profile,
+        org_member: Array.isArray(p.org_member) ? p.org_member[0] : p.org_member,
+      })),
     }))
 
     return NextResponse.json({ meetings: transformedMeetings }, { headers: corsHeaders() })
@@ -74,6 +101,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
+    const adminClient = createAdminClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
@@ -116,11 +144,70 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Add the creator as organizer participant
+    await adminClient
+      .from("meeting_participants")
+      .insert({
+        meeting_id: meeting.id,
+        participant_id: user.id,
+        participant_type: "profile",
+        is_organizer: true,
+        response_status: "accepted",
+      })
+
+    // Add additional participants if provided
+    const participants = body.participants || []
+    if (participants.length > 0) {
+      const participantInserts = participants.map((p: { id: string; type: string }) => ({
+        meeting_id: meeting.id,
+        participant_id: p.id,
+        participant_type: p.type || "profile",
+        is_organizer: false,
+        response_status: "pending",
+      }))
+
+      const { error: participantsError } = await adminClient
+        .from("meeting_participants")
+        .insert(participantInserts)
+
+      if (participantsError) {
+        console.error("[Meetings] Error adding participants:", participantsError)
+      }
+    }
+
+    // Fetch the meeting with participants
+    const { data: fullMeeting } = await supabase
+      .from("meetings")
+      .select(`
+        *,
+        client:clients(id, name, company),
+        user:profiles!meetings_user_id_fkey(id, name, email, avatar_url),
+        participants:meeting_participants(
+          id,
+          participant_id,
+          participant_type,
+          is_organizer,
+          response_status,
+          profile:profiles!meeting_participants_participant_id_fkey(id, name, email, avatar_url)
+        )
+      `)
+      .eq("id", meeting.id)
+      .single()
+
     // Transform data
-    const transformedMeeting = {
+    const transformedMeeting = fullMeeting ? {
+      ...fullMeeting,
+      client: Array.isArray(fullMeeting.client) ? fullMeeting.client[0] : fullMeeting.client,
+      user: Array.isArray(fullMeeting.user) ? fullMeeting.user[0] : fullMeeting.user,
+      participants: (fullMeeting.participants || []).map((p: Record<string, unknown>) => ({
+        ...p,
+        profile: Array.isArray(p.profile) ? p.profile[0] : p.profile,
+      })),
+    } : {
       ...meeting,
       client: Array.isArray(meeting.client) ? meeting.client[0] : meeting.client,
       user: Array.isArray(meeting.user) ? meeting.user[0] : meeting.user,
+      participants: [],
     }
 
     return NextResponse.json(

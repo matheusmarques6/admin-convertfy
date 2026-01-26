@@ -89,19 +89,64 @@ async function getStores() {
 async function getMeetings() {
   const supabase = await createClient()
 
+  // Get current user to filter meetings where they are a participant
+  const { data: { user } } = await supabase.auth.getUser()
+  const userId = user?.id
+
+  // Get org_member_id for the current user (if they are an org member)
+  let orgMemberId: string | null = null
+  if (userId) {
+    const { data: orgMember } = await supabase
+      .from("org_members")
+      .select("id")
+      .eq("profile_id", userId)
+      .eq("is_active", true)
+      .single()
+    orgMemberId = orgMember?.id || null
+  }
+
+  // First, get meetings the user owns or is a participant of
   const { data: meetings } = await supabase
     .from("meetings")
     .select(`
       *,
       client:clients (id, name, company),
-      user:profiles!meetings_user_id_fkey (id, name, email, avatar_url)
+      user:profiles!meetings_user_id_fkey (id, name, email, avatar_url),
+      participants:meeting_participants(
+        id,
+        participant_id,
+        participant_type,
+        is_organizer,
+        response_status,
+        profile:profiles(id, name, email, avatar_url)
+      )
     `)
     .order("scheduled_at", { ascending: true })
 
-  return (meetings || []).map(m => ({
+  // Filter to include meetings where user is owner OR participant
+  const filteredMeetings = (meetings || []).filter(m => {
+    // User is owner
+    if (m.user_id === userId) return true
+
+    // User is a participant
+    const participants = m.participants || []
+    return participants.some((p: { participant_id: string; participant_type: string }) => {
+      // Direct profile participant
+      if (p.participant_type === "profile" && p.participant_id === userId) return true
+      // Org member participant
+      if (p.participant_type === "org_member" && p.participant_id === orgMemberId) return true
+      return false
+    })
+  })
+
+  return filteredMeetings.map(m => ({
     ...m,
     client: Array.isArray(m.client) ? m.client[0] : m.client,
-    user: Array.isArray(m.user) ? m.user[0] : m.user
+    user: Array.isArray(m.user) ? m.user[0] : m.user,
+    participants: (m.participants || []).map((p: Record<string, unknown>) => ({
+      ...p,
+      profile: Array.isArray(p.profile) ? p.profile[0] : p.profile,
+    })),
   }))
 }
 
