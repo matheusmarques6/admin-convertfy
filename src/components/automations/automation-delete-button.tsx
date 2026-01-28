@@ -1,0 +1,96 @@
+"use client"
+
+import { useState } from "react"
+import { useRouter } from "next/navigation"
+import { Trash2 } from "lucide-react"
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { createClient } from "@/lib/supabase/client"
+import { toast } from "@/lib/hooks/use-toast"
+
+interface AutomationDeleteButtonProps {
+  automationId: string
+  automationName: string
+}
+
+export function AutomationDeleteButton({ automationId, automationName }: AutomationDeleteButtonProps) {
+  const router = useRouter()
+  const [showDialog, setShowDialog] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+
+  async function handleDelete() {
+    setIsDeleting(true)
+
+    try {
+      const supabase = createClient()
+      const { error } = await supabase
+        .from("automations")
+        .delete()
+        .eq("id", automationId)
+
+      if (error) throw error
+
+      toast({
+        title: "Automação excluída",
+        description: "A automação foi excluída com sucesso.",
+      })
+
+      router.refresh()
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Erro",
+        description: "Não foi possível excluir a automação.",
+      })
+    } finally {
+      setIsDeleting(false)
+      setShowDialog(false)
+    }
+  }
+
+  return (
+    <>
+      <DropdownMenuItem
+        className="text-destructive focus:text-destructive"
+        onSelect={(e) => {
+          e.preventDefault()
+          setShowDialog(true)
+        }}
+      >
+        <Trash2 className="mr-2 h-4 w-4" />
+        Excluir
+      </DropdownMenuItem>
+
+      <AlertDialog open={showDialog} onOpenChange={setShowDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir automação</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir a automação &quot;{automationName}&quot;?
+              Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? "Excluindo..." : "Excluir"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  )
+}

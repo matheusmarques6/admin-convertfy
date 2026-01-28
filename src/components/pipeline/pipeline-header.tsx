@@ -1,7 +1,8 @@
 "use client"
 
 import { useState } from "react"
-import { Plus, Settings, ChevronDown } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { Plus, Settings, ChevronDown, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -12,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { DealDialog } from "./deal-dialog"
+import { toast } from "@/lib/hooks/use-toast"
 import type { Pipeline } from "@/types"
 
 interface PipelineHeaderProps {
@@ -20,7 +22,30 @@ interface PipelineHeaderProps {
 }
 
 export function PipelineHeader({ pipelines, currentPipeline }: PipelineHeaderProps) {
+  const router = useRouter()
   const [showNewDeal, setShowNewDeal] = useState(false)
+
+  function handleSelectPipeline(pipelineId: string) {
+    // TODO: Implementar troca de pipeline via query params ou state
+    toast({
+      title: "Pipeline selecionado",
+      description: "A funcionalidade de múltiplos pipelines será implementada em breve.",
+    })
+  }
+
+  function handleNewPipeline() {
+    toast({
+      title: "Em desenvolvimento",
+      description: "A criação de novos pipelines será implementada em breve.",
+    })
+  }
+
+  function handleSettings() {
+    toast({
+      title: "Em desenvolvimento",
+      description: "As configurações do pipeline serão implementadas em breve.",
+    })
+  }
 
   return (
     <div className="flex items-center justify-between">
@@ -45,7 +70,13 @@ export function PipelineHeader({ pipelines, currentPipeline }: PipelineHeaderPro
               <DropdownMenuLabel>Pipelines</DropdownMenuLabel>
               <DropdownMenuSeparator />
               {pipelines.map((pipeline) => (
-                <DropdownMenuItem key={pipeline.id}>
+                <DropdownMenuItem
+                  key={pipeline.id}
+                  onClick={() => handleSelectPipeline(pipeline.id)}
+                >
+                  {currentPipeline?.id === pipeline.id && (
+                    <Check className="mr-2 h-4 w-4" />
+                  )}
                   {pipeline.name}
                   {pipeline.is_default && (
                     <span className="ml-2 text-xs text-muted-foreground">
@@ -55,7 +86,7 @@ export function PipelineHeader({ pipelines, currentPipeline }: PipelineHeaderPro
                 </DropdownMenuItem>
               ))}
               <DropdownMenuSeparator />
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={handleNewPipeline}>
                 <Plus className="mr-2 h-4 w-4" />
                 Novo Pipeline
               </DropdownMenuItem>
@@ -65,7 +96,7 @@ export function PipelineHeader({ pipelines, currentPipeline }: PipelineHeaderPro
       </div>
 
       <div className="flex items-center gap-2">
-        <Button variant="outline" size="icon">
+        <Button variant="outline" size="icon" onClick={handleSettings}>
           <Settings className="h-4 w-4" />
         </Button>
         <Button onClick={() => setShowNewDeal(true)}>

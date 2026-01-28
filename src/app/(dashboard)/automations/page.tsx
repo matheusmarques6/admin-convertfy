@@ -1,11 +1,10 @@
 import { Suspense } from "react"
 import Link from "next/link"
-import { Plus, Zap, Play, Pause, MoreHorizontal, Trash2, Edit } from "lucide-react"
+import { Plus, Zap, Play, Pause, MoreHorizontal, Edit } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Switch } from "@/components/ui/switch"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,7 +12,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Skeleton } from "@/components/ui/skeleton"
-import { formatDateTime } from "@/lib/utils"
+import { AutomationSwitch } from "@/components/automations/automation-switch"
+import { AutomationDeleteButton } from "@/components/automations/automation-delete-button"
 import type { Automation } from "@/types"
 
 export const dynamic = "force-dynamic"
@@ -190,10 +190,10 @@ export default async function AutomationsPage() {
                               Editar
                             </Link>
                           </DropdownMenuItem>
-                          <DropdownMenuItem className="text-destructive">
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Excluir
-                          </DropdownMenuItem>
+                          <AutomationDeleteButton
+                            automationId={automation.id}
+                            automationName={automation.name}
+                          />
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
@@ -220,7 +220,10 @@ export default async function AutomationsPage() {
                       <span className="text-sm">
                         {automation.is_active ? "Ativa" : "Pausada"}
                       </span>
-                      <Switch checked={automation.is_active} />
+                      <AutomationSwitch
+                        automationId={automation.id}
+                        isActive={automation.is_active}
+                      />
                     </div>
                   </CardContent>
                 </Card>

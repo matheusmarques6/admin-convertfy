@@ -43,6 +43,36 @@ export function PipelineBoard({ stages, deals: initialDeals, pipelineId }: Pipel
   const [showNewDeal, setShowNewDeal] = useState(false)
   const [selectedStageId, setSelectedStageId] = useState<string | null>(null)
   const [editingDeal, setEditingDeal] = useState<DealWithRelations | null>(null)
+  const [deletingDealId, setDeletingDealId] = useState<string | null>(null)
+
+  async function handleDeleteDeal(dealId: string) {
+    setDeletingDealId(dealId)
+
+    try {
+      const supabase = createClient()
+      const { error } = await supabase
+        .from("deals")
+        .delete()
+        .eq("id", dealId)
+
+      if (error) throw error
+
+      setDeals((prev) => prev.filter((deal) => deal.id !== dealId))
+
+      toast({
+        title: "Deal excluído",
+        description: "O deal foi excluído com sucesso.",
+      })
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Erro ao excluir deal",
+        description: "Tente novamente.",
+      })
+    } finally {
+      setDeletingDealId(null)
+    }
+  }
 
   async function handleDragEnd(result: DropResult) {
     if (!result.destination) return
@@ -192,9 +222,13 @@ export function PipelineBoard({ stages, deals: initialDeals, pipelineId }: Pipel
                                           <Edit className="mr-2 h-4 w-4" />
                                           Editar
                                         </DropdownMenuItem>
-                                        <DropdownMenuItem className="text-destructive">
+                                        <DropdownMenuItem
+                                          className="text-destructive focus:text-destructive"
+                                          onClick={() => handleDeleteDeal(deal.id)}
+                                          disabled={deletingDealId === deal.id}
+                                        >
                                           <Trash2 className="mr-2 h-4 w-4" />
-                                          Excluir
+                                          {deletingDealId === deal.id ? "Excluindo..." : "Excluir"}
                                         </DropdownMenuItem>
                                       </DropdownMenuContent>
                                     </DropdownMenu>

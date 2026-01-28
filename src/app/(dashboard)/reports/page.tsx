@@ -74,9 +74,11 @@ export default async function ReportsPage() {
             Gerencie os relatórios mensais dos clientes
           </p>
         </div>
-        <Button>
-          <Plus className="mr-2 h-4 w-4" />
-          Novo Relatório
+        <Button asChild>
+          <Link href="/reports/new">
+            <Plus className="mr-2 h-4 w-4" />
+            Novo Relatório
+          </Link>
         </Button>
       </div>
 
@@ -130,9 +132,11 @@ export default async function ReportsPage() {
             <p className="text-muted-foreground mt-1">
               Crie seu primeiro relatório
             </p>
-            <Button className="mt-4">
-              <Plus className="mr-2 h-4 w-4" />
-              Criar Relatório
+            <Button asChild className="mt-4">
+              <Link href="/reports/new">
+                <Plus className="mr-2 h-4 w-4" />
+                Criar Relatório
+              </Link>
             </Button>
           </CardContent>
         </Card>
@@ -174,9 +178,11 @@ export default async function ReportsPage() {
                       </div>
 
                       <div className="flex gap-2">
-                        <Button variant="outline" size="sm" className="flex-1">
-                          <Eye className="mr-2 h-3 w-3" />
-                          Ver
+                        <Button variant="outline" size="sm" className="flex-1" asChild>
+                          <Link href={`/reports/${report.id}`}>
+                            <Eye className="mr-2 h-3 w-3" />
+                            Ver
+                          </Link>
                         </Button>
                         {report.document_url && (
                           <Button variant="outline" size="sm" asChild>

@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { Plus, Calendar, Video, Clock, CheckCircle, XCircle } from "lucide-react"
+import { Plus, Calendar, Video, Clock, CheckCircle, XCircle, AlertCircle } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -58,9 +58,11 @@ export default async function MeetingsPage() {
             Gerencie as reuniões com seus clientes
           </p>
         </div>
-        <Button>
-          <Plus className="mr-2 h-4 w-4" />
-          Agendar Reunião
+        <Button asChild>
+          <Link href="/meetings/new">
+            <Plus className="mr-2 h-4 w-4" />
+            Agendar Reunião
+          </Link>
         </Button>
       </div>
 

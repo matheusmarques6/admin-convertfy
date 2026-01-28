@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { Plus, FileText, Download, Eye } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -38,9 +39,11 @@ export function ClientReports({ reports, clientId }: ClientReportsProps) {
     <div className="space-y-6">
       {/* Quick Actions */}
       <div className="flex justify-end">
-        <Button>
-          <Plus className="mr-2 h-4 w-4" />
-          Novo Relatório
+        <Button asChild>
+          <Link href={`/reports/new?clientId=${clientId}`}>
+            <Plus className="mr-2 h-4 w-4" />
+            Novo Relatório
+          </Link>
         </Button>
       </div>
 
@@ -54,9 +57,11 @@ export function ClientReports({ reports, clientId }: ClientReportsProps) {
             <p className="text-muted-foreground mb-4">
               Nenhum relatório enviado ainda
             </p>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Criar Primeiro Relatório
+            <Button asChild>
+              <Link href={`/reports/new?clientId=${clientId}`}>
+                <Plus className="mr-2 h-4 w-4" />
+                Criar Primeiro Relatório
+              </Link>
             </Button>
           </CardContent>
         </Card>
@@ -105,9 +110,11 @@ export function ClientReports({ reports, clientId }: ClientReportsProps) {
 
                 {/* Actions */}
                 <div className="flex gap-2 pt-2 border-t">
-                  <Button variant="outline" size="sm" className="flex-1">
-                    <Eye className="mr-2 h-3 w-3" />
-                    Ver
+                  <Button variant="outline" size="sm" className="flex-1" asChild>
+                    <Link href={`/reports/${report.id}`}>
+                      <Eye className="mr-2 h-3 w-3" />
+                      Ver
+                    </Link>
                   </Button>
                   {report.document_url && (
                     <Button variant="outline" size="sm" asChild>
