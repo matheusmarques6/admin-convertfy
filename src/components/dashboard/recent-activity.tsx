@@ -7,76 +7,159 @@ import {
   FileText,
   MessageSquare,
   TrendingUp,
+  RefreshCw,
+  AlertCircle,
+  Tag,
+  Mail,
+  type LucideIcon,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
+import type { ActivityType } from "@/types"
 
-// Mock data - will be replaced with real data from Supabase
-const activities = [
-  {
-    id: 1,
-    type: "client_created",
-    description: "Novo cliente cadastrado: Loja Premium",
-    user: "João Silva",
-    time: "2 min atrás",
+interface Activity {
+  id: string
+  type: ActivityType
+  description: string
+  created_at: string
+  user?: {
+    name: string
+  } | null
+  client?: {
+    name: string
+  } | null
+}
+
+interface RecentActivityProps {
+  activities: Activity[]
+}
+
+const activityConfig: Record<
+  ActivityType,
+  { icon: LucideIcon; iconColor: string; iconBg: string }
+> = {
+  client_created: {
     icon: UserPlus,
     iconColor: "text-blue-500",
     iconBg: "bg-blue-500/10",
   },
-  {
-    id: 2,
-    type: "payment_received",
-    description: "Pagamento recebido: R$ 2.500,00",
-    user: "Sistema",
-    time: "15 min atrás",
-    icon: DollarSign,
-    iconColor: "text-emerald-500",
-    iconBg: "bg-emerald-500/10",
+  client_updated: {
+    icon: RefreshCw,
+    iconColor: "text-slate-500",
+    iconBg: "bg-slate-500/10",
   },
-  {
-    id: 3,
-    type: "meeting_scheduled",
-    description: "Reunião agendada com Loja ABC",
-    user: "Maria Santos",
-    time: "1 hora atrás",
+  status_changed: {
+    icon: RefreshCw,
+    iconColor: "text-amber-500",
+    iconBg: "bg-amber-500/10",
+  },
+  meeting_scheduled: {
     icon: Calendar,
     iconColor: "text-purple-500",
     iconBg: "bg-purple-500/10",
   },
-  {
-    id: 4,
-    type: "report_uploaded",
-    description: "Relatório enviado para Loja XYZ",
-    user: "Pedro Costa",
-    time: "2 horas atrás",
+  meeting_completed: {
+    icon: Calendar,
+    iconColor: "text-emerald-500",
+    iconBg: "bg-emerald-500/10",
+  },
+  payment_received: {
+    icon: DollarSign,
+    iconColor: "text-emerald-500",
+    iconBg: "bg-emerald-500/10",
+  },
+  payment_overdue: {
+    icon: AlertCircle,
+    iconColor: "text-red-500",
+    iconBg: "bg-red-500/10",
+  },
+  report_uploaded: {
     icon: FileText,
     iconColor: "text-amber-500",
     iconBg: "bg-amber-500/10",
   },
-  {
-    id: 5,
-    type: "deal_won",
-    description: "Novo contrato fechado: R$ 5.000/mês",
-    user: "Ana Lima",
-    time: "3 horas atrás",
-    icon: TrendingUp,
-    iconColor: "text-emerald-500",
-    iconBg: "bg-emerald-500/10",
+  note_added: {
+    icon: FileText,
+    iconColor: "text-slate-500",
+    iconBg: "bg-slate-500/10",
   },
-  {
-    id: 6,
-    type: "whatsapp_sent",
-    description: "Mensagem enviada para 15 clientes",
-    user: "Automação",
-    time: "5 horas atrás",
+  email_sent: {
+    icon: Mail,
+    iconColor: "text-blue-500",
+    iconBg: "bg-blue-500/10",
+  },
+  whatsapp_sent: {
     icon: MessageSquare,
     iconColor: "text-green-500",
     iconBg: "bg-green-500/10",
   },
-]
+  deal_created: {
+    icon: TrendingUp,
+    iconColor: "text-blue-500",
+    iconBg: "bg-blue-500/10",
+  },
+  deal_updated: {
+    icon: RefreshCw,
+    iconColor: "text-slate-500",
+    iconBg: "bg-slate-500/10",
+  },
+  deal_won: {
+    icon: TrendingUp,
+    iconColor: "text-emerald-500",
+    iconBg: "bg-emerald-500/10",
+  },
+  deal_lost: {
+    icon: AlertCircle,
+    iconColor: "text-red-500",
+    iconBg: "bg-red-500/10",
+  },
+}
 
-export function RecentActivity() {
+function formatTimeAgo(dateString: string): string {
+  const date = new Date(dateString)
+  const now = new Date()
+  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000)
+
+  if (diffInSeconds < 60) {
+    return "agora"
+  }
+
+  const diffInMinutes = Math.floor(diffInSeconds / 60)
+  if (diffInMinutes < 60) {
+    return `${diffInMinutes} min atrás`
+  }
+
+  const diffInHours = Math.floor(diffInMinutes / 60)
+  if (diffInHours < 24) {
+    return `${diffInHours}h atrás`
+  }
+
+  const diffInDays = Math.floor(diffInHours / 24)
+  if (diffInDays < 7) {
+    return `${diffInDays}d atrás`
+  }
+
+  return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })
+}
+
+export function RecentActivity({ activities }: RecentActivityProps) {
+  if (activities.length === 0) {
+    return (
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Atividade Recente</CardTitle>
+          <CardDescription>Últimas ações no sistema</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+            Nenhuma atividade recente
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -86,21 +169,30 @@ export function RecentActivity() {
       <CardContent>
         <ScrollArea className="h-[300px] pr-4">
           <div className="space-y-4">
-            {activities.map((activity, index) => (
-              <div key={activity.id} className="flex gap-3">
-                <div className={cn("rounded-lg p-2 h-fit", activity.iconBg)}>
-                  <activity.icon className={cn("h-4 w-4", activity.iconColor)} />
-                </div>
-                <div className="flex-1 space-y-1">
-                  <p className="text-sm leading-tight">{activity.description}</p>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>{activity.user}</span>
-                    <span>•</span>
-                    <span>{activity.time}</span>
+            {activities.map((activity) => {
+              const config = activityConfig[activity.type] || {
+                icon: FileText,
+                iconColor: "text-slate-500",
+                iconBg: "bg-slate-500/10",
+              }
+              const Icon = config.icon
+
+              return (
+                <div key={activity.id} className="flex gap-3">
+                  <div className={cn("rounded-lg p-2 h-fit", config.iconBg)}>
+                    <Icon className={cn("h-4 w-4", config.iconColor)} />
+                  </div>
+                  <div className="flex-1 space-y-1">
+                    <p className="text-sm leading-tight">{activity.description}</p>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span>{activity.user?.name || "Sistema"}</span>
+                      <span>•</span>
+                      <span>{formatTimeAgo(activity.created_at)}</span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </ScrollArea>
       </CardContent>
