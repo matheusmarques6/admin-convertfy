@@ -19,7 +19,7 @@ async function getPipelineData() {
   const defaultPipeline = pipelines?.find((p) => p.is_default) || pipelines?.[0]
 
   if (!defaultPipeline) {
-    return { pipeline: null, stages: [], deals: [] }
+    return { pipelines: [], pipeline: null, stages: [], deals: [] }
   }
 
   // Fetch stages

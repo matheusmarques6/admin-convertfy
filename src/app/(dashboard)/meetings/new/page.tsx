@@ -22,7 +22,14 @@ import {
 } from "@/components/ui/select"
 import { toast } from "@/lib/hooks/use-toast"
 import { Skeleton } from "@/components/ui/skeleton"
-import type { Client } from "@/types"
+
+// Partial client type for the select dropdown
+interface ClientOption {
+  id: string
+  name: string
+  company?: string | null
+  status: string
+}
 
 const meetingSchema = z.object({
   client_id: z.string().min(1, "Selecione um cliente"),
@@ -40,7 +47,7 @@ export default function NewMeetingPage() {
   const searchParams = useSearchParams()
   const clientIdParam = searchParams.get("clientId")
 
-  const [clients, setClients] = useState<Client[]>([])
+  const [clients, setClients] = useState<ClientOption[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isFetchingClients, setIsFetchingClients] = useState(true)
 

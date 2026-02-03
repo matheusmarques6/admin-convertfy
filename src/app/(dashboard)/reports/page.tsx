@@ -3,12 +3,32 @@ import { Plus, FileText, Download, Eye, Calendar } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { formatCurrency } from "@/lib/utils"
+
+// Type for report data from Supabase
+interface ReportData {
+  id: string
+  month: string
+  document_url?: string | null
+  metrics?: {
+    revenue?: number
+    roas?: number
+    [key: string]: unknown
+  } | null
+  client?: {
+    id: string
+    name: string
+    company?: string | null
+  } | null
+  user?: {
+    id: string
+    name: string
+  } | null
+}
 
 export const dynamic = "force-dynamic"
 
-async function getReports() {
+async function getReports(): Promise<ReportData[]> {
   const supabase = await createClient()
 
   const { data: reports } = await supabase
@@ -27,7 +47,7 @@ async function getReports() {
     `)
     .order("month", { ascending: false })
 
-  return reports || []
+  return (reports || []) as ReportData[]
 }
 
 const months: Record<string, string> = {

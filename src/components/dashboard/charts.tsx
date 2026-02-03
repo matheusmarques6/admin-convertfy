@@ -19,18 +19,21 @@ import { formatCurrency } from "@/lib/utils"
 interface RevenueData {
   month: string
   receita: number
+  [key: string]: string | number
 }
 
 interface ClientsData {
   name: string
   value: number
   color: string
+  [key: string]: string | number
 }
 
 interface PipelineData {
   stage: string
   value: number
   deals: number
+  [key: string]: string | number
 }
 
 interface DashboardChartsProps {

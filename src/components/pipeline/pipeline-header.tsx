@@ -14,11 +14,18 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { DealDialog } from "./deal-dialog"
 import { toast } from "@/lib/hooks/use-toast"
-import type { Pipeline } from "@/types"
+
+// Partial pipeline type for header (doesn't need stages)
+interface PipelineOption {
+  id: string
+  name: string
+  description?: string | null
+  is_default: boolean
+}
 
 interface PipelineHeaderProps {
-  pipelines: Pipeline[]
-  currentPipeline?: Pipeline | null
+  pipelines: PipelineOption[]
+  currentPipeline?: PipelineOption | null
 }
 
 export function PipelineHeader({ pipelines, currentPipeline }: PipelineHeaderProps) {

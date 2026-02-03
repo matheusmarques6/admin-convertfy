@@ -25,7 +25,14 @@ import {
 } from "@/components/ui/select"
 import { createClient } from "@/lib/supabase/client"
 import { toast } from "@/lib/hooks/use-toast"
-import type { Deal, Client, PipelineStage } from "@/types"
+import type { Deal, PipelineStage } from "@/types"
+
+// Partial client type for the select dropdown
+interface ClientOption {
+  id: string
+  name: string
+  company?: string | null
+}
 
 const dealSchema = z.object({
   title: z.string().min(2, "Título deve ter pelo menos 2 caracteres"),
@@ -55,7 +62,7 @@ export function DealDialog({
   onSuccess,
 }: DealDialogProps) {
   const [isLoading, setIsLoading] = useState(false)
-  const [clients, setClients] = useState<Client[]>([])
+  const [clients, setClients] = useState<ClientOption[]>([])
   const [stages, setStages] = useState<PipelineStage[]>([])
   const [selectedStageId, setSelectedStageId] = useState(stageId || "")
 

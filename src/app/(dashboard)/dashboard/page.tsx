@@ -111,7 +111,10 @@ async function getDashboardData() {
   // Calculate pipeline by stage
   const stageMap = new Map<string, { value: number; deals: number }>()
   deals?.forEach((deal) => {
-    const stageName = (deal.stage as { name: string } | null)?.name || "Sem estágio"
+    // Handle both array and object formats from Supabase
+    const stageRaw = deal.stage as { name: string } | { name: string }[] | null
+    const stageData = Array.isArray(stageRaw) ? stageRaw[0] : stageRaw
+    const stageName = stageData?.name || "Sem estágio"
     const existing = stageMap.get(stageName) || { value: 0, deals: 0 }
     stageMap.set(stageName, {
       value: existing.value + Number(deal.value),
@@ -124,6 +127,21 @@ async function getDashboardData() {
     value: data.value,
     deals: data.deals,
   }))
+
+  // Transform activities to match expected type (Supabase may return relations as objects or arrays)
+  const transformedActivities = (activities || []).map((activity) => {
+    const userData = activity.user as { name: string } | { name: string }[] | null
+    const clientData = activity.client as { name: string } | { name: string }[] | null
+
+    return {
+      id: activity.id,
+      type: activity.type,
+      description: activity.description,
+      created_at: activity.created_at,
+      user: Array.isArray(userData) ? userData[0] || null : userData,
+      client: Array.isArray(clientData) ? clientData[0] || null : clientData,
+    }
+  })
 
   return {
     metrics: {
@@ -140,7 +158,7 @@ async function getDashboardData() {
       clientsByStatus,
       pipelineByStage,
     },
-    recentActivities: activities || [],
+    recentActivities: transformedActivities,
   }
 }
 
