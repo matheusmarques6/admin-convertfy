@@ -9,17 +9,19 @@ import type { Contract } from "@/types"
 
 interface ClientContractsProps {
   contracts: Contract[]
-  clientId: string
 }
 
-const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "success" | "destructive" | "warning" }> = {
+const statusConfig: Record<
+  string,
+  { label: string; variant: "default" | "secondary" | "success" | "destructive" | "warning" }
+> = {
   active: { label: "Ativo", variant: "success" },
   expired: { label: "Expirado", variant: "secondary" },
   cancelled: { label: "Cancelado", variant: "destructive" },
   pending: { label: "Pendente", variant: "warning" },
 }
 
-export function ClientContracts({ contracts, clientId }: ClientContractsProps) {
+export function ClientContracts({ contracts }: ClientContractsProps) {
   const activeContract = contracts.find((c) => c.status === "active")
   const pastContracts = contracts.filter((c) => c.status !== "active")
 

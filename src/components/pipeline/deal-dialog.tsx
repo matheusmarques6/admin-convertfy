@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
@@ -78,32 +78,7 @@ export function DealDialog({
     },
   })
 
-  useEffect(() => {
-    if (open) {
-      loadData()
-      if (deal) {
-        reset({
-          title: deal.title,
-          value: deal.value,
-          probability: deal.probability,
-          client_id: deal.client_id || undefined,
-          notes: deal.notes || "",
-        })
-        setSelectedStageId(deal.stage_id)
-      } else {
-        reset({
-          title: "",
-          value: 0,
-          probability: 50,
-          client_id: undefined,
-          notes: "",
-        })
-        setSelectedStageId(stageId || "")
-      }
-    }
-  }, [open, deal, stageId, reset])
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     const supabase = createClient()
 
     // Load clients
@@ -129,7 +104,32 @@ export function DealDialog({
         setSelectedStageId(stagesData[0].id)
       }
     }
-  }
+  }, [pipelineId, stageId])
+
+  useEffect(() => {
+    if (open) {
+      loadData()
+      if (deal) {
+        reset({
+          title: deal.title,
+          value: deal.value,
+          probability: deal.probability,
+          client_id: deal.client_id || undefined,
+          notes: deal.notes || "",
+        })
+        setSelectedStageId(deal.stage_id)
+      } else {
+        reset({
+          title: "",
+          value: 0,
+          probability: 50,
+          client_id: undefined,
+          notes: "",
+        })
+        setSelectedStageId(stageId || "")
+      }
+    }
+  }, [open, deal, stageId, reset, loadData])
 
   async function onSubmit(data: DealForm) {
     if (!pipelineId || !selectedStageId) {
