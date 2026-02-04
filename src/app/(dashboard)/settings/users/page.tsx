@@ -157,7 +157,7 @@ export default function UsersSettingsPage() {
       setInviteEmail("")
       setInviteRole("cs")
       setDialogOpen(false)
-    } catch (error) {
+    } catch {
       toast({
         variant: "destructive",
         title: "Erro ao enviar convite",

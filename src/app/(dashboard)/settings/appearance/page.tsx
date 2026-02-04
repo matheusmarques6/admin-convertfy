@@ -59,7 +59,8 @@ export default function AppearanceSettingsPage() {
     )
   }
 
-  const currentTheme = theme === "system" ? systemTheme : theme
+  // currentTheme could be used for preview, currently just using theme
+  void (theme === "system" ? systemTheme : theme)
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">

@@ -60,7 +60,7 @@ export function ClientActions({ clientId, clientName }: ClientActionsProps) {
 
       router.push("/clients")
       router.refresh()
-    } catch (error) {
+    } catch {
       toast({
         variant: "destructive",
         title: "Erro ao excluir",

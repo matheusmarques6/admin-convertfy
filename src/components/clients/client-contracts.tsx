@@ -20,7 +20,7 @@ const statusConfig: Record<string, { label: string; variant: "default" | "second
   pending: { label: "Pendente", variant: "warning" },
 }
 
-export function ClientContracts({ contracts, clientId }: ClientContractsProps) {
+export function ClientContracts({ contracts }: ClientContractsProps) {
   const activeContract = contracts.find((c) => c.status === "active")
   const pastContracts = contracts.filter((c) => c.status !== "active")
 

@@ -37,7 +37,7 @@ export function AutomationSwitch({ automationId, isActive }: AutomationSwitchPro
       })
 
       router.refresh()
-    } catch (error) {
+    } catch {
       setChecked(!newValue)
       toast({
         variant: "destructive",

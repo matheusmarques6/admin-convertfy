@@ -45,7 +45,7 @@ export function AutomationDeleteButton({ automationId, automationName }: Automat
       })
 
       router.refresh()
-    } catch (error) {
+    } catch {
       toast({
         variant: "destructive",
         title: "Erro",

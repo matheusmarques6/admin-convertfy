@@ -103,7 +103,7 @@ export default function NewMeetingPage() {
 
       const { data: { user } } = await supabase.auth.getUser()
 
-      const { data: newMeeting, error } = await supabase
+      const { error } = await supabase
         .from("meetings")
         .insert({
           client_id: data.client_id,

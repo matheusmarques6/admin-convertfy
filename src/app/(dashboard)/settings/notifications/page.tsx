@@ -58,7 +58,7 @@ export default function NotificationsSettingsPage() {
         if (data?.value) {
           setSettings({ ...defaultSettings, ...(data.value as NotificationSettings) })
         }
-      } catch (error) {
+      } catch {
         // Settings don't exist yet, use defaults
       } finally {
         setIsFetching(false)
@@ -87,7 +87,7 @@ export default function NotificationsSettingsPage() {
         }, {
           onConflict: "key",
         })
-    } catch (error) {
+    } catch {
       // Revert on error
       setSettings(settings)
       toast({
@@ -121,7 +121,7 @@ export default function NotificationsSettingsPage() {
         title: "Preferências salvas!",
         description: "Suas preferências de notificação foram atualizadas.",
       })
-    } catch (error) {
+    } catch {
       toast({
         variant: "destructive",
         title: "Erro ao salvar",

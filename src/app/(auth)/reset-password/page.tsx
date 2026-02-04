@@ -69,7 +69,7 @@ export default function ResetPasswordPage() {
       setTimeout(() => {
         router.push("/login")
       }, 3000)
-    } catch (error) {
+    } catch {
       toast({
         variant: "destructive",
         title: "Erro inesperado",

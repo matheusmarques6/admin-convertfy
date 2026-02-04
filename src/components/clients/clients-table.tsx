@@ -86,7 +86,7 @@ export function ClientsTable({ clients }: ClientsTableProps) {
       })
 
       router.refresh()
-    } catch (error) {
+    } catch {
       toast({
         variant: "destructive",
         title: "Erro ao excluir",

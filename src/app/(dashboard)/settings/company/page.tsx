@@ -90,7 +90,7 @@ export default function CompanySettingsPage() {
       const supabase = createClient()
 
       // Upsert each setting
-      const settings = Object.entries(data).filter(([_, value]) => value !== undefined)
+      const settings = Object.entries(data).filter(([, value]) => value !== undefined)
 
       for (const [key, value] of settings) {
         const { error } = await supabase

@@ -50,6 +50,29 @@ async function getReports(): Promise<ReportData[]> {
   return (reports || []) as ReportData[]
 }
 
+async function getPendingReportsCount(): Promise<number> {
+  const supabase = await createClient()
+
+  // Get current month in YYYY-MM format
+  const currentMonth = new Date().toISOString().slice(0, 7)
+
+  // Get active clients count
+  const { count: activeClientsCount } = await supabase
+    .from("clients")
+    .select("*", { count: "exact", head: true })
+    .eq("status", "active")
+
+  // Get clients that already have a report for this month
+  const { data: reportsThisMonth } = await supabase
+    .from("reports")
+    .select("client_id")
+    .eq("month", currentMonth)
+
+  const clientsWithReport = new Set(reportsThisMonth?.map(r => r.client_id) || [])
+
+  return Math.max(0, (activeClientsCount || 0) - clientsWithReport.size)
+}
+
 const months: Record<string, string> = {
   "01": "Janeiro",
   "02": "Fevereiro",
@@ -71,7 +94,10 @@ function formatMonth(month: string): string {
 }
 
 export default async function ReportsPage() {
-  const reports = await getReports()
+  const [reports, pendingCount] = await Promise.all([
+    getReports(),
+    getPendingReportsCount(),
+  ])
 
   // Group by month
   const groupedReports = reports.reduce((acc, report) => {
@@ -135,7 +161,7 @@ export default async function ReportsPage() {
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Pendentes</p>
-              <p className="text-2xl font-bold">3</p>
+              <p className="text-2xl font-bold">{pendingCount}</p>
             </div>
           </CardContent>
         </Card>

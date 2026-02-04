@@ -6,7 +6,11 @@ import { Skeleton } from "@/components/ui/skeleton"
 
 export const dynamic = "force-dynamic"
 
-async function getPipelineData() {
+interface PipelinePageProps {
+  searchParams: Promise<{ pipelineId?: string }>
+}
+
+async function getPipelineData(selectedPipelineId?: string) {
   const supabase = await createClient()
 
   // Fetch pipelines
@@ -15,10 +19,16 @@ async function getPipelineData() {
     .select("*")
     .order("created_at", { ascending: true })
 
-  // Get default or first pipeline
-  const defaultPipeline = pipelines?.find((p) => p.is_default) || pipelines?.[0]
+  // Get selected pipeline, or default, or first
+  let currentPipeline = selectedPipelineId
+    ? pipelines?.find((p) => p.id === selectedPipelineId)
+    : null
 
-  if (!defaultPipeline) {
+  if (!currentPipeline) {
+    currentPipeline = pipelines?.find((p) => p.is_default) || pipelines?.[0]
+  }
+
+  if (!currentPipeline) {
     return { pipelines: [], pipeline: null, stages: [], deals: [] }
   }
 
@@ -26,7 +36,7 @@ async function getPipelineData() {
   const { data: stages } = await supabase
     .from("pipeline_stages")
     .select("*")
-    .eq("pipeline_id", defaultPipeline.id)
+    .eq("pipeline_id", currentPipeline.id)
     .order("order", { ascending: true })
 
   // Fetch deals with client info
@@ -46,12 +56,12 @@ async function getPipelineData() {
         avatar_url
       )
     `)
-    .eq("pipeline_id", defaultPipeline.id)
+    .eq("pipeline_id", currentPipeline.id)
     .order("created_at", { ascending: false })
 
   return {
     pipelines: pipelines || [],
-    pipeline: defaultPipeline,
+    pipeline: currentPipeline,
     stages: stages || [],
     deals: deals || [],
   }
@@ -67,8 +77,9 @@ function BoardSkeleton() {
   )
 }
 
-export default async function PipelinePage() {
-  const data = await getPipelineData()
+export default async function PipelinePage({ searchParams }: PipelinePageProps) {
+  const { pipelineId } = await searchParams
+  const data = await getPipelineData(pipelineId)
 
   return (
     <div className="space-y-6 h-full flex flex-col">

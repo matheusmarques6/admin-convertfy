@@ -33,11 +33,7 @@ export function PipelineHeader({ pipelines, currentPipeline }: PipelineHeaderPro
   const [showNewDeal, setShowNewDeal] = useState(false)
 
   function handleSelectPipeline(pipelineId: string) {
-    // TODO: Implementar troca de pipeline via query params ou state
-    toast({
-      title: "Pipeline selecionado",
-      description: "A funcionalidade de múltiplos pipelines será implementada em breve.",
-    })
+    router.push(`/pipeline?pipelineId=${pipelineId}`)
   }
 
   function handleNewPipeline() {

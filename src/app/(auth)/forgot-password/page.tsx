@@ -58,7 +58,7 @@ export default function ForgotPasswordPage() {
         title: "Email enviado!",
         description: "Verifique sua caixa de entrada.",
       })
-    } catch (error) {
+    } catch {
       toast({
         variant: "destructive",
         title: "Erro inesperado",
