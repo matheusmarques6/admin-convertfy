@@ -378,7 +378,7 @@ export default function EditAutomationPage() {
             {actions.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground border-2 border-dashed rounded-lg">
                 <p>Nenhuma ação configurada</p>
-                <p className="text-sm">Clique em "Adicionar Ação" para começar</p>
+                <p className="text-sm">Clique em &quot;Adicionar Ação&quot; para começar</p>
               </div>
             ) : (
               <div className="space-y-4">

@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { Plus, Calendar, Video, Clock, CheckCircle, XCircle, AlertCircle } from "lucide-react"
+import { Plus, Calendar, Video, Clock, CheckCircle, XCircle } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"

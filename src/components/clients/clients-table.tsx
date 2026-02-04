@@ -9,7 +9,6 @@ import {
   Edit,
   Trash2,
   Mail,
-  Phone,
   ExternalLink,
 } from "lucide-react"
 import {

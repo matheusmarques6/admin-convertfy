@@ -6,15 +6,12 @@ import {
   ArrowLeft,
   Plug,
   CreditCard,
-  Brain,
   Calendar,
   MessageSquare,
   ShoppingBag,
   BarChart3,
   Instagram,
   Mail,
-  Check,
-  X,
   ExternalLink,
   Settings,
 } from "lucide-react"
@@ -243,7 +240,7 @@ export default function IntegrationsSettingsPage() {
             <p className="font-medium">Configuração de Integrações</p>
             <p className="text-sm text-muted-foreground">
               Para ativar uma integração, você precisa configurar as credenciais de API.
-              As integrações marcadas como "Ativas" estão funcionando corretamente.
+              As integrações marcadas como &quot;Ativas&quot; estão funcionando corretamente.
             </p>
           </div>
         </CardContent>

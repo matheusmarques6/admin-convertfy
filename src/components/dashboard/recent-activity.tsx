@@ -9,7 +9,6 @@ import {
   TrendingUp,
   RefreshCw,
   AlertCircle,
-  Tag,
   Mail,
   type LucideIcon,
 } from "lucide-react"
