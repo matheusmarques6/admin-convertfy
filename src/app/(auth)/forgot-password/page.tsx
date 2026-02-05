@@ -25,6 +25,7 @@ export default function ForgotPasswordPage() {
   const [emailSent, setEmailSent] = useState(false)
   const [sentEmail, setSentEmail] = useState("")
   const [isRateLimited, setIsRateLimited] = useState(false)
+  const [isDailyLimited, setIsDailyLimited] = useState(false)
   const [retryAfter, setRetryAfter] = useState(0)
 
   const {
@@ -42,15 +43,45 @@ export default function ForgotPasswordPage() {
       const supabase = createClient()
       const normalizedEmail = data.email.toLowerCase().trim()
 
-      // Check rate limit first
-      const rateLimitCheck = await rateLimitService.checkRateLimit(
+      // Step 1: Check daily email limit (low & slow attack protection)
+      // This prevents attackers from spreading attempts over 24h
+      const dailyCheck = await rateLimitService.checkAndRecord(
+        normalizedEmail,
+        "daily_email"
+      )
+
+      if (dailyCheck.isLimited) {
+        setIsDailyLimited(true)
+        setRetryAfter(dailyCheck.retryAfterSeconds)
+
+        // Log the blocked attempt (generic - don't reveal daily vs per-minute)
+        await rateLimitService.logPasswordResetAudit({
+          email: normalizedEmail,
+          accountType: "admin",
+          action: "fail",
+          success: false,
+          errorMessage: "Daily limit exceeded",
+          metadata: { limitType: "daily_email" }
+        })
+
+        toast({
+          variant: "destructive",
+          title: "Limite diário atingido",
+          description: "Tente novamente amanhã.",
+        })
+        return
+      }
+
+      // Step 2: Check password_reset rate limit (burst protection)
+      // Uses atomic checkAndRecord for single DB call
+      const rateLimitResult = await rateLimitService.checkAndRecord(
         normalizedEmail,
         "password_reset"
       )
 
-      if (rateLimitCheck.isLimited) {
+      if (rateLimitResult.isLimited) {
         setIsRateLimited(true)
-        setRetryAfter(rateLimitCheck.retryAfterSeconds)
+        setRetryAfter(rateLimitResult.retryAfterSeconds)
 
         // Log the blocked attempt
         await rateLimitService.logPasswordResetAudit({
@@ -59,22 +90,19 @@ export default function ForgotPasswordPage() {
           action: "fail",
           success: false,
           errorMessage: "Rate limited",
-          metadata: { retryAfterSeconds: rateLimitCheck.retryAfterSeconds }
+          metadata: {
+            retryAfterSeconds: rateLimitResult.retryAfterSeconds,
+            limitType: "password_reset"
+          }
         })
 
         toast({
           variant: "destructive",
           title: "Muitas tentativas",
-          description: `Aguarde ${rateLimitService.formatRetryTime(rateLimitCheck.retryAfterSeconds)} antes de tentar novamente.`,
+          description: `Aguarde ${rateLimitService.formatRetryTime(rateLimitResult.retryAfterSeconds)} antes de tentar novamente.`,
         })
         return
       }
-
-      // Record this attempt
-      const rateLimitResult = await rateLimitService.recordAttempt(
-        normalizedEmail,
-        "password_reset"
-      )
 
       // Log the reset request
       await rateLimitService.logPasswordResetAudit({
@@ -119,8 +147,25 @@ export default function ForgotPasswordPage() {
 
   async function handleResend() {
     if (sentEmail) {
-      // Check rate limit before allowing resend
-      const rateLimitCheck = await rateLimitService.checkRateLimit(
+      // Check daily limit first (don't record, just check)
+      const dailyCheck = await rateLimitService.checkAndRecord(
+        sentEmail,
+        "daily_email"
+      )
+
+      if (dailyCheck.isLimited) {
+        setIsDailyLimited(true)
+        setRetryAfter(dailyCheck.retryAfterSeconds)
+        toast({
+          variant: "destructive",
+          title: "Limite diário atingido",
+          description: "Tente novamente amanhã.",
+        })
+        return
+      }
+
+      // Check password_reset rate limit
+      const rateLimitCheck = await rateLimitService.checkAndRecord(
         sentEmail,
         "password_reset"
       )
@@ -139,6 +184,7 @@ export default function ForgotPasswordPage() {
 
     setEmailSent(false)
     setIsRateLimited(false)
+    setIsDailyLimited(false)
   }
 
   return (
@@ -155,7 +201,37 @@ export default function ForgotPasswordPage() {
           <p className="text-muted-foreground mt-1">Sistema de Gestão para Agências</p>
         </div>
 
-        {isRateLimited ? (
+        {isDailyLimited ? (
+          <Card className="border-border/50">
+            <CardHeader className="space-y-1 text-center">
+              <div className="flex justify-center mb-4">
+                <div className="rounded-full bg-amber-500/10 p-4">
+                  <AlertTriangle className="h-8 w-8 text-amber-500" />
+                </div>
+              </div>
+              <CardTitle className="text-2xl">Limite Diário Atingido</CardTitle>
+              <CardDescription className="text-base">
+                Você atingiu o limite de solicitações de recuperação por hoje.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="text-center space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Por segurança, tente novamente amanhã.
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Se você não solicitou a recuperação de senha, pode ignorar este aviso.
+              </p>
+            </CardContent>
+            <CardFooter>
+              <Button asChild variant="ghost" className="w-full">
+                <Link href="/login">
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  Voltar ao login
+                </Link>
+              </Button>
+            </CardFooter>
+          </Card>
+        ) : isRateLimited ? (
           <Card className="border-border/50">
             <CardHeader className="space-y-1 text-center">
               <div className="flex justify-center mb-4">
