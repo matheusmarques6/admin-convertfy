@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import Link from "next/link"
 import {
   DollarSign,
   TrendingUp,
@@ -130,7 +131,7 @@ export function BillingMetrics() {
             Configure a integração com Asaas para ver métricas de faturamento
           </p>
           <Button variant="outline" className="mt-4" asChild>
-            <a href="/settings/integrations">Configurar Integração</a>
+            <Link href="/settings/integrations">Configurar Integração</Link>
           </Button>
         </CardContent>
       </Card>
@@ -365,7 +366,7 @@ export function BillingMetrics() {
                   </p>
                 </div>
                 <Button variant="destructive" size="sm" asChild>
-                  <a href="/clients?filter=overdue">Ver Inadimplentes</a>
+                  <Link href="/clients?filter=overdue">Ver Inadimplentes</Link>
                 </Button>
               </CardContent>
             </Card>
