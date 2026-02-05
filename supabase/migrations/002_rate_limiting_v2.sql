@@ -103,10 +103,9 @@ CREATE INDEX idx_rate_limits_ip_lookup
   ON rate_limits(ip_address, action_type)
   WHERE ip_address IS NOT NULL;
 
--- Index para cleanup eficiente
+-- Index para cleanup eficiente (sem NOW() - não pode usar funções não-IMMUTABLE)
 CREATE INDEX idx_rate_limits_cleanup
-  ON rate_limits(updated_at)
-  WHERE blocked_until IS NULL OR blocked_until < NOW();
+  ON rate_limits(updated_at);
 
 -- ============================================
 -- 5. RATE LIMIT RULES (STABLE, não IMMUTABLE)
