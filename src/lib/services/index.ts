@@ -32,6 +32,7 @@ export {
   rateLimitService,
   type RateLimitAction,
   type RateLimitResult,
+  type RateLimitOptions,
   type AuditLogData
 } from './rate-limit.service';
 

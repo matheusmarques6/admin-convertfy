@@ -1,47 +1,116 @@
--- Migration: Optimized Rate Limiting System v2
+-- ============================================================================
+-- Migration: Optimized Rate Limiting System v2 (CORRECTED)
 -- Description: Sliding window rate limiting with IP + identifier support
 -- Date: 2024
+--
+-- CHANGELOG:
+-- - STABLE ao invés de IMMUTABLE para config
+-- - RLS policies corrigidas (USING false)
+-- - Race condition corrigida no INSERT ON CONFLICT
+-- - remaining/retry_after calculados corretamente
+-- - Cleanup não deleta bloqueios ativos
+-- - Trigger para updated_at automático
+-- ============================================================================
 
 -- ============================================
--- 1. DROP OLD TABLES (if migrating)
+-- 0. PRE-MIGRATION SAFETY CHECK
 -- ============================================
+
+DO $$
+BEGIN
+  -- Verificar se há dados importantes antes de dropar
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_name = 'rate_limits'
+    AND table_schema = 'public'
+  ) THEN
+    -- Se tabela existe e tem bloqueios ativos, avisar
+    IF EXISTS (
+      SELECT 1 FROM rate_limits
+      WHERE blocked_until > NOW()
+      LIMIT 1
+    ) THEN
+      RAISE NOTICE 'Atenção: Existem bloqueios ativos que serão perdidos na migração.';
+    END IF;
+  END IF;
+END $$;
+
+-- ============================================
+-- 1. DROP OLD OBJECTS (safe)
+-- ============================================
+
+DROP FUNCTION IF EXISTS check_rate_limit(TEXT, TEXT) CASCADE;
+DROP FUNCTION IF EXISTS record_rate_limit(TEXT, TEXT, JSONB) CASCADE;
+DROP FUNCTION IF EXISTS clear_rate_limit(TEXT, TEXT) CASCADE;
+DROP FUNCTION IF EXISTS rate_limit_check(TEXT, TEXT, TEXT) CASCADE;
+DROP FUNCTION IF EXISTS rate_limit_dual_check(TEXT, TEXT, TEXT) CASCADE;
+DROP FUNCTION IF EXISTS rate_limit_clear(TEXT, TEXT, TEXT) CASCADE;
+DROP FUNCTION IF EXISTS get_rate_limit_rule(TEXT) CASCADE;
+DROP FUNCTION IF EXISTS rate_limit_cleanup() CASCADE;
 
 DROP TABLE IF EXISTS rate_limits CASCADE;
 DROP TABLE IF EXISTS rate_limit_config CASCADE;
 
 -- ============================================
--- 2. OPTIMIZED RATE LIMIT TABLE
+-- 2. HELPER: Auto-update updated_at trigger
+-- ============================================
+
+CREATE OR REPLACE FUNCTION trigger_set_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ============================================
+-- 3. RATE LIMITS TABLE (optimized)
 -- ============================================
 
 CREATE TABLE rate_limits (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  identifier TEXT NOT NULL,           -- email, user_id, etc.
-  ip_address TEXT,                    -- optional IP for dual-key limiting
-  action_type TEXT NOT NULL,
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  identifier TEXT NOT NULL,
+  ip_address TEXT,
+  action_type VARCHAR(50) NOT NULL,
   window_start TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   attempts INTEGER NOT NULL DEFAULT 1,
   blocked_until TIMESTAMPTZ,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Composite index for fast lookups (identifier + action + optional IP)
-CREATE UNIQUE INDEX idx_rate_limits_lookup
-  ON rate_limits(identifier, action_type, COALESCE(ip_address, ''));
+-- Trigger para auto-update
+CREATE TRIGGER rate_limits_set_updated_at
+  BEFORE UPDATE ON rate_limits
+  FOR EACH ROW EXECUTE FUNCTION trigger_set_updated_at();
 
--- Index for IP-only lookups
-CREATE INDEX idx_rate_limits_ip ON rate_limits(ip_address, action_type)
+-- ============================================
+-- 4. INDEXES (optimized strategy)
+-- ============================================
+
+-- Index principal para lookups (com IP)
+CREATE UNIQUE INDEX idx_rate_limits_with_ip
+  ON rate_limits(identifier, action_type, ip_address)
   WHERE ip_address IS NOT NULL;
 
--- Index for cleanup
-CREATE INDEX idx_rate_limits_cleanup ON rate_limits(updated_at);
+-- Index para lookups sem IP
+CREATE UNIQUE INDEX idx_rate_limits_without_ip
+  ON rate_limits(identifier, action_type)
+  WHERE ip_address IS NULL;
+
+-- Index para busca por IP (global limiting)
+CREATE INDEX idx_rate_limits_ip_lookup
+  ON rate_limits(ip_address, action_type)
+  WHERE ip_address IS NOT NULL;
+
+-- Index para cleanup eficiente
+CREATE INDEX idx_rate_limits_cleanup
+  ON rate_limits(updated_at)
+  WHERE blocked_until IS NULL OR blocked_until < NOW();
 
 -- ============================================
--- 3. RATE LIMIT RULES (in-memory optimized)
+-- 5. RATE LIMIT RULES (STABLE, não IMMUTABLE)
 -- ============================================
-
--- Using a simpler approach: embed rules in function for speed
--- Rules are: action_type -> (max_attempts, window_seconds, block_seconds)
 
 CREATE OR REPLACE FUNCTION get_rate_limit_rule(p_action_type TEXT)
 RETURNS TABLE (
@@ -50,37 +119,37 @@ RETURNS TABLE (
   block_seconds INTEGER
 )
 LANGUAGE sql
-IMMUTABLE  -- Can be cached by PostgreSQL
+STABLE  -- Pode mudar entre transações (não cachear indefinidamente)
+PARALLEL SAFE
 AS $$
   SELECT
     CASE p_action_type
       WHEN 'password_reset' THEN 3
       WHEN 'login_attempt' THEN 5
       WHEN 'api_call' THEN 100
-      WHEN 'ip_global' THEN 20  -- Global IP limit
+      WHEN 'ip_global' THEN 20
       ELSE 10
-    END::INTEGER as max_attempts,
+    END::INTEGER,
     CASE p_action_type
       WHEN 'password_reset' THEN 900   -- 15 min
       WHEN 'login_attempt' THEN 900    -- 15 min
       WHEN 'api_call' THEN 60          -- 1 min
       WHEN 'ip_global' THEN 300        -- 5 min
       ELSE 300
-    END::INTEGER as window_seconds,
+    END::INTEGER,
     CASE p_action_type
       WHEN 'password_reset' THEN 1800  -- 30 min block
       WHEN 'login_attempt' THEN 900    -- 15 min block
       WHEN 'api_call' THEN 300         -- 5 min block
       WHEN 'ip_global' THEN 600        -- 10 min block
       ELSE 300
-    END::INTEGER as block_seconds;
+    END::INTEGER;
 $$;
 
 -- ============================================
--- 4. SINGLE ATOMIC RATE LIMIT CHECK + RECORD
+-- 6. MAIN FUNCTION: Atomic check + record
 -- ============================================
 
--- This is the main function: check AND record in a single call
 CREATE OR REPLACE FUNCTION rate_limit_check(
   p_identifier TEXT,
   p_action_type TEXT,
@@ -100,91 +169,94 @@ DECLARE
   v_rule RECORD;
   v_record rate_limits%ROWTYPE;
   v_window_start TIMESTAMPTZ;
-  v_now TIMESTAMPTZ := NOW();
-  v_ip_key TEXT := COALESCE(p_ip_address, '');
-  v_is_blocked BOOLEAN := FALSE;
-  v_remaining INTEGER;
+  v_now TIMESTAMPTZ := clock_timestamp();  -- Mais preciso que NOW() em transações longas
+  v_new_attempts INTEGER;
   v_retry INTEGER := 0;
 BEGIN
-  -- Get rule (cached by PostgreSQL due to IMMUTABLE)
+  -- Normalizar input
+  p_identifier := LOWER(TRIM(p_identifier));
+  p_ip_address := NULLIF(TRIM(COALESCE(p_ip_address, '')), '');
+
+  -- Buscar regra (STABLE = pode ser cacheado por statement)
   SELECT * INTO v_rule FROM get_rate_limit_rule(p_action_type);
 
-  -- Calculate sliding window start
-  v_window_start := v_now - (v_rule.window_seconds || ' seconds')::INTERVAL;
+  -- Calcular início da janela sliding
+  v_window_start := v_now - make_interval(secs => v_rule.window_seconds);
 
-  -- Try to get existing record with row lock
-  SELECT * INTO v_record
-  FROM rate_limits
-  WHERE identifier = p_identifier
-    AND action_type = p_action_type
-    AND COALESCE(ip_address, '') = v_ip_key
-  FOR UPDATE SKIP LOCKED;  -- Non-blocking for concurrent requests
+  -- UPSERT atômico com RETURNING para evitar race conditions
+  INSERT INTO rate_limits (identifier, action_type, ip_address, attempts, window_start)
+  VALUES (p_identifier, p_action_type, p_ip_address, 1, v_now)
+  ON CONFLICT (identifier, action_type) WHERE ip_address IS NULL
+  DO UPDATE SET
+    -- Se janela expirou, resetar; senão incrementar
+    attempts = CASE
+      WHEN rate_limits.window_start < v_window_start THEN 1
+      ELSE rate_limits.attempts + 1
+    END,
+    -- Resetar janela se expirou
+    window_start = CASE
+      WHEN rate_limits.window_start < v_window_start THEN v_now
+      ELSE rate_limits.window_start
+    END,
+    -- Calcular bloqueio
+    blocked_until = CASE
+      -- Se já bloqueado e bloqueio ainda válido, manter
+      WHEN rate_limits.blocked_until > v_now THEN rate_limits.blocked_until
+      -- Se atingiu limite, bloquear
+      WHEN rate_limits.window_start >= v_window_start
+           AND rate_limits.attempts + 1 >= v_rule.max_attempts
+      THEN v_now + make_interval(secs => v_rule.block_seconds)
+      -- Senão, limpar bloqueio
+      ELSE NULL
+    END
+  RETURNING * INTO v_record;
 
-  -- No existing record: create new one
-  IF NOT FOUND THEN
+  -- Se não retornou (improvável), tentar com IP
+  IF v_record.id IS NULL AND p_ip_address IS NOT NULL THEN
     INSERT INTO rate_limits (identifier, action_type, ip_address, attempts, window_start)
-    VALUES (p_identifier, p_action_type, NULLIF(p_ip_address, ''), 1, v_now)
-    ON CONFLICT (identifier, action_type, COALESCE(ip_address, ''))
+    VALUES (p_identifier, p_action_type, p_ip_address, 1, v_now)
+    ON CONFLICT (identifier, action_type, ip_address) WHERE ip_address IS NOT NULL
     DO UPDATE SET
-      attempts = 1,
-      window_start = v_now,
-      blocked_until = NULL,
-      updated_at = v_now;
-
-    RETURN QUERY SELECT TRUE, v_rule.max_attempts - 1, 0, FALSE;
-    RETURN;
+      attempts = CASE
+        WHEN rate_limits.window_start < v_window_start THEN 1
+        ELSE rate_limits.attempts + 1
+      END,
+      window_start = CASE
+        WHEN rate_limits.window_start < v_window_start THEN v_now
+        ELSE rate_limits.window_start
+      END,
+      blocked_until = CASE
+        WHEN rate_limits.blocked_until > v_now THEN rate_limits.blocked_until
+        WHEN rate_limits.window_start >= v_window_start
+             AND rate_limits.attempts + 1 >= v_rule.max_attempts
+        THEN v_now + make_interval(secs => v_rule.block_seconds)
+        ELSE NULL
+      END
+    RETURNING * INTO v_record;
   END IF;
 
-  -- Check if currently blocked
+  -- Verificar se bloqueado
   IF v_record.blocked_until IS NOT NULL AND v_record.blocked_until > v_now THEN
-    v_retry := EXTRACT(EPOCH FROM (v_record.blocked_until - v_now))::INTEGER;
+    v_retry := GREATEST(0, EXTRACT(EPOCH FROM (v_record.blocked_until - v_now))::INTEGER);
     RETURN QUERY SELECT FALSE, 0, v_retry, TRUE;
     RETURN;
   END IF;
 
-  -- Check if window expired (sliding window reset)
-  IF v_record.window_start < v_window_start THEN
-    -- Reset: window expired
-    UPDATE rate_limits SET
-      attempts = 1,
-      window_start = v_now,
-      blocked_until = NULL,
-      updated_at = v_now
-    WHERE id = v_record.id;
+  -- Calcular remaining baseado no valor ATUAL (pós-update)
+  v_new_attempts := v_record.attempts;
 
-    RETURN QUERY SELECT TRUE, v_rule.max_attempts - 1, 0, FALSE;
-    RETURN;
-  END IF;
-
-  -- Within window: check attempts
-  IF v_record.attempts >= v_rule.max_attempts THEN
-    -- Block the user
-    UPDATE rate_limits SET
-      blocked_until = v_now + (v_rule.block_seconds || ' seconds')::INTERVAL,
-      updated_at = v_now
-    WHERE id = v_record.id;
-
-    RETURN QUERY SELECT FALSE, 0, v_rule.block_seconds, TRUE;
-    RETURN;
-  END IF;
-
-  -- Increment attempts
-  UPDATE rate_limits SET
-    attempts = attempts + 1,
-    updated_at = v_now
-  WHERE id = v_record.id;
-
-  v_remaining := v_rule.max_attempts - v_record.attempts - 1;
-
-  RETURN QUERY SELECT TRUE, v_remaining, 0, FALSE;
+  RETURN QUERY SELECT
+    TRUE,
+    GREATEST(0, v_rule.max_attempts - v_new_attempts),
+    0,
+    FALSE;
 END;
 $$;
 
 -- ============================================
--- 5. DUAL-KEY RATE LIMITING (IP + Identifier)
+-- 7. DUAL-KEY: IP + Identifier check
 -- ============================================
 
--- Check both IP and identifier limits in one call
 CREATE OR REPLACE FUNCTION rate_limit_dual_check(
   p_identifier TEXT,
   p_action_type TEXT,
@@ -194,7 +266,7 @@ RETURNS TABLE (
   allowed BOOLEAN,
   remaining INTEGER,
   retry_after INTEGER,
-  blocked_by TEXT  -- 'ip', 'identifier', or NULL
+  blocked_by TEXT
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -204,8 +276,8 @@ DECLARE
   v_ip_result RECORD;
   v_id_result RECORD;
 BEGIN
-  -- Check IP-based global limit first (faster to reject bots)
-  IF p_ip_address IS NOT NULL AND p_ip_address != '' THEN
+  -- 1. Check IP global limit primeiro (rejeita bots rápido)
+  IF p_ip_address IS NOT NULL AND TRIM(p_ip_address) != '' THEN
     SELECT * INTO v_ip_result
     FROM rate_limit_check(p_ip_address, 'ip_global', NULL);
 
@@ -215,7 +287,7 @@ BEGIN
     END IF;
   END IF;
 
-  -- Check identifier-based limit
+  -- 2. Check identifier limit (com IP para tracking)
   SELECT * INTO v_id_result
   FROM rate_limit_check(p_identifier, p_action_type, p_ip_address);
 
@@ -224,13 +296,13 @@ BEGIN
     RETURN;
   END IF;
 
-  -- Both passed
+  -- 3. Ambos passaram
   RETURN QUERY SELECT TRUE, v_id_result.remaining, 0, NULL::TEXT;
 END;
 $$;
 
 -- ============================================
--- 6. CLEAR RATE LIMIT
+-- 8. CLEAR RATE LIMIT
 -- ============================================
 
 CREATE OR REPLACE FUNCTION rate_limit_clear(
@@ -238,84 +310,210 @@ CREATE OR REPLACE FUNCTION rate_limit_clear(
   p_action_type TEXT,
   p_ip_address TEXT DEFAULT NULL
 )
-RETURNS void
-LANGUAGE sql
+RETURNS BOOLEAN
+LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  DELETE FROM rate_limits
-  WHERE identifier = p_identifier
-    AND action_type = p_action_type
-    AND COALESCE(ip_address, '') = COALESCE(p_ip_address, '');
+DECLARE
+  v_deleted INTEGER;
+BEGIN
+  p_identifier := LOWER(TRIM(p_identifier));
+  p_ip_address := NULLIF(TRIM(COALESCE(p_ip_address, '')), '');
+
+  IF p_ip_address IS NULL THEN
+    DELETE FROM rate_limits
+    WHERE identifier = p_identifier
+      AND action_type = p_action_type
+      AND ip_address IS NULL;
+  ELSE
+    DELETE FROM rate_limits
+    WHERE identifier = p_identifier
+      AND action_type = p_action_type
+      AND ip_address = p_ip_address;
+  END IF;
+
+  GET DIAGNOSTICS v_deleted = ROW_COUNT;
+  RETURN v_deleted > 0;
+END;
 $$;
 
 -- ============================================
--- 7. PASSWORD RESET AUDIT (unchanged)
+-- 9. PASSWORD RESET AUDIT TABLE
 -- ============================================
 
 CREATE TABLE IF NOT EXISTS password_reset_audit (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email TEXT NOT NULL,
   ip_address TEXT,
   user_agent TEXT,
-  account_type TEXT,
-  action TEXT NOT NULL,
-  success BOOLEAN DEFAULT FALSE,
+  account_type VARCHAR(20),
+  action VARCHAR(20) NOT NULL,
+  success BOOLEAN NOT NULL DEFAULT FALSE,
   error_message TEXT,
   metadata JSONB DEFAULT '{}',
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_password_reset_audit_email
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_audit_email
   ON password_reset_audit(email);
-CREATE INDEX IF NOT EXISTS idx_password_reset_audit_ip
-  ON password_reset_audit(ip_address) WHERE ip_address IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_password_reset_audit_created
+CREATE INDEX IF NOT EXISTS idx_audit_ip
+  ON password_reset_audit(ip_address)
+  WHERE ip_address IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_audit_created
   ON password_reset_audit(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_action
+  ON password_reset_audit(action, created_at DESC);
 
 -- ============================================
--- 8. RLS POLICIES
+-- 10. RLS POLICIES (CORRIGIDAS - deny by default)
 -- ============================================
 
 ALTER TABLE rate_limits ENABLE ROW LEVEL SECURITY;
 ALTER TABLE password_reset_audit ENABLE ROW LEVEL SECURITY;
 
--- Rate limits: service role only (via SECURITY DEFINER functions)
-CREATE POLICY "Service role manages rate limits"
-  ON rate_limits FOR ALL
-  TO authenticated
-  USING (true)
-  WITH CHECK (true);
+-- Rate limits: NENHUM acesso direto (apenas via SECURITY DEFINER)
+-- Não criar policy = deny all para usuários normais
+-- Functions com SECURITY DEFINER executam como owner
 
--- Audit: admins can view, system can insert
-CREATE POLICY "Admins view audit"
-  ON password_reset_audit FOR SELECT
+-- Audit: apenas admins podem VER, sistema pode INSERIR
+CREATE POLICY "audit_admin_select"
+  ON password_reset_audit
+  FOR SELECT
   TO authenticated
   USING (
     EXISTS (
       SELECT 1 FROM profiles
-      WHERE id = auth.uid() AND role = 'admin'
+      WHERE profiles.id = auth.uid()
+      AND profiles.role = 'admin'
     )
   );
 
-CREATE POLICY "System inserts audit"
-  ON password_reset_audit FOR INSERT
-  TO authenticated
-  WITH CHECK (true);
+-- Insert via SECURITY DEFINER function (não diretamente)
+-- Criar function para insert seguro
+CREATE OR REPLACE FUNCTION audit_password_reset(
+  p_email TEXT,
+  p_action TEXT,
+  p_success BOOLEAN DEFAULT FALSE,
+  p_ip_address TEXT DEFAULT NULL,
+  p_user_agent TEXT DEFAULT NULL,
+  p_account_type TEXT DEFAULT NULL,
+  p_error_message TEXT DEFAULT NULL,
+  p_metadata JSONB DEFAULT '{}'
+)
+RETURNS UUID
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  INSERT INTO password_reset_audit (
+    email, action, success, ip_address, user_agent,
+    account_type, error_message, metadata
+  )
+  VALUES (
+    LOWER(TRIM(p_email)), p_action, p_success, p_ip_address,
+    p_user_agent, p_account_type, p_error_message, p_metadata
+  )
+  RETURNING id;
+$$;
 
 -- ============================================
--- 9. CLEANUP (for pg_cron or manual)
+-- 11. CLEANUP FUNCTION (safe)
 -- ============================================
 
-CREATE OR REPLACE FUNCTION rate_limit_cleanup()
+CREATE OR REPLACE FUNCTION rate_limit_cleanup(
+  p_max_age_hours INTEGER DEFAULT 24
+)
+RETURNS TABLE (
+  deleted_count INTEGER,
+  skipped_blocked INTEGER
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_deleted INTEGER;
+  v_skipped INTEGER;
+  v_cutoff TIMESTAMPTZ;
+BEGIN
+  v_cutoff := NOW() - make_interval(hours => p_max_age_hours);
+
+  -- Contar bloqueios ativos que seriam deletados (mas não serão)
+  SELECT COUNT(*) INTO v_skipped
+  FROM rate_limits
+  WHERE updated_at < v_cutoff
+    AND blocked_until > NOW();
+
+  -- Deletar apenas records antigos SEM bloqueio ativo
+  DELETE FROM rate_limits
+  WHERE updated_at < v_cutoff
+    AND (blocked_until IS NULL OR blocked_until <= NOW());
+
+  GET DIAGNOSTICS v_deleted = ROW_COUNT;
+
+  RETURN QUERY SELECT v_deleted, v_skipped;
+END;
+$$;
+
+-- Cleanup de audit logs (manter 90 dias)
+CREATE OR REPLACE FUNCTION audit_cleanup(
+  p_max_age_days INTEGER DEFAULT 90
+)
 RETURNS INTEGER
 LANGUAGE sql
 SECURITY DEFINER
+SET search_path = public
 AS $$
   WITH deleted AS (
-    DELETE FROM rate_limits
-    WHERE updated_at < NOW() - INTERVAL '24 hours'
+    DELETE FROM password_reset_audit
+    WHERE created_at < NOW() - make_interval(days => p_max_age_days)
     RETURNING 1
   )
   SELECT COUNT(*)::INTEGER FROM deleted;
 $$;
+
+-- ============================================
+-- 12. METRICS/OBSERVABILITY HELPERS
+-- ============================================
+
+-- View para métricas (apenas admins via RLS na tabela base)
+CREATE OR REPLACE FUNCTION rate_limit_metrics()
+RETURNS TABLE (
+  action_type TEXT,
+  total_records BIGINT,
+  currently_blocked BIGINT,
+  avg_attempts NUMERIC,
+  max_attempts_seen INTEGER
+)
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT
+    action_type::TEXT,
+    COUNT(*) as total_records,
+    COUNT(*) FILTER (WHERE blocked_until > NOW()) as currently_blocked,
+    ROUND(AVG(attempts), 2) as avg_attempts,
+    MAX(attempts) as max_attempts_seen
+  FROM rate_limits
+  GROUP BY action_type
+  ORDER BY total_records DESC;
+$$;
+
+-- ============================================
+-- 13. GRANT PERMISSIONS
+-- ============================================
+
+-- Funções podem ser chamadas por authenticated users
+-- (SECURITY DEFINER garante que executam com permissões do owner)
+GRANT EXECUTE ON FUNCTION rate_limit_check(TEXT, TEXT, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION rate_limit_dual_check(TEXT, TEXT, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION rate_limit_clear(TEXT, TEXT, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION audit_password_reset(TEXT, TEXT, BOOLEAN, TEXT, TEXT, TEXT, TEXT, JSONB) TO authenticated;
+
+-- Apenas service_role pode ver métricas e fazer cleanup
+GRANT EXECUTE ON FUNCTION rate_limit_metrics() TO service_role;
+GRANT EXECUTE ON FUNCTION rate_limit_cleanup(INTEGER) TO service_role;
+GRANT EXECUTE ON FUNCTION audit_cleanup(INTEGER) TO service_role;
