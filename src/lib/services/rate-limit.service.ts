@@ -1,6 +1,10 @@
 import { createClient } from "@/lib/supabase/client"
 
-export type RateLimitAction = "password_reset" | "login_attempt" | "api_call"
+export type RateLimitAction =
+  | "password_reset"
+  | "login_attempt"
+  | "api_call"
+  | "daily_email"  // Proteção contra ataques low & slow (10/dia)
 
 export interface RateLimitResult {
   isLimited: boolean
@@ -26,7 +30,11 @@ export interface AuditLogData {
 }
 
 /** Sensitive actions that should fail-closed by default */
-const SENSITIVE_ACTIONS: RateLimitAction[] = ["password_reset", "login_attempt"]
+const SENSITIVE_ACTIONS: RateLimitAction[] = [
+  "password_reset",
+  "login_attempt",
+  "daily_email",
+]
 
 /**
  * Optimized Rate Limit Service v2

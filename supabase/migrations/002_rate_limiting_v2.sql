@@ -123,24 +123,32 @@ PARALLEL SAFE
 AS $$
   SELECT
     CASE p_action_type
+      -- Password Reset: restritivo (ação sensível)
       WHEN 'password_reset' THEN 3
-      WHEN 'login_attempt' THEN 5
+      -- Login: margem para erros humanos (caps lock, typo, senha antiga)
+      WHEN 'login_attempt' THEN 7
+      -- API: uso programático
       WHEN 'api_call' THEN 100
-      WHEN 'ip_global' THEN 20
+      -- IP Global: ajustado para NAT corporativo (50 pessoas/10min)
+      WHEN 'ip_global' THEN 50
+      -- Daily Email: proteção contra low & slow
+      WHEN 'daily_email' THEN 10
       ELSE 10
     END::INTEGER,
     CASE p_action_type
-      WHEN 'password_reset' THEN 900   -- 15 min
-      WHEN 'login_attempt' THEN 900    -- 15 min
-      WHEN 'api_call' THEN 60          -- 1 min
-      WHEN 'ip_global' THEN 300        -- 5 min
+      WHEN 'password_reset' THEN 900    -- 15 min
+      WHEN 'login_attempt' THEN 900     -- 15 min
+      WHEN 'api_call' THEN 60           -- 1 min
+      WHEN 'ip_global' THEN 600         -- 10 min (era 5, ajustado)
+      WHEN 'daily_email' THEN 86400     -- 24 horas
       ELSE 300
     END::INTEGER,
     CASE p_action_type
-      WHEN 'password_reset' THEN 1800  -- 30 min block
-      WHEN 'login_attempt' THEN 900    -- 15 min block
-      WHEN 'api_call' THEN 300         -- 5 min block
-      WHEN 'ip_global' THEN 600        -- 10 min block
+      WHEN 'password_reset' THEN 1800   -- 30 min block
+      WHEN 'login_attempt' THEN 600     -- 10 min block (era 15, reduzido)
+      WHEN 'api_call' THEN 300          -- 5 min block
+      WHEN 'ip_global' THEN 900         -- 15 min block (era 10, aumentado)
+      WHEN 'daily_email' THEN 86400     -- 24h block
       ELSE 300
     END::INTEGER;
 $$;
