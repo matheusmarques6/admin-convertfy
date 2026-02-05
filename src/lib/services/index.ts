@@ -28,5 +28,12 @@ export {
   type NotificationType
 } from './notification.service';
 
+export {
+  rateLimitService,
+  type RateLimitAction,
+  type RateLimitResult,
+  type AuditLogData
+} from './rate-limit.service';
+
 // Re-export event utilities for convenience
 export { publishEvent, logActivity } from '@/lib/events/publisher';

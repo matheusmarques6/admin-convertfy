@@ -5,13 +5,14 @@ import Link from "next/link"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
-import { ArrowLeft, Loader2, Mail, CheckCircle } from "lucide-react"
+import { ArrowLeft, Loader2, Mail, CheckCircle, AlertTriangle } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { toast } from "@/lib/hooks/use-toast"
+import { rateLimitService } from "@/lib/services"
 
 const forgotPasswordSchema = z.object({
   email: z.string().email("Email inválido"),
@@ -23,6 +24,8 @@ export default function ForgotPasswordPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [emailSent, setEmailSent] = useState(false)
   const [sentEmail, setSentEmail] = useState("")
+  const [isRateLimited, setIsRateLimited] = useState(false)
+  const [retryAfter, setRetryAfter] = useState(0)
 
   const {
     register,
@@ -37,27 +40,72 @@ export default function ForgotPasswordPage() {
 
     try {
       const supabase = createClient()
+      const normalizedEmail = data.email.toLowerCase().trim()
 
-      const { error } = await supabase.auth.resetPasswordForEmail(data.email, {
-        redirectTo: `${window.location.origin}/reset-password`,
-      })
+      // Check rate limit first
+      const rateLimitCheck = await rateLimitService.checkRateLimit(
+        normalizedEmail,
+        "password_reset"
+      )
 
-      if (error) {
+      if (rateLimitCheck.isLimited) {
+        setIsRateLimited(true)
+        setRetryAfter(rateLimitCheck.retryAfterSeconds)
+
+        // Log the blocked attempt
+        await rateLimitService.logPasswordResetAudit({
+          email: normalizedEmail,
+          accountType: "admin",
+          action: "fail",
+          success: false,
+          errorMessage: "Rate limited",
+          metadata: { retryAfterSeconds: rateLimitCheck.retryAfterSeconds }
+        })
+
         toast({
           variant: "destructive",
-          title: "Erro ao enviar email",
-          description: error.message,
+          title: "Muitas tentativas",
+          description: `Aguarde ${rateLimitService.formatRetryTime(rateLimitCheck.retryAfterSeconds)} antes de tentar novamente.`,
         })
         return
       }
 
-      setSentEmail(data.email)
+      // Record this attempt
+      const rateLimitResult = await rateLimitService.recordAttempt(
+        normalizedEmail,
+        "password_reset"
+      )
+
+      // Log the reset request
+      await rateLimitService.logPasswordResetAudit({
+        email: normalizedEmail,
+        accountType: "admin",
+        action: "request",
+        success: true,
+      })
+
+      // Always attempt to send the reset email
+      // We don't check if email exists to avoid email enumeration
+      await supabase.auth.resetPasswordForEmail(normalizedEmail, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      })
+
+      // Always show success message (security: don't reveal if email exists)
+      setSentEmail(normalizedEmail)
       setEmailSent(true)
 
-      toast({
-        title: "Email enviado!",
-        description: "Verifique sua caixa de entrada.",
-      })
+      // Show remaining attempts if getting close to limit
+      if (rateLimitResult.remainingAttempts <= 2 && rateLimitResult.remainingAttempts > 0) {
+        toast({
+          title: "Verificando...",
+          description: `Se este email estiver cadastrado, você receberá instruções. Tentativas restantes: ${rateLimitResult.remainingAttempts}`,
+        })
+      } else {
+        toast({
+          title: "Verificando...",
+          description: "Se este email estiver cadastrado, você receberá um link de recuperação.",
+        })
+      }
     } catch {
       toast({
         variant: "destructive",
@@ -67,6 +115,30 @@ export default function ForgotPasswordPage() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  async function handleResend() {
+    if (sentEmail) {
+      // Check rate limit before allowing resend
+      const rateLimitCheck = await rateLimitService.checkRateLimit(
+        sentEmail,
+        "password_reset"
+      )
+
+      if (rateLimitCheck.isLimited) {
+        setIsRateLimited(true)
+        setRetryAfter(rateLimitCheck.retryAfterSeconds)
+        toast({
+          variant: "destructive",
+          title: "Muitas tentativas",
+          description: `Aguarde ${rateLimitService.formatRetryTime(rateLimitCheck.retryAfterSeconds)} antes de tentar novamente.`,
+        })
+        return
+      }
+    }
+
+    setEmailSent(false)
+    setIsRateLimited(false)
   }
 
   return (
@@ -83,7 +155,41 @@ export default function ForgotPasswordPage() {
           <p className="text-muted-foreground mt-1">Sistema de Gestão para Agências</p>
         </div>
 
-        {emailSent ? (
+        {isRateLimited ? (
+          <Card className="border-border/50">
+            <CardHeader className="space-y-1 text-center">
+              <div className="flex justify-center mb-4">
+                <div className="rounded-full bg-amber-500/10 p-4">
+                  <AlertTriangle className="h-8 w-8 text-amber-500" />
+                </div>
+              </div>
+              <CardTitle className="text-2xl">Muitas Tentativas</CardTitle>
+              <CardDescription className="text-base">
+                Você excedeu o limite de tentativas de recuperação de senha.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="text-center space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Por segurança, aguarde{" "}
+                <span className="font-semibold text-foreground">
+                  {rateLimitService.formatRetryTime(retryAfter)}
+                </span>{" "}
+                antes de tentar novamente.
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Se você não solicitou a recuperação de senha, pode ignorar este aviso.
+              </p>
+            </CardContent>
+            <CardFooter>
+              <Button asChild variant="ghost" className="w-full">
+                <Link href="/login">
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  Voltar ao login
+                </Link>
+              </Button>
+            </CardFooter>
+          </Card>
+        ) : emailSent ? (
           <Card className="border-border/50">
             <CardHeader className="space-y-1 text-center">
               <div className="flex justify-center mb-4">
@@ -91,9 +197,9 @@ export default function ForgotPasswordPage() {
                   <CheckCircle className="h-8 w-8 text-emerald-500" />
                 </div>
               </div>
-              <CardTitle className="text-2xl">Email Enviado!</CardTitle>
+              <CardTitle className="text-2xl">Verifique seu Email</CardTitle>
               <CardDescription className="text-base">
-                Enviamos um link de recuperação para:
+                Se houver uma conta associada a este email, você receberá um link de recuperação.
               </CardDescription>
             </CardHeader>
             <CardContent className="text-center space-y-4">
@@ -101,15 +207,18 @@ export default function ForgotPasswordPage() {
               <p className="text-sm text-muted-foreground">
                 Verifique sua caixa de entrada e spam. O link expira em 1 hora.
               </p>
+              <p className="text-xs text-muted-foreground">
+                Não recebeu? Verifique se o email está correto ou tente novamente.
+              </p>
             </CardContent>
             <CardFooter className="flex flex-col space-y-4">
               <Button
                 variant="outline"
                 className="w-full"
-                onClick={() => setEmailSent(false)}
+                onClick={handleResend}
               >
                 <Mail className="mr-2 h-4 w-4" />
-                Enviar novamente
+                Tentar novamente
               </Button>
               <Button asChild variant="ghost" className="w-full">
                 <Link href="/login">
