@@ -45,10 +45,18 @@ export default function ForgotPasswordPage() {
 
       // Step 1: Check daily email limit (low & slow attack protection)
       // This prevents attackers from spreading attempts over 24h
-      const dailyCheck = await rateLimitService.checkAndRecord(
-        normalizedEmail,
-        "daily_email"
-      )
+      let dailyCheck
+      try {
+        dailyCheck = await rateLimitService.checkAndRecord(
+          normalizedEmail,
+          "daily_email"
+        )
+        console.log("Daily check result:", dailyCheck)
+      } catch (rateLimitError) {
+        console.error("Daily rate limit check failed:", rateLimitError)
+        // Continue without daily limit if check fails
+        dailyCheck = { isLimited: false, remainingAttempts: 10, retryAfterSeconds: 0 }
+      }
 
       if (dailyCheck.isLimited) {
         setIsDailyLimited(true)
@@ -74,10 +82,18 @@ export default function ForgotPasswordPage() {
 
       // Step 2: Check password_reset rate limit (burst protection)
       // Uses atomic checkAndRecord for single DB call
-      const rateLimitResult = await rateLimitService.checkAndRecord(
-        normalizedEmail,
-        "password_reset"
-      )
+      let rateLimitResult
+      try {
+        rateLimitResult = await rateLimitService.checkAndRecord(
+          normalizedEmail,
+          "password_reset"
+        )
+        console.log("Password reset rate limit result:", rateLimitResult)
+      } catch (rateLimitError) {
+        console.error("Password reset rate limit check failed:", rateLimitError)
+        // Continue without rate limit if check fails
+        rateLimitResult = { isLimited: false, remainingAttempts: 3, retryAfterSeconds: 0 }
+      }
 
       if (rateLimitResult.isLimited) {
         setIsRateLimited(true)
@@ -114,9 +130,19 @@ export default function ForgotPasswordPage() {
 
       // Always attempt to send the reset email
       // We don't check if email exists to avoid email enumeration
-      await supabase.auth.resetPasswordForEmail(normalizedEmail, {
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
         redirectTo: `${window.location.origin}/reset-password`,
       })
+
+      if (resetError) {
+        console.error("Supabase reset email error:", resetError)
+        toast({
+          variant: "destructive",
+          title: "Erro ao enviar email",
+          description: resetError.message,
+        })
+        return
+      }
 
       // Always show success message (security: don't reveal if email exists)
       setSentEmail(normalizedEmail)
@@ -134,7 +160,8 @@ export default function ForgotPasswordPage() {
           description: "Se este email estiver cadastrado, você receberá um link de recuperação.",
         })
       }
-    } catch {
+    } catch (error) {
+      console.error("Forgot password error:", error)
       toast({
         variant: "destructive",
         title: "Erro inesperado",
