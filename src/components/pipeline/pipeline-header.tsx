@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { DealDialog } from "./deal-dialog"
+import { PipelineCreateDialog } from "./pipeline-create-dialog"
 import { toast } from "@/lib/hooks/use-toast"
 
 // Partial pipeline type for header (doesn't need stages)
@@ -31,16 +32,10 @@ interface PipelineHeaderProps {
 export function PipelineHeader({ pipelines, currentPipeline }: PipelineHeaderProps) {
   const router = useRouter()
   const [showNewDeal, setShowNewDeal] = useState(false)
+  const [showNewPipeline, setShowNewPipeline] = useState(false)
 
   function handleSelectPipeline(pipelineId: string) {
     router.push(`/pipeline?pipelineId=${pipelineId}`)
-  }
-
-  function handleNewPipeline() {
-    toast({
-      title: "Em desenvolvimento",
-      description: "A criação de novos pipelines será implementada em breve.",
-    })
   }
 
   function handleSettings() {
@@ -89,7 +84,7 @@ export function PipelineHeader({ pipelines, currentPipeline }: PipelineHeaderPro
                 </DropdownMenuItem>
               ))}
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleNewPipeline}>
+              <DropdownMenuItem onClick={() => setShowNewPipeline(true)}>
                 <Plus className="mr-2 h-4 w-4" />
                 Novo Pipeline
               </DropdownMenuItem>
@@ -112,6 +107,11 @@ export function PipelineHeader({ pipelines, currentPipeline }: PipelineHeaderPro
         open={showNewDeal}
         onOpenChange={setShowNewDeal}
         pipelineId={currentPipeline?.id}
+      />
+
+      <PipelineCreateDialog
+        open={showNewPipeline}
+        onOpenChange={setShowNewPipeline}
       />
     </div>
   )

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
@@ -10,6 +10,7 @@ import {
   Sun,
   Menu,
   Check,
+  Loader2,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { Button } from "@/components/ui/button"
@@ -25,6 +26,8 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { Sidebar } from "./sidebar"
+import { notificationService, type Notification } from "@/lib/services"
+import { useAuthStore } from "@/lib/store"
 import { toast } from "@/lib/hooks/use-toast"
 
 const pageTitles: Record<string, string> = {
@@ -47,27 +50,96 @@ interface HeaderProps {
   }
 }
 
-export function Header({ user }: HeaderProps) {
+export function Header({ user: userProp }: HeaderProps) {
   const pathname = usePathname()
   const { theme, setTheme } = useTheme()
-  const [notifications, setNotifications] = useState([
-    { id: 1, title: "Pagamento atrasado", description: "Cliente XYZ está com pagamento pendente há 5 dias", time: "2h", read: false },
-    { id: 2, title: "Reunião em 1 hora", description: "Reunião agendada com Cliente ABC", time: "5h", read: false },
-    { id: 3, title: "Meta atingida!", description: "Você atingiu 100% da meta mensal", time: "1d", read: false },
-  ])
+  const { user } = useAuthStore()
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [unreadCount, setUnreadCount] = useState(0)
 
-  const unreadCount = notifications.filter(n => !n.read).length
+  const fetchNotifications = useCallback(async () => {
+    if (!user?.id) return
 
-  function markAllAsRead() {
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })))
-    toast({
-      title: "Notificações lidas",
-      description: "Todas as notificações foram marcadas como lidas.",
-    })
+    try {
+      const [notifs, count] = await Promise.all([
+        notificationService.getUnread(user.id, 5),
+        notificationService.getUnreadCount(user.id),
+      ])
+      setNotifications(notifs)
+      setUnreadCount(count)
+    } catch (error) {
+      console.error("Failed to fetch notifications:", error)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [user?.id])
+
+  useEffect(() => {
+    fetchNotifications()
+
+    // Poll for new notifications every 30 seconds
+    const interval = setInterval(fetchNotifications, 30000)
+    return () => clearInterval(interval)
+  }, [fetchNotifications])
+
+  async function markAllAsRead() {
+    if (!user?.id) return
+
+    try {
+      await notificationService.markAllAsRead(user.id)
+      setNotifications(prev => prev.map(n => ({ ...n, read: true })))
+      setUnreadCount(0)
+      toast({
+        title: "Notificações lidas",
+        description: "Todas as notificações foram marcadas como lidas.",
+      })
+    } catch {
+      toast({
+        variant: "destructive",
+        title: "Erro",
+        description: "Não foi possível marcar as notificações como lidas.",
+      })
+    }
   }
 
-  function markAsRead(id: number) {
-    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))
+  async function markAsRead(notificationId: string) {
+    try {
+      await notificationService.markAsRead(notificationId)
+      setNotifications(prev =>
+        prev.map(n => n.id === notificationId ? { ...n, read: true } : n)
+      )
+      setUnreadCount(prev => Math.max(0, prev - 1))
+    } catch {
+      // Silent fail for individual marks
+    }
+  }
+
+  function getTimeAgo(dateString: string): string {
+    const date = new Date(dateString)
+    const now = new Date()
+    const diffMs = now.getTime() - date.getTime()
+    const diffMins = Math.floor(diffMs / 60000)
+    const diffHours = Math.floor(diffMs / 3600000)
+    const diffDays = Math.floor(diffMs / 86400000)
+
+    if (diffMins < 1) return "agora"
+    if (diffMins < 60) return `${diffMins}m`
+    if (diffHours < 24) return `${diffHours}h`
+    return `${diffDays}d`
+  }
+
+  function getNotificationIcon(type: string) {
+    switch (type) {
+      case "success":
+        return "🎉"
+      case "warning":
+        return "⚠️"
+      case "error":
+        return "❌"
+      default:
+        return "📢"
+    }
   }
 
   const getPageTitle = () => {
@@ -89,7 +161,7 @@ export function Header({ user }: HeaderProps) {
           </Button>
         </SheetTrigger>
         <SheetContent side="left" className="p-0 w-[260px]">
-          <Sidebar user={user} />
+          <Sidebar user={userProp} />
         </SheetContent>
       </Sheet>
 
@@ -130,7 +202,7 @@ export function Header({ user }: HeaderProps) {
                   variant="destructive"
                   className="absolute -top-1 -right-1 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs"
                 >
-                  {unreadCount}
+                  {unreadCount > 9 ? "9+" : unreadCount}
                 </Badge>
               )}
             </Button>
@@ -149,22 +221,41 @@ export function Header({ user }: HeaderProps) {
               </Button>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            {notifications.map((notification) => (
-              <DropdownMenuItem
-                key={notification.id}
-                className={`flex flex-col items-start p-3 cursor-pointer ${notification.read ? 'opacity-60' : ''}`}
-                onClick={() => markAsRead(notification.id)}
-              >
-                <div className="flex items-center justify-between w-full">
-                  <span className="font-medium text-sm flex items-center gap-2">
-                    {notification.title}
-                    {notification.read && <Check className="h-3 w-3 text-muted-foreground" />}
-                  </span>
-                  <span className="text-xs text-muted-foreground">{notification.time}</span>
-                </div>
-                <span className="text-xs text-muted-foreground mt-1">{notification.description}</span>
-              </DropdownMenuItem>
-            ))}
+
+            {isLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : notifications.length === 0 ? (
+              <div className="py-8 text-center text-sm text-muted-foreground">
+                Nenhuma notificação
+              </div>
+            ) : (
+              notifications.map((notification) => (
+                <DropdownMenuItem
+                  key={notification.id}
+                  className={`flex flex-col items-start p-3 cursor-pointer ${notification.read ? 'opacity-60' : ''}`}
+                  onClick={() => markAsRead(notification.id)}
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <span className="font-medium text-sm flex items-center gap-2">
+                      <span>{getNotificationIcon(notification.type)}</span>
+                      {notification.title}
+                      {notification.read && <Check className="h-3 w-3 text-muted-foreground" />}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {getTimeAgo(notification.created_at)}
+                    </span>
+                  </div>
+                  {notification.body && (
+                    <span className="text-xs text-muted-foreground mt-1">
+                      {notification.body}
+                    </span>
+                  )}
+                </DropdownMenuItem>
+              ))
+            )}
+
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild className="justify-center text-primary cursor-pointer">
               <Link href="/settings/notifications">
