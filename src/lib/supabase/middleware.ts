@@ -37,7 +37,7 @@ export async function updateSession(request: NextRequest) {
   )
 
   // Protected routes check (admin)
-  const protectedPaths = ["/dashboard", "/clients", "/pipeline", "/automations", "/settings", "/reports", "/tools", "/team"]
+  const protectedPaths = ["/dashboard", "/clients", "/pipeline", "/automations", "/settings", "/reports", "/tools", "/team", "/financial", "/meetings"]
   const isProtectedPath = protectedPaths.some(path => request.nextUrl.pathname.startsWith(path))
 
   // Auth routes check (admin)

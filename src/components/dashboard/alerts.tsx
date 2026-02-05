@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { Calendar, AlertCircle, Clock, FileText } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -115,8 +116,10 @@ export function DashboardAlerts({ meetings }: DashboardAlertsProps) {
                         {formatDateTime(meeting.scheduled_at)}
                       </p>
                     </div>
-                    <Button variant="ghost" size="sm">
-                      Ver
+                    <Button variant="ghost" size="sm" asChild>
+                      <Link href="/meetings">
+                        Ver
+                      </Link>
                     </Button>
                   </div>
                 ))}

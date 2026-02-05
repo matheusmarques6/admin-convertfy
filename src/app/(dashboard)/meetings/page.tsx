@@ -59,9 +59,11 @@ export default async function MeetingsPage() {
             Gerencie as reuniões com seus clientes
           </p>
         </div>
-        <Button>
-          <Plus className="mr-2 h-4 w-4" />
-          Agendar Reunião
+        <Button asChild>
+          <Link href="/meetings/new">
+            <Plus className="mr-2 h-4 w-4" />
+            Agendar Reunião
+          </Link>
         </Button>
       </div>
 

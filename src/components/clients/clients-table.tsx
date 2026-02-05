@@ -53,7 +53,9 @@ import {
 } from "@/components/ui/tooltip"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatCurrency, getInitials, getHealthScoreColor } from "@/lib/utils"
-import { createClient } from "@/lib/supabase/client"
+import { clientService } from "@/lib/services"
+import { usePermission } from "@/lib/permissions/hooks"
+import { useAuthStore } from "@/lib/store"
 import { toast } from "@/lib/hooks/use-toast"
 import type { Client, Contract, User } from "@/types"
 
@@ -102,6 +104,9 @@ const cycleLabels: Record<string, string> = {
 
 export function ClientsTable({ clients }: ClientsTableProps) {
   const router = useRouter()
+  const { user } = useAuthStore()
+  const canDelete = usePermission("clients.delete")
+  const canEdit = usePermission("clients.edit")
   const [deleteClient, setDeleteClient] = useState<ClientWithRelations | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const [clientsStatus, setClientsStatus] = useState<Record<string, ClientStatus>>({})
@@ -203,17 +208,11 @@ export function ClientsTable({ clients }: ClientsTableProps) {
   }
 
   async function handleDelete() {
-    if (!deleteClient) return
+    if (!deleteClient || !user?.id) return
 
     setIsDeleting(true)
     try {
-      const supabase = createClient()
-      const { error } = await supabase
-        .from("clients")
-        .delete()
-        .eq("id", deleteClient.id)
-
-      if (error) throw error
+      await clientService.delete(deleteClient.id, user.id)
 
       toast({
         title: "Cliente excluído",
@@ -450,12 +449,14 @@ export function ClientsTable({ clients }: ClientsTableProps) {
                             Ver detalhes
                           </Link>
                         </DropdownMenuItem>
-                        <DropdownMenuItem asChild>
-                          <Link href={`/clients/${client.id}/edit`}>
-                            <Edit className="mr-2 h-4 w-4" />
-                            Editar
-                          </Link>
-                        </DropdownMenuItem>
+                        {canEdit && (
+                          <DropdownMenuItem asChild>
+                            <Link href={`/clients/${client.id}/edit`}>
+                              <Edit className="mr-2 h-4 w-4" />
+                              Editar
+                            </Link>
+                          </DropdownMenuItem>
+                        )}
                         {client.website && (
                           <DropdownMenuItem asChild>
                             <a
@@ -468,14 +469,18 @@ export function ClientsTable({ clients }: ClientsTableProps) {
                             </a>
                           </DropdownMenuItem>
                         )}
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          className="text-destructive focus:text-destructive"
-                          onClick={() => setDeleteClient(client)}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Excluir
-                        </DropdownMenuItem>
+                        {canDelete && (
+                          <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              onClick={() => setDeleteClient(client)}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Excluir
+                            </DropdownMenuItem>
+                          </>
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>

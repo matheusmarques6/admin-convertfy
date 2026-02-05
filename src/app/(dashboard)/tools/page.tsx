@@ -9,6 +9,7 @@ import {
   BarChart3,
   Sparkles,
   Loader2,
+  Check,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -24,6 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { formatCurrency } from "@/lib/utils"
+import { toast } from "@/lib/hooks/use-toast"
 
 export default function ToolsPage() {
   const [emailSubjects, setEmailSubjects] = useState<string[]>([])
@@ -35,6 +37,51 @@ export default function ToolsPage() {
   const [adSpend, setAdSpend] = useState("")
   const [revenue, setRevenue] = useState("")
   const roas = adSpend && revenue ? (parseFloat(revenue) / parseFloat(adSpend)).toFixed(2) : null
+
+  // Integration buttons state
+  const [selectedIntegrations, setSelectedIntegrations] = useState<string[]>([])
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false)
+  const [isGeneratingBenchmark, setIsGeneratingBenchmark] = useState(false)
+
+  function toggleIntegration(integration: string) {
+    setSelectedIntegrations(prev =>
+      prev.includes(integration)
+        ? prev.filter(i => i !== integration)
+        : [...prev, integration]
+    )
+  }
+
+  async function generateBenchmark() {
+    setIsGeneratingBenchmark(true)
+    // TODO: Implementar com dados reais
+    setTimeout(() => {
+      setIsGeneratingBenchmark(false)
+      toast({
+        title: "Comparativo gerado",
+        description: "O benchmark foi gerado com sucesso. Em breve será exibido aqui.",
+      })
+    }, 1500)
+  }
+
+  async function generatePDFReport() {
+    if (selectedIntegrations.length === 0) {
+      toast({
+        variant: "destructive",
+        title: "Selecione as métricas",
+        description: "Selecione pelo menos uma integração para incluir no relatório.",
+      })
+      return
+    }
+    setIsGeneratingReport(true)
+    // TODO: Implementar geração de PDF real
+    setTimeout(() => {
+      setIsGeneratingReport(false)
+      toast({
+        title: "Relatório gerado",
+        description: `Relatório PDF com ${selectedIntegrations.length} integrações será disponibilizado em breve.`,
+      })
+    }, 2000)
+  }
 
   async function generateEmailSubjects() {
     setIsGeneratingSubjects(true)
@@ -289,8 +336,16 @@ Descubra como centenas de lojistas estão aumentando suas vendas em até 40% com
                     </SelectContent>
                   </Select>
                 </div>
-                <Button className="w-full">
-                  <BarChart3 className="mr-2 h-4 w-4" />
+                <Button
+                  className="w-full"
+                  onClick={generateBenchmark}
+                  disabled={isGeneratingBenchmark}
+                >
+                  {isGeneratingBenchmark ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <BarChart3 className="mr-2 h-4 w-4" />
+                  )}
                   Gerar Comparativo
                 </Button>
               </CardContent>
@@ -341,15 +396,31 @@ Descubra como centenas de lojistas estão aumentando suas vendas em até 40% com
               <div className="space-y-2">
                 <Label>Incluir métricas de:</Label>
                 <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" size="sm">Shopify</Button>
-                  <Button variant="outline" size="sm">Facebook Ads</Button>
-                  <Button variant="outline" size="sm">Google Ads</Button>
-                  <Button variant="outline" size="sm">Klaviyo</Button>
-                  <Button variant="outline" size="sm">Instagram</Button>
+                  {["Shopify", "Facebook Ads", "Google Ads", "Klaviyo", "Instagram"].map((integration) => (
+                    <Button
+                      key={integration}
+                      variant={selectedIntegrations.includes(integration) ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => toggleIntegration(integration)}
+                    >
+                      {selectedIntegrations.includes(integration) && (
+                        <Check className="mr-1 h-3 w-3" />
+                      )}
+                      {integration}
+                    </Button>
+                  ))}
                 </div>
               </div>
-              <Button className="w-full">
-                <FileText className="mr-2 h-4 w-4" />
+              <Button
+                className="w-full"
+                onClick={generatePDFReport}
+                disabled={isGeneratingReport}
+              >
+                {isGeneratingReport ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <FileText className="mr-2 h-4 w-4" />
+                )}
                 Gerar Relatório PDF
               </Button>
             </CardContent>
