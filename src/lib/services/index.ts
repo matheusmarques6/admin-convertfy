@@ -6,18 +6,27 @@
  *
  * Usage:
  * ```typescript
- * import { clientService, dealService } from '@/lib/services';
+ * import { clientService, dealService, notificationService } from '@/lib/services';
  *
  * // Create a client
  * const client = await clientService.create({ name, email }, userId);
  *
  * // Mark deal as won
  * const deal = await dealService.markAsWon(dealId, userId, { createContract: true });
+ *
+ * // Send notification
+ * await notificationService.create({ user_id: userId, title: 'Hello!' });
  * ```
  */
 
 export { clientService, type CreateClientData, type UpdateClientData } from './client.service';
 export { dealService, type CreateDealData, type UpdateDealData } from './deal.service';
+export {
+  notificationService,
+  type CreateNotificationData,
+  type Notification,
+  type NotificationType
+} from './notification.service';
 
 // Re-export event utilities for convenience
 export { publishEvent, logActivity } from '@/lib/events/publisher';

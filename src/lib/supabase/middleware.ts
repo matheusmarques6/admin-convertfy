@@ -1,5 +1,13 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
+import type { UserRole } from "@/types"
+
+// Route access configuration by role
+const routeRoleAccess: Record<string, UserRole[]> = {
+  "/settings/users": ["admin"],
+  "/automations": ["admin", "manager"],
+  "/financial": ["admin", "manager", "financial"],
+}
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({
@@ -31,27 +39,62 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
+  const pathname = request.nextUrl.pathname
+
   // Refresh session if expired
   const { data: { user } } = await supabase.auth.getUser()
 
   // Protected routes - redirect to login if not authenticated
-  const protectedPaths = ["/dashboard", "/clients", "/pipeline", "/automations", "/settings", "/reports", "/tools", "/financial", "/meetings"]
-  const isProtectedPath = protectedPaths.some(path => request.nextUrl.pathname.startsWith(path))
+  const protectedPaths = [
+    "/dashboard",
+    "/clients",
+    "/pipeline",
+    "/automations",
+    "/settings",
+    "/reports",
+    "/tools",
+    "/financial",
+    "/meetings"
+  ]
+  const isProtectedPath = protectedPaths.some(path => pathname.startsWith(path))
 
   if (isProtectedPath && !user) {
     return NextResponse.redirect(new URL("/login", request.url))
   }
 
+  // Role-based access control for authenticated users
+  if (isProtectedPath && user) {
+    // Check if this route has role restrictions
+    for (const [route, allowedRoles] of Object.entries(routeRoleAccess)) {
+      if (pathname.startsWith(route)) {
+        // Fetch user profile with role
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", user.id)
+          .single()
+
+        const userRole = profile?.role as UserRole | undefined
+
+        if (!userRole || !allowedRoles.includes(userRole)) {
+          // User doesn't have permission, redirect to dashboard
+          return NextResponse.redirect(new URL("/dashboard", request.url))
+        }
+        break
+      }
+    }
+  }
+
   // Auth routes - redirect to dashboard if already authenticated
   const authPaths = ["/login", "/register"]
-  const isAuthPath = authPaths.some(path => request.nextUrl.pathname.startsWith(path))
+  const isAuthPath = authPaths.some(path => pathname.startsWith(path))
 
   if (isAuthPath && user) {
     return NextResponse.redirect(new URL("/dashboard", request.url))
   }
 
   // Redirect root to dashboard or login
-  if (request.nextUrl.pathname === "/") {
+  if (pathname === "/") {
     if (user) {
       return NextResponse.redirect(new URL("/dashboard", request.url))
     }

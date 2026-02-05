@@ -22,7 +22,8 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { DealDialog } from "./deal-dialog"
 import { formatCurrency, getInitials } from "@/lib/utils"
-import { createClient } from "@/lib/supabase/client"
+import { dealService } from "@/lib/services"
+import { useAuthStore } from "@/lib/store"
 import { toast } from "@/lib/hooks/use-toast"
 import type { PipelineStage, Deal, Client, User } from "@/types"
 
@@ -39,6 +40,7 @@ interface PipelineBoardProps {
 
 export function PipelineBoard({ stages, deals: initialDeals, pipelineId }: PipelineBoardProps) {
   const router = useRouter()
+  const { user } = useAuthStore()
   const [deals, setDeals] = useState(initialDeals)
   const [showNewDeal, setShowNewDeal] = useState(false)
   const [selectedStageId, setSelectedStageId] = useState<string | null>(null)
@@ -46,16 +48,11 @@ export function PipelineBoard({ stages, deals: initialDeals, pipelineId }: Pipel
   const [deletingDealId, setDeletingDealId] = useState<string | null>(null)
 
   async function handleDeleteDeal(dealId: string) {
+    if (!user?.id) return
     setDeletingDealId(dealId)
 
     try {
-      const supabase = createClient()
-      const { error } = await supabase
-        .from("deals")
-        .delete()
-        .eq("id", dealId)
-
-      if (error) throw error
+      await dealService.delete(dealId, user.id)
 
       setDeals((prev) => prev.filter((deal) => deal.id !== dealId))
 
@@ -75,7 +72,7 @@ export function PipelineBoard({ stages, deals: initialDeals, pipelineId }: Pipel
   }
 
   async function handleDragEnd(result: DropResult) {
-    if (!result.destination) return
+    if (!result.destination || !user?.id) return
 
     const { draggableId, destination } = result
     const newStageId = destination.droppableId
@@ -87,15 +84,9 @@ export function PipelineBoard({ stages, deals: initialDeals, pipelineId }: Pipel
       )
     )
 
-    // Update in database
+    // Update in database with event tracking
     try {
-      const supabase = createClient()
-      const { error } = await supabase
-        .from("deals")
-        .update({ stage_id: newStageId })
-        .eq("id", draggableId)
-
-      if (error) throw error
+      await dealService.moveToStage(draggableId, newStageId, user.id)
 
       toast({
         title: "Deal movido",
