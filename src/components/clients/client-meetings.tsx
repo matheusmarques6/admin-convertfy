@@ -10,7 +10,6 @@ import type { Meeting } from "@/types"
 
 interface ClientMeetingsProps {
   meetings: Meeting[]
-  clientId: string
 }
 
 const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "success" | "destructive" | "warning"; icon: React.ElementType }> = {

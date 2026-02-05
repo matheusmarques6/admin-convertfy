@@ -10,10 +10,12 @@ import type { Contract } from "@/types"
 
 interface ClientContractsProps {
   contracts: Contract[]
-  clientId: string
 }
 
-const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "success" | "destructive" | "warning" }> = {
+const statusConfig: Record<
+  string,
+  { label: string; variant: "default" | "secondary" | "success" | "destructive" | "warning" }
+> = {
   active: { label: "Ativo", variant: "success" },
   expired: { label: "Expirado", variant: "secondary" },
   cancelled: { label: "Cancelado", variant: "destructive" },
