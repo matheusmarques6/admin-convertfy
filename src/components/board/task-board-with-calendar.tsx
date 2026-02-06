@@ -177,18 +177,16 @@ export function TaskBoardWithCalendar({
         )}
       </div>
 
-      {/* Dialog for calendar view - TaskBoard handles its own in kanban mode */}
-      {viewMode === "calendar" && (
-        <TaskDialog
-          open={dialogOpen}
-          onClose={handleDialogClose}
-          onSuccess={handleDialogSuccess}
-          task={editingTask}
-          members={members}
-          clients={clients}
-          stores={stores}
-        />
-      )}
+      {/* Dialog for task creation/editing */}
+      <TaskDialog
+        open={dialogOpen}
+        onClose={handleDialogClose}
+        onSuccess={handleDialogSuccess}
+        task={editingTask}
+        members={members}
+        clients={clients}
+        stores={stores}
+      />
     </>
   )
 }
