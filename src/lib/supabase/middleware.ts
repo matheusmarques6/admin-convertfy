@@ -68,17 +68,8 @@ export async function updateSession(request: NextRequest) {
         return NextResponse.redirect(new URL("/login", request.url))
       }
 
-      // Check if user must change password (first login with temp password)
-      if (user && isProtectedPath && user.user_metadata?.must_change_password === true) {
-        return NextResponse.redirect(new URL("/change-password", request.url))
-      }
-
       // Admin auth routes - redirect to dashboard if already logged in
-      // But if they must change password, redirect there instead
       if (isAuthPath && user) {
-        if (user.user_metadata?.must_change_password === true) {
-          return NextResponse.redirect(new URL("/change-password", request.url))
-        }
         return NextResponse.redirect(new URL("/dashboard", request.url))
       }
 
