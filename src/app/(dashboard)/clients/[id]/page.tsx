@@ -159,11 +159,11 @@ export default async function ClientPage({
         </TabsContent>
 
         <TabsContent value="contracts">
-          <ClientContracts contracts={client.contracts || []} clientId={client.id} />
+          <ClientContracts contracts={client.contracts || []} />
         </TabsContent>
 
         <TabsContent value="meetings">
-          <ClientMeetings meetings={client.meetings || []} clientId={client.id} />
+          <ClientMeetings meetings={client.meetings || []} />
         </TabsContent>
 
         <TabsContent value="reports">
