@@ -67,7 +67,8 @@ export default function ChangePasswordPage() {
           title: "Senha alterada com sucesso!",
           description: "Você será redirecionado para o dashboard.",
         })
-        router.push("/dashboard")
+        // Use window.location for full page reload to ensure session cookies are refreshed
+        window.location.href = "/dashboard"
       } else {
         toast({
           title: "Erro ao alterar senha",

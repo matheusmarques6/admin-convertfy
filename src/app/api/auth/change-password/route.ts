@@ -53,6 +53,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // IMPORTANT: Refresh the session to get updated user_metadata in the JWT
+    // This ensures the middleware sees must_change_password: false
+    await supabase.auth.refreshSession()
+
     // Log the activity
     await supabase.from("activities").insert({
       user_id: user.id,
