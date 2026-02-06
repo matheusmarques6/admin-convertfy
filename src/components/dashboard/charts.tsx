@@ -37,12 +37,16 @@ interface PipelineData {
 }
 
 interface DashboardChartsProps {
-  revenueData: RevenueData[]
-  clientsData: ClientsData[]
-  pipelineData: PipelineData[]
+  revenueData?: RevenueData[]
+  clientsData?: ClientsData[]
+  pipelineData?: PipelineData[]
 }
 
-export function DashboardCharts({ revenueData, clientsData, pipelineData }: DashboardChartsProps) {
+export function DashboardCharts({
+  revenueData = [],
+  clientsData = [],
+  pipelineData = []
+}: DashboardChartsProps) {
   const hasRevenueData = revenueData.some((d) => d.receita > 0)
   const hasClientsData = clientsData.some((d) => d.value > 0)
   const hasPipelineData = pipelineData.length > 0
