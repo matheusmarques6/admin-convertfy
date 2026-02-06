@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { createClient } from "@/lib/supabase/server"
 
 // POST - User changes their own password (for first login password change)
 export async function POST(request: NextRequest) {
@@ -31,31 +31,21 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const adminClient = createAdminClient()
+    // Use the regular client to update password - this properly updates the session
+    const { error: updateError } = await supabase.auth.updateUser({
+      password: new_password,
+      data: {
+        must_change_password: false,
+      },
+    })
 
-    // Update the auth user's password and clear the must_change_password flag
-    const { error: updateAuthError } = await adminClient.auth.admin.updateUserById(
-      user.id,
-      {
-        password: new_password,
-        user_metadata: {
-          ...user.user_metadata,
-          must_change_password: false,
-        },
-      }
-    )
-
-    if (updateAuthError) {
-      console.error("Error updating password:", updateAuthError)
+    if (updateError) {
+      console.error("Error updating password:", updateError)
       return NextResponse.json(
         { error: "Falha ao alterar a senha" },
         { status: 500 }
       )
     }
-
-    // IMPORTANT: Refresh the session to get updated user_metadata in the JWT
-    // This ensures the middleware sees must_change_password: false
-    await supabase.auth.refreshSession()
 
     // Log the activity
     await supabase.from("activities").insert({
