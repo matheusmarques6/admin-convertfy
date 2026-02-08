@@ -221,6 +221,22 @@ export function TaskDialog({
         throw new Error(result.error || "Erro ao salvar")
       }
 
+      // Save pending checklist items after task creation
+      if (!isEditing && result.task?.id && checklists.length > 0) {
+        const pendingItems = checklists.filter((c) => c.id.startsWith("local-"))
+        for (const item of pendingItems) {
+          try {
+            await fetch(`/api/tasks/${result.task.id}/checklists`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ title: item.title }),
+            })
+          } catch {
+            // Continue saving remaining items
+          }
+        }
+      }
+
       toast({
         title: isEditing ? "Tarefa atualizada" : "Tarefa criada",
         description: result.message,
@@ -239,7 +255,12 @@ export function TaskDialog({
   }
 
   async function handleAddComment() {
-    if (!newComment.trim() || !task) return
+    if (!newComment.trim()) return
+
+    if (!task) {
+      toast({ variant: "destructive", title: "Salve a tarefa primeiro para adicionar comentários" })
+      return
+    }
 
     try {
       const response = await fetch(`/api/tasks/${task.id}/comments`, {
@@ -260,7 +281,19 @@ export function TaskDialog({
   }
 
   async function handleAddChecklist() {
-    if (!newChecklistItem.trim() || !task) return
+    if (!newChecklistItem.trim()) return
+
+    if (!task) {
+      // During creation: store locally, will be saved after task creation
+      const localItem = {
+        id: `local-${Date.now()}`,
+        title: newChecklistItem,
+        is_completed: false,
+      }
+      setChecklists((prev) => [...prev, localItem])
+      setNewChecklistItem("")
+      return
+    }
 
     try {
       const response = await fetch(`/api/tasks/${task.id}/checklists`, {
@@ -280,12 +313,13 @@ export function TaskDialog({
   }
 
   async function handleToggleChecklist(checklistId: string, isCompleted: boolean) {
-    if (!task) return
-
     // Optimistic update
     setChecklists((prev) =>
       prev.map((c) => (c.id === checklistId ? { ...c, is_completed: !isCompleted } : c))
     )
+
+    // Local items (during creation) - just toggle in state
+    if (checklistId.startsWith("local-") || !task) return
 
     try {
       await fetch(`/api/tasks/${task.id}/checklists`, {
@@ -315,11 +349,11 @@ export function TaskDialog({
           <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 overflow-hidden flex flex-col">
             <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="details">Detalhes</TabsTrigger>
-              <TabsTrigger value="comments" disabled={!isEditing}>
+              <TabsTrigger value="comments">
                 <MessageSquare className="h-4 w-4 mr-1" />
                 Comentários {comments.length > 0 && `(${comments.length})`}
               </TabsTrigger>
-              <TabsTrigger value="checklist" disabled={!isEditing}>
+              <TabsTrigger value="checklist">
                 <CheckSquare className="h-4 w-4 mr-1" />
                 Checklist {checklists.length > 0 && `(${checklists.filter((c) => c.is_completed).length}/${checklists.length})`}
               </TabsTrigger>
@@ -488,8 +522,13 @@ export function TaskDialog({
               </TabsContent>
 
               <TabsContent value="comments" className="mt-0 space-y-4">
+                {!isEditing && (
+                  <p className="text-sm text-muted-foreground text-center py-2 bg-muted/50 rounded-lg">
+                    Salve a tarefa primeiro para adicionar comentários
+                  </p>
+                )}
                 <div className="space-y-4 max-h-[300px] overflow-y-auto">
-                  {comments.length === 0 ? (
+                  {comments.length === 0 && isEditing ? (
                     <p className="text-sm text-muted-foreground text-center py-8">
                       Nenhum comentário ainda
                     </p>
