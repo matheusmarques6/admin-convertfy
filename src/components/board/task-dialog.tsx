@@ -360,7 +360,7 @@ export function TaskDialog({
             </TabsList>
 
             <div className="flex-1 overflow-y-auto py-4">
-              <TabsContent value="details" className="mt-0 space-y-4">
+              <TabsContent value="details" forceMount className={cn("mt-0 space-y-4", activeTab !== "details" && "hidden")}>
                 <div className="grid gap-2">
                   <Label htmlFor="title">Título *</Label>
                   <Input
@@ -521,7 +521,7 @@ export function TaskDialog({
                 </div>
               </TabsContent>
 
-              <TabsContent value="comments" className="mt-0 space-y-4">
+              <TabsContent value="comments" forceMount className={cn("mt-0 space-y-4", activeTab !== "comments" && "hidden")}>
                 {!isEditing && (
                   <p className="text-sm text-muted-foreground text-center py-2 bg-muted/50 rounded-lg">
                     Salve a tarefa primeiro para adicionar comentários
@@ -562,7 +562,7 @@ export function TaskDialog({
                     placeholder="Adicionar comentário..."
                     value={newComment}
                     onChange={(e) => setNewComment(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleAddComment()}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddComment() } }}
                   />
                   <Button type="button" onClick={handleAddComment}>
                     Enviar
@@ -570,7 +570,7 @@ export function TaskDialog({
                 </div>
               </TabsContent>
 
-              <TabsContent value="checklist" className="mt-0 space-y-4">
+              <TabsContent value="checklist" forceMount className={cn("mt-0 space-y-4", activeTab !== "checklist" && "hidden")}>
                 <div className="space-y-2 max-h-[300px] overflow-y-auto">
                   {checklists.length === 0 ? (
                     <p className="text-sm text-muted-foreground text-center py-8">
