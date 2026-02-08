@@ -24,6 +24,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
     }
 
+    const adminClient = createAdminClient()
     const searchParams = request.nextUrl.searchParams
     const status = searchParams.get("status")
     const type = searchParams.get("type")
@@ -33,7 +34,7 @@ export async function GET(request: NextRequest) {
     const priority = searchParams.get("priority")
     const myTasks = searchParams.get("my_tasks") === "true"
 
-    let query = supabase
+    let query = adminClient
       .from("tasks")
       .select(`
         *,
@@ -76,7 +77,7 @@ export async function GET(request: NextRequest) {
 
     // Get current user's org_member_id for "my tasks" filter
     if (myTasks) {
-      const { data: orgMember } = await supabase
+      const { data: orgMember } = await adminClient
         .from("org_members")
         .select("id")
         .eq("profile_id", user.id)
@@ -98,7 +99,7 @@ export async function GET(request: NextRequest) {
     // Get comments count for each task
     const tasksWithCounts = await Promise.all(
       (tasks || []).map(async (task) => {
-        const { count } = await supabase
+        const { count } = await adminClient
           .from("task_comments")
           .select("*", { count: "exact", head: true })
           .eq("task_id", task.id)
@@ -136,8 +137,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const adminClient = createAdminClient()
+
     // Get next position for the status
-    const { data: lastTask } = await supabase
+    const { data: lastTask } = await adminClient
       .from("tasks")
       .select("position")
       .eq("status", "pending")
@@ -146,8 +149,6 @@ export async function POST(request: NextRequest) {
       .single()
 
     const nextPosition = (lastTask?.position || 0) + 1
-
-    const adminClient = createAdminClient()
 
     const { data: task, error: insertError } = await adminClient
       .from("tasks")

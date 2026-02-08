@@ -1,5 +1,5 @@
 import { Suspense } from "react"
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { TaskBoardWithCalendar } from "@/components/board/task-board-with-calendar"
 import { Skeleton } from "@/components/ui/skeleton"
 import { PagePermissionWrapper } from "@/components/page-permission-wrapper"
@@ -7,9 +7,9 @@ import { PagePermissionWrapper } from "@/components/page-permission-wrapper"
 export const dynamic = "force-dynamic"
 
 async function getTasks() {
-  const supabase = await createClient()
+  const adminClient = createAdminClient()
 
-  const { data: tasks, error } = await supabase
+  const { data: tasks, error } = await adminClient
     .from("tasks")
     .select(`
       *,
@@ -35,14 +35,31 @@ async function getTasks() {
 
 async function getTeamMembers() {
   const supabase = await createClient()
+  const adminClient = createAdminClient()
 
-  const { data: members } = await supabase
+  // Get current user's org_id
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return []
+
+  const { data: currentMember } = await adminClient
+    .from("org_members")
+    .select("org_id")
+    .eq("profile_id", user.id)
+    .eq("is_active", true)
+    .limit(1)
+    .single()
+
+  if (!currentMember?.org_id) return []
+
+  // Fetch all active members of the same org
+  const { data: members } = await adminClient
     .from("org_members")
     .select(`
       id,
       role,
       profile:profiles(id, name, email, avatar_url)
     `)
+    .eq("org_id", currentMember.org_id)
     .eq("is_active", true)
     .order("role", { ascending: true })
 
