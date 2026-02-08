@@ -337,7 +337,7 @@ export function TaskDialog({
 
   return (
     <Dialog open={open} onOpenChange={() => !isSubmitting && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-2xl h-[80vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>{isEditing ? "Editar Tarefa" : "Nova Tarefa"}</DialogTitle>
           <DialogDescription>
