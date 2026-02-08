@@ -139,34 +139,38 @@ export async function POST(request: NextRequest) {
 
     const adminClient = createAdminClient()
 
-    // Get next position for the status
+    // Get next position for the status (maybeSingle to handle 0 rows)
     const { data: lastTask } = await adminClient
       .from("tasks")
       .select("position")
       .eq("status", "pending")
       .order("position", { ascending: false })
       .limit(1)
-      .single()
+      .maybeSingle()
 
     const nextPosition = (lastTask?.position || 0) + 1
 
+    const insertData = {
+      title: body.title,
+      description: body.description || null,
+      type: body.type || "general",
+      priority: body.priority || "medium",
+      assignee_id: body.assignee_id || null,
+      created_by: user.id,
+      client_id: body.client_id || null,
+      store_id: body.store_id || null,
+      due_date: body.due_date || null,
+      tags: body.tags || [],
+      metadata: body.metadata || {},
+      position: nextPosition,
+      status: "pending" as const,
+    }
+
+    console.log("[Tasks] Inserting task:", JSON.stringify(insertData, null, 2))
+
     const { data: task, error: insertError } = await adminClient
       .from("tasks")
-      .insert({
-        title: body.title,
-        description: body.description || null,
-        type: body.type || "general",
-        priority: body.priority || "medium",
-        assignee_id: body.assignee_id || null,
-        created_by: user.id,
-        client_id: body.client_id || null,
-        store_id: body.store_id || null,
-        due_date: body.due_date || null,
-        tags: body.tags || [],
-        metadata: body.metadata || {},
-        position: nextPosition,
-        status: "pending",
-      })
+      .insert(insertData)
       .select(`
         *,
         assignee:org_members(
@@ -181,9 +185,9 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (insertError) {
-      console.error("[Tasks] Insert error:", insertError)
+      console.error("[Tasks] Insert error:", insertError.message, insertError.details, insertError.hint, insertError.code)
       return NextResponse.json(
-        { error: "Erro ao criar tarefa" },
+        { error: `Erro ao criar tarefa: ${insertError.message}` },
         { status: 500, headers: corsHeaders() }
       )
     }
@@ -194,6 +198,7 @@ export async function POST(request: NextRequest) {
     )
   } catch (error) {
     console.error("[Tasks] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    const message = error instanceof Error ? error.message : "Erro interno"
+    return NextResponse.json({ error: `Erro interno: ${message}` }, { status: 500, headers: corsHeaders() })
   }
 }
