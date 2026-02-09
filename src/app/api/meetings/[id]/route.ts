@@ -27,8 +27,9 @@ export async function GET(
     }
 
     const { id } = await params
+    const adminClient = createAdminClient()
 
-    const { data: meeting, error } = await supabase
+    const { data: meeting, error } = await adminClient
       .from("meetings")
       .select(`
         *,
@@ -101,7 +102,7 @@ export async function PUT(
     if (body.meeting_url !== undefined) updateData.meeting_url = body.meeting_url || null
     if (body.notes !== undefined) updateData.notes = body.notes || null
 
-    const { error: updateError } = await supabase
+    const { error: updateError } = await adminClient
       .from("meetings")
       .update(updateData)
       .eq("id", id)
@@ -164,7 +165,7 @@ export async function PUT(
     }
 
     // Fetch updated meeting with participants
-    const { data: meeting } = await supabase
+    const { data: meeting } = await adminClient
       .from("meetings")
       .select(`
         *,
@@ -226,8 +227,9 @@ export async function DELETE(
     }
 
     const { id } = await params
+    const adminClient = createAdminClient()
 
-    const { error: deleteError } = await supabase
+    const { error: deleteError } = await adminClient
       .from("meetings")
       .delete()
       .eq("id", id)

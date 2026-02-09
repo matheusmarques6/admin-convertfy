@@ -29,7 +29,9 @@ export async function GET(request: NextRequest) {
     const upcoming = searchParams.get("upcoming") === "true"
     const participantId = searchParams.get("participant_id")
 
-    let query = supabase
+    const adminClient = createAdminClient()
+
+    let query = adminClient
       .from("meetings")
       .select(`
         *,
@@ -117,7 +119,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { data: meeting, error: insertError } = await supabase
+    const { data: meeting, error: insertError } = await adminClient
       .from("meetings")
       .insert({
         title: body.title,
@@ -176,7 +178,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Fetch the meeting with participants
-    const { data: fullMeeting } = await supabase
+    const { data: fullMeeting } = await adminClient
       .from("meetings")
       .select(`
         *,

@@ -71,9 +71,9 @@ async function getTeamMembers() {
 }
 
 async function getClients() {
-  const supabase = await createClient()
+  const adminClient = createAdminClient()
 
-  const { data: clients } = await supabase
+  const { data: clients } = await adminClient
     .from("clients")
     .select("id, name, company")
     .in("status", ["active", "onboarding"])
@@ -83,9 +83,9 @@ async function getClients() {
 }
 
 async function getStores() {
-  const supabase = await createClient()
+  const adminClient = createAdminClient()
 
-  const { data: stores } = await supabase
+  const { data: stores } = await adminClient
     .from("client_stores")
     .select(`
       id,
@@ -105,6 +105,7 @@ async function getStores() {
 
 async function getMeetings() {
   const supabase = await createClient()
+  const adminClient = createAdminClient()
 
   // Get current user to filter meetings where they are a participant
   const { data: { user } } = await supabase.auth.getUser()
@@ -113,7 +114,7 @@ async function getMeetings() {
   // Get org_member_id for the current user (if they are an org member)
   let orgMemberId: string | null = null
   if (userId) {
-    const { data: orgMember } = await supabase
+    const { data: orgMember } = await adminClient
       .from("org_members")
       .select("id")
       .eq("profile_id", userId)
@@ -123,7 +124,7 @@ async function getMeetings() {
   }
 
   // First, get meetings the user owns or is a participant of
-  const { data: meetings } = await supabase
+  const { data: meetings } = await adminClient
     .from("meetings")
     .select(`
       *,
