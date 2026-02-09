@@ -152,7 +152,7 @@ export function MeetingsTab({ meetings, clients, members = [] }: MeetingsTabProp
   return (
     <>
       <div className="h-full overflow-y-auto">
-        <div className="max-w-4xl mx-auto space-y-6 pb-6">
+        <div className="space-y-6 pb-6">
           {/* Header com botão de nova reunião */}
           <div className="flex items-center justify-between">
             <div>
