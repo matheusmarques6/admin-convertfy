@@ -79,7 +79,7 @@ export async function POST(
       .eq("task_id", id)
       .order("position", { ascending: false })
       .limit(1)
-      .single()
+      .maybeSingle()
 
     const nextPosition = (lastItem?.position || 0) + 1
 

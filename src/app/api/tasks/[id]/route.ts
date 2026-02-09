@@ -27,15 +27,16 @@ export async function GET(
       return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
     }
 
+    const adminClient = createAdminClient()
+
     // Fetch task with related data
-    const { data: task, error } = await supabase
+    const { data: task, error } = await adminClient
       .from("tasks")
       .select(`
         *,
         assignee:org_members(
           id,
           role,
-          job_title,
           profile:profiles(id, name, email, avatar_url)
         ),
         creator:profiles!tasks_created_by_fkey(id, name, email, avatar_url),
@@ -46,11 +47,12 @@ export async function GET(
       .single()
 
     if (error || !task) {
+      console.error("[Task] Fetch error:", error)
       return NextResponse.json({ error: "Tarefa não encontrada" }, { status: 404, headers: corsHeaders() })
     }
 
     // Fetch comments
-    const { data: comments } = await supabase
+    const { data: comments } = await adminClient
       .from("task_comments")
       .select(`
         *,
@@ -60,14 +62,14 @@ export async function GET(
       .order("created_at", { ascending: true })
 
     // Fetch checklists
-    const { data: checklists } = await supabase
+    const { data: checklists } = await adminClient
       .from("task_checklists")
       .select("*")
       .eq("task_id", id)
       .order("position", { ascending: true })
 
     // Fetch history
-    const { data: history } = await supabase
+    const { data: history } = await adminClient
       .from("task_history")
       .select(`
         *,
@@ -119,7 +121,7 @@ export async function PUT(
 
       // Set started_at when moving to in_progress
       if (body.status === "in_progress") {
-        const { data: currentTask } = await supabase
+        const { data: currentTask } = await adminClient
           .from("tasks")
           .select("started_at")
           .eq("id", id)

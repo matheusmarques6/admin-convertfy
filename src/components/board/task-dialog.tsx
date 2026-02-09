@@ -137,6 +137,7 @@ export function TaskDialog({
     watch,
     reset,
     formState: { errors },
+    trigger,
   } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -345,7 +346,15 @@ export function TaskDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="flex-1 overflow-hidden flex flex-col">
+        <form onSubmit={async (e) => {
+          e.preventDefault()
+          const valid = await trigger()
+          if (!valid) {
+            setActiveTab("details")
+            return
+          }
+          handleSubmit(onSubmit)()
+        }} className="flex-1 overflow-hidden flex flex-col">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 overflow-hidden flex flex-col">
             <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="details">Detalhes</TabsTrigger>
