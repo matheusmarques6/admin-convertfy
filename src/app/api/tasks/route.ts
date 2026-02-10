@@ -45,7 +45,8 @@ export async function GET(request: NextRequest) {
         ),
         creator:profiles!tasks_created_by_fkey(id, name, email, avatar_url),
         client:clients(id, name, company),
-        store:client_stores(id, store_name, platform)
+        store:client_stores(id, store_name, platform),
+        task_comments(count)
       `)
       .order("position", { ascending: true })
       .order("created_at", { ascending: false })
@@ -96,20 +97,16 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Erro ao buscar tarefas" }, { status: 500, headers: corsHeaders() })
     }
 
-    // Get comments count for each task
-    const tasksWithCounts = await Promise.all(
-      (tasks || []).map(async (task) => {
-        const { count } = await adminClient
-          .from("task_comments")
-          .select("*", { count: "exact", head: true })
-          .eq("task_id", task.id)
-
-        return {
-          ...task,
-          comments_count: count || 0,
-        }
-      })
-    )
+    // Extract comments_count from the joined count
+    const tasksWithCounts = (tasks || []).map((task) => {
+      const commentData = task.task_comments as unknown as Array<{ count: number }> | undefined
+      const commentsCount = commentData?.[0]?.count ?? 0
+      const { task_comments: _, ...rest } = task
+      return {
+        ...rest,
+        comments_count: commentsCount,
+      }
+    })
 
     return NextResponse.json({ tasks: tasksWithCounts }, { headers: corsHeaders() })
   } catch (error) {
@@ -150,15 +147,21 @@ export async function POST(request: NextRequest) {
 
     const nextPosition = (lastTask?.position || 0) + 1
 
+    // Sanitize UUID fields: empty strings → null to avoid FK violations
+    const sanitizeUuid = (val: unknown): string | null => {
+      if (typeof val === "string" && val.trim().length > 0) return val.trim()
+      return null
+    }
+
     const insertData = {
-      title: body.title,
-      description: body.description || null,
+      title: body.title.trim(),
+      description: body.description?.trim() || null,
       type: body.type || "general",
       priority: body.priority || "medium",
-      assignee_id: body.assignee_id || null,
+      assignee_id: sanitizeUuid(body.assignee_id),
       created_by: user.id,
-      client_id: body.client_id || null,
-      store_id: body.store_id || null,
+      client_id: sanitizeUuid(body.client_id),
+      store_id: sanitizeUuid(body.store_id),
       due_date: body.due_date || null,
       tags: body.tags || [],
       metadata: body.metadata || {},
