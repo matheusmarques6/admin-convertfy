@@ -56,7 +56,7 @@ export const TASK_STATUS_CONFIG: Record<
     color: "bg-emerald-500",
     calendarColor: "bg-emerald-100 text-emerald-700 border-emerald-200",
     icon: CheckCircle,
-    showInKanban: false,
+    showInKanban: true,
   },
   cancelled: {
     label: "Cancelado",
