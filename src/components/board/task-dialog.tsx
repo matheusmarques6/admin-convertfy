@@ -77,7 +77,8 @@ interface TaskWithRelations extends Omit<Task, "assignee" | "client" | "store" |
 interface TaskDialogProps {
   open: boolean
   onClose: () => void
-  onSuccess: () => void
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  onSuccess: (task?: any) => void
   task?: TaskWithRelations | null
   members: MemberWithProfile[]
   clients: ClientInfo[]
@@ -231,7 +232,7 @@ export function TaskDialog({
         description: result.message,
       })
 
-      onSuccess()
+      onSuccess(result.task)
     } catch (error) {
       toast({
         variant: "destructive",

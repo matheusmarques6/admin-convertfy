@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { TaskColumn } from "./task-column"
 import { TaskDialog } from "./task-dialog"
@@ -64,6 +64,12 @@ export function TaskBoard({
 }: TaskBoardProps) {
   const router = useRouter()
   const [tasks, setTasks] = useState<TaskWithRelations[]>(initialTasks)
+
+  // Sync props → state when parent updates (e.g. new task added, router.refresh())
+  useEffect(() => {
+    setTasks(initialTasks)
+  }, [initialTasks])
+
   const [internalDialogOpen, setInternalDialogOpen] = useState(false)
   const [internalEditingTask, setInternalEditingTask] = useState<TaskWithRelations | null>(null)
   const [isDragging, setIsDragging] = useState(false)
@@ -97,8 +103,15 @@ export function TaskBoard({
     }
   }, [isExternallyControlled, onExternalDialogClose])
 
-  const handleDialogSuccess = useCallback(() => {
+  const handleDialogSuccess = useCallback((updatedTask?: TaskWithRelations) => {
     handleDialogClose()
+
+    if (updatedTask) {
+      // Optimistically update the task in local state
+      setTasks((prev) => prev.map((t) => (t.id === updatedTask.id ? { ...t, ...updatedTask } : t)))
+    }
+
+    // Also refresh server data in the background
     router.refresh()
   }, [handleDialogClose, router])
 
