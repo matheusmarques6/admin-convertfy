@@ -37,7 +37,7 @@ export async function GET(
         assignee:org_members(
           id,
           role,
-          profile:profiles(id, name, email, avatar_url)
+          profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url)
         ),
         creator:profiles!tasks_created_by_fkey(id, name, email, avatar_url),
         client:clients(id, name, company, email),
@@ -155,7 +155,7 @@ export async function PUT(
         assignee:org_members(
           id,
           role,
-          profile:profiles(id, name, email, avatar_url)
+          profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url)
         ),
         creator:profiles!tasks_created_by_fkey(id, name, email, avatar_url),
         client:clients(id, name, company),

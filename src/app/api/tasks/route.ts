@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
         assignee:org_members(
           id,
           role,
-          profile:profiles(id, name, email, avatar_url)
+          profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url)
         ),
         creator:profiles!tasks_created_by_fkey(id, name, email, avatar_url),
         client:clients(id, name, company),
@@ -179,7 +179,7 @@ export async function POST(request: NextRequest) {
         assignee:org_members(
           id,
           role,
-          profile:profiles(id, name, email, avatar_url)
+          profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url)
         ),
         creator:profiles!tasks_created_by_fkey(id, name, email, avatar_url),
         client:clients(id, name, company),

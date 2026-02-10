@@ -36,7 +36,7 @@ export async function GET(
         assignee:org_members(
           id,
           role,
-          profile:profiles(id, name, email, avatar_url)
+          profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url)
         ),
         template:onboarding_templates(id, name, estimated_days)
       `)
@@ -55,7 +55,7 @@ export async function GET(
         assignee:org_members(
           id,
           role,
-          profile:profiles(id, name, email, avatar_url)
+          profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url)
         )
       `)
       .eq("onboarding_id", id)

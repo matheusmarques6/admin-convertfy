@@ -34,7 +34,7 @@ export async function GET(
         assignee:org_members(
           id,
           role,
-          profile:profiles(id, name, email, avatar_url)
+          profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url)
         )
       `)
       .eq("onboarding_id", id)
@@ -117,7 +117,7 @@ export async function PUT(
         assignee:org_members(
           id,
           role,
-          profile:profiles(id, name, email, avatar_url)
+          profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url)
         )
       `)
       .single()

@@ -17,7 +17,7 @@ async function getTasks() {
       assignee:org_members(
         id,
         role,
-        profile:profiles(id, name, email, avatar_url)
+        profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url)
       ),
       creator:profiles!tasks_created_by_fkey(id, name, email, avatar_url),
       client:clients(id, name, company),
@@ -58,7 +58,7 @@ async function getTeamMembers() {
     .select(`
       id,
       role,
-      profile:profiles(id, name, email, avatar_url)
+      profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url)
     `)
     .eq("org_id", currentMember.org_id)
     .eq("is_active", true)
@@ -137,7 +137,7 @@ async function getMeetings() {
         participant_type,
         is_organizer,
         response_status,
-        profile:profiles(id, name, email, avatar_url)
+        profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url)
       )
     `)
     .order("scheduled_at", { ascending: true })
