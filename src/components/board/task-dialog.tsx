@@ -36,6 +36,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { cn, getInitials } from "@/lib/utils"
 import { toast } from "@/lib/hooks/use-toast"
+import { TASK_TYPE_OPTIONS, TASK_PRIORITY_OPTIONS } from "@/lib/constants/board"
 import type { Task, TaskType, TaskPriority } from "@/types"
 
 interface UserProfile {
@@ -95,21 +96,8 @@ const schema = z.object({
 
 type FormData = z.infer<typeof schema>
 
-const typeOptions: { value: TaskType; label: string }[] = [
-  { value: "general", label: "Geral" },
-  { value: "onboarding", label: "Onboarding" },
-  { value: "campaign", label: "Campanha" },
-  { value: "request", label: "Solicitação" },
-  { value: "meeting", label: "Reunião" },
-  { value: "deadline", label: "Prazo/Entrega" },
-]
-
-const priorityOptions: { value: TaskPriority; label: string }[] = [
-  { value: "low", label: "Baixa" },
-  { value: "medium", label: "Média" },
-  { value: "high", label: "Alta" },
-  { value: "urgent", label: "Urgente" },
-]
+const typeOptions = TASK_TYPE_OPTIONS
+const priorityOptions = TASK_PRIORITY_OPTIONS
 
 export function TaskDialog({
   open,

@@ -3,6 +3,7 @@ import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { TaskBoardWithCalendar } from "@/components/board/task-board-with-calendar"
 import { Skeleton } from "@/components/ui/skeleton"
 import { PagePermissionWrapper } from "@/components/page-permission-wrapper"
+import { KANBAN_FETCH_STATUSES } from "@/lib/constants/board"
 
 export const dynamic = "force-dynamic"
 
@@ -22,7 +23,7 @@ async function getTasks() {
       client:clients(id, name, company),
       store:client_stores(id, store_name, platform)
     `)
-    .in("status", ["pending", "in_progress", "blocked", "review"])
+    .in("status", KANBAN_FETCH_STATUSES)
     .order("position", { ascending: true })
 
   if (error) {

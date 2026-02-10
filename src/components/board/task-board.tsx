@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { TaskColumn } from "./task-column"
 import { TaskDialog } from "./task-dialog"
 import { toast } from "@/lib/hooks/use-toast"
+import { KANBAN_COLUMNS, TASK_STATUS_CONFIG } from "@/lib/constants/board"
 import type { Task, TaskStatus } from "@/types"
 
 interface UserProfile {
@@ -50,12 +51,7 @@ interface TaskBoardProps {
   onExternalDialogClose?: () => void
 }
 
-const columns: { id: TaskStatus; title: string; color: string }[] = [
-  { id: "pending", title: "Pendente", color: "bg-slate-500" },
-  { id: "in_progress", title: "Em Andamento", color: "bg-blue-500" },
-  { id: "blocked", title: "Bloqueado", color: "bg-red-500" },
-  { id: "review", title: "Em Revisão", color: "bg-amber-500" },
-]
+const columns = KANBAN_COLUMNS
 
 export function TaskBoard({
   tasks: initialTasks,
@@ -158,7 +154,7 @@ export function TaskBoard({
 
       toast({
         title: "Tarefa movida",
-        description: `Status alterado para ${columns.find((c) => c.id === targetStatus)?.title}`,
+        description: `Status alterado para ${TASK_STATUS_CONFIG[targetStatus].label}`,
       })
     } catch {
       // Revert on error

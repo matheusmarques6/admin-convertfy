@@ -23,6 +23,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { cn, getInitials } from "@/lib/utils"
+import { TASK_PRIORITY_CONFIG, TASK_TYPE_CONFIG, TASK_STATUS_OPTIONS } from "@/lib/constants/board"
 import type { Task, TaskStatus } from "@/types"
 
 interface UserProfile {
@@ -68,29 +69,9 @@ interface TaskCardProps {
   onDelete: (taskId: string) => void
 }
 
-const priorityConfig = {
-  low: { label: "Baixa", color: "bg-slate-500" },
-  medium: { label: "Média", color: "bg-blue-500" },
-  high: { label: "Alta", color: "bg-orange-500" },
-  urgent: { label: "Urgente", color: "bg-red-500" },
-}
-
-const typeConfig = {
-  onboarding: { label: "Onboarding", variant: "secondary" as const },
-  campaign: { label: "Campanha", variant: "default" as const },
-  request: { label: "Solicitação", variant: "outline" as const },
-  general: { label: "Geral", variant: "secondary" as const },
-  meeting: { label: "Reunião", variant: "warning" as const },
-  deadline: { label: "Prazo", variant: "destructive" as const },
-}
-
-const statusOptions: { value: TaskStatus; label: string }[] = [
-  { value: "pending", label: "Pendente" },
-  { value: "in_progress", label: "Em Andamento" },
-  { value: "blocked", label: "Bloqueado" },
-  { value: "review", label: "Em Revisão" },
-  { value: "completed", label: "Concluído" },
-]
+const priorityConfig = TASK_PRIORITY_CONFIG
+const typeConfig = TASK_TYPE_CONFIG
+const statusOptions = TASK_STATUS_OPTIONS
 
 export function TaskCard({
   task,
