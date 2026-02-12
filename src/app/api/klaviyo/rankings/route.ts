@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
         ),
         client_stores!inner (
           id,
-          name,
+          store_name,
           clients (
             id,
             name
@@ -101,7 +101,7 @@ export async function GET(request: NextRequest) {
         send_time: campaign.send_time,
         store: {
           id: store?.id,
-          name: store?.name,
+          name: store?.store_name,
         },
         client: {
           id: client?.id,

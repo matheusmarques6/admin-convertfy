@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
         ),
         client_stores (
           id,
-          name,
+          store_name,
           clients (
             id,
             name
@@ -92,7 +92,7 @@ export async function GET(request: NextRequest) {
         },
         store: {
           id: store?.id,
-          name: store?.name,
+          name: store?.store_name,
         },
         client: {
           id: client?.id,

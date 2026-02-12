@@ -382,7 +382,7 @@ export class KlaviyoSyncService {
         .from("client_stores")
         .select(`
           id,
-          name,
+          store_name,
           klaviyo_private_key,
           client_id,
           clients (name)
