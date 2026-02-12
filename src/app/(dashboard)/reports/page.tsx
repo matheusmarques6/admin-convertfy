@@ -1,4 +1,5 @@
-import { Plus, FileText, Download, Eye, Calendar } from "lucide-react"
+import Link from "next/link"
+import { Plus, FileText, Download, Eye, Calendar, Clock } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -35,6 +36,34 @@ async function getReports(): Promise<ReportWithRelations[]> {
   return reports || []
 }
 
+async function getPendingReportsCount(): Promise<number> {
+  const supabase = await createClient()
+
+  // Get all client stores with Klaviyo configured
+  const { data: stores } = await supabase
+    .from("client_stores")
+    .select("id, client_id")
+    .or("klaviyo_private_key.neq.,klaviyo_api_key.neq.")
+
+  if (!stores || stores.length === 0) return 0
+
+  // Get store IDs that have reports in the last 30 days
+  const thirtyDaysAgo = new Date()
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+
+  const { data: recentReports } = await supabase
+    .from("client_reports")
+    .select("store_id")
+    .gte("created_at", thirtyDaysAgo.toISOString())
+
+  const storesWithReports = new Set(recentReports?.map(r => r.store_id) || [])
+
+  // Count stores without recent reports
+  const pendingCount = stores.filter(s => !storesWithReports.has(s.id)).length
+
+  return pendingCount
+}
+
 const months: Record<string, string> = {
   "01": "Janeiro",
   "02": "Fevereiro",
@@ -56,7 +85,10 @@ function formatMonth(month: string): string {
 }
 
 export default async function ReportsPage() {
-  const reports = await getReports()
+  const [reports, pendingCount] = await Promise.all([
+    getReports(),
+    getPendingReportsCount()
+  ])
 
   // Group by month
   const groupedReports = reports.reduce((acc, report) => {
@@ -80,9 +112,11 @@ export default async function ReportsPage() {
             Gerencie os relatórios mensais dos clientes
           </p>
         </div>
-        <Button>
-          <Plus className="mr-2 h-4 w-4" />
-          Novo Relatório
+        <Button asChild>
+          <Link href="/reports/new">
+            <Plus className="mr-2 h-4 w-4" />
+            Novo Relatório
+          </Link>
         </Button>
       </div>
 
@@ -115,11 +149,11 @@ export default async function ReportsPage() {
         <Card>
           <CardContent className="flex items-center gap-4 pt-6">
             <div className="rounded-lg p-3 bg-amber-500/10">
-              <FileText className="h-5 w-5 text-amber-500" />
+              <Clock className="h-5 w-5 text-amber-500" />
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Pendentes</p>
-              <p className="text-2xl font-bold">3</p>
+              <p className="text-2xl font-bold">{pendingCount}</p>
             </div>
           </CardContent>
         </Card>
@@ -136,9 +170,11 @@ export default async function ReportsPage() {
             <p className="text-muted-foreground mt-1">
               Crie seu primeiro relatório
             </p>
-            <Button className="mt-4">
-              <Plus className="mr-2 h-4 w-4" />
-              Criar Relatório
+            <Button className="mt-4" asChild>
+              <Link href="/reports/new">
+                <Plus className="mr-2 h-4 w-4" />
+                Criar Relatório
+              </Link>
             </Button>
           </CardContent>
         </Card>
@@ -180,9 +216,11 @@ export default async function ReportsPage() {
                       </div>
 
                       <div className="flex gap-2">
-                        <Button variant="outline" size="sm" className="flex-1">
-                          <Eye className="mr-2 h-3 w-3" />
-                          Ver
+                        <Button variant="outline" size="sm" className="flex-1" asChild>
+                          <Link href={`/reports/${report.id}`}>
+                            <Eye className="mr-2 h-3 w-3" />
+                            Ver
+                          </Link>
                         </Button>
                         {report.document_url && (
                           <Button variant="outline" size="sm" asChild>
