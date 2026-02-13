@@ -20,6 +20,8 @@ import {
   CheckCircle,
   Clock,
   X,
+  AlertCircle,
+  Zap,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -65,12 +67,22 @@ interface ClientOption {
   name: string
 }
 
+interface PendingStore {
+  id: string
+  store_name: string
+  client_id: string
+  client_name: string
+  has_klaviyo: boolean
+  has_shopify: boolean
+}
+
 interface ReportsListProps {
   initialReports: ReportWithRelations[]
   clients: ClientOption[]
   totalCount: number
   thisMonthCount: number
   pendingCount: number
+  pendingStores: PendingStore[]
 }
 
 const months: Record<string, string> = {
@@ -184,6 +196,7 @@ export function ReportsList({
   totalCount,
   thisMonthCount,
   pendingCount,
+  pendingStores,
 }: ReportsListProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -378,6 +391,58 @@ export function ReportsList({
           </CardContent>
         </Card>
       </div>
+
+      {/* Pending Reports Section */}
+      {pendingStores.length > 0 && (
+        <Card className="border-amber-500/50 bg-amber-500/5">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-amber-500" />
+              <CardTitle className="text-base">Relatórios Pendentes</CardTitle>
+            </div>
+            <CardDescription>
+              Lojas que não tiveram relatório gerado nos últimos 30 dias
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+              {pendingStores.map((store) => (
+                <div
+                  key={store.id}
+                  className="flex items-center justify-between gap-4 p-4 rounded-lg border bg-background"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium truncate">{store.store_name}</p>
+                    <p className="text-sm text-muted-foreground truncate">
+                      {store.client_name}
+                    </p>
+                    <div className="flex items-center gap-2 mt-1">
+                      {store.has_klaviyo && (
+                        <Badge variant="outline" className="text-xs bg-purple-500/10 text-purple-600 border-purple-500/30">
+                          Klaviyo
+                        </Badge>
+                      )}
+                      {store.has_shopify && (
+                        <Badge variant="outline" className="text-xs bg-green-500/10 text-green-600 border-green-500/30">
+                          Shopify
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                  <Button size="sm" asChild>
+                    <Link
+                      href={`/reports/new?client_id=${store.client_id}&store_id=${store.id}`}
+                    >
+                      <Zap className="mr-1 h-3 w-3" />
+                      Gerar
+                    </Link>
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Filters */}
       <Card>

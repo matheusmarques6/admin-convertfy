@@ -108,11 +108,16 @@ export default function NewReportPage() {
   const [customEndDate, setCustomEndDate] = useState<string>("")
   const [notes, setNotes] = useState<string>("")
 
-  // Check URL params for pre-selected client
+  // Check URL params for pre-selected client and store
   useEffect(() => {
-    const clientId = searchParams.get("clientId")
+    const clientId = searchParams.get("client_id") || searchParams.get("clientId")
+    const storeId = searchParams.get("store_id") || searchParams.get("storeId")
+
     if (clientId) {
       setSelectedClient(clientId)
+    }
+    if (storeId) {
+      setSelectedStore(storeId)
     }
   }, [searchParams])
 
@@ -190,8 +195,9 @@ export default function NewReportPage() {
       const clientStores = stores.filter(s => s.client_id === selectedClient)
       setFilteredStores(clientStores)
 
-      // Auto-select first store if available
-      if (clientStores.length > 0 && !selectedStore) {
+      // Auto-select first store if available (only if no store pre-selected via URL)
+      const preSelectedStoreId = searchParams.get("store_id") || searchParams.get("storeId")
+      if (clientStores.length > 0 && !selectedStore && !preSelectedStoreId) {
         setSelectedStore(clientStores[0].id)
       } else if (clientStores.length === 0) {
         setSelectedStore("")
@@ -200,7 +206,7 @@ export default function NewReportPage() {
       setFilteredStores([])
       setSelectedStore("")
     }
-  }, [selectedClient, stores, selectedStore])
+  }, [selectedClient, stores, selectedStore, searchParams])
 
   // Get selected store details
   const selectedStoreDetails = stores.find(s => s.id === selectedStore)
