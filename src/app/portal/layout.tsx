@@ -13,6 +13,7 @@ import {
   Menu,
   User,
   Bell,
+  ClipboardCheck,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -39,6 +40,7 @@ interface PortalUser {
 
 const navigation = [
   { name: "Dashboard", href: "/portal/dashboard", icon: LayoutDashboard },
+  { name: "Onboarding", href: "/portal/onboarding", icon: ClipboardCheck },
   { name: "Lojas", href: "/portal/stores", icon: Store },
   { name: "Faturas", href: "/portal/invoices", icon: FileText },
   { name: "Campanhas", href: "/portal/campaigns", icon: Calendar },
