@@ -1,6 +1,17 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
-import type { User, Client, Pipeline, Deal, Automation } from "@/types"
+import type {
+  User,
+  Client,
+  Pipeline,
+  PipelineStage,
+  Deal,
+  DealWithRelations,
+  PipelineMember,
+  PipelineMemberRole,
+  PipelineImportRule,
+  Automation,
+} from "@/types"
 
 // Auth Store
 interface AuthState {
@@ -75,27 +86,75 @@ export const useClientsStore = create<ClientsState>((set) => ({
 
 // Pipeline Store
 interface PipelineState {
+  // State
   pipelines: Pipeline[]
   selectedPipeline: Pipeline | null
-  deals: Deal[]
+  stages: PipelineStage[]
+  deals: DealWithRelations[]
+  members: PipelineMember[]
+  importRules: PipelineImportRule[]
+  currentUserRole: PipelineMemberRole | null
   isLoading: boolean
+
+  // Pipelines
   setPipelines: (pipelines: Pipeline[]) => void
   setSelectedPipeline: (pipeline: Pipeline | null) => void
-  setDeals: (deals: Deal[]) => void
-  addDeal: (deal: Deal) => void
+  setStages: (stages: PipelineStage[]) => void
+  addStage: (stage: PipelineStage) => void
+  updateStage: (id: string, updates: Partial<PipelineStage>) => void
+  removeStage: (id: string) => void
+  reorderStages: (stages: PipelineStage[]) => void
+
+  // Deals
+  setDeals: (deals: DealWithRelations[]) => void
+  addDeal: (deal: DealWithRelations) => void
   updateDeal: (id: string, updates: Partial<Deal>) => void
   moveDeal: (dealId: string, stageId: string) => void
   removeDeal: (id: string) => void
+
+  // Members
+  setMembers: (members: PipelineMember[]) => void
+  addMember: (member: PipelineMember) => void
+  updateMember: (id: string, updates: Partial<PipelineMember>) => void
+  removeMember: (id: string) => void
+  setCurrentUserRole: (role: PipelineMemberRole | null) => void
+
+  // Import Rules
+  setImportRules: (rules: PipelineImportRule[]) => void
+  addImportRule: (rule: PipelineImportRule) => void
+  updateImportRule: (id: string, updates: Partial<PipelineImportRule>) => void
+  removeImportRule: (id: string) => void
+  toggleImportRule: (id: string) => void
+
   setLoading: (loading: boolean) => void
 }
 
 export const usePipelineStore = create<PipelineState>((set) => ({
+  // State
   pipelines: [],
   selectedPipeline: null,
+  stages: [],
   deals: [],
+  members: [],
+  importRules: [],
+  currentUserRole: null,
   isLoading: false,
+
+  // Pipelines
   setPipelines: (pipelines) => set({ pipelines }),
   setSelectedPipeline: (selectedPipeline) => set({ selectedPipeline }),
+  setStages: (stages) => set({ stages }),
+  addStage: (stage) =>
+    set((state) => ({ stages: [...state.stages, stage] })),
+  updateStage: (id, updates) =>
+    set((state) => ({
+      stages: state.stages.map((s) => (s.id === id ? { ...s, ...updates } : s)),
+    })),
+  removeStage: (id) =>
+    set((state) => ({ stages: state.stages.filter((s) => s.id !== id) })),
+  reorderStages: (stages) => set({ stages }),
+
+  // Deals
   setDeals: (deals) => set({ deals }),
   addDeal: (deal) => set((state) => ({ deals: [...state.deals, deal] })),
   updateDeal: (id, updates) =>
@@ -110,6 +169,36 @@ export const usePipelineStore = create<PipelineState>((set) => ({
     })),
   removeDeal: (id) =>
     set((state) => ({ deals: state.deals.filter((d) => d.id !== id) })),
+
+  // Members
+  setMembers: (members) => set({ members }),
+  addMember: (member) =>
+    set((state) => ({ members: [...state.members, member] })),
+  updateMember: (id, updates) =>
+    set((state) => ({
+      members: state.members.map((m) => (m.id === id ? { ...m, ...updates } : m)),
+    })),
+  removeMember: (id) =>
+    set((state) => ({ members: state.members.filter((m) => m.id !== id) })),
+  setCurrentUserRole: (currentUserRole) => set({ currentUserRole }),
+
+  // Import Rules
+  setImportRules: (importRules) => set({ importRules }),
+  addImportRule: (rule) =>
+    set((state) => ({ importRules: [...state.importRules, rule] })),
+  updateImportRule: (id, updates) =>
+    set((state) => ({
+      importRules: state.importRules.map((r) => (r.id === id ? { ...r, ...updates } : r)),
+    })),
+  removeImportRule: (id) =>
+    set((state) => ({ importRules: state.importRules.filter((r) => r.id !== id) })),
+  toggleImportRule: (id) =>
+    set((state) => ({
+      importRules: state.importRules.map((r) =>
+        r.id === id ? { ...r, is_active: !r.is_active } : r
+      ),
+    })),
+
   setLoading: (isLoading) => set({ isLoading }),
 }))
 
