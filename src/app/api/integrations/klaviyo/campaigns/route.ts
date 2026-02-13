@@ -149,7 +149,26 @@ async function getPlacedOrderMetricId(apiKey: string): Promise<string | null> {
   return placedOrderMetric?.id || null
 }
 
+// Types for campaign response
+interface KlaviyoCampaignListResponse {
+  data: Array<{
+    id: string
+    attributes: {
+      name: string
+      status: string
+      send_time: string | null
+      created_at: string
+      archived: boolean
+      channel: string
+      send_options?: { subject?: string }
+      message?: { subject?: string }
+    }
+  }>
+  links?: { next?: string }
+}
+
 // Get all campaigns with details
+// Klaviyo requires channel filter and does NOT support page[size] for campaigns
 async function getAllCampaigns(apiKey: string) {
   const allCampaigns: Array<{
     id: string
@@ -162,47 +181,31 @@ async function getAllCampaigns(apiKey: string) {
     subject: string | null
   }> = []
 
-  let nextPage: string | null = "/campaigns?page[size]=100"
+  // Fetch email and SMS campaigns separately (channel filter is required)
+  for (const channel of ['email', 'sms']) {
+    let nextPage: string | null = `/campaigns?filter=equals(messages.channel,'${channel}')`
 
-  while (nextPage) {
-    const response = await klaviyoRequest<{
-      data: Array<{
-        id: string
-        attributes: {
-          name: string
-          status: string
-          send_time: string | null
-          created_at: string
-          archived: boolean
-          channel: string
-          send_options?: {
-            subject?: string
-          }
-          message?: {
-            subject?: string
-          }
-        }
-      }>
-      links?: { next?: string }
-    }>(apiKey, nextPage)
+    while (nextPage) {
+      const response: KlaviyoCampaignListResponse | null = await klaviyoRequest<KlaviyoCampaignListResponse>(apiKey, nextPage)
 
-    if (!response?.data) break
+      if (!response?.data) break
 
-    for (const c of response.data) {
-      allCampaigns.push({
-        id: c.id,
-        name: c.attributes.name,
-        status: c.attributes.status,
-        sendTime: c.attributes.send_time,
-        createdAt: c.attributes.created_at,
-        archived: c.attributes.archived,
-        channel: c.attributes.channel || 'email',
-        subject: c.attributes.send_options?.subject || c.attributes.message?.subject || null
-      })
+      for (const c of response.data) {
+        allCampaigns.push({
+          id: c.id,
+          name: c.attributes.name,
+          status: c.attributes.status,
+          sendTime: c.attributes.send_time,
+          createdAt: c.attributes.created_at,
+          archived: c.attributes.archived,
+          channel: c.attributes.channel || channel,
+          subject: c.attributes.send_options?.subject || c.attributes.message?.subject || null
+        })
+      }
+
+      nextPage = response.links?.next ? response.links.next.replace(KLAVIYO_API_URL, "") : null
+      if (nextPage) await sleep(500)
     }
-
-    nextPage = response.links?.next ? response.links.next.replace(KLAVIYO_API_URL, "") : null
-    if (nextPage) await sleep(500)
   }
 
   return allCampaigns
@@ -273,6 +276,7 @@ async function getCampaignMetrics(
             conversion_value?: number
             conversions?: number
             conversion_uniques?: number
+            conversion_rate?: number
             recipients?: number
             delivery_rate?: number
             bounce_rate?: number

@@ -160,22 +160,24 @@ async function getAllFlows(apiKey: string) {
     archived: boolean
   }> = []
 
-  let nextPage: string | null = "/flows?page[size]=100"
+  interface FlowListResponse {
+    data: Array<{
+      id: string
+      attributes: {
+        name: string
+        status: string
+        trigger_type: string
+        created: string
+        archived: boolean
+      }
+    }>
+    links?: { next?: string }
+  }
+
+  let nextPage: string | null = "/flows/"
 
   while (nextPage) {
-    const response = await klaviyoRequest<{
-      data: Array<{
-        id: string
-        attributes: {
-          name: string
-          status: string
-          trigger_type: string
-          created: string
-          archived: boolean
-        }
-      }>
-      links?: { next?: string }
-    }>(apiKey, nextPage)
+    const response: FlowListResponse | null = await klaviyoRequest<FlowListResponse>(apiKey, nextPage)
 
     if (!response?.data) break
 
@@ -262,6 +264,7 @@ async function getFlowMetrics(
             conversion_value?: number
             conversions?: number
             conversion_uniques?: number
+            conversion_rate?: number
             recipients?: number
             delivery_rate?: number
             bounce_rate?: number
