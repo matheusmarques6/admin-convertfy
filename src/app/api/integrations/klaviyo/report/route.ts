@@ -683,6 +683,7 @@ async function getSegments(apiKey: string) {
 }
 
 // Get ALL campaigns with pagination
+// Klaviyo requires a channel filter (messages.channel) and does NOT support page[size]
 async function getCampaigns(apiKey: string) {
   const allCampaigns: Array<{
     id: string
@@ -693,34 +694,36 @@ async function getCampaigns(apiKey: string) {
     archived: boolean
   }> = []
 
-  // Get all campaigns (not filtered by channel to include SMS too)
-  let nextPage: string | null = '/campaigns?page[size]=100'
+  // Fetch email and SMS campaigns separately (channel filter is required by Klaviyo API)
+  for (const channel of ['email', 'sms']) {
+    let nextPage: string | null = `/campaigns?filter=equals(messages.channel,'${channel}')`
 
-  while (nextPage) {
-    const response: CampaignsResponse | null = await klaviyoRequest<CampaignsResponse>(apiKey, nextPage)
+    while (nextPage) {
+      const response: CampaignsResponse | null = await klaviyoRequest<CampaignsResponse>(apiKey, nextPage)
 
-    if (!response?.data) break
+      if (!response?.data) break
 
-    for (const c of response.data) {
-      const status = c.attributes.status
-      const sendTime = c.attributes.send_time
-      console.log(`[Klaviyo] Campaign: "${c.attributes.name}" | status: ${status} | sendTime: ${sendTime || 'null'}`)
+      for (const c of response.data) {
+        const status = c.attributes.status
+        const sendTime = c.attributes.send_time
+        console.log(`[Klaviyo] Campaign: "${c.attributes.name}" | channel: ${channel} | status: ${status} | sendTime: ${sendTime || 'null'}`)
 
-      allCampaigns.push({
-        id: c.id,
-        name: c.attributes.name,
-        status,
-        sendTime,
-        createdAt: c.attributes.created_at,
-        archived: c.attributes.archived
-      })
+        allCampaigns.push({
+          id: c.id,
+          name: c.attributes.name,
+          status,
+          sendTime,
+          createdAt: c.attributes.created_at,
+          archived: c.attributes.archived
+        })
+      }
+
+      // Get next page URL if exists
+      nextPage = response.links?.next ? response.links.next.replace(KLAVIYO_API_URL, "") : null
+
+      // Rate limit between pages
+      if (nextPage) await sleep(300)
     }
-
-    // Get next page URL if exists
-    nextPage = response.links?.next ? response.links.next.replace(KLAVIYO_API_URL, "") : null
-
-    // Rate limit between pages
-    if (nextPage) await sleep(300)
   }
 
   const sentCount = allCampaigns.filter(c => c.status === 'sent').length

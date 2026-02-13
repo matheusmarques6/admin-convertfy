@@ -146,9 +146,11 @@ class KlaviyoMetricsClient {
   }
 
   /**
-   * Lista todas as campanhas com paginação
+   * Lista campanhas de um canal com paginação
+   * Klaviyo requires channel filter and does NOT support page[size]
    */
   async getCampaigns(
+    channel: "email" | "sms",
     status?: string,
     cursor?: string
   ): Promise<{
@@ -156,19 +158,19 @@ class KlaviyoMetricsClient {
     nextCursor: string | null
   }> {
     let url = "/campaigns/"
-    const params: string[] = []
+    const filterParts: string[] = [`equals(messages.channel,'${channel}')`]
 
     if (status) {
-      params.push(`filter=equals(status,"${status}")`)
+      filterParts.push(`equals(status,"${status}")`)
     }
+
+    const params: string[] = [`filter=${filterParts.join(",")}`]
+
     if (cursor) {
       params.push(`page[cursor]=${cursor}`)
     }
-    params.push("page[size]=50")
 
-    if (params.length > 0) {
-      url += `?${params.join("&")}`
-    }
+    url += `?${params.join("&")}`
 
     const response = await this.request<{
       data: KlaviyoCampaignRaw[]
@@ -190,21 +192,26 @@ class KlaviyoMetricsClient {
 
   /**
    * Lista todas as campanhas (com paginação automática)
+   * Fetches both email and SMS campaigns
    */
   async getAllCampaigns(status?: string): Promise<KlaviyoCampaignRaw[]> {
     const allCampaigns: KlaviyoCampaignRaw[] = []
-    let cursor: string | null = null
 
-    do {
-      const { campaigns, nextCursor } = await this.getCampaigns(status, cursor || undefined)
-      allCampaigns.push(...campaigns)
-      cursor = nextCursor
+    // Fetch both email and SMS campaigns (channel filter is required by Klaviyo)
+    for (const channel of ["email", "sms"] as const) {
+      let cursor: string | null = null
 
-      // Rate limiting
-      if (cursor) {
-        await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_DELAY_MS))
-      }
-    } while (cursor)
+      do {
+        const { campaigns, nextCursor } = await this.getCampaigns(channel, status, cursor || undefined)
+        allCampaigns.push(...campaigns)
+        cursor = nextCursor
+
+        // Rate limiting
+        if (cursor) {
+          await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_DELAY_MS))
+        }
+      } while (cursor)
+    }
 
     return allCampaigns
   }
