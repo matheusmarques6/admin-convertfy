@@ -26,7 +26,7 @@ export class KlaviyoService {
         "Content-Type": "application/json",
         Accept: "application/json",
         Authorization: `Klaviyo-API-Key ${this.apiKey}`,
-        revision: "2024-02-15",
+        revision: "2024-10-15",
         ...options.headers,
       },
     })
