@@ -34,10 +34,11 @@ interface ClientOption {
 }
 
 const dealSchema = z.object({
-  title: z.string().min(2, "Título deve ter pelo menos 2 caracteres"),
+  title: z.string().min(2, "Titulo deve ter pelo menos 2 caracteres"),
   value: z.number().min(0, "Valor deve ser positivo"),
   probability: z.number().min(0).max(100),
   client_id: z.string().optional(),
+  expected_close_date: z.string().optional(),
   notes: z.string().optional(),
 })
 
@@ -93,6 +94,7 @@ export function DealDialog({
           value: deal.value,
           probability: deal.probability,
           client_id: deal.client_id || undefined,
+          expected_close_date: deal.expected_close_date || "",
           notes: deal.notes || "",
         })
         setSelectedStageId(deal.stage_id)
@@ -102,6 +104,7 @@ export function DealDialog({
           value: 0,
           probability: 50,
           client_id: undefined,
+          expected_close_date: "",
           notes: "",
         })
         setSelectedStageId(stageId || "")
@@ -159,6 +162,7 @@ export function DealDialog({
         value: data.value,
         probability: data.probability,
         client_id: data.client_id || null,
+        expected_close_date: data.expected_close_date || null,
         notes: data.notes || null,
         pipeline_id: pipelineId,
         stage_id: selectedStageId,
@@ -305,6 +309,17 @@ export function DealDialog({
                 disabled={isLoading}
               />
             </div>
+          </div>
+
+          {/* Expected Close Date */}
+          <div className="space-y-2">
+            <Label htmlFor="expected_close_date">Data prevista de fechamento</Label>
+            <Input
+              id="expected_close_date"
+              type="date"
+              {...register("expected_close_date")}
+              disabled={isLoading}
+            />
           </div>
 
           {/* Notes */}
