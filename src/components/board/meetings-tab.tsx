@@ -30,6 +30,7 @@ import {
 import { MeetingDialog } from "./meeting-dialog"
 import { toast } from "@/lib/hooks/use-toast"
 import { cn } from "@/lib/utils"
+import { MEETING_STATUS_CONFIG } from "@/lib/constants/board"
 import type { Meeting, MeetingStatus, MeetingParticipant } from "@/types"
 
 interface UserProfile {
@@ -66,12 +67,7 @@ interface MeetingsTabProps {
   members?: ParticipantOption[]
 }
 
-const statusConfig: Record<MeetingStatus, { label: string; variant: "default" | "secondary" | "outline" | "destructive"; icon: React.ElementType }> = {
-  scheduled: { label: "Agendada", variant: "default", icon: Clock },
-  completed: { label: "Realizada", variant: "secondary", icon: CheckCircle },
-  cancelled: { label: "Cancelada", variant: "outline", icon: XCircle },
-  no_show: { label: "Não Compareceu", variant: "destructive", icon: AlertCircle },
-}
+const statusConfig = MEETING_STATUS_CONFIG
 
 function formatMeetingDate(date: string) {
   const d = new Date(date)
@@ -152,7 +148,7 @@ export function MeetingsTab({ meetings, clients, members = [] }: MeetingsTabProp
   return (
     <>
       <div className="h-full overflow-y-auto">
-        <div className="max-w-4xl mx-auto space-y-6 pb-6">
+        <div className="space-y-6 pb-6">
           {/* Header com botão de nova reunião */}
           <div className="flex items-center justify-between">
             <div>

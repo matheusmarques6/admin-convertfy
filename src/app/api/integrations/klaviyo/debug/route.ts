@@ -112,7 +112,7 @@ export async function GET(request: NextRequest) {
                 type: "metric-aggregate",
                 attributes: {
                   metric_id: placedOrderMetric.id,
-                  measurements: ["sum_value", "count", "unique"],
+                  measurements: ["value", "count", "unique"],
                   filter: [
                     `greater-or-equal(datetime,${startDate.toISOString().split('.')[0]})`,
                     `less-than(datetime,${now.toISOString().split('.')[0]})`,

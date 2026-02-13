@@ -118,7 +118,7 @@ export async function GET(request: NextRequest) {
         *,
         client_stores (
           id,
-          name,
+          store_name,
           clients (name)
         )
       `)
@@ -138,7 +138,7 @@ export async function GET(request: NextRequest) {
       .from("client_stores")
       .select(`
         id,
-        name,
+        store_name,
         klaviyo_private_key,
         clients (name)
       `)
@@ -164,15 +164,15 @@ export async function GET(request: NextRequest) {
       configs: configs?.map((c) => ({
         ...c,
         store_name: Array.isArray(c.client_stores)
-          ? c.client_stores[0]?.name
-          : c.client_stores?.name,
+          ? c.client_stores[0]?.store_name
+          : c.client_stores?.store_name,
       })),
       stores: stores?.map((s) => {
         const clients = s.clients as { name: string }[] | { name: string } | null
         const clientName = Array.isArray(clients) ? clients[0]?.name : clients?.name
         return {
           id: s.id,
-          name: s.name,
+          name: s.store_name,
           client_name: clientName,
           has_klaviyo: !!s.klaviyo_private_key,
           campaign_count: countByStore.get(s.id) || 0,

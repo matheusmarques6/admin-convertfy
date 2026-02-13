@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
       method: "GET",
       headers: {
         "Authorization": `Klaviyo-API-Key ${api_key}`,
-        "revision": "2024-02-15",
+        "revision": "2024-10-15",
         "Accept": "application/json",
       },
     })

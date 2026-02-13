@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Plus, LayoutGrid, Calendar, Video } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -70,6 +70,12 @@ export function TaskBoardWithCalendar({
   const [viewMode, setViewMode] = useState<ViewMode>("kanban")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingTask, setEditingTask] = useState<TaskWithRelations | null>(null)
+  const [localTasks, setLocalTasks] = useState<TaskWithRelations[]>(tasks)
+
+  // Sync server props → local state (for router.refresh() or initial load changes)
+  useEffect(() => {
+    setLocalTasks(tasks)
+  }, [tasks])
 
   const handleTaskClick = useCallback((task: TaskWithRelations) => {
     setEditingTask(task)
@@ -86,14 +92,28 @@ export function TaskBoardWithCalendar({
     setEditingTask(null)
   }, [])
 
-  const handleDialogSuccess = useCallback(() => {
+  const handleDialogSuccess = useCallback((newTask?: TaskWithRelations) => {
+    const wasEditing = !!editingTask
     handleDialogClose()
+
+    if (newTask) {
+      setLocalTasks((prev) => {
+        if (wasEditing) {
+          // Update existing task in state
+          return prev.map((t) => (t.id === newTask.id ? { ...t, ...newTask } : t))
+        }
+        // Add new task to state
+        return [newTask, ...prev]
+      })
+    }
+
+    // Also refresh server data in the background
     router.refresh()
-  }, [handleDialogClose, router])
+  }, [handleDialogClose, editingTask, router])
 
   // Count upcoming items
   const today = new Date()
-  const upcomingTasks = tasks.filter(t => t.due_date && new Date(t.due_date) >= today).length
+  const upcomingTasks = localTasks.filter(t => t.due_date && new Date(t.due_date) >= today).length
   const upcomingMeetings = meetings.filter(m => m.status === "scheduled" && new Date(m.scheduled_at) >= today).length
 
   const getSubtitle = () => {
@@ -145,7 +165,7 @@ export function TaskBoardWithCalendar({
       <div className="flex-1 overflow-hidden">
         {viewMode === "kanban" && (
           <TaskBoard
-            tasks={tasks}
+            tasks={localTasks}
             members={members}
             clients={clients}
             stores={stores}
@@ -170,7 +190,7 @@ export function TaskBoardWithCalendar({
         )}
         {viewMode === "calendar" && (
           <BoardCalendarView
-            tasks={tasks}
+            tasks={localTasks}
             meetings={meetings}
             onTaskClick={handleTaskClick}
           />

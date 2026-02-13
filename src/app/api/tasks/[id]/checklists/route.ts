@@ -27,7 +27,9 @@ export async function GET(
       return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
     }
 
-    const { data: checklists, error } = await supabase
+    const adminClient = createAdminClient()
+
+    const { data: checklists, error } = await adminClient
       .from("task_checklists")
       .select("*")
       .eq("task_id", id)
@@ -68,18 +70,18 @@ export async function POST(
       )
     }
 
+    const adminClient = createAdminClient()
+
     // Get next position
-    const { data: lastItem } = await supabase
+    const { data: lastItem } = await adminClient
       .from("task_checklists")
       .select("position")
       .eq("task_id", id)
       .order("position", { ascending: false })
       .limit(1)
-      .single()
+      .maybeSingle()
 
     const nextPosition = (lastItem?.position || 0) + 1
-
-    const adminClient = createAdminClient()
 
     const { data: checklist, error: insertError } = await adminClient
       .from("task_checklists")

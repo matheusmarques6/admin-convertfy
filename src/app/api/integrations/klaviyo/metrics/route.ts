@@ -125,12 +125,17 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch data in parallel
-    const [lists, flows, campaigns, metrics] = await Promise.all([
-      klaviyoRequest<KlaviyoListResponse>(apiKey, "/lists/").catch(() => ({ data: [] })),
+    // Note: campaigns requires channel filter, lists needs additional-fields for profile_count
+    const [lists, flows, emailCampaigns, smsCampaigns, metrics] = await Promise.all([
+      klaviyoRequest<KlaviyoListResponse>(apiKey, "/lists/?additional-fields[list]=profile_count").catch(() => ({ data: [] })),
       klaviyoRequest<KlaviyoFlowResponse>(apiKey, "/flows/").catch(() => ({ data: [] })),
-      klaviyoRequest<KlaviyoCampaignResponse>(apiKey, "/campaigns/").catch(() => ({ data: [] })),
+      klaviyoRequest<KlaviyoCampaignResponse>(apiKey, "/campaigns/?filter=equals(messages.channel,'email')").catch(() => ({ data: [] })),
+      klaviyoRequest<KlaviyoCampaignResponse>(apiKey, "/campaigns/?filter=equals(messages.channel,'sms')").catch(() => ({ data: [] })),
       klaviyoRequest<KlaviyoMetricResponse>(apiKey, "/metrics/").catch(() => ({ data: [] })),
     ])
+
+    // Combine email + SMS campaigns
+    const campaigns = { data: [...emailCampaigns.data, ...smsCampaigns.data] }
 
     // Calculate totals
     const totalProfiles = lists.data.reduce((sum, list) => sum + (list.attributes.profile_count || 0), 0)

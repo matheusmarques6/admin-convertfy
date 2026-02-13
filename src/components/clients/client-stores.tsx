@@ -75,6 +75,55 @@ interface ClientStoresProps {
   clientName: string
 }
 
+/**
+ * Auto-mark onboarding step as completed when credentials are saved.
+ * Uses the existing steps API which handles adminClient, timestamps, and progress recalculation.
+ * Fails silently — saving the store should never fail because of onboarding.
+ */
+async function markOnboardingStepCompleted(
+  clientId: string,
+  stepName: string
+) {
+  try {
+    const supabase = createClient()
+
+    // Find active onboarding for this client
+    const { data: onboarding } = await supabase
+      .from("client_onboardings")
+      .select("id")
+      .eq("client_id", clientId)
+      .in("status", ["in_progress", "not_started"])
+      .limit(1)
+      .single()
+
+    if (!onboarding) return
+
+    // Find the step that matches by name
+    const { data: step } = await supabase
+      .from("client_onboarding_steps")
+      .select("id, status")
+      .eq("onboarding_id", onboarding.id)
+      .eq("name", stepName)
+      .neq("status", "completed")
+      .limit(1)
+      .single()
+
+    if (!step) return // Already completed or doesn't exist
+
+    // Mark as completed via existing API (handles adminClient + progress recalc)
+    await fetch(`/api/onboarding/${onboarding.id}/steps`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        step_id: step.id,
+        status: "completed",
+      }),
+    })
+  } catch (error) {
+    console.error(`[Onboarding] Error auto-marking "${stepName}":`, error)
+  }
+}
+
 export function ClientStores({ clientId, clientName }: ClientStoresProps) {
   const [stores, setStores] = useState<ClientStore[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -250,6 +299,14 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
           throw error
         }
         toast({ title: "Loja adicionada!" })
+      }
+
+      // Auto-mark onboarding steps when integration credentials are saved
+      if (form.klaviyo_private_key) {
+        markOnboardingStepCompleted(clientId, "Klaviyo Conectado")
+      }
+      if (form.shopify_access_token) {
+        markOnboardingStepCompleted(clientId, "Acesso à Loja Configurado")
       }
 
       setDialogOpen(false)

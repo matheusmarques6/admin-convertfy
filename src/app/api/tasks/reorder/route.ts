@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
 
         // Set started_at when moving to in_progress
         if (task.status === "in_progress") {
-          const { data: currentTask } = await supabase
+          const { data: currentTask } = await adminClient
             .from("tasks")
             .select("started_at")
             .eq("id", task.id)

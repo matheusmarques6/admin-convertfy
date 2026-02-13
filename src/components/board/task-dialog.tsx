@@ -36,6 +36,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { cn, getInitials } from "@/lib/utils"
 import { toast } from "@/lib/hooks/use-toast"
+import { TASK_TYPE_OPTIONS, TASK_PRIORITY_OPTIONS } from "@/lib/constants/board"
 import type { Task, TaskType, TaskPriority } from "@/types"
 
 interface UserProfile {
@@ -76,7 +77,8 @@ interface TaskWithRelations extends Omit<Task, "assignee" | "client" | "store" |
 interface TaskDialogProps {
   open: boolean
   onClose: () => void
-  onSuccess: () => void
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  onSuccess: (task?: any) => void
   task?: TaskWithRelations | null
   members: MemberWithProfile[]
   clients: ClientInfo[]
@@ -95,21 +97,8 @@ const schema = z.object({
 
 type FormData = z.infer<typeof schema>
 
-const typeOptions: { value: TaskType; label: string }[] = [
-  { value: "general", label: "Geral" },
-  { value: "onboarding", label: "Onboarding" },
-  { value: "campaign", label: "Campanha" },
-  { value: "request", label: "Solicitação" },
-  { value: "meeting", label: "Reunião" },
-  { value: "deadline", label: "Prazo/Entrega" },
-]
-
-const priorityOptions: { value: TaskPriority; label: string }[] = [
-  { value: "low", label: "Baixa" },
-  { value: "medium", label: "Média" },
-  { value: "high", label: "Alta" },
-  { value: "urgent", label: "Urgente" },
-]
+const typeOptions = TASK_TYPE_OPTIONS
+const priorityOptions = TASK_PRIORITY_OPTIONS
 
 export function TaskDialog({
   open,
@@ -137,6 +126,7 @@ export function TaskDialog({
     watch,
     reset,
     formState: { errors },
+    trigger,
   } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -221,12 +211,28 @@ export function TaskDialog({
         throw new Error(result.error || "Erro ao salvar")
       }
 
+      // Save pending checklist items after task creation
+      if (!isEditing && result.task?.id && checklists.length > 0) {
+        const pendingItems = checklists.filter((c) => c.id.startsWith("local-"))
+        for (const item of pendingItems) {
+          try {
+            await fetch(`/api/tasks/${result.task.id}/checklists`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ title: item.title }),
+            })
+          } catch {
+            // Continue saving remaining items
+          }
+        }
+      }
+
       toast({
         title: isEditing ? "Tarefa atualizada" : "Tarefa criada",
         description: result.message,
       })
 
-      onSuccess()
+      onSuccess(result.task)
     } catch (error) {
       toast({
         variant: "destructive",
@@ -239,7 +245,12 @@ export function TaskDialog({
   }
 
   async function handleAddComment() {
-    if (!newComment.trim() || !task) return
+    if (!newComment.trim()) return
+
+    if (!task) {
+      toast({ variant: "destructive", title: "Salve a tarefa primeiro para adicionar comentários" })
+      return
+    }
 
     try {
       const response = await fetch(`/api/tasks/${task.id}/comments`, {
@@ -260,7 +271,19 @@ export function TaskDialog({
   }
 
   async function handleAddChecklist() {
-    if (!newChecklistItem.trim() || !task) return
+    if (!newChecklistItem.trim()) return
+
+    if (!task) {
+      // During creation: store locally, will be saved after task creation
+      const localItem = {
+        id: `local-${Date.now()}`,
+        title: newChecklistItem,
+        is_completed: false,
+      }
+      setChecklists((prev) => [...prev, localItem])
+      setNewChecklistItem("")
+      return
+    }
 
     try {
       const response = await fetch(`/api/tasks/${task.id}/checklists`, {
@@ -280,12 +303,13 @@ export function TaskDialog({
   }
 
   async function handleToggleChecklist(checklistId: string, isCompleted: boolean) {
-    if (!task) return
-
     // Optimistic update
     setChecklists((prev) =>
       prev.map((c) => (c.id === checklistId ? { ...c, is_completed: !isCompleted } : c))
     )
+
+    // Local items (during creation) - just toggle in state
+    if (checklistId.startsWith("local-") || !task) return
 
     try {
       await fetch(`/api/tasks/${task.id}/checklists`, {
@@ -303,7 +327,7 @@ export function TaskDialog({
 
   return (
     <Dialog open={open} onOpenChange={() => !isSubmitting && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-2xl h-[80vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>{isEditing ? "Editar Tarefa" : "Nova Tarefa"}</DialogTitle>
           <DialogDescription>
@@ -311,22 +335,30 @@ export function TaskDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="flex-1 overflow-hidden flex flex-col">
+        <form onSubmit={async (e) => {
+          e.preventDefault()
+          const valid = await trigger()
+          if (!valid) {
+            setActiveTab("details")
+            return
+          }
+          handleSubmit(onSubmit)()
+        }} className="flex-1 overflow-hidden flex flex-col">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 overflow-hidden flex flex-col">
             <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="details">Detalhes</TabsTrigger>
-              <TabsTrigger value="comments" disabled={!isEditing}>
+              <TabsTrigger value="comments">
                 <MessageSquare className="h-4 w-4 mr-1" />
                 Comentários {comments.length > 0 && `(${comments.length})`}
               </TabsTrigger>
-              <TabsTrigger value="checklist" disabled={!isEditing}>
+              <TabsTrigger value="checklist">
                 <CheckSquare className="h-4 w-4 mr-1" />
                 Checklist {checklists.length > 0 && `(${checklists.filter((c) => c.is_completed).length}/${checklists.length})`}
               </TabsTrigger>
             </TabsList>
 
             <div className="flex-1 overflow-y-auto py-4">
-              <TabsContent value="details" className="mt-0 space-y-4">
+              <TabsContent value="details" forceMount className={cn("mt-0 space-y-4", activeTab !== "details" && "hidden")}>
                 <div className="grid gap-2">
                   <Label htmlFor="title">Título *</Label>
                   <Input
@@ -487,9 +519,14 @@ export function TaskDialog({
                 </div>
               </TabsContent>
 
-              <TabsContent value="comments" className="mt-0 space-y-4">
+              <TabsContent value="comments" forceMount className={cn("mt-0 space-y-4", activeTab !== "comments" && "hidden")}>
+                {!isEditing && (
+                  <p className="text-sm text-muted-foreground text-center py-2 bg-muted/50 rounded-lg">
+                    Salve a tarefa primeiro para adicionar comentários
+                  </p>
+                )}
                 <div className="space-y-4 max-h-[300px] overflow-y-auto">
-                  {comments.length === 0 ? (
+                  {comments.length === 0 && isEditing ? (
                     <p className="text-sm text-muted-foreground text-center py-8">
                       Nenhum comentário ainda
                     </p>
@@ -523,7 +560,7 @@ export function TaskDialog({
                     placeholder="Adicionar comentário..."
                     value={newComment}
                     onChange={(e) => setNewComment(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleAddComment()}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddComment() } }}
                   />
                   <Button type="button" onClick={handleAddComment}>
                     Enviar
@@ -531,7 +568,7 @@ export function TaskDialog({
                 </div>
               </TabsContent>
 
-              <TabsContent value="checklist" className="mt-0 space-y-4">
+              <TabsContent value="checklist" forceMount className={cn("mt-0 space-y-4", activeTab !== "checklist" && "hidden")}>
                 <div className="space-y-2 max-h-[300px] overflow-y-auto">
                   {checklists.length === 0 ? (
                     <p className="text-sm text-muted-foreground text-center py-8">
