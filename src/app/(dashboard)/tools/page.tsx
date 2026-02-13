@@ -4,12 +4,10 @@ import { useState } from "react"
 import {
   Wand2,
   Mail,
-  FileText,
   Calculator,
   BarChart3,
   Sparkles,
   Loader2,
-  Check,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -38,18 +36,8 @@ export default function ToolsPage() {
   const [revenue, setRevenue] = useState("")
   const roas = adSpend && revenue ? (parseFloat(revenue) / parseFloat(adSpend)).toFixed(2) : null
 
-  // Integration buttons state
-  const [selectedIntegrations, setSelectedIntegrations] = useState<string[]>([])
-  const [isGeneratingReport, setIsGeneratingReport] = useState(false)
+  // Benchmark state
   const [isGeneratingBenchmark, setIsGeneratingBenchmark] = useState(false)
-
-  function toggleIntegration(integration: string) {
-    setSelectedIntegrations(prev =>
-      prev.includes(integration)
-        ? prev.filter(i => i !== integration)
-        : [...prev, integration]
-    )
-  }
 
   async function generateBenchmark() {
     setIsGeneratingBenchmark(true)
@@ -61,26 +49,6 @@ export default function ToolsPage() {
         description: "O benchmark foi gerado com sucesso. Em breve será exibido aqui.",
       })
     }, 1500)
-  }
-
-  async function generatePDFReport() {
-    if (selectedIntegrations.length === 0) {
-      toast({
-        variant: "destructive",
-        title: "Selecione as métricas",
-        description: "Selecione pelo menos uma integração para incluir no relatório.",
-      })
-      return
-    }
-    setIsGeneratingReport(true)
-    // TODO: Implementar geração de PDF real
-    setTimeout(() => {
-      setIsGeneratingReport(false)
-      toast({
-        title: "Relatório gerado",
-        description: `Relatório PDF com ${selectedIntegrations.length} integrações será disponibilizado em breve.`,
-      })
-    }, 2000)
   }
 
   async function generateEmailSubjects() {
@@ -140,10 +108,6 @@ Descubra como centenas de lojistas estão aumentando suas vendas em até 40% com
           <TabsTrigger value="calculators" className="gap-2">
             <Calculator className="h-4 w-4" />
             Calculadoras
-          </TabsTrigger>
-          <TabsTrigger value="reports" className="gap-2">
-            <FileText className="h-4 w-4" />
-            Relatórios
           </TabsTrigger>
         </TabsList>
 
@@ -351,80 +315,6 @@ Descubra como centenas de lojistas estão aumentando suas vendas em até 40% com
               </CardContent>
             </Card>
           </div>
-        </TabsContent>
-
-        {/* Reports */}
-        <TabsContent value="reports" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <FileText className="h-4 w-4 text-primary" />
-                Gerador de Relatório Automático
-              </CardTitle>
-              <CardDescription>
-                Gere relatórios completos automaticamente com dados das integrações
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Cliente</Label>
-                  <Select>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione o cliente" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="client1">Loja ABC</SelectItem>
-                      <SelectItem value="client2">Loja XYZ</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Período</Label>
-                  <Select defaultValue="last_month">
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="last_month">Último mês</SelectItem>
-                      <SelectItem value="last_quarter">Último trimestre</SelectItem>
-                      <SelectItem value="custom">Personalizado</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Incluir métricas de:</Label>
-                <div className="flex flex-wrap gap-2">
-                  {["Shopify", "Facebook Ads", "Google Ads", "Klaviyo", "Instagram"].map((integration) => (
-                    <Button
-                      key={integration}
-                      variant={selectedIntegrations.includes(integration) ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => toggleIntegration(integration)}
-                    >
-                      {selectedIntegrations.includes(integration) && (
-                        <Check className="mr-1 h-3 w-3" />
-                      )}
-                      {integration}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-              <Button
-                className="w-full"
-                onClick={generatePDFReport}
-                disabled={isGeneratingReport}
-              >
-                {isGeneratingReport ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <FileText className="mr-2 h-4 w-4" />
-                )}
-                Gerar Relatório PDF
-              </Button>
-            </CardContent>
-          </Card>
         </TabsContent>
       </Tabs>
     </div>

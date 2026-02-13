@@ -1,49 +1,61 @@
-import { notFound } from "next/navigation"
+"use client"
+
+import { useState, useEffect } from "react"
+import { useRouter, useParams } from "next/navigation"
 import Link from "next/link"
-import { ArrowLeft, Download, FileText, TrendingUp, ShoppingCart, MousePointer, DollarSign, Mail, Users, Store, Calendar, Zap } from "lucide-react"
-import { createClient } from "@/lib/supabase/server"
+import {
+  ArrowLeft,
+  Download,
+  FileText,
+  TrendingUp,
+  ShoppingCart,
+  MousePointer,
+  DollarSign,
+  Mail,
+  Users,
+  Store,
+  Calendar,
+  Zap,
+  Pencil,
+  Trash2,
+  MoreHorizontal,
+  CheckCircle,
+  Clock,
+  Send,
+  Archive,
+  Loader2,
+  Share2,
+  Copy,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { createClient } from "@/lib/supabase/client"
+import { toast } from "@/lib/hooks/use-toast"
 import { formatCurrency, formatDate } from "@/lib/utils"
-import type { Report, ReportData } from "@/types"
-
-interface ReportPageProps {
-  params: Promise<{ id: string }>
-}
+import type { Report, ReportData, ReportStatus } from "@/types"
 
 interface ReportWithRelations extends Report {
   client?: { id: string; name: string; company?: string; email?: string } | null
   user?: { id: string; name: string } | null
   store?: { id: string; store_name: string } | null
-}
-
-async function getReport(id: string): Promise<ReportWithRelations | null> {
-  const supabase = await createClient()
-
-  const { data: report } = await supabase
-    .from("client_reports")
-    .select(`
-      *,
-      client:clients (
-        id,
-        name,
-        company,
-        email
-      ),
-      user:profiles (
-        id,
-        name
-      ),
-      store:client_stores (
-        id,
-        store_name
-      )
-    `)
-    .eq("id", id)
-    .single()
-
-  return report as ReportWithRelations | null
 }
 
 const months: Record<string, string> = {
@@ -96,12 +108,159 @@ function getReportTypeLabel(type: string): string {
   }
 }
 
-export default async function ReportPage({ params }: ReportPageProps) {
-  const { id } = await params
-  const report = await getReport(id)
+function getStatusBadge(status: ReportStatus | undefined) {
+  switch (status) {
+    case "draft":
+      return <Badge variant="secondary"><Clock className="mr-1 h-3 w-3" />Rascunho</Badge>
+    case "published":
+      return <Badge variant="default"><CheckCircle className="mr-1 h-3 w-3" />Publicado</Badge>
+    case "sent":
+      return <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30"><Send className="mr-1 h-3 w-3" />Enviado</Badge>
+    case "archived":
+      return <Badge variant="outline"><Archive className="mr-1 h-3 w-3" />Arquivado</Badge>
+    default:
+      return null
+  }
+}
+
+export default function ReportPage() {
+  const router = useRouter()
+  const params = useParams()
+  const reportId = params.id as string
+
+  const [report, setReport] = useState<ReportWithRelations | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+
+  // Load report
+  useEffect(() => {
+    async function loadReport() {
+      setIsLoading(true)
+      try {
+        const supabase = createClient()
+        const { data, error } = await supabase
+          .from("client_reports")
+          .select(`
+            *,
+            client:clients (id, name, company, email),
+            user:profiles (id, name),
+            store:client_stores (id, store_name)
+          `)
+          .eq("id", reportId)
+          .single()
+
+        if (error) throw error
+        if (!data) {
+          router.push("/reports")
+          return
+        }
+
+        setReport(data as ReportWithRelations)
+      } catch (error) {
+        console.error("Error loading report:", error)
+        toast({
+          variant: "destructive",
+          title: "Erro ao carregar relatório",
+          description: "Não foi possível carregar o relatório.",
+        })
+        router.push("/reports")
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadReport()
+  }, [reportId, router])
+
+  // Update status
+  async function updateStatus(newStatus: ReportStatus) {
+    if (!report) return
+
+    try {
+      const supabase = createClient()
+      const { error } = await supabase
+        .from("client_reports")
+        .update({ status: newStatus, updated_at: new Date().toISOString() })
+        .eq("id", reportId)
+
+      if (error) throw error
+
+      setReport(prev => prev ? { ...prev, status: newStatus } : null)
+
+      const statusLabels: Record<ReportStatus, string> = {
+        draft: "Rascunho",
+        published: "Publicado",
+        sent: "Enviado",
+        archived: "Arquivado",
+      }
+
+      toast({
+        title: "Status atualizado",
+        description: `O relatório agora está como "${statusLabels[newStatus]}".`,
+      })
+    } catch (error) {
+      console.error("Error updating status:", error)
+      toast({
+        variant: "destructive",
+        title: "Erro ao atualizar",
+        description: "Não foi possível atualizar o status.",
+      })
+    }
+  }
+
+  // Delete report
+  async function handleDelete() {
+    if (!report) return
+
+    setIsDeleting(true)
+    try {
+      const supabase = createClient()
+      const { error } = await supabase
+        .from("client_reports")
+        .delete()
+        .eq("id", reportId)
+
+      if (error) throw error
+
+      toast({
+        title: "Relatório excluído",
+        description: "O relatório foi excluído com sucesso.",
+      })
+      router.push("/reports")
+    } catch (error) {
+      console.error("Error deleting report:", error)
+      toast({
+        variant: "destructive",
+        title: "Erro ao excluir",
+        description: "Não foi possível excluir o relatório.",
+      })
+    } finally {
+      setIsDeleting(false)
+      setDeleteDialogOpen(false)
+    }
+  }
+
+  // Copy report link
+  function copyReportLink() {
+    const url = `${window.location.origin}/reports/${reportId}`
+    navigator.clipboard.writeText(url)
+    toast({
+      title: "Link copiado",
+      description: "O link do relatório foi copiado para a área de transferência.",
+    })
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
 
   if (!report) {
-    notFound()
+    return null
   }
 
   const reportData = report.report_data as ReportData
@@ -135,7 +294,7 @@ export default async function ReportPage({ params }: ReportPageProps) {
             </Link>
           </Button>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-2xl font-bold">
                 Relatório - {report.store_name || clientData?.name}
               </h1>
@@ -143,6 +302,7 @@ export default async function ReportPage({ params }: ReportPageProps) {
                 <FileText className="h-3 w-3 mr-1" />
                 {getReportTypeLabel(report.report_type)}
               </Badge>
+              {getStatusBadge(report.status)}
             </div>
             <p className="text-muted-foreground">
               {clientData?.name}
@@ -153,6 +313,16 @@ export default async function ReportPage({ params }: ReportPageProps) {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={copyReportLink}>
+            <Copy className="mr-2 h-4 w-4" />
+            Copiar Link
+          </Button>
+          <Button variant="outline" asChild>
+            <Link href={`/reports/${reportId}/edit`}>
+              <Pencil className="mr-2 h-4 w-4" />
+              Editar
+            </Link>
+          </Button>
           {report.document_url && (
             <Button variant="outline" asChild>
               <a href={report.document_url} target="_blank" rel="noopener noreferrer">
@@ -161,6 +331,51 @@ export default async function ReportPage({ params }: ReportPageProps) {
               </a>
             </Button>
           )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="icon">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onClick={() => updateStatus("draft")}
+                disabled={report.status === "draft"}
+              >
+                <Clock className="mr-2 h-4 w-4" />
+                Marcar como Rascunho
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => updateStatus("published")}
+                disabled={report.status === "published"}
+              >
+                <CheckCircle className="mr-2 h-4 w-4" />
+                Marcar como Publicado
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => updateStatus("sent")}
+                disabled={report.status === "sent"}
+              >
+                <Send className="mr-2 h-4 w-4" />
+                Marcar como Enviado
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => updateStatus("archived")}
+                disabled={report.status === "archived"}
+              >
+                <Archive className="mr-2 h-4 w-4" />
+                Arquivar
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => setDeleteDialogOpen(true)}
+                className="text-destructive focus:text-destructive"
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Excluir
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -416,6 +631,43 @@ export default async function ReportPage({ params }: ReportPageProps) {
         </Card>
       )}
 
+      {/* Top Campaigns */}
+      {reportData?.campaigns && reportData.campaigns.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Mail className="h-5 w-5 text-blue-500" />
+              Top Campanhas
+            </CardTitle>
+            <CardDescription>Campanhas com maior receita no período</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {reportData.campaigns.slice(0, 5).map((campaign, index) => (
+                <div key={campaign.id || index} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                  <div className="flex items-center gap-3">
+                    <Badge variant="outline" className="w-6 h-6 flex items-center justify-center p-0">
+                      {index + 1}
+                    </Badge>
+                    <div>
+                      <p className="font-medium">{campaign.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {campaign.openRate?.toFixed(1)}% abertura • {campaign.clickRate?.toFixed(1)}% clique
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-bold text-emerald-600">
+                      {formatReportCurrency(campaign.revenue || 0)}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Notes */}
       {report.notes && (
         <Card>
@@ -464,19 +716,39 @@ export default async function ReportPage({ params }: ReportPageProps) {
                 <dd className="font-medium">{userData.name}</dd>
               </div>
             )}
-            {report.status && (
+            {report.updated_at && (
               <div>
-                <dt className="text-sm text-muted-foreground">Status</dt>
-                <dd>
-                  <Badge variant={report.status === 'published' ? 'default' : 'secondary'}>
-                    {report.status}
-                  </Badge>
-                </dd>
+                <dt className="text-sm text-muted-foreground">Atualizado em</dt>
+                <dd className="font-medium">{formatDate(report.updated_at)}</dd>
               </div>
             )}
           </dl>
         </CardContent>
       </Card>
+
+      {/* Delete Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir relatório?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação não pode ser desfeita. O relatório{" "}
+              <strong>{report.store_name || report.client?.name}</strong>{" "}
+              será permanentemente excluído.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? "Excluindo..." : "Excluir"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
