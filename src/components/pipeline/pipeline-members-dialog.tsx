@@ -94,26 +94,20 @@ export function PipelineMembersDialog({
     setIsLoading(true)
 
     try {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-
-      const { data, error } = await supabase
-        .from("pipeline_members")
-        .insert({
+      const response = await fetch("/api/pipeline/members", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           pipeline_id: pipeline.id,
           user_id: selectedUserId,
           role: selectedRole,
-          added_by: user?.id,
-        })
-        .select(`
-          *,
-          user:profiles!pipeline_members_user_id_fkey (id, name, email, avatar_url, role)
-        `)
-        .single()
+        }),
+      })
 
-      if (error) throw error
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || "Erro ao adicionar membro")
 
-      setMembers((prev) => [...prev, data])
+      setMembers((prev) => [...prev, result])
       setAvailableUsers((prev) => prev.filter((u) => u.id !== selectedUserId))
       setSelectedUserId("")
 
@@ -128,7 +122,7 @@ export function PipelineMembersDialog({
       toast({
         variant: "destructive",
         title: "Erro ao adicionar membro",
-        description: "Tente novamente.",
+        description: error instanceof Error ? error.message : "Tente novamente.",
       })
     } finally {
       setIsLoading(false)
@@ -137,13 +131,16 @@ export function PipelineMembersDialog({
 
   async function handleUpdateRole(memberId: string, newRole: PipelineMemberRole) {
     try {
-      const supabase = createClient()
-      const { error } = await supabase
-        .from("pipeline_members")
-        .update({ role: newRole })
-        .eq("id", memberId)
+      const response = await fetch("/api/pipeline/members", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ member_id: memberId, role: newRole }),
+      })
 
-      if (error) throw error
+      if (!response.ok) {
+        const result = await response.json()
+        throw new Error(result.error || "Erro ao atualizar permissao")
+      }
 
       setMembers((prev) =>
         prev.map((m) => (m.id === memberId ? { ...m, role: newRole } : m))
@@ -160,6 +157,7 @@ export function PipelineMembersDialog({
       toast({
         variant: "destructive",
         title: "Erro ao atualizar permissao",
+        description: error instanceof Error ? error.message : "Tente novamente.",
       })
     }
   }
@@ -169,13 +167,14 @@ export function PipelineMembersDialog({
     setIsLoading(true)
 
     try {
-      const supabase = createClient()
-      const { error } = await supabase
-        .from("pipeline_members")
-        .delete()
-        .eq("id", removingMember.id)
+      const response = await fetch(`/api/pipeline/members?id=${removingMember.id}`, {
+        method: "DELETE",
+      })
 
-      if (error) throw error
+      if (!response.ok) {
+        const result = await response.json()
+        throw new Error(result.error || "Erro ao remover membro")
+      }
 
       setMembers((prev) => prev.filter((m) => m.id !== removingMember.id))
       if (removingMember.user) {
@@ -194,6 +193,7 @@ export function PipelineMembersDialog({
       toast({
         variant: "destructive",
         title: "Erro ao remover membro",
+        description: error instanceof Error ? error.message : "Tente novamente.",
       })
     } finally {
       setIsLoading(false)

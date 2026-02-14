@@ -1,12 +1,17 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import {
   Loader2,
   Plus,
   Pencil,
   Trash2,
   FileText,
+  Upload,
+  FileSpreadsheet,
+  Download,
+  CheckCircle2,
+  XCircle,
   Zap,
   ZapOff,
 } from "lucide-react"
@@ -61,6 +66,16 @@ export function ImportRulesDialog({
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [showLogs, setShowLogs] = useState(false)
   const [deletingRule, setDeletingRule] = useState<PipelineImportRule | null>(null)
+  const [showImportUpload, setShowImportUpload] = useState(false)
+  const [isImporting, setIsImporting] = useState(false)
+  const [importResult, setImportResult] = useState<{
+    total: number
+    created: number
+    updated: number
+    skipped: number
+    errors: { row: number; error: string }[]
+  } | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (open) loadRules()
@@ -156,6 +171,201 @@ export function ImportRulesDialog({
     onSuccess?.()
   }
 
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setIsImporting(true)
+    setImportResult(null)
+
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+      formData.append("pipeline_id", pipeline.id)
+
+      const response = await fetch("/api/pipeline/import", {
+        method: "POST",
+        body: formData,
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || "Erro na importação")
+      }
+
+      setImportResult(result)
+
+      toast({
+        title: "Importação concluída!",
+        description: `${result.created} criados, ${result.updated} atualizados, ${result.skipped} ignorados.`,
+      })
+
+      onSuccess?.()
+    } catch (error) {
+      console.error("Import error:", error)
+      toast({
+        variant: "destructive",
+        title: "Erro na importação",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+      })
+    } finally {
+      setIsImporting(false)
+      // Reset file input
+      if (fileInputRef.current) fileInputRef.current.value = ""
+    }
+  }
+
+  function handleDownloadTemplate() {
+    const headers = ["nome", "email", "telefone", "empresa", "website", "status", "tags"]
+    const example = ["João Silva", "joao@empresa.com", "(11) 99999-0000", "Empresa LTDA", "https://empresa.com", "prospect", "vip, ecommerce"]
+    const csv = [headers.join(","), example.join(",")].join("\n")
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.href = url
+    link.download = "modelo_importacao_clientes.csv"
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
+  // Show import upload view
+  if (showImportUpload) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Importar Clientes via Planilha</DialogTitle>
+            <DialogDescription>
+              Importe clientes de um arquivo Excel (.xlsx) ou CSV (.csv).
+              As regras de importação ativas serão aplicadas automaticamente.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Template Download */}
+            <div className="p-4 rounded-lg border bg-muted/30">
+              <div className="flex items-start gap-3">
+                <FileSpreadsheet className="h-5 w-5 text-green-600 mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium">Formato da Planilha</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    A primeira linha deve conter os cabeçalhos. Colunas aceitas:
+                  </p>
+                  <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                    <span><strong>nome</strong> * (obrigatório)</span>
+                    <span><strong>email</strong></span>
+                    <span><strong>telefone</strong></span>
+                    <span><strong>empresa</strong></span>
+                    <span><strong>website</strong></span>
+                    <span><strong>status</strong> (prospect, active, etc.)</span>
+                    <span><strong>tags</strong> (separadas por vírgula)</span>
+                    <span className="text-muted-foreground">Colunas extras → campos customizados</span>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-3"
+                    onClick={handleDownloadTemplate}
+                  >
+                    <Download className="mr-2 h-3 w-3" />
+                    Baixar modelo CSV
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {/* Upload Area */}
+            <div
+              className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer hover:border-primary/50 transition-colors"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                className="hidden"
+                onChange={handleFileUpload}
+                disabled={isImporting}
+              />
+              {isImporting ? (
+                <>
+                  <Loader2 className="h-10 w-10 mx-auto text-primary animate-spin mb-3" />
+                  <p className="font-medium">Importando clientes...</p>
+                  <p className="text-sm text-muted-foreground">
+                    Isso pode levar alguns segundos.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <Upload className="h-10 w-10 mx-auto text-muted-foreground/50 mb-3" />
+                  <p className="font-medium">Clique para selecionar um arquivo</p>
+                  <p className="text-sm text-muted-foreground">
+                    .xlsx, .xls ou .csv
+                  </p>
+                </>
+              )}
+            </div>
+
+            {/* Import Results */}
+            {importResult && (
+              <div className="p-4 rounded-lg border space-y-3">
+                <p className="font-medium">Resultado da Importação</p>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">Total:</span>
+                    <span className="font-medium">{importResult.total}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                    <span>Criados: {importResult.created}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-blue-500" />
+                    <span>Atualizados: {importResult.updated}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <XCircle className="h-4 w-4 text-amber-500" />
+                    <span>Ignorados: {importResult.skipped}</span>
+                  </div>
+                </div>
+                {importResult.errors.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-xs font-medium text-destructive mb-1">Erros:</p>
+                    <div className="max-h-[100px] overflow-y-auto text-xs space-y-1">
+                      {importResult.errors.slice(0, 10).map((err, i) => (
+                        <p key={i} className="text-muted-foreground">
+                          Linha {err.row}: {err.error}
+                        </p>
+                      ))}
+                      {importResult.errors.length > 10 && (
+                        <p className="text-muted-foreground">
+                          ... e mais {importResult.errors.length - 10} erros
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex justify-end">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowImportUpload(false)
+                  setImportResult(null)
+                }}
+              >
+                Voltar
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    )
+  }
+
   // Show form when creating/editing
   if (showCreateForm || editingRule) {
     return (
@@ -203,14 +413,24 @@ export function ImportRulesDialog({
           <div className="space-y-4">
             {/* Actions */}
             <div className="flex items-center justify-between">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowLogs(true)}
-              >
-                <FileText className="mr-2 h-4 w-4" />
-                Ver Logs
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowLogs(true)}
+                >
+                  <FileText className="mr-2 h-4 w-4" />
+                  Logs
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowImportUpload(true)}
+                >
+                  <Upload className="mr-2 h-4 w-4" />
+                  Importar Planilha
+                </Button>
+              </div>
               <Button
                 size="sm"
                 onClick={() => setShowCreateForm(true)}
