@@ -244,8 +244,8 @@ export function MeetingDialog({
 
   return (
     <Dialog open={open} onOpenChange={() => !isSubmitting && onClose()}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
+      <DialogContent className="max-w-lg max-h-[90vh] flex flex-col">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <Video className="h-5 w-5 text-primary" />
             {isEditing ? "Editar Reunião" : "Agendar Reunião"}
@@ -255,237 +255,241 @@ export function MeetingDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="grid gap-2">
-            <Label htmlFor="title">Título *</Label>
-            <Input
-              id="title"
-              placeholder="Ex: Kickoff com Cliente X"
-              {...register("title")}
-            />
-            {errors.title && (
-              <p className="text-sm text-destructive">{errors.title.message}</p>
-            )}
-          </div>
+        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col min-h-0 flex-1">
+          <ScrollArea className="flex-1 -mx-6 px-6">
+            <div className="space-y-4 pb-2">
+              <div className="grid gap-2">
+                <Label htmlFor="title">Título *</Label>
+                <Input
+                  id="title"
+                  placeholder="Ex: Kickoff com Cliente X"
+                  {...register("title")}
+                />
+                {errors.title && (
+                  <p className="text-sm text-destructive">{errors.title.message}</p>
+                )}
+              </div>
 
-          <div className="grid gap-2">
-            <Label>Cliente</Label>
-            <Select
-              value={watch("client_id") || "_none"}
-              onValueChange={(value) => setValue("client_id", value === "_none" ? "" : value)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione um cliente" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="_none">Nenhum</SelectItem>
-                {clients.map((client) => (
-                  <SelectItem key={client.id} value={client.id}>
-                    {client.name} {client.company && `(${client.company})`}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+              <div className="grid gap-2">
+                <Label>Cliente</Label>
+                <Select
+                  value={watch("client_id") || "_none"}
+                  onValueChange={(value) => setValue("client_id", value === "_none" ? "" : value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione um cliente" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_none">Nenhum</SelectItem>
+                    {clients.map((client) => (
+                      <SelectItem key={client.id} value={client.id}>
+                        {client.name} {client.company && `(${client.company})`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-          {/* Participants Multi-select */}
-          {members.length > 0 && (
-            <div className="grid gap-2">
-              <Label className="flex items-center gap-2">
-                <Users className="h-4 w-4" />
-                Participantes
-              </Label>
+              {/* Participants Multi-select */}
+              {members.length > 0 && (
+                <div className="grid gap-2">
+                  <Label className="flex items-center gap-2">
+                    <Users className="h-4 w-4" />
+                    Participantes
+                  </Label>
 
-              {/* Selected participants badges */}
-              {selectedParticipants.length > 0 && (
-                <div className="flex flex-wrap gap-1 mb-2">
-                  {selectedParticipants.map((participant) => (
-                    <Badge
-                      key={`${participant.type}-${participant.id}`}
-                      variant="secondary"
-                      className="flex items-center gap-1"
-                    >
-                      <Avatar className="h-4 w-4">
-                        <AvatarImage src={participant.avatar_url} />
-                        <AvatarFallback className="text-[8px]">
-                          {participant.name?.charAt(0).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="max-w-[100px] truncate">{participant.name}</span>
-                      <X
-                        className="h-3 w-3 cursor-pointer hover:text-destructive"
-                        onClick={() => {
-                          setSelectedParticipants(prev =>
-                            prev.filter(p => !(p.id === participant.id && p.type === participant.type))
+                  {/* Selected participants badges */}
+                  {selectedParticipants.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mb-2">
+                      {selectedParticipants.map((participant) => (
+                        <Badge
+                          key={`${participant.type}-${participant.id}`}
+                          variant="secondary"
+                          className="flex items-center gap-1"
+                        >
+                          <Avatar className="h-4 w-4">
+                            <AvatarImage src={participant.avatar_url} />
+                            <AvatarFallback className="text-[8px]">
+                              {participant.name?.charAt(0).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="max-w-[100px] truncate">{participant.name}</span>
+                          <X
+                            className="h-3 w-3 cursor-pointer hover:text-destructive"
+                            onClick={() => {
+                              setSelectedParticipants(prev =>
+                                prev.filter(p => !(p.id === participant.id && p.type === participant.type))
+                              )
+                            }}
+                          />
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Member list with checkboxes */}
+                  <div className="border rounded-md">
+                    <ScrollArea className="h-[120px]">
+                      <div className="p-2 space-y-1">
+                        {members.map((member) => {
+                          const isSelected = selectedParticipants.some(
+                            p => p.id === member.id && p.type === member.type
                           )
-                        }}
-                      />
-                    </Badge>
-                  ))}
+                          return (
+                            <label
+                              key={`${member.type}-${member.id}`}
+                              className="flex items-center gap-3 p-2 rounded-md hover:bg-accent cursor-pointer"
+                            >
+                              <Checkbox
+                                checked={isSelected}
+                                onCheckedChange={(checked) => {
+                                  if (checked) {
+                                    setSelectedParticipants(prev => [...prev, member])
+                                  } else {
+                                    setSelectedParticipants(prev =>
+                                      prev.filter(p => !(p.id === member.id && p.type === member.type))
+                                    )
+                                  }
+                                }}
+                              />
+                              <Avatar className="h-6 w-6">
+                                <AvatarImage src={member.avatar_url} />
+                                <AvatarFallback className="text-xs">
+                                  {member.name?.charAt(0).toUpperCase()}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div className="flex flex-col flex-1 min-w-0">
+                                <span className="text-sm truncate">{member.name}</span>
+                                {member.email && (
+                                  <span className="text-xs text-muted-foreground truncate">{member.email}</span>
+                                )}
+                              </div>
+                              {member.type === "org_member" && member.role && (
+                                <Badge variant="outline" className="text-[10px] shrink-0">
+                                  {member.role}
+                                </Badge>
+                              )}
+                            </label>
+                          )
+                        })}
+                      </div>
+                    </ScrollArea>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Membros selecionados verão a reunião em seus calendários
+                  </p>
                 </div>
               )}
 
-              {/* Member list with checkboxes */}
-              <div className="border rounded-md">
-                <ScrollArea className="h-[150px]">
-                  <div className="p-2 space-y-1">
-                    {members.map((member) => {
-                      const isSelected = selectedParticipants.some(
-                        p => p.id === member.id && p.type === member.type
-                      )
-                      return (
-                        <label
-                          key={`${member.type}-${member.id}`}
-                          className="flex items-center gap-3 p-2 rounded-md hover:bg-accent cursor-pointer"
-                        >
-                          <Checkbox
-                            checked={isSelected}
-                            onCheckedChange={(checked) => {
-                              if (checked) {
-                                setSelectedParticipants(prev => [...prev, member])
-                              } else {
-                                setSelectedParticipants(prev =>
-                                  prev.filter(p => !(p.id === member.id && p.type === member.type))
-                                )
-                              }
-                            }}
-                          />
-                          <Avatar className="h-6 w-6">
-                            <AvatarImage src={member.avatar_url} />
-                            <AvatarFallback className="text-xs">
-                              {member.name?.charAt(0).toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="flex flex-col flex-1 min-w-0">
-                            <span className="text-sm truncate">{member.name}</span>
-                            {member.email && (
-                              <span className="text-xs text-muted-foreground truncate">{member.email}</span>
-                            )}
-                          </div>
-                          {member.type === "org_member" && member.role && (
-                            <Badge variant="outline" className="text-[10px] shrink-0">
-                              {member.role}
-                            </Badge>
-                          )}
-                        </label>
-                      )
-                    })}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label>Data *</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "justify-start text-left font-normal",
+                          !scheduledDate && "text-muted-foreground"
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {scheduledDate ? format(scheduledDate, "dd/MM/yyyy", { locale: ptBR }) : "Selecione"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={scheduledDate}
+                        onSelect={setScheduledDate}
+                        locale={ptBR}
+                        disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                <div className="grid gap-2">
+                  <Label>Horário *</Label>
+                  <div className="relative">
+                    <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      type="time"
+                      value={scheduledTime}
+                      onChange={(e) => setScheduledTime(e.target.value)}
+                      className="pl-10"
+                    />
                   </div>
-                </ScrollArea>
+                </div>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Membros selecionados verão a reunião em seus calendários
-              </p>
-            </div>
-          )}
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="grid gap-2">
-              <Label>Data *</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "justify-start text-left font-normal",
-                      !scheduledDate && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {scheduledDate ? format(scheduledDate, "dd/MM/yyyy", { locale: ptBR }) : "Selecione"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={scheduledDate}
-                    onSelect={setScheduledDate}
-                    locale={ptBR}
-                    disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
+              <div className="grid gap-2">
+                <Label>Duração</Label>
+                <Select
+                  value={String(watch("duration_minutes"))}
+                  onValueChange={(value) => setValue("duration_minutes", Number(value))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {durationOptions.map((opt) => (
+                      <SelectItem key={opt.value} value={String(opt.value)}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-            <div className="grid gap-2">
-              <Label>Horário *</Label>
-              <div className="relative">
-                <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <div className="grid gap-2">
+                <Label className="flex items-center gap-2">
+                  <LinkIcon className="h-4 w-4" />
+                  Link da Reunião
+                </Label>
                 <Input
-                  type="time"
-                  value={scheduledTime}
-                  onChange={(e) => setScheduledTime(e.target.value)}
-                  className="pl-10"
+                  placeholder="https://meet.google.com/xxx ou https://zoom.us/j/xxx"
+                  {...register("meeting_url")}
+                />
+                {errors.meeting_url && (
+                  <p className="text-sm text-destructive">{errors.meeting_url.message}</p>
+                )}
+              </div>
+
+              <div className="grid gap-2">
+                <Label>Notas</Label>
+                <Textarea
+                  placeholder="Pauta, observações, etc..."
+                  rows={2}
+                  {...register("notes")}
                 />
               </div>
+
+              {isEditing && (
+                <div className="grid gap-2">
+                  <Label>Status</Label>
+                  <Select
+                    value={status}
+                    onValueChange={(value) => setStatus(value as MeetingStatus)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {statusOptions.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
-          </div>
+          </ScrollArea>
 
-          <div className="grid gap-2">
-            <Label>Duração</Label>
-            <Select
-              value={String(watch("duration_minutes"))}
-              onValueChange={(value) => setValue("duration_minutes", Number(value))}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {durationOptions.map((opt) => (
-                  <SelectItem key={opt.value} value={String(opt.value)}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="grid gap-2">
-            <Label className="flex items-center gap-2">
-              <LinkIcon className="h-4 w-4" />
-              Link da Reunião
-            </Label>
-            <Input
-              placeholder="https://meet.google.com/xxx ou https://zoom.us/j/xxx"
-              {...register("meeting_url")}
-            />
-            {errors.meeting_url && (
-              <p className="text-sm text-destructive">{errors.meeting_url.message}</p>
-            )}
-          </div>
-
-          <div className="grid gap-2">
-            <Label>Notas</Label>
-            <Textarea
-              placeholder="Pauta, observações, etc..."
-              rows={3}
-              {...register("notes")}
-            />
-          </div>
-
-          {isEditing && (
-            <div className="grid gap-2">
-              <Label>Status</Label>
-              <Select
-                value={status}
-                onValueChange={(value) => setStatus(value as MeetingStatus)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {statusOptions.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
-          <DialogFooter className="pt-4">
+          <DialogFooter className="flex-shrink-0 pt-4 border-t mt-4">
             <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting}>
               Cancelar
             </Button>
