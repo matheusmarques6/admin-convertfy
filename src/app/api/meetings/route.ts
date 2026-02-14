@@ -120,6 +120,7 @@ export async function POST(request: NextRequest) {
         title: body.title,
         client_id: body.client_id || null,
         user_id: user.id,
+        created_by: user.id,
         scheduled_at: body.scheduled_at,
         duration_minutes: body.duration_minutes || 30,
         status: "scheduled",
@@ -185,7 +186,7 @@ export async function POST(request: NextRequest) {
           participant_type,
           is_organizer,
           response_status,
-          profile:profiles!meeting_participants_participant_id_fkey(id, name, email, avatar_url)
+          profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url)
         )
       `)
       .eq("id", meeting.id)
