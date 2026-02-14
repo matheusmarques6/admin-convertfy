@@ -10,7 +10,6 @@ import type { Meeting } from "@/types"
 
 interface ClientMeetingsProps {
   meetings: Meeting[]
-  clientId: string
 }
 
 const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "success" | "destructive" | "warning"; icon: React.ElementType }> = {
@@ -20,7 +19,7 @@ const statusConfig: Record<string, { label: string; variant: "default" | "second
   no_show: { label: "Não Compareceu", variant: "destructive", icon: XCircle },
 }
 
-export function ClientMeetings({ meetings, clientId }: ClientMeetingsProps) {
+export function ClientMeetings({ meetings }: ClientMeetingsProps) {
   const now = new Date()
   const upcomingMeetings = meetings
     .filter((m) => m.status === "scheduled" && new Date(m.scheduled_at) > now)
