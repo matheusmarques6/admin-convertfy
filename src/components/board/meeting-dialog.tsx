@@ -255,8 +255,8 @@ export function MeetingDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col min-h-0 flex-1">
-          <ScrollArea className="flex-1 -mx-6 px-6">
+        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col min-h-0 flex-1 overflow-hidden">
+          <div className="flex-1 overflow-y-auto -mx-6 px-6">
             <div className="space-y-4 pb-2">
               <div className="grid gap-2">
                 <Label htmlFor="title">Título *</Label>
@@ -487,7 +487,7 @@ export function MeetingDialog({
                 </div>
               )}
             </div>
-          </ScrollArea>
+          </div>
 
           <DialogFooter className="flex-shrink-0 pt-4 border-t mt-4">
             <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting}>
