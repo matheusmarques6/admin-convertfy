@@ -19,7 +19,7 @@ const linkActions = [
   },
   {
     label: "Agendar Reunião",
-    href: "/meetings/new",
+    href: "/meetings",
     icon: Calendar,
     variant: "outline" as const,
   },

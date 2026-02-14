@@ -124,6 +124,23 @@ export interface MeetingParticipant {
   org_member?: OrgMember
 }
 
+// Calendar Types
+export type CalendarViewMode = "month" | "week" | "day"
+
+export interface CalendarEvent {
+  id: string
+  title: string
+  date: Date
+  type: "task" | "meeting"
+  status: string
+  priority?: string
+  assignee?: string
+  client?: string
+  meetingUrl?: string
+  duration?: number
+  original: Record<string, unknown>
+}
+
 // Report Types
 export type ReportType = 'manual' | 'klaviyo' | 'shopify' | 'combined'
 export type ReportStatus = 'draft' | 'published' | 'sent' | 'archived'

@@ -1,0 +1,210 @@
+"use client"
+
+import { useMemo } from "react"
+import {
+  format,
+  startOfWeek,
+  endOfWeek,
+  eachDayOfInterval,
+  eachHourOfInterval,
+  isSameDay,
+  isToday,
+  parseISO,
+  set,
+} from "date-fns"
+import { ptBR } from "date-fns/locale"
+import { Video, ExternalLink } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { cn } from "@/lib/utils"
+import type { Meeting, MeetingStatus } from "@/types"
+import { MEETING_STATUS_CONFIG } from "@/lib/constants/board"
+
+interface MeetingWithRelations extends Omit<Meeting, "client" | "user"> {
+  client?: { id: string; name: string; company?: string }
+  user?: { id: string; name: string; email?: string; avatar_url?: string }
+}
+
+interface CalendarWeekViewProps {
+  meetings: MeetingWithRelations[]
+  currentDate: Date
+  onMeetingClick?: (meeting: MeetingWithRelations) => void
+  onSlotClick?: (date: Date) => void
+}
+
+const HOUR_START = 7
+const HOUR_END = 20
+const SLOT_HEIGHT = 64 // px per hour
+
+export function CalendarWeekView({
+  meetings,
+  currentDate,
+  onMeetingClick,
+  onSlotClick,
+}: CalendarWeekViewProps) {
+  const weekStart = startOfWeek(currentDate, { locale: ptBR })
+  const weekEnd = endOfWeek(currentDate, { locale: ptBR })
+  const days = eachDayOfInterval({ start: weekStart, end: weekEnd })
+
+  const hours = eachHourOfInterval({
+    start: set(currentDate, { hours: HOUR_START, minutes: 0, seconds: 0 }),
+    end: set(currentDate, { hours: HOUR_END, minutes: 0, seconds: 0 }),
+  })
+
+  const meetingsByDay = useMemo(() => {
+    const map = new Map<string, MeetingWithRelations[]>()
+    days.forEach((day) => {
+      const dayKey = format(day, "yyyy-MM-dd")
+      const dayMeetings = meetings.filter((m) =>
+        isSameDay(parseISO(m.scheduled_at), day)
+      )
+      map.set(dayKey, dayMeetings)
+    })
+    return map
+  }, [meetings, days])
+
+  function getMeetingPosition(meeting: MeetingWithRelations) {
+    const date = parseISO(meeting.scheduled_at)
+    const hour = date.getHours()
+    const minutes = date.getMinutes()
+    const top = (hour - HOUR_START + minutes / 60) * SLOT_HEIGHT
+    const height = Math.max((meeting.duration_minutes / 60) * SLOT_HEIGHT, 24)
+    return { top, height }
+  }
+
+  const statusColors: Record<MeetingStatus, string> = {
+    scheduled: "bg-purple-100 border-purple-300 text-purple-800 dark:bg-purple-900/40 dark:border-purple-700 dark:text-purple-200",
+    completed: "bg-emerald-100 border-emerald-300 text-emerald-800 dark:bg-emerald-900/40 dark:border-emerald-700 dark:text-emerald-200",
+    cancelled: "bg-gray-100 border-gray-300 text-gray-500 dark:bg-gray-800/40 dark:border-gray-600 dark:text-gray-400",
+    no_show: "bg-red-100 border-red-300 text-red-800 dark:bg-red-900/40 dark:border-red-700 dark:text-red-200",
+  }
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Day headers */}
+      <div className="flex border-b sticky top-0 bg-background z-10">
+        <div className="w-16 flex-shrink-0" />
+        {days.map((day) => (
+          <div
+            key={day.toISOString()}
+            className={cn(
+              "flex-1 text-center py-2 border-l",
+              isToday(day) && "bg-primary/5"
+            )}
+          >
+            <p className="text-xs text-muted-foreground">
+              {format(day, "EEE", { locale: ptBR })}
+            </p>
+            <p
+              className={cn(
+                "text-sm font-semibold w-8 h-8 flex items-center justify-center mx-auto rounded-full",
+                isToday(day) && "bg-primary text-primary-foreground"
+              )}
+            >
+              {format(day, "d")}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      {/* Time grid */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="flex relative" style={{ minHeight: (HOUR_END - HOUR_START + 1) * SLOT_HEIGHT }}>
+          {/* Hour labels */}
+          <div className="w-16 flex-shrink-0">
+            {hours.map((hour) => (
+              <div
+                key={hour.toISOString()}
+                className="border-b text-xs text-muted-foreground pr-2 text-right"
+                style={{ height: SLOT_HEIGHT }}
+              >
+                <span className="relative -top-2">{format(hour, "HH:mm")}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Day columns */}
+          {days.map((day) => {
+            const dayKey = format(day, "yyyy-MM-dd")
+            const dayMeetings = meetingsByDay.get(dayKey) || []
+
+            return (
+              <div
+                key={day.toISOString()}
+                className={cn(
+                  "flex-1 border-l relative",
+                  isToday(day) && "bg-primary/5"
+                )}
+              >
+                {/* Hour slots (clickable) */}
+                {hours.map((hour) => (
+                  <div
+                    key={hour.toISOString()}
+                    className="border-b border-dashed hover:bg-accent/30 cursor-pointer transition-colors"
+                    style={{ height: SLOT_HEIGHT }}
+                    onClick={() => {
+                      if (onSlotClick) {
+                        const clickDate = set(day, {
+                          hours: hour.getHours(),
+                          minutes: 0,
+                        })
+                        onSlotClick(clickDate)
+                      }
+                    }}
+                  />
+                ))}
+
+                {/* Meeting blocks */}
+                {dayMeetings.map((meeting) => {
+                  const { top, height } = getMeetingPosition(meeting)
+                  const config = MEETING_STATUS_CONFIG[meeting.status]
+                  const colorClass = statusColors[meeting.status]
+
+                  if (top < 0 || top > (HOUR_END - HOUR_START + 1) * SLOT_HEIGHT) return null
+
+                  return (
+                    <button
+                      key={meeting.id}
+                      className={cn(
+                        "absolute left-0.5 right-0.5 rounded-md border px-1.5 py-0.5 overflow-hidden text-left transition-opacity hover:opacity-90 z-10",
+                        colorClass
+                      )}
+                      style={{ top, height: Math.max(height, 24) }}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onMeetingClick?.(meeting)
+                      }}
+                      title={`${meeting.title}${meeting.client ? ` - ${meeting.client.name}` : ""}`}
+                    >
+                      <div className="flex items-center gap-1">
+                        <Video className="h-3 w-3 flex-shrink-0" />
+                        <span className="text-xs font-medium truncate">
+                          {format(parseISO(meeting.scheduled_at), "HH:mm")}
+                        </span>
+                      </div>
+                      {height >= 40 && (
+                        <p className="text-xs truncate mt-0.5 font-medium">
+                          {meeting.title}
+                        </p>
+                      )}
+                      {height >= 56 && meeting.client && (
+                        <p className="text-[10px] truncate opacity-70">
+                          {meeting.client.name}
+                        </p>
+                      )}
+                      {height >= 72 && meeting.meeting_url && (
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <ExternalLink className="h-2.5 w-2.5" />
+                          <span className="text-[10px]">Link</span>
+                        </div>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}

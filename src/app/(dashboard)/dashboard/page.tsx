@@ -5,6 +5,7 @@ import { DashboardCharts } from "@/components/dashboard/charts"
 import { DashboardAlerts } from "@/components/dashboard/alerts"
 import { RecentActivity } from "@/components/dashboard/recent-activity"
 import { QuickActions } from "@/components/dashboard/quick-actions"
+import { TodayAgenda } from "@/components/dashboard/today-agenda"
 import { Skeleton } from "@/components/ui/skeleton"
 
 export const dynamic = "force-dynamic"
@@ -257,6 +258,7 @@ export default async function DashboardPage() {
           />
         </div>
         <div className="col-span-full lg:col-span-3 space-y-6">
+          <TodayAgenda meetings={data.upcomingMeetings} />
           <DashboardAlerts meetings={data.upcomingMeetings} alerts={data.alerts} />
           <RecentActivity activities={data.activities} />
         </div>
