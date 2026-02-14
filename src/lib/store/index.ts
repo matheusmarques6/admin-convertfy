@@ -11,6 +11,7 @@ import type {
   PipelineMemberRole,
   PipelineImportRule,
   Automation,
+  Integration,
 } from "@/types"
 
 // Auth Store
@@ -284,3 +285,46 @@ export const useDashboardStore = create<DashboardState>()(
     }
   )
 )
+
+// Integrations Store
+interface IntegrationStatus {
+  connected: boolean
+  error?: string
+  lastSync?: string
+}
+
+interface IntegrationsState {
+  integrations: Integration[]
+  statuses: Record<string, IntegrationStatus>
+  isLoading: boolean
+  isTesting: string | null
+  setIntegrations: (integrations: Integration[]) => void
+  addIntegration: (integration: Integration) => void
+  updateIntegration: (id: string, updates: Partial<Integration>) => void
+  removeIntegration: (id: string) => void
+  setStatus: (type: string, status: IntegrationStatus) => void
+  setLoading: (loading: boolean) => void
+  setTesting: (type: string | null) => void
+}
+
+export const useIntegrationsStore = create<IntegrationsState>((set) => ({
+  integrations: [],
+  statuses: {},
+  isLoading: false,
+  isTesting: null,
+  setIntegrations: (integrations) => set({ integrations }),
+  addIntegration: (integration) =>
+    set((state) => ({ integrations: [...state.integrations, integration] })),
+  updateIntegration: (id, updates) =>
+    set((state) => ({
+      integrations: state.integrations.map((i) =>
+        i.id === id ? { ...i, ...updates } : i
+      ),
+    })),
+  removeIntegration: (id) =>
+    set((state) => ({ integrations: state.integrations.filter((i) => i.id !== id) })),
+  setStatus: (type, status) =>
+    set((state) => ({ statuses: { ...state.statuses, [type]: status } })),
+  setLoading: (isLoading) => set({ isLoading }),
+  setTesting: (isTesting) => set({ isTesting }),
+}))

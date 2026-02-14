@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
 import {
   Loader2,
   Plus,
@@ -56,7 +55,6 @@ export function ImportRulesDialog({
   members,
   onSuccess,
 }: ImportRulesDialogProps) {
-  const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
   const [rules, setRules] = useState<PipelineImportRule[]>([])
   const [editingRule, setEditingRule] = useState<PipelineImportRule | null>(null)
