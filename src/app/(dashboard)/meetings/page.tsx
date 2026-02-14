@@ -1,5 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
-import { createAdminClient } from "@/lib/supabase/admin"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { PagePermissionWrapper } from "@/components/page-permission-wrapper"
 import { MeetingsPageClient } from "@/components/meetings/meetings-page-client"
 
@@ -12,21 +11,27 @@ export default async function MeetingsPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
 
-  // Fetch meetings with relations
-  const { data: meetings } = await adminClient
+  // Fetch meetings with relations — uses same FK hint as /board page
+  const { data: meetings, error: meetingsError } = await adminClient
     .from("meetings")
     .select(`
       *,
       client:clients (id, name, company),
       user:profiles!meetings_user_id_fkey (id, name, email, avatar_url),
-      meeting_participants (
-        id, meeting_id, participant_id, participant_type,
-        is_organizer, response_status, notes,
-        created_at, updated_at,
-        profile:profiles!meeting_participants_participant_id_fkey (id, name, email, avatar_url)
+      participants:meeting_participants(
+        id,
+        participant_id,
+        participant_type,
+        is_organizer,
+        response_status,
+        profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url)
       )
     `)
     .order("scheduled_at", { ascending: true })
+
+  if (meetingsError) {
+    console.error("[MeetingsPage] Error fetching meetings:", meetingsError)
+  }
 
   // Fetch clients for the dialog
   const { data: clients } = await adminClient
@@ -68,7 +73,7 @@ export default async function MeetingsPage() {
     ...m,
     client: Array.isArray(m.client) ? m.client[0] : m.client,
     user: Array.isArray(m.user) ? m.user[0] : m.user,
-    participants: m.meeting_participants?.map((p: Record<string, unknown>) => ({
+    participants: (m.participants || []).map((p: Record<string, unknown>) => ({
       ...p,
       profile: Array.isArray(p.profile) ? (p.profile as Record<string, unknown>[])[0] : p.profile,
     })),

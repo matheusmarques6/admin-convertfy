@@ -41,11 +41,7 @@ export async function GET(
           participant_type,
           is_organizer,
           response_status,
-          profile:profiles!meeting_participants_participant_id_fkey(id, name, email, avatar_url),
-          org_member:org_members!meeting_participants_participant_id_fkey(
-            id,
-            profile:profiles(id, name, email, avatar_url)
-          )
+          profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url)
         )
       `)
       .eq("id", id)
@@ -63,7 +59,6 @@ export async function GET(
       participants: (meeting.participants || []).map((p: Record<string, unknown>) => ({
         ...p,
         profile: Array.isArray(p.profile) ? p.profile[0] : p.profile,
-        org_member: Array.isArray(p.org_member) ? p.org_member[0] : p.org_member,
       })),
     }
 
@@ -177,11 +172,7 @@ export async function PUT(
           participant_type,
           is_organizer,
           response_status,
-          profile:profiles!meeting_participants_participant_id_fkey(id, name, email, avatar_url),
-          org_member:org_members!meeting_participants_participant_id_fkey(
-            id,
-            profile:profiles(id, name, email, avatar_url)
-          )
+          profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url)
         )
       `)
       .eq("id", id)
@@ -199,7 +190,6 @@ export async function PUT(
       participants: (meeting.participants || []).map((p: Record<string, unknown>) => ({
         ...p,
         profile: Array.isArray(p.profile) ? p.profile[0] : p.profile,
-        org_member: Array.isArray(p.org_member) ? p.org_member[0] : p.org_member,
       })),
     }
 
