@@ -244,8 +244,8 @@ export function MeetingDialog({
 
   return (
     <Dialog open={open} onOpenChange={() => !isSubmitting && onClose()}>
-      <DialogContent className="max-w-lg max-h-[90vh] flex flex-col">
-        <DialogHeader className="flex-shrink-0">
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Video className="h-5 w-5 text-primary" />
             {isEditing ? "Editar Reunião" : "Agendar Reunião"}
@@ -255,9 +255,9 @@ export function MeetingDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col min-h-0 flex-1 overflow-hidden">
-          <div className="flex-1 overflow-y-auto -mx-6 px-6">
-            <div className="space-y-4 pb-2">
+        <form onSubmit={handleSubmit(onSubmit)}>
+          <div className="max-h-[60vh] overflow-y-auto -mx-6 px-6">
+            <div className="space-y-4 py-1">
               <div className="grid gap-2">
                 <Label htmlFor="title">Título *</Label>
                 <Input
@@ -489,7 +489,7 @@ export function MeetingDialog({
             </div>
           </div>
 
-          <DialogFooter className="flex-shrink-0 pt-4 border-t mt-4">
+          <DialogFooter className="pt-4">
             <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting}>
               Cancelar
             </Button>
