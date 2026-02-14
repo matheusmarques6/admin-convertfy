@@ -16,12 +16,13 @@ import {
   parseISO,
 } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { ChevronLeft, ChevronRight, Clock, CheckCircle, AlertCircle, Video, Calendar as CalendarIcon } from "lucide-react"
+import { ChevronLeft, ChevronRight, Video } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
+import { TASK_PRIORITY_CONFIG, TASK_STATUS_CONFIG, WEEK_DAYS } from "@/lib/constants/board"
 import type { Task, TaskStatus, TaskPriority, Meeting, MeetingStatus } from "@/types"
 
 interface UserProfile {
@@ -81,23 +82,9 @@ interface BoardCalendarViewProps {
   onMeetingClick?: (meeting: MeetingWithRelations) => void
 }
 
-const priorityColors: Record<TaskPriority, string> = {
-  low: "bg-slate-100 text-slate-700 border-slate-200",
-  medium: "bg-blue-100 text-blue-700 border-blue-200",
-  high: "bg-amber-100 text-amber-700 border-amber-200",
-  urgent: "bg-red-100 text-red-700 border-red-200",
-}
-
-const statusIcons: Record<string, React.ElementType> = {
-  pending: Clock,
-  in_progress: AlertCircle,
-  blocked: AlertCircle,
-  review: CheckCircle,
-  completed: CheckCircle,
-  scheduled: CalendarIcon,
-  cancelled: AlertCircle,
-  no_show: AlertCircle,
-}
+const priorityColors: Record<TaskPriority, string> = Object.fromEntries(
+  Object.entries(TASK_PRIORITY_CONFIG).map(([k, v]) => [k, v.calendarColor])
+) as Record<TaskPriority, string>
 
 export function BoardCalendarView({
   tasks,
@@ -155,7 +142,7 @@ export function BoardCalendarView({
   const calendarEnd = endOfWeek(monthEnd, { locale: ptBR })
   const days = eachDayOfInterval({ start: calendarStart, end: calendarEnd })
 
-  const weekDays = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"]
+  const weekDays = WEEK_DAYS
 
   return (
     <div className="flex gap-6 h-full">
@@ -320,7 +307,8 @@ export function BoardCalendarView({
             <ScrollArea className="flex-1 -mx-2">
               <div className="px-2 space-y-3">
                 {selectedDateEvents.map((event) => {
-                  const StatusIcon = statusIcons[event.status] || Clock
+                  const statusConf = TASK_STATUS_CONFIG[event.status as TaskStatus]
+                  const StatusIcon = statusConf?.icon || TASK_STATUS_CONFIG.pending.icon
 
                   return (
                     <button
@@ -366,13 +354,7 @@ export function BoardCalendarView({
                             )}
                             {event.priority && (
                               <Badge variant="outline" className="text-xs">
-                                {event.priority === "urgent"
-                                  ? "Urgente"
-                                  : event.priority === "high"
-                                  ? "Alta"
-                                  : event.priority === "medium"
-                                  ? "Média"
-                                  : "Baixa"}
+                                {TASK_PRIORITY_CONFIG[event.priority].label}
                               </Badge>
                             )}
                           </div>

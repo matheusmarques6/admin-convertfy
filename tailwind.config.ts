@@ -61,6 +61,7 @@ const config: Config = {
         convertfy: {
           purple: "#8B5CF6",
           blue: "#3a68fc",
+          cyan: "#06B6D4",
           dark: "#080808",
         },
       },

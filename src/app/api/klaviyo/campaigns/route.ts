@@ -36,8 +36,8 @@ export async function GET(request: NextRequest) {
         campaign_metrics (*),
         client_stores!inner (
           id,
-          name,
-          url,
+          store_name,
+          store_url,
           clients (
             id,
             name
@@ -99,8 +99,8 @@ export async function GET(request: NextRequest) {
         synced_at: campaign.synced_at,
         store: {
           id: store?.id,
-          name: store?.name,
-          url: store?.url,
+          name: store?.store_name,
+          url: store?.store_url,
         },
         client: {
           id: client?.id,

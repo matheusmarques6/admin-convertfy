@@ -289,107 +289,43 @@ export const useDashboardStore = create<DashboardState>()(
 
 // Integrations Store
 interface IntegrationStatus {
-  type: IntegrationType
   connected: boolean
-  lastSync?: string
   error?: string
-  data?: Record<string, unknown>
+  lastSync?: string
 }
 
 interface IntegrationsState {
   integrations: Integration[]
-  statuses: Record<IntegrationType, IntegrationStatus>
+  statuses: Record<string, IntegrationStatus>
   isLoading: boolean
-  isTesting: IntegrationType | null
+  isTesting: string | null
   setIntegrations: (integrations: Integration[]) => void
   addIntegration: (integration: Integration) => void
   updateIntegration: (id: string, updates: Partial<Integration>) => void
   removeIntegration: (id: string) => void
-  setStatus: (type: IntegrationType, status: Partial<IntegrationStatus>) => void
+  setStatus: (type: string, status: IntegrationStatus) => void
   setLoading: (loading: boolean) => void
-  setTesting: (type: IntegrationType | null) => void
-  getIntegrationByType: (type: IntegrationType) => Integration | undefined
-  isConnected: (type: IntegrationType) => boolean
+  setTesting: (type: string | null) => void
 }
 
-const initialStatuses: Record<IntegrationType, IntegrationStatus> = {
-  asaas: { type: "asaas", connected: false },
-  meta_ads: { type: "meta_ads", connected: false },
-  google_ads: { type: "google_ads", connected: false },
-  klaviyo: { type: "klaviyo", connected: false },
-  shopify: { type: "shopify", connected: false },
-  instagram: { type: "instagram", connected: false },
-  whatsapp: { type: "whatsapp", connected: false },
-  google_calendar: { type: "google_calendar", connected: false },
-  wise: { type: "wise", connected: false },
-}
-
-export const useIntegrationsStore = create<IntegrationsState>((set, get) => ({
+export const useIntegrationsStore = create<IntegrationsState>((set) => ({
   integrations: [],
-  statuses: initialStatuses,
+  statuses: {},
   isLoading: false,
   isTesting: null,
-  setIntegrations: (integrations) => {
-    const newStatuses = { ...initialStatuses }
-    integrations.forEach((integration) => {
-      newStatuses[integration.type] = {
-        type: integration.type,
-        connected: integration.is_active,
-        lastSync: integration.last_sync,
-      }
-    })
-    set({ integrations, statuses: newStatuses })
-  },
+  setIntegrations: (integrations) => set({ integrations }),
   addIntegration: (integration) =>
-    set((state) => ({
-      integrations: [...state.integrations, integration],
-      statuses: {
-        ...state.statuses,
-        [integration.type]: {
-          type: integration.type,
-          connected: integration.is_active,
-          lastSync: integration.last_sync,
-        },
-      },
-    })),
+    set((state) => ({ integrations: [...state.integrations, integration] })),
   updateIntegration: (id, updates) =>
-    set((state) => {
-      const updatedIntegrations = state.integrations.map((i) =>
-        i.id === id ? { ...i, ...updates } : i
-      )
-      const integration = updatedIntegrations.find((i) => i.id === id)
-      const newStatuses = { ...state.statuses }
-      if (integration) {
-        newStatuses[integration.type] = {
-          type: integration.type,
-          connected: integration.is_active,
-          lastSync: integration.last_sync,
-        }
-      }
-      return { integrations: updatedIntegrations, statuses: newStatuses }
-    }),
-  removeIntegration: (id) =>
-    set((state) => {
-      const integration = state.integrations.find((i) => i.id === id)
-      const filteredIntegrations = state.integrations.filter((i) => i.id !== id)
-      const newStatuses = { ...state.statuses }
-      if (integration) {
-        newStatuses[integration.type] = {
-          type: integration.type,
-          connected: false,
-        }
-      }
-      return { integrations: filteredIntegrations, statuses: newStatuses }
-    }),
-  setStatus: (type, status) =>
     set((state) => ({
-      statuses: {
-        ...state.statuses,
-        [type]: { ...state.statuses[type], ...status },
-      },
+      integrations: state.integrations.map((i) =>
+        i.id === id ? { ...i, ...updates } : i
+      ),
     })),
+  removeIntegration: (id) =>
+    set((state) => ({ integrations: state.integrations.filter((i) => i.id !== id) })),
+  setStatus: (type, status) =>
+    set((state) => ({ statuses: { ...state.statuses, [type]: status } })),
   setLoading: (isLoading) => set({ isLoading }),
   setTesting: (isTesting) => set({ isTesting }),
-  getIntegrationByType: (type) => get().integrations.find((i) => i.type === type),
-  isConnected: (type) => get().statuses[type]?.connected ?? false,
 }))

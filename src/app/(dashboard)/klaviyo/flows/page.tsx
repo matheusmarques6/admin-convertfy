@@ -223,9 +223,12 @@ export default function KlaviyoFlowsPage() {
 
         if (error) throw error
 
-        const storesWithKlaviyo = (data || []).filter(
-          (s) => s.klaviyo_api_key || s.klaviyo_private_key
-        ) as ClientStore[]
+        const storesWithKlaviyo = (data || [])
+          .filter((s) => s.klaviyo_api_key || s.klaviyo_private_key)
+          .map((s) => ({
+            ...s,
+            client: Array.isArray(s.client) ? s.client[0] || null : s.client,
+          })) as ClientStore[]
 
         setStores(storesWithKlaviyo)
         if (storesWithKlaviyo.length > 0 && !selectedStore) {

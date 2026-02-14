@@ -27,7 +27,9 @@ export async function GET(
       return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
     }
 
-    const { data: comments, error } = await supabase
+    const adminClient = createAdminClient()
+
+    const { data: comments, error } = await adminClient
       .from("task_comments")
       .select(`
         *,

@@ -1,28 +1,29 @@
 import { Suspense } from "react"
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { TaskBoardWithCalendar } from "@/components/board/task-board-with-calendar"
 import { Skeleton } from "@/components/ui/skeleton"
 import { PagePermissionWrapper } from "@/components/page-permission-wrapper"
+import { KANBAN_FETCH_STATUSES } from "@/lib/constants/board"
 
 export const dynamic = "force-dynamic"
 
 async function getTasks() {
-  const supabase = await createClient()
+  const adminClient = createAdminClient()
 
-  const { data: tasks, error } = await supabase
+  const { data: tasks, error } = await adminClient
     .from("tasks")
     .select(`
       *,
       assignee:org_members(
         id,
         role,
-        profile:profiles(id, name, email, avatar_url)
+        profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url)
       ),
       creator:profiles!tasks_created_by_fkey(id, name, email, avatar_url),
       client:clients(id, name, company),
       store:client_stores(id, store_name, platform)
     `)
-    .in("status", ["pending", "in_progress", "blocked", "review"])
+    .in("status", KANBAN_FETCH_STATUSES)
     .order("position", { ascending: true })
 
   if (error) {
@@ -35,14 +36,31 @@ async function getTasks() {
 
 async function getTeamMembers() {
   const supabase = await createClient()
+  const adminClient = createAdminClient()
 
-  const { data: members } = await supabase
+  // Get current user's org_id
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return []
+
+  const { data: currentMember } = await adminClient
+    .from("org_members")
+    .select("org_id")
+    .eq("profile_id", user.id)
+    .eq("is_active", true)
+    .limit(1)
+    .single()
+
+  if (!currentMember?.org_id) return []
+
+  // Fetch all active members of the same org
+  const { data: members } = await adminClient
     .from("org_members")
     .select(`
       id,
       role,
-      profile:profiles(id, name, email, avatar_url)
+      profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url)
     `)
+    .eq("org_id", currentMember.org_id)
     .eq("is_active", true)
     .order("role", { ascending: true })
 
@@ -54,9 +72,9 @@ async function getTeamMembers() {
 }
 
 async function getClients() {
-  const supabase = await createClient()
+  const adminClient = createAdminClient()
 
-  const { data: clients } = await supabase
+  const { data: clients } = await adminClient
     .from("clients")
     .select("id, name, company")
     .in("status", ["active", "onboarding"])
@@ -66,9 +84,9 @@ async function getClients() {
 }
 
 async function getStores() {
-  const supabase = await createClient()
+  const adminClient = createAdminClient()
 
-  const { data: stores } = await supabase
+  const { data: stores } = await adminClient
     .from("client_stores")
     .select(`
       id,
@@ -88,6 +106,7 @@ async function getStores() {
 
 async function getMeetings() {
   const supabase = await createClient()
+  const adminClient = createAdminClient()
 
   // Get current user to filter meetings where they are a participant
   const { data: { user } } = await supabase.auth.getUser()
@@ -96,7 +115,7 @@ async function getMeetings() {
   // Get org_member_id for the current user (if they are an org member)
   let orgMemberId: string | null = null
   if (userId) {
-    const { data: orgMember } = await supabase
+    const { data: orgMember } = await adminClient
       .from("org_members")
       .select("id")
       .eq("profile_id", userId)
@@ -106,7 +125,7 @@ async function getMeetings() {
   }
 
   // First, get meetings the user owns or is a participant of
-  const { data: meetings } = await supabase
+  const { data: meetings } = await adminClient
     .from("meetings")
     .select(`
       *,
@@ -118,7 +137,7 @@ async function getMeetings() {
         participant_type,
         is_organizer,
         response_status,
-        profile:profiles(id, name, email, avatar_url)
+        profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url)
       )
     `)
     .order("scheduled_at", { ascending: true })

@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
         assignee:org_members(
           id,
           role,
-          profile:profiles(id, name, email, avatar_url)
+          profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url)
         )
       `)
       .order("created_at", { ascending: false })

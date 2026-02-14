@@ -58,8 +58,8 @@ export async function GET(request: NextRequest) {
         ),
         client_stores!inner (
           id,
-          name,
-          url,
+          store_name,
+          store_url,
           clients (
             id,
             name
@@ -123,8 +123,8 @@ export async function GET(request: NextRequest) {
       if (!byStore.has(campaign.store_id)) {
         byStore.set(campaign.store_id, {
           store_id: campaign.store_id,
-          store_name: store?.name || "",
-          store_url: store?.url || "",
+          store_name: store?.store_name || "",
+          store_url: store?.store_url || "",
           client_id: client?.id || "",
           client_name: client?.name || "",
           campaigns: [],

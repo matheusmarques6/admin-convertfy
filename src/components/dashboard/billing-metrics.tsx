@@ -62,7 +62,11 @@ interface BillingData {
   }
 }
 
-export function BillingMetrics() {
+interface BillingMetricsProps {
+  mrr?: number
+}
+
+export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
   const [period, setPeriod] = useState("month")
   const [customStart, setCustomStart] = useState("")
   const [customEnd, setCustomEnd] = useState("")
@@ -210,7 +214,7 @@ export function BillingMetrics() {
       ) : (
         <>
           {/* Main Metrics */}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
             <Card className="bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border-emerald-500/20">
               <CardHeader className="pb-2">
                 <CardDescription className="flex items-center gap-2">
@@ -275,6 +279,23 @@ export function BillingMetrics() {
               <CardContent>
                 <p className="text-sm text-muted-foreground">
                   {data?.counts.total || 0} cobranças no período
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-gradient-to-br from-purple-500/10 to-purple-500/5 border-purple-500/20">
+              <CardHeader className="pb-2">
+                <CardDescription className="flex items-center gap-2">
+                  <Repeat className="h-4 w-4 text-purple-500" />
+                  MRR
+                </CardDescription>
+                <CardTitle className="text-3xl text-purple-600">
+                  {formatCurrency(mrr)}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">
+                  Receita recorrente mensal
                 </p>
               </CardContent>
             </Card>

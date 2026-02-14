@@ -38,6 +38,7 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
 import { toast } from "@/lib/hooks/use-toast"
+import { MEETING_DURATION_OPTIONS, MEETING_STATUS_OPTIONS } from "@/lib/constants/board"
 import type { Meeting, MeetingStatus, MeetingParticipant } from "@/types"
 
 interface UserProfile {
@@ -87,21 +88,8 @@ const schema = z.object({
 
 type FormData = z.infer<typeof schema>
 
-const durationOptions = [
-  { value: 15, label: "15 minutos" },
-  { value: 30, label: "30 minutos" },
-  { value: 45, label: "45 minutos" },
-  { value: 60, label: "1 hora" },
-  { value: 90, label: "1h 30min" },
-  { value: 120, label: "2 horas" },
-]
-
-const statusOptions: { value: MeetingStatus; label: string }[] = [
-  { value: "scheduled", label: "Agendada" },
-  { value: "completed", label: "Realizada" },
-  { value: "cancelled", label: "Cancelada" },
-  { value: "no_show", label: "Não Compareceu" },
-]
+const durationOptions = MEETING_DURATION_OPTIONS
+const statusOptions = MEETING_STATUS_OPTIONS
 
 export function MeetingDialog({
   open,

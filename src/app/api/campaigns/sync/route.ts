@@ -111,23 +111,27 @@ export async function POST(request: NextRequest) {
     }
 
     // Fetch campaigns from Klaviyo
+    // Klaviyo requires a channel filter - fetch email and SMS separately
     console.log(`[Klaviyo Sync] Fetching campaigns for store: ${store.store_name}`)
 
     const allCampaigns: KlaviyoCampaign[] = []
-    let nextPage: string | null = "/campaigns?page[size]=100"
 
-    while (nextPage) {
-      const response: KlaviyoCampaignsResponse | null = await klaviyoRequest<KlaviyoCampaignsResponse>(apiKey, nextPage)
+    for (const channel of ["email", "sms"]) {
+      let nextPage: string | null = `/campaigns?filter=equals(messages.channel,'${channel}')`
 
-      if (!response?.data) break
+      while (nextPage) {
+        const response: KlaviyoCampaignsResponse | null = await klaviyoRequest<KlaviyoCampaignsResponse>(apiKey, nextPage)
 
-      allCampaigns.push(...response.data)
+        if (!response?.data) break
 
-      const nextUrl: string | undefined = response.links?.next
-      nextPage = nextUrl ? nextUrl.replace(KLAVIYO_API_URL, "") : null
+        allCampaigns.push(...response.data)
 
-      // Rate limiting
-      if (nextPage) await new Promise(resolve => setTimeout(resolve, 300))
+        const nextUrl: string | undefined = response.links?.next
+        nextPage = nextUrl ? nextUrl.replace(KLAVIYO_API_URL, "") : null
+
+        // Rate limiting
+        if (nextPage) await new Promise(resolve => setTimeout(resolve, 300))
+      }
     }
 
     console.log(`[Klaviyo Sync] Found ${allCampaigns.length} campaigns`)

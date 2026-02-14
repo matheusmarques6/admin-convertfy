@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
         org_member:org_members(
           id,
           role,
-          profile:profiles(id, name, email, avatar_url)
+          profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url)
         ),
         store:client_stores(
           id,

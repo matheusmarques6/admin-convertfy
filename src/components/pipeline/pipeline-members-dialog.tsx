@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
 import { Loader2, Plus, X, Crown, Pencil, Eye } from "lucide-react"
 import {
   Dialog,
@@ -60,7 +59,6 @@ export function PipelineMembersDialog({
   currentUserRole,
   onSuccess,
 }: PipelineMembersDialogProps) {
-  const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
   const [members, setMembers] = useState(initialMembers)
   const [availableUsers, setAvailableUsers] = useState<User[]>([])
