@@ -1,11 +1,10 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect } from "react"
 import { useRouter, useParams } from "next/navigation"
 import Link from "next/link"
 import {
   ArrowLeft,
-  FileText,
   Loader2,
   Calendar,
   Store,
@@ -15,8 +14,6 @@ import {
   DollarSign,
   Users,
   Mail,
-  ShoppingCart,
-  TrendingUp,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"

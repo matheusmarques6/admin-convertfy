@@ -45,6 +45,7 @@ export function ImportLogsDialog({
 
   useEffect(() => {
     if (open) loadLogs()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, pipelineId, statusFilter])
 
   async function loadLogs() {

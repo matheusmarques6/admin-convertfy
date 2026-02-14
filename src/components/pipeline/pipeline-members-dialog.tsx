@@ -73,6 +73,7 @@ export function PipelineMembersDialog({
       setMembers(initialMembers)
       if (canManage) loadAvailableUsers()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialMembers, canManage])
 
   async function loadAvailableUsers() {

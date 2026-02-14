@@ -12,10 +12,6 @@ import {
   Eye,
   Mail,
   Send,
-  Calendar,
-  ArrowUpRight,
-  ArrowDownRight,
-  Filter,
   Download,
   MessageSquare,
 } from "lucide-react"
@@ -265,6 +261,7 @@ export default function KlaviyoCampaignsPage() {
     }
 
     loadStores()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Load campaigns data

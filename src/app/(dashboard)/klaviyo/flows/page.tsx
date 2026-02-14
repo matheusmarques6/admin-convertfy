@@ -14,9 +14,7 @@ import {
   Zap,
   ArrowUpRight,
   ArrowDownRight,
-  Filter,
   Download,
-  ChevronDown,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -38,12 +36,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { createClient } from "@/lib/supabase/client"
 import { toast } from "@/lib/hooks/use-toast"
 import { cn, formatCurrency } from "@/lib/utils"
@@ -247,6 +239,7 @@ export default function KlaviyoFlowsPage() {
     }
 
     loadStores()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Load flows data

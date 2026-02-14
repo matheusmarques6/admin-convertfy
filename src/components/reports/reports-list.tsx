@@ -1,8 +1,7 @@
 "use client"
 
-import { useState, useMemo, useTransition } from "react"
+import { useState, useMemo } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
 import {
   Plus,
   FileText,
@@ -198,8 +197,6 @@ export function ReportsList({
   pendingCount,
   pendingStores,
 }: ReportsListProps) {
-  const router = useRouter()
-  const [isPending, startTransition] = useTransition()
   const [reports, setReports] = useState(initialReports)
 
   // Filters

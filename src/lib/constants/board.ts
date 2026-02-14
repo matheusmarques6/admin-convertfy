@@ -5,7 +5,6 @@ import {
   XCircle,
   Ban,
   Search,
-  Calendar as CalendarIcon,
 } from "lucide-react"
 import type { TaskType, TaskStatus, TaskPriority, MeetingStatus } from "@/types"
 

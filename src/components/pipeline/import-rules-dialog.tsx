@@ -64,6 +64,7 @@ export function ImportRulesDialog({
 
   useEffect(() => {
     if (open) loadRules()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, pipeline.id])
 
   async function loadRules() {

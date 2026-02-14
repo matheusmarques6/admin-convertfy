@@ -122,7 +122,7 @@ export function DealDialog({
       .select("id, name, company")
       .order("name")
 
-    setClients((clientsData || []) as Client[])
+    setClients((clientsData || []) as ClientOption[])
 
     // Load stages
     if (pipelineId) {

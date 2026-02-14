@@ -101,7 +101,8 @@ export async function GET(request: NextRequest) {
     const tasksWithCounts = (tasks || []).map((task) => {
       const commentData = task.task_comments as unknown as Array<{ count: number }> | undefined
       const commentsCount = commentData?.[0]?.count ?? 0
-      const { task_comments: _, ...rest } = task
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { task_comments: _taskComments, ...rest } = task
       return {
         ...rest,
         comments_count: commentsCount,

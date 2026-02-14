@@ -8,7 +8,6 @@ import {
   Plus,
   Video,
   Calendar,
-  Clock,
   CheckCircle,
   XCircle,
   AlertCircle,

@@ -24,7 +24,6 @@ import {
   Send,
   Archive,
   Loader2,
-  Share2,
   Copy,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -49,7 +48,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { createClient } from "@/lib/supabase/client"
 import { toast } from "@/lib/hooks/use-toast"
-import { formatCurrency, formatDate } from "@/lib/utils"
+import { formatDate } from "@/lib/utils"
 import type { Report, ReportData, ReportStatus } from "@/types"
 
 interface ReportWithRelations extends Report {

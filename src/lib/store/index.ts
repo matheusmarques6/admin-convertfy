@@ -12,7 +12,6 @@ import type {
   PipelineImportRule,
   Automation,
   Integration,
-  IntegrationType,
 } from "@/types"
 
 // Auth Store
