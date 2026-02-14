@@ -5,7 +5,12 @@ import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
-import { Loader2, Plus, Trash2, GripVertical } from "lucide-react"
+import {
+  Loader2,
+  Plus,
+  GripVertical,
+  X,
+} from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -18,8 +23,18 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { createClient } from "@/lib/supabase/client"
 import { toast } from "@/lib/hooks/use-toast"
+
+const DEFAULT_STAGES = [
+  { name: "Lead", color: "#94A3B8", order: 1 },
+  { name: "Qualificacao", color: "#F59E0B", order: 2 },
+  { name: "Proposta", color: "#3B82F6", order: 3 },
+  { name: "Negociacao", color: "#8B5CF6", order: 4 },
+  { name: "Fechado Ganho", color: "#22C55E", order: 5 },
+  { name: "Fechado Perdido", color: "#EF4444", order: 6 },
+]
 
 const pipelineSchema = z.object({
   name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres"),
@@ -30,33 +45,25 @@ const pipelineSchema = z.object({
 type PipelineForm = z.infer<typeof pipelineSchema>
 
 interface StageInput {
-  id: string
   name: string
   color: string
+  order: number
 }
-
-const defaultStages: StageInput[] = [
-  { id: "1", name: "Prospecção", color: "#6B7280" },
-  { id: "2", name: "Qualificação", color: "#3B82F6" },
-  { id: "3", name: "Proposta", color: "#F59E0B" },
-  { id: "4", name: "Negociação", color: "#8B5CF6" },
-  { id: "5", name: "Fechamento", color: "#22C55E" },
-]
-
-const colorOptions = [
-  "#6B7280", "#EF4444", "#F59E0B", "#22C55E", "#3B82F6",
-  "#8B5CF6", "#EC4899", "#14B8A6", "#F97316", "#06B6D4",
-]
 
 interface PipelineCreateDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  onSuccess?: () => void
 }
 
-export function PipelineCreateDialog({ open, onOpenChange }: PipelineCreateDialogProps) {
+export function PipelineCreateDialog({
+  open,
+  onOpenChange,
+  onSuccess,
+}: PipelineCreateDialogProps) {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
-  const [stages, setStages] = useState<StageInput[]>(defaultStages)
+  const [stages, setStages] = useState<StageInput[]>(DEFAULT_STAGES)
 
   const {
     register,
@@ -76,39 +83,67 @@ export function PipelineCreateDialog({ open, onOpenChange }: PipelineCreateDialo
 
   const isDefault = watch("is_default")
 
-  function addStage() {
-    const newStage: StageInput = {
-      id: Date.now().toString(),
-      name: "",
-      color: colorOptions[stages.length % colorOptions.length],
-    }
-    setStages([...stages, newStage])
+  function handleAddStage() {
+    setStages((prev) => [
+      ...prev,
+      {
+        name: "",
+        color: "#8B5CF6",
+        order: prev.length + 1,
+      },
+    ])
   }
 
-  function removeStage(id: string) {
-    if (stages.length <= 1) {
+  function handleRemoveStage(index: number) {
+    if (stages.length <= 2) {
       toast({
         variant: "destructive",
-        title: "Erro",
-        description: "O pipeline precisa ter pelo menos uma etapa.",
+        title: "Minimo de 2 etapas",
+        description: "Uma pipeline precisa ter pelo menos 2 etapas.",
       })
       return
     }
-    setStages(stages.filter((s) => s.id !== id))
+    setStages((prev) => {
+      const updated = prev.filter((_, i) => i !== index)
+      return updated.map((s, i) => ({ ...s, order: i + 1 }))
+    })
   }
 
-  function updateStage(id: string, field: "name" | "color", value: string) {
-    setStages(stages.map((s) => (s.id === id ? { ...s, [field]: value } : s)))
+  function handleStageChange(index: number, field: "name" | "color", value: string) {
+    setStages((prev) =>
+      prev.map((s, i) => (i === index ? { ...s, [field]: value } : s))
+    )
+  }
+
+  function handleMoveStage(fromIndex: number, direction: "up" | "down") {
+    const toIndex = direction === "up" ? fromIndex - 1 : fromIndex + 1
+    if (toIndex < 0 || toIndex >= stages.length) return
+
+    setStages((prev) => {
+      const updated = [...prev]
+      const temp = updated[fromIndex]
+      updated[fromIndex] = updated[toIndex]
+      updated[toIndex] = temp
+      return updated.map((s, i) => ({ ...s, order: i + 1 }))
+    })
   }
 
   async function onSubmit(data: PipelineForm) {
-    // Validate stages
-    const validStages = stages.filter((s) => s.name.trim())
-    if (validStages.length === 0) {
+    const emptyStages = stages.filter((s) => !s.name.trim())
+    if (emptyStages.length > 0) {
       toast({
         variant: "destructive",
-        title: "Erro",
-        description: "Adicione pelo menos uma etapa ao pipeline.",
+        title: "Etapas incompletas",
+        description: "Todas as etapas precisam ter um nome.",
+      })
+      return
+    }
+
+    if (stages.length < 2) {
+      toast({
+        variant: "destructive",
+        title: "Minimo de 2 etapas",
+        description: "Uma pipeline precisa ter pelo menos 2 etapas.",
       })
       return
     }
@@ -117,8 +152,13 @@ export function PipelineCreateDialog({ open, onOpenChange }: PipelineCreateDialo
 
     try {
       const supabase = createClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
 
-      // If this is set as default, unset other defaults first
+      if (!user) throw new Error("Nao autenticado")
+
+      // Se marcou como padrao, desmarcar outras
       if (data.is_default) {
         await supabase
           .from("pipelines")
@@ -126,25 +166,26 @@ export function PipelineCreateDialog({ open, onOpenChange }: PipelineCreateDialo
           .eq("is_default", true)
       }
 
-      // Create the pipeline
+      // Criar pipeline
       const { data: pipeline, error: pipelineError } = await supabase
         .from("pipelines")
         .insert({
           name: data.name,
           description: data.description || null,
           is_default: data.is_default,
+          created_by: user.id,
         })
         .select()
         .single()
 
       if (pipelineError) throw pipelineError
 
-      // Create the stages
-      const stagesData = validStages.map((stage, index) => ({
+      // Criar stages
+      const stagesData = stages.map((s) => ({
         pipeline_id: pipeline.id,
-        name: stage.name,
-        color: stage.color,
-        order: index,
+        name: s.name,
+        color: s.color,
+        order: s.order,
       }))
 
       const { error: stagesError } = await supabase
@@ -154,16 +195,17 @@ export function PipelineCreateDialog({ open, onOpenChange }: PipelineCreateDialo
       if (stagesError) throw stagesError
 
       toast({
-        title: "Pipeline criado!",
-        description: "O pipeline foi criado com sucesso.",
+        title: "Pipeline criada!",
+        description: `A pipeline "${data.name}" foi criada com ${stages.length} etapas.`,
       })
 
       reset()
-      setStages(defaultStages)
+      setStages(DEFAULT_STAGES)
       onOpenChange(false)
-      router.push(`/pipeline?pipelineId=${pipeline.id}`)
+      onSuccess?.()
       router.refresh()
-    } catch {
+    } catch (error) {
+      console.error("Error creating pipeline:", error)
       toast({
         variant: "destructive",
         title: "Erro ao criar pipeline",
@@ -176,21 +218,21 @@ export function PipelineCreateDialog({ open, onOpenChange }: PipelineCreateDialo
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[600px] max-h-[90vh]">
         <DialogHeader>
-          <DialogTitle>Novo Pipeline</DialogTitle>
+          <DialogTitle>Nova Pipeline</DialogTitle>
           <DialogDescription>
-            Crie um novo pipeline de vendas com etapas personalizadas
+            Crie uma nova pipeline com etapas personalizadas
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           {/* Name */}
           <div className="space-y-2">
-            <Label htmlFor="name">Nome do Pipeline *</Label>
+            <Label htmlFor="pipeline-name">Nome *</Label>
             <Input
-              id="name"
-              placeholder="Ex: Vendas B2B"
+              id="pipeline-name"
+              placeholder="Ex: Pipeline de Vendas B2B"
               {...register("name")}
               disabled={isLoading}
             />
@@ -201,87 +243,113 @@ export function PipelineCreateDialog({ open, onOpenChange }: PipelineCreateDialo
 
           {/* Description */}
           <div className="space-y-2">
-            <Label htmlFor="description">Descrição</Label>
+            <Label htmlFor="pipeline-desc">Descricao</Label>
             <Textarea
-              id="description"
-              placeholder="Descrição do pipeline..."
+              id="pipeline-desc"
+              placeholder="Descreva o proposito desta pipeline..."
               {...register("description")}
               disabled={isLoading}
             />
           </div>
 
-          {/* Default toggle */}
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label>Pipeline Padrão</Label>
-              <p className="text-sm text-muted-foreground">
-                Usar este pipeline como padrão ao abrir a página
-              </p>
-            </div>
+          {/* Default */}
+          <div className="flex items-center gap-3">
             <Switch
               checked={isDefault}
-              onCheckedChange={(checked) => setValue("is_default", checked)}
+              onCheckedChange={(v) => setValue("is_default", v)}
               disabled={isLoading}
             />
+            <Label>Definir como pipeline padrao</Label>
           </div>
 
           {/* Stages */}
-          <div className="space-y-4">
+          <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <Label>Etapas do Pipeline</Label>
+              <Label>Etapas da Pipeline</Label>
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={addStage}
+                onClick={handleAddStage}
                 disabled={isLoading}
               >
-                <Plus className="mr-2 h-4 w-4" />
+                <Plus className="mr-1 h-3 w-3" />
                 Adicionar Etapa
               </Button>
             </div>
 
-            <div className="space-y-2">
-              {stages.map((stage, index) => (
-                <div
-                  key={stage.id}
-                  className="flex items-center gap-2 p-2 border rounded-lg bg-muted/50"
-                >
-                  <GripVertical className="h-4 w-4 text-muted-foreground cursor-move" />
-                  <span className="text-sm text-muted-foreground w-6">{index + 1}.</span>
-                  <Input
-                    value={stage.name}
-                    onChange={(e) => updateStage(stage.id, "name", e.target.value)}
-                    placeholder="Nome da etapa"
-                    className="flex-1"
-                    disabled={isLoading}
-                  />
-                  <div className="flex gap-1">
-                    {colorOptions.slice(0, 5).map((color) => (
-                      <button
-                        key={color}
-                        type="button"
-                        className={`w-6 h-6 rounded-full border-2 ${
-                          stage.color === color ? "border-foreground" : "border-transparent"
-                        }`}
-                        style={{ backgroundColor: color }}
-                        onClick={() => updateStage(stage.id, "color", color)}
-                        disabled={isLoading}
-                      />
-                    ))}
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => removeStage(stage.id)}
-                    disabled={isLoading || stages.length <= 1}
+            <ScrollArea className="max-h-[300px]">
+              <div className="space-y-2 pr-4">
+                {stages.map((stage, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center gap-2 p-2 rounded-md border bg-card"
                   >
-                    <Trash2 className="h-4 w-4 text-muted-foreground" />
-                  </Button>
-                </div>
-              ))}
-            </div>
+                    <div className="flex flex-col gap-0.5">
+                      <button
+                        type="button"
+                        className="text-muted-foreground hover:text-foreground disabled:opacity-30"
+                        onClick={() => handleMoveStage(index, "up")}
+                        disabled={index === 0 || isLoading}
+                        tabIndex={-1}
+                      >
+                        <GripVertical className="h-3 w-3 rotate-180" />
+                      </button>
+                      <button
+                        type="button"
+                        className="text-muted-foreground hover:text-foreground disabled:opacity-30"
+                        onClick={() => handleMoveStage(index, "down")}
+                        disabled={index === stages.length - 1 || isLoading}
+                        tabIndex={-1}
+                      >
+                        <GripVertical className="h-3 w-3" />
+                      </button>
+                    </div>
+
+                    <span className="text-xs text-muted-foreground w-5">
+                      {stage.order}
+                    </span>
+
+                    <input
+                      type="color"
+                      value={stage.color}
+                      onChange={(e) =>
+                        handleStageChange(index, "color", e.target.value)
+                      }
+                      className="w-8 h-8 rounded cursor-pointer border-0 p-0"
+                      disabled={isLoading}
+                    />
+
+                    <Input
+                      value={stage.name}
+                      onChange={(e) =>
+                        handleStageChange(index, "name", e.target.value)
+                      }
+                      placeholder="Nome da etapa"
+                      className="flex-1"
+                      disabled={isLoading}
+                    />
+
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 flex-shrink-0 text-muted-foreground hover:text-destructive"
+                      onClick={() => handleRemoveStage(index)}
+                      disabled={isLoading}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+
+            {stages.length < 2 && (
+              <p className="text-sm text-destructive">
+                Adicione pelo menos 2 etapas.
+              </p>
+            )}
           </div>
 
           {/* Actions */}

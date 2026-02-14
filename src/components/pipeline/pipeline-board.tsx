@@ -8,7 +8,7 @@ import {
   Draggable,
   DropResult,
 } from "@hello-pangea/dnd"
-import { Plus, MoreHorizontal, Trash2, Edit } from "lucide-react"
+import { Plus, MoreHorizontal, Trash2, Edit, Lock } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -19,60 +19,48 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { DealDialog } from "./deal-dialog"
 import { formatCurrency, getInitials } from "@/lib/utils"
-import { dealService } from "@/lib/services"
-import { useAuthStore } from "@/lib/store"
+import { createClient } from "@/lib/supabase/client"
 import { toast } from "@/lib/hooks/use-toast"
-import type { PipelineStage, Deal, Client, User } from "@/types"
-
-interface DealWithRelations extends Deal {
-  client?: Client
-  owner?: User
-}
+import type { PipelineStage, DealWithRelations, PipelineMemberRole } from "@/types"
 
 interface PipelineBoardProps {
   stages: PipelineStage[]
   deals: DealWithRelations[]
   pipelineId?: string
+  currentUserRole: PipelineMemberRole | null
 }
 
-export function PipelineBoard({ stages, deals: initialDeals, pipelineId }: PipelineBoardProps) {
+export function PipelineBoard({
+  stages,
+  deals: initialDeals,
+  pipelineId,
+  currentUserRole,
+}: PipelineBoardProps) {
   const router = useRouter()
-  const { user } = useAuthStore()
   const [deals, setDeals] = useState(initialDeals)
   const [showNewDeal, setShowNewDeal] = useState(false)
   const [selectedStageId, setSelectedStageId] = useState<string | null>(null)
   const [editingDeal, setEditingDeal] = useState<DealWithRelations | null>(null)
-  const [deletingDealId, setDeletingDealId] = useState<string | null>(null)
+  const [deletingDeal, setDeletingDeal] = useState<DealWithRelations | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
 
-  async function handleDeleteDeal(dealId: string) {
-    if (!user?.id) return
-    setDeletingDealId(dealId)
-
-    try {
-      await dealService.delete(dealId, user.id)
-
-      setDeals((prev) => prev.filter((deal) => deal.id !== dealId))
-
-      toast({
-        title: "Deal excluído",
-        description: "O deal foi excluído com sucesso.",
-      })
-    } catch {
-      toast({
-        variant: "destructive",
-        title: "Erro ao excluir deal",
-        description: "Tente novamente.",
-      })
-    } finally {
-      setDeletingDealId(null)
-    }
-  }
+  const canEdit = currentUserRole === "owner" || currentUserRole === "editor"
 
   async function handleDragEnd(result: DropResult) {
-    if (!result.destination || !user?.id) return
+    if (!result.destination || !canEdit) return
 
     const { draggableId, destination } = result
     const newStageId = destination.droppableId
@@ -84,9 +72,15 @@ export function PipelineBoard({ stages, deals: initialDeals, pipelineId }: Pipel
       )
     )
 
-    // Update in database with event tracking
+    // Update in database
     try {
-      await dealService.moveToStage(draggableId, newStageId, user.id)
+      const supabase = createClient()
+      const { error } = await supabase
+        .from("deals")
+        .update({ stage_id: newStageId })
+        .eq("id", draggableId)
+
+      if (error) throw error
 
       toast({
         title: "Deal movido",
@@ -100,6 +94,37 @@ export function PipelineBoard({ stages, deals: initialDeals, pipelineId }: Pipel
         title: "Erro ao mover deal",
         description: "Tente novamente.",
       })
+    }
+  }
+
+  async function handleDeleteDeal() {
+    if (!deletingDeal) return
+    setIsDeleting(true)
+
+    try {
+      const supabase = createClient()
+      const { error } = await supabase
+        .from("deals")
+        .delete()
+        .eq("id", deletingDeal.id)
+
+      if (error) throw error
+
+      setDeals((prev) => prev.filter((d) => d.id !== deletingDeal.id))
+      setDeletingDeal(null)
+
+      toast({
+        title: "Deal excluido",
+        description: `"${deletingDeal.title}" foi removido.`,
+      })
+    } catch {
+      toast({
+        variant: "destructive",
+        title: "Erro ao excluir deal",
+        description: "Tente novamente.",
+      })
+    } finally {
+      setIsDeleting(false)
     }
   }
 
@@ -117,6 +142,21 @@ export function PipelineBoard({ stages, deals: initialDeals, pipelineId }: Pipel
   function handleAddDeal(stageId: string) {
     setSelectedStageId(stageId)
     setShowNewDeal(true)
+  }
+
+  // Show message if no pipeline access
+  if (!currentUserRole) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center">
+          <Lock className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
+          <p className="text-lg font-medium">Sem acesso</p>
+          <p className="text-muted-foreground">
+            Voce nao e membro de nenhuma pipeline. Crie uma nova ou peca acesso.
+          </p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -144,14 +184,16 @@ export function PipelineBoard({ stages, deals: initialDeals, pipelineId }: Pipel
                         {stageDeals.length}
                       </Badge>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => handleAddDeal(stage.id)}
-                    >
-                      <Plus className="h-4 w-4" />
-                    </Button>
+                    {canEdit && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => handleAddDeal(stage.id)}
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                   <p className="text-sm text-muted-foreground mt-1">
                     {formatCurrency(stageTotal)}
@@ -159,7 +201,7 @@ export function PipelineBoard({ stages, deals: initialDeals, pipelineId }: Pipel
                 </div>
 
                 {/* Deals */}
-                <Droppable droppableId={stage.id}>
+                <Droppable droppableId={stage.id} isDropDisabled={!canEdit}>
                   {(provided, snapshot) => (
                     <ScrollArea className="flex-1">
                       <div
@@ -174,15 +216,18 @@ export function PipelineBoard({ stages, deals: initialDeals, pipelineId }: Pipel
                             key={deal.id}
                             draggableId={deal.id}
                             index={index}
+                            isDragDisabled={!canEdit}
                           >
                             {(provided, snapshot) => (
                               <Card
                                 ref={provided.innerRef}
                                 {...provided.draggableProps}
                                 {...provided.dragHandleProps}
-                                className={`mb-2 cursor-grab active:cursor-grabbing transition-shadow ${
-                                  snapshot.isDragging ? "shadow-lg" : ""
-                                }`}
+                                className={`mb-2 transition-shadow ${
+                                  canEdit
+                                    ? "cursor-grab active:cursor-grabbing"
+                                    : "cursor-default"
+                                } ${snapshot.isDragging ? "shadow-lg" : ""}`}
                               >
                                 <CardContent className="p-3">
                                   <div className="flex items-start justify-between gap-2">
@@ -196,33 +241,34 @@ export function PipelineBoard({ stages, deals: initialDeals, pipelineId }: Pipel
                                         </p>
                                       )}
                                     </div>
-                                    <DropdownMenu>
-                                      <DropdownMenuTrigger asChild>
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          className="h-6 w-6 flex-shrink-0"
-                                        >
-                                          <MoreHorizontal className="h-3 w-3" />
-                                        </Button>
-                                      </DropdownMenuTrigger>
-                                      <DropdownMenuContent align="end">
-                                        <DropdownMenuItem
-                                          onClick={() => setEditingDeal(deal)}
-                                        >
-                                          <Edit className="mr-2 h-4 w-4" />
-                                          Editar
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem
-                                          className="text-destructive focus:text-destructive"
-                                          onClick={() => handleDeleteDeal(deal.id)}
-                                          disabled={deletingDealId === deal.id}
-                                        >
-                                          <Trash2 className="mr-2 h-4 w-4" />
-                                          {deletingDealId === deal.id ? "Excluindo..." : "Excluir"}
-                                        </DropdownMenuItem>
-                                      </DropdownMenuContent>
-                                    </DropdownMenu>
+                                    {canEdit && (
+                                      <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-6 w-6 flex-shrink-0"
+                                          >
+                                            <MoreHorizontal className="h-3 w-3" />
+                                          </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end">
+                                          <DropdownMenuItem
+                                            onClick={() => setEditingDeal(deal)}
+                                          >
+                                            <Edit className="mr-2 h-4 w-4" />
+                                            Editar
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem
+                                            className="text-destructive"
+                                            onClick={() => setDeletingDeal(deal)}
+                                          >
+                                            <Trash2 className="mr-2 h-4 w-4" />
+                                            Excluir
+                                          </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                      </DropdownMenu>
+                                    )}
                                   </div>
 
                                   <p className="text-lg font-semibold text-primary mt-2">
@@ -238,7 +284,7 @@ export function PipelineBoard({ stages, deals: initialDeals, pipelineId }: Pipel
                                         </AvatarFallback>
                                       </Avatar>
                                     )}
-                                    {deal.probability && (
+                                    {deal.probability != null && (
                                       <Badge variant="outline" className="text-xs">
                                         {deal.probability}%
                                       </Badge>
@@ -277,6 +323,32 @@ export function PipelineBoard({ stages, deals: initialDeals, pipelineId }: Pipel
         pipelineId={pipelineId}
         onSuccess={() => router.refresh()}
       />
+
+      {/* Delete Deal Confirmation */}
+      <AlertDialog
+        open={!!deletingDeal}
+        onOpenChange={() => setDeletingDeal(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir deal?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O deal &quot;{deletingDeal?.title}&quot; sera excluido
+              permanentemente. Esta acao nao pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteDeal}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? "Excluindo..." : "Excluir"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }
