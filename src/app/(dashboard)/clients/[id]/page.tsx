@@ -1,17 +1,21 @@
 import { notFound } from "next/navigation"
 import Link from "next/link"
-import { ArrowLeft, Edit, MoreHorizontal } from "lucide-react"
+import { ArrowLeft, Edit } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ClientActions } from "@/components/clients/client-actions"
 import { ClientOverview } from "@/components/clients/client-overview"
 import { ClientFinancial } from "@/components/clients/client-financial"
 import { ClientContracts } from "@/components/clients/client-contracts"
 import { ClientMeetings } from "@/components/clients/client-meetings"
 import { ClientReports } from "@/components/clients/client-reports"
 import { ClientTimeline } from "@/components/clients/client-timeline"
+import { ClientStores } from "@/components/clients/client-stores"
+import { ClientKlaviyoReports } from "@/components/clients/client-klaviyo-reports"
+import { ClientPortalUsers } from "@/components/clients/client-portal-users"
 import { getInitials, getHealthScoreColor, getHealthScoreEmoji } from "@/lib/utils"
 
 export const dynamic = "force-dynamic"
@@ -120,9 +124,7 @@ export default async function ClientPage({
               Editar
             </Link>
           </Button>
-          <Button variant="ghost" size="icon">
-            <MoreHorizontal className="h-4 w-4" />
-          </Button>
+          <ClientActions clientId={client.id} clientName={client.name} />
         </div>
       </div>
 
@@ -131,9 +133,12 @@ export default async function ClientPage({
         <TabsList>
           <TabsTrigger value="overview">Visão Geral</TabsTrigger>
           <TabsTrigger value="financial">Financeiro</TabsTrigger>
+          <TabsTrigger value="stores">Lojas</TabsTrigger>
+          <TabsTrigger value="klaviyo">Klaviyo</TabsTrigger>
           <TabsTrigger value="contracts">Contratos</TabsTrigger>
           <TabsTrigger value="meetings">Reuniões</TabsTrigger>
           <TabsTrigger value="reports">Relatórios</TabsTrigger>
+          <TabsTrigger value="portal">Portal</TabsTrigger>
           <TabsTrigger value="timeline">Timeline</TabsTrigger>
         </TabsList>
 
@@ -142,11 +147,19 @@ export default async function ClientPage({
         </TabsContent>
 
         <TabsContent value="financial">
-          <ClientFinancial invoices={client.invoices || []} />
+          <ClientFinancial clientId={client.id} clientName={client.name} />
+        </TabsContent>
+
+        <TabsContent value="stores">
+          <ClientStores clientId={client.id} clientName={client.name} />
+        </TabsContent>
+
+        <TabsContent value="klaviyo">
+          <ClientKlaviyoReports clientId={client.id} />
         </TabsContent>
 
         <TabsContent value="contracts">
-          <ClientContracts contracts={client.contracts || []} clientId={client.id} />
+          <ClientContracts contracts={client.contracts || []} />
         </TabsContent>
 
         <TabsContent value="meetings">
@@ -154,7 +167,11 @@ export default async function ClientPage({
         </TabsContent>
 
         <TabsContent value="reports">
-          <ClientReports reports={client.reports || []} clientId={client.id} />
+          <ClientReports clientId={client.id} />
+        </TabsContent>
+
+        <TabsContent value="portal">
+          <ClientPortalUsers clientId={client.id} clientName={client.name} />
         </TabsContent>
 
         <TabsContent value="timeline">

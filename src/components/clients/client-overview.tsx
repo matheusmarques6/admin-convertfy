@@ -1,8 +1,10 @@
 "use client"
 
-import { Globe, Mail, Phone, Building, User, Calendar } from "lucide-react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { useState, useEffect } from "react"
+import { Globe, Mail, Phone, Building, User, Calendar, Loader2, AlertCircle, CheckCircle2 } from "lucide-react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Badge } from "@/components/ui/badge"
 import { formatCurrency, formatDate, getInitials } from "@/lib/utils"
 import type { Client, Contract, Invoice, Meeting, User as UserType } from "@/types"
 
@@ -17,19 +19,80 @@ interface ClientOverviewProps {
   client: ClientWithRelations
 }
 
+interface AsaasFinancialData {
+  totalPaid: number
+  totalPending: number
+  totalOverdue: number
+  hasSubscription: boolean
+  subscriptionValue?: number
+}
+
 export function ClientOverview({ client }: ClientOverviewProps) {
+  const [asaasData, setAsaasData] = useState<AsaasFinancialData | null>(null)
+  const [isLoadingAsaas, setIsLoadingAsaas] = useState(true)
+  const [hasAsaasId, setHasAsaasId] = useState(false)
+
   const activeContract = client.contracts?.find((c) => c.status === "active")
-  const totalPaid = client.invoices
+
+  // Local invoice data as fallback
+  const localTotalPaid = client.invoices
     ?.filter((i) => i.status === "paid")
     ?.reduce((sum, i) => sum + Number(i.amount), 0) || 0
 
-  const pendingAmount = client.invoices
+  const localPendingAmount = client.invoices
     ?.filter((i) => i.status === "pending" || i.status === "overdue")
     ?.reduce((sum, i) => sum + Number(i.amount), 0) || 0
 
   const nextMeeting = client.meetings
     ?.filter((m) => m.status === "scheduled" && new Date(m.scheduled_at) > new Date())
     ?.sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())[0]
+
+  useEffect(() => {
+    loadAsaasData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client.id])
+
+  async function loadAsaasData() {
+    setIsLoadingAsaas(true)
+    try {
+      // Check if client has asaas_customer_id
+      const customFields = client.custom_fields as Record<string, string> | null
+      if (!customFields?.asaas_customer_id) {
+        setHasAsaasId(false)
+        return
+      }
+      setHasAsaasId(true)
+
+      // Fetch payments for current year
+      const year = new Date().getFullYear()
+      const [paymentsRes, subscriptionsRes] = await Promise.all([
+        fetch(`/api/integrations/asaas/payments?client_id=${client.id}&year=${year}`),
+        fetch(`/api/integrations/asaas/subscriptions?client_id=${client.id}`),
+      ])
+
+      const paymentsData = await paymentsRes.json()
+      const subscriptionsData = await subscriptionsRes.json()
+
+      if (paymentsData.success) {
+        setAsaasData({
+          totalPaid: paymentsData.summary?.paidValue || 0,
+          totalPending: paymentsData.summary?.pendingValue || 0,
+          totalOverdue: paymentsData.summary?.overdueValue || 0,
+          hasSubscription: subscriptionsData.subscriptions?.some((s: { isActive: boolean }) => s.isActive) || false,
+          subscriptionValue: subscriptionsData.subscriptions?.find((s: { isActive: boolean }) => s.isActive)?.value,
+        })
+      }
+    } catch (error) {
+      console.error("Error loading Asaas data:", error)
+    } finally {
+      setIsLoadingAsaas(false)
+    }
+  }
+
+  // Use Asaas data if available, otherwise use local data
+  const totalPaid = asaasData?.totalPaid ?? localTotalPaid
+  const pendingAmount = asaasData ? (asaasData.totalPending + asaasData.totalOverdue) : localPendingAmount
+  const overdueAmount = asaasData?.totalOverdue || 0
 
   return (
     <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -99,26 +162,38 @@ export function ClientOverview({ client }: ClientOverviewProps) {
 
       {/* Contract & Financial Summary */}
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-base">Resumo Financeiro</CardTitle>
+          {isLoadingAsaas ? (
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          ) : hasAsaasId ? (
+            <Badge variant="success" className="text-xs">
+              <CheckCircle2 className="h-3 w-3 mr-1" />
+              Asaas
+            </Badge>
+          ) : (
+            <Badge variant="secondary" className="text-xs">Local</Badge>
+          )}
         </CardHeader>
         <CardContent className="space-y-4">
-          {activeContract ? (
+          {activeContract || asaasData?.hasSubscription ? (
             <>
               <div>
-                <p className="text-xs text-muted-foreground">Plano Atual</p>
-                <p className="text-lg font-semibold">{activeContract.plan_name}</p>
+                <p className="text-xs text-muted-foreground">Plano/Assinatura</p>
+                <p className="text-lg font-semibold">
+                  {activeContract?.plan_name || "Assinatura Ativa"}
+                </p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Valor Mensal</p>
                 <p className="text-lg font-semibold text-emerald-500">
-                  {formatCurrency(activeContract.monthly_value)}
+                  {formatCurrency(asaasData?.subscriptionValue || activeContract?.monthly_value || 0)}
                 </p>
               </div>
             </>
           ) : (
             <div>
-              <p className="text-muted-foreground">Sem contrato ativo</p>
+              <p className="text-muted-foreground">Sem contrato/assinatura ativa</p>
             </div>
           )}
           <div className="grid grid-cols-2 gap-4 pt-2 border-t">
@@ -135,6 +210,17 @@ export function ClientOverview({ client }: ClientOverviewProps) {
               </p>
             </div>
           </div>
+          {overdueAmount > 0 && (
+            <div className="flex items-center gap-2 p-2 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800">
+              <AlertCircle className="h-4 w-4 text-red-500" />
+              <div>
+                <p className="text-xs text-red-600 dark:text-red-400">Vencido</p>
+                <p className="text-sm font-medium text-red-600 dark:text-red-400">
+                  {formatCurrency(overdueAmount)}
+                </p>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -187,15 +273,17 @@ export function ClientOverview({ client }: ClientOverviewProps) {
         </CardContent>
       </Card>
 
-      {/* Custom Fields */}
-      {client.custom_fields && Object.keys(client.custom_fields).length > 0 && (
+      {/* Custom Fields - filter out asaas internal fields */}
+      {client.custom_fields && Object.keys(client.custom_fields).filter(k => !k.startsWith('asaas_')).length > 0 && (
         <Card className="md:col-span-2 lg:col-span-3">
           <CardHeader>
             <CardTitle className="text-base">Campos Personalizados</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid gap-4 md:grid-cols-3">
-              {Object.entries(client.custom_fields).map(([key, value]) => (
+              {Object.entries(client.custom_fields)
+                .filter(([key]) => !key.startsWith('asaas_') && key !== 'cpf_cnpj')
+                .map(([key, value]) => (
                 <div key={key}>
                   <p className="text-xs text-muted-foreground capitalize">
                     {key.replace(/_/g, " ")}

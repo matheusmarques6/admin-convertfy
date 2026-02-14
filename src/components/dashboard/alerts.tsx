@@ -1,45 +1,35 @@
 "use client"
 
-import { Calendar, AlertCircle, Clock, FileText } from "lucide-react"
+import Link from "next/link"
+import { Calendar, AlertCircle, Clock, FileText, HeartPulse } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { formatDateTime } from "@/lib/utils"
 import type { Meeting } from "@/types"
+import type { LucideIcon } from "lucide-react"
+
+interface AlertItem {
+  id: string
+  type: "payment_overdue" | "contract_expiring" | "health_low"
+  title: string
+  description: string
+  severity: "high" | "medium" | "low"
+}
 
 interface DashboardAlertsProps {
   meetings: Meeting[]
+  alerts?: AlertItem[]
 }
 
-export function DashboardAlerts({ meetings }: DashboardAlertsProps) {
-  const alerts = [
-    {
-      id: 1,
-      type: "payment_overdue",
-      title: "Pagamento em atraso",
-      description: "Cliente Loja ABC está com pagamento vencido há 5 dias",
-      severity: "high" as const,
-      icon: AlertCircle,
-    },
-    {
-      id: 2,
-      type: "contract_expiring",
-      title: "Contrato expirando",
-      description: "Contrato da Loja XYZ vence em 7 dias",
-      severity: "medium" as const,
-      icon: FileText,
-    },
-    {
-      id: 3,
-      type: "report_pending",
-      title: "Relatório pendente",
-      description: "Relatório mensal de 3 clientes ainda não foi enviado",
-      severity: "low" as const,
-      icon: Clock,
-    },
-  ]
+const ALERT_ICONS: Record<string, LucideIcon> = {
+  payment_overdue: AlertCircle,
+  contract_expiring: FileText,
+  health_low: HeartPulse,
+}
 
+export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps) {
   const getSeverityColor = (severity: "high" | "medium" | "low") => {
     switch (severity) {
       case "high":
@@ -51,6 +41,8 @@ export function DashboardAlerts({ meetings }: DashboardAlertsProps) {
     }
   }
 
+  const totalAlerts = alerts.length
+
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -59,41 +51,52 @@ export function DashboardAlerts({ meetings }: DashboardAlertsProps) {
             <CardTitle className="text-base">Alertas e Lembretes</CardTitle>
             <CardDescription>Itens que precisam da sua atenção</CardDescription>
           </div>
-          <Badge variant="destructive" className="rounded-full">
-            {alerts.length}
-          </Badge>
+          {totalAlerts > 0 && (
+            <Badge variant="destructive" className="rounded-full">
+              {totalAlerts}
+            </Badge>
+          )}
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Alerts */}
-        <div className="space-y-3">
-          {alerts.map((alert) => (
-            <div
-              key={alert.id}
-              className="flex items-start gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
-            >
-              <div className={`rounded-lg p-2 ${
-                alert.severity === "high" ? "bg-red-500/10" :
-                alert.severity === "medium" ? "bg-amber-500/10" : "bg-muted"
-              }`}>
-                <alert.icon className={`h-4 w-4 ${
-                  alert.severity === "high" ? "text-red-500" :
-                  alert.severity === "medium" ? "text-amber-500" : "text-muted-foreground"
-                }`} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium">{alert.title}</p>
-                <p className="text-xs text-muted-foreground truncate">
-                  {alert.description}
-                </p>
-              </div>
-              <Badge variant={getSeverityColor(alert.severity)} className="shrink-0">
-                {alert.severity === "high" ? "Urgente" :
-                 alert.severity === "medium" ? "Atenção" : "Baixo"}
-              </Badge>
-            </div>
-          ))}
-        </div>
+        {alerts.length > 0 ? (
+          <div className="space-y-3">
+            {alerts.map((alert) => {
+              const Icon = ALERT_ICONS[alert.type] || Clock
+              return (
+                <div
+                  key={alert.id}
+                  className="flex items-start gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+                >
+                  <div className={`rounded-lg p-2 ${
+                    alert.severity === "high" ? "bg-red-500/10" :
+                    alert.severity === "medium" ? "bg-amber-500/10" : "bg-muted"
+                  }`}>
+                    <Icon className={`h-4 w-4 ${
+                      alert.severity === "high" ? "text-red-500" :
+                      alert.severity === "medium" ? "text-amber-500" : "text-muted-foreground"
+                    }`} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium">{alert.title}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {alert.description}
+                    </p>
+                  </div>
+                  <Badge variant={getSeverityColor(alert.severity)} className="shrink-0">
+                    {alert.severity === "high" ? "Urgente" :
+                     alert.severity === "medium" ? "Atenção" : "Baixo"}
+                  </Badge>
+                </div>
+              )
+            })}
+          </div>
+        ) : (
+          <div className="text-sm text-muted-foreground text-center py-4">
+            Nenhum alerta no momento
+          </div>
+        )}
 
         {/* Upcoming Meetings */}
         {meetings.length > 0 && (
@@ -115,8 +118,10 @@ export function DashboardAlerts({ meetings }: DashboardAlertsProps) {
                         {formatDateTime(meeting.scheduled_at)}
                       </p>
                     </div>
-                    <Button variant="ghost" size="sm">
-                      Ver
+                    <Button variant="ghost" size="sm" asChild>
+                      <Link href="/meetings">
+                        Ver
+                      </Link>
                     </Button>
                   </div>
                 ))}

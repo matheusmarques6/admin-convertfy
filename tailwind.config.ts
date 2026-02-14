@@ -60,9 +60,9 @@ const config: Config = {
         },
         convertfy: {
           purple: "#8B5CF6",
-          blue: "#3B82F6",
+          blue: "#3a68fc",
           cyan: "#06B6D4",
-          gradient: "linear-gradient(135deg, #8B5CF6 0%, #3B82F6 50%, #06B6D4 100%)",
+          dark: "#080808",
         },
       },
       borderRadius: {

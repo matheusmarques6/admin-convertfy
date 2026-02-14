@@ -5,23 +5,33 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { formatCurrency, formatDate } from "@/lib/utils"
+import { toast } from "@/lib/hooks/use-toast"
 import type { Contract } from "@/types"
 
 interface ClientContractsProps {
   contracts: Contract[]
-  clientId: string
 }
 
-const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "success" | "destructive" | "warning" }> = {
+const statusConfig: Record<
+  string,
+  { label: string; variant: "default" | "secondary" | "success" | "destructive" | "warning" }
+> = {
   active: { label: "Ativo", variant: "success" },
   expired: { label: "Expirado", variant: "secondary" },
   cancelled: { label: "Cancelado", variant: "destructive" },
   pending: { label: "Pendente", variant: "warning" },
 }
 
-export function ClientContracts({ contracts, clientId }: ClientContractsProps) {
+export function ClientContracts({ contracts }: ClientContractsProps) {
   const activeContract = contracts.find((c) => c.status === "active")
   const pastContracts = contracts.filter((c) => c.status !== "active")
+
+  function handleNewContract() {
+    toast({
+      title: "Em desenvolvimento",
+      description: "A criação de contratos será implementada em breve.",
+    })
+  }
 
   return (
     <div className="space-y-6">
@@ -91,7 +101,7 @@ export function ClientContracts({ contracts, clientId }: ClientContractsProps) {
             <p className="text-muted-foreground mb-4">
               Nenhum contrato ativo
             </p>
-            <Button>
+            <Button onClick={handleNewContract}>
               <Plus className="mr-2 h-4 w-4" />
               Novo Contrato
             </Button>

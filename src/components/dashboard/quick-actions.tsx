@@ -4,7 +4,7 @@ import Link from "next/link"
 import { Plus, UserPlus, Calendar, FileText, Zap } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
-const actions = [
+const linkActions = [
   {
     label: "Novo Cliente",
     href: "/clients/new",
@@ -19,7 +19,7 @@ const actions = [
   },
   {
     label: "Agendar Reunião",
-    href: "/meetings/new",
+    href: "/meetings",
     icon: Calendar,
     variant: "outline" as const,
   },
@@ -40,7 +40,7 @@ const actions = [
 export function QuickActions() {
   return (
     <div className="flex flex-wrap gap-2">
-      {actions.map((action) => (
+      {linkActions.map((action) => (
         <Button key={action.label} variant={action.variant} size="sm" asChild>
           <Link href={action.href}>
             <action.icon className="mr-2 h-4 w-4" />

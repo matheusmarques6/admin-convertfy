@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { Plus, Calendar, Video, CheckCircle, XCircle, Clock } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -33,9 +34,11 @@ export function ClientMeetings({ meetings, clientId }: ClientMeetingsProps) {
     <div className="space-y-6">
       {/* Quick Actions */}
       <div className="flex justify-end">
-        <Button>
-          <Plus className="mr-2 h-4 w-4" />
-          Agendar Reunião
+        <Button asChild>
+          <Link href="/meetings">
+            <Plus className="mr-2 h-4 w-4" />
+            Agendar Reunião
+          </Link>
         </Button>
       </div>
 

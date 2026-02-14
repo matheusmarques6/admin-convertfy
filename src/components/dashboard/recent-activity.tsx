@@ -7,76 +7,81 @@ import {
   FileText,
   MessageSquare,
   TrendingUp,
+  TrendingDown,
+  Edit,
+  Kanban,
+  LucideIcon,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 
-// Mock data - will be replaced with real data from Supabase
-const activities = [
-  {
-    id: 1,
-    type: "client_created",
-    description: "Novo cliente cadastrado: Loja Premium",
-    user: "João Silva",
-    time: "2 min atrás",
-    icon: UserPlus,
-    iconColor: "text-blue-500",
-    iconBg: "bg-blue-500/10",
-  },
-  {
-    id: 2,
-    type: "payment_received",
-    description: "Pagamento recebido: R$ 2.500,00",
-    user: "Sistema",
-    time: "15 min atrás",
-    icon: DollarSign,
-    iconColor: "text-emerald-500",
-    iconBg: "bg-emerald-500/10",
-  },
-  {
-    id: 3,
-    type: "meeting_scheduled",
-    description: "Reunião agendada com Loja ABC",
-    user: "Maria Santos",
-    time: "1 hora atrás",
-    icon: Calendar,
-    iconColor: "text-purple-500",
-    iconBg: "bg-purple-500/10",
-  },
-  {
-    id: 4,
-    type: "report_uploaded",
-    description: "Relatório enviado para Loja XYZ",
-    user: "Pedro Costa",
-    time: "2 horas atrás",
-    icon: FileText,
-    iconColor: "text-amber-500",
-    iconBg: "bg-amber-500/10",
-  },
-  {
-    id: 5,
-    type: "deal_won",
-    description: "Novo contrato fechado: R$ 5.000/mês",
-    user: "Ana Lima",
-    time: "3 horas atrás",
-    icon: TrendingUp,
-    iconColor: "text-emerald-500",
-    iconBg: "bg-emerald-500/10",
-  },
-  {
-    id: 6,
-    type: "whatsapp_sent",
-    description: "Mensagem enviada para 15 clientes",
-    user: "Automação",
-    time: "5 horas atrás",
-    icon: MessageSquare,
-    iconColor: "text-green-500",
-    iconBg: "bg-green-500/10",
-  },
-]
+interface Activity {
+  id: string
+  type: string
+  description: string
+  created_at: string
+  client?: { name: string } | { name: string }[] | null
+  profile?: { name: string } | { name: string }[] | null
+}
 
-export function RecentActivity() {
+interface RecentActivityProps {
+  activities?: Activity[]
+}
+
+function getActivityIcon(type: string): { icon: LucideIcon; color: string; bg: string } {
+  switch (type) {
+    case "client_created":
+      return { icon: UserPlus, color: "text-blue-500", bg: "bg-blue-500/10" }
+    case "payment_received":
+    case "payment_confirmed":
+      return { icon: DollarSign, color: "text-emerald-500", bg: "bg-emerald-500/10" }
+    case "payment_overdue":
+      return { icon: DollarSign, color: "text-red-500", bg: "bg-red-500/10" }
+    case "meeting_scheduled":
+    case "meeting_completed":
+      return { icon: Calendar, color: "text-purple-500", bg: "bg-purple-500/10" }
+    case "report_uploaded":
+      return { icon: FileText, color: "text-amber-500", bg: "bg-amber-500/10" }
+    case "deal_created":
+    case "deal_updated":
+      return { icon: Kanban, color: "text-blue-500", bg: "bg-blue-500/10" }
+    case "deal_won":
+      return { icon: TrendingUp, color: "text-emerald-500", bg: "bg-emerald-500/10" }
+    case "deal_lost":
+      return { icon: TrendingDown, color: "text-red-500", bg: "bg-red-500/10" }
+    case "client_updated":
+    case "status_changed":
+      return { icon: Edit, color: "text-gray-500", bg: "bg-gray-500/10" }
+    case "email_sent":
+    case "whatsapp_sent":
+      return { icon: MessageSquare, color: "text-green-500", bg: "bg-green-500/10" }
+    default:
+      return { icon: FileText, color: "text-muted-foreground", bg: "bg-muted" }
+  }
+}
+
+function timeAgo(dateStr: string): string {
+  const now = Date.now()
+  const date = new Date(dateStr).getTime()
+  const diff = now - date
+
+  const minutes = Math.floor(diff / 60000)
+  if (minutes < 1) return "agora"
+  if (minutes < 60) return `${minutes} min atrás`
+
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h atrás`
+
+  const days = Math.floor(hours / 24)
+  if (days < 30) return `${days}d atrás`
+
+  return new Date(dateStr).toLocaleDateString("pt-BR")
+}
+
+export function RecentActivity({ activities = [] }: RecentActivityProps) {
+  const hasActivities = activities.length > 0
+
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -85,23 +90,35 @@ export function RecentActivity() {
       </CardHeader>
       <CardContent>
         <ScrollArea className="h-[300px] pr-4">
-          <div className="space-y-4">
-            {activities.map((activity, index) => (
-              <div key={activity.id} className="flex gap-3">
-                <div className={cn("rounded-lg p-2 h-fit", activity.iconBg)}>
-                  <activity.icon className={cn("h-4 w-4", activity.iconColor)} />
-                </div>
-                <div className="flex-1 space-y-1">
-                  <p className="text-sm leading-tight">{activity.description}</p>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>{activity.user}</span>
-                    <span>•</span>
-                    <span>{activity.time}</span>
+          {hasActivities ? (
+            <div className="space-y-4">
+              {activities.map((activity) => {
+                const { icon: Icon, color, bg } = getActivityIcon(activity.type)
+                const profileName = Array.isArray(activity.profile)
+                  ? activity.profile[0]?.name
+                  : activity.profile?.name
+                return (
+                  <div key={activity.id} className="flex gap-3">
+                    <div className={cn("rounded-lg p-2 h-fit", bg)}>
+                      <Icon className={cn("h-4 w-4", color)} />
+                    </div>
+                    <div className="flex-1 space-y-1">
+                      <p className="text-sm leading-tight">{activity.description}</p>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <span>{profileName || "Sistema"}</span>
+                        <span>•</span>
+                        <span>{timeAgo(activity.created_at)}</span>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-            ))}
-          </div>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+              Nenhuma atividade recente
+            </div>
+          )}
         </ScrollArea>
       </CardContent>
     </Card>

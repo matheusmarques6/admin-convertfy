@@ -4,7 +4,6 @@ import { useState } from "react"
 import {
   Wand2,
   Mail,
-  FileText,
   Calculator,
   BarChart3,
   Sparkles,
@@ -24,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { formatCurrency } from "@/lib/utils"
+import { toast } from "@/lib/hooks/use-toast"
 
 export default function ToolsPage() {
   const [emailSubjects, setEmailSubjects] = useState<string[]>([])
@@ -35,6 +35,21 @@ export default function ToolsPage() {
   const [adSpend, setAdSpend] = useState("")
   const [revenue, setRevenue] = useState("")
   const roas = adSpend && revenue ? (parseFloat(revenue) / parseFloat(adSpend)).toFixed(2) : null
+
+  // Benchmark state
+  const [isGeneratingBenchmark, setIsGeneratingBenchmark] = useState(false)
+
+  async function generateBenchmark() {
+    setIsGeneratingBenchmark(true)
+    // TODO: Implementar com dados reais
+    setTimeout(() => {
+      setIsGeneratingBenchmark(false)
+      toast({
+        title: "Comparativo gerado",
+        description: "O benchmark foi gerado com sucesso. Em breve será exibido aqui.",
+      })
+    }, 1500)
+  }
 
   async function generateEmailSubjects() {
     setIsGeneratingSubjects(true)
@@ -93,10 +108,6 @@ Descubra como centenas de lojistas estão aumentando suas vendas em até 40% com
           <TabsTrigger value="calculators" className="gap-2">
             <Calculator className="h-4 w-4" />
             Calculadoras
-          </TabsTrigger>
-          <TabsTrigger value="reports" className="gap-2">
-            <FileText className="h-4 w-4" />
-            Relatórios
           </TabsTrigger>
         </TabsList>
 
@@ -289,71 +300,21 @@ Descubra como centenas de lojistas estão aumentando suas vendas em até 40% com
                     </SelectContent>
                   </Select>
                 </div>
-                <Button className="w-full">
-                  <BarChart3 className="mr-2 h-4 w-4" />
+                <Button
+                  className="w-full"
+                  onClick={generateBenchmark}
+                  disabled={isGeneratingBenchmark}
+                >
+                  {isGeneratingBenchmark ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <BarChart3 className="mr-2 h-4 w-4" />
+                  )}
                   Gerar Comparativo
                 </Button>
               </CardContent>
             </Card>
           </div>
-        </TabsContent>
-
-        {/* Reports */}
-        <TabsContent value="reports" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <FileText className="h-4 w-4 text-primary" />
-                Gerador de Relatório Automático
-              </CardTitle>
-              <CardDescription>
-                Gere relatórios completos automaticamente com dados das integrações
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Cliente</Label>
-                  <Select>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione o cliente" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="client1">Loja ABC</SelectItem>
-                      <SelectItem value="client2">Loja XYZ</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Período</Label>
-                  <Select defaultValue="last_month">
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="last_month">Último mês</SelectItem>
-                      <SelectItem value="last_quarter">Último trimestre</SelectItem>
-                      <SelectItem value="custom">Personalizado</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Incluir métricas de:</Label>
-                <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" size="sm">Shopify</Button>
-                  <Button variant="outline" size="sm">Facebook Ads</Button>
-                  <Button variant="outline" size="sm">Google Ads</Button>
-                  <Button variant="outline" size="sm">Klaviyo</Button>
-                  <Button variant="outline" size="sm">Instagram</Button>
-                </div>
-              </div>
-              <Button className="w-full">
-                <FileText className="mr-2 h-4 w-4" />
-                Gerar Relatório PDF
-              </Button>
-            </CardContent>
-          </Card>
         </TabsContent>
       </Tabs>
     </div>

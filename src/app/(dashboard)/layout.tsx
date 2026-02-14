@@ -2,6 +2,153 @@ import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
 import { Sidebar } from "@/components/layout/sidebar"
 import { Header } from "@/components/layout/header"
+import { DashboardClientWrapper } from "@/components/layout/dashboard-client-wrapper"
+import { Permissions, StoreAccess } from "@/lib/hooks/use-permissions"
+
+async function getPermissions(userId: string): Promise<Permissions | null> {
+  try {
+    const supabase = await createClient()
+
+    // Get user profile
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", userId)
+      .single()
+
+    if (!profile) return null
+
+    // Check if user is admin (global admin)
+    const isAdmin = profile.role === "admin"
+
+    // Get org membership
+    const { data: orgMember } = await supabase
+      .from("org_members")
+      .select(`
+        *,
+        organization:organizations(id, name, slug, type)
+      `)
+      .eq("profile_id", userId)
+      .eq("is_active", true)
+      .order("role", { ascending: true })
+      .limit(1)
+      .single()
+
+    // Get enabled features
+    let features: string[] = []
+    let isOrgOwner = false
+
+    if (orgMember) {
+      isOrgOwner = orgMember.role === "owner"
+
+      if (isAdmin || isOrgOwner) {
+        // Admins and owners have all features
+        const { data: allFeatures } = await supabase
+          .from("features_catalog")
+          .select("key")
+          .eq("is_active", true)
+
+        features = allFeatures?.map((f) => f.key) || []
+      } else {
+        // Get assigned features
+        const { data: memberFeatures } = await supabase
+          .from("org_member_features")
+          .select("feature_key")
+          .eq("org_member_id", orgMember.id)
+          .eq("enabled", true)
+
+        features = memberFeatures?.map((f) => f.feature_key) || []
+      }
+    }
+
+    // Get store access
+    let storeAccess: StoreAccess[] = []
+
+    if (isAdmin || isOrgOwner) {
+      // Admins and owners can access all stores
+      const { data: allStores } = await supabase
+        .from("client_stores")
+        .select(`
+          id,
+          store_name,
+          client:clients(id, name)
+        `)
+        .eq("is_active", true)
+
+      storeAccess = (allStores || []).map((store) => {
+        const client = Array.isArray(store.client) ? store.client[0] : store.client
+        return {
+          store_id: store.id,
+          store_name: store.store_name,
+          client_id: client?.id || "",
+          client_name: client?.name || "",
+          can_view: true,
+          can_edit: true,
+          can_manage_onboarding: true,
+          can_manage_campaigns: true,
+          can_manage_reports: true,
+        }
+      })
+    } else if (orgMember) {
+      // Get specific store access
+      const { data: access } = await supabase
+        .from("agent_store_access")
+        .select(`
+          *,
+          store:client_stores(id, store_name, client:clients(id, name))
+        `)
+        .eq("org_member_id", orgMember.id)
+        .eq("can_view", true)
+
+      storeAccess = (access || []).map((a) => {
+        const store = Array.isArray(a.store) ? a.store[0] : a.store
+        const client = store?.client ? (Array.isArray(store.client) ? store.client[0] : store.client) : null
+        return {
+          store_id: store?.id || "",
+          store_name: store?.store_name || "",
+          client_id: client?.id || "",
+          client_name: client?.name || "",
+          can_view: a.can_view,
+          can_edit: a.can_edit,
+          can_manage_onboarding: a.can_manage_onboarding,
+          can_manage_campaigns: a.can_manage_campaigns,
+          can_manage_reports: a.can_manage_reports,
+        }
+      })
+    }
+
+    // Helper function to check if user has a specific feature
+    const hasFeature = (featureKey: string) => {
+      if (isAdmin || isOrgOwner) return true
+      return features.includes(featureKey)
+    }
+
+    return {
+      isAdmin,
+      isOrgOwner,
+      orgRole: orgMember?.role || null,
+      features,
+      storeAccess,
+      canCreateClients: hasFeature("create_clients"),
+      canManagePortalUsers: hasFeature("manage_portal_users"),
+      canViewReports: hasFeature("view_reports"),
+      canViewFinancial: hasFeature("view_financial"),
+      canControlOnboarding: hasFeature("onboarding_control"),
+      canViewOnboarding: hasFeature("onboarding_view") || hasFeature("onboarding_control"),
+      canControlTeam: hasFeature("team_control"),
+      canViewTeam: hasFeature("team_view") || hasFeature("team_control"),
+      canControlCampaigns: hasFeature("campaign_control"),
+      canViewCampaigns: hasFeature("campaign_view") || hasFeature("campaign_control"),
+      canGenerateCopy: hasFeature("campaign_copy"),
+      canControlRequests: hasFeature("request_control"),
+      canExecuteRequests: hasFeature("request_execute"),
+      canControlCalendar: hasFeature("calendar_control"),
+    }
+  } catch (error) {
+    console.error("[Layout] Error fetching permissions:", error)
+    return null
+  }
+}
 
 export default async function DashboardLayout({
   children,
@@ -15,12 +162,14 @@ export default async function DashboardLayout({
     redirect("/login")
   }
 
-  // Fetch user profile
+  // Fetch user profile and permissions
   const { data: profile } = await supabase
     .from("profiles")
     .select("*")
     .eq("id", user.id)
     .single()
+
+  const permissions = await getPermissions(user.id)
 
   const userData = profile ? {
     name: profile.name,
@@ -33,19 +182,21 @@ export default async function DashboardLayout({
   }
 
   return (
-    <div className="flex h-screen bg-background">
-      {/* Sidebar - Hidden on mobile */}
-      <div className="hidden md:block">
-        <Sidebar user={userData} />
-      </div>
+    <DashboardClientWrapper initialPermissions={permissions}>
+      <div className="flex h-screen bg-background">
+        {/* Sidebar - Hidden on mobile */}
+        <div className="hidden md:block">
+          <Sidebar user={userData} />
+        </div>
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <Header user={userData} />
-        <main className="flex-1 overflow-auto p-6">
-          {children}
-        </main>
+        {/* Main Content */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <Header user={userData} />
+          <main className="flex-1 overflow-auto p-6">
+            {children}
+          </main>
+        </div>
       </div>
-    </div>
+    </DashboardClientWrapper>
   )
 }
