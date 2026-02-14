@@ -1,138 +1,27 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import {
+  KLAVIYO_API_URL,
+  MIN_REQUEST_INTERVAL,
+  sleep,
+  corsHeaders,
+  klaviyoRequest,
+  getCurrencySymbol,
+  parseDateRange,
+  formatDateStr,
+  testApiConnection,
+  getAccountInfo,
+  getTimezoneOffset,
+  findPlacedOrderMetric,
+} from "@/lib/integrations/klaviyo"
 
 // Vercel serverless function configuration
 // Extended timeout to allow fetching all Klaviyo data
 export const maxDuration = 300 // 5 minutes (Pro plan limit)
 export const dynamic = 'force-dynamic'
 
-// Latest stable API revision per Klaviyo documentation
-// https://developers.klaviyo.com/en/docs/api_versioning_and_deprecation_policy
-const KLAVIYO_API_URL = "https://a.klaviyo.com/api"
-const KLAVIYO_REVISION = "2024-10-15"
-
-// Rate limits per Klaviyo docs:
-// - Burst: 1/s for reporting endpoints
-// - Steady: 2/m
-// https://developers.klaviyo.com/en/docs/rate_limits_and_error_handling
-const MIN_REQUEST_INTERVAL = 1000 // 1 second between requests
-
-// CORS headers helper
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  }
-}
-
 export async function OPTIONS() {
   return NextResponse.json({}, { headers: corsHeaders() })
-}
-
-// Sleep helper
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
-
-// Klaviyo API request with retry logic for rate limiting
-// Based on: https://developers.klaviyo.com/en/docs/rate_limits_and_error_handling
-async function klaviyoRequest<T>(
-  apiKey: string,
-  endpoint: string,
-  options?: {
-    method?: "GET" | "POST"
-    body?: Record<string, unknown>
-  }
-): Promise<T | null> {
-  const { method = "GET", body } = options || {}
-  const url = `${KLAVIYO_API_URL}${endpoint}`
-  const maxRetries = 3
-
-  console.log(`[Klaviyo] REQUEST: ${method} ${endpoint}`)
-
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    // Wait before request (rate limiting)
-    if (attempt > 0) {
-      const backoff = Math.min(1500 * Math.pow(2, attempt - 1), 16000)
-      console.log(`[Klaviyo] Retry ${attempt}/${maxRetries} - waiting ${backoff}ms`)
-      await sleep(backoff)
-    }
-
-    try {
-      const response = await fetch(url, {
-        method,
-        headers: {
-          "Authorization": `Klaviyo-API-Key ${apiKey}`,
-          "Accept": "application/json",
-          "Content-Type": "application/json",
-          "revision": KLAVIYO_REVISION,
-        },
-        ...(body && { body: JSON.stringify(body) }),
-      })
-
-      console.log(`[Klaviyo] RESPONSE: ${response.status} ${response.statusText}`)
-
-      // Handle rate limiting (429)
-      if (response.status === 429) {
-        const retryAfter = response.headers.get("retry-after")
-        const waitTime = retryAfter ? parseInt(retryAfter) * 1000 : 2000
-        console.log(`[Klaviyo] Rate limited. Waiting ${waitTime}ms`)
-
-        if (attempt < maxRetries) {
-          await sleep(waitTime)
-          continue
-        }
-        console.error("[Klaviyo] Max retries reached for rate limiting")
-        return null
-      }
-
-      // Handle server errors with retry
-      if (response.status >= 500 && attempt < maxRetries) {
-        console.log(`[Klaviyo] Server error ${response.status}, retrying...`)
-        continue
-      }
-
-      const responseText = await response.text()
-
-      if (!response.ok) {
-        console.error(`[Klaviyo] API ERROR ${response.status}:`, responseText.substring(0, 500))
-        return null
-      }
-
-      const data = JSON.parse(responseText) as T
-      console.log(`[Klaviyo] SUCCESS: Got response with data`)
-      return data
-    } catch (error) {
-      console.error(`[Klaviyo] REQUEST ERROR:`, error)
-      if (attempt < maxRetries) continue
-      return null
-    }
-  }
-
-  return null
-}
-
-// Currency symbols
-function getCurrencySymbol(currency: string): string {
-  const symbols: Record<string, string> = {
-    "USD": "$", "EUR": "€", "GBP": "£", "BRL": "R$",
-    "AUD": "A$", "CAD": "C$", "JPY": "¥", "MXN": "MX$",
-  }
-  return symbols[currency] || currency
-}
-
-// Test API connection and get basic info
-async function testApiConnection(apiKey: string): Promise<boolean> {
-  console.log("[Klaviyo] Testing API connection...")
-  const response = await klaviyoRequest<{
-    data: Array<{ id: string }>
-  }>(apiKey, "/accounts/")
-
-  if (response?.data) {
-    console.log("[Klaviyo] ✓ API connection successful")
-    return true
-  }
-  console.error("[Klaviyo] ✗ API connection failed")
-  return false
 }
 
 // Get total profiles count using profiles endpoint
@@ -172,105 +61,6 @@ async function getTotalProfilesFromAPI(apiKey: string): Promise<number> {
 
   console.log(`[Klaviyo] Total profiles: ${totalCount} (${pagesChecked} pages)`)
   return totalCount
-}
-
-// Get account info including timezone
-async function getAccountInfo(apiKey: string) {
-  const response = await klaviyoRequest<{
-    data: Array<{
-      id: string
-      attributes: {
-        preferred_currency: string
-        locale: string
-        timezone: string
-        test_account: boolean
-        contact_information: { organization_name: string }
-      }
-    }>
-  }>(apiKey, "/accounts/")
-
-  if (!response?.data?.[0]) {
-    return { currency: "BRL", locale: "pt-BR", orgName: "", timezone: "America/Sao_Paulo" }
-  }
-
-  const attrs = response.data[0].attributes
-  console.log(`[Klaviyo] Account timezone: ${attrs.timezone}`)
-
-  return {
-    currency: attrs.preferred_currency || "BRL",
-    locale: attrs.locale || "pt-BR",
-    orgName: attrs.contact_information?.organization_name || "",
-    timezone: attrs.timezone || "America/Sao_Paulo"
-  }
-}
-
-// Convert timezone to UTC offset string (e.g., "America/Sao_Paulo" -> "-03:00")
-function getTimezoneOffset(timezone: string): string {
-  try {
-    // Create a date and format it with the timezone to get the offset
-    const now = new Date()
-    const formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: timezone,
-      timeZoneName: 'shortOffset'
-    })
-    const parts = formatter.formatToParts(now)
-    const offsetPart = parts.find(p => p.type === 'timeZoneName')
-
-    if (offsetPart?.value) {
-      // Convert "GMT-3" to "-03:00" format
-      const match = offsetPart.value.match(/GMT([+-])(\d+)/)
-      if (match) {
-        const sign = match[1]
-        const hours = match[2].padStart(2, '0')
-        return `${sign}${hours}:00`
-      }
-    }
-  } catch {
-    console.log(`[Klaviyo] Error parsing timezone ${timezone}, using UTC`)
-  }
-  return "+00:00"
-}
-
-// Get all metrics to find Placed Order metric ID
-async function findPlacedOrderMetric(apiKey: string): Promise<string | null> {
-  console.log("[Klaviyo] Fetching metrics...")
-
-  const response = await klaviyoRequest<{
-    data: Array<{
-      id: string
-      attributes: { name: string; integration?: { name: string } }
-    }>
-  }>(apiKey, "/metrics")
-
-  if (!response?.data) return null
-
-  const metrics = response.data
-  console.log(`[Klaviyo] Total metrics: ${metrics.length}`)
-
-  // List all metrics for debugging
-  metrics.forEach(m => {
-    console.log(`[Klaviyo] Metric: ${m.attributes.name} (${m.id}) - Integration: ${m.attributes.integration?.name || 'none'}`)
-  })
-
-  // Find "Placed Order" metric - exact match first
-  let placedOrderMetric = metrics.find(m => m.attributes.name === "Placed Order")
-
-  // Try variations if not found
-  if (!placedOrderMetric) {
-    placedOrderMetric = metrics.find(m =>
-      m.attributes.name.toLowerCase() === "placed order" ||
-      m.attributes.name.toLowerCase() === "order placed" ||
-      m.attributes.name.toLowerCase().includes("placed order")
-    )
-  }
-
-  if (placedOrderMetric) {
-    console.log(`[Klaviyo] Using metric: ${placedOrderMetric.attributes.name} (${placedOrderMetric.id})`)
-    return placedOrderMetric.id
-  }
-
-  console.log("[Klaviyo] No Placed Order metric found")
-  return null
 }
 
 // Types for paginated responses
@@ -1132,46 +922,9 @@ export async function GET(request: NextRequest) {
     console.log("[Klaviyo] Period:", period)
 
     // Calculate date range based on period
-    const now = new Date()
-    let startDate: Date
-    let endDate: Date = new Date(now)
-
-    if (period === "custom" && customStartDate && customEndDate) {
-      startDate = new Date(customStartDate)
-      endDate = new Date(customEndDate)
-    } else {
-      // Set end date to today at end of day
-      endDate.setHours(23, 59, 59, 999)
-
-      switch (period) {
-        case "7d":
-          startDate = new Date(now)
-          startDate.setDate(now.getDate() - 7)
-          break
-        case "30d":
-          startDate = new Date(now)
-          startDate.setDate(now.getDate() - 30)
-          break
-        case "90d":
-          startDate = new Date(now)
-          startDate.setDate(now.getDate() - 90)
-          break
-        case "12m":
-        case "all":
-          startDate = new Date(now)
-          startDate.setFullYear(now.getFullYear() - 1)
-          break
-        default:
-          startDate = new Date(now)
-          startDate.setDate(now.getDate() - 30)
-      }
-      startDate.setHours(0, 0, 0, 0)
-    }
-
-    // Format dates as YYYY-MM-DD (ISO format without time)
-    const formatDate = (d: Date) => d.toISOString().split('T')[0]
-    const startDateStr = formatDate(startDate)
-    const endDateStr = formatDate(endDate)
+    const { startDate, endDate } = parseDateRange(period, customStartDate, customEndDate)
+    const startDateStr = formatDateStr(startDate)
+    const endDateStr = formatDateStr(endDate)
 
     console.log(`[Klaviyo] Date range: ${startDateStr} to ${endDateStr}`)
 
