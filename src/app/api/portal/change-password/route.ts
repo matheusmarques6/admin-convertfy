@@ -1,17 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  }
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPreFlight(request)
 }
 
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders() })
-}
+
+
+
 
 // POST - Change password for portal user (first login requirement)
 export async function POST(request: NextRequest) {
@@ -22,7 +19,7 @@ export async function POST(request: NextRequest) {
     if (authError || !user) {
       return NextResponse.json(
         { error: "Não autenticado" },
-        { status: 401, headers: corsHeaders() }
+        { status: 401, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -33,21 +30,21 @@ export async function POST(request: NextRequest) {
     if (!newPassword || !confirmPassword) {
       return NextResponse.json(
         { error: "Nova senha e confirmação são obrigatórias" },
-        { status: 400, headers: corsHeaders() }
+        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
     if (newPassword !== confirmPassword) {
       return NextResponse.json(
         { error: "As senhas não coincidem" },
-        { status: 400, headers: corsHeaders() }
+        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
     if (newPassword.length < 8) {
       return NextResponse.json(
         { error: "A senha deve ter no mínimo 8 caracteres" },
-        { status: 400, headers: corsHeaders() }
+        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -61,7 +58,7 @@ export async function POST(request: NextRequest) {
     if (portalError || !portalUser) {
       return NextResponse.json(
         { error: "Usuário não é do portal" },
-        { status: 403, headers: corsHeaders() }
+        { status: 403, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -77,7 +74,7 @@ export async function POST(request: NextRequest) {
       console.error("[Portal Change Password] Error:", updateError)
       return NextResponse.json(
         { error: "Erro ao alterar senha" },
-        { status: 500, headers: corsHeaders() }
+        { status: 500, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -107,13 +104,13 @@ export async function POST(request: NextRequest) {
         success: true,
         message: "Senha alterada com sucesso",
       },
-      { headers: corsHeaders() }
+      { headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
     console.error("[Portal Change Password] Error:", error)
     return NextResponse.json(
       { error: "Erro interno" },
-      { status: 500, headers: corsHeaders() }
+      { status: 500, headers: corsHeaders(request.headers.get("origin")) }
     )
   }
 }

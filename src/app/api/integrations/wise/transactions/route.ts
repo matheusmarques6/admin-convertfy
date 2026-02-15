@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
     // Get Wise integration
     const { data: integration, error: integrationError } = await supabase
       .from("integrations")
-      .select("*")
+      .select("id, credentials, is_active")
       .eq("type", "wise")
       .eq("is_active", true)
       .single()

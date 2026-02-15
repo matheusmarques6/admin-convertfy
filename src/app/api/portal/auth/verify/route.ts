@@ -1,17 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
+import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  }
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPreFlight(request)
 }
 
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders() })
-}
+
+
+
 
 // POST - Verify if user is a portal user
 export async function POST(request: NextRequest) {
@@ -25,7 +22,7 @@ export async function POST(request: NextRequest) {
     if (!userId) {
       return NextResponse.json(
         { error: "User ID é obrigatório" },
-        { status: 400, headers: corsHeaders() }
+        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -43,14 +40,14 @@ export async function POST(request: NextRequest) {
       console.log("[Portal Auth Verify] Portal user not found for auth_user_id:", userId, "Error:", portalError)
       return NextResponse.json(
         { error: "Esta conta não tem acesso ao portal do cliente" },
-        { status: 403, headers: corsHeaders() }
+        { status: 403, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
     if (!portalUser.is_active) {
       return NextResponse.json(
         { error: "Sua conta está desativada. Entre em contato com o suporte." },
-        { status: 403, headers: corsHeaders() }
+        { status: 403, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -87,13 +84,13 @@ export async function POST(request: NextRequest) {
         },
         mustChangePassword: portalUser.must_change_password || false,
       },
-      { headers: corsHeaders() }
+      { headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
     console.error("[Portal Auth Verify] Error:", error)
     return NextResponse.json(
       { error: "Erro interno" },
-      { status: 500, headers: corsHeaders() }
+      { status: 500, headers: corsHeaders(request.headers.get("origin")) }
     )
   }
 }

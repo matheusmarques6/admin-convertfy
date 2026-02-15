@@ -1,17 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "PUT, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  }
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPreFlight(request)
 }
 
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders() })
-}
+
+
+
 
 // PUT - Update notification preferences
 export async function PUT(request: NextRequest) {
@@ -20,7 +17,7 @@ export async function PUT(request: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser()
 
     if (!user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // Get portal user
@@ -32,7 +29,7 @@ export async function PUT(request: NextRequest) {
       .single()
 
     if (!portalUser) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const body = await request.json()
@@ -58,12 +55,12 @@ export async function PUT(request: NextRequest) {
 
     if (error) {
       console.error("[Portal Notifications] Update error:", error)
-      return NextResponse.json({ error: "Erro ao atualizar" }, { status: 500, headers: corsHeaders() })
+      return NextResponse.json({ error: "Erro ao atualizar" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
-    return NextResponse.json({ success: true }, { headers: corsHeaders() })
+    return NextResponse.json({ success: true }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
     console.error("[Portal Notifications] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

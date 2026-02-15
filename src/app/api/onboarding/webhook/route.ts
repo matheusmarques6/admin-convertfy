@@ -1,17 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
+import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Webhook-Secret",
-  }
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPreFlight(request)
 }
 
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders() })
-}
+
+
+
 
 // POST - Webhook endpoint for n8n to send store analysis results
 export async function POST(request: NextRequest) {
@@ -22,7 +19,7 @@ export async function POST(request: NextRequest) {
 
     // For now, if no secret is configured, allow requests (dev mode)
     if (expectedSecret && webhookSecret !== expectedSecret) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const body = await request.json()
@@ -37,7 +34,7 @@ export async function POST(request: NextRequest) {
     if (!body.onboarding_id || !body.type || !body.data) {
       return NextResponse.json(
         { error: "Campos obrigatórios: onboarding_id, type, data" },
-        { status: 400, headers: corsHeaders() }
+        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -52,7 +49,7 @@ export async function POST(request: NextRequest) {
 
       if (error) {
         console.error("[Webhook] Update error:", error)
-        return NextResponse.json({ error: "Erro ao salvar análise" }, { status: 500, headers: corsHeaders() })
+        return NextResponse.json({ error: "Erro ao salvar análise" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
       }
 
       // If there's a step for "Análise da Loja", mark it as completed
@@ -69,7 +66,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         message: "Análise da loja salva com sucesso",
-      }, { headers: corsHeaders() })
+      }, { headers: corsHeaders(request.headers.get("origin")) })
     }
 
     if (body.type === "copies_generated") {
@@ -81,21 +78,21 @@ export async function POST(request: NextRequest) {
 
       if (error) {
         console.error("[Webhook] Update error:", error)
-        return NextResponse.json({ error: "Erro ao salvar copies" }, { status: 500, headers: corsHeaders() })
+        return NextResponse.json({ error: "Erro ao salvar copies" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
       }
 
       return NextResponse.json({
         success: true,
         message: "Copies geradas e salvas com sucesso",
-      }, { headers: corsHeaders() })
+      }, { headers: corsHeaders(request.headers.get("origin")) })
     }
 
     return NextResponse.json(
       { error: "Tipo de webhook não suportado" },
-      { status: 400, headers: corsHeaders() }
+      { status: 400, headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
     console.error("[Webhook] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

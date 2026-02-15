@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPreFlight(request)
+}
 
 // Cache TTL in minutes based on period
 const CACHE_TTL: Record<string, number> = {
@@ -11,17 +16,9 @@ const CACHE_TTL: Record<string, number> = {
   "12m": 120, // 2 hours for yearly data
 }
 
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  }
-}
 
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders() })
-}
+
+
 
 // GET - Get portal dashboard data
 export async function GET(request: NextRequest) {
@@ -32,7 +29,7 @@ export async function GET(request: NextRequest) {
     // Get current user
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
-      return NextResponse.json({ error: "Não autenticado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autenticado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // Get portal user using admin client to bypass RLS
@@ -44,7 +41,7 @@ export async function GET(request: NextRequest) {
       .single()
 
     if (!portalUser) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const clientId = portalUser.client_id
@@ -676,9 +673,9 @@ export async function GET(request: NextRequest) {
       // Ignore activity logging errors
     }
 
-    return NextResponse.json(response, { headers: corsHeaders() })
+    return NextResponse.json(response, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
     console.error("[Portal Dashboard] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

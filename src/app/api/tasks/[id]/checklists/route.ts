@@ -1,17 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  }
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPreFlight(request)
 }
 
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders() })
-}
+
+
+
 
 // GET - Get checklists for a task
 export async function GET(
@@ -24,7 +21,7 @@ export async function GET(
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const adminClient = createAdminClient()
@@ -37,13 +34,13 @@ export async function GET(
 
     if (error) {
       console.error("[Task Checklists] Error fetching:", error)
-      return NextResponse.json({ error: "Erro ao buscar checklists" }, { status: 500, headers: corsHeaders() })
+      return NextResponse.json({ error: "Erro ao buscar checklists" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
-    return NextResponse.json({ checklists: checklists || [] }, { headers: corsHeaders() })
+    return NextResponse.json({ checklists: checklists || [] }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
     console.error("[Task Checklists] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
 
@@ -58,7 +55,7 @@ export async function POST(
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const body = await request.json()
@@ -66,7 +63,7 @@ export async function POST(
     if (!body.title) {
       return NextResponse.json(
         { error: "Título é obrigatório" },
-        { status: 400, headers: corsHeaders() }
+        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -97,17 +94,17 @@ export async function POST(
       console.error("[Task Checklists] Insert error:", insertError)
       return NextResponse.json(
         { error: "Erro ao adicionar item" },
-        { status: 500, headers: corsHeaders() }
+        { status: 500, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
     return NextResponse.json(
       { checklist, message: "Item adicionado" },
-      { status: 201, headers: corsHeaders() }
+      { status: 201, headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
     console.error("[Task Checklists] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
 
@@ -122,7 +119,7 @@ export async function PUT(
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const body = await request.json()
@@ -131,7 +128,7 @@ export async function PUT(
     if (!body.checklist_id) {
       return NextResponse.json(
         { error: "checklist_id é obrigatório" },
-        { status: 400, headers: corsHeaders() }
+        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -161,13 +158,13 @@ export async function PUT(
 
     if (updateError) {
       console.error("[Task Checklists] Update error:", updateError)
-      return NextResponse.json({ error: "Erro ao atualizar item" }, { status: 500, headers: corsHeaders() })
+      return NextResponse.json({ error: "Erro ao atualizar item" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
-    return NextResponse.json({ checklist, message: "Item atualizado" }, { headers: corsHeaders() })
+    return NextResponse.json({ checklist, message: "Item atualizado" }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
     console.error("[Task Checklists] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
 
@@ -182,7 +179,7 @@ export async function DELETE(
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const searchParams = request.nextUrl.searchParams
@@ -191,7 +188,7 @@ export async function DELETE(
     if (!checklistId) {
       return NextResponse.json(
         { error: "checklist_id é obrigatório" },
-        { status: 400, headers: corsHeaders() }
+        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -205,12 +202,12 @@ export async function DELETE(
 
     if (deleteError) {
       console.error("[Task Checklists] Delete error:", deleteError)
-      return NextResponse.json({ error: "Erro ao remover item" }, { status: 500, headers: corsHeaders() })
+      return NextResponse.json({ error: "Erro ao remover item" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
-    return NextResponse.json({ success: true, message: "Item removido" }, { headers: corsHeaders() })
+    return NextResponse.json({ success: true, message: "Item removido" }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
     console.error("[Task Checklists] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

@@ -159,7 +159,7 @@ export async function PATCH(request: Request) {
       .from('client_stores')
       .update(updateData)
       .eq('id', store_id)
-      .select()
+      .select("id, store_name, feedback_frequency, next_feedback_date, last_feedback_date, feedback_notes")
       .single()
 
     if (error) {

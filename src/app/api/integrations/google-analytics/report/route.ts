@@ -1,22 +1,19 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPreFlight(request)
+}
 
 // Google Analytics Data API v1
 const GA_API_URL = "https://analyticsdata.googleapis.com/v1beta"
 
 // CORS headers helper
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  }
-}
+
 
 // Handle OPTIONS preflight requests
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders() })
-}
+
 
 interface GACredentials {
   client_email: string

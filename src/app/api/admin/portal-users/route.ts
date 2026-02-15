@@ -1,18 +1,16 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { ClientPortalUserFormData } from "@/types"
+import { generateTempPassword } from "@/lib/utils/generate-password"
+import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  }
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPreFlight(request)
 }
 
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders() })
-}
+
+
+
 
 // GET - List all portal users
 export async function GET(request: NextRequest) {
@@ -21,7 +19,7 @@ export async function GET(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const searchParams = request.nextUrl.searchParams
@@ -43,13 +41,13 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error("[Portal Users] Error fetching:", error)
-      return NextResponse.json({ error: "Erro ao buscar usuários" }, { status: 500, headers: corsHeaders() })
+      return NextResponse.json({ error: "Erro ao buscar usuários" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
-    return NextResponse.json({ portalUsers: portalUsers || [] }, { headers: corsHeaders() })
+    return NextResponse.json({ portalUsers: portalUsers || [] }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
     console.error("[Portal Users] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
 
@@ -60,7 +58,7 @@ export async function POST(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const body: ClientPortalUserFormData = await request.json()
@@ -68,7 +66,7 @@ export async function POST(request: NextRequest) {
     if (!body.client_id || !body.email || !body.name) {
       return NextResponse.json(
         { error: "Campos obrigatórios: client_id, email, name" },
-        { status: 400, headers: corsHeaders() }
+        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -82,7 +80,7 @@ export async function POST(request: NextRequest) {
     if (existing) {
       return NextResponse.json(
         { error: "Este email já está cadastrado" },
-        { status: 400, headers: corsHeaders() }
+        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -108,7 +106,7 @@ export async function POST(request: NextRequest) {
       console.error("[Portal Users] Auth error:", signUpError)
       return NextResponse.json(
         { error: "Erro ao criar conta: " + signUpError.message },
-        { status: 500, headers: corsHeaders() }
+        { status: 500, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -149,7 +147,7 @@ export async function POST(request: NextRequest) {
       await adminClient.auth.admin.deleteUser(authUser.user.id)
       return NextResponse.json(
         { error: "Erro ao criar usuário do portal" },
-        { status: 500, headers: corsHeaders() }
+        { status: 500, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -160,20 +158,11 @@ export async function POST(request: NextRequest) {
         tempPassword,
         message: "Usuário criado com sucesso. Anote a senha temporária!",
       },
-      { status: 201, headers: corsHeaders() }
+      { status: 201, headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
     console.error("[Portal Users] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
 
-// Generate temporary password
-function generateTempPassword(length = 12): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789"
-  let password = ""
-  for (let i = 0; i < length; i++) {
-    password += chars.charAt(Math.floor(Math.random() * chars.length))
-  }
-  return password
-}

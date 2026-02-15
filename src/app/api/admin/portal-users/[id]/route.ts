@@ -1,17 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, PUT, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  }
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPreFlight(request)
 }
 
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders() })
-}
+
+
+
 
 // GET - Get single portal user
 export async function GET(
@@ -23,7 +20,7 @@ export async function GET(
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const { id } = await params
@@ -39,13 +36,13 @@ export async function GET(
       .single()
 
     if (error) {
-      return NextResponse.json({ error: "Usuário não encontrado" }, { status: 404, headers: corsHeaders() })
+      return NextResponse.json({ error: "Usuário não encontrado" }, { status: 404, headers: corsHeaders(request.headers.get("origin")) })
     }
 
-    return NextResponse.json({ portalUser }, { headers: corsHeaders() })
+    return NextResponse.json({ portalUser }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
     console.error("[Portal Users] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
 
@@ -59,7 +56,7 @@ export async function PUT(
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // Check if user is admin
@@ -70,7 +67,7 @@ export async function PUT(
       .single()
 
     if (!profile || !["admin", "manager"].includes(profile.role)) {
-      return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders() })
+      return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const { id } = await params
@@ -95,13 +92,13 @@ export async function PUT(
 
     if (error) {
       console.error("[Portal Users] Update error:", error)
-      return NextResponse.json({ error: "Erro ao atualizar" }, { status: 500, headers: corsHeaders() })
+      return NextResponse.json({ error: "Erro ao atualizar" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
-    return NextResponse.json({ portalUser }, { headers: corsHeaders() })
+    return NextResponse.json({ portalUser }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
     console.error("[Portal Users] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
 
@@ -115,7 +112,7 @@ export async function DELETE(
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // Check if user is admin
@@ -126,7 +123,7 @@ export async function DELETE(
       .single()
 
     if (!profile || !["admin", "manager"].includes(profile.role)) {
-      return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders() })
+      return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const { id } = await params
@@ -146,7 +143,7 @@ export async function DELETE(
 
     if (deleteError) {
       console.error("[Portal Users] Delete error:", deleteError)
-      return NextResponse.json({ error: "Erro ao excluir" }, { status: 500, headers: corsHeaders() })
+      return NextResponse.json({ error: "Erro ao excluir" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // Delete auth user if exists (requires admin client with service role)
@@ -159,9 +156,9 @@ export async function DELETE(
       }
     }
 
-    return NextResponse.json({ message: "Usuário excluído com sucesso" }, { headers: corsHeaders() })
+    return NextResponse.json({ message: "Usuário excluído com sucesso" }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
     console.error("[Portal Users] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

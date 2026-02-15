@@ -1,17 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  }
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPreFlight(request)
 }
 
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders() })
-}
+
+
+
 
 // GET - List meetings with filters
 export async function GET(request: NextRequest) {
@@ -20,7 +17,7 @@ export async function GET(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const searchParams = request.nextUrl.searchParams
@@ -63,7 +60,7 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error("[Meetings] Error fetching:", error)
-      return NextResponse.json({ error: "Erro ao buscar reuniões" }, { status: 500, headers: corsHeaders() })
+      return NextResponse.json({ error: "Erro ao buscar reuniões" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // If filtering by participant, filter meetings that include this participant
@@ -121,10 +118,10 @@ export async function GET(request: NextRequest) {
       })),
     }))
 
-    return NextResponse.json({ meetings: transformedMeetings }, { headers: corsHeaders() })
+    return NextResponse.json({ meetings: transformedMeetings }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
     console.error("[Meetings] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
 
@@ -136,7 +133,7 @@ export async function POST(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const body = await request.json()
@@ -144,7 +141,7 @@ export async function POST(request: NextRequest) {
     if (!body.title || !body.scheduled_at) {
       return NextResponse.json(
         { error: "Título e data/hora são obrigatórios" },
-        { status: 400, headers: corsHeaders() }
+        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -172,7 +169,7 @@ export async function POST(request: NextRequest) {
       console.error("[Meetings] Insert error:", insertError)
       return NextResponse.json(
         { error: "Erro ao criar reunião" },
-        { status: 500, headers: corsHeaders() }
+        { status: 500, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -265,10 +262,10 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(
       { meeting: transformedMeeting, message: "Reunião agendada com sucesso" },
-      { status: 201, headers: corsHeaders() }
+      { status: 201, headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
     console.error("[Meetings] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

@@ -1,17 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  }
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPreFlight(request)
 }
 
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders() })
-}
+
+
+
 
 // GET - Get comments for a task
 export async function GET(
@@ -24,7 +21,7 @@ export async function GET(
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const adminClient = createAdminClient()
@@ -40,13 +37,13 @@ export async function GET(
 
     if (error) {
       console.error("[Task Comments] Error fetching:", error)
-      return NextResponse.json({ error: "Erro ao buscar comentários" }, { status: 500, headers: corsHeaders() })
+      return NextResponse.json({ error: "Erro ao buscar comentários" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
-    return NextResponse.json({ comments: comments || [] }, { headers: corsHeaders() })
+    return NextResponse.json({ comments: comments || [] }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
     console.error("[Task Comments] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
 
@@ -61,7 +58,7 @@ export async function POST(
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const body = await request.json()
@@ -69,7 +66,7 @@ export async function POST(
     if (!body.content) {
       return NextResponse.json(
         { error: "Conteúdo é obrigatório" },
-        { status: 400, headers: corsHeaders() }
+        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -94,7 +91,7 @@ export async function POST(
       console.error("[Task Comments] Insert error:", insertError)
       return NextResponse.json(
         { error: "Erro ao adicionar comentário" },
-        { status: 500, headers: corsHeaders() }
+        { status: 500, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -108,10 +105,10 @@ export async function POST(
 
     return NextResponse.json(
       { comment, message: "Comentário adicionado" },
-      { status: 201, headers: corsHeaders() }
+      { status: 201, headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
     console.error("[Task Comments] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

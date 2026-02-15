@@ -1,28 +1,16 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { OrgMemberFormData } from "@/types"
+import { generateTempPassword } from "@/lib/utils/generate-password"
+import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 
-// Generate a random temporary password
-function generateTempPassword(): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789"
-  let password = ""
-  for (let i = 0; i < 12; i++) {
-    password += chars.charAt(Math.floor(Math.random() * chars.length))
-  }
-  return password
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPreFlight(request)
 }
 
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  }
-}
 
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders() })
-}
+
+
 
 // GET - List org members
 export async function GET(request: NextRequest) {
@@ -31,7 +19,7 @@ export async function GET(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // Check if user is system admin
@@ -53,7 +41,7 @@ export async function GET(request: NextRequest) {
 
     // If not system admin and not member of any org, deny access
     if (!isSystemAdmin && memberOrgIds.length === 0) {
-      return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders() })
+      return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const searchParams = request.nextUrl.searchParams
@@ -63,7 +51,7 @@ export async function GET(request: NextRequest) {
 
     // If filtering by org_id, check permission for that specific org (any member can read)
     if (orgId && !isSystemAdmin && !memberOrgIds.includes(orgId)) {
-      return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders() })
+      return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     let query = supabase
@@ -96,7 +84,7 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error("[Org Members] Error fetching:", error)
-      return NextResponse.json({ error: "Erro ao buscar membros" }, { status: 500, headers: corsHeaders() })
+      return NextResponse.json({ error: "Erro ao buscar membros" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // For each member, get their features and store access count
@@ -123,10 +111,10 @@ export async function GET(request: NextRequest) {
       })
     )
 
-    return NextResponse.json({ members: membersWithDetails }, { headers: corsHeaders() })
+    return NextResponse.json({ members: membersWithDetails }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
     console.error("[Org Members] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
 
@@ -139,7 +127,7 @@ export async function POST(request: NextRequest) {
     console.log("[Org Members POST] Auth check:", { userId: user?.id, authError })
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const body: OrgMemberFormData = await request.json()
@@ -175,13 +163,13 @@ export async function POST(request: NextRequest) {
 
     if (!isSystemAdmin && !isOrgAdmin) {
       console.log("[Org Members POST] ACCESS DENIED - User has no permission")
-      return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders() })
+      return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     if (!body.org_id || !body.role) {
       return NextResponse.json(
         { error: "Campos obrigatórios: org_id, role" },
-        { status: 400, headers: corsHeaders() }
+        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -193,7 +181,7 @@ export async function POST(request: NextRequest) {
       if (!body.email || !body.name) {
         return NextResponse.json(
           { error: "Se profile_id não for informado, email e name são obrigatórios" },
-          { status: 400, headers: corsHeaders() }
+          { status: 400, headers: corsHeaders(request.headers.get("origin")) }
         )
       }
 
@@ -242,7 +230,7 @@ export async function POST(request: NextRequest) {
             console.error("[Org Members] Create user error:", createError)
             return NextResponse.json(
               { error: "Erro ao criar usuário: " + createError.message },
-              { status: 500, headers: corsHeaders() }
+              { status: 500, headers: corsHeaders(request.headers.get("origin")) }
             )
           }
 
@@ -283,7 +271,7 @@ export async function POST(request: NextRequest) {
             console.error("[Org Members] Profile error:", profileError.message)
             return NextResponse.json(
               { error: "Erro ao criar perfil: " + profileError.message },
-              { status: 500, headers: corsHeaders() }
+              { status: 500, headers: corsHeaders(request.headers.get("origin")) }
             )
           }
 
@@ -304,7 +292,7 @@ export async function POST(request: NextRequest) {
     if (existingMember) {
       return NextResponse.json(
         { error: "Este usuário já é membro desta organização" },
-        { status: 400, headers: corsHeaders() }
+        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -330,7 +318,7 @@ export async function POST(request: NextRequest) {
       console.error("[Org Members] Insert error:", insertError)
       return NextResponse.json(
         { error: "Erro ao criar membro: " + insertError.message },
-        { status: 500, headers: corsHeaders() }
+        { status: 500, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -386,9 +374,9 @@ export async function POST(request: NextRequest) {
       response.temp_password = tempPasswordForResponse
     }
 
-    return NextResponse.json(response, { status: 201, headers: corsHeaders() })
+    return NextResponse.json(response, { status: 201, headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
     console.error("[Org Members] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

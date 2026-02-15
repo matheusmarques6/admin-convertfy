@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPreFlight(request)
+}
 
 // Use a more recent API version - Shopify deprecates old versions after ~12 months
 const SHOPIFY_API_VERSION = "2024-10"
@@ -23,18 +28,10 @@ function normalizeShopifyDomain(domain: string): string {
 }
 
 // CORS headers helper
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  }
-}
+
 
 // Handle OPTIONS preflight requests
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders() })
-}
+
 
 interface ShopifyRequestOptions {
   method?: "GET" | "POST"

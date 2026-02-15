@@ -1,18 +1,15 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPreFlight(request)
+}
 
 // CORS headers
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  }
-}
 
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders() })
-}
+
+
 
 // GET - List all stores with client info
 export async function GET(request: NextRequest) {
@@ -23,7 +20,7 @@ export async function GET(request: NextRequest) {
     if (authError || !user) {
       return NextResponse.json(
         { error: "Não autorizado" },
-        { status: 401, headers: corsHeaders() }
+        { status: 401, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -34,7 +31,20 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from("client_stores")
       .select(`
-        *,
+        id,
+        store_name,
+        platform,
+        store_url,
+        is_active,
+        created_at,
+        client_id,
+        language,
+        feedback_frequency,
+        last_feedback_date,
+        next_feedback_date,
+        last_feedback_by,
+        feedback_notes,
+        shopify_store_domain,
         client:clients(id, name, company, email)
       `)
       .order("store_name")
@@ -53,19 +63,19 @@ export async function GET(request: NextRequest) {
       console.error("[Stores] Error fetching stores:", error)
       return NextResponse.json(
         { error: "Erro ao buscar lojas" },
-        { status: 500, headers: corsHeaders() }
+        { status: 500, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
     return NextResponse.json(
       { stores: stores || [] },
-      { headers: corsHeaders() }
+      { headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
     console.error("[Stores] Error:", error)
     return NextResponse.json(
       { error: "Erro interno do servidor" },
-      { status: 500, headers: corsHeaders() }
+      { status: 500, headers: corsHeaders(request.headers.get("origin")) }
     )
   }
 }

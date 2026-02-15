@@ -1,17 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  }
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPreFlight(request)
 }
 
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders() })
-}
+
+
+
 
 // POST - Bulk reorder tasks (for Kanban drag-and-drop)
 export async function POST(request: NextRequest) {
@@ -20,7 +17,7 @@ export async function POST(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const body = await request.json()
@@ -30,7 +27,7 @@ export async function POST(request: NextRequest) {
     if (!body.tasks || !Array.isArray(body.tasks)) {
       return NextResponse.json(
         { error: "tasks array é obrigatório" },
-        { status: 400, headers: corsHeaders() }
+        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -70,9 +67,9 @@ export async function POST(request: NextRequest) {
 
     await Promise.all(updates)
 
-    return NextResponse.json({ success: true, message: "Tarefas reordenadas" }, { headers: corsHeaders() })
+    return NextResponse.json({ success: true, message: "Tarefas reordenadas" }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
     console.error("[Tasks Reorder] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

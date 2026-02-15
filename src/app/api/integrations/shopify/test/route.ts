@@ -1,18 +1,15 @@
 import { NextRequest, NextResponse } from "next/server"
+import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPreFlight(request)
+}
 
 // CORS headers helper
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  }
-}
+
 
 // Handle OPTIONS preflight requests
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders() })
-}
+
 
 // Helper to normalize Shopify domain
 function normalizeShopifyDomain(domain: string): string {
@@ -40,7 +37,7 @@ export async function POST(request: NextRequest) {
     if (!store_domain || !access_token) {
       return NextResponse.json(
         { success: false, error: "Domínio e Access Token são obrigatórios" },
-        { status: 400, headers: corsHeaders() }
+        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -94,7 +91,7 @@ export async function POST(request: NextRequest) {
               },
               apiVersion,
             },
-            { headers: corsHeaders() }
+            { headers: corsHeaders(request.headers.get("origin")) }
           )
         }
 
@@ -112,7 +109,7 @@ export async function POST(request: NextRequest) {
                 status: response.status,
               },
             },
-            { status: response.status, headers: corsHeaders() }
+            { status: response.status, headers: corsHeaders(request.headers.get("origin")) }
           )
         }
 
@@ -127,7 +124,7 @@ export async function POST(request: NextRequest) {
                 normalizedDomain: cleanDomain,
               },
             },
-            { status: 404, headers: corsHeaders() }
+            { status: 404, headers: corsHeaders(request.headers.get("origin")) }
           )
         }
 
@@ -145,7 +142,7 @@ export async function POST(request: NextRequest) {
         error: `Erro na API Shopify: ${responseStatus || "conexão falhou"}`,
         details: lastError,
       },
-      { status: responseStatus || 500, headers: corsHeaders() }
+      { status: responseStatus || 500, headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
     console.error("Error testing Shopify connection:", error)
@@ -154,7 +151,7 @@ export async function POST(request: NextRequest) {
         success: false,
         error: error instanceof Error ? error.message : "Erro ao testar conexão",
       },
-      { status: 500, headers: corsHeaders() }
+      { status: 500, headers: corsHeaders(request.headers.get("origin")) }
     )
   }
 }

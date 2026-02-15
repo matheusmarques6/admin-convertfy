@@ -1,18 +1,15 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAsaasService } from "@/lib/integrations/asaas"
+import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  }
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPreFlight(request)
 }
 
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders() })
-}
+
+
+
 
 // GET - Get invoices for portal user
 export async function GET(request: NextRequest) {
@@ -21,7 +18,7 @@ export async function GET(request: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser()
 
     if (!user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // Get portal user
@@ -33,13 +30,13 @@ export async function GET(request: NextRequest) {
       .single()
 
     if (!portalUser) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // Check permission
     const permissions = portalUser.permissions as { view_invoices?: boolean }
     if (!permissions?.view_invoices) {
-      return NextResponse.json({ error: "Sem permissão" }, { status: 403, headers: corsHeaders() })
+      return NextResponse.json({ error: "Sem permissão" }, { status: 403, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const searchParams = request.nextUrl.searchParams
@@ -49,7 +46,7 @@ export async function GET(request: NextRequest) {
     // Build query
     let query = supabase
       .from("invoices")
-      .select("*")
+      .select("id, client_id, asaas_id, amount, due_date, payment_date, status, description, created_at")
       .eq("client_id", portalUser.client_id)
       .order("due_date", { ascending: false })
 
@@ -67,7 +64,7 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error("[Portal Invoices] Error:", error)
-      return NextResponse.json({ error: "Erro ao buscar faturas" }, { status: 500, headers: corsHeaders() })
+      return NextResponse.json({ error: "Erro ao buscar faturas" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // Get Asaas integration for fetching payment links
@@ -195,10 +192,10 @@ export async function GET(request: NextRequest) {
         nextInvoice: nextInvoice || overdueInvoice || null,
         stats,
       },
-      { headers: corsHeaders() }
+      { headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
     console.error("[Portal Invoices] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

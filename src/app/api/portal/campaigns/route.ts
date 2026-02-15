@@ -1,17 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  }
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPreFlight(request)
 }
 
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders() })
-}
+
+
+
 
 // GET - List campaigns for the client's stores (portal view)
 // IMPORTANT: Does NOT return instructions_doc_url or notes (internal fields)
@@ -23,7 +20,7 @@ export async function GET(request: NextRequest) {
     // Get current user
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     if (authError || !user) {
-      return NextResponse.json({ error: "Não autenticado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autenticado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // Get portal user to find their client_id
@@ -35,7 +32,7 @@ export async function GET(request: NextRequest) {
       .single()
 
     if (!portalUser) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const clientId = portalUser.client_id
@@ -51,7 +48,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         campaigns: [],
         totalCount: 0,
-      }, { headers: corsHeaders() })
+      }, { headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const clientStoreIds = clientStores.map(s => s.id)
@@ -113,7 +110,7 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error("[Portal Campaigns] Error fetching:", error)
-      return NextResponse.json({ error: "Erro ao buscar campanhas" }, { status: 500, headers: corsHeaders() })
+      return NextResponse.json({ error: "Erro ao buscar campanhas" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // Filter campaigns that have at least one store belonging to this client
@@ -153,9 +150,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       campaigns: filteredCampaigns,
       totalCount: filteredCampaigns.length,
-    }, { headers: corsHeaders() })
+    }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
     console.error("[Portal Campaigns] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

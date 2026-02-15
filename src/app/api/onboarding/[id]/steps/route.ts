@@ -1,17 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, PUT, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  }
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPreFlight(request)
 }
 
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders() })
-}
+
+
+
 
 // GET - Get all steps for an onboarding
 export async function GET(
@@ -24,7 +21,7 @@ export async function GET(
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const { data: steps, error } = await supabase
@@ -42,7 +39,7 @@ export async function GET(
 
     if (error) {
       console.error("[Onboarding Steps] Error fetching:", error)
-      return NextResponse.json({ error: "Erro ao buscar etapas" }, { status: 500, headers: corsHeaders() })
+      return NextResponse.json({ error: "Erro ao buscar etapas" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // Group by category
@@ -54,10 +51,10 @@ export async function GET(
       return acc
     }, {} as Record<string, typeof steps>)
 
-    return NextResponse.json({ steps: steps || [], grouped }, { headers: corsHeaders() })
+    return NextResponse.json({ steps: steps || [], grouped }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
     console.error("[Onboarding Steps] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
 
@@ -72,7 +69,7 @@ export async function PUT(
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const body = await request.json()
@@ -80,7 +77,7 @@ export async function PUT(
     if (!body.step_id) {
       return NextResponse.json(
         { error: "step_id é obrigatório" },
-        { status: 400, headers: corsHeaders() }
+        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -124,7 +121,7 @@ export async function PUT(
 
     if (updateError) {
       console.error("[Onboarding Steps] Update error:", updateError)
-      return NextResponse.json({ error: "Erro ao atualizar etapa" }, { status: 500, headers: corsHeaders() })
+      return NextResponse.json({ error: "Erro ao atualizar etapa" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // Get updated onboarding progress
@@ -139,9 +136,9 @@ export async function PUT(
       onboarding_progress: onboarding?.progress_percent || 0,
       onboarding_status: onboarding?.status,
       message: "Etapa atualizada",
-    }, { headers: corsHeaders() })
+    }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
     console.error("[Onboarding Steps] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

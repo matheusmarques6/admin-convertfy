@@ -1,18 +1,15 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { AgentStoreAccessFormData } from "@/types"
+import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  }
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPreFlight(request)
 }
 
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders() })
-}
+
+
+
 
 // GET - List store access records
 export async function GET(request: NextRequest) {
@@ -21,7 +18,7 @@ export async function GET(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const searchParams = request.nextUrl.searchParams
@@ -67,7 +64,7 @@ export async function GET(request: NextRequest) {
         const storeIds = clientStores.map((s) => s.id)
         query = query.in("store_id", storeIds)
       } else {
-        return NextResponse.json({ access: [] }, { headers: corsHeaders() })
+        return NextResponse.json({ access: [] }, { headers: corsHeaders(request.headers.get("origin")) })
       }
     }
 
@@ -75,13 +72,13 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error("[Store Access] Error fetching:", error)
-      return NextResponse.json({ error: "Erro ao buscar acessos" }, { status: 500, headers: corsHeaders() })
+      return NextResponse.json({ error: "Erro ao buscar acessos" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
-    return NextResponse.json({ access: access || [] }, { headers: corsHeaders() })
+    return NextResponse.json({ access: access || [] }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
     console.error("[Store Access] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
 
@@ -92,7 +89,7 @@ export async function POST(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // Check if user is admin
@@ -103,7 +100,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (!profile || profile.role !== "admin") {
-      return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders() })
+      return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const body: AgentStoreAccessFormData = await request.json()
@@ -111,7 +108,7 @@ export async function POST(request: NextRequest) {
     if (!body.org_member_id || !body.store_id) {
       return NextResponse.json(
         { error: "Campos obrigatórios: org_member_id, store_id" },
-        { status: 400, headers: corsHeaders() }
+        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -146,10 +143,10 @@ export async function POST(request: NextRequest) {
 
       if (updateError) {
         console.error("[Store Access] Update error:", updateError)
-        return NextResponse.json({ error: "Erro ao atualizar acesso" }, { status: 500, headers: corsHeaders() })
+        return NextResponse.json({ error: "Erro ao atualizar acesso" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
       }
 
-      return NextResponse.json({ access, message: "Acesso atualizado com sucesso" }, { headers: corsHeaders() })
+      return NextResponse.json({ access, message: "Acesso atualizado com sucesso" }, { headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // Create new access
@@ -174,16 +171,16 @@ export async function POST(request: NextRequest) {
 
     if (insertError) {
       console.error("[Store Access] Insert error:", insertError)
-      return NextResponse.json({ error: "Erro ao criar acesso" }, { status: 500, headers: corsHeaders() })
+      return NextResponse.json({ error: "Erro ao criar acesso" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     return NextResponse.json(
       { access, message: "Acesso concedido com sucesso" },
-      { status: 201, headers: corsHeaders() }
+      { status: 201, headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
     console.error("[Store Access] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
 
@@ -194,7 +191,7 @@ export async function DELETE(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // Check if user is admin
@@ -205,7 +202,7 @@ export async function DELETE(request: NextRequest) {
       .single()
 
     if (!profile || profile.role !== "admin") {
-      return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders() })
+      return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const searchParams = request.nextUrl.searchParams
@@ -224,7 +221,7 @@ export async function DELETE(request: NextRequest) {
 
       if (error) {
         console.error("[Store Access] Delete error:", error)
-        return NextResponse.json({ error: "Erro ao remover acesso" }, { status: 500, headers: corsHeaders() })
+        return NextResponse.json({ error: "Erro ao remover acesso" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
       }
     } else if (orgMemberId && storeId) {
       // Delete by member + store combination
@@ -236,18 +233,18 @@ export async function DELETE(request: NextRequest) {
 
       if (error) {
         console.error("[Store Access] Delete error:", error)
-        return NextResponse.json({ error: "Erro ao remover acesso" }, { status: 500, headers: corsHeaders() })
+        return NextResponse.json({ error: "Erro ao remover acesso" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
       }
     } else {
       return NextResponse.json(
         { error: "Parâmetros obrigatórios: id ou (org_member_id + store_id)" },
-        { status: 400, headers: corsHeaders() }
+        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
-    return NextResponse.json({ success: true, message: "Acesso removido com sucesso" }, { headers: corsHeaders() })
+    return NextResponse.json({ success: true, message: "Acesso removido com sucesso" }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
     console.error("[Store Access] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

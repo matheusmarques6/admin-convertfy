@@ -1,17 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  }
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPreFlight(request)
 }
 
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders() })
-}
+
+
+
 
 // GET - List all campaign batches (admin view)
 export async function GET(request: NextRequest) {
@@ -22,7 +19,7 @@ export async function GET(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const searchParams = request.nextUrl.searchParams
@@ -51,7 +48,7 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error("[Campaign Batches] Error fetching:", error)
-      return NextResponse.json({ error: "Erro ao buscar campanhas" }, { status: 500, headers: corsHeaders() })
+      return NextResponse.json({ error: "Erro ao buscar campanhas" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // Enrich with store names
@@ -76,10 +73,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       batches: enrichedBatches || [],
       totalCount: enrichedBatches?.length || 0,
-    }, { headers: corsHeaders() })
+    }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
     console.error("[Campaign Batches] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
 
@@ -92,7 +89,7 @@ export async function POST(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // Verify user exists in profiles table (internal staff)
@@ -104,7 +101,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (!profile) {
-      return NextResponse.json({ error: "Acesso negado - usuário não encontrado" }, { status: 403, headers: corsHeaders() })
+      return NextResponse.json({ error: "Acesso negado - usuário não encontrado" }, { status: 403, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const body = await request.json()
@@ -121,28 +118,28 @@ export async function POST(request: NextRequest) {
     if (!name || name.trim().length < 3) {
       return NextResponse.json(
         { error: "Nome da campanha deve ter pelo menos 3 caracteres" },
-        { status: 400, headers: corsHeaders() }
+        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
     if (!campaign_type) {
       return NextResponse.json(
         { error: "Tipo de campanha é obrigatório" },
-        { status: 400, headers: corsHeaders() }
+        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
     if (!scheduled_at) {
       return NextResponse.json(
         { error: "Data e hora de envio são obrigatórios" },
-        { status: 400, headers: corsHeaders() }
+        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
     if (!store_ids || !Array.isArray(store_ids) || store_ids.length === 0) {
       return NextResponse.json(
         { error: "Selecione pelo menos uma loja" },
-        { status: 400, headers: corsHeaders() }
+        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -151,7 +148,7 @@ export async function POST(request: NextRequest) {
     if (scheduledDate <= new Date()) {
       return NextResponse.json(
         { error: "Data de envio deve ser no futuro" },
-        { status: 400, headers: corsHeaders() }
+        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -162,7 +159,7 @@ export async function POST(request: NextRequest) {
       } catch {
         return NextResponse.json(
           { error: "URL do documento de instruções inválida" },
-          { status: 400, headers: corsHeaders() }
+          { status: 400, headers: corsHeaders(request.headers.get("origin")) }
         )
       }
     }
@@ -176,7 +173,7 @@ export async function POST(request: NextRequest) {
     if (storeError || !validStores || validStores.length !== store_ids.length) {
       return NextResponse.json(
         { error: "Uma ou mais lojas selecionadas não existem" },
-        { status: 400, headers: corsHeaders() }
+        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -208,7 +205,7 @@ export async function POST(request: NextRequest) {
       console.error("[Campaign Batches] Error creating:", insertError)
       return NextResponse.json(
         { error: "Erro ao criar campanha: " + insertError.message },
-        { status: 500, headers: corsHeaders() }
+        { status: 500, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -218,9 +215,9 @@ export async function POST(request: NextRequest) {
       success: true,
       batch: newBatch,
       message: `Campanha "${name}" criada com sucesso para ${store_ids.length} loja(s)`,
-    }, { status: 201, headers: corsHeaders() })
+    }, { status: 201, headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
     console.error("[Campaign Batches] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

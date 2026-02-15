@@ -1,17 +1,15 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { generateTempPassword } from "@/lib/utils/generate-password"
+import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  }
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPreFlight(request)
 }
 
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders() })
-}
+
+
+
 
 // POST - Reset password for portal user
 export async function POST(
@@ -23,7 +21,7 @@ export async function POST(
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // Check if user is admin
@@ -34,7 +32,7 @@ export async function POST(
       .single()
 
     if (!profile || !["admin", "manager"].includes(profile.role)) {
-      return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders() })
+      return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const { id } = await params
@@ -47,7 +45,7 @@ export async function POST(
       .single()
 
     if (!portalUser?.auth_user_id) {
-      return NextResponse.json({ error: "Usuário não encontrado" }, { status: 404, headers: corsHeaders() })
+      return NextResponse.json({ error: "Usuário não encontrado" }, { status: 404, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // Generate new temporary password
@@ -66,7 +64,7 @@ export async function POST(
       console.error("[Portal Users] Password reset error:", updateError)
       return NextResponse.json(
         { error: "Erro ao redefinir senha" },
-        { status: 500, headers: corsHeaders() }
+        { status: 500, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -83,19 +81,11 @@ export async function POST(
         userEmail: portalUser.email,
         userName: portalUser.name,
       },
-      { headers: corsHeaders() }
+      { headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
     console.error("[Portal Users] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
 
-function generateTempPassword(length = 12): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789"
-  let password = ""
-  for (let i = 0; i < length; i++) {
-    password += chars.charAt(Math.floor(Math.random() * chars.length))
-  }
-  return password
-}

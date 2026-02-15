@@ -1,17 +1,14 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  }
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPreFlight(request)
 }
 
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders() })
-}
+
+
+
 
 /**
  * GET /api/portal/onboarding
@@ -19,7 +16,7 @@ export async function OPTIONS() {
  * Returns the active onboarding for the logged-in portal user's client.
  * Includes all steps grouped by category with progress info.
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
     const adminClient = createAdminClient()
@@ -29,7 +26,7 @@ export async function GET() {
     if (!user) {
       return NextResponse.json(
         { error: "Não autenticado" },
-        { status: 401, headers: corsHeaders() }
+        { status: 401, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -44,7 +41,7 @@ export async function GET() {
     if (!portalUser) {
       return NextResponse.json(
         { error: "Não autorizado" },
-        { status: 401, headers: corsHeaders() }
+        { status: 401, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -71,7 +68,7 @@ export async function GET() {
     if (onboardingError || !onboarding) {
       return NextResponse.json(
         { onboarding: null, message: "Nenhum onboarding encontrado" },
-        { headers: corsHeaders() }
+        { headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -96,7 +93,7 @@ export async function GET() {
       console.error("[Portal Onboarding] Error fetching steps:", stepsError)
       return NextResponse.json(
         { error: "Erro ao buscar etapas" },
-        { status: 500, headers: corsHeaders() }
+        { status: 500, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -144,13 +141,13 @@ export async function GET() {
         },
         grouped,
       },
-      { headers: corsHeaders() }
+      { headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
     console.error("[Portal Onboarding] Error:", error)
     return NextResponse.json(
       { error: "Erro interno" },
-      { status: 500, headers: corsHeaders() }
+      { status: 500, headers: corsHeaders(request.headers.get("origin")) }
     )
   }
 }

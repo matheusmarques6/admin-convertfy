@@ -1,17 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  }
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPreFlight(request)
 }
 
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders() })
-}
+
+
+
 
 // POST - Approve campaign
 export async function POST(
@@ -25,7 +22,7 @@ export async function POST(
     if (authError || !user) {
       return NextResponse.json(
         { error: "Não autorizado" },
-        { status: 401, headers: corsHeaders() }
+        { status: 401, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -54,7 +51,7 @@ export async function POST(
     if (!canApprove && !isAdmin) {
       return NextResponse.json(
         { error: "Você não tem permissão para aprovar campanhas" },
-        { status: 403, headers: corsHeaders() }
+        { status: 403, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -68,7 +65,7 @@ export async function POST(
     if (fetchError || !campaign) {
       return NextResponse.json(
         { error: "Campanha não encontrada" },
-        { status: 404, headers: corsHeaders() }
+        { status: 404, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -76,7 +73,7 @@ export async function POST(
     if (campaign.status !== "pending_review") {
       return NextResponse.json(
         { error: `Não é possível aprovar uma campanha com status "${campaign.status}"` },
-        { status: 400, headers: corsHeaders() }
+        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -84,7 +81,7 @@ export async function POST(
     if (campaign.submitted_by === user.id && !isAdmin) {
       return NextResponse.json(
         { error: "Você não pode aprovar sua própria campanha" },
-        { status: 400, headers: corsHeaders() }
+        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -125,7 +122,7 @@ export async function POST(
       console.error("[Campaigns] Approve error:", updateError)
       return NextResponse.json(
         { error: "Erro ao aprovar campanha" },
-        { status: 500, headers: corsHeaders() }
+        { status: 500, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -136,12 +133,12 @@ export async function POST(
     return NextResponse.json({
       campaign: updated,
       message: statusMessage,
-    }, { headers: corsHeaders() })
+    }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
     console.error("[Campaigns] Error:", error)
     return NextResponse.json(
       { error: "Erro interno do servidor" },
-      { status: 500, headers: corsHeaders() }
+      { status: 500, headers: corsHeaders(request.headers.get("origin")) }
     )
   }
 }

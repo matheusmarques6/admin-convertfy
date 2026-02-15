@@ -1,19 +1,16 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { CampaignFormData } from "@/types"
+import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPreFlight(request)
+}
 
 // CORS headers
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  }
-}
 
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders() })
-}
+
+
 
 // GET - List campaigns with filters
 export async function GET(request: NextRequest) {
@@ -24,7 +21,7 @@ export async function GET(request: NextRequest) {
     if (authError || !user) {
       return NextResponse.json(
         { error: "Não autorizado" },
-        { status: 401, headers: corsHeaders() }
+        { status: 401, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -76,19 +73,19 @@ export async function GET(request: NextRequest) {
       console.error("[Campaigns] Error fetching campaigns:", error)
       return NextResponse.json(
         { error: "Erro ao buscar campanhas" },
-        { status: 500, headers: corsHeaders() }
+        { status: 500, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
     return NextResponse.json(
       { campaigns: campaigns || [] },
-      { headers: corsHeaders() }
+      { headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
     console.error("[Campaigns] Error:", error)
     return NextResponse.json(
       { error: "Erro interno do servidor" },
-      { status: 500, headers: corsHeaders() }
+      { status: 500, headers: corsHeaders(request.headers.get("origin")) }
     )
   }
 }
@@ -102,7 +99,7 @@ export async function POST(request: NextRequest) {
     if (authError || !user) {
       return NextResponse.json(
         { error: "Não autorizado" },
-        { status: 401, headers: corsHeaders() }
+        { status: 401, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -112,7 +109,7 @@ export async function POST(request: NextRequest) {
     if (!body.store_id || !body.client_id || !body.name || !body.scheduled_date) {
       return NextResponse.json(
         { error: "Campos obrigatórios: store_id, client_id, name, scheduled_date" },
-        { status: 400, headers: corsHeaders() }
+        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -157,19 +154,19 @@ export async function POST(request: NextRequest) {
       console.error("[Campaigns] Error creating campaign:", error)
       return NextResponse.json(
         { error: "Erro ao criar campanha" },
-        { status: 500, headers: corsHeaders() }
+        { status: 500, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
     return NextResponse.json(
       { campaign },
-      { status: 201, headers: corsHeaders() }
+      { status: 201, headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
     console.error("[Campaigns] Error:", error)
     return NextResponse.json(
       { error: "Erro interno do servidor" },
-      { status: 500, headers: corsHeaders() }
+      { status: 500, headers: corsHeaders(request.headers.get("origin")) }
     )
   }
 }

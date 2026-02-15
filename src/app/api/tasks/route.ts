@@ -1,18 +1,15 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { TaskFormData } from "@/types"
+import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  }
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPreFlight(request)
 }
 
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders() })
-}
+
+
+
 
 // GET - List tasks with filters
 export async function GET(request: NextRequest) {
@@ -21,7 +18,7 @@ export async function GET(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const adminClient = createAdminClient()
@@ -94,7 +91,7 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error("[Tasks] Error fetching:", error)
-      return NextResponse.json({ error: "Erro ao buscar tarefas" }, { status: 500, headers: corsHeaders() })
+      return NextResponse.json({ error: "Erro ao buscar tarefas" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // Extract comments_count from the joined count
@@ -109,10 +106,10 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    return NextResponse.json({ tasks: tasksWithCounts }, { headers: corsHeaders() })
+    return NextResponse.json({ tasks: tasksWithCounts }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
     console.error("[Tasks] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
 
@@ -123,7 +120,7 @@ export async function POST(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const body: TaskFormData = await request.json()
@@ -131,7 +128,7 @@ export async function POST(request: NextRequest) {
     if (!body.title) {
       return NextResponse.json(
         { error: "Título é obrigatório" },
-        { status: 400, headers: corsHeaders() }
+        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -192,17 +189,17 @@ export async function POST(request: NextRequest) {
       console.error("[Tasks] Insert error:", insertError.message, insertError.details, insertError.hint, insertError.code)
       return NextResponse.json(
         { error: `Erro ao criar tarefa: ${insertError.message}` },
-        { status: 500, headers: corsHeaders() }
+        { status: 500, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
     return NextResponse.json(
       { task, message: "Tarefa criada com sucesso" },
-      { status: 201, headers: corsHeaders() }
+      { status: 201, headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
     console.error("[Tasks] Error:", error)
     const message = error instanceof Error ? error.message : "Erro interno"
-    return NextResponse.json({ error: `Erro interno: ${message}` }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: `Erro interno: ${message}` }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

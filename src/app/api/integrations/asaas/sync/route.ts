@@ -15,7 +15,7 @@ export async function POST() {
     // Get Asaas integration credentials
     const { data: integration, error: intError } = await supabase
       .from("integrations")
-      .select("*")
+      .select("id, credentials, is_active")
       .eq("type", "asaas")
       .eq("is_active", true)
       .single()

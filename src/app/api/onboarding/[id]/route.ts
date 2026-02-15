@@ -1,17 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, PUT, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  }
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPreFlight(request)
 }
 
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders() })
-}
+
+
+
 
 // GET - Get single onboarding with all steps
 export async function GET(
@@ -24,7 +21,7 @@ export async function GET(
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const { data: onboarding, error } = await supabase
@@ -44,7 +41,7 @@ export async function GET(
       .single()
 
     if (error || !onboarding) {
-      return NextResponse.json({ error: "Onboarding não encontrado" }, { status: 404, headers: corsHeaders() })
+      return NextResponse.json({ error: "Onboarding não encontrado" }, { status: 404, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // Fetch steps with assignees
@@ -66,10 +63,10 @@ export async function GET(
         ...onboarding,
         steps: steps || [],
       },
-    }, { headers: corsHeaders() })
+    }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
     console.error("[Onboarding] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
 
@@ -84,7 +81,7 @@ export async function PUT(
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const body = await request.json()
@@ -113,7 +110,7 @@ export async function PUT(
 
     if (updateError) {
       console.error("[Onboarding] Update error:", updateError)
-      return NextResponse.json({ error: "Erro ao atualizar onboarding" }, { status: 500, headers: corsHeaders() })
+      return NextResponse.json({ error: "Erro ao atualizar onboarding" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // If completed, update client status
@@ -124,10 +121,10 @@ export async function PUT(
         .eq("id", onboarding.client_id)
     }
 
-    return NextResponse.json({ onboarding, message: "Onboarding atualizado" }, { headers: corsHeaders() })
+    return NextResponse.json({ onboarding, message: "Onboarding atualizado" }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
     console.error("[Onboarding] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
 
@@ -142,7 +139,7 @@ export async function DELETE(
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const adminClient = createAdminClient()
@@ -155,12 +152,12 @@ export async function DELETE(
 
     if (updateError) {
       console.error("[Onboarding] Delete error:", updateError)
-      return NextResponse.json({ error: "Erro ao cancelar onboarding" }, { status: 500, headers: corsHeaders() })
+      return NextResponse.json({ error: "Erro ao cancelar onboarding" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
-    return NextResponse.json({ success: true, message: "Onboarding cancelado" }, { headers: corsHeaders() })
+    return NextResponse.json({ success: true, message: "Onboarding cancelado" }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
     console.error("[Onboarding] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

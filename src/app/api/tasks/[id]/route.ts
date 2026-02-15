@@ -1,17 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, PUT, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  }
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPreFlight(request)
 }
 
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders() })
-}
+
+
+
 
 // GET - Get single task with all details
 export async function GET(
@@ -24,7 +21,7 @@ export async function GET(
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const adminClient = createAdminClient()
@@ -48,7 +45,7 @@ export async function GET(
 
     if (error || !task) {
       console.error("[Task] Fetch error:", error)
-      return NextResponse.json({ error: "Tarefa não encontrada" }, { status: 404, headers: corsHeaders() })
+      return NextResponse.json({ error: "Tarefa não encontrada" }, { status: 404, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // Fetch comments
@@ -86,10 +83,10 @@ export async function GET(
         checklists: checklists || [],
         history: history || [],
       },
-    }, { headers: corsHeaders() })
+    }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
     console.error("[Task] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
 
@@ -104,7 +101,7 @@ export async function PUT(
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const body = await request.json()
@@ -165,13 +162,13 @@ export async function PUT(
 
     if (updateError) {
       console.error("[Task] Update error:", updateError)
-      return NextResponse.json({ error: "Erro ao atualizar tarefa" }, { status: 500, headers: corsHeaders() })
+      return NextResponse.json({ error: "Erro ao atualizar tarefa" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
-    return NextResponse.json({ task, message: "Tarefa atualizada com sucesso" }, { headers: corsHeaders() })
+    return NextResponse.json({ task, message: "Tarefa atualizada com sucesso" }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
     console.error("[Task] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
 
@@ -186,7 +183,7 @@ export async function DELETE(
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const adminClient = createAdminClient()
@@ -198,12 +195,12 @@ export async function DELETE(
 
     if (deleteError) {
       console.error("[Task] Delete error:", deleteError)
-      return NextResponse.json({ error: "Erro ao excluir tarefa" }, { status: 500, headers: corsHeaders() })
+      return NextResponse.json({ error: "Erro ao excluir tarefa" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
-    return NextResponse.json({ success: true, message: "Tarefa excluída com sucesso" }, { headers: corsHeaders() })
+    return NextResponse.json({ success: true, message: "Tarefa excluída com sucesso" }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
     console.error("[Task] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

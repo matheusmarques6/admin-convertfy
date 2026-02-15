@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import { timingSafeEqual } from "crypto"
 import { mapAsaasStatusToInternal } from "@/lib/integrations/asaas"
 
 // Create Supabase client lazily to avoid build-time errors
@@ -35,13 +36,23 @@ interface AsaasWebhookPayload {
 
 export async function POST(request: NextRequest) {
   try {
-    // Verify webhook token
+    // Verify webhook token using timing-safe comparison
     const webhookToken = request.headers.get("asaas-access-token")
     const expectedToken = process.env.ASAAS_WEBHOOK_SECRET
 
-    if (expectedToken && webhookToken !== expectedToken) {
-      console.warn("Invalid Asaas webhook token")
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    if (expectedToken) {
+      if (!webhookToken) {
+        console.warn("Missing Asaas webhook token")
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      }
+
+      const a = Buffer.from(webhookToken)
+      const b = Buffer.from(expectedToken)
+
+      if (a.byteLength !== b.byteLength || !timingSafeEqual(a, b)) {
+        console.warn("Invalid Asaas webhook token")
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      }
     }
 
     const payload = (await request.json()) as AsaasWebhookPayload

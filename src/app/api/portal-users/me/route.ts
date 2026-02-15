@@ -17,7 +17,7 @@ export async function GET() {
     // Check if this user is a portal user
     const { data: portalUser, error: portalError } = await supabase
       .from("client_portal_users")
-      .select("*")
+      .select("id, name, email, phone, client_id, is_active, must_change_password, permissions, created_at")
       .eq("auth_user_id", user.id)
       .single()
 

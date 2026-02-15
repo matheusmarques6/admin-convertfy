@@ -1,22 +1,19 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPreFlight(request)
+}
 
 // Klaviyo API configuration
 const KLAVIYO_API_URL = "https://a.klaviyo.com/api"
 const KLAVIYO_REVISION = "2024-10-15"
 
 // CORS headers
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  }
-}
 
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders() })
-}
+
+
 
 // Klaviyo API request helper
 async function klaviyoRequest<T>(
@@ -74,7 +71,7 @@ export async function POST(request: NextRequest) {
     if (authError || !user) {
       return NextResponse.json(
         { error: "Não autorizado" },
-        { status: 401, headers: corsHeaders() }
+        { status: 401, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -84,7 +81,7 @@ export async function POST(request: NextRequest) {
     if (!store_id) {
       return NextResponse.json(
         { error: "store_id é obrigatório" },
-        { status: 400, headers: corsHeaders() }
+        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -98,7 +95,7 @@ export async function POST(request: NextRequest) {
     if (storeError || !store) {
       return NextResponse.json(
         { error: "Loja não encontrada" },
-        { status: 404, headers: corsHeaders() }
+        { status: 404, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -106,7 +103,7 @@ export async function POST(request: NextRequest) {
     if (!apiKey) {
       return NextResponse.json(
         { error: "Klaviyo API Key não configurada para esta loja" },
-        { status: 400, headers: corsHeaders() }
+        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -231,13 +228,13 @@ export async function POST(request: NextRequest) {
         errors,
         total: allCampaigns.length,
       },
-      { headers: corsHeaders() }
+      { headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
     console.error("[Campaigns Sync] Error:", error)
     return NextResponse.json(
       { error: "Erro ao sincronizar campanhas" },
-      { status: 500, headers: corsHeaders() }
+      { status: 500, headers: corsHeaders(request.headers.get("origin")) }
     )
   }
 }

@@ -1,17 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, PUT, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  }
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPreFlight(request)
 }
 
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders() })
-}
+
+
+
 
 // GET - Get single org member with full details
 export async function GET(
@@ -24,7 +21,7 @@ export async function GET(
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // Fetch member with all related data
@@ -39,7 +36,7 @@ export async function GET(
       .single()
 
     if (error || !member) {
-      return NextResponse.json({ error: "Membro não encontrado" }, { status: 404, headers: corsHeaders() })
+      return NextResponse.json({ error: "Membro não encontrado" }, { status: 404, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // Fetch features
@@ -66,10 +63,10 @@ export async function GET(
         features: features || [],
         store_access: storeAccess || [],
       },
-    }, { headers: corsHeaders() })
+    }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
     console.error("[Org Member] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
 
@@ -84,7 +81,7 @@ export async function PUT(
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // Get the member being updated to check org
@@ -95,7 +92,7 @@ export async function PUT(
       .single()
 
     if (!targetMember) {
-      return NextResponse.json({ error: "Membro não encontrado" }, { status: 404, headers: corsHeaders() })
+      return NextResponse.json({ error: "Membro não encontrado" }, { status: 404, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // Check if user has permission: system admin OR org owner/admin
@@ -117,7 +114,7 @@ export async function PUT(
     const isOrgAdmin = userOrgMember?.role === "owner" || userOrgMember?.role === "manager"
 
     if (!isSystemAdmin && !isOrgAdmin) {
-      return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders() })
+      return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const body = await request.json()
@@ -142,7 +139,7 @@ export async function PUT(
 
     if (updateError) {
       console.error("[Org Member] Update error:", updateError)
-      return NextResponse.json({ error: "Erro ao atualizar membro" }, { status: 500, headers: corsHeaders() })
+      return NextResponse.json({ error: "Erro ao atualizar membro" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // Update features if provided
@@ -195,10 +192,10 @@ export async function PUT(
       }
     }
 
-    return NextResponse.json({ member, message: "Membro atualizado com sucesso" }, { headers: corsHeaders() })
+    return NextResponse.json({ member, message: "Membro atualizado com sucesso" }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
     console.error("[Org Member] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
 
@@ -213,7 +210,7 @@ export async function DELETE(
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // Get the member being deleted to check org
@@ -224,7 +221,7 @@ export async function DELETE(
       .single()
 
     if (!targetMember) {
-      return NextResponse.json({ error: "Membro não encontrado" }, { status: 404, headers: corsHeaders() })
+      return NextResponse.json({ error: "Membro não encontrado" }, { status: 404, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // Check if user has permission: system admin OR org owner/admin
@@ -246,7 +243,7 @@ export async function DELETE(
     const isOrgAdmin = userOrgMember?.role === "owner" || userOrgMember?.role === "manager"
 
     if (!isSystemAdmin && !isOrgAdmin) {
-      return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders() })
+      return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const adminClient = createAdminClient()
@@ -266,7 +263,7 @@ export async function DELETE(
 
     if (deleteError) {
       console.error("[Org Member] Delete error:", deleteError)
-      return NextResponse.json({ error: "Erro ao remover membro" }, { status: 500, headers: corsHeaders() })
+      return NextResponse.json({ error: "Erro ao remover membro" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // Log activity
@@ -277,9 +274,9 @@ export async function DELETE(
       metadata: { member_id: id },
     })
 
-    return NextResponse.json({ success: true, message: "Membro removido com sucesso" }, { headers: corsHeaders() })
+    return NextResponse.json({ success: true, message: "Membro removido com sucesso" }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
     console.error("[Org Member] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

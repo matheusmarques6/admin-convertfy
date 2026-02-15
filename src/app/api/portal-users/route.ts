@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
-
-// Default password for first access
-const DEFAULT_PASSWORD = "Convertfy@2024"
+import { generateTempPassword } from "@/lib/utils/generate-password"
 
 // POST - Create a new portal user
 export async function POST(request: NextRequest) {
@@ -101,15 +99,17 @@ export async function POST(request: NextRequest) {
     const existingAuthUser = existingAuthUsers?.users?.find(u => u.email === email)
 
     let authUserId: string
+    let tempPassword: string | null = null
 
     if (existingAuthUser) {
       // User already exists in auth, just use their ID
       authUserId = existingAuthUser.id
     } else {
-      // Create new auth user with default password
+      // Create new auth user with temporary password
+      tempPassword = generateTempPassword()
       const { data: newAuthUser, error: createAuthError } = await adminClient.auth.admin.createUser({
         email,
-        password: DEFAULT_PASSWORD,
+        password: tempPassword,
         email_confirm: true, // Auto-confirm email
         user_metadata: {
           name,
@@ -174,8 +174,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       data: portalUser,
-      message: `Portal user created successfully. Default password: ${DEFAULT_PASSWORD}`,
-      default_password: DEFAULT_PASSWORD,
+      message: "Portal user created successfully.",
+      temp_password: tempPassword,
     })
   } catch (error) {
     console.error("Error in POST /api/portal-users:", error)

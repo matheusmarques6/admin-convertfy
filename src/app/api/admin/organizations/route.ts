@@ -1,17 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  }
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPreFlight(request)
 }
 
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders() })
-}
+
+
+
 
 // GET - List organizations
 export async function GET(request: NextRequest) {
@@ -20,7 +17,7 @@ export async function GET(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const searchParams = request.nextUrl.searchParams
@@ -44,7 +41,7 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error("[Organizations] Error fetching:", error)
-      return NextResponse.json({ error: "Erro ao buscar organizações" }, { status: 500, headers: corsHeaders() })
+      return NextResponse.json({ error: "Erro ao buscar organizações" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // Get member count for each organization
@@ -63,10 +60,10 @@ export async function GET(request: NextRequest) {
       })
     )
 
-    return NextResponse.json({ organizations: orgsWithCounts }, { headers: corsHeaders() })
+    return NextResponse.json({ organizations: orgsWithCounts }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
     console.error("[Organizations] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
 
@@ -77,7 +74,7 @@ export async function POST(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // Check if user is admin
@@ -88,7 +85,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (!profile || profile.role !== "admin") {
-      return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders() })
+      return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const body = await request.json()
@@ -96,7 +93,7 @@ export async function POST(request: NextRequest) {
     if (!body.name || !body.slug) {
       return NextResponse.json(
         { error: "Campos obrigatórios: name, slug" },
-        { status: 400, headers: corsHeaders() }
+        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -110,7 +107,7 @@ export async function POST(request: NextRequest) {
     if (existing) {
       return NextResponse.json(
         { error: "Este slug já está em uso" },
-        { status: 400, headers: corsHeaders() }
+        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -129,15 +126,15 @@ export async function POST(request: NextRequest) {
 
     if (insertError) {
       console.error("[Organizations] Insert error:", insertError)
-      return NextResponse.json({ error: "Erro ao criar organização" }, { status: 500, headers: corsHeaders() })
+      return NextResponse.json({ error: "Erro ao criar organização" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     return NextResponse.json(
       { organization, message: "Organização criada com sucesso" },
-      { status: 201, headers: corsHeaders() }
+      { status: 201, headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
     console.error("[Organizations] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

@@ -1,17 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  }
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPreFlight(request)
 }
 
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders() })
-}
+
+
+
 
 // GET - Get store report (Klaviyo + Shopify data)
 export async function GET(
@@ -23,7 +20,7 @@ export async function GET(
     const { data: { user } } = await supabase.auth.getUser()
 
     if (!user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const { id: storeId } = await params
@@ -39,25 +36,25 @@ export async function GET(
       .single()
 
     if (!portalUser) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // Check permission
     const permissions = portalUser.permissions as { view_reports?: boolean }
     if (!permissions?.view_reports) {
-      return NextResponse.json({ error: "Sem permissão" }, { status: 403, headers: corsHeaders() })
+      return NextResponse.json({ error: "Sem permissão" }, { status: 403, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // Verify store belongs to client
     const { data: store, error: storeError } = await supabase
       .from("client_stores")
-      .select("*")
+      .select("id, client_id, store_name, platform, store_url, klaviyo_private_key, klaviyo_api_key, shopify_access_token, shopify_store_domain")
       .eq("id", storeId)
       .eq("client_id", portalUser.client_id)
       .single()
 
     if (storeError || !store) {
-      return NextResponse.json({ error: "Loja não encontrada" }, { status: 404, headers: corsHeaders() })
+      return NextResponse.json({ error: "Loja não encontrada" }, { status: 404, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // Build base URL for internal API calls
@@ -186,10 +183,10 @@ export async function GET(
         })),
         lastUpdated: new Date().toISOString(),
       },
-      { headers: corsHeaders() }
+      { headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
     console.error("[Portal Store Report] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

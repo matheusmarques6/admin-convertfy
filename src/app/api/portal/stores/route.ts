@@ -1,17 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, PUT, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  }
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPreFlight(request)
 }
 
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders() })
-}
+
+
+
 
 /**
  * Helper: get authenticated portal user with client_id
@@ -32,18 +29,18 @@ async function getPortalUser(supabase: Awaited<ReturnType<typeof createClient>>)
 }
 
 // GET - Get stores list for portal user
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
     const portalUser = await getPortalUser(supabase)
 
     if (!portalUser) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const permissions = portalUser.permissions as { view_reports?: boolean }
     if (!permissions?.view_reports) {
-      return NextResponse.json({ error: "Sem permissão" }, { status: 403, headers: corsHeaders() })
+      return NextResponse.json({ error: "Sem permissão" }, { status: 403, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // Use admin client to read credential presence flags
@@ -67,10 +64,10 @@ export async function GET() {
 
     if (error) {
       console.error("[Portal Stores] Error:", error)
-      return NextResponse.json({ error: "Erro ao buscar lojas" }, { status: 500, headers: corsHeaders() })
+      return NextResponse.json({ error: "Erro ao buscar lojas" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
-    // Map stores: return boolean flags instead of actual credentials
+    // SECURITY: Convert credentials to boolean flags - never expose actual keys to client
     const storesWithFlags = (stores || []).map((store) => ({
       id: store.id,
       store_name: store.store_name,
@@ -83,10 +80,10 @@ export async function GET() {
       shopify_store_domain: store.shopify_store_domain || "",
     }))
 
-    return NextResponse.json({ stores: storesWithFlags }, { headers: corsHeaders() })
+    return NextResponse.json({ stores: storesWithFlags }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
     console.error("[Portal Stores] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
 
@@ -97,14 +94,14 @@ export async function PUT(request: NextRequest) {
     const portalUser = await getPortalUser(supabase)
 
     if (!portalUser) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const body = await request.json()
     const { store_id, klaviyo_private_key, shopify_store_domain, shopify_access_token } = body
 
     if (!store_id) {
-      return NextResponse.json({ error: "store_id é obrigatório" }, { status: 400, headers: corsHeaders() })
+      return NextResponse.json({ error: "store_id é obrigatório" }, { status: 400, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const adminClient = createAdminClient()
@@ -118,7 +115,7 @@ export async function PUT(request: NextRequest) {
       .single()
 
     if (!store) {
-      return NextResponse.json({ error: "Loja não encontrada" }, { status: 404, headers: corsHeaders() })
+      return NextResponse.json({ error: "Loja não encontrada" }, { status: 404, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // Build update data
@@ -136,7 +133,7 @@ export async function PUT(request: NextRequest) {
     }
 
     if (Object.keys(updateData).length === 0) {
-      return NextResponse.json({ error: "Nenhuma credencial informada" }, { status: 400, headers: corsHeaders() })
+      return NextResponse.json({ error: "Nenhuma credencial informada" }, { status: 400, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const { error: updateError } = await adminClient
@@ -146,7 +143,7 @@ export async function PUT(request: NextRequest) {
 
     if (updateError) {
       console.error("[Portal Stores] Update error:", updateError)
-      return NextResponse.json({ error: "Erro ao salvar credenciais" }, { status: 500, headers: corsHeaders() })
+      return NextResponse.json({ error: "Erro ao salvar credenciais" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // Auto-mark onboarding steps
@@ -223,9 +220,9 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({
       success: true,
       message: "Credenciais salvas com sucesso",
-    }, { headers: corsHeaders() })
+    }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
     console.error("[Portal Stores] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders() })
+    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

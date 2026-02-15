@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
+import { generateTempPassword } from "@/lib/utils/generate-password"
 
 // POST - Reset password for a portal user (admin action)
 export async function POST(request: NextRequest) {
@@ -63,7 +64,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Default password if not provided
-    const passwordToSet = new_password || "Convertfy@2024"
+    const passwordToSet = new_password || generateTempPassword()
 
     // Update the auth user's password
     const { error: updateAuthError } = await adminClient.auth.admin.updateUserById(

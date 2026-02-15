@@ -1,19 +1,16 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { CampaignFormData } from "@/types"
+import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPreFlight(request)
+}
 
 // CORS headers
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, PUT, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  }
-}
 
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders() })
-}
+
+
 
 // GET - Get single campaign by ID
 export async function GET(
@@ -27,7 +24,7 @@ export async function GET(
     if (authError || !user) {
       return NextResponse.json(
         { error: "Não autorizado" },
-        { status: 401, headers: corsHeaders() }
+        { status: 401, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -49,7 +46,7 @@ export async function GET(
       console.error("[Campaigns] Error fetching campaign:", error)
       return NextResponse.json(
         { error: "Campanha não encontrada" },
-        { status: 404, headers: corsHeaders() }
+        { status: 404, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -62,12 +59,12 @@ export async function GET(
       reviewer: Array.isArray(campaign.reviewer) ? campaign.reviewer[0] : campaign.reviewer,
     }
 
-    return NextResponse.json({ campaign: transformedCampaign }, { headers: corsHeaders() })
+    return NextResponse.json({ campaign: transformedCampaign }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
     console.error("[Campaigns] Error:", error)
     return NextResponse.json(
       { error: "Erro interno do servidor" },
-      { status: 500, headers: corsHeaders() }
+      { status: 500, headers: corsHeaders(request.headers.get("origin")) }
     )
   }
 }
@@ -84,7 +81,7 @@ export async function PUT(
     if (authError || !user) {
       return NextResponse.json(
         { error: "Não autorizado" },
-        { status: 401, headers: corsHeaders() }
+        { status: 401, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -133,16 +130,16 @@ export async function PUT(
       console.error("[Campaigns] Error updating campaign:", error)
       return NextResponse.json(
         { error: "Erro ao atualizar campanha" },
-        { status: 500, headers: corsHeaders() }
+        { status: 500, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
-    return NextResponse.json({ campaign }, { headers: corsHeaders() })
+    return NextResponse.json({ campaign }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
     console.error("[Campaigns] Error:", error)
     return NextResponse.json(
       { error: "Erro interno do servidor" },
-      { status: 500, headers: corsHeaders() }
+      { status: 500, headers: corsHeaders(request.headers.get("origin")) }
     )
   }
 }
@@ -159,7 +156,7 @@ export async function DELETE(
     if (authError || !user) {
       return NextResponse.json(
         { error: "Não autorizado" },
-        { status: 401, headers: corsHeaders() }
+        { status: 401, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
@@ -174,19 +171,19 @@ export async function DELETE(
       console.error("[Campaigns] Error deleting campaign:", error)
       return NextResponse.json(
         { error: "Erro ao excluir campanha" },
-        { status: 500, headers: corsHeaders() }
+        { status: 500, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
     return NextResponse.json(
       { message: "Campanha excluída com sucesso" },
-      { headers: corsHeaders() }
+      { headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
     console.error("[Campaigns] Error:", error)
     return NextResponse.json(
       { error: "Erro interno do servidor" },
-      { status: 500, headers: corsHeaders() }
+      { status: 500, headers: corsHeaders(request.headers.get("origin")) }
     )
   }
 }
