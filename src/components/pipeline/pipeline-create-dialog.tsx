@@ -24,7 +24,6 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { createClient } from "@/lib/supabase/client"
 import { toast } from "@/lib/hooks/use-toast"
 
 const DEFAULT_STAGES = [
@@ -151,48 +150,22 @@ export function PipelineCreateDialog({
     setIsLoading(true)
 
     try {
-      const supabase = createClient()
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-
-      if (!user) throw new Error("Nao autenticado")
-
-      // Se marcou como padrao, desmarcar outras
-      if (data.is_default) {
-        await supabase
-          .from("pipelines")
-          .update({ is_default: false })
-          .eq("is_default", true)
-      }
-
-      // Criar pipeline
-      const { data: pipeline, error: pipelineError } = await supabase
-        .from("pipelines")
-        .insert({
+      const response = await fetch("/api/pipeline", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           name: data.name,
           description: data.description || null,
           is_default: data.is_default,
-          created_by: user.id,
-        })
-        .select()
-        .single()
+          stages,
+        }),
+      })
 
-      if (pipelineError) throw pipelineError
+      const result = await response.json()
 
-      // Criar stages
-      const stagesData = stages.map((s) => ({
-        pipeline_id: pipeline.id,
-        name: s.name,
-        color: s.color,
-        order: s.order,
-      }))
-
-      const { error: stagesError } = await supabase
-        .from("pipeline_stages")
-        .insert(stagesData)
-
-      if (stagesError) throw stagesError
+      if (!response.ok) {
+        throw new Error(result.error || "Erro ao criar pipeline")
+      }
 
       toast({
         title: "Pipeline criada!",
@@ -209,7 +182,7 @@ export function PipelineCreateDialog({
       toast({
         variant: "destructive",
         title: "Erro ao criar pipeline",
-        description: "Tente novamente mais tarde.",
+        description: error instanceof Error ? error.message : "Tente novamente mais tarde.",
       })
     } finally {
       setIsLoading(false)

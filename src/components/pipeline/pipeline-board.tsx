@@ -144,15 +144,19 @@ export function PipelineBoard({
     setShowNewDeal(true)
   }
 
-  // Show message if no pipeline access
-  if (!currentUserRole) {
+  // Show message if no stages (empty pipeline or no pipeline selected)
+  if (stages.length === 0) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
           <Lock className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
-          <p className="text-lg font-medium">Sem acesso</p>
+          <p className="text-lg font-medium">
+            {pipelineId ? "Pipeline sem etapas" : "Nenhuma pipeline selecionada"}
+          </p>
           <p className="text-muted-foreground">
-            Voce nao e membro de nenhuma pipeline. Crie uma nova ou peca acesso.
+            {pipelineId
+              ? "Configure as etapas desta pipeline nas configuracoes."
+              : "Selecione ou crie uma pipeline para comecar."}
           </p>
         </div>
       </div>

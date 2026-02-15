@@ -1,5 +1,6 @@
 import { Suspense } from "react"
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { PipelineBoard } from "@/components/pipeline/pipeline-board"
 import { PipelineHeader } from "@/components/pipeline/pipeline-header"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -9,6 +10,7 @@ export const dynamic = "force-dynamic"
 
 async function getPipelineData(searchPipelineId?: string) {
   const supabase = await createClient()
+  const adminClient = createAdminClient()
 
   // Get current user
   const {
@@ -18,7 +20,7 @@ async function getPipelineData(searchPipelineId?: string) {
   // Check if user is admin
   let isAdmin = false
   if (user) {
-    const { data: profile } = await supabase
+    const { data: profile } = await adminClient
       .from("profiles")
       .select("role")
       .eq("id", user.id)
@@ -26,8 +28,8 @@ async function getPipelineData(searchPipelineId?: string) {
     isAdmin = profile?.role === "admin"
   }
 
-  // Fetch pipelines (RLS will filter based on membership)
-  const { data: pipelines } = await supabase
+  // Fetch pipelines using adminClient to bypass RLS
+  const { data: pipelines } = await adminClient
     .from("pipelines")
     .select("*")
     .order("created_at", { ascending: true })
@@ -54,16 +56,16 @@ async function getPipelineData(searchPipelineId?: string) {
     }
   }
 
-  // Fetch stages, deals, members, and import rules in parallel
+  // Fetch stages, deals, members, and import rules in parallel (adminClient bypasses RLS)
   const [stagesResult, dealsResult, membersResult, rulesResult] =
     await Promise.all([
-      supabase
+      adminClient
         .from("pipeline_stages")
         .select("*")
         .eq("pipeline_id", selectedPipeline.id)
         .order("order", { ascending: true }),
 
-      supabase
+      adminClient
         .from("deals")
         .select(
           `
@@ -75,7 +77,7 @@ async function getPipelineData(searchPipelineId?: string) {
         .eq("pipeline_id", selectedPipeline.id)
         .order("created_at", { ascending: false }),
 
-      supabase
+      adminClient
         .from("pipeline_members")
         .select(
           `
@@ -85,7 +87,7 @@ async function getPipelineData(searchPipelineId?: string) {
         )
         .eq("pipeline_id", selectedPipeline.id),
 
-      supabase
+      adminClient
         .from("pipeline_import_rules")
         .select(
           `
