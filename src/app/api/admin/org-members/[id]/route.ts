@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("AdminOrgMembers")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -65,7 +69,7 @@ export async function GET(
       },
     }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    console.error("[Org Member] Error:", error)
+    log.error("[Org Member] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
@@ -138,7 +142,7 @@ export async function PUT(
       .single()
 
     if (updateError) {
-      console.error("[Org Member] Update error:", updateError)
+      log.error("[Org Member] Update error:", updateError)
       return NextResponse.json({ error: "Erro ao atualizar membro" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
@@ -194,7 +198,7 @@ export async function PUT(
 
     return NextResponse.json({ member, message: "Membro atualizado com sucesso" }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    console.error("[Org Member] Error:", error)
+    log.error("[Org Member] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
@@ -262,7 +266,7 @@ export async function DELETE(
       .eq("id", id)
 
     if (deleteError) {
-      console.error("[Org Member] Delete error:", deleteError)
+      log.error("[Org Member] Delete error:", deleteError)
       return NextResponse.json({ error: "Erro ao remover membro" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
@@ -276,7 +280,7 @@ export async function DELETE(
 
     return NextResponse.json({ success: true, message: "Membro removido com sucesso" }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    console.error("[Org Member] Error:", error)
+    log.error("[Org Member] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

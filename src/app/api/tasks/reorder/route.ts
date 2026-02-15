@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("TasksReorder")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -69,7 +73,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, message: "Tarefas reordenadas" }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    console.error("[Tasks Reorder] Error:", error)
+    log.error("[Tasks Reorder] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

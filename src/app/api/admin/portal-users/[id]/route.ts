@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("AdminPortalUsers")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -41,7 +45,7 @@ export async function GET(
 
     return NextResponse.json({ portalUser }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    console.error("[Portal Users] Error:", error)
+    log.error("[Portal Users] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
@@ -91,13 +95,13 @@ export async function PUT(
       .single()
 
     if (error) {
-      console.error("[Portal Users] Update error:", error)
+      log.error("[Portal Users] Update error:", error)
       return NextResponse.json({ error: "Erro ao atualizar" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     return NextResponse.json({ portalUser }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    console.error("[Portal Users] Error:", error)
+    log.error("[Portal Users] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
@@ -142,7 +146,7 @@ export async function DELETE(
       .eq("id", id)
 
     if (deleteError) {
-      console.error("[Portal Users] Delete error:", deleteError)
+      log.error("[Portal Users] Delete error:", deleteError)
       return NextResponse.json({ error: "Erro ao excluir" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
@@ -152,13 +156,13 @@ export async function DELETE(
         const adminClient = createAdminClient()
         await adminClient.auth.admin.deleteUser(portalUser.auth_user_id)
       } catch (e) {
-        console.error("[Portal Users] Error deleting auth user:", e)
+        log.error("[Portal Users] Error deleting auth user:", e)
       }
     }
 
     return NextResponse.json({ message: "Usuário excluído com sucesso" }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    console.error("[Portal Users] Error:", error)
+    log.error("[Portal Users] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

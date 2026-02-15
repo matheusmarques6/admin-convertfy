@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { AgentStoreAccessFormData } from "@/types"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("AdminStoreAccess")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -71,13 +75,13 @@ export async function GET(request: NextRequest) {
     const { data: access, error } = await query
 
     if (error) {
-      console.error("[Store Access] Error fetching:", error)
+      log.error("[Store Access] Error fetching:", error)
       return NextResponse.json({ error: "Erro ao buscar acessos" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     return NextResponse.json({ access: access || [] }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    console.error("[Store Access] Error:", error)
+    log.error("[Store Access] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
@@ -142,7 +146,7 @@ export async function POST(request: NextRequest) {
         .single()
 
       if (updateError) {
-        console.error("[Store Access] Update error:", updateError)
+        log.error("[Store Access] Update error:", updateError)
         return NextResponse.json({ error: "Erro ao atualizar acesso" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
       }
 
@@ -170,7 +174,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (insertError) {
-      console.error("[Store Access] Insert error:", insertError)
+      log.error("[Store Access] Insert error:", insertError)
       return NextResponse.json({ error: "Erro ao criar acesso" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
@@ -179,7 +183,7 @@ export async function POST(request: NextRequest) {
       { status: 201, headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
-    console.error("[Store Access] Error:", error)
+    log.error("[Store Access] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
@@ -220,7 +224,7 @@ export async function DELETE(request: NextRequest) {
         .eq("id", accessId)
 
       if (error) {
-        console.error("[Store Access] Delete error:", error)
+        log.error("[Store Access] Delete error:", error)
         return NextResponse.json({ error: "Erro ao remover acesso" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
       }
     } else if (orgMemberId && storeId) {
@@ -232,7 +236,7 @@ export async function DELETE(request: NextRequest) {
         .eq("store_id", storeId)
 
       if (error) {
-        console.error("[Store Access] Delete error:", error)
+        log.error("[Store Access] Delete error:", error)
         return NextResponse.json({ error: "Erro ao remover acesso" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
       }
     } else {
@@ -244,7 +248,7 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true, message: "Acesso removido com sucesso" }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    console.error("[Store Access] Error:", error)
+    log.error("[Store Access] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

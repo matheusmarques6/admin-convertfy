@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("PortalCampaigns")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -104,12 +108,12 @@ export async function GET(request: NextRequest) {
 
     const { data: allCampaigns, error } = await query
 
-    console.log("[Portal Campaigns] Client ID:", clientId)
-    console.log("[Portal Campaigns] Client Store IDs:", clientStoreIds)
-    console.log("[Portal Campaigns] All campaigns found:", allCampaigns?.length || 0)
+    log.debug("[Portal Campaigns] Client ID:", clientId)
+    log.debug("[Portal Campaigns] Client Store IDs:", clientStoreIds)
+    log.debug("[Portal Campaigns] All campaigns found:", allCampaigns?.length || 0)
 
     if (error) {
-      console.error("[Portal Campaigns] Error fetching:", error)
+      log.error("[Portal Campaigns] Error fetching:", error)
       return NextResponse.json({ error: "Erro ao buscar campanhas" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
@@ -118,12 +122,12 @@ export async function GET(request: NextRequest) {
       const campaignStoreIds = campaign.store_ids || []
       const hasMatchingStore = campaignStoreIds.some((id: string) => filterStoreIds.includes(id))
       if (hasMatchingStore) {
-        console.log("[Portal Campaigns] Campaign matches:", campaign.name, campaign.store_ids)
+        log.debug(`[Portal Campaigns] Campaign matches: ${campaign.name}`, { store_ids: campaign.store_ids })
       }
       return hasMatchingStore
     }) || []
 
-    console.log("[Portal Campaigns] Filtered campaigns:", campaigns.length)
+    log.debug("[Portal Campaigns] Filtered campaigns:", campaigns.length)
 
     // Filter store_ids to only show client's stores and add store names
     // Also exclude internal fields (instructions_doc_url, notes)
@@ -152,7 +156,7 @@ export async function GET(request: NextRequest) {
       totalCount: filteredCampaigns.length,
     }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    console.error("[Portal Campaigns] Error:", error)
+    log.error("[Portal Campaigns] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

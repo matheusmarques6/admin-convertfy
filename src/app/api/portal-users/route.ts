@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 import { generateTempPassword } from "@/lib/utils/generate-password"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("PortalUsers")
 
 // POST - Create a new portal user
 export async function POST(request: NextRequest) {
@@ -119,7 +123,7 @@ export async function POST(request: NextRequest) {
       })
 
       if (createAuthError || !newAuthUser.user) {
-        console.error("Error creating auth user:", createAuthError)
+        log.error("Error creating auth user:", createAuthError)
         return NextResponse.json(
           { error: "Failed to create auth user: " + (createAuthError?.message || "Unknown error") },
           { status: 500 }
@@ -147,7 +151,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (portalError) {
-      console.error("Error creating portal user:", portalError)
+      log.error("Error creating portal user:", portalError)
       // If we created a new auth user, we should delete it
       if (!existingAuthUser) {
         await adminClient.auth.admin.deleteUser(authUserId)
@@ -178,7 +182,7 @@ export async function POST(request: NextRequest) {
       temp_password: tempPassword,
     })
   } catch (error) {
-    console.error("Error in POST /api/portal-users:", error)
+    log.error("Error in POST /api/portal-users:", error)
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
@@ -226,7 +230,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ data: portalUsers })
   } catch (error) {
-    console.error("Error in GET /api/portal-users:", error)
+    log.error("Error in GET /api/portal-users:", error)
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
@@ -314,7 +318,7 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error("Error in DELETE /api/portal-users:", error)
+    log.error("Error in DELETE /api/portal-users:", error)
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
@@ -389,7 +393,7 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: updatedUser })
   } catch (error) {
-    console.error("Error in PATCH /api/portal-users:", error)
+    log.error("Error in PATCH /api/portal-users:", error)
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

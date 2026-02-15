@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("AdminCampaignBatches")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -47,7 +51,7 @@ export async function GET(request: NextRequest) {
     const { data: batches, error } = await query
 
     if (error) {
-      console.error("[Campaign Batches] Error fetching:", error)
+      log.error("[Campaign Batches] Error fetching:", error)
       return NextResponse.json({ error: "Erro ao buscar campanhas" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
@@ -75,7 +79,7 @@ export async function GET(request: NextRequest) {
       totalCount: enrichedBatches?.length || 0,
     }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    console.error("[Campaign Batches] Error:", error)
+    log.error("[Campaign Batches] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
@@ -178,7 +182,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create the campaign batch (using admin client to bypass RLS)
-    console.log("[Campaign Batches] Attempting to create:", {
+    log.debug("[Campaign Batches] Attempting to create:", {
       name: name.trim(),
       campaign_type,
       scheduled_at: scheduledDate.toISOString(),
@@ -202,14 +206,14 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (insertError) {
-      console.error("[Campaign Batches] Error creating:", insertError)
+      log.error("[Campaign Batches] Error creating:", insertError)
       return NextResponse.json(
         { error: "Erro ao criar campanha: " + insertError.message },
         { status: 500, headers: corsHeaders(request.headers.get("origin")) }
       )
     }
 
-    console.log("[Campaign Batches] Created:", newBatch)
+    log.debug("[Campaign Batches] Created:", newBatch)
 
     return NextResponse.json({
       success: true,
@@ -217,7 +221,7 @@ export async function POST(request: NextRequest) {
       message: `Campanha "${name}" criada com sucesso para ${store_ids.length} loja(s)`,
     }, { status: 201, headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    console.error("[Campaign Batches] Error:", error)
+    log.error("[Campaign Batches] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

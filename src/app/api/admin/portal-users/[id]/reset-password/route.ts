@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { generateTempPassword } from "@/lib/utils/generate-password"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("AdminPortalUsersResetPassword")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -61,7 +65,7 @@ export async function POST(
     )
 
     if (updateError) {
-      console.error("[Portal Users] Password reset error:", updateError)
+      log.error("[Portal Users] Password reset error:", updateError)
       return NextResponse.json(
         { error: "Erro ao redefinir senha" },
         { status: 500, headers: corsHeaders(request.headers.get("origin")) }
@@ -84,7 +88,7 @@ export async function POST(
       { headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
-    console.error("[Portal Users] Error:", error)
+    log.error("[Portal Users] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

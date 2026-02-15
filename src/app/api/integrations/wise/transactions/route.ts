@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { createWiseService } from "@/lib/integrations/wise"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("IntegrationsWiseTransactions")
 
 export const dynamic = "force-dynamic"
 
@@ -55,7 +59,7 @@ export async function GET(request: NextRequest) {
       period: { start: startDate, end: endDate },
     })
   } catch (error) {
-    console.error("Error fetching Wise transactions:", error)
+    log.error("Error fetching Wise transactions:", error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to fetch transactions" },
       { status: 500 }

@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("Tasks")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -44,7 +48,7 @@ export async function GET(
       .single()
 
     if (error || !task) {
-      console.error("[Task] Fetch error:", error)
+      log.error("[Task] Fetch error:", error)
       return NextResponse.json({ error: "Tarefa não encontrada" }, { status: 404, headers: corsHeaders(request.headers.get("origin")) })
     }
 
@@ -85,7 +89,7 @@ export async function GET(
       },
     }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    console.error("[Task] Error:", error)
+    log.error("[Task] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
@@ -161,13 +165,13 @@ export async function PUT(
       .single()
 
     if (updateError) {
-      console.error("[Task] Update error:", updateError)
+      log.error("[Task] Update error:", updateError)
       return NextResponse.json({ error: "Erro ao atualizar tarefa" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     return NextResponse.json({ task, message: "Tarefa atualizada com sucesso" }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    console.error("[Task] Error:", error)
+    log.error("[Task] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
@@ -194,13 +198,13 @@ export async function DELETE(
       .eq("id", id)
 
     if (deleteError) {
-      console.error("[Task] Delete error:", deleteError)
+      log.error("[Task] Delete error:", deleteError)
       return NextResponse.json({ error: "Erro ao excluir tarefa" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     return NextResponse.json({ success: true, message: "Tarefa excluída com sucesso" }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    console.error("[Task] Error:", error)
+    log.error("[Task] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

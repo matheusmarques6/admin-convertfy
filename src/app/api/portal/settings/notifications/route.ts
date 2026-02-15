@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("PortalSettingsNotifications")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -54,13 +58,13 @@ export async function PUT(request: NextRequest) {
       )
 
     if (error) {
-      console.error("[Portal Notifications] Update error:", error)
+      log.error("[Portal Notifications] Update error:", error)
       return NextResponse.json({ error: "Erro ao atualizar" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     return NextResponse.json({ success: true }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    console.error("[Portal Notifications] Error:", error)
+    log.error("[Portal Notifications] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

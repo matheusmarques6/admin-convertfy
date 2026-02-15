@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("CampaignsSync")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -32,13 +36,13 @@ async function klaviyoRequest<T>(
     })
 
     if (!response.ok) {
-      console.error(`[Klaviyo Sync] API error: ${response.status}`)
+      log.error(`[Klaviyo Sync] API error: ${response.status}`)
       return null
     }
 
     return await response.json() as T
   } catch (error) {
-    console.error("[Klaviyo Sync] Request error:", error)
+    log.error("[Klaviyo Sync] Request error:", error)
     return null
   }
 }
@@ -109,7 +113,7 @@ export async function POST(request: NextRequest) {
 
     // Fetch campaigns from Klaviyo
     // Klaviyo requires a channel filter - fetch email and SMS separately
-    console.log(`[Klaviyo Sync] Fetching campaigns for store: ${store.store_name}`)
+    log.debug(`[Klaviyo Sync] Fetching campaigns for store: ${store.store_name}`)
 
     const allCampaigns: KlaviyoCampaign[] = []
 
@@ -131,7 +135,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.log(`[Klaviyo Sync] Found ${allCampaigns.length} campaigns`)
+    log.debug(`[Klaviyo Sync] Found ${allCampaigns.length} campaigns`)
 
     // Process and upsert campaigns
     let synced = 0
@@ -213,12 +217,12 @@ export async function POST(request: NextRequest) {
 
         synced++
       } catch (err) {
-        console.error(`[Klaviyo Sync] Error processing campaign ${klaviyoCampaign.id}:`, err)
+        log.error(`[Klaviyo Sync] Error processing campaign ${klaviyoCampaign.id}:`, err)
         errors++
       }
     }
 
-    console.log(`[Klaviyo Sync] Synced ${synced} campaigns, ${errors} errors`)
+    log.debug(`[Klaviyo Sync] Synced ${synced} campaigns, ${errors} errors`)
 
     return NextResponse.json(
       {
@@ -231,7 +235,7 @@ export async function POST(request: NextRequest) {
       { headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
-    console.error("[Campaigns Sync] Error:", error)
+    log.error("[Campaigns Sync] Error:", error)
     return NextResponse.json(
       { error: "Erro ao sincronizar campanhas" },
       { status: 500, headers: corsHeaders(request.headers.get("origin")) }

@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { OrgMemberFormData } from "@/types"
 import { generateTempPassword } from "@/lib/utils/generate-password"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("AdminOrgMembers")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -83,7 +87,7 @@ export async function GET(request: NextRequest) {
     const { data: members, error } = await query
 
     if (error) {
-      console.error("[Org Members] Error fetching:", error)
+      log.error("[Org Members] Error fetching:", error)
       return NextResponse.json({ error: "Erro ao buscar membros" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
@@ -113,7 +117,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ members: membersWithDetails }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    console.error("[Org Members] Error:", error)
+    log.error("[Org Members] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
@@ -124,14 +128,14 @@ export async function POST(request: NextRequest) {
     const supabase = await createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
-    console.log("[Org Members POST] Auth check:", { userId: user?.id, authError })
+    log.debug("[Org Members POST] Auth check:", { userId: user?.id, authError })
 
     if (authError || !user) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     const body: OrgMemberFormData = await request.json()
-    console.log("[Org Members POST] Body received:", { org_id: body.org_id, role: body.role, email: body.email })
+    log.debug("[Org Members POST] Body received:", { org_id: body.org_id, role: body.role, email: body.email })
 
     // Check if user has permission: system admin OR org owner/admin
     const { data: profile, error: profileError } = await supabase
@@ -140,7 +144,7 @@ export async function POST(request: NextRequest) {
       .eq("id", user.id)
       .single()
 
-    console.log("[Org Members POST] Profile check:", { profile, profileError })
+    log.debug("[Org Members POST] Profile check:", { profile, profileError })
 
     const isSystemAdmin = profile?.role === "admin"
 
@@ -154,15 +158,15 @@ export async function POST(request: NextRequest) {
         .eq("profile_id", user.id)
         .single()
 
-      console.log("[Org Members POST] OrgMember check:", { orgMember, orgMemberError, org_id: body.org_id, profile_id: user.id })
+      log.debug("[Org Members POST] OrgMember check:", { orgMember, orgMemberError, org_id: body.org_id, profile_id: user.id })
 
       isOrgAdmin = orgMember?.role === "owner" || orgMember?.role === "manager"
     }
 
-    console.log("[Org Members POST] Permission result:", { isSystemAdmin, isOrgAdmin })
+    log.debug("[Org Members POST] Permission result:", { isSystemAdmin, isOrgAdmin })
 
     if (!isSystemAdmin && !isOrgAdmin) {
-      console.log("[Org Members POST] ACCESS DENIED - User has no permission")
+      log.debug("[Org Members POST] ACCESS DENIED - User has no permission")
       return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders(request.headers.get("origin")) })
     }
 
@@ -208,7 +212,7 @@ export async function POST(request: NextRequest) {
 
         if (existingAuthUser) {
           // User exists in auth, use their ID
-          console.log("[Org Members] Found existing auth user:", existingAuthUser.id)
+          log.debug("[Org Members] Found existing auth user:", existingAuthUser.id)
           authUserId = existingAuthUser.id
         } else {
           // Create user with temporary password
@@ -227,14 +231,14 @@ export async function POST(request: NextRequest) {
           })
 
           if (createError) {
-            console.error("[Org Members] Create user error:", createError)
+            log.error("[Org Members] Create user error:", createError)
             return NextResponse.json(
               { error: "Erro ao criar usuário: " + createError.message },
               { status: 500, headers: corsHeaders(request.headers.get("origin")) }
             )
           }
 
-          console.log("[Org Members] User created successfully:", authUser.user.id)
+          log.debug("[Org Members] User created successfully:", authUser.user.id)
           authUserId = authUser.user.id
         }
 
@@ -250,7 +254,7 @@ export async function POST(request: NextRequest) {
           profileId = existingProfileById.id
         } else {
           // Create profile
-          console.log("[Org Members] Creating profile with:", {
+          log.debug("[Org Members] Creating profile with:", {
             id: authUserId,
             email: body.email.toLowerCase(),
             name: body.name,
@@ -268,7 +272,7 @@ export async function POST(request: NextRequest) {
             .single()
 
           if (profileError) {
-            console.error("[Org Members] Profile error:", profileError.message)
+            log.error("[Org Members] Profile error:", profileError.message)
             return NextResponse.json(
               { error: "Erro ao criar perfil: " + profileError.message },
               { status: 500, headers: corsHeaders(request.headers.get("origin")) }
@@ -315,7 +319,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (insertError) {
-      console.error("[Org Members] Insert error:", insertError)
+      log.error("[Org Members] Insert error:", insertError)
       return NextResponse.json(
         { error: "Erro ao criar membro: " + insertError.message },
         { status: 500, headers: corsHeaders(request.headers.get("origin")) }
@@ -376,7 +380,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(response, { status: 201, headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    console.error("[Org Members] Error:", error)
+    log.error("[Org Members] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

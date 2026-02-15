@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("Meetings")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -80,7 +84,7 @@ export async function GET(
 
     return NextResponse.json({ meeting: transformedMeeting }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    console.error("[Meeting] Error:", error)
+    log.error("[Meeting] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
@@ -119,7 +123,7 @@ export async function PUT(
       .eq("id", id)
 
     if (updateError) {
-      console.error("[Meeting] Update error:", updateError)
+      log.error("[Meeting] Update error:", updateError)
       return NextResponse.json({ error: "Erro ao atualizar reunião" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
@@ -170,7 +174,7 @@ export async function PUT(
           .insert(participantInserts)
 
         if (addError) {
-          console.error("[Meeting] Error adding participants:", addError)
+          log.error("[Meeting] Error adding participants:", addError)
         }
       }
     }
@@ -233,7 +237,7 @@ export async function PUT(
       { headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
-    console.error("[Meeting] Error:", error)
+    log.error("[Meeting] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
@@ -260,13 +264,13 @@ export async function DELETE(
       .eq("id", id)
 
     if (deleteError) {
-      console.error("[Meeting] Delete error:", deleteError)
+      log.error("[Meeting] Delete error:", deleteError)
       return NextResponse.json({ error: "Erro ao excluir reunião" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     return NextResponse.json({ message: "Reunião excluída com sucesso" }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    console.error("[Meeting] Error:", error)
+    log.error("[Meeting] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

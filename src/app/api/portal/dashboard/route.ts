@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("PortalDashboard")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -214,10 +218,10 @@ export async function GET(request: NextRequest) {
           .single()
 
         if (data && new Date(data.expires_at) > new Date()) {
-          console.log(`[Cache HIT] ${cacheType} for store ${storeId}`)
+          log.debug(`[Cache HIT] ${cacheType} for store ${storeId}`)
           return data.data
         }
-        console.log(`[Cache MISS] ${cacheType} for store ${storeId}`)
+        log.debug(`[Cache MISS] ${cacheType} for store ${storeId}`)
         return null
       } catch {
         return null
@@ -241,9 +245,9 @@ export async function GET(request: NextRequest) {
           }, {
             onConflict: "store_id,cache_type,period"
           })
-        console.log(`[Cache SAVE] ${cacheType} for store ${storeId}, TTL: ${ttlMinutes}min`)
+        log.debug(`[Cache SAVE] ${cacheType} for store ${storeId}, TTL: ${ttlMinutes}min`)
       } catch (error) {
-        console.error(`[Cache ERROR] Failed to save ${cacheType} for store ${storeId}:`, error)
+        log.error(`[Cache ERROR] Failed to save ${cacheType} for store ${storeId}:`, error)
       }
     }
 
@@ -276,7 +280,7 @@ export async function GET(request: NextRequest) {
               }
             }
           } catch (error) {
-            console.error(`[Portal Dashboard] Klaviyo fetch error for store ${store.id}:`, error)
+            log.error(`[Portal Dashboard] Klaviyo fetch error for store ${store.id}:`, error)
           }
         }
       }
@@ -303,7 +307,7 @@ export async function GET(request: NextRequest) {
               }
             }
           } catch (error) {
-            console.error(`[Portal Dashboard] Shopify fetch error for store ${store.id}:`, error)
+            log.error(`[Portal Dashboard] Shopify fetch error for store ${store.id}:`, error)
           }
         }
       }
@@ -675,7 +679,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(response, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    console.error("[Portal Dashboard] Error:", error)
+    log.error("[Portal Dashboard] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

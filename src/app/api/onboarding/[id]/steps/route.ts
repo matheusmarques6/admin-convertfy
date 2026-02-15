@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("OnboardingSteps")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -38,7 +42,7 @@ export async function GET(
       .order("position", { ascending: true })
 
     if (error) {
-      console.error("[Onboarding Steps] Error fetching:", error)
+      log.error("[Onboarding Steps] Error fetching:", error)
       return NextResponse.json({ error: "Erro ao buscar etapas" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
@@ -53,7 +57,7 @@ export async function GET(
 
     return NextResponse.json({ steps: steps || [], grouped }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    console.error("[Onboarding Steps] Error:", error)
+    log.error("[Onboarding Steps] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
@@ -120,7 +124,7 @@ export async function PUT(
       .single()
 
     if (updateError) {
-      console.error("[Onboarding Steps] Update error:", updateError)
+      log.error("[Onboarding Steps] Update error:", updateError)
       return NextResponse.json({ error: "Erro ao atualizar etapa" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
@@ -138,7 +142,7 @@ export async function PUT(
       message: "Etapa atualizada",
     }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    console.error("[Onboarding Steps] Error:", error)
+    log.error("[Onboarding Steps] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

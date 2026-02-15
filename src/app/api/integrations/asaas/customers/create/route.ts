@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { createAsaasService } from "@/lib/integrations/asaas"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("IntegrationsAsaasCustomersCreate")
 
 interface CreateCustomerBody {
   name: string
@@ -118,7 +122,7 @@ export async function POST(request: Request) {
       message: "Cliente criado no Asaas com sucesso",
     })
   } catch (error) {
-    console.error("Error creating Asaas customer:", error)
+    log.error("Error creating Asaas customer:", error)
     return NextResponse.json(
       {
         success: false,

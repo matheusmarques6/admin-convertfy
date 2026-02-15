@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { createAsaasService } from "@/lib/integrations/asaas"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("IntegrationsAsaasCustomers")
 
 // POST - Import customers from Asaas
 export async function POST() {
@@ -99,7 +103,7 @@ export async function POST() {
             .eq("id", existingClient.id)
 
           if (updateError) {
-            console.error(`Error updating ${customer.email}:`, updateError.message)
+            log.error(`Error updating ${customer.email}:`, updateError.message)
             errors++
           } else {
             updated++
@@ -120,14 +124,14 @@ export async function POST() {
             })
 
           if (insertError) {
-            console.error(`Error inserting ${customer.email}:`, insertError.message)
+            log.error(`Error inserting ${customer.email}:`, insertError.message)
             errors++
           } else {
             imported++
           }
         }
       } catch (err) {
-        console.error(`Error importing customer ${customer.id}:`, err)
+        log.error(`Error importing customer ${customer.id}:`, err)
         errors++
       }
     }
@@ -149,7 +153,7 @@ export async function POST() {
       },
     })
   } catch (error) {
-    console.error("Error importing Asaas customers:", error)
+    log.error("Error importing Asaas customers:", error)
     return NextResponse.json(
       {
         success: false,

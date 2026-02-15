@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("StoresFeedback")
 
 // POST - Register a new feedback call
 export async function POST(request: Request) {
@@ -48,7 +52,7 @@ export async function POST(request: Request) {
       .single()
 
     if (error) {
-      console.error('Error creating feedback call:', error)
+      log.error('Error creating feedback call:', error)
       return NextResponse.json({ success: false, error: error.message }, { status: 500 })
     }
 
@@ -60,7 +64,7 @@ export async function POST(request: Request) {
       message: 'Feedback call registered successfully'
     })
   } catch (error) {
-    console.error('Error in feedback POST:', error)
+    log.error('Error in feedback POST:', error)
     return NextResponse.json(
       { success: false, error: 'Internal server error' },
       { status: 500 }
@@ -109,7 +113,7 @@ export async function GET(request: Request) {
     const { data: calls, error } = await query
 
     if (error) {
-      console.error('Error fetching feedback calls:', error)
+      log.error('Error fetching feedback calls:', error)
       return NextResponse.json({ success: false, error: error.message }, { status: 500 })
     }
 
@@ -118,7 +122,7 @@ export async function GET(request: Request) {
       calls: calls || []
     })
   } catch (error) {
-    console.error('Error in feedback GET:', error)
+    log.error('Error in feedback GET:', error)
     return NextResponse.json(
       { success: false, error: 'Internal server error' },
       { status: 500 }
@@ -163,7 +167,7 @@ export async function PATCH(request: Request) {
       .single()
 
     if (error) {
-      console.error('Error updating store feedback settings:', error)
+      log.error('Error updating store feedback settings:', error)
       return NextResponse.json({ success: false, error: error.message }, { status: 500 })
     }
 
@@ -173,7 +177,7 @@ export async function PATCH(request: Request) {
       message: 'Feedback settings updated successfully'
     })
   } catch (error) {
-    console.error('Error in feedback PATCH:', error)
+    log.error('Error in feedback PATCH:', error)
     return NextResponse.json(
       { success: false, error: 'Internal server error' },
       { status: 500 }

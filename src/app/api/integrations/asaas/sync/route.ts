@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { createAsaasService, mapAsaasStatusToInternal } from "@/lib/integrations/asaas"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("IntegrationsAsaasSync")
 
 export async function POST() {
   try {
@@ -94,7 +98,7 @@ export async function POST() {
           synced++
         }
       } catch (err) {
-        console.error(`Error syncing payment ${payment.id}:`, err)
+        log.error(`Error syncing payment ${payment.id}:`, err)
         errors++
       }
     }
@@ -116,7 +120,7 @@ export async function POST() {
       },
     })
   } catch (error) {
-    console.error("Error syncing Asaas:", error)
+    log.error("Error syncing Asaas:", error)
     return NextResponse.json(
       {
         success: false,

@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { CampaignFormData } from "@/types"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("Campaigns")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -43,7 +47,7 @@ export async function GET(
       .single()
 
     if (error) {
-      console.error("[Campaigns] Error fetching campaign:", error)
+      log.error("[Campaigns] Error fetching campaign:", error)
       return NextResponse.json(
         { error: "Campanha não encontrada" },
         { status: 404, headers: corsHeaders(request.headers.get("origin")) }
@@ -61,7 +65,7 @@ export async function GET(
 
     return NextResponse.json({ campaign: transformedCampaign }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    console.error("[Campaigns] Error:", error)
+    log.error("[Campaigns] Error:", error)
     return NextResponse.json(
       { error: "Erro interno do servidor" },
       { status: 500, headers: corsHeaders(request.headers.get("origin")) }
@@ -127,7 +131,7 @@ export async function PUT(
       .single()
 
     if (error) {
-      console.error("[Campaigns] Error updating campaign:", error)
+      log.error("[Campaigns] Error updating campaign:", error)
       return NextResponse.json(
         { error: "Erro ao atualizar campanha" },
         { status: 500, headers: corsHeaders(request.headers.get("origin")) }
@@ -136,7 +140,7 @@ export async function PUT(
 
     return NextResponse.json({ campaign }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    console.error("[Campaigns] Error:", error)
+    log.error("[Campaigns] Error:", error)
     return NextResponse.json(
       { error: "Erro interno do servidor" },
       { status: 500, headers: corsHeaders(request.headers.get("origin")) }
@@ -168,7 +172,7 @@ export async function DELETE(
       .eq("id", id)
 
     if (error) {
-      console.error("[Campaigns] Error deleting campaign:", error)
+      log.error("[Campaigns] Error deleting campaign:", error)
       return NextResponse.json(
         { error: "Erro ao excluir campanha" },
         { status: 500, headers: corsHeaders(request.headers.get("origin")) }
@@ -180,7 +184,7 @@ export async function DELETE(
       { headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
-    console.error("[Campaigns] Error:", error)
+    log.error("[Campaigns] Error:", error)
     return NextResponse.json(
       { error: "Erro interno do servidor" },
       { status: 500, headers: corsHeaders(request.headers.get("origin")) }

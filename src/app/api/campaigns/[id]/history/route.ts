@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("CampaignsHistory")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -53,7 +57,7 @@ export async function GET(
       .order("created_at", { ascending: false })
 
     if (historyError) {
-      console.error("[Campaigns] History error:", historyError)
+      log.error("[Campaigns] History error:", historyError)
       return NextResponse.json(
         { error: "Erro ao buscar histórico" },
         { status: 500, headers: corsHeaders(request.headers.get("origin")) }
@@ -71,7 +75,7 @@ export async function GET(
       history: transformedHistory,
     }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    console.error("[Campaigns] Error:", error)
+    log.error("[Campaigns] Error:", error)
     return NextResponse.json(
       { error: "Erro interno do servidor" },
       { status: 500, headers: corsHeaders(request.headers.get("origin")) }

@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("TasksChecklists")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -33,13 +37,13 @@ export async function GET(
       .order("position", { ascending: true })
 
     if (error) {
-      console.error("[Task Checklists] Error fetching:", error)
+      log.error("[Task Checklists] Error fetching:", error)
       return NextResponse.json({ error: "Erro ao buscar checklists" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     return NextResponse.json({ checklists: checklists || [] }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    console.error("[Task Checklists] Error:", error)
+    log.error("[Task Checklists] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
@@ -91,7 +95,7 @@ export async function POST(
       .single()
 
     if (insertError) {
-      console.error("[Task Checklists] Insert error:", insertError)
+      log.error("[Task Checklists] Insert error:", insertError)
       return NextResponse.json(
         { error: "Erro ao adicionar item" },
         { status: 500, headers: corsHeaders(request.headers.get("origin")) }
@@ -103,7 +107,7 @@ export async function POST(
       { status: 201, headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
-    console.error("[Task Checklists] Error:", error)
+    log.error("[Task Checklists] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
@@ -157,13 +161,13 @@ export async function PUT(
       .single()
 
     if (updateError) {
-      console.error("[Task Checklists] Update error:", updateError)
+      log.error("[Task Checklists] Update error:", updateError)
       return NextResponse.json({ error: "Erro ao atualizar item" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     return NextResponse.json({ checklist, message: "Item atualizado" }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    console.error("[Task Checklists] Error:", error)
+    log.error("[Task Checklists] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
@@ -201,13 +205,13 @@ export async function DELETE(
       .eq("task_id", id)
 
     if (deleteError) {
-      console.error("[Task Checklists] Delete error:", deleteError)
+      log.error("[Task Checklists] Delete error:", deleteError)
       return NextResponse.json({ error: "Erro ao remover item" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     return NextResponse.json({ success: true, message: "Item removido" }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    console.error("[Task Checklists] Error:", error)
+    log.error("[Task Checklists] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

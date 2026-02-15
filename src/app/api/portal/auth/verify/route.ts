@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("PortalAuthVerify")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -37,7 +41,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (portalError || !portalUser) {
-      console.log("[Portal Auth Verify] Portal user not found for auth_user_id:", userId, "Error:", portalError)
+      log.debug(`[Portal Auth Verify] Portal user not found for auth_user_id: ${userId}`, { error: portalError })
       return NextResponse.json(
         { error: "Esta conta não tem acesso ao portal do cliente" },
         { status: 403, headers: corsHeaders(request.headers.get("origin")) }
@@ -87,7 +91,7 @@ export async function POST(request: NextRequest) {
       { headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
-    console.error("[Portal Auth Verify] Error:", error)
+    log.error("[Portal Auth Verify] Error:", error)
     return NextResponse.json(
       { error: "Erro interno" },
       { status: 500, headers: corsHeaders(request.headers.get("origin")) }

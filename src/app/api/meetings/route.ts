@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("Meetings")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -59,7 +63,7 @@ export async function GET(request: NextRequest) {
     const { data: meetings, error } = await query
 
     if (error) {
-      console.error("[Meetings] Error fetching:", error)
+      log.error("[Meetings] Error fetching:", error)
       return NextResponse.json({ error: "Erro ao buscar reuniões" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
@@ -120,7 +124,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ meetings: transformedMeetings }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    console.error("[Meetings] Error:", error)
+    log.error("[Meetings] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
@@ -166,7 +170,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (insertError) {
-      console.error("[Meetings] Insert error:", insertError)
+      log.error("[Meetings] Insert error:", insertError)
       return NextResponse.json(
         { error: "Erro ao criar reunião" },
         { status: 500, headers: corsHeaders(request.headers.get("origin")) }
@@ -200,7 +204,7 @@ export async function POST(request: NextRequest) {
         .insert(participantInserts)
 
       if (participantsError) {
-        console.error("[Meetings] Error adding participants:", participantsError)
+        log.error("[Meetings] Error adding participants:", participantsError)
       }
     }
 
@@ -265,7 +269,7 @@ export async function POST(request: NextRequest) {
       { status: 201, headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
-    console.error("[Meetings] Error:", error)
+    log.error("[Meetings] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

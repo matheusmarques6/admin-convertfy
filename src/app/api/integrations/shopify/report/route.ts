@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("IntegrationsShopifyReport")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -67,7 +71,7 @@ async function shopifyRequest<T>(
 
   if (!response.ok) {
     const errorText = await response.text()
-    console.error(`Shopify API error: ${response.status}`, errorText)
+    log.error(`Shopify API error: ${response.status}`, errorText)
     throw new Error(`Shopify API error: ${response.status}`)
   }
 
@@ -94,7 +98,7 @@ async function shopifyPaginatedRequest<T>(
 
   if (!response.ok) {
     const errorText = await response.text()
-    console.error(`Shopify API error: ${response.status}`, errorText)
+    log.error(`Shopify API error: ${response.status}`, errorText)
     throw new Error(`Shopify API error: ${response.status}`)
   }
 
@@ -191,7 +195,7 @@ async function fetchAllOrders(
 
   while (endpoint && pageCount < maxPages) {
     pageCount++
-    console.log(`Fetching orders page ${pageCount}...`)
+    log.debug(`Fetching orders page ${pageCount}...`)
 
     const { data, nextPageUrl } = await shopifyPaginatedRequest<{
       orders: ShopifyOrder[]
@@ -204,7 +208,7 @@ async function fetchAllOrders(
     endpoint = nextPageUrl || ""
   }
 
-  console.log(`Total orders fetched: ${allOrders.length} (${pageCount} pages)`)
+  log.debug(`Total orders fetched: ${allOrders.length} (${pageCount} pages)`)
   return allOrders
 }
 
@@ -237,7 +241,7 @@ async function getShopInfo(storeDomain: string, accessToken: string) {
       plan: response.shop.plan_name,
     }
   } catch (error) {
-    console.error("Error fetching shop info:", error)
+    log.error("Error fetching shop info:", error)
     return null
   }
 }
@@ -279,7 +283,7 @@ async function getOrdersSummary(
       }
     })
 
-    console.log(`[Shopify] Found ${uniqueCustomerIds.size} unique customers in orders`)
+    log.debug(`[Shopify] Found ${uniqueCustomerIds.size} unique customers in orders`)
 
     // Fetch customer data to get accurate orders_count
     // The REST API doesn't return orders_count in the order's customer object anymore
@@ -290,7 +294,7 @@ async function getOrdersSummary(
     const batchSize = 50
     // Fetch ALL customers to get accurate recurring rate
     const customersToFetch = customerIds
-    console.log(`[Shopify] Fetching orders_count for ${customersToFetch.length} customers...`)
+    log.debug(`[Shopify] Fetching orders_count for ${customersToFetch.length} customers...`)
 
     for (let i = 0; i < customersToFetch.length; i += batchSize) {
       const batch = customersToFetch.slice(i, i + batchSize)
@@ -310,7 +314,7 @@ async function getOrdersSummary(
           })
         }
       } catch (error) {
-        console.error(`[Shopify] Error fetching customer batch:`, error)
+        log.error(`[Shopify] Error fetching customer batch:`, error)
       }
 
       // Small delay between batches
@@ -319,7 +323,7 @@ async function getOrdersSummary(
       }
     }
 
-    console.log(`[Shopify] Fetched orders_count for ${customerOrdersCounts.size} customers`)
+    log.debug(`[Shopify] Fetched orders_count for ${customerOrdersCounts.size} customers`)
 
     // Now calculate recurring customers using the fetched data
     const customerData = new Map<string, { id: number; isRecurring: boolean; ordersInPeriod: number }>()
@@ -351,15 +355,15 @@ async function getOrdersSummary(
     // Shopify formula: recurring customers / total customers
     const recurringCustomerRate = uniqueCustomers > 0 ? (recurringCustomers / uniqueCustomers) * 100 : 0
 
-    console.log(`[Shopify] Unique customers: ${uniqueCustomers}`)
-    console.log(`[Shopify] Recurring customers (orders_count > 1): ${recurringCustomers}`)
-    console.log(`[Shopify] Recurring rate: ${recurringCustomerRate.toFixed(2)}%`)
+    log.debug(`[Shopify] Unique customers: ${uniqueCustomers}`)
+    log.debug(`[Shopify] Recurring customers (orders_count > 1): ${recurringCustomers}`)
+    log.debug(`[Shopify] Recurring rate: ${recurringCustomerRate.toFixed(2)}%`)
 
     // Debug: log sample of customer data
     const sampleCustomers = Array.from(customerData.entries()).slice(0, 5)
     sampleCustomers.forEach(([key, data]) => {
       const ordersCount = customerOrdersCounts.get(data.id) || 0
-      console.log(`[Shopify] Customer ${key}: id=${data.id}, orders_count=${ordersCount}, recurring=${data.isRecurring}`)
+      log.debug(`[Shopify] Customer ${key}: id=${data.id}, orders_count=${ordersCount}, recurring=${data.isRecurring}`)
     })
 
     // Also track orders from recurring customers (alternative metric)
@@ -636,7 +640,7 @@ async function getOrdersSummary(
       topCustomers,
     }
   } catch (error) {
-    console.error("Error fetching orders:", error)
+    log.error("Error fetching orders:", error)
     return {
       totalOrders: 0,
       paidOrders: 0,
@@ -712,7 +716,7 @@ async function getProductsSummary(storeDomain: string, accessToken: string) {
       outOfStockCount,
     }
   } catch (error) {
-    console.error("Error fetching products:", error)
+    log.error("Error fetching products:", error)
     return {
       totalProducts: 0,
       activeProducts: 0,
@@ -768,8 +772,8 @@ async function getCustomersSummary(
     const sampleSize = customers.length
     const recurringRate = sampleSize > 0 ? (returningCustomers / sampleSize) * 100 : 0
 
-    console.log(`[Shopify] Customers - Total: ${totalCustomersCount}, New in period: ${newCustomersInPeriod}, Sample: ${sampleSize}`)
-    console.log(`[Shopify] Sample metrics - Returning: ${returningCustomers}, First-time: ${firstTimeCustomers}, Marketing: ${marketingOptIn}`)
+    log.debug(`[Shopify] Customers - Total: ${totalCustomersCount}, New in period: ${newCustomersInPeriod}, Sample: ${sampleSize}`)
+    log.debug(`[Shopify] Sample metrics - Returning: ${returningCustomers}, First-time: ${firstTimeCustomers}, Marketing: ${marketingOptIn}`)
 
     return {
       totalCustomers: totalCustomersCount,
@@ -785,7 +789,7 @@ async function getCustomersSummary(
       marketingOptInRate: sampleSize > 0 ? (marketingOptIn / sampleSize) * 100 : 0,
     }
   } catch (error) {
-    console.error("Error fetching customers:", error)
+    log.error("Error fetching customers:", error)
     return {
       totalCustomers: 0,
       totalSpent: 0,
@@ -931,7 +935,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(reportData)
   } catch (error) {
-    console.error("Error generating Shopify report:", error)
+    log.error("Error generating Shopify report:", error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Erro ao gerar relatório" },
       { status: 500 }

@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("Stores")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -60,7 +64,7 @@ export async function GET(request: NextRequest) {
     const { data: stores, error } = await query
 
     if (error) {
-      console.error("[Stores] Error fetching stores:", error)
+      log.error("[Stores] Error fetching stores:", error)
       return NextResponse.json(
         { error: "Erro ao buscar lojas" },
         { status: 500, headers: corsHeaders(request.headers.get("origin")) }
@@ -72,7 +76,7 @@ export async function GET(request: NextRequest) {
       { headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
-    console.error("[Stores] Error:", error)
+    log.error("[Stores] Error:", error)
     return NextResponse.json(
       { error: "Erro interno do servidor" },
       { status: 500, headers: corsHeaders(request.headers.get("origin")) }

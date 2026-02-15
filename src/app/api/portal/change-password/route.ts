@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("PortalChangePassword")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -71,7 +75,7 @@ export async function POST(request: NextRequest) {
     )
 
     if (updateError) {
-      console.error("[Portal Change Password] Error:", updateError)
+      log.error("[Portal Change Password] Error:", updateError)
       return NextResponse.json(
         { error: "Erro ao alterar senha" },
         { status: 500, headers: corsHeaders(request.headers.get("origin")) }
@@ -107,7 +111,7 @@ export async function POST(request: NextRequest) {
       { headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
-    console.error("[Portal Change Password] Error:", error)
+    log.error("[Portal Change Password] Error:", error)
     return NextResponse.json(
       { error: "Erro interno" },
       { status: 500, headers: corsHeaders(request.headers.get("origin")) }

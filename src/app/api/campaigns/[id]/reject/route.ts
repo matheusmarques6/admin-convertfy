@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("CampaignsReject")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -105,7 +109,7 @@ export async function POST(
       .single()
 
     if (updateError) {
-      console.error("[Campaigns] Reject error:", updateError)
+      log.error("[Campaigns] Reject error:", updateError)
       return NextResponse.json(
         { error: "Erro ao rejeitar campanha" },
         { status: 500, headers: corsHeaders(request.headers.get("origin")) }
@@ -117,7 +121,7 @@ export async function POST(
       message: "Campanha rejeitada",
     }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    console.error("[Campaigns] Error:", error)
+    log.error("[Campaigns] Error:", error)
     return NextResponse.json(
       { error: "Erro interno do servidor" },
       { status: 500, headers: corsHeaders(request.headers.get("origin")) }

@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("TasksComments")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -36,13 +40,13 @@ export async function GET(
       .order("created_at", { ascending: true })
 
     if (error) {
-      console.error("[Task Comments] Error fetching:", error)
+      log.error("[Task Comments] Error fetching:", error)
       return NextResponse.json({ error: "Erro ao buscar comentários" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     return NextResponse.json({ comments: comments || [] }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    console.error("[Task Comments] Error:", error)
+    log.error("[Task Comments] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
@@ -88,7 +92,7 @@ export async function POST(
       .single()
 
     if (insertError) {
-      console.error("[Task Comments] Insert error:", insertError)
+      log.error("[Task Comments] Insert error:", insertError)
       return NextResponse.json(
         { error: "Erro ao adicionar comentário" },
         { status: 500, headers: corsHeaders(request.headers.get("origin")) }
@@ -108,7 +112,7 @@ export async function POST(
       { status: 201, headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
-    console.error("[Task Comments] Error:", error)
+    log.error("[Task Comments] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

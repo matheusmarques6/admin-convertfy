@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("PortalSettings")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -62,7 +66,7 @@ export async function GET(request: NextRequest) {
       { headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
-    console.error("[Portal Settings] Error:", error)
+    log.error("[Portal Settings] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
@@ -109,13 +113,13 @@ export async function PUT(request: NextRequest) {
       .eq("id", portalUser.id)
 
     if (error) {
-      console.error("[Portal Settings] Update error:", error)
+      log.error("[Portal Settings] Update error:", error)
       return NextResponse.json({ error: "Erro ao atualizar" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     return NextResponse.json({ success: true }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    console.error("[Portal Settings] Error:", error)
+    log.error("[Portal Settings] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

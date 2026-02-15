@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("StoresControl")
 
 interface StoreWithResults {
   id: string
@@ -69,7 +73,7 @@ export async function GET(request: Request) {
     const { data: stores, error } = await query
 
     if (error) {
-      console.error('Error fetching stores:', error)
+      log.error('Error fetching stores:', error)
       return NextResponse.json({ success: false, error: error.message }, { status: 500 })
     }
 
@@ -151,7 +155,7 @@ export async function GET(request: Request) {
               }
             }
           } catch (err) {
-            console.error(`Error fetching revenue for store ${store.id}:`, err)
+            log.error(`Error fetching revenue for store ${store.id}:`, err)
           }
         }
 
@@ -207,7 +211,7 @@ export async function GET(request: Request) {
       }
     })
   } catch (error) {
-    console.error('Error in stores control API:', error)
+    log.error('Error in stores control API:', error)
     return NextResponse.json(
       { success: false, error: 'Internal server error' },
       { status: 500 }

@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("AdminFeatures")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -40,7 +44,7 @@ export async function GET(request: NextRequest) {
     const { data: features, error } = await query
 
     if (error) {
-      console.error("[Features] Error fetching:", error)
+      log.error("[Features] Error fetching:", error)
       return NextResponse.json({ error: "Erro ao buscar features" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
@@ -58,7 +62,7 @@ export async function GET(request: NextRequest) {
       grouped,
     }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    console.error("[Features] Error:", error)
+    log.error("[Features] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

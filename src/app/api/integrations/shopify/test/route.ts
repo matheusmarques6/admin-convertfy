@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("IntegrationsShopifyTest")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -44,7 +48,7 @@ export async function POST(request: NextRequest) {
     // Normalize the domain to ensure it's in the correct format
     const cleanDomain = normalizeShopifyDomain(store_domain)
 
-    console.log("Testing Shopify connection:", {
+    log.debug("Testing Shopify connection:", {
       originalDomain: store_domain,
       cleanDomain,
       tokenPrefix: access_token.substring(0, 10) + "..."
@@ -58,7 +62,7 @@ export async function POST(request: NextRequest) {
 
     for (const apiVersion of apiVersions) {
       const url = `https://${cleanDomain}/admin/api/${apiVersion}/shop.json`
-      console.log("Trying Shopify API URL:", url)
+      log.debug("Trying Shopify API URL:", url)
 
       try {
         const response = await fetch(url, {
@@ -75,7 +79,7 @@ export async function POST(request: NextRequest) {
           const data = await response.json()
           const shop = data.shop
 
-          console.log("Shopify connection successful:", shop.name)
+          log.debug("Shopify connection successful:", shop.name)
 
           return NextResponse.json(
             {
@@ -96,7 +100,7 @@ export async function POST(request: NextRequest) {
         }
 
         const errorText = await response.text()
-        console.error(`Shopify API error (v${apiVersion}):`, response.status, errorText)
+        log.error(`Shopify API error (v${apiVersion}): ${response.status} ${errorText}`)
 
         // If it's a 401 or 403, the token is wrong - don't try other versions
         if (response.status === 401 || response.status === 403) {
@@ -130,7 +134,7 @@ export async function POST(request: NextRequest) {
 
         lastError = errorText
       } catch (fetchError) {
-        console.error(`Fetch error with API v${apiVersion}:`, fetchError)
+        log.error(`Fetch error with API v${apiVersion}:`, fetchError)
         lastError = fetchError instanceof Error ? fetchError.message : "Erro de conexão"
       }
     }
@@ -145,7 +149,7 @@ export async function POST(request: NextRequest) {
       { status: responseStatus || 500, headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
-    console.error("Error testing Shopify connection:", error)
+    log.error("Error testing Shopify connection:", error)
     return NextResponse.json(
       {
         success: false,

@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("OnboardingTemplates")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -34,7 +38,7 @@ export async function GET(request: NextRequest) {
       .order("name", { ascending: true })
 
     if (error) {
-      console.error("[Templates] Error fetching:", error)
+      log.error("[Templates] Error fetching:", error)
       return NextResponse.json({ error: "Erro ao buscar templates" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
@@ -55,7 +59,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ templates: sortedTemplates }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    console.error("[Templates] Error:", error)
+    log.error("[Templates] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

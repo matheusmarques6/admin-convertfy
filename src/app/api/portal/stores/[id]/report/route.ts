@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("PortalStoresReport")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -76,7 +80,7 @@ export async function GET(
           klaviyoReport = await klaviyoResponse.json()
         }
       } catch (e) {
-        console.error("[Portal Store Report] Klaviyo error:", e)
+        log.error("[Portal Store Report] Klaviyo error:", e)
       }
     }
 
@@ -96,7 +100,7 @@ export async function GET(
           shopifyReport = await shopifyResponse.json()
         }
       } catch (e) {
-        console.error("[Portal Store Report] Shopify error:", e)
+        log.error("[Portal Store Report] Shopify error:", e)
       }
     }
 
@@ -186,7 +190,7 @@ export async function GET(
       { headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
-    console.error("[Portal Store Report] Error:", error)
+    log.error("[Portal Store Report] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

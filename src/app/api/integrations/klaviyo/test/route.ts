@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("IntegrationsKlaviyoTest")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -49,7 +53,7 @@ export async function POST(request: NextRequest) {
       }, { status: response.status })
     }
   } catch (error) {
-    console.error("Klaviyo test error:", error)
+    log.error("Klaviyo test error:", error)
     return NextResponse.json(
       { error: "Erro ao testar conexão com Klaviyo" },
       { status: 500 }

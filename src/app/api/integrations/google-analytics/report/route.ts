@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("IntegrationsGoogleAnalyticsReport")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -67,7 +71,7 @@ async function getAccessToken(credentials: GACredentials): Promise<string> {
 
   if (!tokenResponse.ok) {
     const error = await tokenResponse.text()
-    console.error("Token error:", error)
+    log.error("Token error:", error)
     throw new Error("Failed to get access token")
   }
 
@@ -94,7 +98,7 @@ async function gaRequest<T>(
 
   if (!response.ok) {
     const errorText = await response.text()
-    console.error(`GA API error: ${response.status}`, errorText)
+    log.error(`GA API error: ${response.status}`, errorText)
     throw new Error(`GA API error: ${response.status}`)
   }
 
@@ -149,7 +153,7 @@ async function getTrafficOverview(
       engagementRate: parseFloat(metrics[7]?.value || "0") * 100,
     }
   } catch (error) {
-    console.error("Error fetching traffic overview:", error)
+    log.error("Error fetching traffic overview:", error)
     return {
       sessions: 0,
       totalUsers: 0,
@@ -196,7 +200,7 @@ async function getTrafficBySource(
 
     return sources
   } catch (error) {
-    console.error("Error fetching traffic by source:", error)
+    log.error("Error fetching traffic by source:", error)
     return []
   }
 }
@@ -234,7 +238,7 @@ async function getTopPages(
 
     return pages
   } catch (error) {
-    console.error("Error fetching top pages:", error)
+    log.error("Error fetching top pages:", error)
     return []
   }
 }
@@ -270,7 +274,7 @@ async function getTrafficByDevice(
 
     return devices
   } catch (error) {
-    console.error("Error fetching traffic by device:", error)
+    log.error("Error fetching traffic by device:", error)
     return []
   }
 }
@@ -311,7 +315,7 @@ async function getDailyTraffic(
 
     return timeSeries
   } catch (error) {
-    console.error("Error fetching daily traffic:", error)
+    log.error("Error fetching daily traffic:", error)
     return []
   }
 }
@@ -347,7 +351,7 @@ async function getTrafficByCountry(
 
     return countries
   } catch (error) {
-    console.error("Error fetching traffic by country:", error)
+    log.error("Error fetching traffic by country:", error)
     return []
   }
 }
@@ -474,7 +478,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(reportData)
   } catch (error) {
-    console.error("Error generating GA4 report:", error)
+    log.error("Error generating GA4 report:", error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Erro ao gerar relatório" },
       { status: 500 }

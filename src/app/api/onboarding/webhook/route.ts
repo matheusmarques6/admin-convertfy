@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("OnboardingWebhook")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -48,7 +52,7 @@ export async function POST(request: NextRequest) {
         .eq("id", body.onboarding_id)
 
       if (error) {
-        console.error("[Webhook] Update error:", error)
+        log.error("[Webhook] Update error:", error)
         return NextResponse.json({ error: "Erro ao salvar análise" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
       }
 
@@ -77,7 +81,7 @@ export async function POST(request: NextRequest) {
         .eq("id", body.onboarding_id)
 
       if (error) {
-        console.error("[Webhook] Update error:", error)
+        log.error("[Webhook] Update error:", error)
         return NextResponse.json({ error: "Erro ao salvar copies" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
       }
 
@@ -92,7 +96,7 @@ export async function POST(request: NextRequest) {
       { status: 400, headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
-    console.error("[Webhook] Error:", error)
+    log.error("[Webhook] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

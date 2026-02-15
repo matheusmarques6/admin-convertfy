@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("PortalStores")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -63,7 +67,7 @@ export async function GET(request: NextRequest) {
       .order("store_name")
 
     if (error) {
-      console.error("[Portal Stores] Error:", error)
+      log.error("[Portal Stores] Error:", error)
       return NextResponse.json({ error: "Erro ao buscar lojas" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
@@ -82,7 +86,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ stores: storesWithFlags }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    console.error("[Portal Stores] Error:", error)
+    log.error("[Portal Stores] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
@@ -142,7 +146,7 @@ export async function PUT(request: NextRequest) {
       .eq("id", store_id)
 
     if (updateError) {
-      console.error("[Portal Stores] Update error:", updateError)
+      log.error("[Portal Stores] Update error:", updateError)
       return NextResponse.json({ error: "Erro ao salvar credenciais" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
@@ -206,7 +210,7 @@ export async function PUT(request: NextRequest) {
             .eq("id", onboarding.id)
         }
       } catch (error) {
-        console.error(`[Portal Stores] Error auto-marking "${stepName}":`, error)
+        log.error(`[Portal Stores] Error auto-marking "${stepName}":`, error)
       }
     }
 
@@ -222,7 +226,7 @@ export async function PUT(request: NextRequest) {
       message: "Credenciais salvas com sucesso",
     }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    console.error("[Portal Stores] Error:", error)
+    log.error("[Portal Stores] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

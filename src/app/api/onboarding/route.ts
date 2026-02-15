@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("Onboarding")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -71,13 +75,13 @@ export async function GET(request: NextRequest) {
     const { data: onboardings, error } = await query
 
     if (error) {
-      console.error("[Onboarding] Error fetching:", error)
+      log.error("[Onboarding] Error fetching:", error)
       return NextResponse.json({ error: "Erro ao buscar onboardings" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     return NextResponse.json({ onboardings: onboardings || [] }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    console.error("[Onboarding] Error:", error)
+    log.error("[Onboarding] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }
@@ -157,7 +161,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (insertError) {
-      console.error("[Onboarding] Insert error:", insertError)
+      log.error("[Onboarding] Insert error:", insertError)
       return NextResponse.json(
         { error: "Erro ao criar onboarding" },
         { status: 500, headers: corsHeaders(request.headers.get("origin")) }
@@ -215,7 +219,7 @@ export async function POST(request: NextRequest) {
       { status: 201, headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
-    console.error("[Onboarding] Error:", error)
+    log.error("[Onboarding] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

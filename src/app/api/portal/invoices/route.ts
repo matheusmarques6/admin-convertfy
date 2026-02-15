@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { createAsaasService } from "@/lib/integrations/asaas"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("PortalInvoices")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -63,7 +67,7 @@ export async function GET(request: NextRequest) {
     const { data: invoices, error } = await query
 
     if (error) {
-      console.error("[Portal Invoices] Error:", error)
+      log.error("[Portal Invoices] Error:", error)
       return NextResponse.json({ error: "Erro ao buscar faturas" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
     }
 
@@ -80,7 +84,7 @@ export async function GET(request: NextRequest) {
       try {
         asaas = createAsaasService(integration.credentials)
       } catch {
-        console.log("[Portal Invoices] Could not create Asaas service")
+        log.debug("[Portal Invoices] Could not create Asaas service")
       }
     }
 
@@ -129,7 +133,7 @@ export async function GET(request: NextRequest) {
               }
             }
           } catch (err) {
-            console.log(`[Portal Invoices] Could not fetch Asaas payment ${i.asaas_id}:`, err)
+            log.debug(`[Portal Invoices] Could not fetch Asaas payment ${i.asaas_id}:`, err)
           }
         }
 
@@ -195,7 +199,7 @@ export async function GET(request: NextRequest) {
       { headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
-    console.error("[Portal Invoices] Error:", error)
+    log.error("[Portal Invoices] Error:", error)
     return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
   }
 }

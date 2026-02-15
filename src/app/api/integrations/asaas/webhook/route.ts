@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient } from "@supabase/supabase-js"
 import { timingSafeEqual } from "crypto"
 import { mapAsaasStatusToInternal } from "@/lib/integrations/asaas"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("IntegrationsAsaasWebhook")
 
 // Create Supabase client lazily to avoid build-time errors
 function getSupabaseAdmin() {
@@ -42,7 +46,7 @@ export async function POST(request: NextRequest) {
 
     if (expectedToken) {
       if (!webhookToken) {
-        console.warn("Missing Asaas webhook token")
+        log.warn("Missing Asaas webhook token")
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
       }
 
@@ -50,13 +54,13 @@ export async function POST(request: NextRequest) {
       const b = Buffer.from(expectedToken)
 
       if (a.byteLength !== b.byteLength || !timingSafeEqual(a, b)) {
-        console.warn("Invalid Asaas webhook token")
+        log.warn("Invalid Asaas webhook token")
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
       }
     }
 
     const payload = (await request.json()) as AsaasWebhookPayload
-    console.log("Asaas webhook received:", payload.event)
+    log.debug("Asaas webhook received:", payload.event)
 
     switch (payload.event) {
       case "PAYMENT_CREATED":
@@ -75,12 +79,12 @@ export async function POST(request: NextRequest) {
         break
 
       default:
-        console.log("Unhandled Asaas event:", payload.event)
+        log.debug("Unhandled Asaas event:", payload.event)
     }
 
     return NextResponse.json({ received: true })
   } catch (error) {
-    console.error("Error processing Asaas webhook:", error)
+    log.error("Error processing Asaas webhook:", error)
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
@@ -103,7 +107,7 @@ async function handlePaymentEvent(payload: AsaasWebhookPayload) {
     .single()
 
   if (findError && findError.code !== "PGRST116") {
-    console.error("Error finding invoice:", findError)
+    log.error("Error finding invoice:", findError)
     return
   }
 
@@ -119,7 +123,7 @@ async function handlePaymentEvent(payload: AsaasWebhookPayload) {
       .eq("id", invoice.id)
 
     if (updateError) {
-      console.error("Error updating invoice:", updateError)
+      log.error("Error updating invoice:", updateError)
       return
     }
 
@@ -131,7 +135,7 @@ async function handlePaymentEvent(payload: AsaasWebhookPayload) {
       metadata: { asaas_id: payment.id, status },
     })
 
-    console.log(`Invoice ${invoice.id} updated to status: ${status}`)
+    log.debug(`Invoice ${invoice.id} updated to status: ${status}`)
   } else if (payment.externalReference) {
     // Try to find client by external reference (client_id)
     const { data: client } = await supabase
@@ -153,9 +157,9 @@ async function handlePaymentEvent(payload: AsaasWebhookPayload) {
       })
 
       if (insertError) {
-        console.error("Error creating invoice:", insertError)
+        log.error("Error creating invoice:", insertError)
       } else {
-        console.log(`New invoice created for client ${client.id}`)
+        log.debug(`New invoice created for client ${client.id}`)
       }
     }
   }
