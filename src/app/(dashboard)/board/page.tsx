@@ -136,8 +136,7 @@ async function getMeetings() {
         participant_id,
         participant_type,
         is_organizer,
-        response_status,
-        profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url)
+        response_status
       )
     `)
     .order("scheduled_at", { ascending: true })
@@ -158,13 +157,36 @@ async function getMeetings() {
     })
   })
 
+  // Fetch profiles for participants separately (polymorphic participant_id has no FK)
+  const boardProfIds = new Set<string>()
+  const boardOmIds = new Set<string>()
+  filteredMeetings.forEach(m => {
+    ;(m.participants || []).forEach((p: { participant_type: string; participant_id: string }) => {
+      if (p.participant_type === "profile" && p.participant_id) boardProfIds.add(p.participant_id)
+      else if (p.participant_type === "org_member" && p.participant_id) boardOmIds.add(p.participant_id)
+    })
+  })
+
+  const boardProfilesMap = new Map<string, Record<string, unknown>>()
+  if (boardProfIds.size > 0) {
+    const { data: profs } = await adminClient.from("profiles").select("id, name, email, avatar_url").in("id", Array.from(boardProfIds))
+    ;(profs || []).forEach(p => boardProfilesMap.set(p.id, p))
+  }
+  if (boardOmIds.size > 0) {
+    const { data: oms } = await adminClient.from("org_members").select("id, profile:profiles(id, name, email, avatar_url)").in("id", Array.from(boardOmIds))
+    ;(oms || []).forEach(om => {
+      const prof = Array.isArray(om.profile) ? om.profile[0] : om.profile
+      if (prof) boardProfilesMap.set(om.id, prof as Record<string, unknown>)
+    })
+  }
+
   return filteredMeetings.map(m => ({
     ...m,
     client: Array.isArray(m.client) ? m.client[0] : m.client,
     user: Array.isArray(m.user) ? m.user[0] : m.user,
     participants: (m.participants || []).map((p: Record<string, unknown>) => ({
       ...p,
-      profile: Array.isArray(p.profile) ? p.profile[0] : p.profile,
+      profile: boardProfilesMap.get(p.participant_id as string) || null,
     })),
   }))
 }

@@ -40,8 +40,7 @@ export async function GET(
           participant_id,
           participant_type,
           is_organizer,
-          response_status,
-          profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url)
+          response_status
         )
       `)
       .eq("id", id)
@@ -51,6 +50,26 @@ export async function GET(
       return NextResponse.json({ error: "Reunião não encontrada" }, { status: 404, headers: corsHeaders() })
     }
 
+    // Fetch profiles for participants separately
+    const profMap = new Map<string, Record<string, unknown>>()
+    const profIds: string[] = []
+    const omIds: string[] = []
+    ;(meeting.participants as Array<{ participant_type: string; participant_id: string }> || []).forEach((p) => {
+      if (p.participant_type === "profile") profIds.push(p.participant_id)
+      else if (p.participant_type === "org_member") omIds.push(p.participant_id)
+    })
+    if (profIds.length > 0) {
+      const { data: profs } = await adminClient.from("profiles").select("id, name, email, avatar_url").in("id", profIds)
+      ;(profs || []).forEach((p) => profMap.set(p.id, p))
+    }
+    if (omIds.length > 0) {
+      const { data: oms } = await adminClient.from("org_members").select("id, profile:profiles(id, name, email, avatar_url)").in("id", omIds)
+      ;(oms || []).forEach((om) => {
+        const prof = Array.isArray(om.profile) ? om.profile[0] : om.profile
+        if (prof) profMap.set(om.id, prof as Record<string, unknown>)
+      })
+    }
+
     // Transform data
     const transformedMeeting = {
       ...meeting,
@@ -58,7 +77,7 @@ export async function GET(
       user: Array.isArray(meeting.user) ? meeting.user[0] : meeting.user,
       participants: (meeting.participants || []).map((p: Record<string, unknown>) => ({
         ...p,
-        profile: Array.isArray(p.profile) ? p.profile[0] : p.profile,
+        profile: profMap.get(p.participant_id as string) || null,
       })),
     }
 
@@ -171,8 +190,7 @@ export async function PUT(
           participant_id,
           participant_type,
           is_organizer,
-          response_status,
-          profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url)
+          response_status
         )
       `)
       .eq("id", id)
@@ -182,6 +200,26 @@ export async function PUT(
       return NextResponse.json({ error: "Reunião não encontrada" }, { status: 404, headers: corsHeaders() })
     }
 
+    // Fetch profiles for participants
+    const putProfMap = new Map<string, Record<string, unknown>>()
+    const putProfIds: string[] = []
+    const putOmIds: string[] = []
+    ;(meeting.participants as Array<{ participant_type: string; participant_id: string }> || []).forEach((p) => {
+      if (p.participant_type === "profile") putProfIds.push(p.participant_id)
+      else if (p.participant_type === "org_member") putOmIds.push(p.participant_id)
+    })
+    if (putProfIds.length > 0) {
+      const { data: profs } = await adminClient.from("profiles").select("id, name, email, avatar_url").in("id", putProfIds)
+      ;(profs || []).forEach((p) => putProfMap.set(p.id, p))
+    }
+    if (putOmIds.length > 0) {
+      const { data: oms } = await adminClient.from("org_members").select("id, profile:profiles(id, name, email, avatar_url)").in("id", putOmIds)
+      ;(oms || []).forEach((om) => {
+        const prof = Array.isArray(om.profile) ? om.profile[0] : om.profile
+        if (prof) putProfMap.set(om.id, prof as Record<string, unknown>)
+      })
+    }
+
     // Transform data
     const transformedMeeting = {
       ...meeting,
@@ -189,7 +227,7 @@ export async function PUT(
       user: Array.isArray(meeting.user) ? meeting.user[0] : meeting.user,
       participants: (meeting.participants || []).map((p: Record<string, unknown>) => ({
         ...p,
-        profile: Array.isArray(p.profile) ? p.profile[0] : p.profile,
+        profile: putProfMap.get(p.participant_id as string) || null,
       })),
     }
 

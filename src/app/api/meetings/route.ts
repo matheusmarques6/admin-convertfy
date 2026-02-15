@@ -42,8 +42,7 @@ export async function GET(request: NextRequest) {
           participant_id,
           participant_type,
           is_organizer,
-          response_status,
-          profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url)
+          response_status
         )
       `)
       .order("scheduled_at", { ascending: true })
@@ -76,6 +75,41 @@ export async function GET(request: NextRequest) {
       })
     }
 
+    // Fetch profiles for participants separately (polymorphic participant_id has no FK)
+    const participantProfileIds = new Set<string>()
+    const participantOrgMemberIds = new Set<string>()
+    filteredMeetings.forEach((m: Record<string, unknown>) => {
+      const parts = (m.participants || []) as Array<{ participant_type: string; participant_id: string }>
+      parts.forEach((p) => {
+        if (p.participant_type === "profile" && p.participant_id) {
+          participantProfileIds.add(p.participant_id)
+        } else if (p.participant_type === "org_member" && p.participant_id) {
+          participantOrgMemberIds.add(p.participant_id)
+        }
+      })
+    })
+
+    const profilesMap = new Map<string, Record<string, unknown>>()
+
+    if (participantProfileIds.size > 0) {
+      const { data: profiles } = await adminClient
+        .from("profiles")
+        .select("id, name, email, avatar_url")
+        .in("id", Array.from(participantProfileIds))
+      ;(profiles || []).forEach((p) => profilesMap.set(p.id, p))
+    }
+
+    if (participantOrgMemberIds.size > 0) {
+      const { data: orgMembersData } = await adminClient
+        .from("org_members")
+        .select("id, profile:profiles(id, name, email, avatar_url)")
+        .in("id", Array.from(participantOrgMemberIds))
+      ;(orgMembersData || []).forEach((om) => {
+        const prof = Array.isArray(om.profile) ? om.profile[0] : om.profile
+        if (prof) profilesMap.set(om.id, prof as Record<string, unknown>)
+      })
+    }
+
     // Transform data to handle Supabase array quirk
     const transformedMeetings = filteredMeetings.map(m => ({
       ...m,
@@ -83,7 +117,7 @@ export async function GET(request: NextRequest) {
       user: Array.isArray(m.user) ? m.user[0] : m.user,
       participants: (m.participants || []).map((p: Record<string, unknown>) => ({
         ...p,
-        profile: Array.isArray(p.profile) ? p.profile[0] : p.profile,
+        profile: profilesMap.get(p.participant_id as string) || null,
       })),
     }))
 
@@ -185,12 +219,33 @@ export async function POST(request: NextRequest) {
           participant_id,
           participant_type,
           is_organizer,
-          response_status,
-          profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url)
+          response_status
         )
       `)
       .eq("id", meeting.id)
       .single()
+
+    // Fetch profiles for participants
+    const postProfilesMap = new Map<string, Record<string, unknown>>()
+    if (fullMeeting?.participants) {
+      const profIds: string[] = []
+      const omIds: string[] = []
+      ;(fullMeeting.participants as Array<{ participant_type: string; participant_id: string }>).forEach((p) => {
+        if (p.participant_type === "profile") profIds.push(p.participant_id)
+        else if (p.participant_type === "org_member") omIds.push(p.participant_id)
+      })
+      if (profIds.length > 0) {
+        const { data: profs } = await adminClient.from("profiles").select("id, name, email, avatar_url").in("id", profIds)
+        ;(profs || []).forEach((p) => postProfilesMap.set(p.id, p))
+      }
+      if (omIds.length > 0) {
+        const { data: oms } = await adminClient.from("org_members").select("id, profile:profiles(id, name, email, avatar_url)").in("id", omIds)
+        ;(oms || []).forEach((om) => {
+          const prof = Array.isArray(om.profile) ? om.profile[0] : om.profile
+          if (prof) postProfilesMap.set(om.id, prof as Record<string, unknown>)
+        })
+      }
+    }
 
     // Transform data
     const transformedMeeting = fullMeeting ? {
@@ -199,7 +254,7 @@ export async function POST(request: NextRequest) {
       user: Array.isArray(fullMeeting.user) ? fullMeeting.user[0] : fullMeeting.user,
       participants: (fullMeeting.participants || []).map((p: Record<string, unknown>) => ({
         ...p,
-        profile: Array.isArray(p.profile) ? p.profile[0] : p.profile,
+        profile: postProfilesMap.get(p.participant_id as string) || null,
       })),
     } : {
       ...meeting,

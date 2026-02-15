@@ -11,7 +11,7 @@ export default async function MeetingsPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
 
-  // Fetch meetings with relations — uses same FK hint as /board page
+  // Fetch meetings with relations (no nested profile on participants — participant_id is polymorphic with no FK)
   const { data: meetings, error: meetingsError } = await adminClient
     .from("meetings")
     .select(`
@@ -23,14 +23,49 @@ export default async function MeetingsPage() {
         participant_id,
         participant_type,
         is_organizer,
-        response_status,
-        profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url)
+        response_status
       )
     `)
     .order("scheduled_at", { ascending: true })
 
   if (meetingsError) {
     console.error("[MeetingsPage] Error fetching meetings:", meetingsError)
+  }
+
+  // Fetch profiles for participants separately (polymorphic participant_id has no FK)
+  const participantProfileIds = new Set<string>()
+  const participantOrgMemberIds = new Set<string>()
+  ;(meetings || []).forEach((m: Record<string, unknown>) => {
+    const parts = (m.participants || []) as Array<{ participant_type: string; participant_id: string }>
+    parts.forEach((p) => {
+      if (p.participant_type === "profile" && p.participant_id) {
+        participantProfileIds.add(p.participant_id)
+      } else if (p.participant_type === "org_member" && p.participant_id) {
+        participantOrgMemberIds.add(p.participant_id)
+      }
+    })
+  })
+
+  const profilesMap = new Map<string, { id: string; name: string; email: string; avatar_url: string | null }>()
+
+  if (participantProfileIds.size > 0) {
+    const { data: profiles } = await adminClient
+      .from("profiles")
+      .select("id, name, email, avatar_url")
+      .in("id", Array.from(participantProfileIds))
+    ;(profiles || []).forEach((p) => profilesMap.set(p.id, p))
+  }
+
+  // For org_member participants, resolve their profile via org_members table
+  if (participantOrgMemberIds.size > 0) {
+    const { data: orgMembersData } = await adminClient
+      .from("org_members")
+      .select("id, profile:profiles(id, name, email, avatar_url)")
+      .in("id", Array.from(participantOrgMemberIds))
+    ;(orgMembersData || []).forEach((om) => {
+      const prof = Array.isArray(om.profile) ? om.profile[0] : om.profile
+      if (prof) profilesMap.set(om.id, prof)
+    })
   }
 
   // Fetch clients for the dialog
@@ -75,7 +110,7 @@ export default async function MeetingsPage() {
     user: Array.isArray(m.user) ? m.user[0] : m.user,
     participants: (m.participants || []).map((p: Record<string, unknown>) => ({
       ...p,
-      profile: Array.isArray(p.profile) ? (p.profile as Record<string, unknown>[])[0] : p.profile,
+      profile: profilesMap.get(p.participant_id as string) || null,
     })),
   }))
 
