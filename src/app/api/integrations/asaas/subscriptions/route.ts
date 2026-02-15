@@ -1,19 +1,18 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAsaasService } from "@/lib/integrations/asaas"
+import { errorResponse, successResponse, requireAuth, AppError, ValidationError } from "@/lib/api/errors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("AsaasSubscriptions")
 
 // GET - Get subscriptions for a client
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    await requireAuth(supabase)
 
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
-    }
-
-    const searchParams = request.nextUrl.searchParams
-    const clientId = searchParams.get("client_id")
+    const clientId = request.nextUrl.searchParams.get("client_id")
 
     const { data: integration } = await supabase
       .from("integrations")
@@ -23,82 +22,47 @@ export async function GET(request: NextRequest) {
       .single()
 
     if (!integration) {
-      return NextResponse.json({ error: "Integração Asaas não ativa" }, { status: 400 })
+      throw new AppError("Integração Asaas não ativa", 400)
     }
 
-    // Get asaas_customer_id from client
     let asaasCustomerId: string | undefined
-
     if (clientId) {
-      const { data: client } = await supabase
-        .from("clients")
-        .select("custom_fields")
-        .eq("id", clientId)
-        .single()
-
+      const { data: client } = await supabase.from("clients").select("custom_fields").eq("id", clientId).single()
       asaasCustomerId = (client?.custom_fields as Record<string, string>)?.asaas_customer_id
     }
 
     if (!asaasCustomerId) {
-      return NextResponse.json({
-        success: true,
-        subscriptions: [],
-        message: "Cliente não possui ID Asaas vinculado"
-      })
+      return successResponse(request, { subscriptions: [], message: "Cliente não possui ID Asaas vinculado" })
     }
 
-    // Fetch subscriptions from Asaas
     const response = await fetch(
       `https://api.asaas.com/v3/subscriptions?customer=${asaasCustomerId}`,
-      {
-        headers: {
-          "Content-Type": "application/json",
-          access_token: integration.credentials.api_key,
-        },
-      }
+      { headers: { "Content-Type": "application/json", access_token: integration.credentials.api_key } }
     )
 
     if (!response.ok) {
-      throw new Error("Erro ao buscar assinaturas")
+      throw new AppError("Erro ao buscar assinaturas", 500)
     }
 
     const { data: subscriptions } = await response.json()
 
-    // Map subscription status
     const mappedSubscriptions = subscriptions?.map((sub: {
-      id: string
-      customer: string
-      value: number
-      status: string
-      cycle: string
-      nextDueDate: string
-      description?: string
-      billingType: string
+      id: string; customer: string; value: number; status: string;
+      cycle: string; nextDueDate: string; description?: string; billingType: string;
     }) => ({
-      id: sub.id,
-      customer: sub.customer,
-      value: sub.value,
-      status: sub.status,
-      statusLabel: getSubscriptionStatusLabel(sub.status),
-      cycle: sub.cycle,
-      cycleLabel: getCycleLabel(sub.cycle),
-      nextDueDate: sub.nextDueDate,
-      description: sub.description,
-      billingType: sub.billingType,
+      id: sub.id, customer: sub.customer, value: sub.value, status: sub.status,
+      statusLabel: getSubscriptionStatusLabel(sub.status), cycle: sub.cycle,
+      cycleLabel: getCycleLabel(sub.cycle), nextDueDate: sub.nextDueDate,
+      description: sub.description, billingType: sub.billingType,
       isActive: sub.status === "ACTIVE",
     })) || []
 
-    return NextResponse.json({
-      success: true,
+    return successResponse(request, {
       subscriptions: mappedSubscriptions,
       hasActiveSubscription: mappedSubscriptions.some((s: { isActive: boolean }) => s.isActive),
     })
   } catch (error) {
-    console.error("Error fetching subscriptions:", error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Erro ao buscar assinaturas" },
-      { status: 500 }
-    )
+    return errorResponse(request, error, "AsaasSubscriptions GET")
   }
 }
 
@@ -106,11 +70,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
-    }
+    await requireAuth(supabase)
 
     const body = await request.json()
     const { clientId, value, cycle, billingType, nextDueDate, description } = body
@@ -123,42 +83,24 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (!integration) {
-      return NextResponse.json({ error: "Integração Asaas não ativa" }, { status: 400 })
+      throw new AppError("Integração Asaas não ativa", 400)
     }
 
-    // Get asaas_customer_id
-    const { data: client } = await supabase
-      .from("clients")
-      .select("custom_fields")
-      .eq("id", clientId)
-      .single()
-
+    const { data: client } = await supabase.from("clients").select("custom_fields").eq("id", clientId).single()
     const asaasCustomerId = (client?.custom_fields as Record<string, string>)?.asaas_customer_id
 
     if (!asaasCustomerId) {
-      return NextResponse.json({ error: "Cliente não possui ID Asaas" }, { status: 400 })
+      throw new AppError("Cliente não possui ID Asaas", 400)
     }
 
     const asaas = createAsaasService(integration.credentials)
     const subscription = await asaas.createSubscription({
-      customer: asaasCustomerId,
-      billingType,
-      value,
-      nextDueDate,
-      cycle,
-      description,
+      customer: asaasCustomerId, billingType, value, nextDueDate, cycle, description,
     })
 
-    return NextResponse.json({
-      success: true,
-      subscription,
-    })
+    return successResponse(request, { subscription }, { status: 201 })
   } catch (error) {
-    console.error("Error creating subscription:", error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Erro ao criar assinatura" },
-      { status: 500 }
-    )
+    return errorResponse(request, error, "AsaasSubscriptions POST")
   }
 }
 
@@ -166,17 +108,11 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    await requireAuth(supabase)
 
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
-    }
-
-    const searchParams = request.nextUrl.searchParams
-    const subscriptionId = searchParams.get("subscription_id")
-
+    const subscriptionId = request.nextUrl.searchParams.get("subscription_id")
     if (!subscriptionId) {
-      return NextResponse.json({ error: "subscription_id é obrigatório" }, { status: 400 })
+      throw new ValidationError("subscription_id é obrigatório")
     }
 
     const { data: integration } = await supabase
@@ -187,43 +123,27 @@ export async function DELETE(request: NextRequest) {
       .single()
 
     if (!integration) {
-      return NextResponse.json({ error: "Integração Asaas não ativa" }, { status: 400 })
+      throw new AppError("Integração Asaas não ativa", 400)
     }
 
     const asaas = createAsaasService(integration.credentials)
     const result = await asaas.cancelSubscription(subscriptionId)
 
-    return NextResponse.json({
-      success: true,
-      deleted: result.deleted,
-    })
+    return successResponse(request, { deleted: result.deleted })
   } catch (error) {
-    console.error("Error canceling subscription:", error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Erro ao cancelar assinatura" },
-      { status: 500 }
-    )
+    return errorResponse(request, error, "AsaasSubscriptions DELETE")
   }
 }
 
 function getSubscriptionStatusLabel(status: string): string {
-  const labels: Record<string, string> = {
-    ACTIVE: "Ativa",
-    INACTIVE: "Inativa",
-    EXPIRED: "Expirada",
-  }
+  const labels: Record<string, string> = { ACTIVE: "Ativa", INACTIVE: "Inativa", EXPIRED: "Expirada" }
   return labels[status] || status
 }
 
 function getCycleLabel(cycle: string): string {
   const labels: Record<string, string> = {
-    WEEKLY: "Semanal",
-    BIWEEKLY: "Quinzenal",
-    MONTHLY: "Mensal",
-    BIMONTHLY: "Bimestral",
-    QUARTERLY: "Trimestral",
-    SEMIANNUALLY: "Semestral",
-    YEARLY: "Anual",
+    WEEKLY: "Semanal", BIWEEKLY: "Quinzenal", MONTHLY: "Mensal",
+    BIMONTHLY: "Bimestral", QUARTERLY: "Trimestral", SEMIANNUALLY: "Semestral", YEARLY: "Anual",
   }
   return labels[cycle] || cycle
 }
