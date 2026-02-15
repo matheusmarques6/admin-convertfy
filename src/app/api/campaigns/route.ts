@@ -1,29 +1,27 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { CampaignFormData } from "@/types"
-import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { handleCorsPreFlight } from "@/lib/cors"
+import {
+  errorResponse,
+  successResponse,
+  requireAuth,
+  parseAndValidate,
+  AppError,
+} from "@/lib/api/errors"
+import { campaignCreateSchema } from "@/lib/schemas/common"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("Campaigns")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
 }
 
-// CORS headers
-
-
-
-
 // GET - List campaigns with filters
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: "Não autorizado" },
-        { status: 401, headers: corsHeaders(request.headers.get("origin")) }
-      )
-    }
+    await requireAuth(supabase)
 
     const searchParams = request.nextUrl.searchParams
     const storeId = searchParams.get("store_id")
@@ -42,51 +40,23 @@ export async function GET(request: NextRequest) {
       `)
       .order("scheduled_date", { ascending: true })
 
-    // Apply filters
-    if (storeId) {
-      query = query.eq("store_id", storeId)
-    }
-
-    if (clientId) {
-      query = query.eq("client_id", clientId)
-    }
-
-    if (startDate) {
-      query = query.gte("scheduled_date", startDate)
-    }
-
-    if (endDate) {
-      query = query.lte("scheduled_date", endDate)
-    }
-
-    if (status) {
-      query = query.eq("status", status)
-    }
-
-    if (channel) {
-      query = query.eq("channel", channel)
-    }
+    if (storeId) query = query.eq("store_id", storeId)
+    if (clientId) query = query.eq("client_id", clientId)
+    if (startDate) query = query.gte("scheduled_date", startDate)
+    if (endDate) query = query.lte("scheduled_date", endDate)
+    if (status) query = query.eq("status", status)
+    if (channel) query = query.eq("channel", channel)
 
     const { data: campaigns, error } = await query
 
     if (error) {
-      console.error("[Campaigns] Error fetching campaigns:", error)
-      return NextResponse.json(
-        { error: "Erro ao buscar campanhas" },
-        { status: 500, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      log.error("Error fetching campaigns", { error: error.message })
+      throw new AppError("Erro ao buscar campanhas", 500)
     }
 
-    return NextResponse.json(
-      { campaigns: campaigns || [] },
-      { headers: corsHeaders(request.headers.get("origin")) }
-    )
+    return successResponse(request, { campaigns: campaigns || [] })
   } catch (error) {
-    console.error("[Campaigns] Error:", error)
-    return NextResponse.json(
-      { error: "Erro interno do servidor" },
-      { status: 500, headers: corsHeaders(request.headers.get("origin")) }
-    )
+    return errorResponse(request, error, "Campaigns GET")
   }
 }
 
@@ -94,24 +64,9 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    const user = await requireAuth(supabase)
 
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: "Não autorizado" },
-        { status: 401, headers: corsHeaders(request.headers.get("origin")) }
-      )
-    }
-
-    const body: CampaignFormData = await request.json()
-
-    // Validate required fields
-    if (!body.store_id || !body.client_id || !body.name || !body.scheduled_date) {
-      return NextResponse.json(
-        { error: "Campos obrigatórios: store_id, client_id, name, scheduled_date" },
-        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
-      )
-    }
+    const body = await parseAndValidate(request, campaignCreateSchema)
 
     // Build send_datetime if time is provided
     let send_datetime = null
@@ -127,15 +82,15 @@ export async function POST(request: NextRequest) {
       scheduled_date: body.scheduled_date,
       scheduled_time: body.scheduled_time || null,
       send_datetime,
-      channel: body.channel || "email",
-      campaign_type: body.campaign_type || "promotional",
-      status: body.status || "draft",
+      channel: body.channel,
+      campaign_type: body.campaign_type,
+      status: body.status,
       subject_line: body.subject_line || null,
       preview_text: body.preview_text || null,
       segment_name: body.segment_name || null,
       estimated_recipients: body.estimated_recipients || null,
       tags: body.tags || [],
-      color: body.color || "#3b82f6",
+      color: body.color,
       notes: body.notes || null,
       created_by: user.id,
     }
@@ -151,22 +106,12 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) {
-      console.error("[Campaigns] Error creating campaign:", error)
-      return NextResponse.json(
-        { error: "Erro ao criar campanha" },
-        { status: 500, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      log.error("Campaign insert failed", { error: error.message })
+      throw new AppError("Erro ao criar campanha", 500)
     }
 
-    return NextResponse.json(
-      { campaign },
-      { status: 201, headers: corsHeaders(request.headers.get("origin")) }
-    )
+    return successResponse(request, { campaign }, { status: 201, message: "Campanha criada com sucesso" })
   } catch (error) {
-    console.error("[Campaigns] Error:", error)
-    return NextResponse.json(
-      { error: "Erro interno do servidor" },
-      { status: 500, headers: corsHeaders(request.headers.get("origin")) }
-    )
+    return errorResponse(request, error, "Campaigns POST")
   }
 }

@@ -1,29 +1,31 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
-import { ClientPortalUserFormData } from "@/types"
 import { generateTempPassword } from "@/lib/utils/generate-password"
-import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { handleCorsPreFlight } from "@/lib/cors"
+import {
+  errorResponse,
+  successResponse,
+  requireAuth,
+  parseAndValidate,
+  ConflictError,
+  AppError,
+} from "@/lib/api/errors"
+import { portalUserCreateSchema } from "@/lib/schemas/common"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("PortalUsers")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
 }
 
-
-
-
-
 // GET - List all portal users
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    await requireAuth(supabase)
 
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
-    }
-
-    const searchParams = request.nextUrl.searchParams
-    const clientId = searchParams.get("client_id")
+    const clientId = request.nextUrl.searchParams.get("client_id")
 
     let query = supabase
       .from("client_portal_users")
@@ -40,14 +42,13 @@ export async function GET(request: NextRequest) {
     const { data: portalUsers, error } = await query
 
     if (error) {
-      console.error("[Portal Users] Error fetching:", error)
-      return NextResponse.json({ error: "Erro ao buscar usuários" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+      log.error("Error fetching portal users", { error: error.message })
+      throw error
     }
 
-    return NextResponse.json({ portalUsers: portalUsers || [] }, { headers: corsHeaders(request.headers.get("origin")) })
+    return successResponse(request, { portalUsers: portalUsers || [] })
   } catch (error) {
-    console.error("[Portal Users] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+    return errorResponse(request, error, "PortalUsers GET")
   }
 }
 
@@ -55,44 +56,27 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    const user = await requireAuth(supabase)
 
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
-    }
-
-    const body: ClientPortalUserFormData = await request.json()
-
-    if (!body.client_id || !body.email || !body.name) {
-      return NextResponse.json(
-        { error: "Campos obrigatórios: client_id, email, name" },
-        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
-      )
-    }
+    const body = await parseAndValidate(request, portalUserCreateSchema)
 
     // Check if email already exists
     const { data: existing } = await supabase
       .from("client_portal_users")
       .select("id")
-      .eq("email", body.email.toLowerCase())
+      .eq("email", body.email)
       .single()
 
     if (existing) {
-      return NextResponse.json(
-        { error: "Este email já está cadastrado" },
-        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new ConflictError("Este email já está cadastrado")
     }
 
-    // Generate temporary password
     const tempPassword = generateTempPassword()
-
-    // Use admin client for auth operations (requires service role key)
     const adminClient = createAdminClient()
 
-    // Create auth user in Supabase
+    // Create auth user
     const { data: authUser, error: signUpError } = await adminClient.auth.admin.createUser({
-      email: body.email.toLowerCase(),
+      email: body.email,
       password: tempPassword,
       email_confirm: true,
       user_metadata: {
@@ -103,11 +87,8 @@ export async function POST(request: NextRequest) {
     })
 
     if (signUpError) {
-      console.error("[Portal Users] Auth error:", signUpError)
-      return NextResponse.json(
-        { error: "Erro ao criar conta: " + signUpError.message },
-        { status: 500, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      log.error("Auth user creation failed", { error: signUpError.message })
+      throw new AppError("Erro ao criar conta: " + signUpError.message, 500)
     }
 
     // Create portal user record
@@ -125,15 +106,15 @@ export async function POST(request: NextRequest) {
       .insert({
         client_id: body.client_id,
         auth_user_id: authUser.user.id,
-        email: body.email.toLowerCase(),
+        email: body.email,
         name: body.name,
         phone: body.phone || null,
-        is_primary: body.is_primary || false,
-        is_active: true, // Ensure user is active
+        is_primary: body.is_primary,
+        is_active: true,
         permissions: defaultPermissions,
         invited_by: user.id,
         email_verified_at: new Date().toISOString(),
-        must_change_password: true, // Require password change on first login
+        must_change_password: true,
       })
       .select(`
         *,
@@ -142,27 +123,16 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (insertError) {
-      console.error("[Portal Users] Insert error:", insertError)
-      // Try to delete auth user if portal user creation fails
+      log.error("Portal user insert failed, rolling back auth user", { error: insertError.message })
       await adminClient.auth.admin.deleteUser(authUser.user.id)
-      return NextResponse.json(
-        { error: "Erro ao criar usuário do portal" },
-        { status: 500, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Erro ao criar usuário do portal", 500)
     }
 
-    // Return user with temporary password (only shown once)
-    return NextResponse.json(
-      {
-        portalUser,
-        tempPassword,
-        message: "Usuário criado com sucesso. Anote a senha temporária!",
-      },
-      { status: 201, headers: corsHeaders(request.headers.get("origin")) }
-    )
+    return successResponse(request, {
+      portalUser,
+      tempPassword,
+    }, { status: 201, message: "Usuário criado com sucesso. Anote a senha temporária!" })
   } catch (error) {
-    console.error("[Portal Users] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+    return errorResponse(request, error, "PortalUsers POST")
   }
 }
-

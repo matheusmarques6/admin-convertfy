@@ -142,7 +142,7 @@ describe("taskCreateSchema", () => {
   it("should accept minimal task data", () => {
     const result = taskCreateSchema.parse({ title: "Fix bug" })
     expect(result.title).toBe("Fix bug")
-    expect(result.type).toBe("task")
+    expect(result.type).toBe("general")
     expect(result.priority).toBe("medium")
   })
 

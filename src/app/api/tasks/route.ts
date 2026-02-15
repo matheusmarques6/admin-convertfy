@@ -1,25 +1,27 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
-import { TaskFormData } from "@/types"
-import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { handleCorsPreFlight } from "@/lib/cors"
+import {
+  errorResponse,
+  successResponse,
+  requireAuth,
+  parseAndValidate,
+  AppError,
+} from "@/lib/api/errors"
+import { taskCreateSchema } from "@/lib/schemas/common"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("Tasks")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
 }
 
-
-
-
-
 // GET - List tasks with filters
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
-    }
+    const user = await requireAuth(supabase)
 
     const adminClient = createAdminClient()
     const searchParams = request.nextUrl.searchParams
@@ -48,30 +50,12 @@ export async function GET(request: NextRequest) {
       .order("position", { ascending: true })
       .order("created_at", { ascending: false })
 
-    // Apply filters
-    if (status) {
-      query = query.eq("status", status)
-    }
-
-    if (type) {
-      query = query.eq("type", type)
-    }
-
-    if (assigneeId) {
-      query = query.eq("assignee_id", assigneeId)
-    }
-
-    if (clientId) {
-      query = query.eq("client_id", clientId)
-    }
-
-    if (storeId) {
-      query = query.eq("store_id", storeId)
-    }
-
-    if (priority) {
-      query = query.eq("priority", priority)
-    }
+    if (status) query = query.eq("status", status)
+    if (type) query = query.eq("type", type)
+    if (assigneeId) query = query.eq("assignee_id", assigneeId)
+    if (clientId) query = query.eq("client_id", clientId)
+    if (storeId) query = query.eq("store_id", storeId)
+    if (priority) query = query.eq("priority", priority)
 
     // Get current user's org_member_id for "my tasks" filter
     if (myTasks) {
@@ -90,8 +74,8 @@ export async function GET(request: NextRequest) {
     const { data: tasks, error } = await query
 
     if (error) {
-      console.error("[Tasks] Error fetching:", error)
-      return NextResponse.json({ error: "Erro ao buscar tarefas" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+      log.error("Error fetching tasks", { error: error.message })
+      throw new AppError("Erro ao buscar tarefas", 500)
     }
 
     // Extract comments_count from the joined count
@@ -106,10 +90,9 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    return NextResponse.json({ tasks: tasksWithCounts }, { headers: corsHeaders(request.headers.get("origin")) })
+    return successResponse(request, { tasks: tasksWithCounts })
   } catch (error) {
-    console.error("[Tasks] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+    return errorResponse(request, error, "Tasks GET")
   }
 }
 
@@ -117,24 +100,13 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    const user = await requireAuth(supabase)
 
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
-    }
-
-    const body: TaskFormData = await request.json()
-
-    if (!body.title) {
-      return NextResponse.json(
-        { error: "Título é obrigatório" },
-        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
-      )
-    }
+    const body = await parseAndValidate(request, taskCreateSchema)
 
     const adminClient = createAdminClient()
 
-    // Get next position for the status (maybeSingle to handle 0 rows)
+    // Get next position for the status
     const { data: lastTask } = await adminClient
       .from("tasks")
       .select("position")
@@ -145,21 +117,15 @@ export async function POST(request: NextRequest) {
 
     const nextPosition = (lastTask?.position || 0) + 1
 
-    // Sanitize UUID fields: empty strings → null to avoid FK violations
-    const sanitizeUuid = (val: unknown): string | null => {
-      if (typeof val === "string" && val.trim().length > 0) return val.trim()
-      return null
-    }
-
     const insertData = {
       title: body.title.trim(),
       description: body.description?.trim() || null,
-      type: body.type || "general",
-      priority: body.priority || "medium",
-      assignee_id: sanitizeUuid(body.assignee_id),
+      type: body.type,
+      priority: body.priority,
+      assignee_id: body.assignee_id || null,
       created_by: user.id,
-      client_id: sanitizeUuid(body.client_id),
-      store_id: sanitizeUuid(body.store_id),
+      client_id: body.client_id || null,
+      store_id: body.store_id || null,
       due_date: body.due_date || null,
       tags: body.tags || [],
       metadata: body.metadata || {},
@@ -167,7 +133,7 @@ export async function POST(request: NextRequest) {
       status: "pending" as const,
     }
 
-    console.log("[Tasks] Inserting task:", JSON.stringify(insertData, null, 2))
+    log.info("Creating task", { title: insertData.title, type: insertData.type })
 
     const { data: task, error: insertError } = await adminClient
       .from("tasks")
@@ -186,20 +152,16 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (insertError) {
-      console.error("[Tasks] Insert error:", insertError.message, insertError.details, insertError.hint, insertError.code)
-      return NextResponse.json(
-        { error: `Erro ao criar tarefa: ${insertError.message}` },
-        { status: 500, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      log.error("Task insert failed", {
+        error: insertError.message,
+        code: insertError.code,
+        details: insertError.details,
+      })
+      throw new AppError("Erro ao criar tarefa: " + insertError.message, 500)
     }
 
-    return NextResponse.json(
-      { task, message: "Tarefa criada com sucesso" },
-      { status: 201, headers: corsHeaders(request.headers.get("origin")) }
-    )
+    return successResponse(request, { task }, { status: 201, message: "Tarefa criada com sucesso" })
   } catch (error) {
-    console.error("[Tasks] Error:", error)
-    const message = error instanceof Error ? error.message : "Erro interno"
-    return NextResponse.json({ error: `Erro interno: ${message}` }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+    return errorResponse(request, error, "Tasks POST")
   }
 }
