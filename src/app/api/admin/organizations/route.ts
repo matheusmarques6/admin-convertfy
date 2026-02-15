@@ -1,24 +1,28 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
-import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { handleCorsPreFlight } from "@/lib/cors"
+import {
+  errorResponse,
+  successResponse,
+  requireAuth,
+  requireRole,
+  parseAndValidate,
+  ConflictError,
+} from "@/lib/api/errors"
+import { organizationCreateSchema } from "@/lib/schemas/common"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("Organizations")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
 }
 
-
-
-
-
 // GET - List organizations
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
-    }
+    await requireAuth(supabase)
 
     const searchParams = request.nextUrl.searchParams
     const type = searchParams.get("type")
@@ -40,8 +44,8 @@ export async function GET(request: NextRequest) {
     const { data: organizations, error } = await query
 
     if (error) {
-      console.error("[Organizations] Error fetching:", error)
-      return NextResponse.json({ error: "Erro ao buscar organizações" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+      log.error("Error fetching organizations", { error: error.message })
+      throw error
     }
 
     // Get member count for each organization
@@ -60,10 +64,9 @@ export async function GET(request: NextRequest) {
       })
     )
 
-    return NextResponse.json({ organizations: orgsWithCounts }, { headers: corsHeaders(request.headers.get("origin")) })
+    return successResponse(request, { organizations: orgsWithCounts })
   } catch (error) {
-    console.error("[Organizations] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+    return errorResponse(request, error, "Organizations GET")
   }
 }
 
@@ -71,44 +74,19 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    await requireRole(supabase, ["admin"])
 
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
-    }
-
-    // Check if user is admin
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single()
-
-    if (!profile || profile.role !== "admin") {
-      return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders(request.headers.get("origin")) })
-    }
-
-    const body = await request.json()
-
-    if (!body.name || !body.slug) {
-      return NextResponse.json(
-        { error: "Campos obrigatórios: name, slug" },
-        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
-      )
-    }
+    const body = await parseAndValidate(request, organizationCreateSchema)
 
     // Check if slug already exists
     const { data: existing } = await supabase
       .from("organizations")
       .select("id")
-      .eq("slug", body.slug.toLowerCase())
+      .eq("slug", body.slug)
       .single()
 
     if (existing) {
-      return NextResponse.json(
-        { error: "Este slug já está em uso" },
-        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new ConflictError("Este slug já está em uso")
     }
 
     const adminClient = createAdminClient()
@@ -117,24 +95,22 @@ export async function POST(request: NextRequest) {
       .from("organizations")
       .insert({
         name: body.name,
-        slug: body.slug.toLowerCase(),
-        type: body.type || "internal",
-        settings: body.settings || {},
+        slug: body.slug,
+        settings: {},
       })
       .select()
       .single()
 
     if (insertError) {
-      console.error("[Organizations] Insert error:", insertError)
-      return NextResponse.json({ error: "Erro ao criar organização" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+      log.error("Insert error", { error: insertError.message })
+      throw insertError
     }
 
-    return NextResponse.json(
-      { organization, message: "Organização criada com sucesso" },
-      { status: 201, headers: corsHeaders(request.headers.get("origin")) }
-    )
+    return successResponse(request, { organization }, {
+      status: 201,
+      message: "Organização criada com sucesso",
+    })
   } catch (error) {
-    console.error("[Organizations] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+    return errorResponse(request, error, "Organizations POST")
   }
 }
