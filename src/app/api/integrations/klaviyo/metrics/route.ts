@@ -1,17 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-
-const KLAVIYO_API_URL = "https://a.klaviyo.com/api"
-const KLAVIYO_REVISION = "2024-10-15" // Latest stable revision
-
-// CORS headers helper
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  }
-}
+import { corsHeaders, klaviyoRequest } from "@/lib/integrations/klaviyo"
 
 // Handle OPTIONS preflight requests
 export async function OPTIONS() {
@@ -71,22 +60,6 @@ interface KlaviyoCampaignResponse {
   }>
 }
 
-async function klaviyoRequest<T>(apiKey: string, endpoint: string): Promise<T> {
-  const response = await fetch(`${KLAVIYO_API_URL}${endpoint}`, {
-    headers: {
-      "Authorization": `Klaviyo-API-Key ${apiKey}`,
-      "Accept": "application/json",
-      "revision": KLAVIYO_REVISION,
-    },
-  })
-
-  if (!response.ok) {
-    throw new Error(`Klaviyo API error: ${response.status}`)
-  }
-
-  return response.json()
-}
-
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
@@ -126,12 +99,16 @@ export async function GET(request: NextRequest) {
 
     // Fetch data in parallel
     // Note: campaigns requires channel filter, lists needs additional-fields for profile_count
+    const emptyList: KlaviyoListResponse = { data: [] }
+    const emptyFlow: KlaviyoFlowResponse = { data: [] }
+    const emptyCampaign: KlaviyoCampaignResponse = { data: [] }
+    const emptyMetric: KlaviyoMetricResponse = { data: [] }
     const [lists, flows, emailCampaigns, smsCampaigns, metrics] = await Promise.all([
-      klaviyoRequest<KlaviyoListResponse>(apiKey, "/lists/?additional-fields[list]=profile_count").catch(() => ({ data: [] })),
-      klaviyoRequest<KlaviyoFlowResponse>(apiKey, "/flows/").catch(() => ({ data: [] })),
-      klaviyoRequest<KlaviyoCampaignResponse>(apiKey, "/campaigns/?filter=equals(messages.channel,'email')").catch(() => ({ data: [] })),
-      klaviyoRequest<KlaviyoCampaignResponse>(apiKey, "/campaigns/?filter=equals(messages.channel,'sms')").catch(() => ({ data: [] })),
-      klaviyoRequest<KlaviyoMetricResponse>(apiKey, "/metrics/").catch(() => ({ data: [] })),
+      klaviyoRequest<KlaviyoListResponse>(apiKey, "/lists/?additional-fields[list]=profile_count", { logTag: "Klaviyo Metrics" }).then(r => r ?? emptyList),
+      klaviyoRequest<KlaviyoFlowResponse>(apiKey, "/flows/", { logTag: "Klaviyo Metrics" }).then(r => r ?? emptyFlow),
+      klaviyoRequest<KlaviyoCampaignResponse>(apiKey, "/campaigns/?filter=equals(messages.channel,'email')", { logTag: "Klaviyo Metrics" }).then(r => r ?? emptyCampaign),
+      klaviyoRequest<KlaviyoCampaignResponse>(apiKey, "/campaigns/?filter=equals(messages.channel,'sms')", { logTag: "Klaviyo Metrics" }).then(r => r ?? emptyCampaign),
+      klaviyoRequest<KlaviyoMetricResponse>(apiKey, "/metrics/", { logTag: "Klaviyo Metrics" }).then(r => r ?? emptyMetric),
     ])
 
     // Combine email + SMS campaigns

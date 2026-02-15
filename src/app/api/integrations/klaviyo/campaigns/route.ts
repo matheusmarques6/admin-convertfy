@@ -1,152 +1,23 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import {
+  KLAVIYO_API_URL,
+  MIN_REQUEST_INTERVAL,
+  sleep,
+  corsHeaders,
+  klaviyoRequest,
+  parseDateRange,
+  formatDateStr,
+  getAccountInfo,
+  getTimezoneOffset,
+  findPlacedOrderMetric,
+} from "@/lib/integrations/klaviyo"
 
 export const maxDuration = 300
 export const dynamic = 'force-dynamic'
 
-const KLAVIYO_API_URL = "https://a.klaviyo.com/api"
-const KLAVIYO_REVISION = "2024-10-15"
-const MIN_REQUEST_INTERVAL = 1000
-
-function corsHeaders() {
-  return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  }
-}
-
 export async function OPTIONS() {
   return NextResponse.json({}, { headers: corsHeaders() })
-}
-
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
-
-async function klaviyoRequest<T>(
-  apiKey: string,
-  endpoint: string,
-  options?: {
-    method?: "GET" | "POST"
-    body?: Record<string, unknown>
-  }
-): Promise<T | null> {
-  const { method = "GET", body } = options || {}
-  const url = `${KLAVIYO_API_URL}${endpoint}`
-  const maxRetries = 3
-
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    if (attempt > 0) {
-      const backoff = Math.min(1500 * Math.pow(2, attempt - 1), 16000)
-      await sleep(backoff)
-    }
-
-    try {
-      const response = await fetch(url, {
-        method,
-        headers: {
-          "Authorization": `Klaviyo-API-Key ${apiKey}`,
-          "Accept": "application/json",
-          "Content-Type": "application/json",
-          "revision": KLAVIYO_REVISION,
-        },
-        ...(body && { body: JSON.stringify(body) }),
-      })
-
-      if (response.status === 429) {
-        const retryAfter = response.headers.get("retry-after")
-        const waitTime = retryAfter ? parseInt(retryAfter) * 1000 : 2000
-        if (attempt < maxRetries) {
-          await sleep(waitTime)
-          continue
-        }
-        return null
-      }
-
-      if (response.status >= 500 && attempt < maxRetries) {
-        continue
-      }
-
-      const responseText = await response.text()
-      if (!response.ok) {
-        console.error(`[Klaviyo Campaigns] API ERROR ${response.status}:`, responseText.substring(0, 500))
-        return null
-      }
-
-      return JSON.parse(responseText) as T
-    } catch (error) {
-      console.error(`[Klaviyo Campaigns] REQUEST ERROR:`, error)
-      if (attempt < maxRetries) continue
-      return null
-    }
-  }
-
-  return null
-}
-
-// Get timezone offset string from timezone name
-function getTimezoneOffset(timezone: string): string {
-  try {
-    const now = new Date()
-    const formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: timezone,
-      timeZoneName: 'longOffset'
-    })
-    const parts = formatter.formatToParts(now)
-    const offsetPart = parts.find(p => p.type === 'timeZoneName')
-    if (offsetPart && offsetPart.value.includes('GMT')) {
-      const match = offsetPart.value.match(/GMT([+-]\d{2}):?(\d{2})?/)
-      if (match) {
-        const hours = match[1]
-        const minutes = match[2] || '00'
-        return `${hours}:${minutes}`
-      }
-    }
-    return "-03:00"
-  } catch {
-    return "-03:00"
-  }
-}
-
-// Get account info
-async function getAccountInfo(apiKey: string) {
-  const response = await klaviyoRequest<{
-    data: Array<{
-      id: string
-      attributes: {
-        preferred_currency: string
-        timezone: string
-      }
-    }>
-  }>(apiKey, "/accounts/")
-
-  if (!response?.data?.[0]) {
-    return { currency: "BRL", timezone: "America/Sao_Paulo" }
-  }
-
-  const attrs = response.data[0].attributes
-  return {
-    currency: attrs.preferred_currency || "BRL",
-    timezone: attrs.timezone || "America/Sao_Paulo"
-  }
-}
-
-// Get Placed Order metric ID
-async function getPlacedOrderMetricId(apiKey: string): Promise<string | null> {
-  const response = await klaviyoRequest<{
-    data: Array<{
-      id: string
-      attributes: { name: string; integration?: { name: string } }
-    }>
-  }>(apiKey, "/metrics/?page[size]=100")
-
-  if (!response?.data) return null
-
-  const placedOrderMetric = response.data.find(m => {
-    const name = m.attributes.name.toLowerCase()
-    return name === "placed order" || name === "pedido realizado"
-  })
-
-  return placedOrderMetric?.id || null
 }
 
 // Types for campaign response
@@ -417,46 +288,14 @@ export async function GET(request: NextRequest) {
     const timezoneOffset = getTimezoneOffset(accountInfo.timezone)
 
     // Calculate date range
-    const now = new Date()
-    let startDate: Date
-    let endDate: Date = new Date(now)
-
-    if (period === "custom" && customStartDate && customEndDate) {
-      startDate = new Date(customStartDate)
-      endDate = new Date(customEndDate)
-    } else {
-      endDate.setHours(23, 59, 59, 999)
-
-      switch (period) {
-        case "7d":
-          startDate = new Date(now)
-          startDate.setDate(now.getDate() - 7)
-          break
-        case "30d":
-          startDate = new Date(now)
-          startDate.setDate(now.getDate() - 30)
-          break
-        case "90d":
-          startDate = new Date(now)
-          startDate.setDate(now.getDate() - 90)
-          break
-        case "12m":
-          startDate = new Date(now)
-          startDate.setFullYear(now.getFullYear() - 1)
-          break
-        default:
-          startDate = new Date(now)
-          startDate.setDate(now.getDate() - 30)
-      }
-    }
-
-    const startDateStr = startDate.toISOString().split('T')[0]
-    const endDateStr = endDate.toISOString().split('T')[0]
+    const { startDate, endDate } = parseDateRange(period, customStartDate, customEndDate)
+    const startDateStr = formatDateStr(startDate)
+    const endDateStr = formatDateStr(endDate)
 
     // Fetch data in parallel
     const [campaigns, metricId] = await Promise.all([
       getAllCampaigns(apiKey),
-      getPlacedOrderMetricId(apiKey)
+      findPlacedOrderMetric(apiKey)
     ])
 
     // Get metrics if we have the metric ID
