@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { requireAuth } from "@/lib/api/errors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("IntegrationTest")
 import { testIntegrationConnection } from "@/lib/integrations"
 import type { IntegrationType } from "@/types"
 
@@ -33,7 +37,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(result)
   } catch (error) {
-    console.error("Error testing integration:", error)
+    log.error("Error testing integration:", error)
     return NextResponse.json(
       {
         success: false,

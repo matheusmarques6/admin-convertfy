@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { requireAuth } from "@/lib/api/errors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("KlaviyoMetrics")
 import { corsHeaders, klaviyoRequest } from "@/lib/integrations/klaviyo"
 
 // Handle OPTIONS preflight requests
@@ -176,7 +180,7 @@ export async function GET(request: NextRequest) {
       })),
     })
   } catch (error) {
-    console.error("Error fetching Klaviyo metrics:", error)
+    log.error("Error fetching Klaviyo metrics:", error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Erro ao buscar métricas do Klaviyo" },
       { status: 500 }

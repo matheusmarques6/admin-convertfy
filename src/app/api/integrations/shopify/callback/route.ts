@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("ShopifyCallback")
 import crypto from "crypto"
 
 export async function GET(request: NextRequest) {
@@ -79,7 +82,7 @@ export async function GET(request: NextRequest) {
 
     if (!tokenResponse.ok) {
       const errorData = await tokenResponse.json()
-      console.error("Shopify token exchange error:", errorData)
+      log.error("Shopify token exchange error:", errorData)
       return NextResponse.redirect(
         new URL("/settings/integrations?error=token_exchange_failed", request.url)
       )
@@ -143,7 +146,7 @@ export async function GET(request: NextRequest) {
 
     return response
   } catch (error) {
-    console.error("Error in Shopify OAuth callback:", error)
+    log.error("Error in Shopify OAuth callback:", error)
     return NextResponse.redirect(
       new URL("/settings/integrations?error=callback_failed", request.url)
     )

@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { requireAuth } from "@/lib/api/errors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("KlaviyoDebug")
 
 const KLAVIYO_API_URL = "https://a.klaviyo.com/api"
 const KLAVIYO_REVISION = "2024-10-15"
@@ -241,7 +245,7 @@ export async function GET(request: NextRequest) {
       },
     })
   } catch (error) {
-    console.error("Debug error:", error)
+    log.error("Debug error:", error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Erro no debug" },
       { status: 500 }

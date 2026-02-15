@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { requireAuth } from "@/lib/api/errors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("KlaviyoReport")
 import {
   KLAVIYO_API_URL,
   MIN_REQUEST_INTERVAL,
@@ -1274,7 +1278,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(reportData, { headers: corsHeaders() })
 
   } catch (error) {
-    console.error("[Klaviyo] Error generating report:", error)
+    log.error("[Klaviyo] Error generating report:", error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Erro ao gerar relatório" },
       { status: 500, headers: corsHeaders() }

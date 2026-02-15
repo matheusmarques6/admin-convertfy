@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("SetupDatabase")
 
 // POST - Set up database tables
 export async function POST() {
@@ -136,7 +139,7 @@ export async function POST() {
         : "Todas as tabelas estão configuradas!",
     })
   } catch (error) {
-    console.error("Error setting up database:", error)
+    log.error("Error setting up database:", error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Erro ao configurar banco de dados" },
       { status: 500 }
@@ -181,7 +184,7 @@ export async function GET() {
       tables: status,
     })
   } catch (error) {
-    console.error("Error checking database:", error)
+    log.error("Error checking database:", error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Erro ao verificar banco de dados" },
       { status: 500 }

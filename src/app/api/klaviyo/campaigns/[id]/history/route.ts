@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("KlaviyoCampaignHistory")
 
 /**
  * GET /api/klaviyo/campaigns/[id]/history
@@ -102,7 +106,7 @@ export async function GET(
       data_points: chartData?.length || 0,
     })
   } catch (error) {
-    console.error("Error in campaign history API:", error)
+    log.error("Error in campaign history API:", error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Erro interno" },
       { status: 500 }

@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("MetaAuthorize")
 
 const META_AUTH_URL = "https://www.facebook.com/v18.0/dialog/oauth"
 
@@ -70,7 +73,7 @@ export async function GET(request: NextRequest) {
 
     return response
   } catch (error) {
-    console.error("Error initiating Meta OAuth:", error)
+    log.error("Error initiating Meta OAuth:", error)
     return NextResponse.redirect(
       new URL("/settings/integrations?error=oauth_init_failed", request.url)
     )

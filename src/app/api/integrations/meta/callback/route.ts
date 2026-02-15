@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("MetaCallback")
 
 const META_TOKEN_URL = "https://graph.facebook.com/v18.0/oauth/access_token"
 const META_GRAPH_URL = "https://graph.facebook.com/v18.0"
@@ -12,7 +15,7 @@ export async function GET(request: NextRequest) {
     const error = searchParams.get("error")
 
     if (error) {
-      console.error("Meta OAuth error:", error)
+      log.error("Meta OAuth error:", error)
       return NextResponse.redirect(
         new URL(`/settings/integrations?error=${error}`, request.url)
       )
@@ -62,7 +65,7 @@ export async function GET(request: NextRequest) {
 
     if (!tokenResponse.ok) {
       const errorData = await tokenResponse.json()
-      console.error("Meta token exchange error:", errorData)
+      log.error("Meta token exchange error:", errorData)
       return NextResponse.redirect(
         new URL("/settings/integrations?error=token_exchange_failed", request.url)
       )
@@ -173,7 +176,7 @@ export async function GET(request: NextRequest) {
 
     return response
   } catch (error) {
-    console.error("Error in Meta OAuth callback:", error)
+    log.error("Error in Meta OAuth callback:", error)
     return NextResponse.redirect(
       new URL("/settings/integrations?error=callback_failed", request.url)
     )

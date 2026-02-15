@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("KlaviyoAlerts")
 
 /**
  * GET /api/klaviyo/alerts
@@ -57,7 +61,7 @@ export async function GET(request: NextRequest) {
     const { data: alerts, error } = await query
 
     if (error) {
-      console.error("Error fetching alerts:", error)
+      log.error("Error fetching alerts:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
@@ -126,7 +130,7 @@ export async function GET(request: NextRequest) {
       total_unread: counts?.length || 0,
     })
   } catch (error) {
-    console.error("Error in alerts API:", error)
+    log.error("Error in alerts API:", error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Erro interno" },
       { status: 500 }
@@ -199,7 +203,7 @@ export async function PATCH(request: NextRequest) {
       message: `${alert_ids.length} alerta(s) atualizado(s)`,
     })
   } catch (error) {
-    console.error("Error updating alerts:", error)
+    log.error("Error updating alerts:", error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Erro interno" },
       { status: 500 }

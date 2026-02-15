@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("WhatsAppWebhook")
 import { WhatsAppService } from "@/lib/integrations/whatsapp"
 
 // Create Supabase client lazily to avoid build-time errors
@@ -51,7 +54,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ received: true })
   } catch (error) {
-    console.error("Error processing WhatsApp webhook:", error)
+    log.error("Error processing WhatsApp webhook:", error)
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

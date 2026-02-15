@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("KlaviyoSync")
 import { createKlaviyoSyncService } from "@/lib/integrations/klaviyo-sync"
 
 /**
@@ -69,7 +73,7 @@ export async function POST(request: NextRequest) {
       })
     }
   } catch (error) {
-    console.error("Error in sync API:", error)
+    log.error("Error in sync API:", error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Erro na sincronização" },
       { status: 500 }
@@ -182,7 +186,7 @@ export async function GET(request: NextRequest) {
       total_campaigns: campaignCounts?.length || 0,
     })
   } catch (error) {
-    console.error("Error in sync status API:", error)
+    log.error("Error in sync status API:", error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Erro interno" },
       { status: 500 }

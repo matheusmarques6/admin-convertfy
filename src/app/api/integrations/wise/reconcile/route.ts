@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { requireAuth } from "@/lib/api/errors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("WiseReconcile")
 
 export const dynamic = "force-dynamic"
 
@@ -84,7 +88,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, reconciliation })
   } catch (error) {
-    console.error("Error reconciling transaction:", error)
+    log.error("Error reconciling transaction:", error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to reconcile transaction" },
       { status: 500 }
@@ -132,7 +136,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ reconciliations })
   } catch (error) {
-    console.error("Error fetching reconciliations:", error)
+    log.error("Error fetching reconciliations:", error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to fetch reconciliations" },
       { status: 500 }
@@ -172,7 +176,7 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error("Error deleting reconciliation:", error)
+    log.error("Error deleting reconciliation:", error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to delete reconciliation" },
       { status: 500 }

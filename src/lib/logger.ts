@@ -42,14 +42,22 @@ function formatEntry(entry: LogEntry): string {
   return `${prefix}${ctx} ${entry.message}${data}`
 }
 
-function log(level: LogLevel, message: string, data?: Record<string, unknown>) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function normalizeData(data: any): Record<string, unknown> | undefined {
+  if (!data) return undefined
+  if (typeof data === "object" && data !== null && !Array.isArray(data)) return data as Record<string, unknown>
+  if (data instanceof Error) return { error: data.message, stack: data.stack }
+  return { value: data }
+}
+
+function log(level: LogLevel, message: string, data?: Record<string, unknown> | unknown) {
   if (!shouldLog(level)) return
 
   const entry: LogEntry = {
     level,
     message,
     timestamp: new Date().toISOString(),
-    data,
+    data: normalizeData(data),
   }
 
   const formatted = formatEntry(entry)
@@ -67,20 +75,20 @@ function log(level: LogLevel, message: string, data?: Record<string, unknown>) {
 }
 
 export const logger = {
-  debug: (message: string, data?: Record<string, unknown>) => log("debug", message, data),
-  info: (message: string, data?: Record<string, unknown>) => log("info", message, data),
-  warn: (message: string, data?: Record<string, unknown>) => log("warn", message, data),
-  error: (message: string, data?: Record<string, unknown>) => log("error", message, data),
+  debug: (message: string, data?: Record<string, unknown> | unknown) => log("debug", message, data),
+  info: (message: string, data?: Record<string, unknown> | unknown) => log("info", message, data),
+  warn: (message: string, data?: Record<string, unknown> | unknown) => log("warn", message, data),
+  error: (message: string, data?: Record<string, unknown> | unknown) => log("error", message, data),
 
   /** Create a child logger with fixed context */
   child: (context: string) => ({
-    debug: (message: string, data?: Record<string, unknown>) =>
-      log("debug", message, { ...data, context }),
-    info: (message: string, data?: Record<string, unknown>) =>
-      log("info", message, { ...data, context }),
-    warn: (message: string, data?: Record<string, unknown>) =>
-      log("warn", message, { ...data, context }),
-    error: (message: string, data?: Record<string, unknown>) =>
-      log("error", message, { ...data, context }),
+    debug: (message: string, data?: Record<string, unknown> | unknown) =>
+      log("debug", message, { ...normalizeData(data), context }),
+    info: (message: string, data?: Record<string, unknown> | unknown) =>
+      log("info", message, { ...normalizeData(data), context }),
+    warn: (message: string, data?: Record<string, unknown> | unknown) =>
+      log("warn", message, { ...normalizeData(data), context }),
+    error: (message: string, data?: Record<string, unknown> | unknown) =>
+      log("error", message, { ...normalizeData(data), context }),
   }),
 }
