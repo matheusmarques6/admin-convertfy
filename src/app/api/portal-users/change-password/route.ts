@@ -1,65 +1,53 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
+import {
+  errorResponse,
+  successResponse,
+  requireAuth,
+  parseAndValidate,
+  NotFoundError,
+  AppError,
+} from "@/lib/api/errors"
+import { z } from "zod"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("PortalChangePassword")
+
+const changePasswordSchema = z.object({
+  new_password: z.string().min(6, "A senha deve ter pelo menos 6 caracteres"),
+})
 
 // POST - Portal user changes their own password
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    const user = await requireAuth(supabase)
 
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      )
-    }
-
-    const body = await request.json()
-    const { new_password } = body
-
-    if (!new_password) {
-      return NextResponse.json(
-        { error: "new_password is required" },
-        { status: 400 }
-      )
-    }
-
-    if (new_password.length < 6) {
-      return NextResponse.json(
-        { error: "Password must be at least 6 characters" },
-        { status: 400 }
-      )
-    }
+    const body = await parseAndValidate(request, changePasswordSchema)
 
     const adminClient = createAdminClient()
 
     // Check if this is a portal user
     const { data: portalUser, error: portalError } = await adminClient
       .from("client_portal_users")
-      .select("*")
+      .select("id, client_id, name, auth_user_id")
       .eq("auth_user_id", user.id)
       .single()
 
     if (portalError || !portalUser) {
-      return NextResponse.json(
-        { error: "Portal user not found" },
-        { status: 404 }
-      )
+      throw new NotFoundError("Usuário do portal")
     }
 
     // Update the auth user's password
     const { error: updateAuthError } = await adminClient.auth.admin.updateUserById(
       user.id,
-      { password: new_password }
+      { password: body.new_password }
     )
 
     if (updateAuthError) {
-      console.error("Error updating password:", updateAuthError)
-      return NextResponse.json(
-        { error: "Failed to change password" },
-        { status: 500 }
-      )
+      log.error("Error updating password", { error: updateAuthError.message })
+      throw new AppError("Falha ao alterar a senha", 500)
     }
 
     // Mark must_change_password as false
@@ -69,7 +57,7 @@ export async function POST(request: NextRequest) {
       .eq("id", portalUser.id)
 
     if (updatePortalError) {
-      console.error("Error updating portal user:", updatePortalError)
+      log.warn("Error updating must_change_password flag", { error: updatePortalError.message })
     }
 
     // Log the activity
@@ -84,15 +72,8 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    return NextResponse.json({
-      success: true,
-      message: "Password changed successfully",
-    })
+    return successResponse(request, { success: true }, { message: "Senha alterada com sucesso" })
   } catch (error) {
-    console.error("Error in POST /api/portal-users/change-password:", error)
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    )
+    return errorResponse(request, error, "PortalChangePassword POST")
   }
 }

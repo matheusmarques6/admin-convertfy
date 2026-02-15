@@ -1,7 +1,16 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import * as XLSX from "xlsx"
+import {
+  errorResponse,
+  successResponse,
+  requireAuth,
+  ValidationError,
+} from "@/lib/api/errors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("PipelineImport")
 
 interface ImportRow {
   name?: string
@@ -20,24 +29,18 @@ const VALID_STATUSES = ["active", "inactive", "churned", "prospect", "onboarding
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    if (!user) {
-      return NextResponse.json({ error: "Não autenticado" }, { status: 401 })
-    }
+    const user = await requireAuth(supabase)
 
     const formData = await request.formData()
     const file = formData.get("file") as File | null
     const pipelineId = formData.get("pipeline_id") as string | null
 
     if (!file) {
-      return NextResponse.json({ error: "Arquivo é obrigatório" }, { status: 400 })
+      throw new ValidationError("Arquivo é obrigatório")
     }
 
     if (!pipelineId) {
-      return NextResponse.json({ error: "pipeline_id é obrigatório" }, { status: 400 })
+      throw new ValidationError("pipeline_id é obrigatório")
     }
 
     // Read Excel file
@@ -46,14 +49,14 @@ export async function POST(request: NextRequest) {
 
     const sheetName = workbook.SheetNames[0]
     if (!sheetName) {
-      return NextResponse.json({ error: "Planilha vazia" }, { status: 400 })
+      throw new ValidationError("Planilha vazia")
     }
 
     const sheet = workbook.Sheets[sheetName]
     const rows: ImportRow[] = XLSX.utils.sheet_to_json(sheet, { defval: "" })
 
     if (rows.length === 0) {
-      return NextResponse.json({ error: "Nenhum dado encontrado na planilha" }, { status: 400 })
+      throw new ValidationError("Nenhum dado encontrado na planilha")
     }
 
     // Normalize column names (lowercase, trim, remove accents)
@@ -112,7 +115,6 @@ export async function POST(request: NextRequest) {
         if (mappedField) {
           clientData[mappedField] = value
         } else {
-          // Unknown columns go to custom_fields
           customFields[col] = value
         }
       }
@@ -126,7 +128,7 @@ export async function POST(request: NextRequest) {
 
       // Validate status
       if (clientData.status && !VALID_STATUSES.includes(clientData.status as string)) {
-        clientData.status = "prospect" // default
+        clientData.status = "prospect"
       }
       if (!clientData.status) {
         clientData.status = "prospect"
@@ -147,7 +149,6 @@ export async function POST(request: NextRequest) {
         clientData.custom_fields = customFields
       }
 
-      // Set owner to current user
       clientData.owner_id = user.id
 
       try {
@@ -160,7 +161,6 @@ export async function POST(request: NextRequest) {
             .maybeSingle()
 
           if (existing) {
-            // Update existing client (this triggers import rules via UPDATE trigger)
             const { error } = await adminClient
               .from("clients")
               .update(clientData)
@@ -176,7 +176,6 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // Create new client (this triggers import rules via INSERT trigger)
         const { error } = await adminClient
           .from("clients")
           .insert(clientData)
@@ -196,12 +195,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json(results)
+    log.info("Import completed", { total: results.total, created: results.created, updated: results.updated, skipped: results.skipped })
+
+    return successResponse(request, results)
   } catch (error) {
-    console.error("Import error:", error)
-    return NextResponse.json(
-      { error: "Erro ao processar importação" },
-      { status: 500 }
-    )
+    return errorResponse(request, error, "PipelineImport POST")
   }
 }

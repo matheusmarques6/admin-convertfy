@@ -1,38 +1,47 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import {
+  errorResponse,
+  successResponse,
+  requireAuth,
+  parseAndValidate,
+  ValidationError,
+  AppError,
+} from "@/lib/api/errors"
+import { z } from "zod"
+import { logger } from "@/lib/logger"
+import { uuidSchema } from "@/lib/schemas/common"
+
+const log = logger.child("PipelineMembers")
+
+const addMemberSchema = z.object({
+  pipeline_id: uuidSchema,
+  user_id: uuidSchema,
+  role: z.enum(["owner", "editor", "viewer"]),
+})
+
+const updateMemberSchema = z.object({
+  member_id: uuidSchema,
+  role: z.enum(["owner", "editor", "viewer"]),
+})
 
 // POST /api/pipeline/members - Add a member to a pipeline
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const user = await requireAuth(supabase)
 
-    if (!user) {
-      return NextResponse.json({ error: "Não autenticado" }, { status: 401 })
-    }
-
-    const body = await request.json()
-    const { pipeline_id, user_id, role } = body
-
-    if (!pipeline_id || !user_id || !role) {
-      return NextResponse.json(
-        { error: "pipeline_id, user_id e role são obrigatórios" },
-        { status: 400 }
-      )
-    }
+    const body = await parseAndValidate(request, addMemberSchema)
 
     const adminClient = createAdminClient()
 
-    // Insert member
     const { data, error } = await adminClient
       .from("pipeline_members")
       .insert({
-        pipeline_id,
-        user_id,
-        role,
+        pipeline_id: body.pipeline_id,
+        user_id: body.user_id,
+        role: body.role,
         added_by: user.id,
       })
       .select(`
@@ -42,20 +51,13 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) {
-      console.error("Error adding pipeline member:", error)
-      return NextResponse.json(
-        { error: `Erro ao adicionar membro: ${error.message}` },
-        { status: 500 }
-      )
+      log.error("Error adding pipeline member", { error: error.message })
+      throw new AppError("Erro ao adicionar membro: " + error.message, 500)
     }
 
-    return NextResponse.json(data)
+    return successResponse(request, data, { status: 201 })
   } catch (error) {
-    console.error("Pipeline member error:", error)
-    return NextResponse.json(
-      { error: "Erro interno do servidor" },
-      { status: 500 }
-    )
+    return errorResponse(request, error, "PipelineMembers POST")
   }
 }
 
@@ -63,46 +65,25 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    await requireAuth(supabase)
 
-    if (!user) {
-      return NextResponse.json({ error: "Não autenticado" }, { status: 401 })
-    }
-
-    const body = await request.json()
-    const { member_id, role } = body
-
-    if (!member_id || !role) {
-      return NextResponse.json(
-        { error: "member_id e role são obrigatórios" },
-        { status: 400 }
-      )
-    }
+    const body = await parseAndValidate(request, updateMemberSchema)
 
     const adminClient = createAdminClient()
 
     const { error } = await adminClient
       .from("pipeline_members")
-      .update({ role })
-      .eq("id", member_id)
+      .update({ role: body.role })
+      .eq("id", body.member_id)
 
     if (error) {
-      console.error("Error updating member role:", error)
-      return NextResponse.json(
-        { error: `Erro ao atualizar role: ${error.message}` },
-        { status: 500 }
-      )
+      log.error("Error updating member role", { error: error.message })
+      throw new AppError("Erro ao atualizar role: " + error.message, 500)
     }
 
-    return NextResponse.json({ success: true })
+    return successResponse(request, { success: true })
   } catch (error) {
-    console.error("Pipeline member update error:", error)
-    return NextResponse.json(
-      { error: "Erro interno do servidor" },
-      { status: 500 }
-    )
+    return errorResponse(request, error, "PipelineMembers PATCH")
   }
 }
 
@@ -110,22 +91,11 @@ export async function PATCH(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    await requireAuth(supabase)
 
-    if (!user) {
-      return NextResponse.json({ error: "Não autenticado" }, { status: 401 })
-    }
-
-    const { searchParams } = new URL(request.url)
-    const memberId = searchParams.get("id")
-
+    const memberId = request.nextUrl.searchParams.get("id")
     if (!memberId) {
-      return NextResponse.json(
-        { error: "ID do membro é obrigatório" },
-        { status: 400 }
-      )
+      throw new ValidationError("ID do membro é obrigatório")
     }
 
     const adminClient = createAdminClient()
@@ -136,19 +106,12 @@ export async function DELETE(request: NextRequest) {
       .eq("id", memberId)
 
     if (error) {
-      console.error("Error removing member:", error)
-      return NextResponse.json(
-        { error: `Erro ao remover membro: ${error.message}` },
-        { status: 500 }
-      )
+      log.error("Error removing member", { error: error.message })
+      throw new AppError("Erro ao remover membro: " + error.message, 500)
     }
 
-    return NextResponse.json({ success: true })
+    return successResponse(request, { success: true })
   } catch (error) {
-    console.error("Pipeline member delete error:", error)
-    return NextResponse.json(
-      { error: "Erro interno do servidor" },
-      { status: 500 }
-    )
+    return errorResponse(request, error, "PipelineMembers DELETE")
   }
 }

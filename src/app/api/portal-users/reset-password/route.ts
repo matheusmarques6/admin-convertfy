@@ -1,70 +1,54 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 import { generateTempPassword } from "@/lib/utils/generate-password"
+import {
+  errorResponse,
+  successResponse,
+  requireAuth,
+  requireRole,
+  parseAndValidate,
+  NotFoundError,
+  ValidationError,
+  AppError,
+} from "@/lib/api/errors"
+import { z } from "zod"
+import { logger } from "@/lib/logger"
+import { uuidSchema } from "@/lib/schemas/common"
+
+const log = logger.child("PortalResetPassword")
+
+const resetPasswordSchema = z.object({
+  portal_user_id: uuidSchema,
+  new_password: z.string().min(6).optional(),
+})
 
 // POST - Reset password for a portal user (admin action)
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    await requireRole(supabase, ["admin", "manager", "cs"])
 
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      )
-    }
-
-    // Check if user has permission
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single()
-
-    if (!profile || !["admin", "manager", "cs"].includes(profile.role)) {
-      return NextResponse.json(
-        { error: "Access denied" },
-        { status: 403 }
-      )
-    }
-
-    const body = await request.json()
-    const { portal_user_id, new_password } = body
-
-    if (!portal_user_id) {
-      return NextResponse.json(
-        { error: "portal_user_id is required" },
-        { status: 400 }
-      )
-    }
+    const body = await parseAndValidate(request, resetPasswordSchema)
 
     const adminClient = createAdminClient()
 
     // Get portal user
     const { data: portalUser, error: portalError } = await adminClient
       .from("client_portal_users")
-      .select("*")
-      .eq("id", portal_user_id)
+      .select("id, name, auth_user_id, client_id")
+      .eq("id", body.portal_user_id)
       .single()
 
     if (portalError || !portalUser) {
-      return NextResponse.json(
-        { error: "Portal user not found" },
-        { status: 404 }
-      )
+      throw new NotFoundError("Usuário do portal")
     }
 
     if (!portalUser.auth_user_id) {
-      return NextResponse.json(
-        { error: "Portal user has no auth account" },
-        { status: 400 }
-      )
+      throw new ValidationError("Usuário do portal não possui conta de autenticação")
     }
 
-    // Default password if not provided
-    const passwordToSet = new_password || generateTempPassword()
+    const passwordToSet = body.new_password || generateTempPassword()
 
     // Update the auth user's password
     const { error: updateAuthError } = await adminClient.auth.admin.updateUserById(
@@ -73,29 +57,21 @@ export async function POST(request: NextRequest) {
     )
 
     if (updateAuthError) {
-      console.error("Error updating auth user password:", updateAuthError)
-      return NextResponse.json(
-        { error: "Failed to reset password" },
-        { status: 500 }
-      )
+      log.error("Error resetting password", { error: updateAuthError.message })
+      throw new AppError("Falha ao resetar a senha", 500)
     }
 
     // Set must_change_password back to true
     await adminClient
       .from("client_portal_users")
       .update({ must_change_password: true })
-      .eq("id", portal_user_id)
+      .eq("id", body.portal_user_id)
 
-    return NextResponse.json({
+    return successResponse(request, {
       success: true,
-      message: `Password reset successfully. New password: ${passwordToSet}`,
       new_password: passwordToSet,
-    })
+    }, { message: "Senha resetada com sucesso" })
   } catch (error) {
-    console.error("Error in POST /api/portal-users/reset-password:", error)
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    )
+    return errorResponse(request, error, "PortalResetPassword POST")
   }
 }

@@ -1,50 +1,39 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import {
+  errorResponse,
+  successResponse,
+  requireAuth,
+  parseAndValidate,
+  AppError,
+} from "@/lib/api/errors"
+import { z } from "zod"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("AuthChangePassword")
+
+const changePasswordSchema = z.object({
+  new_password: z.string().min(6, "A senha deve ter pelo menos 6 caracteres"),
+})
 
 // POST - User changes their own password (for first login password change)
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    const user = await requireAuth(supabase)
 
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: "Não autorizado" },
-        { status: 401 }
-      )
-    }
+    const body = await parseAndValidate(request, changePasswordSchema)
 
-    const body = await request.json()
-    const { new_password } = body
-
-    if (!new_password) {
-      return NextResponse.json(
-        { error: "Nova senha é obrigatória" },
-        { status: 400 }
-      )
-    }
-
-    if (new_password.length < 6) {
-      return NextResponse.json(
-        { error: "A senha deve ter pelo menos 6 caracteres" },
-        { status: 400 }
-      )
-    }
-
-    // Use the regular client to update password - this properly updates the session
     const { error: updateError } = await supabase.auth.updateUser({
-      password: new_password,
+      password: body.new_password,
       data: {
         must_change_password: false,
       },
     })
 
     if (updateError) {
-      console.error("Error updating password:", updateError)
-      return NextResponse.json(
-        { error: "Falha ao alterar a senha" },
-        { status: 500 }
-      )
+      log.error("Error updating password", { error: updateError.message })
+      throw new AppError("Falha ao alterar a senha", 500)
     }
 
     // Log the activity
@@ -58,15 +47,8 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    return NextResponse.json({
-      success: true,
-      message: "Senha alterada com sucesso",
-    })
+    return successResponse(request, { success: true }, { message: "Senha alterada com sucesso" })
   } catch (error) {
-    console.error("Error in POST /api/auth/change-password:", error)
-    return NextResponse.json(
-      { error: "Erro interno do servidor" },
-      { status: 500 }
-    )
+    return errorResponse(request, error, "AuthChangePassword POST")
   }
 }
