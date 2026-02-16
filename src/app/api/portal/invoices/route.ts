@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { createAsaasService } from "@/lib/integrations/asaas"
+import { decryptCredentialsJson } from "@/lib/crypto"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
 
@@ -78,7 +79,7 @@ export async function GET(request: NextRequest) {
     let asaas: ReturnType<typeof createAsaasService> | null = null
     if (integration) {
       try {
-        asaas = createAsaasService(integration.credentials)
+        asaas = createAsaasService(decryptCredentialsJson(integration.credentials))
       } catch {
         log.debug("[Portal Invoices] Could not create Asaas service")
       }

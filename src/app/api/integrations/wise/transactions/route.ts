@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { errorResponse, AppError } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { createWiseService } from "@/lib/integrations/wise"
+import { decryptCredentialsJson } from "@/lib/crypto"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("IntegrationsWiseTransactions")
@@ -39,7 +40,7 @@ export async function GET(request: NextRequest) {
       throw new AppError("Wise integration not configured", 400)
     }
 
-    const wise = createWiseService(integration.credentials)
+    const wise = createWiseService(decryptCredentialsJson(integration.credentials))
     const payments = await wise.getReceivedPayments({
       intervalStart: startDate,
       intervalEnd: endDate,

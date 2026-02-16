@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
+import { decryptStoreCredentials } from "@/lib/crypto"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("IntegrationsShopifyReport")
@@ -833,7 +834,8 @@ export async function GET(request: NextRequest) {
       throw new AppError("Loja não encontrada", 404)
     }
 
-    const { shopify_store_domain, shopify_access_token: accessToken } = store
+    const decryptedStore = decryptStoreCredentials(store)
+    const { shopify_store_domain, shopify_access_token: accessToken } = decryptedStore
 
     if (!shopify_store_domain || !accessToken) {
       return NextResponse.json({

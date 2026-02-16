@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAsaasService } from "@/lib/integrations/asaas"
+import { decryptCredentialsJson } from "@/lib/crypto"
 import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 
@@ -34,7 +35,8 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    const asaas = createAsaasService(integration.credentials)
+    const credentials = decryptCredentialsJson(integration.credentials)
+    const asaas = createAsaasService(credentials)
 
     const now = new Date()
     let dateFrom: string
@@ -103,7 +105,7 @@ export async function GET(request: NextRequest) {
       {
         headers: {
           "Content-Type": "application/json",
-          access_token: integration.credentials.api_key,
+          access_token: credentials.api_key as string,
         },
       }
     )

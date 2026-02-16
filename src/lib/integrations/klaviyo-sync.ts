@@ -6,6 +6,7 @@
  */
 
 import { createClient } from "@supabase/supabase-js"
+import { decrypt } from "@/lib/crypto"
 
 const KLAVIYO_API_URL = "https://a.klaviyo.com/api"
 const KLAVIYO_REVISION = "2024-10-15"
@@ -417,7 +418,7 @@ export class KlaviyoSyncService {
         await Promise.all(
           batch.map(async (store) => {
             try {
-              const storeResult = await this.syncStore(store.id, store.klaviyo_private_key!)
+              const storeResult = await this.syncStore(store.id, decrypt(store.klaviyo_private_key!))
               progress.campaignsCreated += storeResult.created
               progress.campaignsUpdated += storeResult.updated
               progress.metricsSynced += storeResult.metricsSynced

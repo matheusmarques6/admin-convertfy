@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { errorResponse, AppError } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { decryptStoreCredentials } from "@/lib/crypto"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("CampaignsSync")
@@ -94,7 +95,8 @@ export async function POST(request: NextRequest) {
       throw new AppError("Loja não encontrada", 404)
     }
 
-    const apiKey = store.klaviyo_private_key || store.klaviyo_api_key
+    const decryptedStore = decryptStoreCredentials(store)
+    const apiKey = decryptedStore.klaviyo_private_key || decryptedStore.klaviyo_api_key
     if (!apiKey) {
       throw new AppError("Klaviyo API Key não configurada para esta loja", 400)
     }

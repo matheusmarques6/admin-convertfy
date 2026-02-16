@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { requireAuth } from "@/lib/api/errors"
+import { decryptStoreCredentials } from "@/lib/crypto"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("IntKlaviyoCampaigns")
@@ -273,7 +274,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Loja não encontrada" }, { status: 404, headers: corsHeaders() })
     }
 
-    const apiKey = store.klaviyo_private_key || store.klaviyo_api_key
+    const decryptedStore = decryptStoreCredentials(store)
+    const apiKey = decryptedStore.klaviyo_private_key || decryptedStore.klaviyo_api_key
     if (!apiKey) {
       return NextResponse.json({
         success: false,

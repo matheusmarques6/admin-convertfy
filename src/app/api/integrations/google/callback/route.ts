@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { encryptCredentialsJson } from "@/lib/crypto"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("GoogleCallback")
@@ -98,6 +99,7 @@ export async function GET(request: NextRequest) {
       expires_in: tokens.expires_in.toString(),
       email: userInfo.email,
     }
+    const encryptedCredentials = encryptCredentialsJson(credentials)
 
     // Check if integration already exists
     const { data: existing } = await supabase
@@ -110,7 +112,7 @@ export async function GET(request: NextRequest) {
       await supabase
         .from("integrations")
         .update({
-          credentials,
+          credentials: encryptedCredentials,
           is_active: true,
           last_sync: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -120,7 +122,7 @@ export async function GET(request: NextRequest) {
       await supabase.from("integrations").insert({
         type: integrationType,
         name: integrationType === "google_calendar" ? "Google Calendar" : "Google Ads",
-        credentials,
+        credentials: encryptedCredentials,
         is_active: true,
         last_sync: new Date().toISOString(),
       })

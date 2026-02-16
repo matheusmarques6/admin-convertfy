@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { createAsaasService } from "@/lib/integrations/asaas"
+import { decryptCredentialsJson } from "@/lib/crypto"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("IntegrationsAsaasCustomers")
@@ -26,7 +27,7 @@ export async function POST(_request: NextRequest) {
       throw new AppError("Integração Asaas não encontrada ou inativa. Configure a integração primeiro.", 400)
     }
 
-    const asaas = createAsaasService(integration.credentials)
+    const asaas = createAsaasService(decryptCredentialsJson(integration.credentials))
 
     // Fetch all customers from Asaas (paginated)
     let offset = 0
@@ -182,7 +183,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get customer count from Asaas
-    const asaas = createAsaasService(integration.credentials)
+    const asaas = createAsaasService(decryptCredentialsJson(integration.credentials))
     const { totalCount: asaasCustomers } = await asaas.listCustomers({ limit: 1 })
 
     // Get local client counts

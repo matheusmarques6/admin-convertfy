@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAsaasService } from "@/lib/integrations/asaas"
+import { decryptCredentialsJson } from "@/lib/crypto"
 import { errorResponse, successResponse, requireAuth, AppError, ValidationError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 
@@ -37,7 +38,7 @@ export async function GET(request: NextRequest) {
 
     const response = await fetch(
       `https://api.asaas.com/v3/subscriptions?customer=${asaasCustomerId}`,
-      { headers: { "Content-Type": "application/json", access_token: integration.credentials.api_key } }
+      { headers: { "Content-Type": "application/json", access_token: decryptCredentialsJson(integration.credentials).api_key as string } }
     )
 
     if (!response.ok) {
@@ -93,7 +94,7 @@ export async function POST(request: NextRequest) {
       throw new AppError("Cliente não possui ID Asaas", 400)
     }
 
-    const asaas = createAsaasService(integration.credentials)
+    const asaas = createAsaasService(decryptCredentialsJson(integration.credentials))
     const subscription = await asaas.createSubscription({
       customer: asaasCustomerId, billingType, value, nextDueDate, cycle, description,
     })
@@ -126,7 +127,7 @@ export async function DELETE(request: NextRequest) {
       throw new AppError("Integração Asaas não ativa", 400)
     }
 
-    const asaas = createAsaasService(integration.credentials)
+    const asaas = createAsaasService(decryptCredentialsJson(integration.credentials))
     const result = await asaas.cancelSubscription(subscriptionId)
 
     return successResponse(request, { deleted: result.deleted })

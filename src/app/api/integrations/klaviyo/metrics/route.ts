@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
+import { decryptStoreCredentials } from "@/lib/crypto"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("KlaviyoMetrics")
@@ -88,7 +89,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Use private_key (new) or api_key (legacy)
-    const apiKey = store.klaviyo_private_key || store.klaviyo_api_key
+    const decryptedStore = decryptStoreCredentials(store)
+    const apiKey = decryptedStore.klaviyo_private_key || decryptedStore.klaviyo_api_key
     if (!apiKey) {
       return NextResponse.json({
         success: false,

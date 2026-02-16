@@ -2,6 +2,7 @@ import { NextRequest } from "next/server"
 import { errorResponse, successResponse, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
+import { encrypt } from "@/lib/crypto"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("PortalStores")
@@ -125,14 +126,14 @@ export async function PUT(request: NextRequest) {
     const updateData: Record<string, unknown> = {}
 
     if (klaviyo_private_key) {
-      updateData.klaviyo_private_key = klaviyo_private_key
-      updateData.klaviyo_api_key = klaviyo_private_key // backward compat
+      updateData.klaviyo_private_key = encrypt(klaviyo_private_key)
+      updateData.klaviyo_api_key = encrypt(klaviyo_private_key) // backward compat
     }
     if (shopify_store_domain) {
       updateData.shopify_store_domain = shopify_store_domain
     }
     if (shopify_access_token) {
-      updateData.shopify_access_token = shopify_access_token
+      updateData.shopify_access_token = encrypt(shopify_access_token)
     }
 
     if (Object.keys(updateData).length === 0) {

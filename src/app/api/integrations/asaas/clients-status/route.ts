@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAsaasService } from "@/lib/integrations/asaas"
+import { decryptCredentialsJson } from "@/lib/crypto"
 import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 
@@ -35,8 +36,9 @@ export async function GET(request: NextRequest) {
       return successResponse(request, { connected: false, clientsStatus: {} })
     }
 
-    const asaas = createAsaasService(integration.credentials)
-    const baseUrl = integration.credentials.environment === "production"
+    const credentials = decryptCredentialsJson(integration.credentials)
+    const asaas = createAsaasService(credentials)
+    const baseUrl = (credentials.environment as string) === "production"
       ? "https://api.asaas.com/v3"
       : "https://sandbox.asaas.com/api/v3"
 
@@ -93,7 +95,7 @@ export async function GET(request: NextRequest) {
 
     try {
       const subsResponse = await fetch(`${baseUrl}/subscriptions?status=ACTIVE&limit=100`, {
-        headers: { "Content-Type": "application/json", access_token: integration.credentials.api_key },
+        headers: { "Content-Type": "application/json", access_token: credentials.api_key as string },
       })
       const subsData = await subsResponse.json()
       for (const sub of subsData.data || []) {

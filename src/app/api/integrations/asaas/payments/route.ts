@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAsaasService, mapAsaasStatusToInternal } from "@/lib/integrations/asaas"
+import { decryptCredentialsJson } from "@/lib/crypto"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 
@@ -27,7 +28,7 @@ export async function GET(request: NextRequest) {
       throw new AppError("Integração Asaas não ativa", 400)
     }
 
-    const asaas = createAsaasService(integration.credentials)
+    const asaas = createAsaasService(decryptCredentialsJson(integration.credentials))
     let asaasCustomerId: string | undefined
 
     if (clientId) {
@@ -96,7 +97,7 @@ export async function POST(request: NextRequest) {
       throw new AppError("Integração Asaas não ativa", 400)
     }
 
-    const asaas = createAsaasService(integration.credentials)
+    const asaas = createAsaasService(decryptCredentialsJson(integration.credentials))
 
     const { data: clients } = await supabase.from("clients").select("id, custom_fields")
     const clientMap = new Map<string, string>()

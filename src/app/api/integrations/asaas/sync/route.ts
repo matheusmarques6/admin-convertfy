@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { createAsaasService, mapAsaasStatusToInternal } from "@/lib/integrations/asaas"
+import { decryptCredentialsJson } from "@/lib/crypto"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("IntegrationsAsaasSync")
@@ -25,7 +26,8 @@ export async function POST(_request: NextRequest) {
       throw new AppError("Integração Asaas não encontrada ou inativa", 400)
     }
 
-    const asaas = createAsaasService(integration.credentials)
+    const credentials = decryptCredentialsJson(integration.credentials)
+    const asaas = createAsaasService(credentials)
 
     // Fetch payments from Asaas
     const { data: payments, totalCount } = await asaas.listPayments({ limit: 100 })

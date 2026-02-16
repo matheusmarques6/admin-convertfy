@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAsaasService } from "@/lib/integrations/asaas"
+import { decryptCredentialsJson } from "@/lib/crypto"
 import { errorResponse, successResponse, requireAuth, AppError, ValidationError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 
@@ -41,7 +42,7 @@ export async function POST(request: NextRequest) {
       throw new AppError("Cliente não possui ID Asaas. Importe o cliente primeiro.", 400)
     }
 
-    const asaas = createAsaasService(integration.credentials)
+    const asaas = createAsaasService(decryptCredentialsJson(integration.credentials))
 
     const paymentData: {
       customer: string; billingType: "BOLETO" | "CREDIT_CARD" | "PIX" | "UNDEFINED";
@@ -127,7 +128,7 @@ export async function DELETE(request: NextRequest) {
       throw new AppError("Integração Asaas não ativa", 400)
     }
 
-    const asaas = createAsaasService(integration.credentials)
+    const asaas = createAsaasService(decryptCredentialsJson(integration.credentials))
     await asaas.cancelPayment(paymentId)
 
     await supabase.from("invoices").update({ status: "cancelled" }).eq("asaas_id", paymentId)
