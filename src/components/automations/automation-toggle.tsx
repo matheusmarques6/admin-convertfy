@@ -2,7 +2,6 @@
 
 import { useState } from "react"
 import { Switch } from "@/components/ui/switch"
-import { createClient } from "@/lib/supabase/client"
 import { toast } from "@/lib/hooks/use-toast"
 
 interface AutomationToggleProps {
@@ -20,13 +19,15 @@ export function AutomationToggle({ automationId, isActive }: AutomationTogglePro
     setChecked(newValue) // Optimistic update
 
     try {
-      const supabase = createClient()
-      const { error } = await supabase
-        .from("automations")
-        .update({ is_active: newValue })
-        .eq("id", automationId)
-
-      if (error) throw error
+      const res = await fetch("/api/automations/manage", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: automationId, is_active: newValue }),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || "Erro ao atualizar automação")
+      }
 
       toast({
         title: newValue ? "Automação ativada" : "Automação pausada",

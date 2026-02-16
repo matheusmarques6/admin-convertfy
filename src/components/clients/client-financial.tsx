@@ -321,17 +321,20 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
         }
       } else {
         // Create local charge (PIX Direto, Wise, etc.)
-        const supabase = createClient()
-        const { error } = await supabase.from("client_charges").insert({
-          client_id: clientId,
-          description: chargeForm.description || `Cobrança - ${clientName}`,
-          value: parseFloat(chargeForm.value),
-          due_date: chargeForm.dueDate,
-          status: "pending",
-          payment_method: chargeForm.paymentMethod,
+        const res = await fetch("/api/client-charges", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            client_id: clientId,
+            description: chargeForm.description || `Cobrança - ${clientName}`,
+            value: parseFloat(chargeForm.value),
+            due_date: chargeForm.dueDate,
+            status: "pending",
+            payment_method: chargeForm.paymentMethod,
+          }),
         })
-
-        if (error) throw error
+        const resData = await res.json()
+        if (!res.ok) throw new Error(resData.error || "Erro ao criar cobrança")
 
         toast({
           title: "Cobrança criada!",
@@ -401,20 +404,23 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
         }
       } else {
         // Create local subscription (PIX Direto, Wise, etc.)
-        const supabase = createClient()
-        const { error } = await supabase.from("client_subscriptions").insert({
-          client_id: clientId,
-          name: subscriptionForm.name,
-          value: parseFloat(subscriptionForm.value),
-          cycle: subscriptionForm.cycle,
-          payment_method: subscriptionForm.paymentMethod,
-          status: "active",
-          start_date: subscriptionForm.startDate,
-          next_due_date: subscriptionForm.startDate,
-          notes: subscriptionForm.notes || null,
+        const res = await fetch("/api/client-subscriptions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            client_id: clientId,
+            name: subscriptionForm.name,
+            value: parseFloat(subscriptionForm.value),
+            cycle: subscriptionForm.cycle,
+            payment_method: subscriptionForm.paymentMethod,
+            status: "active",
+            start_date: subscriptionForm.startDate,
+            next_due_date: subscriptionForm.startDate,
+            notes: subscriptionForm.notes || null,
+          }),
         })
-
-        if (error) throw error
+        const resData = await res.json()
+        if (!res.ok) throw new Error(resData.error || "Erro ao criar assinatura")
 
         toast({
           title: "Assinatura criada!",
@@ -441,13 +447,9 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
     if (!confirm("Tem certeza que deseja excluir esta cobrança?")) return
 
     try {
-      const supabase = createClient()
-      const { error } = await supabase
-        .from("client_charges")
-        .delete()
-        .eq("id", charge.id)
-
-      if (error) throw error
+      const res = await fetch(`/api/client-charges?id=${charge.id}`, { method: "DELETE" })
+      const resData = await res.json()
+      if (!res.ok) throw new Error(resData.error || "Erro ao excluir cobrança")
 
       toast({
         title: "Cobrança excluída!",
@@ -469,13 +471,13 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
     if (!confirm("Tem certeza que deseja cancelar esta cobrança?")) return
 
     try {
-      const supabase = createClient()
-      const { error } = await supabase
-        .from("client_charges")
-        .update({ status: "cancelled" })
-        .eq("id", charge.id)
-
-      if (error) throw error
+      const res = await fetch("/api/client-charges", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: charge.id }),
+      })
+      const resData = await res.json()
+      if (!res.ok) throw new Error(resData.error || "Erro ao cancelar cobrança")
 
       toast({
         title: "Cobrança cancelada!",
@@ -497,13 +499,9 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
     if (!confirm("Tem certeza que deseja excluir esta assinatura?")) return
 
     try {
-      const supabase = createClient()
-      const { error } = await supabase
-        .from("client_subscriptions")
-        .delete()
-        .eq("id", sub.id)
-
-      if (error) throw error
+      const res = await fetch(`/api/client-subscriptions?id=${sub.id}`, { method: "DELETE" })
+      const result = await res.json()
+      if (!res.ok) throw new Error(result.error || "Erro ao excluir assinatura")
 
       toast({
         title: "Assinatura excluída!",
@@ -525,13 +523,13 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
     if (!confirm("Tem certeza que deseja cancelar esta assinatura?")) return
 
     try {
-      const supabase = createClient()
-      const { error } = await supabase
-        .from("client_subscriptions")
-        .update({ status: "cancelled" })
-        .eq("id", sub.id)
-
-      if (error) throw error
+      const res = await fetch("/api/client-subscriptions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: sub.id }),
+      })
+      const result = await res.json()
+      if (!res.ok) throw new Error(result.error || "Erro ao cancelar assinatura")
 
       toast({
         title: "Assinatura cancelada!",
@@ -621,18 +619,19 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
     setIsCreating(true)
 
     try {
-      const supabase = createClient()
-      const { error } = await supabase
-        .from("client_charges")
-        .update({
+      const res = await fetch("/api/client-charges", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          charge_id: selectedCharge.id,
           status: statusForm.status,
           actual_payment_method: statusForm.actualPaymentMethod || null,
           payment_date: statusForm.status === "paid" ? statusForm.paymentDate : null,
           notes: statusForm.notes || selectedCharge.notes,
-        })
-        .eq("id", selectedCharge.id)
-
-      if (error) throw error
+        }),
+      })
+      const result = await res.json()
+      if (!res.ok) throw new Error(result.error || "Erro ao atualizar status")
 
       toast({
         title: "Status atualizado!",

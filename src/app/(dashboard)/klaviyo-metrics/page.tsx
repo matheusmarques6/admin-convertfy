@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { useToast } from "@/lib/hooks/use-toast"
 import {
   Search,
   RefreshCw,
@@ -211,6 +212,7 @@ function getSeverityColor(severity: string) {
 }
 
 export default function KlaviyoMetricsPage() {
+  const { toast } = useToast()
   const [activeTab, setActiveTab] = useState("campaigns")
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
@@ -342,18 +344,18 @@ export default function KlaviyoMetricsPage() {
 
       if (response.ok) {
         const data = await response.json()
-        alert(`Sincronização concluída!\n${data.result?.campaignsCreated || 0} campanhas criadas\n${data.result?.campaignsUpdated || 0} campanhas atualizadas`)
+        toast({ title: "Sincronização concluída!", description: `${data.result?.campaignsCreated || 0} campanhas criadas, ${data.result?.campaignsUpdated || 0} atualizadas` })
         fetchCampaigns()
         fetchStores()
         fetchRankings()
         fetchAlerts()
       } else {
         const error = await response.json()
-        alert(`Erro: ${error.error}`)
+        toast({ variant: "destructive", title: "Erro", description: error.error || "Erro ao sincronizar" })
       }
     } catch (error) {
       console.error("Error syncing:", error)
-      alert("Erro ao sincronizar")
+      toast({ variant: "destructive", title: "Erro", description: "Erro ao sincronizar" })
     } finally {
       setSyncing(false)
     }
@@ -371,16 +373,16 @@ export default function KlaviyoMetricsPage() {
 
       if (response.ok) {
         const data = await response.json()
-        alert(`Sincronização concluída!\n${data.result?.created || 0} campanhas criadas\n${data.result?.updated || 0} campanhas atualizadas`)
+        toast({ title: "Sincronização concluída!", description: `${data.result?.created || 0} campanhas criadas, ${data.result?.updated || 0} atualizadas` })
         fetchCampaigns()
         fetchStores()
       } else {
         const error = await response.json()
-        alert(`Erro: ${error.error}`)
+        toast({ variant: "destructive", title: "Erro", description: error.error || "Erro ao sincronizar" })
       }
     } catch (error) {
       console.error("Error syncing store:", error)
-      alert("Erro ao sincronizar loja")
+      toast({ variant: "destructive", title: "Erro", description: "Erro ao sincronizar loja" })
     } finally {
       setSyncing(false)
     }

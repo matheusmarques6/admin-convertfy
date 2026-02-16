@@ -39,7 +39,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { createClient } from "@/lib/supabase/client"
 import { toast } from "@/lib/hooks/use-toast"
 import type { Pipeline, PipelineStage } from "@/types"
 
@@ -156,79 +155,21 @@ export function PipelineSettingsDialog({
 
     setIsLoading(true)
     try {
-      const supabase = createClient()
-
-      // Atualizar pipeline
-      if (isDefault && !pipeline.is_default) {
-        await supabase
-          .from("pipelines")
-          .update({ is_default: false })
-          .eq("is_default", true)
-      }
-
-      const { error: pipelineError } = await supabase
-        .from("pipelines")
-        .update({
+      const res = await fetch("/api/pipeline/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pipeline_id: pipeline.id,
           name,
           description: description || null,
           is_default: isDefault,
-        })
-        .eq("id", pipeline.id)
-
-      if (pipelineError) throw pipelineError
-
-      // Gerenciar stages
-      const existingIds = stages.filter((s) => s.id).map((s) => s.id!)
-      const originalIds = initialStages.map((s) => s.id)
-      const removedIds = originalIds.filter((id) => !existingIds.includes(id))
-
-      // Deletar stages removidas
-      if (removedIds.length > 0) {
-        // Mover deals das stages removidas para a primeira stage restante
-        const firstStage = stages[0]
-        if (firstStage?.id) {
-          for (const removedId of removedIds) {
-            await supabase
-              .from("deals")
-              .update({ stage_id: firstStage.id })
-              .eq("stage_id", removedId)
-          }
-        }
-
-        const { error } = await supabase
-          .from("pipeline_stages")
-          .delete()
-          .in("id", removedIds)
-
-        if (error) throw error
-      }
-
-      // Atualizar stages existentes
-      for (const stage of stages.filter((s) => s.id && !s.isNew)) {
-        const { error } = await supabase
-          .from("pipeline_stages")
-          .update({
-            name: stage.name,
-            color: stage.color,
-            order: stage.order,
-          })
-          .eq("id", stage.id!)
-
-        if (error) throw error
-      }
-
-      // Criar novas stages
-      const newStages = stages.filter((s) => s.isNew || !s.id)
-      if (newStages.length > 0) {
-        const { error } = await supabase.from("pipeline_stages").insert(
-          newStages.map((s) => ({
-            pipeline_id: pipeline.id,
-            name: s.name,
-            color: s.color,
-            order: s.order,
-          }))
-        )
-        if (error) throw error
+          stages,
+          initial_stage_ids: initialStages.map((s) => s.id),
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || "Erro ao atualizar pipeline")
       }
 
       toast({
@@ -254,35 +195,14 @@ export function PipelineSettingsDialog({
   async function handleDelete() {
     setIsLoading(true)
     try {
-      const supabase = createClient()
+      const params = new URLSearchParams({ pipeline_id: pipeline.id })
+      if (migrateToPipelineId) params.set("migrate_to", migrateToPipelineId)
 
-      // Se tem deals e selecionou para onde migrar
-      if (migrateToPipelineId) {
-        // Buscar primeira stage da pipeline destino
-        const { data: targetStages } = await supabase
-          .from("pipeline_stages")
-          .select("id")
-          .eq("pipeline_id", migrateToPipelineId)
-          .order("order", { ascending: true })
-          .limit(1)
-
-        if (targetStages && targetStages.length > 0) {
-          await supabase
-            .from("deals")
-            .update({
-              pipeline_id: migrateToPipelineId,
-              stage_id: targetStages[0].id,
-            })
-            .eq("pipeline_id", pipeline.id)
-        }
+      const res = await fetch(`/api/pipeline/settings?${params}`, { method: "DELETE" })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || "Erro ao excluir pipeline")
       }
-
-      const { error } = await supabase
-        .from("pipelines")
-        .delete()
-        .eq("id", pipeline.id)
-
-      if (error) throw error
 
       toast({
         title: "Pipeline excluida!",

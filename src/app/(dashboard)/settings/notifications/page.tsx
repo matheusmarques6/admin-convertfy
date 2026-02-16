@@ -1,16 +1,96 @@
+"use client"
+
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { ArrowLeft, Bell, Construction } from "lucide-react"
+import { Switch } from "@/components/ui/switch"
+import { Label } from "@/components/ui/label"
+import { ArrowLeft, Bell, Mail, Smartphone, Loader2 } from "lucide-react"
 import Link from "next/link"
+import { createClient } from "@/lib/supabase/client"
+import { useToast } from "@/lib/hooks/use-toast"
+
+interface Preferences {
+  email_new_deal: boolean
+  email_deal_update: boolean
+  email_client_update: boolean
+  email_system_alerts: boolean
+  push_new_deal: boolean
+  push_deal_update: boolean
+  push_client_update: boolean
+  push_system_alerts: boolean
+}
+
+const defaultPrefs: Preferences = {
+  email_new_deal: true, email_deal_update: true, email_client_update: false, email_system_alerts: true,
+  push_new_deal: true, push_deal_update: false, push_client_update: false, push_system_alerts: true,
+}
+
+const prefLabels: Record<string, string> = {
+  new_deal: "Novo deal criado",
+  deal_update: "Atualização de deal",
+  client_update: "Atualização de cliente",
+  system_alerts: "Alertas do sistema",
+}
 
 export default function NotificationsPage() {
+  const { toast } = useToast()
+  const [prefs, setPrefs] = useState<Preferences>(defaultPrefs)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return
+        const { data } = await supabase.from("notification_preferences").select("*").eq("user_id", user.id)
+        if (data && data.length > 0) {
+          const loaded = { ...defaultPrefs }
+          for (const row of data) {
+            if (row.preference_key in loaded) {
+              (loaded as Record<string, boolean>)[row.preference_key] = row.enabled
+            }
+          }
+          setPrefs(loaded)
+        }
+      } catch {
+        // table may not exist
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
+  }, [])
+
+  async function togglePref(key: keyof Preferences) {
+    const newValue = !prefs[key]
+    setPrefs((prev) => ({ ...prev, [key]: newValue }))
+    try {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      await supabase.from("notification_preferences").upsert(
+        { user_id: user.id, preference_key: key, enabled: newValue },
+        { onConflict: "user_id,preference_key" }
+      )
+    } catch {
+      setPrefs((prev) => ({ ...prev, [key]: !newValue }))
+      toast({ variant: "destructive", title: "Erro", description: "Erro ao salvar preferência." })
+    }
+  }
+
+  if (loading) {
+    return <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
+  }
+
+  const categories = Object.keys(prefLabels)
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" asChild>
-          <Link href="/settings">
-            <ArrowLeft className="h-5 w-5" />
-          </Link>
+          <Link href="/settings"><ArrowLeft className="h-5 w-5" /></Link>
         </Button>
         <div>
           <h1 className="text-2xl font-bold">Notificações</h1>
@@ -20,20 +100,37 @@ export default function NotificationsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Bell className="h-5 w-5" />
-            Preferências de Notificação
-          </CardTitle>
-          <CardDescription>Escolha como e quando receber notificações</CardDescription>
+          <CardTitle className="flex items-center gap-2"><Mail className="h-5 w-5" /> Notificações por Email</CardTitle>
+          <CardDescription>Escolha quais eventos geram notificação por email</CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <Construction className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium">Em desenvolvimento</h3>
-            <p className="text-muted-foreground max-w-md mt-2">
-              Esta funcionalidade está sendo desenvolvida e estará disponível em breve.
-            </p>
-          </div>
+        <CardContent className="space-y-4">
+          {categories.map((cat) => {
+            const key = `email_${cat}` as keyof Preferences
+            return (
+              <div key={key} className="flex items-center justify-between">
+                <Label>{prefLabels[cat]}</Label>
+                <Switch checked={prefs[key]} onCheckedChange={() => togglePref(key)} />
+              </div>
+            )
+          })}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Smartphone className="h-5 w-5" /> Notificações Push</CardTitle>
+          <CardDescription>Escolha quais eventos geram notificação push</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {categories.map((cat) => {
+            const key = `push_${cat}` as keyof Preferences
+            return (
+              <div key={key} className="flex items-center justify-between">
+                <Label>{prefLabels[cat]}</Label>
+                <Switch checked={prefs[key]} onCheckedChange={() => togglePref(key)} />
+              </div>
+            )
+          })}
         </CardContent>
       </Card>
     </div>

@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
   const verifyToken = process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN
 
   if (mode === "subscribe" && token === verifyToken) {
-    console.log("WhatsApp webhook verified")
+    log.debug("WhatsApp webhook verified")
     return new NextResponse(challenge, { status: 200 })
   }
 
@@ -69,7 +69,7 @@ async function handleIncomingMessage(message: {
   type: string
   text?: string
 }) {
-  console.log("Incoming WhatsApp message:", message)
+  log.debug("Incoming WhatsApp message:", message)
 
   const supabase = getSupabaseAdmin()
 
@@ -104,9 +104,9 @@ async function handleIncomingMessage(message: {
       },
     })
 
-    console.log(`Message logged for client: ${client.name}`)
+    log.debug(`Message logged for client: ${client.name}`)
   } else {
-    console.log(`No client found for phone: ${message.from}`)
+    log.debug(`No client found for phone: ${message.from}`)
   }
 }
 
@@ -116,7 +116,7 @@ async function handleStatusUpdate(status: {
   status: "sent" | "delivered" | "read"
   timestamp: string
 }) {
-  console.log("WhatsApp status update:", status)
+  log.debug("WhatsApp status update:", status)
 
   const supabase = getSupabaseAdmin()
 

@@ -32,7 +32,6 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { DealDialog } from "./deal-dialog"
 import { formatCurrency, getInitials } from "@/lib/utils"
-import { createClient } from "@/lib/supabase/client"
 import { toast } from "@/lib/hooks/use-toast"
 import type { PipelineStage, DealWithRelations, PipelineMemberRole } from "@/types"
 
@@ -74,13 +73,15 @@ export function PipelineBoard({
 
     // Update in database
     try {
-      const supabase = createClient()
-      const { error } = await supabase
-        .from("deals")
-        .update({ stage_id: newStageId })
-        .eq("id", draggableId)
-
-      if (error) throw error
+      const res = await fetch("/api/pipeline/deals", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deal_id: draggableId, stage_id: newStageId }),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || "Erro ao mover deal")
+      }
 
       toast({
         title: "Deal movido",
@@ -102,13 +103,11 @@ export function PipelineBoard({
     setIsDeleting(true)
 
     try {
-      const supabase = createClient()
-      const { error } = await supabase
-        .from("deals")
-        .delete()
-        .eq("id", deletingDeal.id)
-
-      if (error) throw error
+      const res = await fetch(`/api/pipeline/deals?id=${deletingDeal.id}`, { method: "DELETE" })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || "Erro ao excluir deal")
+      }
 
       setDeals((prev) => prev.filter((d) => d.id !== deletingDeal.id))
       setDeletingDeal(null)

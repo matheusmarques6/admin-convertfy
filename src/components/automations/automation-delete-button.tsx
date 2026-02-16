@@ -14,7 +14,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { createClient } from "@/lib/supabase/client"
 import { toast } from "@/lib/hooks/use-toast"
 
 interface AutomationDeleteButtonProps {
@@ -31,13 +30,11 @@ export function AutomationDeleteButton({ automationId, automationName }: Automat
     setIsDeleting(true)
 
     try {
-      const supabase = createClient()
-      const { error } = await supabase
-        .from("automations")
-        .delete()
-        .eq("id", automationId)
-
-      if (error) throw error
+      const res = await fetch(`/api/automations/manage?id=${automationId}`, { method: "DELETE" })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || "Erro ao excluir automação")
+      }
 
       toast({
         title: "Automação excluída",

@@ -52,7 +52,6 @@ import {
 } from "@/components/ui/alert-dialog"
 import { formatCurrency } from "@/lib/utils"
 import { toast } from "@/lib/hooks/use-toast"
-import { createClient } from "@/lib/supabase/client"
 import type { Report, ReportData, ReportStatus } from "@/types"
 
 interface ReportWithRelations extends Report {
@@ -262,13 +261,11 @@ export function ReportsList({
 
     setIsDeleting(true)
     try {
-      const supabase = createClient()
-      const { error } = await supabase
-        .from("client_reports")
-        .delete()
-        .eq("id", reportToDelete.id)
-
-      if (error) throw error
+      const res = await fetch(`/api/client-reports?id=${reportToDelete.id}`, { method: "DELETE" })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || "Erro ao excluir relatório")
+      }
 
       setReports(prev => prev.filter(r => r.id !== reportToDelete.id))
       toast({
@@ -292,13 +289,15 @@ export function ReportsList({
   // Update status
   async function updateStatus(report: ReportWithRelations, newStatus: ReportStatus) {
     try {
-      const supabase = createClient()
-      const { error } = await supabase
-        .from("client_reports")
-        .update({ status: newStatus, updated_at: new Date().toISOString() })
-        .eq("id", report.id)
-
-      if (error) throw error
+      const res = await fetch("/api/client-reports", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ report_id: report.id, status: newStatus }),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || "Erro ao atualizar status")
+      }
 
       setReports(prev => prev.map(r =>
         r.id === report.id ? { ...r, status: newStatus } : r

@@ -28,7 +28,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { createClient } from "@/lib/supabase/client"
 import { toast } from "@/lib/hooks/use-toast"
 
 interface ClientActionsProps {
@@ -45,13 +44,11 @@ export function ClientActions({ clientId, clientName }: ClientActionsProps) {
     setIsDeleting(true)
 
     try {
-      const supabase = createClient()
-      const { error } = await supabase
-        .from("clients")
-        .delete()
-        .eq("id", clientId)
-
-      if (error) throw error
+      const res = await fetch(`/api/clients/manage?id=${clientId}`, { method: "DELETE" })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || "Erro ao excluir cliente")
+      }
 
       toast({
         title: "Cliente excluído",

@@ -241,11 +241,11 @@ export function ClientReports({ clientId }: ClientReportsProps) {
         }
       }
 
-      // Save to database
-      const supabase = createClient()
-      const { data: newReport, error } = await supabase
-        .from("client_reports")
-        .insert({
+      // Save to database via API
+      const saveRes = await fetch("/api/client-reports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           client_id: clientId,
           store_id: selectedStore,
           store_name: store?.store_name || "Loja",
@@ -256,11 +256,11 @@ export function ClientReports({ clientId }: ClientReportsProps) {
             end: endDate.toISOString(),
           },
           report_data: reportData,
-        })
-        .select()
-        .single()
-
-      if (error) throw error
+        }),
+      })
+      const result = await saveRes.json()
+      if (!saveRes.ok) throw new Error(result.error || "Erro ao salvar relatório")
+      const newReport = result.data.report
 
       toast({
         title: "Relatório criado!",
@@ -291,13 +291,11 @@ export function ClientReports({ clientId }: ClientReportsProps) {
 
   async function deleteReport(reportId: string) {
     try {
-      const supabase = createClient()
-      const { error } = await supabase
-        .from("client_reports")
-        .delete()
-        .eq("id", reportId)
-
-      if (error) throw error
+      const res = await fetch(`/api/client-reports?id=${reportId}`, { method: "DELETE" })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || "Erro ao excluir relatório")
+      }
 
       setSavedReports(savedReports.filter(r => r.id !== reportId))
       toast({

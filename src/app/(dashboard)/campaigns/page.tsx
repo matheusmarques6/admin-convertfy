@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { useToast } from "@/lib/hooks/use-toast"
 import {
   ChevronLeft,
   ChevronRight,
@@ -49,6 +50,7 @@ interface StoreWithClient extends ClientStore {
 }
 
 export default function CampaignsCalendarPage() {
+  const { toast } = useToast()
   const [currentDate, setCurrentDate] = useState(new Date())
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [stores, setStores] = useState<StoreWithClient[]>([])
@@ -126,15 +128,15 @@ export default function CampaignsCalendarPage() {
 
       if (response.ok) {
         const data = await response.json()
-        alert(`Sincronizado ${data.synced} campanhas com sucesso!`)
+        toast({ title: "Sincronizado!", description: `${data.synced} campanhas sincronizadas com sucesso.` })
         fetchCampaigns()
       } else {
         const error = await response.json()
-        alert(`Erro: ${error.error}`)
+        toast({ variant: "destructive", title: "Erro", description: error.error || "Erro ao sincronizar" })
       }
     } catch (error) {
       console.error("Error syncing campaigns:", error)
-      alert("Erro ao sincronizar campanhas")
+      toast({ variant: "destructive", title: "Erro", description: "Erro ao sincronizar campanhas" })
     } finally {
       setSyncing(false)
     }
