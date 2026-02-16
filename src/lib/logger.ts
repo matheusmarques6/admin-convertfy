@@ -49,19 +49,10 @@ function normalizeData(data: unknown): Record<string, unknown> | undefined {
   return { value: data }
 }
 
-function log(level: LogLevel, message: string, data?: Record<string, unknown> | unknown) {
-  if (!shouldLog(level)) return
-
-  const entry: LogEntry = {
-    level,
-    message,
-    timestamp: new Date().toISOString(),
-    data: normalizeData(data),
-  }
-
+function emit(entry: LogEntry) {
   const formatted = formatEntry(entry)
 
-  switch (level) {
+  switch (entry.level) {
     case "error":
       console.error(formatted)
       break
@@ -73,6 +64,29 @@ function log(level: LogLevel, message: string, data?: Record<string, unknown> | 
   }
 }
 
+function log(level: LogLevel, message: string, data?: Record<string, unknown> | unknown) {
+  if (!shouldLog(level)) return
+
+  emit({
+    level,
+    message,
+    timestamp: new Date().toISOString(),
+    data: normalizeData(data),
+  })
+}
+
+function logWithContext(level: LogLevel, message: string, context: string, data?: Record<string, unknown> | unknown) {
+  if (!shouldLog(level)) return
+
+  emit({
+    level,
+    message,
+    timestamp: new Date().toISOString(),
+    context,
+    data: normalizeData(data),
+  })
+}
+
 export const logger = {
   debug: (message: string, data?: Record<string, unknown> | unknown) => log("debug", message, data),
   info: (message: string, data?: Record<string, unknown> | unknown) => log("info", message, data),
@@ -82,12 +96,12 @@ export const logger = {
   /** Create a child logger with fixed context */
   child: (context: string) => ({
     debug: (message: string, data?: Record<string, unknown> | unknown) =>
-      log("debug", message, { ...normalizeData(data), context }),
+      logWithContext("debug", message, context, data),
     info: (message: string, data?: Record<string, unknown> | unknown) =>
-      log("info", message, { ...normalizeData(data), context }),
+      logWithContext("info", message, context, data),
     warn: (message: string, data?: Record<string, unknown> | unknown) =>
-      log("warn", message, { ...normalizeData(data), context }),
+      logWithContext("warn", message, context, data),
     error: (message: string, data?: Record<string, unknown> | unknown) =>
-      log("error", message, { ...normalizeData(data), context }),
+      logWithContext("error", message, context, data),
   }),
 }

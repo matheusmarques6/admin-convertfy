@@ -13,12 +13,33 @@ export interface RetryOptions {
   retryOn?: (response: Response) => boolean
   /** Optional callback on each retry */
   onRetry?: (attempt: number, delay: number) => void
+  /** AbortSignal to cancel retries */
+  signal?: AbortSignal
 }
 
 const DEFAULTS = {
   maxRetries: 3,
   baseDelay: 1500,
   maxDelay: 16000,
+}
+
+/** Add ±25% jitter to avoid thundering herd */
+function jitter(delay: number): number {
+  return delay * (0.75 + Math.random() * 0.5)
+}
+
+/** Parse Retry-After header: seconds (integer) or HTTP-date */
+function parseRetryAfter(value: string): number | null {
+  const seconds = Number(value)
+  if (!Number.isNaN(seconds) && seconds >= 0) return seconds * 1000
+
+  const date = Date.parse(value)
+  if (!Number.isNaN(date)) {
+    const ms = date - Date.now()
+    return ms > 0 ? ms : 0
+  }
+
+  return null
 }
 
 /**
@@ -37,6 +58,7 @@ export async function fetchWithRetry(
   const maxRetries = options?.maxRetries ?? DEFAULTS.maxRetries
   const baseDelay = options?.baseDelay ?? DEFAULTS.baseDelay
   const maxDelay = options?.maxDelay ?? DEFAULTS.maxDelay
+  const signal = options?.signal
 
   const shouldRetry =
     options?.retryOn ??
@@ -46,8 +68,10 @@ export async function fetchWithRetry(
   let lastError: Error | undefined
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    signal?.throwIfAborted()
+
     try {
-      const response = await fetch(url, init)
+      const response = await fetch(url, { ...init, signal })
 
       if (!shouldRetry(response) || attempt === maxRetries) {
         return response
@@ -59,15 +83,19 @@ export async function fetchWithRetry(
       let delay: number
       if (response.status === 429) {
         const retryAfter = response.headers.get("retry-after")
-        delay = retryAfter ? parseInt(retryAfter, 10) * 1000 : baseDelay
+        delay = retryAfter ? (parseRetryAfter(retryAfter) ?? baseDelay) : baseDelay
       } else {
         delay = Math.min(baseDelay * Math.pow(2, attempt), maxDelay)
       }
 
-      log.warn(`Retry ${attempt + 1}/${maxRetries} for ${init?.method ?? "GET"} ${url} (${response.status}) — waiting ${delay}ms`)
+      delay = jitter(delay)
+
+      log.warn(`Retry ${attempt + 1}/${maxRetries} for ${init?.method ?? "GET"} ${url} (${response.status}) — waiting ${Math.round(delay)}ms`)
       options?.onRetry?.(attempt + 1, delay)
       await new Promise(resolve => setTimeout(resolve, delay))
     } catch (error) {
+      if (signal?.aborted) throw signal.reason ?? new Error("Aborted")
+
       lastError = error instanceof Error ? error : new Error(String(error))
 
       if (attempt === maxRetries) {
@@ -75,8 +103,8 @@ export async function fetchWithRetry(
         throw lastError
       }
 
-      const delay = Math.min(baseDelay * Math.pow(2, attempt), maxDelay)
-      log.warn(`Retry ${attempt + 1}/${maxRetries} for ${url} (network error) — waiting ${delay}ms`)
+      const delay = jitter(Math.min(baseDelay * Math.pow(2, attempt), maxDelay))
+      log.warn(`Retry ${attempt + 1}/${maxRetries} for ${url} (network error) — waiting ${Math.round(delay)}ms`)
       options?.onRetry?.(attempt + 1, delay)
       await new Promise(resolve => setTimeout(resolve, delay))
     }
@@ -92,18 +120,23 @@ export async function fetchWithRetry(
  */
 export async function withRetry<T>(
   fn: () => Promise<T>,
-  options?: Pick<RetryOptions, "maxRetries" | "baseDelay" | "maxDelay" | "onRetry">
+  options?: Pick<RetryOptions, "maxRetries" | "baseDelay" | "maxDelay" | "onRetry" | "signal">
 ): Promise<T> {
   const maxRetries = options?.maxRetries ?? DEFAULTS.maxRetries
   const baseDelay = options?.baseDelay ?? DEFAULTS.baseDelay
   const maxDelay = options?.maxDelay ?? DEFAULTS.maxDelay
+  const signal = options?.signal
 
   let lastError: Error | undefined
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    signal?.throwIfAborted()
+
     try {
       return await fn()
     } catch (error) {
+      if (signal?.aborted) throw signal.reason ?? new Error("Aborted")
+
       lastError = error instanceof Error ? error : new Error(String(error))
 
       if (attempt === maxRetries) {
@@ -111,8 +144,8 @@ export async function withRetry<T>(
         throw lastError
       }
 
-      const delay = Math.min(baseDelay * Math.pow(2, attempt), maxDelay)
-      log.warn(`Retry ${attempt + 1}/${maxRetries} — waiting ${delay}ms`, { error: lastError.message })
+      const delay = jitter(Math.min(baseDelay * Math.pow(2, attempt), maxDelay))
+      log.warn(`Retry ${attempt + 1}/${maxRetries} — waiting ${Math.round(delay)}ms`, { error: lastError.message })
       options?.onRetry?.(attempt + 1, delay)
       await new Promise(resolve => setTimeout(resolve, delay))
     }
