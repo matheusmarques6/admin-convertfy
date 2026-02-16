@@ -186,7 +186,10 @@ END$$;
 
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'campaign_history' AND table_schema = 'public') THEN
+  -- campaign_history: skip if org_id migration has already run (org_* policies exist)
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'campaign_history' AND table_schema = 'public')
+     AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'campaign_history' AND column_name = 'org_id' AND table_schema = 'public')
+  THEN
     EXECUTE 'DROP POLICY IF EXISTS "Users can view campaign history" ON campaign_history';
     EXECUTE 'DROP POLICY IF EXISTS "Users can create campaign history" ON campaign_history';
     EXECUTE 'DROP POLICY IF EXISTS "Users can view campaign history for accessible stores" ON campaign_history';
@@ -202,8 +205,10 @@ END$$;
 
 DO $$
 BEGIN
-  -- campaign_batches
-  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'campaign_batches' AND table_schema = 'public') THEN
+  -- campaign_batches: skip if org_id migration has already run (org_* policies exist)
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'campaign_batches' AND table_schema = 'public')
+     AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'campaign_batches' AND column_name = 'org_id' AND table_schema = 'public')
+  THEN
     EXECUTE 'DROP POLICY IF EXISTS "Allow authenticated to view campaign_batches" ON campaign_batches';
     EXECUTE 'DROP POLICY IF EXISTS "Allow authenticated to manage campaign_batches" ON campaign_batches';
     EXECUTE 'DROP POLICY IF EXISTS "Users can view campaign_batches" ON campaign_batches';

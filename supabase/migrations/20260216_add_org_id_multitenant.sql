@@ -82,11 +82,17 @@ ALTER TABLE attribution_summary
 -- =============================================
 
 -- 2a. Backfill clients via owner_id -> org_members
+-- Uses DISTINCT ON to pick deterministically: owner role first, then earliest join
 UPDATE clients c
-SET org_id = om.org_id
-FROM org_members om
-WHERE c.owner_id = om.profile_id
-  AND om.is_active = true
+SET org_id = sub.org_id
+FROM (
+  SELECT DISTINCT ON (om.profile_id)
+    om.profile_id, om.org_id
+  FROM org_members om
+  WHERE om.is_active = true
+  ORDER BY om.profile_id, om.role ASC, om.created_at ASC
+) sub
+WHERE c.owner_id = sub.profile_id
   AND c.org_id IS NULL
   AND c.owner_id IS NOT NULL;
 
@@ -107,11 +113,21 @@ WHERE camp.client_id = cl.id
   AND camp.org_id IS NULL;
 
 -- 2d. Backfill campaign_batches via first store in store_ids array
+-- Note: store_ids is NOT NULL so empty array is the only edge case
 UPDATE campaign_batches cb
 SET org_id = cs.org_id
 FROM client_stores cs
-WHERE cs.id = cb.store_ids[1]
+WHERE array_length(cb.store_ids, 1) > 0
+  AND cs.id = cb.store_ids[1]
   AND cs.org_id IS NOT NULL
+  AND cb.org_id IS NULL;
+
+-- 2d-fallback. Backfill remaining campaign_batches via created_by -> org_members
+UPDATE campaign_batches cb
+SET org_id = om.org_id
+FROM org_members om
+WHERE cb.created_by = om.profile_id
+  AND om.is_active = true
   AND cb.org_id IS NULL;
 
 -- 2e. Backfill campaign_history via campaign -> campaigns.org_id
