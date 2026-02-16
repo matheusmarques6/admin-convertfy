@@ -36,5 +36,7 @@ export {
   type AuditLogData
 } from './rate-limit.service';
 
+export { generateEmailSubjects, generateAdCopy } from './ai.service';
+
 // Re-export event utilities for convenience
 export { publishEvent, logActivity } from '@/lib/events/publisher';

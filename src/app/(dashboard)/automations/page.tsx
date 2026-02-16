@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Switch } from "@/components/ui/switch"
+import { AutomationToggle } from "@/components/automations/automation-toggle"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -221,7 +221,7 @@ export default async function AutomationsPage() {
                       <span className="text-sm">
                         {automation.is_active ? "Ativa" : "Pausada"}
                       </span>
-                      <Switch checked={automation.is_active} />
+                      <AutomationToggle automationId={automation.id} isActive={automation.is_active} />
                     </div>
                   </CardContent>
                 </Card>

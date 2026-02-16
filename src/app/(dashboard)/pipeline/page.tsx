@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { PipelineBoard } from "@/components/pipeline/pipeline-board"
 import { PipelineHeader } from "@/components/pipeline/pipeline-header"
+import { PipelineStoreInitializer } from "@/components/pipeline/pipeline-store-initializer"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { PipelineMemberRole } from "@/types"
 
@@ -145,6 +146,17 @@ export default async function PipelinePage({
 
   return (
     <div className="space-y-6 h-full flex flex-col">
+      {/* Sync server data into Zustand store */}
+      <PipelineStoreInitializer
+        pipelines={data.pipelines}
+        selectedPipeline={data.pipeline}
+        stages={data.stages}
+        deals={data.deals}
+        members={data.members}
+        importRules={data.importRules}
+        currentUserRole={data.currentUserRole}
+      />
+
       {/* Header */}
       <PipelineHeader
         pipelines={data.pipelines}

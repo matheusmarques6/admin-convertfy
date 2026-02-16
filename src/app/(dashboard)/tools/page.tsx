@@ -8,6 +8,7 @@ import {
   BarChart3,
   Sparkles,
   Loader2,
+  Copy,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -28,8 +29,11 @@ import { toast } from "@/lib/hooks/use-toast"
 export default function ToolsPage() {
   const [emailSubjects, setEmailSubjects] = useState<string[]>([])
   const [isGeneratingSubjects, setIsGeneratingSubjects] = useState(false)
+  const [campaignType, setCampaignType] = useState("abandoned_cart")
   const [adCopyResult, setAdCopyResult] = useState("")
   const [isGeneratingCopy, setIsGeneratingCopy] = useState(false)
+  const [product, setProduct] = useState("")
+  const [tone, setTone] = useState("professional")
 
   // ROAS Calculator state
   const [adSpend, setAdSpend] = useState("")
@@ -41,52 +45,80 @@ export default function ToolsPage() {
 
   async function generateBenchmark() {
     setIsGeneratingBenchmark(true)
-    // TODO: Implementar com dados reais
+    // TODO: Implementar com dados reais de comparação entre clientes
     setTimeout(() => {
       setIsGeneratingBenchmark(false)
       toast({
-        title: "Comparativo gerado",
-        description: "O benchmark foi gerado com sucesso. Em breve será exibido aqui.",
+        title: "Em desenvolvimento",
+        description: "O benchmark comparativo estará disponível em breve.",
       })
-    }, 1500)
+    }, 500)
   }
 
   async function generateEmailSubjects() {
     setIsGeneratingSubjects(true)
-    // Simulate API call
-    setTimeout(() => {
-      setEmailSubjects([
-        "Recupere seu carrinho abandonado com 10% OFF",
-        "[Urgente] Seus produtos estão te esperando!",
-        "Oops! Você esqueceu algo importante...",
-        "Última chance: Finalize sua compra hoje!",
-        "Reservamos seu carrinho por 24h",
-      ])
+    try {
+      const res = await fetch("/api/ai/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "email_subjects", campaignType }),
+      })
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data.error || "Erro ao gerar assuntos")
+      }
+
+      setEmailSubjects(data.subjects || [])
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Erro ao gerar assuntos",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+      })
+    } finally {
       setIsGeneratingSubjects(false)
-    }, 1500)
+    }
   }
 
   async function generateAdCopy() {
+    if (!product.trim()) {
+      toast({
+        variant: "destructive",
+        title: "Campo obrigatório",
+        description: "Informe o produto ou serviço para gerar a copy.",
+      })
+      return
+    }
+
     setIsGeneratingCopy(true)
-    setTimeout(() => {
-      setAdCopyResult(
-        `🔥 OFERTA ESPECIAL 🔥
+    try {
+      const res = await fetch("/api/ai/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "ad_copy", product, tone }),
+      })
+      const data = await res.json()
 
-Descubra como centenas de lojistas estão aumentando suas vendas em até 40% com nossas estratégias de marketing.
+      if (!res.ok) {
+        throw new Error(data.error || "Erro ao gerar copy")
+      }
 
-✅ Gestão completa de tráfego pago
-✅ Email marketing que converte
-✅ Automações inteligentes
-
-📈 Resultados em até 30 dias ou seu dinheiro de volta!
-
-👉 Agende uma reunião gratuita agora
-[LINK]
-
-#ecommerce #marketingdigital #vendasonline`
-      )
+      setAdCopyResult(data.copy || "")
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Erro ao gerar copy",
+        description: error instanceof Error ? error.message : "Tente novamente.",
+      })
+    } finally {
       setIsGeneratingCopy(false)
-    }, 2000)
+    }
+  }
+
+  function copyToClipboard(text: string) {
+    navigator.clipboard.writeText(text)
+    toast({ title: "Copiado!", description: "Texto copiado para a área de transferência." })
   }
 
   return (
@@ -128,7 +160,7 @@ Descubra como centenas de lojistas estão aumentando suas vendas em até 40% com
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <Label>Tipo de campanha</Label>
-                  <Select defaultValue="abandoned_cart">
+                  <Select value={campaignType} onValueChange={setCampaignType}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -151,7 +183,7 @@ Descubra como centenas de lojistas estão aumentando suas vendas em até 40% com
                   ) : (
                     <Wand2 className="mr-2 h-4 w-4" />
                   )}
-                  Gerar Assuntos
+                  {isGeneratingSubjects ? "Gerando..." : "Gerar Assuntos"}
                 </Button>
 
                 {emailSubjects.length > 0 && (
@@ -160,10 +192,11 @@ Descubra como centenas de lojistas estão aumentando suas vendas em até 40% com
                     {emailSubjects.map((subject, index) => (
                       <div
                         key={index}
-                        className="p-3 rounded-lg bg-muted text-sm cursor-pointer hover:bg-muted/80"
-                        onClick={() => navigator.clipboard.writeText(subject)}
+                        className="p-3 rounded-lg bg-muted text-sm cursor-pointer hover:bg-muted/80 flex items-center justify-between gap-2"
+                        onClick={() => copyToClipboard(subject)}
                       >
-                        {subject}
+                        <span>{subject}</span>
+                        <Copy className="h-3 w-3 flex-shrink-0 text-muted-foreground" />
                       </div>
                     ))}
                   </div>
@@ -185,11 +218,15 @@ Descubra como centenas de lojistas estão aumentando suas vendas em até 40% com
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <Label>Produto/Serviço</Label>
-                  <Input placeholder="Ex: Gestão de tráfego pago" />
+                  <Input
+                    placeholder="Ex: Gestão de tráfego pago"
+                    value={product}
+                    onChange={(e) => setProduct(e.target.value)}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Tom de voz</Label>
-                  <Select defaultValue="professional">
+                  <Select value={tone} onValueChange={setTone}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -211,12 +248,22 @@ Descubra como centenas de lojistas estão aumentando suas vendas em até 40% com
                   ) : (
                     <Wand2 className="mr-2 h-4 w-4" />
                   )}
-                  Gerar Copy
+                  {isGeneratingCopy ? "Gerando..." : "Gerar Copy"}
                 </Button>
 
                 {adCopyResult && (
                   <div className="space-y-2 pt-4 border-t">
-                    <Label>Resultado:</Label>
+                    <div className="flex items-center justify-between">
+                      <Label>Resultado:</Label>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => copyToClipboard(adCopyResult)}
+                      >
+                        <Copy className="mr-1 h-3 w-3" />
+                        Copiar
+                      </Button>
+                    </div>
                     <Textarea
                       value={adCopyResult}
                       readOnly

@@ -258,7 +258,7 @@ export function Header({ user: userProp }: HeaderProps) {
 
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild className="justify-center text-primary cursor-pointer">
-              <Link href="/settings/notifications">
+              <Link href="/notifications">
                 Ver todas as notificações
               </Link>
             </DropdownMenuItem>
