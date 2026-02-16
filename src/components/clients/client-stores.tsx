@@ -184,17 +184,20 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
       const platformCapitalized = store.platform
         ? store.platform.charAt(0).toUpperCase() + store.platform.slice(1)
         : "Shopify"
+      // Don't pre-fill encrypted credential fields — they show as enc:v1:...
+      // User must re-enter credentials when editing. Non-sensitive fields are safe.
+      const isEncrypted = (val?: string) => val?.startsWith("enc:v1:") ?? false
       setForm({
         name: store.store_name,
         url: store.store_url || "",
         platform: platformCapitalized,
         currency: store.currency || "BRL",
-        // Shopify
+        // Shopify - domain is safe, token may be encrypted
         shopify_store_domain: store.shopify_store_domain || "",
-        shopify_access_token: store.shopify_access_token || "",
-        // Klaviyo - use new fields or fall back to legacy
-        klaviyo_public_key: store.klaviyo_public_key || "",
-        klaviyo_private_key: store.klaviyo_private_key || store.klaviyo_api_key || "",
+        shopify_access_token: isEncrypted(store.shopify_access_token) ? "" : (store.shopify_access_token || ""),
+        // Klaviyo - public key may be encrypted, private key likely encrypted
+        klaviyo_public_key: isEncrypted(store.klaviyo_public_key) ? "" : (store.klaviyo_public_key || ""),
+        klaviyo_private_key: isEncrypted(store.klaviyo_private_key || store.klaviyo_api_key) ? "" : (store.klaviyo_private_key || store.klaviyo_api_key || ""),
         klaviyo_list_id: store.klaviyo_list_id || "",
         // Google Analytics
         ga4_property_id: store.ga4_property_id || "",
@@ -231,13 +234,9 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
 
     setIsSaving(true)
     try {
-      const supabase = createClient()
-
-      // Build store data object - only include fields with values
-      // Using correct column names: store_name, store_url
+      // Build store data - credentials will be encrypted server-side
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const storeData: Record<string, any> = {
-        client_id: clientId,
         store_name: form.name,
         is_active: true,
       }
@@ -251,7 +250,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
       if (form.shopify_store_domain) storeData.shopify_store_domain = form.shopify_store_domain
       if (form.shopify_access_token) storeData.shopify_access_token = form.shopify_access_token
 
-      // Klaviyo fields - try new column names first
+      // Klaviyo fields
       if (form.klaviyo_public_key) storeData.klaviyo_public_key = form.klaviyo_public_key
       if (form.klaviyo_private_key) {
         storeData.klaviyo_private_key = form.klaviyo_private_key
@@ -276,28 +275,24 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
         }
       }
 
-      console.log("Saving store data:", storeData)
-
+      // Save via server-side API (encrypts credentials)
       if (editStore) {
-        const { error } = await supabase
-          .from("client_stores")
-          .update(storeData)
-          .eq("id", editStore.id)
-
-        if (error) {
-          console.error("Supabase update error:", error)
-          throw error
-        }
+        const response = await fetch("/api/client-stores/credentials", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ store_id: editStore.id, ...storeData }),
+        })
+        const result = await response.json()
+        if (!response.ok) throw new Error(result.error || "Erro ao atualizar")
         toast({ title: "Loja atualizada!" })
       } else {
-        const { error } = await supabase
-          .from("client_stores")
-          .insert(storeData)
-
-        if (error) {
-          console.error("Supabase insert error:", error)
-          throw error
-        }
+        const response = await fetch("/api/client-stores/credentials", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ client_id: clientId, ...storeData }),
+        })
+        const result = await response.json()
+        if (!response.ok) throw new Error(result.error || "Erro ao criar")
         toast({ title: "Loja adicionada!" })
       }
 
@@ -313,24 +308,12 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
       loadStores()
     } catch (error) {
       console.error("Error saving store:", error)
-      // Supabase errors have message, details, hint, code properties
-      const supabaseError = error as { message?: string; details?: string; hint?: string; code?: string }
-      const errorMsg = supabaseError.message || (error instanceof Error ? error.message : String(error))
-
-      // Check if it's a column not found error
-      if (errorMsg.includes("column") && errorMsg.includes("does not exist")) {
-        toast({
-          variant: "destructive",
-          title: "Coluna não encontrada",
-          description: `${errorMsg}. Execute a migração SQL no Supabase.`,
-        })
-      } else {
-        toast({
-          variant: "destructive",
-          title: "Erro ao salvar",
-          description: errorMsg,
-        })
-      }
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      toast({
+        variant: "destructive",
+        title: "Erro ao salvar",
+        description: errorMsg,
+      })
     } finally {
       setIsSaving(false)
     }
@@ -360,25 +343,26 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
     }
   }
 
+  function isCredentialEncrypted(value?: string) {
+    return value?.startsWith("enc:v1:") ?? false
+  }
+
   async function testKlaviyoConnection(store: ClientStore) {
     const apiKey = store.klaviyo_private_key || store.klaviyo_api_key
-    if (!apiKey) {
+    if (!apiKey || isCredentialEncrypted(apiKey)) {
       toast({
         variant: "destructive",
-        title: "API Key não configurada",
-        description: "Configure a Private API Key do Klaviyo primeiro",
+        title: "Teste via edição",
+        description: "Edite a loja e re-insira a Private Key para testar a conexão",
       })
       return
     }
 
     setTestingKlaviyo(store.id)
     try {
-      // Test Klaviyo API connection via our backend (to avoid CORS)
       const response = await fetch("/api/integrations/klaviyo/test", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ api_key: apiKey }),
       })
 
@@ -413,13 +397,20 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
       return
     }
 
+    if (isCredentialEncrypted(store.shopify_access_token)) {
+      toast({
+        variant: "destructive",
+        title: "Teste via edição",
+        description: "Edite a loja e re-insira o Access Token para testar a conexão",
+      })
+      return
+    }
+
     setTestingShopify(store.id)
     try {
       const response = await fetch("/api/integrations/shopify/test", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           store_domain: store.shopify_store_domain,
           access_token: store.shopify_access_token,
@@ -436,7 +427,6 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
             : "A API da Shopify está funcionando corretamente",
         })
       } else {
-        // Show more detailed error message
         const errorMsg = data.error || "Falha na conexão"
         const details = data.details?.domain
           ? ` (Domínio: ${data.details.domain})`
@@ -449,7 +439,6 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
         title: "Erro na conexão Shopify",
         description: error instanceof Error ? error.message : "Verifique as credenciais da Shopify",
       })
-      console.error("Shopify connection error:", error)
     } finally {
       setTestingShopify(null)
     }
@@ -636,11 +625,11 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
                     <>
                       {store.klaviyo_public_key && (
                         <div className="text-xs text-muted-foreground">
-                          Site ID: {store.klaviyo_public_key}
+                          Site ID: {store.klaviyo_public_key.startsWith("enc:v1:") ? "••••••" : store.klaviyo_public_key}
                         </div>
                       )}
                       <div className="text-xs text-muted-foreground">
-                        Private Key: ****{(store.klaviyo_private_key || store.klaviyo_api_key || "").slice(-8)}
+                        Private Key: ••••••••
                       </div>
                       {store.klaviyo_list_id && (
                         <div className="text-xs text-muted-foreground">

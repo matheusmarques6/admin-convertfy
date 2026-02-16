@@ -120,9 +120,10 @@ export default function IntegrationsPage() {
   }
 
   function openConfigDialog(type: IntegrationType) {
-    const existing = integrations.find((i) => i.type === type)
     setSelectedType(type)
-    setCredentials(existing?.credentials || {})
+    // Don't pre-fill credentials — they're encrypted in the DB
+    // User must re-enter credentials when editing
+    setCredentials({})
     setConfigDialogOpen(true)
   }
 
@@ -167,7 +168,6 @@ export default function IntegrationsPage() {
 
     setIsSaving(true)
     try {
-      const supabase = createClient()
       const config = getIntegrationConfig(selectedType)
       const existing = integrations.find((i) => i.type === selectedType)
 
@@ -188,49 +188,38 @@ export default function IntegrationsPage() {
 
       // Test connection first
       const testResult = await testIntegrationConnection(selectedType, credentials)
+      const now = new Date().toISOString()
 
-      if (existing) {
-        // Update existing
-        const { error } = await supabase
-          .from("integrations")
-          .update({
-            credentials,
-            is_active: testResult.success,
-            last_sync: testResult.success ? new Date().toISOString() : null,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", existing.id)
-
-        if (error) throw error
-
-        updateIntegration(existing.id, {
-          credentials,
-          is_active: testResult.success,
-          last_sync: testResult.success ? new Date().toISOString() : undefined,
-        })
-      } else {
-        // Create new
-        const newIntegration = {
+      // Save via server-side API (encrypts credentials)
+      const response = await fetch("/api/integrations/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          integration_id: existing?.id,
           type: selectedType,
           name: config?.name || selectedType,
           credentials,
           is_active: testResult.success,
-          last_sync: testResult.success ? new Date().toISOString() : null,
-        }
+          last_sync: testResult.success ? now : null,
+        }),
+      })
 
-        const { data, error } = await supabase
-          .from("integrations")
-          .insert(newIntegration)
-          .select()
-          .single()
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || "Erro ao salvar")
 
-        if (error) throw error
-        addIntegration(data as Integration)
+      // Update local store
+      if (existing) {
+        updateIntegration(existing.id, {
+          is_active: testResult.success,
+          last_sync: testResult.success ? now : undefined,
+        })
+      } else if (result.data?.integration) {
+        addIntegration(result.data.integration as Integration)
       }
 
       setStatus(selectedType, {
         connected: testResult.success,
-        lastSync: testResult.success ? new Date().toISOString() : undefined,
+        lastSync: testResult.success ? now : undefined,
         error: testResult.error,
       })
 
@@ -243,6 +232,8 @@ export default function IntegrationsPage() {
       })
 
       setConfigDialogOpen(false)
+      // Reload to get fresh data
+      loadIntegrations()
     } catch (error) {
       console.error("Error saving integration:", error)
       toast({
@@ -260,13 +251,12 @@ export default function IntegrationsPage() {
     if (!integration) return
 
     try {
-      const supabase = createClient()
-      const { error } = await supabase
-        .from("integrations")
-        .delete()
-        .eq("id", integration.id)
+      const response = await fetch(`/api/integrations/save?id=${integration.id}`, {
+        method: "DELETE",
+      })
 
-      if (error) throw error
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || "Erro ao desconectar")
 
       removeIntegration(integration.id)
       toast({
@@ -295,20 +285,11 @@ export default function IntegrationsPage() {
           syncUrl = "/api/integrations/asaas/sync"
           break
         default:
-          // For other integrations, just test connection
-          const testResult = await testIntegrationConnection(type, integration.credentials)
-          if (testResult.success) {
-            toast({
-              title: "Conexão verificada",
-              description: "A integração está funcionando.",
-            })
-          } else {
-            toast({
-              variant: "destructive",
-              title: "Falha na verificação",
-              description: testResult.error,
-            })
-          }
+          // For other integrations, inform user to use config dialog to test
+          toast({
+            title: "Use Configurar para testar",
+            description: "Abra o diálogo de configuração para testar a conexão.",
+          })
           return
       }
 
