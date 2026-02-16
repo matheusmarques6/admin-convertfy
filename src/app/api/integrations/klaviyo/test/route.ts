@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { errorResponse, AppError } from "@/lib/api/errors"
-import { handleCorsPreFlight } from "@/lib/cors"
+import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 
 
 export async function OPTIONS(request: NextRequest) {
@@ -33,19 +33,21 @@ export async function POST(request: NextRequest) {
       },
     })
 
+    const origin = request.headers.get("origin")
+
     if (response.ok) {
       const data = await response.json()
       return NextResponse.json({
         success: true,
         message: "Conexão bem sucedida!",
         account: data.data?.[0]?.attributes?.contact_information?.organization_name || "Conta Klaviyo",
-      })
+      }, { headers: corsHeaders(origin) })
     } else {
       const errorData = await response.json().catch(() => ({}))
       return NextResponse.json({
         success: false,
         error: errorData.errors?.[0]?.detail || "Falha na autenticação",
-      }, { status: response.status })
+      }, { status: response.status, headers: corsHeaders(origin) })
     }
   } catch (error) {
     return errorResponse(request, error, "IntegrationsKlaviyoTest")

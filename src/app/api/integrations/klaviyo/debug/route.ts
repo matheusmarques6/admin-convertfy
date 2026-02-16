@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
+import { corsHeaders } from "@/lib/cors"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("KlaviyoDebug")
@@ -235,10 +236,9 @@ export async function GET(request: NextRequest) {
       results.flows = { error: String(e) }
     }
 
+    const origin = request.headers.get("origin")
     return NextResponse.json(results, {
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-      },
+      headers: corsHeaders(origin),
     })
   } catch (error) {
     return errorResponse(request, error, "IntegrationsKlaviyoDebug")
