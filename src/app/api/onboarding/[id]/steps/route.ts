@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest } from "next/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
-import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("OnboardingSteps")
@@ -22,7 +22,7 @@ export async function GET(
   try {
     const { id } = await params
     const supabase = await createClient()
-    const user = await requireAuth(supabase)
+    await requireAuth(supabase)
 
     const { data: steps, error } = await supabase
       .from("client_onboarding_steps")

@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
     const supabase = await createClient()
 
     // Verify authentication
-    const user = await requireAuth(supabase)
+    await requireAuth(supabase)
 
     const body = await request.json()
     const { type, credentials } = body as {

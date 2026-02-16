@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
+import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 import { generateTempPassword } from "@/lib/utils/generate-password"
@@ -171,7 +171,7 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const user = await requireAuth(supabase)
+    await requireAuth(supabase)
 
     // Get client_id from query params
     const { searchParams } = new URL(request.url)

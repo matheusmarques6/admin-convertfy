@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest } from "next/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
-import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("TasksChecklists")
@@ -22,7 +22,7 @@ export async function GET(
   try {
     const { id } = await params
     const supabase = await createClient()
-    const user = await requireAuth(supabase)
+    await requireAuth(supabase)
 
     const adminClient = createAdminClient()
 
@@ -51,7 +51,7 @@ export async function POST(
   try {
     const { id } = await params
     const supabase = await createClient()
-    const user = await requireAuth(supabase)
+    await requireAuth(supabase)
 
     const body = await request.json()
 
@@ -153,7 +153,7 @@ export async function DELETE(
   try {
     const { id } = await params
     const supabase = await createClient()
-    const user = await requireAuth(supabase)
+    await requireAuth(supabase)
 
     const searchParams = request.nextUrl.searchParams
     const checklistId = searchParams.get("checklist_id")

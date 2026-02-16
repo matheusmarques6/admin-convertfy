@@ -1,10 +1,8 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest } from "next/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
-import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
-import { logger } from "@/lib/logger"
+import { handleCorsPreFlight } from "@/lib/cors"
 
-const log = logger.child("TasksReorder")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -18,7 +16,7 @@ export async function OPTIONS(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const user = await requireAuth(supabase)
+    await requireAuth(supabase)
 
     const body = await request.json()
 

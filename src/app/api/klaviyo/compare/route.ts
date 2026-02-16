@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
+import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("KlaviyoCompare")
@@ -14,7 +14,7 @@ const log = logger.child("KlaviyoCompare")
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const user = await requireAuth(supabase)
+    await requireAuth(supabase)
 
     const searchParams = request.nextUrl.searchParams
     const campaignName = searchParams.get("name")

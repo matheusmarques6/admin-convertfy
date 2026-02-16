@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
+import { requireAuth, AppError } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { createAsaasService } from "@/lib/integrations/asaas"
 import { logger } from "@/lib/logger"
@@ -27,7 +27,7 @@ export async function POST(request: Request) {
     const supabase = await createClient()
 
     // Verify authentication
-    const user = await requireAuth(supabase)
+    await requireAuth(supabase)
 
     // Get request body
     const body: CreateCustomerBody = await request.json()

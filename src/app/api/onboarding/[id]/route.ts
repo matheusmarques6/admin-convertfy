@@ -22,7 +22,7 @@ export async function GET(
   try {
     const { id } = await params
     const supabase = await createClient()
-    const user = await requireAuth(supabase)
+    await requireAuth(supabase)
 
     const { data: onboarding, error } = await supabase
       .from("client_onboardings")
@@ -77,7 +77,7 @@ export async function PUT(
   try {
     const { id } = await params
     const supabase = await createClient()
-    const user = await requireAuth(supabase)
+    await requireAuth(supabase)
 
     const body = await request.json()
     const adminClient = createAdminClient()
@@ -130,7 +130,7 @@ export async function DELETE(
   try {
     const { id } = await params
     const supabase = await createClient()
-    const user = await requireAuth(supabase)
+    await requireAuth(supabase)
 
     const adminClient = createAdminClient()
 

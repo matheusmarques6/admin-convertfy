@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
+import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { createAsaasService, mapAsaasStatusToInternal } from "@/lib/integrations/asaas"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("IntegrationsAsaasSync")
 
-export async function POST(request: NextRequest) {
+export async function POST(_request: NextRequest) {
   try {
     const supabase = await createClient()
 
     // Verify authentication
-    const user = await requireAuth(supabase)
+    await requireAuth(supabase)
 
     // Get Asaas integration credentials
     const { data: integration, error: intError } = await supabase
@@ -130,7 +130,7 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
 
-    const user = await requireAuth(supabase)
+    await requireAuth(supabase)
 
     const { data: integration } = await supabase
       .from("integrations")

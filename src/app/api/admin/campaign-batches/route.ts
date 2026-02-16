@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient()
     const adminClient = createAdminClient()
 
-    const user = await requireAuth(supabase)
+    await requireAuth(supabase)
 
     const searchParams = request.nextUrl.searchParams
     const status = searchParams.get("status")

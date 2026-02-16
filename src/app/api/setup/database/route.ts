@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
+import { errorResponse, requireAuth } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("SetupDatabase")
@@ -9,7 +9,7 @@ const log = logger.child("SetupDatabase")
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const user = await requireAuth(supabase)
+    await requireAuth(supabase)
 
     const results: { table: string; status: string; error?: string }[] = []
 
@@ -144,7 +144,7 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const user = await requireAuth(supabase)
+    await requireAuth(supabase)
 
     const tables = [
       "client_stores",

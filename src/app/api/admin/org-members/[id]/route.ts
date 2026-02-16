@@ -22,7 +22,7 @@ export async function GET(
   try {
     const { id } = await params
     const supabase = await createClient()
-    const user = await requireAuth(supabase)
+    await requireAuth(supabase)
 
     // Fetch member with all related data
     const { data: member, error } = await supabase

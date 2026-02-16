@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
+import { errorResponse, successResponse, AppError } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { CampaignFormData } from "@/types"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"

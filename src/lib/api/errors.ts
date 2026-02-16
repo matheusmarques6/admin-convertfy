@@ -141,8 +141,8 @@ export interface AuthUser {
   email?: string
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function requireAuth(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: any
 ): Promise<AuthUser> {
   const { data: { user }, error } = await supabase.auth.getUser()
@@ -152,8 +152,8 @@ export async function requireAuth(
   return user
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function requireRole(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: any,
   allowedRoles: string[]
 ): Promise<AuthUser & { role: string }> {

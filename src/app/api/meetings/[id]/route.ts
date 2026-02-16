@@ -21,7 +21,7 @@ export async function GET(
 ) {
   try {
     const supabase = await createClient()
-    const user = await requireAuth(supabase)
+    await requireAuth(supabase)
 
     const { id } = await params
     const adminClient = createAdminClient()
@@ -92,7 +92,7 @@ export async function PUT(
   try {
     const supabase = await createClient()
     const adminClient = createAdminClient()
-    const user = await requireAuth(supabase)
+    await requireAuth(supabase)
 
     const { id } = await params
     const body = await request.json()
@@ -239,7 +239,7 @@ export async function DELETE(
 ) {
   try {
     const supabase = await createClient()
-    const user = await requireAuth(supabase)
+    await requireAuth(supabase)
 
     const { id } = await params
     const adminClient = createAdminClient()
