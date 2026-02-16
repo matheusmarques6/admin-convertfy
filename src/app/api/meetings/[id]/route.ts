@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
@@ -21,11 +21,7 @@ export async function GET(
 ) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
-    }
+    const user = await requireAuth(supabase)
 
     const { id } = await params
     const adminClient = createAdminClient()
@@ -48,7 +44,7 @@ export async function GET(
       .single()
 
     if (error || !meeting) {
-      return NextResponse.json({ error: "Reunião não encontrada" }, { status: 404, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Reunião não encontrada", 404)
     }
 
     // Fetch profiles for participants separately
@@ -82,10 +78,9 @@ export async function GET(
       })),
     }
 
-    return NextResponse.json({ meeting: transformedMeeting }, { headers: corsHeaders(request.headers.get("origin")) })
+    return successResponse(request, { meeting: transformedMeeting })
   } catch (error) {
-    log.error("[Meeting] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+    return errorResponse(request, error, "Meetings")
   }
 }
 
@@ -97,11 +92,7 @@ export async function PUT(
   try {
     const supabase = await createClient()
     const adminClient = createAdminClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
-    }
+    const user = await requireAuth(supabase)
 
     const { id } = await params
     const body = await request.json()
@@ -124,7 +115,7 @@ export async function PUT(
 
     if (updateError) {
       log.error("[Meeting] Update error:", updateError)
-      return NextResponse.json({ error: "Erro ao atualizar reunião" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Erro ao atualizar reunião", 500)
     }
 
     // Update participants if provided
@@ -198,7 +189,7 @@ export async function PUT(
       .single()
 
     if (!meeting) {
-      return NextResponse.json({ error: "Reunião não encontrada" }, { status: 404, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Reunião não encontrada", 404)
     }
 
     // Fetch profiles for participants
@@ -237,8 +228,7 @@ export async function PUT(
       { headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
-    log.error("[Meeting] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+    return errorResponse(request, error, "Meetings")
   }
 }
 
@@ -249,11 +239,7 @@ export async function DELETE(
 ) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
-    }
+    const user = await requireAuth(supabase)
 
     const { id } = await params
     const adminClient = createAdminClient()
@@ -265,12 +251,11 @@ export async function DELETE(
 
     if (deleteError) {
       log.error("[Meeting] Delete error:", deleteError)
-      return NextResponse.json({ error: "Erro ao excluir reunião" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Erro ao excluir reunião", 500)
     }
 
-    return NextResponse.json({ message: "Reunião excluída com sucesso" }, { headers: corsHeaders(request.headers.get("origin")) })
+    return successResponse(request, { message: "Reunião excluída com sucesso" })
   } catch (error) {
-    log.error("[Meeting] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+    return errorResponse(request, error, "Meetings")
   }
 }

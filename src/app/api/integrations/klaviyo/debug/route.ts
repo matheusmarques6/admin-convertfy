@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { requireAuth } from "@/lib/api/errors"
+import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("KlaviyoDebug")
@@ -12,17 +12,13 @@ const KLAVIYO_REVISION = "2024-10-15"
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
-    }
+    const user = await requireAuth(supabase)
 
     const searchParams = request.nextUrl.searchParams
     const storeId = searchParams.get("store_id")
 
     if (!storeId) {
-      return NextResponse.json({ error: "store_id é obrigatório" }, { status: 400 })
+      throw new AppError("store_id é obrigatório", 400)
     }
 
     // Get store with Klaviyo API key
@@ -33,12 +29,12 @@ export async function GET(request: NextRequest) {
       .single()
 
     if (storeError || !store) {
-      return NextResponse.json({ error: "Loja não encontrada" }, { status: 404 })
+      throw new AppError("Loja não encontrada", 404)
     }
 
     const apiKey = store.klaviyo_private_key || store.klaviyo_api_key
     if (!apiKey) {
-      return NextResponse.json({ error: "API Key não configurada" }, { status: 400 })
+      throw new AppError("API Key não configurada", 400)
     }
 
     const results: Record<string, unknown> = {
@@ -245,10 +241,6 @@ export async function GET(request: NextRequest) {
       },
     })
   } catch (error) {
-    log.error("Debug error:", error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Erro no debug" },
-      { status: 500 }
-    )
+    return errorResponse(request, error, "IntegrationsKlaviyoDebug")
   }
 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { requireAuth } from "@/lib/api/errors"
+import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("WiseReconcile")
@@ -24,10 +24,7 @@ export async function POST(request: NextRequest) {
     const { transaction_reference, client_id, amount, currency, transaction_date, notes } = body
 
     if (!transaction_reference || !client_id) {
-      return NextResponse.json(
-        { error: "Transaction reference and client ID are required" },
-        { status: 400 }
-      )
+      throw new AppError("Transaction reference and client ID are required", 400)
     }
 
     // Check if transaction is already reconciled
@@ -38,10 +35,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (existingReconciliation) {
-      return NextResponse.json(
-        { error: "Transaction already reconciled" },
-        { status: 400 }
-      )
+      throw new AppError("Transaction already reconciled", 400)
     }
 
     // Create reconciliation record
@@ -63,10 +57,7 @@ export async function POST(request: NextRequest) {
     if (error) {
       // If table doesn't exist, we'll handle it
       if (error.code === "42P01") {
-        return NextResponse.json(
-          { error: "Reconciliation table not set up. Please run migrations." },
-          { status: 500 }
-        )
+        throw new AppError("Reconciliation table not set up. Please run migrations.", 500)
       }
       throw error
     }
@@ -88,11 +79,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, reconciliation })
   } catch (error) {
-    log.error("Error reconciling transaction:", error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to reconcile transaction" },
-      { status: 500 }
-    )
+    return errorResponse(request, error, "IntegrationsWiseReconcile")
   }
 }
 
@@ -136,11 +123,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ reconciliations })
   } catch (error) {
-    log.error("Error fetching reconciliations:", error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch reconciliations" },
-      { status: 500 }
-    )
+    return errorResponse(request, error, "IntegrationsWiseReconcile")
   }
 }
 
@@ -161,10 +144,7 @@ export async function DELETE(request: NextRequest) {
     const reconciliationId = searchParams.get("id")
 
     if (!reconciliationId) {
-      return NextResponse.json(
-        { error: "Reconciliation ID is required" },
-        { status: 400 }
-      )
+      throw new AppError("Reconciliation ID is required", 400)
     }
 
     const { error } = await supabase
@@ -176,10 +156,6 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    log.error("Error deleting reconciliation:", error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to delete reconciliation" },
-      { status: 500 }
-    )
+    return errorResponse(request, error, "IntegrationsWiseReconcile")
   }
 }

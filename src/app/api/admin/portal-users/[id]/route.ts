@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
@@ -21,11 +21,7 @@ export async function GET(
 ) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
-    }
+    const user = await requireAuth(supabase)
 
     const { id } = await params
 
@@ -40,13 +36,12 @@ export async function GET(
       .single()
 
     if (error) {
-      return NextResponse.json({ error: "Usuário não encontrado" }, { status: 404, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Usuário não encontrado", 404)
     }
 
-    return NextResponse.json({ portalUser }, { headers: corsHeaders(request.headers.get("origin")) })
+    return successResponse(request, { portalUser })
   } catch (error) {
-    log.error("[Portal Users] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+    return errorResponse(request, error, "AdminPortalUsers")
   }
 }
 
@@ -57,11 +52,7 @@ export async function PUT(
 ) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
-    }
+    const user = await requireAuth(supabase)
 
     // Check if user is admin
     const { data: profile } = await supabase
@@ -71,7 +62,7 @@ export async function PUT(
       .single()
 
     if (!profile || !["admin", "manager"].includes(profile.role)) {
-      return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Acesso negado", 403)
     }
 
     const { id } = await params
@@ -96,13 +87,12 @@ export async function PUT(
 
     if (error) {
       log.error("[Portal Users] Update error:", error)
-      return NextResponse.json({ error: "Erro ao atualizar" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Erro ao atualizar", 500)
     }
 
-    return NextResponse.json({ portalUser }, { headers: corsHeaders(request.headers.get("origin")) })
+    return successResponse(request, { portalUser })
   } catch (error) {
-    log.error("[Portal Users] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+    return errorResponse(request, error, "AdminPortalUsers")
   }
 }
 
@@ -113,11 +103,7 @@ export async function DELETE(
 ) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
-    }
+    const user = await requireAuth(supabase)
 
     // Check if user is admin
     const { data: profile } = await supabase
@@ -127,7 +113,7 @@ export async function DELETE(
       .single()
 
     if (!profile || !["admin", "manager"].includes(profile.role)) {
-      return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Acesso negado", 403)
     }
 
     const { id } = await params
@@ -147,7 +133,7 @@ export async function DELETE(
 
     if (deleteError) {
       log.error("[Portal Users] Delete error:", deleteError)
-      return NextResponse.json({ error: "Erro ao excluir" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Erro ao excluir", 500)
     }
 
     // Delete auth user if exists (requires admin client with service role)
@@ -160,9 +146,8 @@ export async function DELETE(
       }
     }
 
-    return NextResponse.json({ message: "Usuário excluído com sucesso" }, { headers: corsHeaders(request.headers.get("origin")) })
+    return successResponse(request, { message: "Usuário excluído com sucesso" })
   } catch (error) {
-    log.error("[Portal Users] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+    return errorResponse(request, error, "AdminPortalUsers")
   }
 }

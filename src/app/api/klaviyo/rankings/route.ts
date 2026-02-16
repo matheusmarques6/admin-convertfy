@@ -14,11 +14,7 @@ const log = logger.child("KlaviyoRankings")
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
-    }
+    const user = await requireAuth(supabase)
 
     const searchParams = request.nextUrl.searchParams
     const metric = searchParams.get("metric") || "revenue" // revenue, open_rate, click_rate, conversion_rate
@@ -164,10 +160,6 @@ export async function GET(request: NextRequest) {
       totals,
     })
   } catch (error) {
-    log.error("Error in rankings API:", error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Erro interno" },
-      { status: 500 }
-    )
+    return errorResponse(request, error, "KlaviyoRankings")
   }
 }

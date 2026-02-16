@@ -1,18 +1,15 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("SetupDatabase")
 
 // POST - Set up database tables
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
-    }
+    const user = await requireAuth(supabase)
 
     const results: { table: string; status: string; error?: string }[] = []
 
@@ -139,23 +136,15 @@ export async function POST() {
         : "Todas as tabelas estão configuradas!",
     })
   } catch (error) {
-    log.error("Error setting up database:", error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Erro ao configurar banco de dados" },
-      { status: 500 }
-    )
+    return errorResponse(request, error, "SetupDatabase")
   }
 }
 
 // GET - Check database status
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
-    }
+    const user = await requireAuth(supabase)
 
     const tables = [
       "client_stores",
@@ -184,10 +173,6 @@ export async function GET() {
       tables: status,
     })
   } catch (error) {
-    log.error("Error checking database:", error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Erro ao verificar banco de dados" },
-      { status: 500 }
-    )
+    return errorResponse(request, error, "SetupDatabase")
   }
 }

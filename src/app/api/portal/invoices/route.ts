@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { createAsaasService } from "@/lib/integrations/asaas"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
@@ -19,11 +19,7 @@ export async function OPTIONS(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-
-    if (!user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
-    }
+    const user = await requireAuth(supabase)
 
     // Get portal user
     const { data: portalUser } = await supabase
@@ -34,13 +30,13 @@ export async function GET(request: NextRequest) {
       .single()
 
     if (!portalUser) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Não autorizado", 401)
     }
 
     // Check permission
     const permissions = portalUser.permissions as { view_invoices?: boolean }
     if (!permissions?.view_invoices) {
-      return NextResponse.json({ error: "Sem permissão" }, { status: 403, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Sem permissão", 403)
     }
 
     const searchParams = request.nextUrl.searchParams
@@ -68,7 +64,7 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       log.error("[Portal Invoices] Error:", error)
-      return NextResponse.json({ error: "Erro ao buscar faturas" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Erro ao buscar faturas", 500)
     }
 
     // Get Asaas integration for fetching payment links
@@ -199,7 +195,6 @@ export async function GET(request: NextRequest) {
       { headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
-    log.error("[Portal Invoices] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+    return errorResponse(request, error, "PortalInvoices")
   }
 }

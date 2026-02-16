@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
@@ -18,11 +18,7 @@ export async function OPTIONS(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
-    }
+    const user = await requireAuth(supabase)
 
     // Get user profile
     const { data: profile } = await supabase
@@ -32,7 +28,7 @@ export async function GET(request: NextRequest) {
       .single()
 
     if (!profile) {
-      return NextResponse.json({ error: "Perfil não encontrado" }, { status: 404, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Perfil não encontrado", 404)
     }
 
     // Check if user is admin (global admin)
@@ -177,7 +173,6 @@ export async function GET(request: NextRequest) {
       },
     }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    log.error("[Permissions] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+    return errorResponse(request, error, "MePermissions")
   }
 }

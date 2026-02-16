@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
@@ -39,12 +39,12 @@ export async function GET(request: NextRequest) {
     const portalUser = await getPortalUser(supabase)
 
     if (!portalUser) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Não autorizado", 401)
     }
 
     const permissions = portalUser.permissions as { view_reports?: boolean }
     if (!permissions?.view_reports) {
-      return NextResponse.json({ error: "Sem permissão" }, { status: 403, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Sem permissão", 403)
     }
 
     // Use admin client to read credential presence flags
@@ -68,7 +68,7 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       log.error("[Portal Stores] Error:", error)
-      return NextResponse.json({ error: "Erro ao buscar lojas" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Erro ao buscar lojas", 500)
     }
 
     // SECURITY: Convert credentials to boolean flags - never expose actual keys to client
@@ -84,10 +84,9 @@ export async function GET(request: NextRequest) {
       shopify_store_domain: store.shopify_store_domain || "",
     }))
 
-    return NextResponse.json({ stores: storesWithFlags }, { headers: corsHeaders(request.headers.get("origin")) })
+    return successResponse(request, { stores: storesWithFlags })
   } catch (error) {
-    log.error("[Portal Stores] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+    return errorResponse(request, error, "PortalStores")
   }
 }
 
@@ -98,14 +97,14 @@ export async function PUT(request: NextRequest) {
     const portalUser = await getPortalUser(supabase)
 
     if (!portalUser) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Não autorizado", 401)
     }
 
     const body = await request.json()
     const { store_id, klaviyo_private_key, shopify_store_domain, shopify_access_token } = body
 
     if (!store_id) {
-      return NextResponse.json({ error: "store_id é obrigatório" }, { status: 400, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("store_id é obrigatório", 400)
     }
 
     const adminClient = createAdminClient()
@@ -119,7 +118,7 @@ export async function PUT(request: NextRequest) {
       .single()
 
     if (!store) {
-      return NextResponse.json({ error: "Loja não encontrada" }, { status: 404, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Loja não encontrada", 404)
     }
 
     // Build update data
@@ -137,7 +136,7 @@ export async function PUT(request: NextRequest) {
     }
 
     if (Object.keys(updateData).length === 0) {
-      return NextResponse.json({ error: "Nenhuma credencial informada" }, { status: 400, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Nenhuma credencial informada", 400)
     }
 
     const { error: updateError } = await adminClient
@@ -147,7 +146,7 @@ export async function PUT(request: NextRequest) {
 
     if (updateError) {
       log.error("[Portal Stores] Update error:", updateError)
-      return NextResponse.json({ error: "Erro ao salvar credenciais" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Erro ao salvar credenciais", 500)
     }
 
     // Auto-mark onboarding steps
@@ -221,12 +220,11 @@ export async function PUT(request: NextRequest) {
       await markStep("Acesso à Loja Configurado")
     }
 
-    return NextResponse.json({
+    return successResponse(request, {
       success: true,
       message: "Credenciais salvas com sucesso",
-    }, { headers: corsHeaders(request.headers.get("origin")) })
+    })
   } catch (error) {
-    log.error("[Portal Stores] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+    return errorResponse(request, error, "PortalStores")
   }
 }

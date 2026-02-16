@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
@@ -22,11 +22,7 @@ export async function GET(
   try {
     const { id } = await params
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
-    }
+    const user = await requireAuth(supabase)
 
     const adminClient = createAdminClient()
 
@@ -49,7 +45,7 @@ export async function GET(
 
     if (error || !task) {
       log.error("[Task] Fetch error:", error)
-      return NextResponse.json({ error: "Tarefa não encontrada" }, { status: 404, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Tarefa não encontrada", 404)
     }
 
     // Fetch comments
@@ -89,8 +85,7 @@ export async function GET(
       },
     }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    log.error("[Task] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+    return errorResponse(request, error, "Tasks")
   }
 }
 
@@ -102,11 +97,7 @@ export async function PUT(
   try {
     const { id } = await params
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
-    }
+    const user = await requireAuth(supabase)
 
     const body = await request.json()
     const adminClient = createAdminClient()
@@ -166,13 +157,12 @@ export async function PUT(
 
     if (updateError) {
       log.error("[Task] Update error:", updateError)
-      return NextResponse.json({ error: "Erro ao atualizar tarefa" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Erro ao atualizar tarefa", 500)
     }
 
-    return NextResponse.json({ task, message: "Tarefa atualizada com sucesso" }, { headers: corsHeaders(request.headers.get("origin")) })
+    return successResponse(request, { task, message: "Tarefa atualizada com sucesso" })
   } catch (error) {
-    log.error("[Task] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+    return errorResponse(request, error, "Tasks")
   }
 }
 
@@ -184,11 +174,7 @@ export async function DELETE(
   try {
     const { id } = await params
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
-    }
+    const user = await requireAuth(supabase)
 
     const adminClient = createAdminClient()
 
@@ -199,12 +185,11 @@ export async function DELETE(
 
     if (deleteError) {
       log.error("[Task] Delete error:", deleteError)
-      return NextResponse.json({ error: "Erro ao excluir tarefa" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Erro ao excluir tarefa", 500)
     }
 
-    return NextResponse.json({ success: true, message: "Tarefa excluída com sucesso" }, { headers: corsHeaders(request.headers.get("origin")) })
+    return successResponse(request, { success: true, message: "Tarefa excluída com sucesso" })
   } catch (error) {
-    log.error("[Task] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+    return errorResponse(request, error, "Tasks")
   }
 }

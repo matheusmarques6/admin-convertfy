@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
 
@@ -22,10 +22,7 @@ export async function POST(request: NextRequest) {
     const { api_key } = body
 
     if (!api_key) {
-      return NextResponse.json(
-        { error: "API key é obrigatória" },
-        { status: 400 }
-      )
+      throw new AppError("API key é obrigatória", 400)
     }
 
     // Test Klaviyo API connection
@@ -53,10 +50,6 @@ export async function POST(request: NextRequest) {
       }, { status: response.status })
     }
   } catch (error) {
-    log.error("Klaviyo test error:", error)
-    return NextResponse.json(
-      { error: "Erro ao testar conexão com Klaviyo" },
-      { status: 500 }
-    )
+    return errorResponse(request, error, "IntegrationsKlaviyoTest")
   }
 }

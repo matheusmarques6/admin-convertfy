@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
 
     // For now, if no secret is configured, allow requests (dev mode)
     if (expectedSecret && webhookSecret !== expectedSecret) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Unauthorized", 401)
     }
 
     const body = await request.json()
@@ -36,10 +36,7 @@ export async function POST(request: NextRequest) {
     // }
 
     if (!body.onboarding_id || !body.type || !body.data) {
-      return NextResponse.json(
-        { error: "Campos obrigatórios: onboarding_id, type, data" },
-        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Campos obrigatórios: onboarding_id, type, data", 400)
     }
 
     const adminClient = createAdminClient()
@@ -53,7 +50,7 @@ export async function POST(request: NextRequest) {
 
       if (error) {
         log.error("[Webhook] Update error:", error)
-        return NextResponse.json({ error: "Erro ao salvar análise" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+        throw new AppError("Erro ao salvar análise", 500)
       }
 
       // If there's a step for "Análise da Loja", mark it as completed
@@ -67,10 +64,10 @@ export async function POST(request: NextRequest) {
         .eq("onboarding_id", body.onboarding_id)
         .ilike("name", "%Análise da Loja%")
 
-      return NextResponse.json({
+      return successResponse(request, {
         success: true,
         message: "Análise da loja salva com sucesso",
-      }, { headers: corsHeaders(request.headers.get("origin")) })
+      })
     }
 
     if (body.type === "copies_generated") {
@@ -82,21 +79,17 @@ export async function POST(request: NextRequest) {
 
       if (error) {
         log.error("[Webhook] Update error:", error)
-        return NextResponse.json({ error: "Erro ao salvar copies" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+        throw new AppError("Erro ao salvar copies", 500)
       }
 
-      return NextResponse.json({
+      return successResponse(request, {
         success: true,
         message: "Copies geradas e salvas com sucesso",
-      }, { headers: corsHeaders(request.headers.get("origin")) })
+      })
     }
 
-    return NextResponse.json(
-      { error: "Tipo de webhook não suportado" },
-      { status: 400, headers: corsHeaders(request.headers.get("origin")) }
-    )
+    throw new AppError("Tipo de webhook não suportado", 400)
   } catch (error) {
-    log.error("[Webhook] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+    return errorResponse(request, error, "OnboardingWebhook")
   }
 }

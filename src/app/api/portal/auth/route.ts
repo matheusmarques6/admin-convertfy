@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
@@ -73,8 +73,7 @@ export async function GET(request: NextRequest) {
       { headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
-    log.error("[Portal Auth] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+    return errorResponse(request, error, "PortalAuth")
   }
 }
 
@@ -87,10 +86,7 @@ export async function POST(request: NextRequest) {
     const { email, password } = body
 
     if (!email || !password) {
-      return NextResponse.json(
-        { error: "Email e senha são obrigatórios" },
-        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Email e senha são obrigatórios", 400)
     }
 
     // Sign in with Supabase
@@ -101,10 +97,7 @@ export async function POST(request: NextRequest) {
 
     if (signInError) {
       log.error("[Portal Auth] Sign in error:", signInError)
-      return NextResponse.json(
-        { error: "Email ou senha incorretos" },
-        { status: 401, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Email ou senha incorretos", 401)
     }
 
     // Check if this is a portal user
@@ -120,18 +113,12 @@ export async function POST(request: NextRequest) {
     if (portalError || !portalUser) {
       // Sign out if not a portal user
       await supabase.auth.signOut()
-      return NextResponse.json(
-        { error: "Esta conta não tem acesso ao portal do cliente" },
-        { status: 403, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Esta conta não tem acesso ao portal do cliente", 403)
     }
 
     if (!portalUser.is_active) {
       await supabase.auth.signOut()
-      return NextResponse.json(
-        { error: "Sua conta está desativada. Entre em contato com o suporte." },
-        { status: 403, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Sua conta está desativada. Entre em contato com o suporte.", 403)
     }
 
     // Only update last login if not required to change password
@@ -172,8 +159,7 @@ export async function POST(request: NextRequest) {
       { headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
-    log.error("[Portal Auth] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+    return errorResponse(request, error, "PortalAuth")
   }
 }
 
@@ -187,10 +173,7 @@ export async function DELETE(request: NextRequest) {
 
     if (error) {
       log.error("[Portal Auth] Logout error:", error)
-      return NextResponse.json(
-        { error: "Erro ao fazer logout" },
-        { status: 500, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Erro ao fazer logout", 500)
     }
 
     return NextResponse.json(
@@ -198,10 +181,6 @@ export async function DELETE(request: NextRequest) {
       { headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
-    log.error("[Portal Auth] Logout error:", error)
-    return NextResponse.json(
-      { error: "Erro interno" },
-      { status: 500, headers: corsHeaders(request.headers.get("origin")) }
-    )
+    return errorResponse(request, error, "PortalAuth")
   }
 }

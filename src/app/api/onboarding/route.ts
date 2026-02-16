@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
@@ -18,11 +18,7 @@ export async function OPTIONS(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
-    }
+    const user = await requireAuth(supabase)
 
     const searchParams = request.nextUrl.searchParams
     const clientId = searchParams.get("client_id")
@@ -76,13 +72,12 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       log.error("[Onboarding] Error fetching:", error)
-      return NextResponse.json({ error: "Erro ao buscar onboardings" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Erro ao buscar onboardings", 500)
     }
 
-    return NextResponse.json({ onboardings: onboardings || [] }, { headers: corsHeaders(request.headers.get("origin")) })
+    return successResponse(request, { onboardings: onboardings || [] })
   } catch (error) {
-    log.error("[Onboarding] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+    return errorResponse(request, error, "Onboarding")
   }
 }
 
@@ -90,19 +85,12 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
-    }
+    const user = await requireAuth(supabase)
 
     const body = await request.json()
 
     if (!body.client_id) {
-      return NextResponse.json(
-        { error: "client_id é obrigatório" },
-        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("client_id é obrigatório", 400)
     }
 
     const adminClient = createAdminClient()
@@ -116,10 +104,7 @@ export async function POST(request: NextRequest) {
       .maybeSingle()
 
     if (existing) {
-      return NextResponse.json(
-        { error: "Cliente já possui um onboarding ativo" },
-        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Cliente já possui um onboarding ativo", 400)
     }
 
     // Get default template
@@ -134,10 +119,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (!template) {
-      return NextResponse.json(
-        { error: "Nenhum template de onboarding encontrado" },
-        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Nenhum template de onboarding encontrado", 400)
     }
 
     // Calculate target completion date
@@ -162,10 +144,7 @@ export async function POST(request: NextRequest) {
 
     if (insertError) {
       log.error("[Onboarding] Insert error:", insertError)
-      return NextResponse.json(
-        { error: "Erro ao criar onboarding" },
-        { status: 500, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Erro ao criar onboarding", 500)
     }
 
     // Create steps from template
@@ -214,12 +193,8 @@ export async function POST(request: NextRequest) {
       .eq("id", onboarding.id)
       .single()
 
-    return NextResponse.json(
-      { onboarding: completeOnboarding, message: "Onboarding iniciado com sucesso" },
-      { status: 201, headers: corsHeaders(request.headers.get("origin")) }
-    )
+    return successResponse(request, { onboarding: completeOnboarding, message: "Onboarding iniciado com sucesso" }, { status: 201 })
   } catch (error) {
-    log.error("[Onboarding] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+    return errorResponse(request, error, "Onboarding")
   }
 }

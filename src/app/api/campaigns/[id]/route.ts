@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { CampaignFormData } from "@/types"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
@@ -26,10 +26,7 @@ export async function GET(
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json(
-        { error: "Não autorizado" },
-        { status: 401, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Não autorizado", 401)
     }
 
     const { id } = await params
@@ -48,10 +45,7 @@ export async function GET(
 
     if (error) {
       log.error("[Campaigns] Error fetching campaign:", error)
-      return NextResponse.json(
-        { error: "Campanha não encontrada" },
-        { status: 404, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Campanha não encontrada", 404)
     }
 
     // Transform relations from arrays to single objects
@@ -63,13 +57,9 @@ export async function GET(
       reviewer: Array.isArray(campaign.reviewer) ? campaign.reviewer[0] : campaign.reviewer,
     }
 
-    return NextResponse.json({ campaign: transformedCampaign }, { headers: corsHeaders(request.headers.get("origin")) })
+    return successResponse(request, { campaign: transformedCampaign })
   } catch (error) {
-    log.error("[Campaigns] Error:", error)
-    return NextResponse.json(
-      { error: "Erro interno do servidor" },
-      { status: 500, headers: corsHeaders(request.headers.get("origin")) }
-    )
+    return errorResponse(request, error, "Campaigns")
   }
 }
 
@@ -83,10 +73,7 @@ export async function PUT(
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json(
-        { error: "Não autorizado" },
-        { status: 401, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Não autorizado", 401)
     }
 
     const { id } = await params
@@ -132,19 +119,12 @@ export async function PUT(
 
     if (error) {
       log.error("[Campaigns] Error updating campaign:", error)
-      return NextResponse.json(
-        { error: "Erro ao atualizar campanha" },
-        { status: 500, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Erro ao atualizar campanha", 500)
     }
 
-    return NextResponse.json({ campaign }, { headers: corsHeaders(request.headers.get("origin")) })
+    return successResponse(request, { campaign })
   } catch (error) {
-    log.error("[Campaigns] Error:", error)
-    return NextResponse.json(
-      { error: "Erro interno do servidor" },
-      { status: 500, headers: corsHeaders(request.headers.get("origin")) }
-    )
+    return errorResponse(request, error, "Campaigns")
   }
 }
 
@@ -158,10 +138,7 @@ export async function DELETE(
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json(
-        { error: "Não autorizado" },
-        { status: 401, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Não autorizado", 401)
     }
 
     const { id } = await params
@@ -173,10 +150,7 @@ export async function DELETE(
 
     if (error) {
       log.error("[Campaigns] Error deleting campaign:", error)
-      return NextResponse.json(
-        { error: "Erro ao excluir campanha" },
-        { status: 500, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Erro ao excluir campanha", 500)
     }
 
     return NextResponse.json(
@@ -184,10 +158,6 @@ export async function DELETE(
       { headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
-    log.error("[Campaigns] Error:", error)
-    return NextResponse.json(
-      { error: "Erro interno do servidor" },
-      { status: 500, headers: corsHeaders(request.headers.get("origin")) }
-    )
+    return errorResponse(request, error, "Campaigns")
   }
 }

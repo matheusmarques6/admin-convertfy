@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { NextRequest, NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { createWiseService } from "@/lib/integrations/wise"
 import { logger } from "@/lib/logger"
@@ -8,7 +8,7 @@ const log = logger.child("IntegrationsWiseBalances")
 
 export const dynamic = "force-dynamic"
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
 
@@ -29,10 +29,7 @@ export async function GET() {
       .single()
 
     if (integrationError || !integration) {
-      return NextResponse.json(
-        { error: "Wise integration not configured" },
-        { status: 400 }
-      )
+      throw new AppError("Wise integration not configured", 400)
     }
 
     const wise = createWiseService(integration.credentials)
@@ -40,10 +37,6 @@ export async function GET() {
 
     return NextResponse.json({ balances })
   } catch (error) {
-    log.error("Error fetching Wise balances:", error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch balances" },
-      { status: 500 }
-    )
+    return errorResponse(request, error, "IntegrationsWiseBalances")
   }
 }

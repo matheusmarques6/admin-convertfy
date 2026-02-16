@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("KlaviyoAlerts")
@@ -13,11 +13,7 @@ const log = logger.child("KlaviyoAlerts")
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
-    }
+    const user = await requireAuth(supabase)
 
     const searchParams = request.nextUrl.searchParams
     const storeId = searchParams.get("store_id")
@@ -130,11 +126,7 @@ export async function GET(request: NextRequest) {
       total_unread: counts?.length || 0,
     })
   } catch (error) {
-    log.error("Error in alerts API:", error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Erro interno" },
-      { status: 500 }
-    )
+    return errorResponse(request, error, "KlaviyoAlerts")
   }
 }
 
@@ -146,27 +138,17 @@ export async function GET(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
-    }
+    const user = await requireAuth(supabase)
 
     const body = await request.json()
     const { alert_ids, action } = body
 
     if (!alert_ids || !Array.isArray(alert_ids) || alert_ids.length === 0) {
-      return NextResponse.json(
-        { error: "alert_ids é obrigatório" },
-        { status: 400 }
-      )
+      throw new AppError("alert_ids é obrigatório", 400)
     }
 
     if (!["read", "dismiss", "unread"].includes(action)) {
-      return NextResponse.json(
-        { error: "action deve ser 'read', 'dismiss' ou 'unread'" },
-        { status: 400 }
-      )
+      throw new AppError("action deve ser 'read', 'dismiss' ou 'unread'", 400)
     }
 
     let updateData: Record<string, unknown> = {}
@@ -203,10 +185,6 @@ export async function PATCH(request: NextRequest) {
       message: `${alert_ids.length} alerta(s) atualizado(s)`,
     })
   } catch (error) {
-    log.error("Error updating alerts:", error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Erro interno" },
-      { status: 500 }
-    )
+    return errorResponse(request, error, "KlaviyoAlerts")
   }
 }

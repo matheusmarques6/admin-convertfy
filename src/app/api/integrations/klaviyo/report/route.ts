@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { requireAuth } from "@/lib/api/errors"
+import { errorResponse, requireAuth } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("KlaviyoReport")
@@ -885,11 +885,7 @@ async function getCampaignValuesReport(
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders() })
-    }
+    const user = await requireAuth(supabase)
 
     const searchParams = request.nextUrl.searchParams
     const storeId = searchParams.get("store_id")
@@ -1278,10 +1274,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(reportData, { headers: corsHeaders() })
 
   } catch (error) {
-    log.error("[Klaviyo] Error generating report:", error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Erro ao gerar relatório" },
-      { status: 500, headers: corsHeaders() }
-    )
+    return errorResponse(request, error, "IntegrationsKlaviyoReport")
   }
 }

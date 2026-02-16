@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
@@ -18,11 +18,7 @@ export async function OPTIONS(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
-    }
+    const user = await requireAuth(supabase)
 
     const searchParams = request.nextUrl.searchParams
     const status = searchParams.get("status")
@@ -64,7 +60,7 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       log.error("[Meetings] Error fetching:", error)
-      return NextResponse.json({ error: "Erro ao buscar reuniões" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Erro ao buscar reuniões", 500)
     }
 
     // If filtering by participant, filter meetings that include this participant
@@ -122,10 +118,9 @@ export async function GET(request: NextRequest) {
       })),
     }))
 
-    return NextResponse.json({ meetings: transformedMeetings }, { headers: corsHeaders(request.headers.get("origin")) })
+    return successResponse(request, { meetings: transformedMeetings })
   } catch (error) {
-    log.error("[Meetings] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+    return errorResponse(request, error, "Meetings")
   }
 }
 
@@ -134,19 +129,12 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
     const adminClient = createAdminClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
-    }
+    const user = await requireAuth(supabase)
 
     const body = await request.json()
 
     if (!body.title || !body.scheduled_at) {
-      return NextResponse.json(
-        { error: "Título e data/hora são obrigatórios" },
-        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Título e data/hora são obrigatórios", 400)
     }
 
     const { data: meeting, error: insertError } = await adminClient
@@ -171,10 +159,7 @@ export async function POST(request: NextRequest) {
 
     if (insertError) {
       log.error("[Meetings] Insert error:", insertError)
-      return NextResponse.json(
-        { error: "Erro ao criar reunião" },
-        { status: 500, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Erro ao criar reunião", 500)
     }
 
     // Add the creator as organizer participant
@@ -264,12 +249,8 @@ export async function POST(request: NextRequest) {
       participants: [],
     }
 
-    return NextResponse.json(
-      { meeting: transformedMeeting, message: "Reunião agendada com sucesso" },
-      { status: 201, headers: corsHeaders(request.headers.get("origin")) }
-    )
+    return successResponse(request, { meeting: transformedMeeting, message: "Reunião agendada com sucesso" }, { status: 201 })
   } catch (error) {
-    log.error("[Meetings] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+    return errorResponse(request, error, "Meetings")
   }
 }

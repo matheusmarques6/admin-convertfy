@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 import { generateTempPassword } from "@/lib/utils/generate-password"
@@ -12,14 +12,7 @@ export async function POST(request: NextRequest) {
   try {
     // Verify the requesting user is authenticated and authorized
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      )
-    }
+    const user = await requireAuth(supabase)
 
     // Check if user has permission (admin, manager, or cs)
     const { data: profile, error: profileError } = await supabase
@@ -29,17 +22,11 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (profileError || !profile) {
-      return NextResponse.json(
-        { error: "Profile not found" },
-        { status: 403 }
-      )
+      throw new AppError("Profile not found", 403)
     }
 
     if (!["admin", "manager", "cs"].includes(profile.role)) {
-      return NextResponse.json(
-        { error: "Access denied. You don't have permission to create portal users." },
-        { status: 403 }
-      )
+      throw new AppError("Access denied. You don't have permission to create portal users.", 403)
     }
 
     // Parse request body
@@ -60,10 +47,7 @@ export async function POST(request: NextRequest) {
 
     // Validate required fields
     if (!client_id || !email || !name) {
-      return NextResponse.json(
-        { error: "client_id, email, and name are required" },
-        { status: 400 }
-      )
+      throw new AppError("client_id, email, and name are required", 400)
     }
 
     // Verify the client exists
@@ -74,10 +58,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (clientError || !client) {
-      return NextResponse.json(
-        { error: "Client not found" },
-        { status: 404 }
-      )
+      throw new AppError("Client not found", 404)
     }
 
     // Use admin client to create auth user
@@ -182,11 +163,7 @@ export async function POST(request: NextRequest) {
       temp_password: tempPassword,
     })
   } catch (error) {
-    log.error("Error in POST /api/portal-users:", error)
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    )
+    return errorResponse(request, error, "PortalUsers")
   }
 }
 
@@ -194,24 +171,14 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      )
-    }
+    const user = await requireAuth(supabase)
 
     // Get client_id from query params
     const { searchParams } = new URL(request.url)
     const clientId = searchParams.get("client_id")
 
     if (!clientId) {
-      return NextResponse.json(
-        { error: "client_id is required" },
-        { status: 400 }
-      )
+      throw new AppError("client_id is required", 400)
     }
 
     const { data: portalUsers, error } = await supabase
@@ -222,19 +189,12 @@ export async function GET(request: NextRequest) {
       .order("created_at", { ascending: true })
 
     if (error) {
-      return NextResponse.json(
-        { error: "Failed to fetch portal users" },
-        { status: 500 }
-      )
+      throw new AppError("Failed to fetch portal users", 500)
     }
 
     return NextResponse.json({ data: portalUsers })
   } catch (error) {
-    log.error("Error in GET /api/portal-users:", error)
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    )
+    return errorResponse(request, error, "PortalUsers")
   }
 }
 
@@ -242,14 +202,7 @@ export async function GET(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      )
-    }
+    const user = await requireAuth(supabase)
 
     // Check if user has permission
     const { data: profile } = await supabase
@@ -259,20 +212,14 @@ export async function DELETE(request: NextRequest) {
       .single()
 
     if (!profile || !["admin", "manager", "cs"].includes(profile.role)) {
-      return NextResponse.json(
-        { error: "Access denied" },
-        { status: 403 }
-      )
+      throw new AppError("Access denied", 403)
     }
 
     const { searchParams } = new URL(request.url)
     const portalUserId = searchParams.get("id")
 
     if (!portalUserId) {
-      return NextResponse.json(
-        { error: "Portal user ID is required" },
-        { status: 400 }
-      )
+      throw new AppError("Portal user ID is required", 400)
     }
 
     // Get portal user info before deleting
@@ -284,10 +231,7 @@ export async function DELETE(request: NextRequest) {
       .single()
 
     if (!portalUser) {
-      return NextResponse.json(
-        { error: "Portal user not found" },
-        { status: 404 }
-      )
+      throw new AppError("Portal user not found", 404)
     }
 
     // Delete portal user record (auth user remains for potential other uses)
@@ -297,10 +241,7 @@ export async function DELETE(request: NextRequest) {
       .eq("id", portalUserId)
 
     if (deleteError) {
-      return NextResponse.json(
-        { error: "Failed to delete portal user" },
-        { status: 500 }
-      )
+      throw new AppError("Failed to delete portal user", 500)
     }
 
     // Create activity log
@@ -318,11 +259,7 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    log.error("Error in DELETE /api/portal-users:", error)
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    )
+    return errorResponse(request, error, "PortalUsers")
   }
 }
 
@@ -330,14 +267,7 @@ export async function DELETE(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      )
-    }
+    const user = await requireAuth(supabase)
 
     // Check if user has permission
     const { data: profile } = await supabase
@@ -347,20 +277,14 @@ export async function PATCH(request: NextRequest) {
       .single()
 
     if (!profile || !["admin", "manager", "cs"].includes(profile.role)) {
-      return NextResponse.json(
-        { error: "Access denied" },
-        { status: 403 }
-      )
+      throw new AppError("Access denied", 403)
     }
 
     const body = await request.json()
     const { id, ...updateData } = body
 
     if (!id) {
-      return NextResponse.json(
-        { error: "Portal user ID is required" },
-        { status: 400 }
-      )
+      throw new AppError("Portal user ID is required", 400)
     }
 
     const adminClient = createAdminClient()
@@ -373,10 +297,7 @@ export async function PATCH(request: NextRequest) {
       .single()
 
     if (updateError) {
-      return NextResponse.json(
-        { error: "Failed to update portal user" },
-        { status: 500 }
-      )
+      throw new AppError("Failed to update portal user", 500)
     }
 
     // Create activity log
@@ -393,10 +314,6 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: updatedUser })
   } catch (error) {
-    log.error("Error in PATCH /api/portal-users:", error)
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    )
+    return errorResponse(request, error, "PortalUsers")
   }
 }

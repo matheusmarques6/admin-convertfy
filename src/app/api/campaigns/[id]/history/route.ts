@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
@@ -24,10 +24,7 @@ export async function GET(
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json(
-        { error: "Não autorizado" },
-        { status: 401, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Não autorizado", 401)
     }
 
     const { id } = await params
@@ -40,10 +37,7 @@ export async function GET(
       .single()
 
     if (fetchError || !campaign) {
-      return NextResponse.json(
-        { error: "Campanha não encontrada" },
-        { status: 404, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Campanha não encontrada", 404)
     }
 
     // Get history with changer info
@@ -58,10 +52,7 @@ export async function GET(
 
     if (historyError) {
       log.error("[Campaigns] History error:", historyError)
-      return NextResponse.json(
-        { error: "Erro ao buscar histórico" },
-        { status: 500, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Erro ao buscar histórico", 500)
     }
 
     // Transform changer from array to single object
@@ -75,10 +66,6 @@ export async function GET(
       history: transformedHistory,
     }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    log.error("[Campaigns] Error:", error)
-    return NextResponse.json(
-      { error: "Erro interno do servidor" },
-      { status: 500, headers: corsHeaders(request.headers.get("origin")) }
-    )
+    return errorResponse(request, error, "CampaignsHistory")
   }
 }

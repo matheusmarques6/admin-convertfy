@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
@@ -24,10 +24,7 @@ export async function POST(
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json(
-        { error: "Não autorizado" },
-        { status: 401, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Não autorizado", 401)
     }
 
     const { id } = await params
@@ -35,10 +32,7 @@ export async function POST(
 
     // Reason is required for rejection
     if (!body.reason || body.reason.trim().length === 0) {
-      return NextResponse.json(
-        { error: "Motivo da rejeição é obrigatório" },
-        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Motivo da rejeição é obrigatório", 400)
     }
 
     // Check if user has permission to reject (owner, manager, or coordinator)
@@ -61,10 +55,7 @@ export async function POST(
     const isAdmin = profile?.role === "admin"
 
     if (!canReject && !isAdmin) {
-      return NextResponse.json(
-        { error: "Você não tem permissão para rejeitar campanhas" },
-        { status: 403, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Você não tem permissão para rejeitar campanhas", 403)
     }
 
     // Get current campaign
@@ -75,10 +66,7 @@ export async function POST(
       .single()
 
     if (fetchError || !campaign) {
-      return NextResponse.json(
-        { error: "Campanha não encontrada" },
-        { status: 404, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Campanha não encontrada", 404)
     }
 
     // Validate current status - can only reject from pending_review
@@ -110,21 +98,14 @@ export async function POST(
 
     if (updateError) {
       log.error("[Campaigns] Reject error:", updateError)
-      return NextResponse.json(
-        { error: "Erro ao rejeitar campanha" },
-        { status: 500, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Erro ao rejeitar campanha", 500)
     }
 
-    return NextResponse.json({
+    return successResponse(request, {
       campaign: updated,
       message: "Campanha rejeitada",
-    }, { headers: corsHeaders(request.headers.get("origin")) })
+    })
   } catch (error) {
-    log.error("[Campaigns] Error:", error)
-    return NextResponse.json(
-      { error: "Erro interno do servidor" },
-      { status: 500, headers: corsHeaders(request.headers.get("origin")) }
-    )
+    return errorResponse(request, error, "CampaignsReject")
   }
 }

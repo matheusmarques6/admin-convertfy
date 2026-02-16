@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { createAsaasService } from "@/lib/integrations/asaas"
 import { logger } from "@/lib/logger"
@@ -27,34 +27,22 @@ export async function POST(request: Request) {
     const supabase = await createClient()
 
     // Verify authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
-    }
+    const user = await requireAuth(supabase)
 
     // Get request body
     const body: CreateCustomerBody = await request.json()
 
     // Validate required fields
     if (!body.name) {
-      return NextResponse.json(
-        { error: "Nome é obrigatório" },
-        { status: 400 }
-      )
+      throw new AppError("Nome é obrigatório", 400)
     }
 
     if (!body.cpfCnpj) {
-      return NextResponse.json(
-        { error: "CPF/CNPJ é obrigatório" },
-        { status: 400 }
-      )
+      throw new AppError("CPF/CNPJ é obrigatório", 400)
     }
 
     if (!body.email && !body.phone && !body.mobilePhone) {
-      return NextResponse.json(
-        { error: "Email ou telefone é obrigatório" },
-        { status: 400 }
-      )
+      throw new AppError("Email ou telefone é obrigatório", 400)
     }
 
     // Get Asaas integration credentials
@@ -66,10 +54,7 @@ export async function POST(request: Request) {
       .single()
 
     if (intError || !integration) {
-      return NextResponse.json(
-        { error: "Integração Asaas não encontrada ou inativa. Configure a integração primeiro." },
-        { status: 400 }
-      )
+      throw new AppError("Integração Asaas não encontrada ou inativa. Configure a integração primeiro.", 400)
     }
 
     const asaas = createAsaasService(integration.credentials)

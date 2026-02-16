@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
@@ -360,11 +360,7 @@ async function getTrafficByCountry(
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
-    }
+    const user = await requireAuth(supabase)
 
     const searchParams = request.nextUrl.searchParams
     const storeId = searchParams.get("store_id")
@@ -373,7 +369,7 @@ export async function GET(request: NextRequest) {
     const customEndDate = searchParams.get("end_date")
 
     if (!storeId) {
-      return NextResponse.json({ error: "store_id é obrigatório" }, { status: 400 })
+      throw new AppError("store_id é obrigatório", 400)
     }
 
     // Get store with GA4 credentials
@@ -384,7 +380,7 @@ export async function GET(request: NextRequest) {
       .single()
 
     if (storeError || !store) {
-      return NextResponse.json({ error: "Loja não encontrada" }, { status: 404 })
+      throw new AppError("Loja não encontrada", 404)
     }
 
     const { ga4_property_id: propertyId, ga4_credentials: credentials } = store
@@ -478,10 +474,6 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(reportData)
   } catch (error) {
-    log.error("Error generating GA4 report:", error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Erro ao gerar relatório" },
-      { status: 500 }
-    )
+    return errorResponse(request, error, "IntegrationsGoogleAnalyticsReport")
   }
 }

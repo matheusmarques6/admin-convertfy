@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
@@ -22,11 +22,7 @@ export async function GET(
   try {
     const { id } = await params
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
-    }
+    const user = await requireAuth(supabase)
 
     // Fetch member with all related data
     const { data: member, error } = await supabase
@@ -40,7 +36,7 @@ export async function GET(
       .single()
 
     if (error || !member) {
-      return NextResponse.json({ error: "Membro não encontrado" }, { status: 404, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Membro não encontrado", 404)
     }
 
     // Fetch features
@@ -69,8 +65,7 @@ export async function GET(
       },
     }, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    log.error("[Org Member] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+    return errorResponse(request, error, "AdminOrgMembers")
   }
 }
 
@@ -82,11 +77,7 @@ export async function PUT(
   try {
     const { id } = await params
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
-    }
+    const user = await requireAuth(supabase)
 
     // Get the member being updated to check org
     const { data: targetMember } = await supabase
@@ -96,7 +87,7 @@ export async function PUT(
       .single()
 
     if (!targetMember) {
-      return NextResponse.json({ error: "Membro não encontrado" }, { status: 404, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Membro não encontrado", 404)
     }
 
     // Check if user has permission: system admin OR org owner/admin
@@ -118,7 +109,7 @@ export async function PUT(
     const isOrgAdmin = userOrgMember?.role === "owner" || userOrgMember?.role === "manager"
 
     if (!isSystemAdmin && !isOrgAdmin) {
-      return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Acesso negado", 403)
     }
 
     const body = await request.json()
@@ -143,7 +134,7 @@ export async function PUT(
 
     if (updateError) {
       log.error("[Org Member] Update error:", updateError)
-      return NextResponse.json({ error: "Erro ao atualizar membro" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Erro ao atualizar membro", 500)
     }
 
     // Update features if provided
@@ -196,10 +187,9 @@ export async function PUT(
       }
     }
 
-    return NextResponse.json({ member, message: "Membro atualizado com sucesso" }, { headers: corsHeaders(request.headers.get("origin")) })
+    return successResponse(request, { member, message: "Membro atualizado com sucesso" })
   } catch (error) {
-    log.error("[Org Member] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+    return errorResponse(request, error, "AdminOrgMembers")
   }
 }
 
@@ -211,11 +201,7 @@ export async function DELETE(
   try {
     const { id } = await params
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
-    }
+    const user = await requireAuth(supabase)
 
     // Get the member being deleted to check org
     const { data: targetMember } = await supabase
@@ -225,7 +211,7 @@ export async function DELETE(
       .single()
 
     if (!targetMember) {
-      return NextResponse.json({ error: "Membro não encontrado" }, { status: 404, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Membro não encontrado", 404)
     }
 
     // Check if user has permission: system admin OR org owner/admin
@@ -247,7 +233,7 @@ export async function DELETE(
     const isOrgAdmin = userOrgMember?.role === "owner" || userOrgMember?.role === "manager"
 
     if (!isSystemAdmin && !isOrgAdmin) {
-      return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Acesso negado", 403)
     }
 
     const adminClient = createAdminClient()
@@ -267,7 +253,7 @@ export async function DELETE(
 
     if (deleteError) {
       log.error("[Org Member] Delete error:", deleteError)
-      return NextResponse.json({ error: "Erro ao remover membro" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Erro ao remover membro", 500)
     }
 
     // Log activity
@@ -278,9 +264,8 @@ export async function DELETE(
       metadata: { member_id: id },
     })
 
-    return NextResponse.json({ success: true, message: "Membro removido com sucesso" }, { headers: corsHeaders(request.headers.get("origin")) })
+    return successResponse(request, { success: true, message: "Membro removido com sucesso" })
   } catch (error) {
-    log.error("[Org Member] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+    return errorResponse(request, error, "AdminOrgMembers")
   }
 }

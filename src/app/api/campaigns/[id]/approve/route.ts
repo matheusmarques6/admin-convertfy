@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
@@ -24,10 +24,7 @@ export async function POST(
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json(
-        { error: "Não autorizado" },
-        { status: 401, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Não autorizado", 401)
     }
 
     const { id } = await params
@@ -53,10 +50,7 @@ export async function POST(
     const isAdmin = profile?.role === "admin"
 
     if (!canApprove && !isAdmin) {
-      return NextResponse.json(
-        { error: "Você não tem permissão para aprovar campanhas" },
-        { status: 403, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Você não tem permissão para aprovar campanhas", 403)
     }
 
     // Get current campaign
@@ -67,10 +61,7 @@ export async function POST(
       .single()
 
     if (fetchError || !campaign) {
-      return NextResponse.json(
-        { error: "Campanha não encontrada" },
-        { status: 404, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Campanha não encontrada", 404)
     }
 
     // Validate current status - can only approve from pending_review
@@ -83,10 +74,7 @@ export async function POST(
 
     // Prevent self-approval (unless admin)
     if (campaign.submitted_by === user.id && !isAdmin) {
-      return NextResponse.json(
-        { error: "Você não pode aprovar sua própria campanha" },
-        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Você não pode aprovar sua própria campanha", 400)
     }
 
     const adminClient = createAdminClient()
@@ -124,25 +112,18 @@ export async function POST(
 
     if (updateError) {
       log.error("[Campaigns] Approve error:", updateError)
-      return NextResponse.json(
-        { error: "Erro ao aprovar campanha" },
-        { status: 500, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Erro ao aprovar campanha", 500)
     }
 
     const statusMessage = targetStatus === "scheduled"
       ? "Campanha aprovada e agendada com sucesso"
       : "Campanha aprovada com sucesso"
 
-    return NextResponse.json({
+    return successResponse(request, {
       campaign: updated,
       message: statusMessage,
-    }, { headers: corsHeaders(request.headers.get("origin")) })
+    })
   } catch (error) {
-    log.error("[Campaigns] Error:", error)
-    return NextResponse.json(
-      { error: "Erro interno do servidor" },
-      { status: 500, headers: corsHeaders(request.headers.get("origin")) }
-    )
+    return errorResponse(request, error, "CampaignsApprove")
   }
 }

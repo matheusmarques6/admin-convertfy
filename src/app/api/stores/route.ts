@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
@@ -22,10 +22,7 @@ export async function GET(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json(
-        { error: "Não autorizado" },
-        { status: 401, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Não autorizado", 401)
     }
 
     const searchParams = request.nextUrl.searchParams
@@ -65,10 +62,7 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       log.error("[Stores] Error fetching stores:", error)
-      return NextResponse.json(
-        { error: "Erro ao buscar lojas" },
-        { status: 500, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Erro ao buscar lojas", 500)
     }
 
     return NextResponse.json(
@@ -76,10 +70,6 @@ export async function GET(request: NextRequest) {
       { headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
-    log.error("[Stores] Error:", error)
-    return NextResponse.json(
-      { error: "Erro interno do servidor" },
-      { status: 500, headers: corsHeaders(request.headers.get("origin")) }
-    )
+    return errorResponse(request, error, "Stores")
   }
 }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
@@ -21,10 +21,7 @@ export async function POST(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json(
-        { error: "Não autenticado" },
-        { status: 401, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Não autenticado", 401)
     }
 
     const body = await request.json()
@@ -32,24 +29,15 @@ export async function POST(request: NextRequest) {
 
     // Validate passwords
     if (!newPassword || !confirmPassword) {
-      return NextResponse.json(
-        { error: "Nova senha e confirmação são obrigatórias" },
-        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Nova senha e confirmação são obrigatórias", 400)
     }
 
     if (newPassword !== confirmPassword) {
-      return NextResponse.json(
-        { error: "As senhas não coincidem" },
-        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("As senhas não coincidem", 400)
     }
 
     if (newPassword.length < 8) {
-      return NextResponse.json(
-        { error: "A senha deve ter no mínimo 8 caracteres" },
-        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("A senha deve ter no mínimo 8 caracteres", 400)
     }
 
     // Check if this is a portal user
@@ -60,10 +48,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (portalError || !portalUser) {
-      return NextResponse.json(
-        { error: "Usuário não é do portal" },
-        { status: 403, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Usuário não é do portal", 403)
     }
 
     // Use admin client to update password
@@ -76,10 +61,7 @@ export async function POST(request: NextRequest) {
 
     if (updateError) {
       log.error("[Portal Change Password] Error:", updateError)
-      return NextResponse.json(
-        { error: "Erro ao alterar senha" },
-        { status: 500, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Erro ao alterar senha", 500)
     }
 
     // Update portal user to mark password as changed and update login info
@@ -111,10 +93,6 @@ export async function POST(request: NextRequest) {
       { headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
-    log.error("[Portal Change Password] Error:", error)
-    return NextResponse.json(
-      { error: "Erro interno" },
-      { status: 500, headers: corsHeaders(request.headers.get("origin")) }
-    )
+    return errorResponse(request, error, "PortalChangePassword")
   }
 }

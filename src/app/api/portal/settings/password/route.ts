@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
@@ -18,11 +18,7 @@ export async function OPTIONS(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-
-    if (!user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
-    }
+    const user = await requireAuth(supabase)
 
     // Get portal user
     const { data: portalUser } = await supabase
@@ -33,24 +29,18 @@ export async function PUT(request: NextRequest) {
       .single()
 
     if (!portalUser) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Não autorizado", 401)
     }
 
     const body = await request.json()
     const { currentPassword, newPassword } = body
 
     if (!currentPassword || !newPassword) {
-      return NextResponse.json(
-        { error: "Senha atual e nova senha são obrigatórias" },
-        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Senha atual e nova senha são obrigatórias", 400)
     }
 
     if (newPassword.length < 8) {
-      return NextResponse.json(
-        { error: "A nova senha deve ter no mínimo 8 caracteres" },
-        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("A nova senha deve ter no mínimo 8 caracteres", 400)
     }
 
     // Verify current password by re-authenticating
@@ -60,10 +50,7 @@ export async function PUT(request: NextRequest) {
     })
 
     if (signInError) {
-      return NextResponse.json(
-        { error: "Senha atual incorreta" },
-        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Senha atual incorreta", 400)
     }
 
     // Update password
@@ -73,15 +60,11 @@ export async function PUT(request: NextRequest) {
 
     if (updateError) {
       log.error("[Portal Password] Update error:", updateError)
-      return NextResponse.json(
-        { error: "Erro ao alterar senha" },
-        { status: 500, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Erro ao alterar senha", 500)
     }
 
-    return NextResponse.json({ success: true }, { headers: corsHeaders(request.headers.get("origin")) })
+    return successResponse(request, { success: true })
   } catch (error) {
-    log.error("[Portal Password] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+    return errorResponse(request, error, "PortalSettingsPassword")
   }
 }

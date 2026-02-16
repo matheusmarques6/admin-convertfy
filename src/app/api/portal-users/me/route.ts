@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
@@ -6,7 +6,7 @@ import { logger } from "@/lib/logger"
 const log = logger.child("PortalUsersMe")
 
 // GET - Get current portal user info (if logged in user is a portal user)
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -39,10 +39,6 @@ export async function GET() {
       portal_user: portalUser,
     })
   } catch (error) {
-    log.error("Error in GET /api/portal-users/me:", error)
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    )
+    return errorResponse(request, error, "PortalUsersMe")
   }
 }

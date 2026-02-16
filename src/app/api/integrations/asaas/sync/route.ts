@@ -1,20 +1,17 @@
-import { NextResponse } from "next/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { NextRequest, NextResponse } from "next/server"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { createAsaasService, mapAsaasStatusToInternal } from "@/lib/integrations/asaas"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("IntegrationsAsaasSync")
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
 
     // Verify authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
-    }
+    const user = await requireAuth(supabase)
 
     // Get Asaas integration credentials
     const { data: integration, error: intError } = await supabase
@@ -25,10 +22,7 @@ export async function POST() {
       .single()
 
     if (intError || !integration) {
-      return NextResponse.json(
-        { error: "Integração Asaas não encontrada ou inativa" },
-        { status: 400 }
-      )
+      throw new AppError("Integração Asaas não encontrada ou inativa", 400)
     }
 
     const asaas = createAsaasService(integration.credentials)
@@ -132,14 +126,11 @@ export async function POST() {
 }
 
 // GET - Get sync status
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
-    }
+    const user = await requireAuth(supabase)
 
     const { data: integration } = await supabase
       .from("integrations")
@@ -166,9 +157,6 @@ export async function GET() {
       stats,
     })
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Erro" },
-      { status: 500 }
-    )
+    return errorResponse(request, error, "IntegrationsAsaasSync")
   }
 }

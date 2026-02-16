@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { generateTempPassword } from "@/lib/utils/generate-password"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
@@ -22,11 +22,7 @@ export async function POST(
 ) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
-    }
+    const user = await requireAuth(supabase)
 
     // Check if user is admin
     const { data: profile } = await supabase
@@ -36,7 +32,7 @@ export async function POST(
       .single()
 
     if (!profile || !["admin", "manager"].includes(profile.role)) {
-      return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Acesso negado", 403)
     }
 
     const { id } = await params
@@ -49,7 +45,7 @@ export async function POST(
       .single()
 
     if (!portalUser?.auth_user_id) {
-      return NextResponse.json({ error: "Usuário não encontrado" }, { status: 404, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Usuário não encontrado", 404)
     }
 
     // Generate new temporary password
@@ -66,10 +62,7 @@ export async function POST(
 
     if (updateError) {
       log.error("[Portal Users] Password reset error:", updateError)
-      return NextResponse.json(
-        { error: "Erro ao redefinir senha" },
-        { status: 500, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Erro ao redefinir senha", 500)
     }
 
     // Set must_change_password flag so user is required to change password on login
@@ -88,8 +81,7 @@ export async function POST(
       { headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
-    log.error("[Portal Users] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+    return errorResponse(request, error, "AdminPortalUsersResetPassword")
   }
 }
 

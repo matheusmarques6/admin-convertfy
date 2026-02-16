@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { OrgMemberFormData } from "@/types"
 import { generateTempPassword } from "@/lib/utils/generate-password"
@@ -20,11 +20,7 @@ export async function OPTIONS(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
-    }
+    const user = await requireAuth(supabase)
 
     // Check if user is system admin
     const { data: profile } = await supabase
@@ -45,7 +41,7 @@ export async function GET(request: NextRequest) {
 
     // If not system admin and not member of any org, deny access
     if (!isSystemAdmin && memberOrgIds.length === 0) {
-      return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Acesso negado", 403)
     }
 
     const searchParams = request.nextUrl.searchParams
@@ -55,7 +51,7 @@ export async function GET(request: NextRequest) {
 
     // If filtering by org_id, check permission for that specific org (any member can read)
     if (orgId && !isSystemAdmin && !memberOrgIds.includes(orgId)) {
-      return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Acesso negado", 403)
     }
 
     let query = supabase
@@ -88,7 +84,7 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       log.error("[Org Members] Error fetching:", error)
-      return NextResponse.json({ error: "Erro ao buscar membros" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Erro ao buscar membros", 500)
     }
 
     // For each member, get their features and store access count
@@ -115,10 +111,9 @@ export async function GET(request: NextRequest) {
       })
     )
 
-    return NextResponse.json({ members: membersWithDetails }, { headers: corsHeaders(request.headers.get("origin")) })
+    return successResponse(request, { members: membersWithDetails })
   } catch (error) {
-    log.error("[Org Members] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+    return errorResponse(request, error, "AdminOrgMembers")
   }
 }
 
@@ -131,7 +126,7 @@ export async function POST(request: NextRequest) {
     log.debug("[Org Members POST] Auth check:", { userId: user?.id, authError })
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Não autorizado", 401)
     }
 
     const body: OrgMemberFormData = await request.json()
@@ -167,14 +162,11 @@ export async function POST(request: NextRequest) {
 
     if (!isSystemAdmin && !isOrgAdmin) {
       log.debug("[Org Members POST] ACCESS DENIED - User has no permission")
-      return NextResponse.json({ error: "Acesso negado" }, { status: 403, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Acesso negado", 403)
     }
 
     if (!body.org_id || !body.role) {
-      return NextResponse.json(
-        { error: "Campos obrigatórios: org_id, role" },
-        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Campos obrigatórios: org_id, role", 400)
     }
 
     // If profile_id is provided, use it; otherwise, we need email and name to create a new user
@@ -183,10 +175,7 @@ export async function POST(request: NextRequest) {
 
     if (!profileId) {
       if (!body.email || !body.name) {
-        return NextResponse.json(
-          { error: "Se profile_id não for informado, email e name são obrigatórios" },
-          { status: 400, headers: corsHeaders(request.headers.get("origin")) }
-        )
+        throw new AppError("Se profile_id não for informado, email e name são obrigatórios", 400)
       }
 
       // Check if email already exists
@@ -294,10 +283,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (existingMember) {
-      return NextResponse.json(
-        { error: "Este usuário já é membro desta organização" },
-        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Este usuário já é membro desta organização", 400)
     }
 
     // Create org member
@@ -380,7 +366,6 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(response, { status: 201, headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    log.error("[Org Members] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+    return errorResponse(request, error, "AdminOrgMembers")
   }
 }

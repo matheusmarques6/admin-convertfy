@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
@@ -22,11 +22,7 @@ export async function GET(
   try {
     const { id } = await params
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
-    }
+    const user = await requireAuth(supabase)
 
     const adminClient = createAdminClient()
 
@@ -41,13 +37,12 @@ export async function GET(
 
     if (error) {
       log.error("[Task Comments] Error fetching:", error)
-      return NextResponse.json({ error: "Erro ao buscar comentários" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Erro ao buscar comentários", 500)
     }
 
-    return NextResponse.json({ comments: comments || [] }, { headers: corsHeaders(request.headers.get("origin")) })
+    return successResponse(request, { comments: comments || [] })
   } catch (error) {
-    log.error("[Task Comments] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+    return errorResponse(request, error, "TasksComments")
   }
 }
 
@@ -59,19 +54,12 @@ export async function POST(
   try {
     const { id } = await params
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
-    }
+    const user = await requireAuth(supabase)
 
     const body = await request.json()
 
     if (!body.content) {
-      return NextResponse.json(
-        { error: "Conteúdo é obrigatório" },
-        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Conteúdo é obrigatório", 400)
     }
 
     const adminClient = createAdminClient()
@@ -93,10 +81,7 @@ export async function POST(
 
     if (insertError) {
       log.error("[Task Comments] Insert error:", insertError)
-      return NextResponse.json(
-        { error: "Erro ao adicionar comentário" },
-        { status: 500, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Erro ao adicionar comentário", 500)
     }
 
     // Record in history
@@ -107,12 +92,8 @@ export async function POST(
       new_value: { comment_id: comment.id },
     })
 
-    return NextResponse.json(
-      { comment, message: "Comentário adicionado" },
-      { status: 201, headers: corsHeaders(request.headers.get("origin")) }
-    )
+    return successResponse(request, { comment, message: "Comentário adicionado" }, { status: 201 })
   } catch (error) {
-    log.error("[Task Comments] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+    return errorResponse(request, error, "TasksComments")
   }
 }

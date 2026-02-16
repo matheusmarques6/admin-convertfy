@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
@@ -18,11 +18,7 @@ export async function OPTIONS(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
-    }
+    const user = await requireAuth(supabase)
 
     const searchParams = request.nextUrl.searchParams
     const language = searchParams.get("language")
@@ -66,7 +62,7 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       log.error("[Admin Stores] Error fetching:", error)
-      return NextResponse.json({ error: "Erro ao buscar lojas" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Erro ao buscar lojas", 500)
     }
 
     // Get unique languages for quick filters
@@ -85,14 +81,13 @@ export async function GET(request: NextRequest) {
       languageCounts[lang] = (languageCounts[lang] || 0) + 1
     })
 
-    return NextResponse.json({
+    return successResponse(request, {
       stores: stores || [],
       totalCount: stores?.length || 0,
       languages: uniqueLanguages,
       languageCounts,
-    }, { headers: corsHeaders(request.headers.get("origin")) })
+    })
   } catch (error) {
-    log.error("[Admin Stores] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+    return errorResponse(request, error, "AdminStores")
   }
 }

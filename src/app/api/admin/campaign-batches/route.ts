@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
@@ -20,11 +20,7 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient()
     const adminClient = createAdminClient()
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
-    }
+    const user = await requireAuth(supabase)
 
     const searchParams = request.nextUrl.searchParams
     const status = searchParams.get("status")
@@ -52,7 +48,7 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       log.error("[Campaign Batches] Error fetching:", error)
-      return NextResponse.json({ error: "Erro ao buscar campanhas" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Erro ao buscar campanhas", 500)
     }
 
     // Enrich with store names
@@ -74,13 +70,12 @@ export async function GET(request: NextRequest) {
       store_names: (batch.store_ids || []).map((id: string) => storeNames[id] || "Loja desconhecida"),
     }))
 
-    return NextResponse.json({
+    return successResponse(request, {
       batches: enrichedBatches || [],
       totalCount: enrichedBatches?.length || 0,
-    }, { headers: corsHeaders(request.headers.get("origin")) })
+    })
   } catch (error) {
-    log.error("[Campaign Batches] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+    return errorResponse(request, error, "AdminCampaignBatches")
   }
 }
 
@@ -90,11 +85,7 @@ export async function POST(request: NextRequest) {
     const supabase = await createClient()
     const adminClient = createAdminClient()
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
-    }
+    const user = await requireAuth(supabase)
 
     // Verify user exists in profiles table (internal staff)
     // Users in profiles table can create campaigns, even if they're also portal users
@@ -105,7 +96,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (!profile) {
-      return NextResponse.json({ error: "Acesso negado - usuário não encontrado" }, { status: 403, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Acesso negado - usuário não encontrado", 403)
     }
 
     const body = await request.json()
@@ -120,40 +111,25 @@ export async function POST(request: NextRequest) {
 
     // Validations
     if (!name || name.trim().length < 3) {
-      return NextResponse.json(
-        { error: "Nome da campanha deve ter pelo menos 3 caracteres" },
-        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Nome da campanha deve ter pelo menos 3 caracteres", 400)
     }
 
     if (!campaign_type) {
-      return NextResponse.json(
-        { error: "Tipo de campanha é obrigatório" },
-        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Tipo de campanha é obrigatório", 400)
     }
 
     if (!scheduled_at) {
-      return NextResponse.json(
-        { error: "Data e hora de envio são obrigatórios" },
-        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Data e hora de envio são obrigatórios", 400)
     }
 
     if (!store_ids || !Array.isArray(store_ids) || store_ids.length === 0) {
-      return NextResponse.json(
-        { error: "Selecione pelo menos uma loja" },
-        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Selecione pelo menos uma loja", 400)
     }
 
     // Validate scheduled_at is in the future
     const scheduledDate = new Date(scheduled_at)
     if (scheduledDate <= new Date()) {
-      return NextResponse.json(
-        { error: "Data de envio deve ser no futuro" },
-        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Data de envio deve ser no futuro", 400)
     }
 
     // Validate URL if provided
@@ -161,10 +137,7 @@ export async function POST(request: NextRequest) {
       try {
         new URL(instructions_doc_url)
       } catch {
-        return NextResponse.json(
-          { error: "URL do documento de instruções inválida" },
-          { status: 400, headers: corsHeaders(request.headers.get("origin")) }
-        )
+        throw new AppError("URL do documento de instruções inválida", 400)
       }
     }
 
@@ -175,10 +148,7 @@ export async function POST(request: NextRequest) {
       .in("id", store_ids)
 
     if (storeError || !validStores || validStores.length !== store_ids.length) {
-      return NextResponse.json(
-        { error: "Uma ou mais lojas selecionadas não existem" },
-        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Uma ou mais lojas selecionadas não existem", 400)
     }
 
     // Create the campaign batch (using admin client to bypass RLS)
@@ -221,7 +191,6 @@ export async function POST(request: NextRequest) {
       message: `Campanha "${name}" criada com sucesso para ${store_ids.length} loja(s)`,
     }, { status: 201, headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    log.error("[Campaign Batches] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+    return errorResponse(request, error, "AdminCampaignBatches")
   }
 }

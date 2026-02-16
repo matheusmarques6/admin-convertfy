@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
@@ -73,20 +73,14 @@ export async function POST(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      return NextResponse.json(
-        { error: "Não autorizado" },
-        { status: 401, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Não autorizado", 401)
     }
 
     const body = await request.json()
     const { store_id } = body
 
     if (!store_id) {
-      return NextResponse.json(
-        { error: "store_id é obrigatório" },
-        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("store_id é obrigatório", 400)
     }
 
     // Get store with Klaviyo credentials
@@ -97,18 +91,12 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (storeError || !store) {
-      return NextResponse.json(
-        { error: "Loja não encontrada" },
-        { status: 404, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Loja não encontrada", 404)
     }
 
     const apiKey = store.klaviyo_private_key || store.klaviyo_api_key
     if (!apiKey) {
-      return NextResponse.json(
-        { error: "Klaviyo API Key não configurada para esta loja" },
-        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Klaviyo API Key não configurada para esta loja", 400)
     }
 
     // Fetch campaigns from Klaviyo
@@ -235,10 +223,6 @@ export async function POST(request: NextRequest) {
       { headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
-    log.error("[Campaigns Sync] Error:", error)
-    return NextResponse.json(
-      { error: "Erro ao sincronizar campanhas" },
-      { status: 500, headers: corsHeaders(request.headers.get("origin")) }
-    )
+    return errorResponse(request, error, "CampaignsSync")
   }
 }

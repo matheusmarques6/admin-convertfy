@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { createWiseService } from "@/lib/integrations/wise"
 import { logger } from "@/lib/logger"
@@ -36,10 +36,7 @@ export async function GET(request: NextRequest) {
       .single()
 
     if (integrationError || !integration) {
-      return NextResponse.json(
-        { error: "Wise integration not configured" },
-        { status: 400 }
-      )
+      throw new AppError("Wise integration not configured", 400)
     }
 
     const wise = createWiseService(integration.credentials)
@@ -59,10 +56,6 @@ export async function GET(request: NextRequest) {
       period: { start: startDate, end: endDate },
     })
   } catch (error) {
-    log.error("Error fetching Wise transactions:", error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to fetch transactions" },
-      { status: 500 }
-    )
+    return errorResponse(request, error, "IntegrationsWiseTransactions")
   }
 }

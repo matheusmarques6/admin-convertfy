@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("KlaviyoSync")
@@ -15,11 +15,7 @@ import { createKlaviyoSyncService } from "@/lib/integrations/klaviyo-sync"
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
-    }
+    const user = await requireAuth(supabase)
 
     const body = await request.json().catch(() => ({}))
     const { store_id } = body
@@ -35,14 +31,11 @@ export async function POST(request: NextRequest) {
         .single()
 
       if (storeError || !store) {
-        return NextResponse.json({ error: "Loja não encontrada" }, { status: 404 })
+        throw new AppError("Loja não encontrada", 404)
       }
 
       if (!store.klaviyo_private_key) {
-        return NextResponse.json(
-          { error: "Loja não tem Klaviyo configurado" },
-          { status: 400 }
-        )
+        throw new AppError("Loja não tem Klaviyo configurado", 400)
       }
 
       const result = await syncService.syncStore(store_id, store.klaviyo_private_key)
@@ -73,11 +66,7 @@ export async function POST(request: NextRequest) {
       })
     }
   } catch (error) {
-    log.error("Error in sync API:", error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Erro na sincronização" },
-      { status: 500 }
-    )
+    return errorResponse(request, error, "KlaviyoSync")
   }
 }
 
@@ -89,11 +78,7 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
-    }
+    const user = await requireAuth(supabase)
 
     const searchParams = request.nextUrl.searchParams
     const storeId = searchParams.get("store_id")
@@ -186,10 +171,6 @@ export async function GET(request: NextRequest) {
       total_campaigns: campaignCounts?.length || 0,
     })
   } catch (error) {
-    log.error("Error in sync status API:", error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Erro interno" },
-      { status: 500 }
-    )
+    return errorResponse(request, error, "KlaviyoSync")
   }
 }

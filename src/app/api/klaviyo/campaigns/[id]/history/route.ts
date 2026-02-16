@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("KlaviyoCampaignHistory")
@@ -17,11 +17,7 @@ export async function GET(
   try {
     const { id } = await params
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
-    }
+    const user = await requireAuth(supabase)
 
     const searchParams = request.nextUrl.searchParams
     const startDate = searchParams.get("start_date")
@@ -44,7 +40,7 @@ export async function GET(
       .single()
 
     if (campaignError || !campaign) {
-      return NextResponse.json({ error: "Campanha não encontrada" }, { status: 404 })
+      throw new AppError("Campanha não encontrada", 404)
     }
 
     // Get metrics history
@@ -106,10 +102,6 @@ export async function GET(
       data_points: chartData?.length || 0,
     })
   } catch (error) {
-    log.error("Error in campaign history API:", error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Erro interno" },
-      { status: 500 }
-    )
+    return errorResponse(request, error, "KlaviyoCampaignsHistory")
   }
 }

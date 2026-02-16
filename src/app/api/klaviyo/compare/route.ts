@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("KlaviyoCompare")
@@ -14,11 +14,7 @@ const log = logger.child("KlaviyoCompare")
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
-    }
+    const user = await requireAuth(supabase)
 
     const searchParams = request.nextUrl.searchParams
     const campaignName = searchParams.get("name")
@@ -26,10 +22,7 @@ export async function GET(request: NextRequest) {
     const endDate = searchParams.get("end_date")
 
     if (!campaignName) {
-      return NextResponse.json(
-        { error: "Nome da campanha é obrigatório" },
-        { status: 400 }
-      )
+      throw new AppError("Nome da campanha é obrigatório", 400)
     }
 
     // Build query
@@ -231,10 +224,6 @@ export async function GET(request: NextRequest) {
       totals: globalTotals,
     })
   } catch (error) {
-    log.error("Error in compare API:", error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Erro interno" },
-      { status: 500 }
-    )
+    return errorResponse(request, error, "KlaviyoCompare")
   }
 }

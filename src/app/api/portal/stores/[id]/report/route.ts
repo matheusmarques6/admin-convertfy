@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
@@ -21,11 +21,7 @@ export async function GET(
 ) {
   try {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-
-    if (!user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
-    }
+    const user = await requireAuth(supabase)
 
     const { id: storeId } = await params
     const searchParams = request.nextUrl.searchParams
@@ -40,13 +36,13 @@ export async function GET(
       .single()
 
     if (!portalUser) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Não autorizado", 401)
     }
 
     // Check permission
     const permissions = portalUser.permissions as { view_reports?: boolean }
     if (!permissions?.view_reports) {
-      return NextResponse.json({ error: "Sem permissão" }, { status: 403, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Sem permissão", 403)
     }
 
     // Verify store belongs to client
@@ -58,7 +54,7 @@ export async function GET(
       .single()
 
     if (storeError || !store) {
-      return NextResponse.json({ error: "Loja não encontrada" }, { status: 404, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Loja não encontrada", 404)
     }
 
     // Build base URL for internal API calls
@@ -190,7 +186,6 @@ export async function GET(
       { headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
-    log.error("[Portal Store Report] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+    return errorResponse(request, error, "PortalStoresReport")
   }
 }

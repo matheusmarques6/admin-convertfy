@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
@@ -24,10 +24,7 @@ export async function POST(request: NextRequest) {
     const { userId } = body
 
     if (!userId) {
-      return NextResponse.json(
-        { error: "User ID é obrigatório" },
-        { status: 400, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("User ID é obrigatório", 400)
     }
 
     // Check if this is a portal user
@@ -42,17 +39,11 @@ export async function POST(request: NextRequest) {
 
     if (portalError || !portalUser) {
       log.debug(`[Portal Auth Verify] Portal user not found for auth_user_id: ${userId}`, { error: portalError })
-      return NextResponse.json(
-        { error: "Esta conta não tem acesso ao portal do cliente" },
-        { status: 403, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Esta conta não tem acesso ao portal do cliente", 403)
     }
 
     if (!portalUser.is_active) {
-      return NextResponse.json(
-        { error: "Sua conta está desativada. Entre em contato com o suporte." },
-        { status: 403, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Sua conta está desativada. Entre em contato com o suporte.", 403)
     }
 
     // Update last login if not required to change password
@@ -91,10 +82,6 @@ export async function POST(request: NextRequest) {
       { headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {
-    log.error("[Portal Auth Verify] Error:", error)
-    return NextResponse.json(
-      { error: "Erro interno" },
-      { status: 500, headers: corsHeaders(request.headers.get("origin")) }
-    )
+    return errorResponse(request, error, "PortalAuthVerify")
   }
 }

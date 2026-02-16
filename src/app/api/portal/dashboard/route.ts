@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
@@ -31,10 +31,7 @@ export async function GET(request: NextRequest) {
     const adminClient = createAdminClient()
 
     // Get current user
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      return NextResponse.json({ error: "Não autenticado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
-    }
+    const user = await requireAuth(supabase)
 
     // Get portal user using admin client to bypass RLS
     const { data: portalUser } = await adminClient
@@ -45,7 +42,7 @@ export async function GET(request: NextRequest) {
       .single()
 
     if (!portalUser) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
+      throw new AppError("Não autorizado", 401)
     }
 
     const clientId = portalUser.client_id
@@ -679,7 +676,6 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(response, { headers: corsHeaders(request.headers.get("origin")) })
   } catch (error) {
-    log.error("[Portal Dashboard] Error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+    return errorResponse(request, error, "PortalDashboard")
   }
 }
