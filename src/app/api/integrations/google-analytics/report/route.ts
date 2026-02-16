@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
+import { decryptCredentialsJson } from "@/lib/crypto"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("IntegrationsGoogleAnalyticsReport")
@@ -383,7 +384,8 @@ export async function GET(request: NextRequest) {
       throw new AppError("Loja não encontrada", 404)
     }
 
-    const { ga4_property_id: propertyId, ga4_credentials: credentials } = store
+    const { ga4_property_id: propertyId, ga4_credentials: rawCredentials } = store
+    const credentials = rawCredentials ? decryptCredentialsJson(rawCredentials) : null
 
     if (!propertyId || !credentials) {
       return NextResponse.json({
@@ -427,7 +429,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get access token
-    const accessToken = await getAccessToken(credentials as GACredentials)
+    const accessToken = await getAccessToken(credentials as unknown as GACredentials)
 
     // Fetch all data in parallel
     const [trafficOverview, trafficBySource, topPages, trafficByDevice, dailyTraffic, trafficByCountry] = await Promise.all([

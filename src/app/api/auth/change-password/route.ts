@@ -8,6 +8,7 @@ import {
   AppError,
 } from "@/lib/api/errors"
 import { z } from "zod"
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("AuthChangePassword")
@@ -18,6 +19,9 @@ const changePasswordSchema = z.object({
 
 // POST - User changes their own password (for first login password change)
 export async function POST(request: NextRequest) {
+  const limited = checkRateLimit(request, "auth:change-password", RATE_LIMITS.auth)
+  if (limited) return limited
+
   try {
     const supabase = await createClient()
     const user = await requireAuth(supabase)

@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
-import { encrypt } from "@/lib/crypto"
+import { encrypt, encryptCredentialsJson } from "@/lib/crypto"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("ClientStoresCredentials")
@@ -61,9 +61,9 @@ export async function POST(request: NextRequest) {
     const storeData = processFields(fields)
     storeData.client_id = client_id
 
-    // Handle ga4_credentials (JSONB, stored as-is)
+    // Handle ga4_credentials (encrypt as JSON string)
     if (ga4_credentials) {
-      storeData.ga4_credentials = ga4_credentials
+      storeData.ga4_credentials = encryptCredentialsJson(ga4_credentials)
     }
 
     const { data, error } = await supabase
@@ -96,9 +96,9 @@ export async function PUT(request: NextRequest) {
 
     const updates = processFields(fields)
 
-    // Handle ga4_credentials (JSONB, stored as-is)
+    // Handle ga4_credentials (encrypt as JSON string)
     if (ga4_credentials !== undefined) {
-      updates.ga4_credentials = ga4_credentials
+      updates.ga4_credentials = ga4_credentials ? encryptCredentialsJson(ga4_credentials) : null
     }
 
     if (Object.keys(updates).length === 0) {

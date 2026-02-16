@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { errorResponse, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("PortalAuth")
@@ -9,9 +10,6 @@ const log = logger.child("PortalAuth")
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
 }
-
-
-
 
 
 // GET - Get current portal user session
@@ -79,6 +77,9 @@ export async function GET(request: NextRequest) {
 
 // POST - Login to portal
 export async function POST(request: NextRequest) {
+  const limited = checkRateLimit(request, "portal:auth", RATE_LIMITS.auth)
+  if (limited) return limited
+
   try {
     const supabase = await createClient()
     const body = await request.json()

@@ -3,6 +3,7 @@ import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient } from "@supabase/supabase-js"
 import { timingSafeEqual } from "crypto"
 import { mapAsaasStatusToInternal } from "@/lib/integrations/asaas"
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("IntegrationsAsaasWebhook")
@@ -39,6 +40,9 @@ interface AsaasWebhookPayload {
 }
 
 export async function POST(request: NextRequest) {
+  const limited = checkRateLimit(request, "webhook:asaas", RATE_LIMITS.webhook)
+  if (limited) return limited
+
   try {
     // Verify webhook token using timing-safe comparison
     const webhookToken = request.headers.get("asaas-access-token")
