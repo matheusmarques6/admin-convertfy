@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
-import { encryptCredentialsJson } from "@/lib/crypto"
+import { updateStoreCredentials } from "@/lib/services/credentials.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("ShopifyCallback")
@@ -29,12 +28,18 @@ export async function GET(request: NextRequest) {
     }
 
     // Decode state
-    let stateData: { user_id: string; shop: string; nonce: string; timestamp: number }
+    let stateData: { user_id: string; shop: string; store_id: string; nonce: string; timestamp: number }
     try {
       stateData = JSON.parse(Buffer.from(state, "base64").toString())
     } catch {
       return NextResponse.redirect(
         new URL("/settings/integrations?error=invalid_state_format", request.url)
+      )
+    }
+
+    if (!stateData.store_id) {
+      return NextResponse.redirect(
+        new URL("/settings/integrations?error=missing_store_id", request.url)
       )
     }
 
@@ -100,45 +105,20 @@ export async function GET(request: NextRequest) {
       ? (await shopInfoResponse.json()).shop
       : { name: shop }
 
-    // Save integration to database
-    const supabase = await createClient()
+    // Save credentials to client_stores (unified credential storage)
+    await updateStoreCredentials(
+      stateData.store_id,
+      {
+        shopify_store_domain: shop,
+        shopify_access_token: tokenData.access_token,
+      },
+      "shopify"
+    )
 
-    const credentials = {
-      access_token: tokenData.access_token,
-      store_url: shop,
-      api_version: "2024-01",
-      scope: tokenData.scope,
-      shop_name: shopInfo.name,
-      shop_email: shopInfo.email || "",
-    }
-    const encryptedCredentials = encryptCredentialsJson(credentials)
-
-    // Check if integration already exists
-    const { data: existing } = await supabase
-      .from("integrations")
-      .select("id")
-      .eq("type", "shopify")
-      .single()
-
-    if (existing) {
-      await supabase
-        .from("integrations")
-        .update({
-          credentials: encryptedCredentials,
-          is_active: true,
-          last_sync: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", existing.id)
-    } else {
-      await supabase.from("integrations").insert({
-        type: "shopify",
-        name: `Shopify - ${shopInfo.name}`,
-        credentials: encryptedCredentials,
-        is_active: true,
-        last_sync: new Date().toISOString(),
-      })
-    }
+    log.info("Shopify credentials saved to client_stores", {
+      storeId: stateData.store_id,
+      shop,
+    })
 
     // Clear state cookie and redirect
     const response = NextResponse.redirect(

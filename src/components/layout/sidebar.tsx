@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
+import { useTheme } from "next-themes"
 import {
   LayoutDashboard,
   Users,
@@ -23,6 +24,8 @@ import {
   Store,
   Rocket,
   TrendingUp,
+  Sun,
+  Moon,
   LucideIcon,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -54,6 +57,7 @@ interface NavItem {
   name: string
   href: string
   icon: LucideIcon
+  group: string
   // Features necessárias - se vazio, sempre visível
   // Se array, precisa ter pelo menos UMA das features
   requiredFeatures?: string[]
@@ -61,25 +65,42 @@ interface NavItem {
   requiresStoreAccess?: boolean
 }
 
+const NAV_GROUPS = [
+  { key: "principal", label: "Principal" },
+  { key: "crm", label: "CRM & Vendas" },
+  { key: "marketing", label: "Marketing" },
+  { key: "operacional", label: "Operacional" },
+  { key: "ferramentas", label: "Ferramentas" },
+] as const
+
 const navigation: NavItem[] = [
-  { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { name: "Board", href: "/board", icon: ClipboardList, requiredFeatures: ["request_control", "request_execute"] },
-  { name: "Clientes", href: "/clients", icon: Users, requiredFeatures: ["create_clients"] },
-  { name: "Equipe", href: "/team", icon: Users2, requiredFeatures: ["team_control", "team_view"] },
-  { name: "Onboarding", href: "/onboarding", icon: Rocket, requiredFeatures: ["onboarding_control", "onboarding_view"] },
-  { name: "Lojas", href: "/stores", icon: Store, requiresStoreAccess: true },
-  { name: "Pipeline", href: "/pipeline", icon: Kanban, requiredFeatures: ["request_control", "request_execute"] },
-  { name: "Financeiro", href: "/financial", icon: DollarSign, requiredFeatures: ["view_financial"] },
-  { name: "Reuniões", href: "/meetings", icon: Calendar, requiredFeatures: ["calendar_control"] },
-  { name: "Campanhas", href: "/campaigns", icon: CalendarDays, requiredFeatures: ["campaign_control", "campaign_view"] },
-  { name: "Métricas Klaviyo", href: "/klaviyo-metrics", icon: TrendingUp, requiredFeatures: ["campaign_view", "view_reports"] },
-  { name: "Relatórios", href: "/reports", icon: BarChart3, requiredFeatures: ["view_reports"] },
-  { name: "Automações", href: "/automations", icon: Zap, requiredFeatures: ["campaign_control"] },
-  { name: "Ferramentas", href: "/tools", icon: Wrench },
+  // Principal
+  { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard, group: "principal" },
+
+  // CRM & Vendas
+  { name: "Clientes", href: "/clients", icon: Users, group: "crm", requiredFeatures: ["create_clients"] },
+  { name: "Lojas", href: "/stores", icon: Store, group: "crm", requiresStoreAccess: true },
+  { name: "Onboarding", href: "/onboarding", icon: Rocket, group: "crm", requiredFeatures: ["onboarding_control", "onboarding_view"] },
+  { name: "Pipeline", href: "/pipeline", icon: Kanban, group: "crm", requiredFeatures: ["request_control", "request_execute"] },
+
+  // Marketing
+  { name: "Campanhas", href: "/campaigns", icon: CalendarDays, group: "marketing", requiredFeatures: ["campaign_control", "campaign_view"] },
+  { name: "Métricas Klaviyo", href: "/klaviyo-metrics", icon: TrendingUp, group: "marketing", requiredFeatures: ["campaign_view", "view_reports"] },
+  { name: "Automações", href: "/automations", icon: Zap, group: "marketing", requiredFeatures: ["campaign_control"] },
+
+  // Operacional
+  { name: "Board", href: "/board", icon: ClipboardList, group: "operacional", requiredFeatures: ["request_control", "request_execute"] },
+  { name: "Reuniões", href: "/meetings", icon: Calendar, group: "operacional", requiredFeatures: ["calendar_control"] },
+  { name: "Equipe", href: "/team", icon: Users2, group: "operacional", requiredFeatures: ["team_control", "team_view"] },
+  { name: "Financeiro", href: "/financial", icon: DollarSign, group: "operacional", requiredFeatures: ["view_financial"] },
+  { name: "Relatórios", href: "/reports", icon: BarChart3, group: "operacional", requiredFeatures: ["view_reports"] },
+
+  // Ferramentas
+  { name: "Ferramentas", href: "/tools", icon: Wrench, group: "ferramentas" },
 ]
 
 const bottomNavigation: NavItem[] = [
-  { name: "Configurações", href: "/settings", icon: Settings },
+  { name: "Configurações", href: "/settings", icon: Settings, group: "bottom" },
 ]
 
 interface SidebarProps {
@@ -93,6 +114,7 @@ interface SidebarProps {
 export function Sidebar({ user }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
+  const { theme, setTheme } = useTheme()
   const { sidebarCollapsed, setSidebarCollapsed } = useUIStore()
   const [isLoggingOut, setIsLoggingOut] = useState(false)
   const { permissions, hasAnyFeature, isLoading } = usePermissions()
@@ -121,10 +143,16 @@ export function Sidebar({ user }: SidebarProps) {
     })
   }, [permissions, hasAnyFeature, isLoading])
 
+  // Agrupa itens filtrados
+  const groupedNavigation = useMemo(() => {
+    return NAV_GROUPS.map(group => ({
+      ...group,
+      items: filteredNavigation.filter(item => item.group === group.key),
+    })).filter(group => group.items.length > 0)
+  }, [filteredNavigation])
+
   const filteredBottomNavigation = useMemo(() => {
     if (isLoading || !permissions) return []
-
-    // Configurações sempre visível para todos
     return bottomNavigation
   }, [permissions, isLoading])
 
@@ -144,6 +172,50 @@ export function Sidebar({ user }: SidebarProps) {
     } finally {
       setIsLoggingOut(false)
     }
+  }
+
+  function renderNavItem(item: NavItem) {
+    const isActive = pathname.startsWith(item.href)
+    const Icon = item.icon
+
+    if (sidebarCollapsed) {
+      return (
+        <Tooltip key={item.name}>
+          <TooltipTrigger asChild>
+            <Link
+              href={item.href}
+              className={cn(
+                "flex items-center justify-center h-10 w-full rounded-lg transition-colors",
+                isActive
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              )}
+            >
+              <Icon className="h-5 w-5" />
+            </Link>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            {item.name}
+          </TooltipContent>
+        </Tooltip>
+      )
+    }
+
+    return (
+      <Link
+        key={item.name}
+        href={item.href}
+        className={cn(
+          "flex items-center gap-3 h-10 px-3 rounded-lg transition-colors",
+          isActive
+            ? "bg-primary text-primary-foreground"
+            : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+        )}
+      >
+        <Icon className="h-5 w-5 flex-shrink-0" />
+        <span className="text-sm font-medium">{item.name}</span>
+      </Link>
+    )
   }
 
   return (
@@ -167,46 +239,23 @@ export function Sidebar({ user }: SidebarProps) {
 
         {/* Navigation */}
         <ScrollArea className="flex-1 py-4">
-          <nav className="px-3 space-y-1">
-            {filteredNavigation.map((item) => {
-              const isActive = pathname.startsWith(item.href)
-              const Icon = item.icon
-
-              return sidebarCollapsed ? (
-                <Tooltip key={item.name}>
-                  <TooltipTrigger asChild>
-                    <Link
-                      href={item.href}
-                      className={cn(
-                        "flex items-center justify-center h-10 w-full rounded-lg transition-colors",
-                        isActive
-                          ? "bg-primary text-primary-foreground"
-                          : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                      )}
-                    >
-                      <Icon className="h-5 w-5" />
-                    </Link>
-                  </TooltipTrigger>
-                  <TooltipContent side="right">
-                    {item.name}
-                  </TooltipContent>
-                </Tooltip>
-              ) : (
-                <Link
-                  key={item.name}
-                  href={item.href}
-                  className={cn(
-                    "flex items-center gap-3 h-10 px-3 rounded-lg transition-colors",
-                    isActive
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                  )}
-                >
-                  <Icon className="h-5 w-5 flex-shrink-0" />
-                  <span className="text-sm font-medium">{item.name}</span>
-                </Link>
-              )
-            })}
+          <nav className="px-3 space-y-4">
+            {groupedNavigation.map((group) => (
+              <div key={group.key}>
+                {/* Group Header */}
+                {!sidebarCollapsed && (
+                  <p className="px-3 mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                    {group.label}
+                  </p>
+                )}
+                {sidebarCollapsed && group.key !== "principal" && (
+                  <Separator className="my-2" />
+                )}
+                <div className="space-y-1">
+                  {group.items.map(renderNavItem)}
+                </div>
+              </div>
+            ))}
           </nav>
         </ScrollArea>
 
@@ -214,51 +263,38 @@ export function Sidebar({ user }: SidebarProps) {
         <div className="mt-auto">
           <Separator />
           <nav className="px-3 py-2">
-            {filteredBottomNavigation.map((item) => {
-              const isActive = pathname.startsWith(item.href)
-              const Icon = item.icon
-
-              return sidebarCollapsed ? (
-                <Tooltip key={item.name}>
-                  <TooltipTrigger asChild>
-                    <Link
-                      href={item.href}
-                      className={cn(
-                        "flex items-center justify-center h-10 w-full rounded-lg transition-colors",
-                        isActive
-                          ? "bg-primary text-primary-foreground"
-                          : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                      )}
-                    >
-                      <Icon className="h-5 w-5" />
-                    </Link>
-                  </TooltipTrigger>
-                  <TooltipContent side="right">
-                    {item.name}
-                  </TooltipContent>
-                </Tooltip>
-              ) : (
-                <Link
-                  key={item.name}
-                  href={item.href}
-                  className={cn(
-                    "flex items-center gap-3 h-10 px-3 rounded-lg transition-colors",
-                    isActive
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                  )}
-                >
-                  <Icon className="h-5 w-5 flex-shrink-0" />
-                  <span className="text-sm font-medium">{item.name}</span>
-                </Link>
-              )
-            })}
+            {filteredBottomNavigation.map(renderNavItem)}
           </nav>
 
           <Separator />
 
-          {/* User Section */}
+          {/* Theme Toggle + User Section */}
           <div className="p-3">
+            {/* Theme Toggle */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={cn(
+                    "h-9 mb-2",
+                    sidebarCollapsed ? "w-full" : "w-9"
+                  )}
+                  onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                >
+                  {theme === "dark" ? (
+                    <Sun className="h-4 w-4" />
+                  ) : (
+                    <Moon className="h-4 w-4" />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                {theme === "dark" ? "Modo claro" : "Modo escuro"}
+              </TooltipContent>
+            </Tooltip>
+
+            {/* User Dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button

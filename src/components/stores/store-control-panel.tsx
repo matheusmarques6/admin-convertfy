@@ -612,22 +612,18 @@ export function StoreControlPanel() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => router.push(`/stores/${store.id}`)}>
+                                <Store className="w-4 h-4 mr-2" />
+                                Ver Loja
+                              </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => openEditDialog(store)}>
                                 <Settings className="w-4 h-4 mr-2" />
                                 Configurar Loja
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => router.push(`/clients/${store.client_id}?tab=stores`)}>
-                                <Pencil className="w-4 h-4 mr-2" />
-                                Editar no Cliente
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem onClick={() => router.push(`/clients/${store.client_id}`)}>
                                 <ExternalLink className="w-4 h-4 mr-2" />
                                 Ver Cliente
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => router.push(`/clients/${store.client_id}?tab=klaviyo`)}>
-                                <TrendingUp className="w-4 h-4 mr-2" />
-                                Ver Relatório
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>

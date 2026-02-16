@@ -38,6 +38,12 @@ interface PortalUser {
   mustChangePassword: boolean
 }
 
+interface Branding {
+  name: string
+  logo_url: string | null
+  primary_color: string
+}
+
 const navigation = [
   { name: "Dashboard", href: "/portal/dashboard", icon: LayoutDashboard },
   { name: "Onboarding", href: "/portal/onboarding", icon: ClipboardCheck },
@@ -66,6 +72,11 @@ export default function PortalLayout({
   const [user, setUser] = useState<PortalUser | null>(null)
   const [loading, setLoading] = useState(true)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [branding, setBranding] = useState<Branding>({
+    name: "Convertfy",
+    logo_url: null,
+    primary_color: "#3b82f6",
+  })
 
   // Check authentication using browser Supabase client
   useEffect(() => {
@@ -120,6 +131,19 @@ export default function PortalLayout({
           clientId: data.user.clientId,
           mustChangePassword: data.mustChangePassword,
         })
+
+        // Fetch organization branding
+        try {
+          const brandingRes = await fetch("/api/portal/branding")
+          if (brandingRes.ok) {
+            const brandingData = await brandingRes.json()
+            if (brandingData.data) {
+              setBranding(brandingData.data)
+            }
+          }
+        } catch {
+          // Keep default branding on error
+        }
       } catch (error) {
         console.error("Auth check failed:", error)
         window.location.href = "/portal/login"
@@ -167,17 +191,27 @@ export default function PortalLayout({
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div
+      className="min-h-screen bg-background"
+      style={branding.primary_color !== "#3b82f6" ? {
+        "--portal-primary": branding.primary_color,
+        "--portal-primary-foreground": "#ffffff",
+      } as React.CSSProperties : undefined}
+    >
       {/* Desktop Sidebar */}
       <aside className="hidden lg:fixed lg:inset-y-0 lg:flex lg:w-64 lg:flex-col">
         <div className="flex flex-col flex-grow border-r bg-card">
           {/* Logo */}
           <div className="flex h-16 items-center gap-2 px-6 border-b">
-            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-sm">C</span>
-            </div>
+            {branding.logo_url ? (
+              <img src={branding.logo_url} alt={branding.name} className="h-8 w-8 rounded-lg object-contain" />
+            ) : (
+              <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+                <span className="text-primary-foreground font-bold text-sm">{branding.name.charAt(0)}</span>
+              </div>
+            )}
             <div>
-              <span className="font-semibold">Convertfy</span>
+              <span className="font-semibold">{branding.name}</span>
               <span className="text-xs text-muted-foreground block">Portal do Cliente</span>
             </div>
           </div>
@@ -234,11 +268,15 @@ export default function PortalLayout({
               <div className="flex flex-col h-full">
                 {/* Logo */}
                 <div className="flex h-16 items-center gap-2 px-6 border-b">
-                  <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-                    <span className="text-primary-foreground font-bold text-sm">C</span>
-                  </div>
+                  {branding.logo_url ? (
+                    <img src={branding.logo_url} alt={branding.name} className="h-8 w-8 rounded-lg object-contain" />
+                  ) : (
+                    <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+                      <span className="text-primary-foreground font-bold text-sm">{branding.name.charAt(0)}</span>
+                    </div>
+                  )}
                   <div>
-                    <span className="font-semibold">Convertfy</span>
+                    <span className="font-semibold">{branding.name}</span>
                     <span className="text-xs text-muted-foreground block">Portal do Cliente</span>
                   </div>
                 </div>
@@ -282,7 +320,7 @@ export default function PortalLayout({
           </Sheet>
 
           <div className="flex-1">
-            <span className="font-semibold">Convertfy</span>
+            <span className="font-semibold">{branding.name}</span>
           </div>
 
           <DropdownMenu>

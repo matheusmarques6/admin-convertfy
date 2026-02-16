@@ -1,6 +1,5 @@
 import { NextRequest } from "next/server"
-import { createClient } from "@/lib/supabase/server"
-import { createAdminClient } from "@/lib/supabase/admin"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 import * as XLSX from "xlsx"
 import {
   errorResponse,

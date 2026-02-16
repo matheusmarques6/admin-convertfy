@@ -63,6 +63,22 @@ export default function PortalLoginPage() {
         return
       }
 
+      // Check if onboarding wizard is needed
+      try {
+        const wizardRes = await fetch("/api/portal/onboarding/wizard")
+        const wizardData = await wizardRes.json()
+        if (wizardRes.ok && wizardData.data && !wizardData.data.wizardComplete) {
+          // Check if at least one step is incomplete
+          const steps = wizardData.steps
+          if (steps && (!steps.personalInfo?.complete || !steps.storeData?.complete || !steps.klaviyoKeys?.complete)) {
+            window.location.href = "/portal/onboarding/wizard"
+            return
+          }
+        }
+      } catch {
+        // If wizard check fails, proceed to dashboard
+      }
+
       // Redirect to dashboard
       window.location.href = "/portal/dashboard"
     } catch (err) {

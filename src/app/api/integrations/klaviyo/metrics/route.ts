@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
-import { decryptStoreCredentials } from "@/lib/crypto"
+import { getStoreCredentials } from "@/lib/services/credentials.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("KlaviyoMetrics")
@@ -77,26 +77,10 @@ export async function GET(request: NextRequest) {
       throw new AppError("store_id é obrigatório", 400)
     }
 
-    // Get store with Klaviyo API key
-    const { data: store, error: storeError } = await supabase
-      .from("client_stores")
-      .select("klaviyo_api_key, klaviyo_private_key, klaviyo_list_id, store_name")
-      .eq("id", storeId)
-      .single()
-
-    if (storeError || !store) {
-      throw new AppError("Loja não encontrada", 404)
-    }
-
-    // Use private_key (new) or api_key (legacy)
-    const decryptedStore = decryptStoreCredentials(store)
-    const apiKey = decryptedStore.klaviyo_private_key || decryptedStore.klaviyo_api_key
+    const storeData = await getStoreCredentials(storeId)
+    const apiKey = storeData.klaviyo_private_key || storeData.klaviyo_api_key
     if (!apiKey) {
-      return NextResponse.json({
-        success: false,
-        connected: false,
-        error: "API Key não configurada",
-      })
+      throw new AppError("API Key do Klaviyo não configurada", 400)
     }
 
     // Fetch data in parallel
@@ -124,8 +108,8 @@ export async function GET(request: NextRequest) {
 
     // Get specific list details if klaviyo_list_id is set
     let mainList = null
-    if (store.klaviyo_list_id) {
-      const listData = lists.data.find(l => l.id === store.klaviyo_list_id)
+    if (storeData.klaviyo_list_id) {
+      const listData = lists.data.find(l => l.id === storeData.klaviyo_list_id)
       if (listData) {
         mainList = {
           id: listData.id,
@@ -139,7 +123,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       connected: true,
-      storeName: store.store_name,
+      storeName: storeData.store_name,
       summary: {
         totalProfiles,
         totalLists: lists.data.length,

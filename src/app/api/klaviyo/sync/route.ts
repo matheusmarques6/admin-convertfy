@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
+import { getStoreCredentials } from "@/lib/services/credentials.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("KlaviyoSync")
@@ -23,22 +24,14 @@ export async function POST(request: NextRequest) {
     const syncService = createKlaviyoSyncService()
 
     if (store_id) {
-      // Sync single store
-      const { data: store, error: storeError } = await supabase
-        .from("client_stores")
-        .select("id, klaviyo_private_key")
-        .eq("id", store_id)
-        .single()
-
-      if (storeError || !store) {
-        throw new AppError("Loja não encontrada", 404)
-      }
-
-      if (!store.klaviyo_private_key) {
+      // Sync single store - getStoreCredentials returns decrypted values
+      const storeData = await getStoreCredentials(store_id)
+      const apiKey = storeData.klaviyo_private_key || storeData.klaviyo_api_key
+      if (!apiKey) {
         throw new AppError("Loja não tem Klaviyo configurado", 400)
       }
 
-      const result = await syncService.syncStore(store_id, store.klaviyo_private_key)
+      const result = await syncService.syncStore(store_id, apiKey)
 
       // Update sync config
       await supabase

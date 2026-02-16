@@ -11,10 +11,8 @@ import { ClientOverview } from "@/components/clients/client-overview"
 import { ClientFinancial } from "@/components/clients/client-financial"
 import { ClientContracts } from "@/components/clients/client-contracts"
 import { ClientMeetings } from "@/components/clients/client-meetings"
-import { ClientReports } from "@/components/clients/client-reports"
 import { ClientTimeline } from "@/components/clients/client-timeline"
 import { ClientStores } from "@/components/clients/client-stores"
-import { ClientKlaviyoReports } from "@/components/clients/client-klaviyo-reports"
 import { ClientPortalUsers } from "@/components/clients/client-portal-users"
 import { getInitials, getHealthScoreColor, getHealthScoreEmoji } from "@/lib/utils"
 
@@ -132,50 +130,38 @@ export default async function ClientPage({
       <Tabs defaultValue="overview" className="space-y-6">
         <TabsList>
           <TabsTrigger value="overview">Visão Geral</TabsTrigger>
-          <TabsTrigger value="financial">Financeiro</TabsTrigger>
           <TabsTrigger value="stores">Lojas</TabsTrigger>
-          <TabsTrigger value="klaviyo">Klaviyo</TabsTrigger>
-          <TabsTrigger value="contracts">Contratos</TabsTrigger>
-          <TabsTrigger value="meetings">Reuniões</TabsTrigger>
-          <TabsTrigger value="reports">Relatórios</TabsTrigger>
-          <TabsTrigger value="portal">Portal</TabsTrigger>
+          <TabsTrigger value="financial">Financeiro</TabsTrigger>
           <TabsTrigger value="timeline">Timeline</TabsTrigger>
+          <TabsTrigger value="config">Configurações</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview">
           <ClientOverview client={client} />
         </TabsContent>
 
-        <TabsContent value="financial">
-          <ClientFinancial clientId={client.id} clientName={client.name} />
-        </TabsContent>
-
         <TabsContent value="stores">
           <ClientStores clientId={client.id} clientName={client.name} />
         </TabsContent>
 
-        <TabsContent value="klaviyo">
-          <ClientKlaviyoReports clientId={client.id} />
-        </TabsContent>
-
-        <TabsContent value="contracts">
-          <ClientContracts contracts={client.contracts || []} />
-        </TabsContent>
-
-        <TabsContent value="meetings">
-          <ClientMeetings meetings={client.meetings || []} clientId={client.id} />
-        </TabsContent>
-
-        <TabsContent value="reports">
-          <ClientReports clientId={client.id} />
-        </TabsContent>
-
-        <TabsContent value="portal">
-          <ClientPortalUsers clientId={client.id} clientName={client.name} />
+        <TabsContent value="financial">
+          <div className="space-y-6">
+            <ClientFinancial clientId={client.id} clientName={client.name} />
+            <ClientContracts contracts={client.contracts || []} />
+          </div>
         </TabsContent>
 
         <TabsContent value="timeline">
-          <ClientTimeline activities={client.activities || []} />
+          <div className="space-y-6">
+            <ClientTimeline activities={client.activities || []} />
+            <ClientMeetings meetings={client.meetings || []} clientId={client.id} />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="config">
+          <div className="space-y-6">
+            <ClientPortalUsers clientId={client.id} clientName={client.name} />
+          </div>
         </TabsContent>
       </Tabs>
     </div>

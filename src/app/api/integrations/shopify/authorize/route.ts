@@ -17,10 +17,17 @@ export async function GET(request: NextRequest) {
 
     const searchParams = request.nextUrl.searchParams
     const shop = searchParams.get("shop")
+    const storeId = searchParams.get("store_id")
 
     if (!shop) {
       return NextResponse.redirect(
         new URL("/settings/integrations?error=missing_shop", request.url)
+      )
+    }
+
+    if (!storeId) {
+      return NextResponse.redirect(
+        new URL("/settings/integrations?error=missing_store_id", request.url)
       )
     }
 
@@ -44,11 +51,12 @@ export async function GET(request: NextRequest) {
       "read_analytics",
     ].join(",")
 
-    // Store state
+    // Store state (includes store_id for credential routing)
     const state = Buffer.from(
       JSON.stringify({
         user_id: user.id,
         shop: shopDomain,
+        store_id: storeId,
         nonce,
         timestamp: Date.now(),
       })

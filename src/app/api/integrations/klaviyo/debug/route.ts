@@ -2,13 +2,11 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { corsHeaders } from "@/lib/cors"
-import { decryptStoreCredentials } from "@/lib/crypto"
+import { getStoreCredentials } from "@/lib/services/credentials.service"
 import { logger } from "@/lib/logger"
+import { KLAVIYO_API_URL, KLAVIYO_REVISION } from "@/lib/integrations/klaviyo/client"
 
 const log = logger.child("KlaviyoDebug")
-
-const KLAVIYO_API_URL = "https://a.klaviyo.com/api"
-const KLAVIYO_REVISION = "2024-10-15"
 
 // Debug endpoint to test Klaviyo API directly
 export async function GET(request: NextRequest) {
@@ -23,25 +21,14 @@ export async function GET(request: NextRequest) {
       throw new AppError("store_id é obrigatório", 400)
     }
 
-    // Get store with Klaviyo API key
-    const { data: store, error: storeError } = await supabase
-      .from("client_stores")
-      .select("klaviyo_api_key, klaviyo_private_key, store_name")
-      .eq("id", storeId)
-      .single()
-
-    if (storeError || !store) {
-      throw new AppError("Loja não encontrada", 404)
-    }
-
-    const decryptedStore = decryptStoreCredentials(store)
-    const apiKey = decryptedStore.klaviyo_private_key || decryptedStore.klaviyo_api_key
+    const storeData = await getStoreCredentials(storeId)
+    const apiKey = storeData.klaviyo_private_key || storeData.klaviyo_api_key
     if (!apiKey) {
-      throw new AppError("API Key não configurada", 400)
+      throw new AppError("API Key do Klaviyo não configurada", 400)
     }
 
     const results: Record<string, unknown> = {
-      storeName: store.store_name,
+      storeName: storeData.store_name,
       apiKeyPresent: !!apiKey,
       apiKeyLast4: apiKey.slice(-4),
     }

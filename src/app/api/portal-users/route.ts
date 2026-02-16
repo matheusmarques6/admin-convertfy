@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
-import { createAdminClient } from "@/lib/supabase/admin"
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { generateTempPassword } from "@/lib/utils/generate-password"
 import { logger } from "@/lib/logger"
 

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
-import { encryptCredentialsJson } from "@/lib/crypto"
+import { updateStoreCredentials } from "@/lib/services/credentials.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("MetaCallback")
@@ -37,7 +36,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Decode state
-    let stateData: { user_id: string; scope: string; timestamp: number }
+    let stateData: { user_id: string; scope: string; store_id: string; timestamp: number }
     try {
       stateData = JSON.parse(Buffer.from(state, "base64").toString())
     } catch {
@@ -123,51 +122,26 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Determine integration type
-    const integrationType = stateData.scope === "instagram" ? "instagram" : "meta_ads"
+    // Save credentials to client_stores (unified credential storage)
+    if (stateData.store_id) {
+      await updateStoreCredentials(
+        stateData.store_id,
+        {
+          meta_access_token: accessToken,
+          meta_page_id: instagramAccountId || "",
+          meta_ad_account_id: adAccountId || "",
+          meta_instagram_account_id: instagramAccountId || "",
+          meta_user_id: userInfo.id,
+        },
+        "meta"
+      )
 
-    // Save integration to database
-    const supabase = await createClient()
-
-    const credentials: Record<string, string> = {
-      access_token: accessToken,
-      user_id: userInfo.id,
-      email: userInfo.email || "",
-    }
-
-    if (adAccountId) {
-      credentials.ad_account_id = adAccountId
-    }
-    if (instagramAccountId) {
-      credentials.instagram_account_id = instagramAccountId
-    }
-    const encryptedCredentials = encryptCredentialsJson(credentials)
-
-    // Check if integration already exists
-    const { data: existing } = await supabase
-      .from("integrations")
-      .select("id")
-      .eq("type", integrationType)
-      .single()
-
-    if (existing) {
-      await supabase
-        .from("integrations")
-        .update({
-          credentials: encryptedCredentials,
-          is_active: true,
-          last_sync: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", existing.id)
-    } else {
-      await supabase.from("integrations").insert({
-        type: integrationType,
-        name: integrationType === "instagram" ? "Instagram" : "Meta Ads",
-        credentials,
-        is_active: true,
-        last_sync: new Date().toISOString(),
+      log.info("Meta credentials saved to client_stores", {
+        storeId: stateData.store_id,
+        scope: stateData.scope,
       })
+    } else {
+      log.warn("No store_id in state - Meta credentials not saved to client_stores")
     }
 
     // Clear state cookie and redirect

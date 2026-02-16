@@ -2,18 +2,15 @@ import { NextRequest, NextResponse } from "next/server"
 import { errorResponse, AppError } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
-import { decryptStoreCredentials } from "@/lib/crypto"
+import { getStoreCredentials } from "@/lib/services/credentials.service"
 import { logger } from "@/lib/logger"
+import { KLAVIYO_API_URL, KLAVIYO_REVISION } from "@/lib/integrations/klaviyo/client"
 
 const log = logger.child("CampaignsSync")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
 }
-
-// Klaviyo API configuration
-const KLAVIYO_API_URL = "https://a.klaviyo.com/api"
-const KLAVIYO_REVISION = "2024-10-15"
 
 // CORS headers
 
@@ -84,26 +81,16 @@ export async function POST(request: NextRequest) {
       throw new AppError("store_id é obrigatório", 400)
     }
 
-    // Get store with Klaviyo credentials
-    const { data: store, error: storeError } = await supabase
-      .from("client_stores")
-      .select("id, client_id, store_name, klaviyo_private_key, klaviyo_api_key")
-      .eq("id", store_id)
-      .single()
-
-    if (storeError || !store) {
-      throw new AppError("Loja não encontrada", 404)
-    }
-
-    const decryptedStore = decryptStoreCredentials(store)
-    const apiKey = decryptedStore.klaviyo_private_key || decryptedStore.klaviyo_api_key
+    // Get store with Klaviyo credentials (decrypted)
+    const storeData = await getStoreCredentials(store_id)
+    const apiKey = storeData.klaviyo_private_key || storeData.klaviyo_api_key
     if (!apiKey) {
       throw new AppError("Klaviyo API Key não configurada para esta loja", 400)
     }
 
     // Fetch campaigns from Klaviyo
     // Klaviyo requires a channel filter - fetch email and SMS separately
-    log.debug(`[Klaviyo Sync] Fetching campaigns for store: ${store.store_name}`)
+    log.debug(`[Klaviyo Sync] Fetching campaigns for store: ${storeData.store_name}`)
 
     const allCampaigns: KlaviyoCampaign[] = []
 
@@ -167,8 +154,8 @@ export async function POST(request: NextRequest) {
         const channel = klaviyoCampaign.attributes.channel === "sms" ? "sms" : "email"
 
         const campaignData = {
-          store_id: store.id,
-          client_id: store.client_id,
+          store_id: store_id,
+          client_id: storeData.client_id,
           name: klaviyoCampaign.attributes.name,
           scheduled_date: scheduledDate,
           scheduled_time: scheduledTime,

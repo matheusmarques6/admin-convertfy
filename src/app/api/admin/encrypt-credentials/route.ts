@@ -1,6 +1,5 @@
 import { NextRequest } from "next/server"
-import { createClient } from "@/lib/supabase/server"
-import { createAdminClient } from "@/lib/supabase/admin"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireRole } from "@/lib/api/errors"
 import { encrypt, encryptCredentialsJson } from "@/lib/crypto"
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"

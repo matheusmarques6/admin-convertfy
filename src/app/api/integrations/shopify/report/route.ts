@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
-import { decryptStoreCredentials } from "@/lib/crypto"
+import { getStoreCredentials } from "@/lib/services/credentials.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("IntegrationsShopifyReport")
@@ -823,26 +823,12 @@ export async function GET(request: NextRequest) {
       throw new AppError("store_id é obrigatório", 400)
     }
 
-    // Get store with Shopify credentials
-    const { data: store, error: storeError } = await supabase
-      .from("client_stores")
-      .select("shopify_store_domain, shopify_access_token, store_name, client_id")
-      .eq("id", storeId)
-      .single()
-
-    if (storeError || !store) {
-      throw new AppError("Loja não encontrada", 404)
-    }
-
-    const decryptedStore = decryptStoreCredentials(store)
-    const { shopify_store_domain, shopify_access_token: accessToken } = decryptedStore
+    // Get store with Shopify credentials (decrypted)
+    const storeData = await getStoreCredentials(storeId)
+    const { shopify_store_domain, shopify_access_token: accessToken } = storeData
 
     if (!shopify_store_domain || !accessToken) {
-      return NextResponse.json({
-        success: false,
-        connected: false,
-        error: "Credenciais Shopify não configuradas",
-      })
+      throw new AppError("Credenciais Shopify não configuradas", 400)
     }
 
     // Normalize the domain
@@ -892,7 +878,7 @@ export async function GET(request: NextRequest) {
     const reportData = {
       success: true,
       connected: true,
-      storeName: store.store_name || shopInfo?.name || storeDomain,
+      storeName: storeData.store_name || shopInfo?.name || storeDomain,
       generatedAt: new Date().toISOString(),
       period,
       dateRange,

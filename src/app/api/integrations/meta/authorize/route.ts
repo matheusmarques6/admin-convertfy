@@ -18,6 +18,7 @@ export async function GET(request: NextRequest) {
 
     const searchParams = request.nextUrl.searchParams
     const scope = searchParams.get("scope") || "ads"
+    const storeId = searchParams.get("store_id")
 
     // Define scopes based on integration type
     const scopes: string[] = [
@@ -43,11 +44,12 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Generate state for CSRF protection
+    // Generate state for CSRF protection (includes store_id for credential routing)
     const state = Buffer.from(
       JSON.stringify({
         user_id: user.id,
         scope,
+        store_id: storeId || "",
         timestamp: Date.now(),
       })
     ).toString("base64")

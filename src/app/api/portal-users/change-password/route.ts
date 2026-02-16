@@ -1,6 +1,5 @@
 import { NextRequest } from "next/server"
-import { createAdminClient } from "@/lib/supabase/admin"
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 import {
   errorResponse,
   successResponse,

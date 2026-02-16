@@ -8,14 +8,12 @@
 import { createClient } from "@supabase/supabase-js"
 import { decrypt } from "@/lib/crypto"
 import { logger } from "@/lib/logger"
+import { KLAVIYO_API_URL, KLAVIYO_REVISION, MIN_REQUEST_INTERVAL } from "@/lib/integrations/klaviyo/client"
 
 const log = logger.child("KlaviyoSync")
 
-const KLAVIYO_API_URL = "https://a.klaviyo.com/api"
-const KLAVIYO_REVISION = "2024-10-15"
-
-// Rate limiting: max 10 requests per second burst, 150 per minute steady
-const RATE_LIMIT_DELAY_MS = 100 // 100ms between requests
+// Use centralized rate limit from klaviyo/client.ts (1000ms)
+const RATE_LIMIT_DELAY_MS = MIN_REQUEST_INTERVAL
 
 // =====================================================
 // TYPES

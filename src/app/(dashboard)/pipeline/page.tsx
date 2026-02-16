@@ -1,6 +1,5 @@
 import { Suspense } from "react"
-import { createClient } from "@/lib/supabase/server"
-import { createAdminClient } from "@/lib/supabase/admin"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { PipelineBoard } from "@/components/pipeline/pipeline-board"
 import { PipelineHeader } from "@/components/pipeline/pipeline-header"
 import { PipelineStoreInitializer } from "@/components/pipeline/pipeline-store-initializer"

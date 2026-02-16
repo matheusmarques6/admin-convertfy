@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
-import { encryptCredentialsJson } from "@/lib/crypto"
+import { updateStoreCredentials } from "@/lib/services/credentials.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("GoogleCallback")
@@ -36,7 +35,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Decode state
-    let stateData: { user_id: string; scope: string; timestamp: number }
+    let stateData: { user_id: string; scope: string; store_id: string; timestamp: number }
     try {
       stateData = JSON.parse(Buffer.from(state, "base64").toString())
     } catch {
@@ -86,46 +85,34 @@ export async function GET(request: NextRequest) {
     const userInfo = await userInfoResponse.json()
 
     // Determine integration type based on scope
-    const integrationType =
-      stateData.scope === "calendar" ? "google_calendar" : "google_ads"
+    const integrationKey = stateData.scope === "calendar" ? "google_calendar" : "google_ads" as const
 
-    // Save integration to database
-    const supabase = await createClient()
+    // Save credentials to client_stores (unified credential storage)
+    if (stateData.store_id) {
+      const credentialField = integrationKey === "google_calendar"
+        ? "google_calendar_credentials"
+        : "google_ads_credentials"
 
-    const credentials = {
-      access_token: tokens.access_token,
-      refresh_token: tokens.refresh_token,
-      token_type: tokens.token_type,
-      expires_in: tokens.expires_in.toString(),
-      email: userInfo.email,
-    }
-    const encryptedCredentials = encryptCredentialsJson(credentials)
+      await updateStoreCredentials(
+        stateData.store_id,
+        {
+          [credentialField]: {
+            access_token: tokens.access_token,
+            refresh_token: tokens.refresh_token,
+            token_type: tokens.token_type,
+            expires_in: tokens.expires_in.toString(),
+            email: userInfo.email,
+          },
+        },
+        integrationKey
+      )
 
-    // Check if integration already exists
-    const { data: existing } = await supabase
-      .from("integrations")
-      .select("id")
-      .eq("type", integrationType)
-      .single()
-
-    if (existing) {
-      await supabase
-        .from("integrations")
-        .update({
-          credentials: encryptedCredentials,
-          is_active: true,
-          last_sync: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", existing.id)
-    } else {
-      await supabase.from("integrations").insert({
-        type: integrationType,
-        name: integrationType === "google_calendar" ? "Google Calendar" : "Google Ads",
-        credentials: encryptedCredentials,
-        is_active: true,
-        last_sync: new Date().toISOString(),
+      log.info("Google credentials saved to client_stores", {
+        storeId: stateData.store_id,
+        type: integrationKey,
       })
+    } else {
+      log.warn("No store_id in state - Google credentials not saved to client_stores")
     }
 
     // Clear state cookie and redirect

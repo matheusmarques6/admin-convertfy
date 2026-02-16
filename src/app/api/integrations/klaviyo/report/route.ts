@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { errorResponse, requireAuth } from "@/lib/api/errors"
-import { decryptStoreCredentials } from "@/lib/crypto"
+import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
+import { getStoreCredentials } from "@/lib/services/credentials.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("KlaviyoReport")
@@ -895,32 +895,17 @@ export async function GET(request: NextRequest) {
     const customEndDate = searchParams.get("end_date")
 
     if (!storeId) {
-      return NextResponse.json({ error: "store_id é obrigatório" }, { status: 400, headers: corsHeaders() })
+      throw new AppError("store_id é obrigatório", 400)
     }
 
-    // Get store
-    const { data: store, error: storeError } = await supabase
-      .from("client_stores")
-      .select("klaviyo_api_key, klaviyo_private_key, store_name, client_id")
-      .eq("id", storeId)
-      .single()
-
-    if (storeError || !store) {
-      return NextResponse.json({ error: "Loja não encontrada" }, { status: 404, headers: corsHeaders() })
-    }
-
-    const decryptedStore = decryptStoreCredentials(store)
-    const apiKey = decryptedStore.klaviyo_private_key || decryptedStore.klaviyo_api_key
+    const storeData = await getStoreCredentials(storeId)
+    const apiKey = storeData.klaviyo_private_key || storeData.klaviyo_api_key
     if (!apiKey) {
-      return NextResponse.json({
-        success: false,
-        connected: false,
-        error: "API Key não configurada",
-      }, { headers: corsHeaders() })
+      throw new AppError("API Key do Klaviyo não configurada", 400)
     }
 
     log.debug("[Klaviyo] ========== STARTING REPORT ==========")
-    log.debug("[Klaviyo] Store:", store.store_name)
+    log.debug("[Klaviyo] Store:", storeData.store_name)
     log.debug("[Klaviyo] Period:", period)
 
     // Calculate date range based on period
@@ -972,7 +957,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         success: true,
         connected: true,
-        storeName: store.store_name,
+        storeName: storeData.store_name,
         generatedAt: new Date().toISOString(),
         period,
         dateRange: { start: startDateStr, end: endDateStr },
@@ -1140,7 +1125,7 @@ export async function GET(request: NextRequest) {
     const reportData = {
       success: true,
       connected: true,
-      storeName: store.store_name,
+      storeName: storeData.store_name,
       generatedAt: new Date().toISOString(),
       period,
       dateRange: { start: startDateStr, end: endDateStr },

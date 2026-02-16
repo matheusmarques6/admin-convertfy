@@ -6,19 +6,32 @@ export * from "./config"
 export { AsaasService, createAsaasService, mapAsaasStatusToInternal } from "./asaas"
 export { MetaAdsService, createMetaAdsService } from "./meta-ads"
 export { GoogleAdsService, createGoogleAdsService, formatCustomerId } from "./google-ads"
-export { KlaviyoService, createKlaviyoService } from "./klaviyo-service"
 export { ShopifyService, createShopifyService } from "./shopify"
 export { WhatsAppService, createWhatsAppService } from "./whatsapp"
 export { GoogleCalendarService, createGoogleCalendarService } from "./google-calendar"
+
+// Klaviyo uses functional modules (not class-based)
+export { testApiConnection as testKlaviyoConnection } from "./klaviyo"
 
 import { IntegrationType } from "@/types"
 import { createAsaasService } from "./asaas"
 import { createMetaAdsService } from "./meta-ads"
 import { createGoogleAdsService } from "./google-ads"
-import { createKlaviyoService } from "./klaviyo-service"
 import { createShopifyService } from "./shopify"
 import { createWhatsAppService } from "./whatsapp"
 import { createGoogleCalendarService } from "./google-calendar"
+import { testApiConnection } from "./klaviyo"
+
+// Minimal Klaviyo adapter for the factory pattern
+function createKlaviyoAdapter(credentials: Record<string, string>) {
+  const apiKey = credentials.private_key || credentials.api_key || ""
+  return {
+    async testConnection(): Promise<{ success: boolean; error?: string }> {
+      const result = await testApiConnection(apiKey)
+      return { success: result, ...(result ? {} : { error: "Klaviyo API connection failed" }) }
+    },
+  }
+}
 
 // Factory to create integration service by type
 export function createIntegrationService(
@@ -33,7 +46,7 @@ export function createIntegrationService(
     case "google_ads":
       return createGoogleAdsService(credentials)
     case "klaviyo":
-      return createKlaviyoService(credentials)
+      return createKlaviyoAdapter(credentials)
     case "shopify":
       return createShopifyService(credentials)
     case "whatsapp":
