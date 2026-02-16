@@ -1,4 +1,8 @@
 import { WiseBalance, WiseProfile, WiseStatementResponse, WiseTransaction } from "./types"
+import { fetchWithRetry } from "@/lib/utils/retry"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("Wise")
 
 const SANDBOX_URL = "https://api.sandbox.transferwise.tech"
 const PRODUCTION_URL = "https://api.wise.com"
@@ -24,7 +28,7 @@ export class WiseService {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
-    const response = await fetch(`${this.baseUrl}${endpoint}`, {
+    const response = await fetchWithRetry(`${this.baseUrl}${endpoint}`, {
       ...options,
       headers: {
         "Content-Type": "application/json",
@@ -118,7 +122,7 @@ export class WiseService {
         }
       } catch (error) {
         // Skip balances that fail (e.g., empty or restricted)
-        console.warn(`Failed to get statement for balance ${balance.id}:`, error)
+        log.warn(`Failed to get statement for balance ${balance.id}`, { error: error instanceof Error ? error.message : error })
       }
     }
 

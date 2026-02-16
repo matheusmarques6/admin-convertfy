@@ -1,4 +1,5 @@
 import { WhatsAppMessage, WhatsAppTemplate, WhatsAppWebhookEntry } from "./types"
+import { fetchWithRetry } from "@/lib/utils/retry"
 
 const WHATSAPP_API_URL = "https://graph.facebook.com/v18.0"
 
@@ -26,7 +27,7 @@ export class WhatsAppService {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
-    const response = await fetch(`${WHATSAPP_API_URL}${endpoint}`, {
+    const response = await fetchWithRetry(`${WHATSAPP_API_URL}${endpoint}`, {
       ...options,
       headers: {
         "Content-Type": "application/json",

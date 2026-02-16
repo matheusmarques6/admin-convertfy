@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import { createHmac, timingSafeEqual } from "crypto"
 import { logger } from "@/lib/logger"
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 const log = logger.child("WhatsAppWebhook")
 import { WhatsAppService } from "@/lib/integrations/whatsapp"
@@ -13,6 +15,39 @@ function getSupabaseAdmin() {
   )
 }
 
+/**
+ * Verify WhatsApp webhook signature (X-Hub-Signature-256)
+ * Meta sends HMAC SHA-256 signature of the payload
+ */
+function verifyWebhookSignature(
+  payload: string,
+  signatureHeader: string | null
+): boolean {
+  const appSecret = process.env.WHATSAPP_APP_SECRET
+  if (!appSecret) {
+    log.warn("WHATSAPP_APP_SECRET not configured - signature verification skipped")
+    return true // Allow in dev if not configured
+  }
+
+  if (!signatureHeader) {
+    log.warn("Missing X-Hub-Signature-256 header")
+    return false
+  }
+
+  const expectedSignature = signatureHeader.replace("sha256=", "")
+  const computedSignature = createHmac("sha256", appSecret)
+    .update(payload, "utf8")
+    .digest("hex")
+
+  try {
+    const a = Buffer.from(expectedSignature, "hex")
+    const b = Buffer.from(computedSignature, "hex")
+    return a.byteLength === b.byteLength && timingSafeEqual(a, b)
+  } catch {
+    return false
+  }
+}
+
 // GET - Webhook verification
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
@@ -22,9 +57,18 @@ export async function GET(request: NextRequest) {
 
   const verifyToken = process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN
 
-  if (mode === "subscribe" && token === verifyToken) {
-    log.debug("WhatsApp webhook verified")
-    return new NextResponse(challenge, { status: 200 })
+  // Use timing-safe comparison for token verification
+  if (mode === "subscribe" && token && verifyToken) {
+    try {
+      const a = Buffer.from(token)
+      const b = Buffer.from(verifyToken)
+      if (a.byteLength === b.byteLength && timingSafeEqual(a, b)) {
+        log.debug("WhatsApp webhook verified")
+        return new NextResponse(challenge, { status: 200 })
+      }
+    } catch {
+      // Fall through to 403
+    }
   }
 
   return NextResponse.json({ error: "Verification failed" }, { status: 403 })
@@ -32,8 +76,22 @@ export async function GET(request: NextRequest) {
 
 // POST - Receive messages and status updates
 export async function POST(request: NextRequest) {
+  // Rate limiting
+  const limited = checkRateLimit(request, "webhook:whatsapp", RATE_LIMITS.webhook)
+  if (limited) return limited
+
   try {
-    const body = await request.json()
+    // Read raw body for signature verification
+    const rawBody = await request.text()
+
+    // Verify HMAC signature from Meta
+    const signature = request.headers.get("X-Hub-Signature-256")
+    if (!verifyWebhookSignature(rawBody, signature)) {
+      log.warn("Invalid WhatsApp webhook signature")
+      return NextResponse.json({ error: "Invalid signature" }, { status: 401 })
+    }
+
+    const body = JSON.parse(rawBody)
 
     // Verify it's a WhatsApp message
     if (body.object !== "whatsapp_business_account") {

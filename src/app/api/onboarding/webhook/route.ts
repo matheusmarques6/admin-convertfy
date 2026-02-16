@@ -1,7 +1,9 @@
 import { NextRequest } from "next/server"
+import { timingSafeEqual } from "crypto"
 import { errorResponse, successResponse, AppError } from "@/lib/api/errors"
 import { createAdminClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("OnboardingWebhook")
@@ -11,18 +13,35 @@ export async function OPTIONS(request: NextRequest) {
 }
 
 
-
-
-
 // POST - Webhook endpoint for n8n to send store analysis results
 export async function POST(request: NextRequest) {
+  // Rate limiting
+  const limited = checkRateLimit(request, "webhook:onboarding", RATE_LIMITS.webhook)
+  if (limited) return limited
+
   try {
-    // Verify webhook secret (will be configured later)
+    // Verify webhook secret - REQUIRED in production
     const webhookSecret = request.headers.get("X-Webhook-Secret")
     const expectedSecret = process.env.ONBOARDING_WEBHOOK_SECRET
 
-    // For now, if no secret is configured, allow requests (dev mode)
-    if (expectedSecret && webhookSecret !== expectedSecret) {
+    if (!expectedSecret) {
+      log.error("ONBOARDING_WEBHOOK_SECRET not configured")
+      throw new AppError("Webhook secret not configured", 500)
+    }
+
+    if (!webhookSecret) {
+      throw new AppError("Missing X-Webhook-Secret header", 401)
+    }
+
+    // Use timing-safe comparison to prevent timing attacks
+    try {
+      const a = Buffer.from(webhookSecret)
+      const b = Buffer.from(expectedSecret)
+      if (a.byteLength !== b.byteLength || !timingSafeEqual(a, b)) {
+        throw new AppError("Unauthorized", 401)
+      }
+    } catch (e) {
+      if (e instanceof AppError) throw e
       throw new AppError("Unauthorized", 401)
     }
 

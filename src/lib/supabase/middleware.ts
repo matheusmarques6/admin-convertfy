@@ -1,5 +1,8 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("Middleware")
 
 export async function updateSession(request: NextRequest) {
   // Skip middleware for API routes to avoid timeout issues
@@ -87,7 +90,7 @@ export async function updateSession(request: NextRequest) {
     } catch (error) {
       // On error, allow the request to continue
       // The page itself can handle auth state
-      console.error('Middleware auth error:', error)
+      log.error('Auth error', { error: error instanceof Error ? error.message : error })
 
       // For protected paths, redirect to login on auth error
       if (isProtectedPath || isChangePasswordPath) {

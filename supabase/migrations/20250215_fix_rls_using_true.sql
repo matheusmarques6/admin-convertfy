@@ -195,27 +195,62 @@ CREATE POLICY "Users can manage wise_transaction_mapping"
 
 -- ============================================================================
 -- PART 4: Campaigns from 20250120_campaigns_calendar.sql
+-- Uses store-level access control via can_access_store / can_manage_store_campaigns
 -- ============================================================================
 
 DROP POLICY IF EXISTS "Allow authenticated to view campaigns" ON campaigns;
 DROP POLICY IF EXISTS "Allow authenticated to manage campaigns" ON campaigns;
-CREATE POLICY "Users can view campaigns"
+DROP POLICY IF EXISTS "Users can view all campaigns" ON campaigns;
+DROP POLICY IF EXISTS "Users can create campaigns" ON campaigns;
+DROP POLICY IF EXISTS "Users can update campaigns" ON campaigns;
+DROP POLICY IF EXISTS "Users can delete campaigns" ON campaigns;
+DROP POLICY IF EXISTS "Users can view campaigns for accessible stores" ON campaigns;
+DROP POLICY IF EXISTS "Users can create campaigns for managed stores" ON campaigns;
+DROP POLICY IF EXISTS "Users can update campaigns for managed stores" ON campaigns;
+DROP POLICY IF EXISTS "Users can delete campaigns for managed stores" ON campaigns;
+
+CREATE POLICY "Users can view campaigns for accessible stores"
   ON campaigns FOR SELECT TO authenticated
-  USING (is_admin() OR is_org_member());
+  USING (can_access_store(store_id));
 
-CREATE POLICY "Users can manage campaigns"
+CREATE POLICY "Users can create campaigns for managed stores"
   ON campaigns FOR INSERT TO authenticated
-  WITH CHECK (is_admin() OR is_org_member());
+  WITH CHECK (can_manage_store_campaigns(store_id));
 
-DROP POLICY IF EXISTS "Allow authenticated to view campaign_schedule" ON campaign_schedule;
-CREATE POLICY "Users can view campaign_schedule"
-  ON campaign_schedule FOR SELECT TO authenticated
-  USING (is_admin() OR is_org_member());
+CREATE POLICY "Users can update campaigns for managed stores"
+  ON campaigns FOR UPDATE TO authenticated
+  USING (can_manage_store_campaigns(store_id))
+  WITH CHECK (can_manage_store_campaigns(store_id));
 
-DROP POLICY IF EXISTS "Allow authenticated to view campaign_performance" ON campaign_performance;
-CREATE POLICY "Users can view campaign_performance"
-  ON campaign_performance FOR SELECT TO authenticated
-  USING (is_admin() OR is_org_member());
+CREATE POLICY "Users can delete campaigns for managed stores"
+  ON campaigns FOR DELETE TO authenticated
+  USING (can_manage_store_campaigns(store_id));
+
+-- campaign_history (from 20250125_09_campaign_approval.sql)
+DROP POLICY IF EXISTS "Users can view campaign history" ON campaign_history;
+DROP POLICY IF EXISTS "Users can create campaign history" ON campaign_history;
+DROP POLICY IF EXISTS "Users can view campaign history for accessible stores" ON campaign_history;
+DROP POLICY IF EXISTS "Campaign managers can create history" ON campaign_history;
+
+CREATE POLICY "Users can view campaign history for accessible stores"
+  ON campaign_history FOR SELECT TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM campaigns c
+      WHERE c.id = campaign_history.campaign_id
+      AND can_access_store(c.store_id)
+    )
+  );
+
+CREATE POLICY "Campaign managers can create history"
+  ON campaign_history FOR INSERT TO authenticated
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM campaigns c
+      WHERE c.id = campaign_history.campaign_id
+      AND can_manage_store_campaigns(c.store_id)
+    )
+  );
 
 -- ============================================================================
 -- PART 5: Other tables with USING(true) for authenticated

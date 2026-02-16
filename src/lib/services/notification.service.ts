@@ -1,4 +1,7 @@
 import { createClient } from '@/lib/supabase/client';
+import { logger } from '@/lib/logger';
+
+const log = logger.child('Notification');
 
 export type NotificationType = 'info' | 'success' | 'warning' | 'error';
 
@@ -48,7 +51,7 @@ class NotificationService {
       .single();
 
     if (error) {
-      console.error('[NotificationService] Failed to create notification:', error);
+      log.error('[NotificationService] Failed to create notification:', error);
       return null;
     }
 
@@ -80,7 +83,7 @@ class NotificationService {
       .select();
 
     if (error) {
-      console.error('[NotificationService] Failed to create bulk notifications:', error);
+      log.error('[NotificationService] Failed to create bulk notifications:', error);
       return 0;
     }
 
@@ -102,7 +105,7 @@ class NotificationService {
       .limit(limit);
 
     if (error) {
-      console.error('[NotificationService] Failed to get unread notifications:', error);
+      log.error('[NotificationService] Failed to get unread notifications:', error);
       return [];
     }
 
@@ -123,7 +126,7 @@ class NotificationService {
       .limit(limit);
 
     if (error) {
-      console.error('[NotificationService] Failed to get notifications:', error);
+      log.error('[NotificationService] Failed to get notifications:', error);
       return [];
     }
 
@@ -143,7 +146,7 @@ class NotificationService {
       .eq('read', false);
 
     if (error) {
-      console.error('[NotificationService] Failed to get unread count:', error);
+      log.error('[NotificationService] Failed to get unread count:', error);
       return 0;
     }
 
@@ -162,7 +165,7 @@ class NotificationService {
       .eq('id', notificationId);
 
     if (error) {
-      console.error('[NotificationService] Failed to mark as read:', error);
+      log.error('[NotificationService] Failed to mark as read:', error);
     }
   }
 
@@ -179,7 +182,7 @@ class NotificationService {
       .eq('read', false);
 
     if (error) {
-      console.error('[NotificationService] Failed to mark all as read:', error);
+      log.error('[NotificationService] Failed to mark all as read:', error);
     }
   }
 
@@ -195,7 +198,7 @@ class NotificationService {
       .eq('id', notificationId);
 
     if (error) {
-      console.error('[NotificationService] Failed to delete notification:', error);
+      log.error('[NotificationService] Failed to delete notification:', error);
     }
   }
 
@@ -215,7 +218,7 @@ class NotificationService {
       .in('role', roles);
 
     if (error || !users?.length) {
-      console.error('[NotificationService] Failed to get users by role:', error);
+      log.error('[NotificationService] Failed to get users by role:', error);
       return 0;
     }
 
@@ -239,7 +242,7 @@ class NotificationService {
       .single();
 
     if (error || !client?.owner_id) {
-      console.error('[NotificationService] Failed to get client owner:', error);
+      log.error('[NotificationService] Failed to get client owner:', error);
       return;
     }
 

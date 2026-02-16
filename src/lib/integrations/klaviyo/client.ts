@@ -5,6 +5,11 @@
  * Used by all /api/integrations/klaviyo/* routes.
  */
 
+import { logger } from "@/lib/logger"
+import { fetchWithRetry } from "@/lib/utils/retry"
+
+const log = logger.child("Klaviyo")
+
 // Latest stable API revision per Klaviyo documentation
 // https://developers.klaviyo.com/en/docs/api_versioning_and_deprecation_policy
 export const KLAVIYO_API_URL = "https://a.klaviyo.com/api"
@@ -32,12 +37,7 @@ export function corsHeaders() {
 /**
  * Klaviyo API request with retry logic for rate limiting and server errors.
  *
- * Features:
- * - Exponential backoff on retry (1.5s, 3s, 6s)
- * - Handles 429 rate limiting with Retry-After header
- * - Retries on 5xx server errors
- * - Configurable logging tag for debugging
- *
+ * Uses shared fetchWithRetry utility for exponential backoff.
  * Based on: https://developers.klaviyo.com/en/docs/rate_limits_and_error_handling
  */
 export async function klaviyoRequest<T>(
@@ -52,68 +52,36 @@ export async function klaviyoRequest<T>(
 ): Promise<T | null> {
   const { method = "GET", body, logTag = "Klaviyo" } = options || {}
   const url = endpoint.startsWith("http") ? endpoint : `${KLAVIYO_API_URL}${endpoint}`
-  const maxRetries = 3
 
-  console.log(`[${logTag}] REQUEST: ${method} ${endpoint}`)
+  log.info(`${logTag} REQUEST: ${method} ${endpoint}`)
 
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    if (attempt > 0) {
-      const backoff = Math.min(1500 * Math.pow(2, attempt - 1), 16000)
-      console.log(`[${logTag}] Retry ${attempt}/${maxRetries} - waiting ${backoff}ms`)
-      await sleep(backoff)
-    }
+  try {
+    const response = await fetchWithRetry(url, {
+      method,
+      headers: {
+        "Authorization": `Klaviyo-API-Key ${apiKey}`,
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "revision": KLAVIYO_REVISION,
+      },
+      ...(body && { body: JSON.stringify(body) }),
+    })
 
-    try {
-      const response = await fetch(url, {
-        method,
-        headers: {
-          "Authorization": `Klaviyo-API-Key ${apiKey}`,
-          "Accept": "application/json",
-          "Content-Type": "application/json",
-          "revision": KLAVIYO_REVISION,
-        },
-        ...(body && { body: JSON.stringify(body) }),
-      })
+    log.info(`${logTag} RESPONSE: ${response.status} ${response.statusText}`)
 
-      console.log(`[${logTag}] RESPONSE: ${response.status} ${response.statusText}`)
-
-      // Handle rate limiting (429)
-      if (response.status === 429) {
-        const retryAfter = response.headers.get("retry-after")
-        const waitTime = retryAfter ? parseInt(retryAfter) * 1000 : 2000
-        console.log(`[${logTag}] Rate limited. Waiting ${waitTime}ms`)
-
-        if (attempt < maxRetries) {
-          await sleep(waitTime)
-          continue
-        }
-        console.error(`[${logTag}] Max retries reached for rate limiting`)
-        return null
-      }
-
-      // Handle server errors with retry
-      if (response.status >= 500 && attempt < maxRetries) {
-        console.log(`[${logTag}] Server error ${response.status}, retrying...`)
-        continue
-      }
-
+    if (!response.ok) {
       const responseText = await response.text()
-
-      if (!response.ok) {
-        console.error(`[${logTag}] API ERROR ${response.status}:`, responseText.substring(0, 500))
-        return null
-      }
-
-      const data = JSON.parse(responseText) as T
-      return data
-    } catch (error) {
-      console.error(`[${logTag}] REQUEST ERROR:`, error)
-      if (attempt < maxRetries) continue
+      log.error(`${logTag} API ERROR ${response.status}: ${responseText.substring(0, 500)}`)
       return null
     }
-  }
 
-  return null
+    const responseText = await response.text()
+    const data = JSON.parse(responseText) as T
+    return data
+  } catch (error) {
+    log.error(`${logTag} REQUEST ERROR`, error instanceof Error ? { error: error.message } : { error })
+    return null
+  }
 }
 
 /**

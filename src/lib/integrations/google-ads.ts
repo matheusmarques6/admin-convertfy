@@ -1,4 +1,5 @@
 import { GoogleAdsAccount, GoogleAdsCampaign, GoogleAdsMetrics } from "./types"
+import { fetchWithRetry } from "@/lib/utils/retry"
 
 const GOOGLE_ADS_API_URL = "https://googleads.googleapis.com/v15"
 
@@ -39,7 +40,7 @@ export class GoogleAdsService {
       headers["login-customer-id"] = this.managerId
     }
 
-    const response = await fetch(url, {
+    const response = await fetchWithRetry(url, {
       method: "POST",
       headers,
       body: JSON.stringify({ query }),

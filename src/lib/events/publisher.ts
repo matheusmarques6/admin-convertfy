@@ -1,5 +1,8 @@
 import { createClient } from '@/lib/supabase/client';
 import type { PublishEventParams, SystemEvent } from '@/types/events';
+import { logger } from '@/lib/logger';
+
+const log = logger.child('EventPublisher');
 
 /**
  * Publishes an event to the system event bus
@@ -29,18 +32,18 @@ export async function publishEvent<T = Record<string, unknown>>(
       .single();
 
     if (error) {
-      console.error('[EventPublisher] Failed to publish event:', error);
+      log.error('[EventPublisher] Failed to publish event:', error);
       return null;
     }
 
     // Log for debugging
     if (process.env.NODE_ENV === 'development') {
-      console.log(`[Event] ${params.event_type}:`, params.entity_id);
+      log.debug(`${params.event_type}: ${params.entity_id}`);
     }
 
     return data as SystemEvent<T>;
   } catch (err) {
-    console.error('[EventPublisher] Unexpected error:', err);
+    log.error('[EventPublisher] Unexpected error:', err);
     return null;
   }
 }
@@ -71,13 +74,13 @@ export async function publishEvents(
       .select();
 
     if (error) {
-      console.error('[EventPublisher] Failed to publish batch:', error);
+      log.error('[EventPublisher] Failed to publish batch:', error);
       return 0;
     }
 
     return data?.length || 0;
   } catch (err) {
-    console.error('[EventPublisher] Unexpected error in batch:', err);
+    log.error('[EventPublisher] Unexpected error in batch:', err);
     return 0;
   }
 }
@@ -105,6 +108,6 @@ export async function logActivity(params: {
       metadata: params.metadata || {},
     });
   } catch (err) {
-    console.error('[Activity] Failed to log activity:', err);
+    log.error('[Activity] Failed to log activity:', err);
   }
 }

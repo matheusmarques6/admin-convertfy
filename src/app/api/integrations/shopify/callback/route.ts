@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
         .digest("hex")
 
       if (calculatedHmac !== hmac) {
-        console.warn("Invalid Shopify HMAC")
+        log.warn("Invalid Shopify HMAC")
         return NextResponse.redirect(
           new URL("/settings/integrations?error=invalid_hmac", request.url)
         )

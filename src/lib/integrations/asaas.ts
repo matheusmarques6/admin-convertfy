@@ -1,4 +1,5 @@
 import { AsaasCustomer, AsaasPayment, AsaasPaymentStatus } from "./types"
+import { fetchWithRetry } from "@/lib/utils/retry"
 
 const SANDBOX_URL = "https://sandbox.asaas.com/api/v3"
 const PRODUCTION_URL = "https://api.asaas.com/v3"
@@ -21,7 +22,7 @@ export class AsaasService {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
-    const response = await fetch(`${this.baseUrl}${endpoint}`, {
+    const response = await fetchWithRetry(`${this.baseUrl}${endpoint}`, {
       ...options,
       headers: {
         "Content-Type": "application/json",

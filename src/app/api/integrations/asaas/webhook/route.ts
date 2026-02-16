@@ -48,19 +48,22 @@ export async function POST(request: NextRequest) {
     const webhookToken = request.headers.get("asaas-access-token")
     const expectedToken = process.env.ASAAS_WEBHOOK_SECRET
 
-    if (expectedToken) {
-      if (!webhookToken) {
-        log.warn("Missing Asaas webhook token")
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-      }
+    if (!expectedToken) {
+      log.error("ASAAS_WEBHOOK_SECRET not configured")
+      return NextResponse.json({ error: "Webhook secret not configured" }, { status: 500 })
+    }
 
-      const a = Buffer.from(webhookToken)
-      const b = Buffer.from(expectedToken)
+    if (!webhookToken) {
+      log.warn("Missing Asaas webhook token")
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
 
-      if (a.byteLength !== b.byteLength || !timingSafeEqual(a, b)) {
-        log.warn("Invalid Asaas webhook token")
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-      }
+    const a = Buffer.from(webhookToken)
+    const b = Buffer.from(expectedToken)
+
+    if (a.byteLength !== b.byteLength || !timingSafeEqual(a, b)) {
+      log.warn("Invalid Asaas webhook token")
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     const payload = (await request.json()) as AsaasWebhookPayload

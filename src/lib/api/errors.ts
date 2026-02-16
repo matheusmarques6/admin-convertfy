@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { ZodError, ZodType } from "zod"
+import { SupabaseClient } from "@supabase/supabase-js"
 import { corsHeaders } from "@/lib/cors"
 import { logger } from "@/lib/logger"
 
@@ -142,8 +143,7 @@ export interface AuthUser {
 }
 
 export async function requireAuth(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: any
+  supabase: SupabaseClient
 ): Promise<AuthUser> {
   const { data: { user }, error } = await supabase.auth.getUser()
   if (error || !user) {
@@ -153,8 +153,7 @@ export async function requireAuth(
 }
 
 export async function requireRole(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: any,
+  supabase: SupabaseClient,
   allowedRoles: string[]
 ): Promise<AuthUser & { role: string }> {
   const user = await requireAuth(supabase)

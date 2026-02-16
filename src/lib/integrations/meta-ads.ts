@@ -1,4 +1,5 @@
 import { MetaAdAccount, MetaCampaign, MetaInsights } from "./types"
+import { fetchWithRetry } from "@/lib/utils/retry"
 
 const GRAPH_API_URL = "https://graph.facebook.com/v18.0"
 
@@ -31,7 +32,7 @@ export class MetaAdsService {
       url.searchParams.set(key, value)
     })
 
-    const response = await fetch(url.toString())
+    const response = await fetchWithRetry(url.toString())
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({}))

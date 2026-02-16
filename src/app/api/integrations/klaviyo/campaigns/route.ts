@@ -283,7 +283,7 @@ export async function GET(request: NextRequest) {
       }, { headers: corsHeaders() })
     }
 
-    console.log("[Klaviyo Campaigns] Starting fetch for store:", store.store_name)
+    log.info(`Starting fetch for store: ${store.store_name}`)
 
     // Get account info for timezone
     const accountInfo = await getAccountInfo(apiKey)

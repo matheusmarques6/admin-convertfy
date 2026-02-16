@@ -2,7 +2,10 @@
  * Klaviyo Metrics helpers - find Placed Order metric ID.
  */
 
+import { logger } from "@/lib/logger"
 import { klaviyoRequest } from "./client"
+
+const log = logger.child("KlaviyoMetrics")
 
 interface KlaviyoMetric {
   id: string
@@ -21,7 +24,7 @@ interface KlaviyoMetric {
  * Returns null if no matching metric is found (e.g. no e-commerce integration).
  */
 export async function findPlacedOrderMetric(apiKey: string): Promise<string | null> {
-  console.log("[Klaviyo] Fetching metrics...")
+  log.info("Fetching metrics...")
 
   const response = await klaviyoRequest<{
     data: KlaviyoMetric[]
@@ -30,11 +33,11 @@ export async function findPlacedOrderMetric(apiKey: string): Promise<string | nu
   if (!response?.data) return null
 
   const metrics = response.data
-  console.log(`[Klaviyo] Total metrics: ${metrics.length}`)
+  log.info(`Total metrics: ${metrics.length}`)
 
   // Log all metrics for debugging
   metrics.forEach(m => {
-    console.log(`[Klaviyo] Metric: ${m.attributes.name} (${m.id}) - Integration: ${m.attributes.integration?.name || 'none'}`)
+    log.debug(`Metric: ${m.attributes.name} (${m.id}) - Integration: ${m.attributes.integration?.name || 'none'}`)
   })
 
   // 1. Exact match (English)
@@ -52,10 +55,10 @@ export async function findPlacedOrderMetric(apiKey: string): Promise<string | nu
   }
 
   if (match) {
-    console.log(`[Klaviyo] Using metric: ${match.attributes.name} (${match.id})`)
+    log.info(`Using metric: ${match.attributes.name} (${match.id})`)
     return match.id
   }
 
-  console.log("[Klaviyo] No Placed Order metric found")
+  log.info("No Placed Order metric found")
   return null
 }

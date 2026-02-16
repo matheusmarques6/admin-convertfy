@@ -1,4 +1,7 @@
 import { createClient } from "@/lib/supabase/client"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("RateLimit")
 
 export type RateLimitAction =
   | "password_reset"
@@ -107,7 +110,7 @@ class RateLimitService {
         blockedBy: result?.is_blocked ? "identifier" : null,
       }
     } catch (error) {
-      console.error("Rate limit check failed:", error)
+      log.error("Rate limit check failed", { error: error instanceof Error ? error.message : error })
 
       // Fail-closed for sensitive actions, fail-open for others
       if (shouldFailClosed) {
@@ -170,7 +173,7 @@ class RateLimitService {
       if (error) throw error
       return data ?? false
     } catch (error) {
-      console.error("Failed to clear rate limit:", error)
+      log.error("Failed to clear rate limit", { error: error instanceof Error ? error.message : error })
       return false
     }
   }
@@ -195,7 +198,7 @@ class RateLimitService {
         p_metadata: data.metadata || {},
       })
       .then(({ error }) => {
-        if (error) console.error("Audit log failed:", error)
+        if (error) log.error("Audit log failed", { error: error.message })
       })
   }
 

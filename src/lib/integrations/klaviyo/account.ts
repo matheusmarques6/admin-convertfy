@@ -2,22 +2,25 @@
  * Klaviyo Account helpers - connection test, account info, timezone.
  */
 
+import { logger } from "@/lib/logger"
 import { klaviyoRequest } from "./client"
+
+const log = logger.child("KlaviyoAccount")
 
 /**
  * Test API connection by calling the /accounts/ endpoint.
  */
 export async function testApiConnection(apiKey: string): Promise<boolean> {
-  console.log("[Klaviyo] Testing API connection...")
+  log.info("Testing API connection...")
   const response = await klaviyoRequest<{
     data: Array<{ id: string }>
   }>(apiKey, "/accounts/")
 
   if (response?.data) {
-    console.log("[Klaviyo] API connection successful")
+    log.info("API connection successful")
     return true
   }
-  console.error("[Klaviyo] API connection failed")
+  log.error("API connection failed")
   return false
 }
 
@@ -51,7 +54,7 @@ export async function getAccountInfo(apiKey: string): Promise<KlaviyoAccountInfo
   }
 
   const attrs = response.data[0].attributes
-  console.log(`[Klaviyo] Account timezone: ${attrs.timezone}`)
+  log.info(`Account timezone: ${attrs.timezone}`)
 
   return {
     currency: attrs.preferred_currency || "BRL",
@@ -96,7 +99,7 @@ export function getTimezoneOffset(timezone: string): string {
       }
     }
   } catch {
-    console.log(`[Klaviyo] Error parsing timezone ${timezone}, using UTC`)
+    log.warn(`Error parsing timezone ${timezone}, using UTC`)
   }
   return "+00:00"
 }

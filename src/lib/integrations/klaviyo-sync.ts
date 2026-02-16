@@ -7,6 +7,9 @@
 
 import { createClient } from "@supabase/supabase-js"
 import { decrypt } from "@/lib/crypto"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("KlaviyoSync")
 
 const KLAVIYO_API_URL = "https://a.klaviyo.com/api"
 const KLAVIYO_REVISION = "2024-10-15"
@@ -312,7 +315,7 @@ class KlaviyoMetricsClient {
 
       return metricsMap
     } catch (error) {
-      console.error("Error fetching campaign metrics:", error)
+      log.error("Error fetching campaign metrics", { error: error instanceof Error ? error.message : error })
       return new Map()
     }
   }

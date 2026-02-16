@@ -42,8 +42,7 @@ function formatEntry(entry: LogEntry): string {
   return `${prefix}${ctx} ${entry.message}${data}`
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function normalizeData(data: any): Record<string, unknown> | undefined {
+function normalizeData(data: unknown): Record<string, unknown> | undefined {
   if (!data) return undefined
   if (typeof data === "object" && data !== null && !Array.isArray(data)) return data as Record<string, unknown>
   if (data instanceof Error) return { error: data.message, stack: data.stack }

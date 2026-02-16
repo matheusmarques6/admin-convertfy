@@ -57,3 +57,6 @@ logs/
 # secrets
 *.key
 *.crt
+
+# MCP config (contains API tokens)
+.mcp.json

@@ -95,30 +95,30 @@ CREATE TRIGGER campaigns_updated_at
 -- RLS Policies
 ALTER TABLE campaigns ENABLE ROW LEVEL SECURITY;
 
--- Allow authenticated users to view all campaigns
-CREATE POLICY "Users can view all campaigns"
+-- Allow users to view campaigns for stores they can access
+CREATE POLICY "Users can view campaigns for accessible stores"
   ON campaigns FOR SELECT
   TO authenticated
-  USING (true);
+  USING (can_access_store(store_id));
 
--- Allow authenticated users to insert campaigns
-CREATE POLICY "Users can create campaigns"
+-- Allow users to create campaigns for stores they can manage
+CREATE POLICY "Users can create campaigns for managed stores"
   ON campaigns FOR INSERT
   TO authenticated
-  WITH CHECK (true);
+  WITH CHECK (can_manage_store_campaigns(store_id));
 
--- Allow authenticated users to update campaigns
-CREATE POLICY "Users can update campaigns"
+-- Allow users to update campaigns for stores they can manage
+CREATE POLICY "Users can update campaigns for managed stores"
   ON campaigns FOR UPDATE
   TO authenticated
-  USING (true)
-  WITH CHECK (true);
+  USING (can_manage_store_campaigns(store_id))
+  WITH CHECK (can_manage_store_campaigns(store_id));
 
--- Allow authenticated users to delete campaigns
-CREATE POLICY "Users can delete campaigns"
+-- Allow users to delete campaigns for stores they can manage
+CREATE POLICY "Users can delete campaigns for managed stores"
   ON campaigns FOR DELETE
   TO authenticated
-  USING (true);
+  USING (can_manage_store_campaigns(store_id));
 
 -- Comments
 COMMENT ON TABLE campaigns IS 'Stores campaign information for the calendar system';

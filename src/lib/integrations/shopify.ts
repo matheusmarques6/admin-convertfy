@@ -4,6 +4,7 @@ import {
   ShopifyCustomer,
   ShopifyProduct,
 } from "./types"
+import { fetchWithRetry } from "@/lib/utils/retry"
 
 export interface ShopifyConfig {
   storeUrl: string
@@ -30,7 +31,7 @@ export class ShopifyService {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
-    const response = await fetch(`${this.baseUrl}${endpoint}`, {
+    const response = await fetchWithRetry(`${this.baseUrl}${endpoint}`, {
       ...options,
       headers: {
         "Content-Type": "application/json",

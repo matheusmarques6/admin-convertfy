@@ -1,10 +1,28 @@
--- Campaign Approval Workflow
--- Adiciona suporte a workflow de aprovação de campanhas
+-- =============================================
+-- PIPELINE FILE 03: CAMPAIGN APPROVAL WORKFLOW
+-- =============================================
+-- Adds: pending_review, approved, rejected to campaign_status enum
+-- Adds: submitted_by, submitted_at, reviewed_by, reviewed_at,
+--        rejection_reason, approval_notes columns to campaigns
+-- Creates: campaign_history table
+-- Creates: log_campaign_status_change() function and trigger
+-- Creates: campaigns_with_approval view
+-- Creates: RLS policies for campaign_history
+-- =============================================
+
+BEGIN;
 
 -- Add new status values to the enum
 ALTER TYPE campaign_status ADD VALUE IF NOT EXISTS 'pending_review';
 ALTER TYPE campaign_status ADD VALUE IF NOT EXISTS 'approved';
 ALTER TYPE campaign_status ADD VALUE IF NOT EXISTS 'rejected';
+
+COMMIT;
+
+-- NOTE: ALTER TYPE ADD VALUE cannot run inside a transaction in some PG versions.
+-- We commit the enum changes first, then continue with the rest.
+
+BEGIN;
 
 -- Add approval-related fields to campaigns table
 ALTER TABLE campaigns
@@ -43,6 +61,7 @@ CREATE INDEX IF NOT EXISTS idx_campaign_history_created_at ON campaign_history(c
 -- RLS for campaign_history
 ALTER TABLE campaign_history ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view campaign history for accessible stores" ON campaign_history;
 CREATE POLICY "Users can view campaign history for accessible stores"
   ON campaign_history FOR SELECT
   TO authenticated
@@ -54,7 +73,7 @@ CREATE POLICY "Users can view campaign history for accessible stores"
     )
   );
 
--- Insert restricted to campaign managers (status changes logged via trigger)
+DROP POLICY IF EXISTS "Campaign managers can create history" ON campaign_history;
 CREATE POLICY "Campaign managers can create history"
   ON campaign_history FOR INSERT
   TO authenticated
@@ -65,6 +84,12 @@ CREATE POLICY "Campaign managers can create history"
       AND can_manage_store_campaigns(c.store_id)
     )
   );
+
+-- Service role full access
+DROP POLICY IF EXISTS "Service role campaign_history" ON campaign_history;
+CREATE POLICY "Service role campaign_history"
+  ON campaign_history FOR ALL TO service_role
+  USING (true) WITH CHECK (true);
 
 -- Function to automatically log status changes
 CREATE OR REPLACE FUNCTION log_campaign_status_change()
@@ -145,3 +170,9 @@ COMMENT ON COLUMN campaigns.reviewed_by IS 'User who approved or rejected the ca
 COMMENT ON COLUMN campaigns.reviewed_at IS 'When the campaign was reviewed';
 COMMENT ON COLUMN campaigns.rejection_reason IS 'Reason for rejection if campaign was rejected';
 COMMENT ON COLUMN campaigns.approval_notes IS 'Notes from reviewer when approving';
+
+COMMIT;
+
+-- =============================================
+-- 03_campaign_approval.sql DONE
+-- =============================================

@@ -1,4 +1,5 @@
 import { GoogleCalendarEvent, GoogleCalendarList } from "./types"
+import { fetchWithRetry } from "@/lib/utils/retry"
 
 const CALENDAR_API_URL = "https://www.googleapis.com/calendar/v3"
 
@@ -23,7 +24,7 @@ export class GoogleCalendarService {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
-    const response = await fetch(`${CALENDAR_API_URL}${endpoint}`, {
+    const response = await fetchWithRetry(`${CALENDAR_API_URL}${endpoint}`, {
       ...options,
       headers: {
         "Content-Type": "application/json",
