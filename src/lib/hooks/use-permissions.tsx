@@ -186,7 +186,6 @@ export function useCanAccessRoute(routePath: string): boolean {
     "/financial": ["view_financial"],
     "/meetings": ["calendar_control"],
     "/campaigns": ["campaign_control", "campaign_view"],
-    "/klaviyo-metrics": ["campaign_view", "view_reports"],
     "/reports": ["view_reports"],
     "/automations": ["campaign_control"],
     "/tools": [], // Sempre acessível

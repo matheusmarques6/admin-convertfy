@@ -23,7 +23,6 @@ import {
   CalendarDays,
   Store,
   Rocket,
-  TrendingUp,
   Sun,
   Moon,
   LucideIcon,
@@ -85,7 +84,6 @@ const navigation: NavItem[] = [
 
   // Marketing
   { name: "Campanhas", href: "/campaigns", icon: CalendarDays, group: "marketing", requiredFeatures: ["campaign_control", "campaign_view"] },
-  { name: "Métricas Klaviyo", href: "/klaviyo-metrics", icon: TrendingUp, group: "marketing", requiredFeatures: ["campaign_view", "view_reports"] },
   { name: "Automações", href: "/automations", icon: Zap, group: "marketing", requiredFeatures: ["campaign_control"] },
 
   // Operacional

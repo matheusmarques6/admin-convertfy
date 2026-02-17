@@ -29,7 +29,6 @@ export const config = {
     "/meetings/:path*",
     "/onboarding/:path*",
     "/notifications/:path*",
-    "/klaviyo-metrics/:path*",
     "/campaigns/:path*",
     "/login",
     "/register",
