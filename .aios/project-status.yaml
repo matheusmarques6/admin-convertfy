@@ -1,0 +1,20 @@
+status:
+  branch: main
+  modifiedFiles:
+    - .gitignore
+    - .aios-core/
+    - .aios/
+    - .claude/
+  modifiedFilesTotalCount: 4
+  recentCommits:
+    - >-
+      feat(security): migra escritas client-side para API routes + implementa
+      settings pages
+    - 'feat(security): rate limiting + encriptação ga4_credentials'
+  currentEpic: null
+  currentStory: null
+  lastUpdate: '2026-02-16T13:54:12.081Z'
+  isGitRepo: true
+timestamp: 1771250052082
+ttl: 60
+gitFingerprint: 1771170603240.7046:1771221511453.189
