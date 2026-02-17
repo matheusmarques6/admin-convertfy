@@ -115,6 +115,8 @@ export class AsaasService {
     limit?: number
     dateCreated?: string
     paymentDate?: string
+    "dueDate[ge]"?: string
+    "dueDate[le]"?: string
   }): Promise<{ data: AsaasPayment[]; totalCount: number }> {
     const queryParams = new URLSearchParams()
     if (params?.customer) queryParams.set("customer", params.customer)
@@ -122,6 +124,8 @@ export class AsaasService {
     if (params?.status) queryParams.set("status", params.status)
     if (params?.offset) queryParams.set("offset", params.offset.toString())
     if (params?.limit) queryParams.set("limit", params.limit.toString())
+    if (params?.["dueDate[ge]"]) queryParams.set("dueDate[ge]", params["dueDate[ge]"])
+    if (params?.["dueDate[le]"]) queryParams.set("dueDate[le]", params["dueDate[le]"])
 
     return this.request(`/payments?${queryParams.toString()}`)
   }

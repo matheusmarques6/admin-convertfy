@@ -42,18 +42,22 @@ export async function GET(request: NextRequest) {
       invoiceUrl?: string; bankSlipUrl?: string; pixQrCodeUrl?: string;
     }> = []
 
+    // Filter by dueDate range on the API side to avoid fetching ALL payments
     let offset = 0
     const limit = 100
     let hasMore = true
 
     while (hasMore) {
-      const params: Record<string, string | number> = { offset, limit }
-      if (asaasCustomerId) params.customer = asaasCustomerId
-      const { data: payments, totalCount } = await asaas.listPayments(params as never)
-      const filteredPayments = payments.filter((p: { dueDate: string }) => new Date(p.dueDate).getFullYear().toString() === year)
-      allPayments = [...allPayments, ...filteredPayments]
+      const { data: payments, totalCount } = await asaas.listPayments({
+        offset,
+        limit,
+        customer: asaasCustomerId,
+        "dueDate[ge]": `${year}-01-01`,
+        "dueDate[le]": `${year}-12-31`,
+      })
+      allPayments = [...allPayments, ...payments]
       offset += limit
-      hasMore = offset < totalCount && filteredPayments.length === payments.length
+      hasMore = offset < totalCount
     }
 
     const summary = {

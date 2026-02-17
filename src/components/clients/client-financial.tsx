@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import Image from "next/image"
 import {
   DollarSign,
@@ -202,8 +202,8 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
   })
 
   useEffect(() => {
-    loadData()
-    loadLocalData()
+    // Paralelizar chamadas para reduzir tempo de carregamento
+    Promise.all([loadData(), loadLocalData()])
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId, selectedYear])
 
@@ -211,26 +211,28 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
     try {
       const supabase = createClient()
 
-      // Load local subscriptions
-      const { data: subs } = await supabase
-        .from("client_subscriptions")
-        .select("*")
-        .eq("client_id", clientId)
-        .order("created_at", { ascending: false })
+      // Load subscriptions and charges in parallel with limits
+      const [subsResult, chargesResult] = await Promise.all([
+        supabase
+          .from("client_subscriptions")
+          .select("*")
+          .eq("client_id", clientId)
+          .order("created_at", { ascending: false })
+          .limit(50),
+        supabase
+          .from("client_charges")
+          .select("*")
+          .eq("client_id", clientId)
+          .order("due_date", { ascending: false })
+          .limit(100),
+      ])
 
-      if (subs) {
-        setLocalSubscriptions(subs)
+      if (subsResult.data) {
+        setLocalSubscriptions(subsResult.data)
       }
 
-      // Load local charges
-      const { data: charges } = await supabase
-        .from("client_charges")
-        .select("*")
-        .eq("client_id", clientId)
-        .order("due_date", { ascending: false })
-
-      if (charges) {
-        setLocalCharges(charges)
+      if (chargesResult.data) {
+        setLocalCharges(chargesResult.data)
       }
     } catch (err) {
       console.error("Error loading local data:", err)
@@ -727,6 +729,26 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
 
   const years = Array.from({ length: 5 }, (_, i) => (new Date().getFullYear() - i).toString())
 
+  // Memoize summary calculations to avoid recomputing on every render
+  const computedSummary = useMemo(() => {
+    const localPaid = localCharges.filter(c => c.status === "paid")
+    const localPending = localCharges.filter(c => c.status === "pending")
+    const localOverdue = localCharges.filter(c => c.status === "overdue")
+    const activeLocal = localSubscriptions.filter(s => s.status === "active")
+    const activeAsaas = subscriptions.filter(s => s.isActive)
+
+    return {
+      paidValue: (summary?.paidValue || 0) + localPaid.reduce((acc, c) => acc + c.value, 0),
+      paidCount: (summary?.paid || 0) + localPaid.length,
+      pendingValue: (summary?.pendingValue || 0) + localPending.reduce((acc, c) => acc + c.value, 0),
+      pendingCount: (summary?.pending || 0) + localPending.length,
+      overdueValue: (summary?.overdueValue || 0) + localOverdue.reduce((acc, c) => acc + c.value, 0),
+      overdueCount: (summary?.overdue || 0) + localOverdue.length,
+      activeSubsCount: activeAsaas.length + activeLocal.length,
+      activeSubsValue: activeAsaas.reduce((acc, s) => acc + s.value, 0) + activeLocal.reduce((acc, s) => acc + s.value, 0),
+    }
+  }, [summary, localCharges, localSubscriptions, subscriptions])
+
   // Show error state
   if (error && localSubscriptions.length === 0 && localCharges.length === 0) {
     return (
@@ -752,12 +774,12 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           <CardHeader className="pb-2">
             <CardDescription>Total Recebido</CardDescription>
             <CardTitle className="text-2xl text-green-600">
-              {formatCurrency((summary?.paidValue || 0) + localCharges.filter(c => c.status === "paid").reduce((acc, c) => acc + c.value, 0))}
+              {formatCurrency(computedSummary.paidValue)}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-xs text-muted-foreground">
-              {(summary?.paid || 0) + localCharges.filter(c => c.status === "paid").length} cobranças pagas
+              {computedSummary.paidCount} cobranças pagas
             </p>
           </CardContent>
         </Card>
@@ -766,12 +788,12 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           <CardHeader className="pb-2">
             <CardDescription>Pendente</CardDescription>
             <CardTitle className="text-2xl text-yellow-600">
-              {formatCurrency((summary?.pendingValue || 0) + localCharges.filter(c => c.status === "pending").reduce((acc, c) => acc + c.value, 0))}
+              {formatCurrency(computedSummary.pendingValue)}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-xs text-muted-foreground">
-              {(summary?.pending || 0) + localCharges.filter(c => c.status === "pending").length} cobranças pendentes
+              {computedSummary.pendingCount} cobranças pendentes
             </p>
           </CardContent>
         </Card>
@@ -780,12 +802,12 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           <CardHeader className="pb-2">
             <CardDescription>Vencido</CardDescription>
             <CardTitle className="text-2xl text-red-600">
-              {formatCurrency((summary?.overdueValue || 0) + localCharges.filter(c => c.status === "overdue").reduce((acc, c) => acc + c.value, 0))}
+              {formatCurrency(computedSummary.overdueValue)}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-xs text-muted-foreground">
-              {(summary?.overdue || 0) + localCharges.filter(c => c.status === "overdue").length} cobranças vencidas
+              {computedSummary.overdueCount} cobranças vencidas
             </p>
           </CardContent>
         </Card>
@@ -794,15 +816,12 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           <CardHeader className="pb-2">
             <CardDescription>Assinaturas Ativas</CardDescription>
             <CardTitle className="text-2xl">
-              {subscriptions.filter(s => s.isActive).length + localSubscriptions.filter(s => s.status === "active").length}
+              {computedSummary.activeSubsCount}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-xs text-muted-foreground">
-              {formatCurrency(
-                subscriptions.filter(s => s.isActive).reduce((acc, s) => acc + s.value, 0) +
-                localSubscriptions.filter(s => s.status === "active").reduce((acc, s) => acc + s.value, 0)
-              )}/mês
+              {formatCurrency(computedSummary.activeSubsValue)}/mês
             </p>
           </CardContent>
         </Card>
