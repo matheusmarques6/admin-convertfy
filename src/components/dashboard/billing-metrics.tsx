@@ -34,6 +34,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { formatCurrency } from "@/lib/utils"
 import { cn } from "@/lib/utils"
+import { GlowCard } from "@/components/ui/glow-card"
 
 interface BillingData {
   connected: boolean
@@ -214,56 +215,44 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
         <>
           {/* Main Metrics */}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-            <Card className="card-hover bg-gradient-to-br from-success/10 to-success/5 border-success/20">
-              <CardHeader className="pb-2">
-                <CardDescription className="flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4 text-success" />
-                  Recebido
-                </CardDescription>
-                <CardTitle className="text-3xl text-success">
-                  {formatCurrency(data?.summary.received || 0)}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  {data?.counts.received || 0} cobranças pagas
-                </p>
-              </CardContent>
-            </Card>
+            <GlowCard color="success" intensity="intense" surfaceClassName="p-6">
+              <CardDescription className="flex items-center gap-2">
+                <TrendingUp className="h-4 w-4 text-success" />
+                Recebido
+              </CardDescription>
+              <CardTitle className="text-3xl text-success text-glow-success mt-2">
+                {formatCurrency(data?.summary.received || 0)}
+              </CardTitle>
+              <p className="text-sm text-muted-foreground mt-2">
+                {data?.counts.received || 0} cobranças pagas
+              </p>
+            </GlowCard>
 
-            <Card className="card-hover bg-gradient-to-br from-warning/10 to-warning/5 border-warning/20">
-              <CardHeader className="pb-2">
-                <CardDescription className="flex items-center gap-2">
-                  <Clock className="h-4 w-4 text-warning" />
-                  Pendente
-                </CardDescription>
-                <CardTitle className="text-3xl text-warning">
-                  {formatCurrency(data?.summary.pending || 0)}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  {data?.counts.pending || 0} cobranças a receber
-                </p>
-              </CardContent>
-            </Card>
+            <GlowCard color="warning" intensity="intense" surfaceClassName="p-6">
+              <CardDescription className="flex items-center gap-2">
+                <Clock className="h-4 w-4 text-warning" />
+                Pendente
+              </CardDescription>
+              <CardTitle className="text-3xl text-warning text-glow-warning mt-2">
+                {formatCurrency(data?.summary.pending || 0)}
+              </CardTitle>
+              <p className="text-sm text-muted-foreground mt-2">
+                {data?.counts.pending || 0} cobranças a receber
+              </p>
+            </GlowCard>
 
-            <Card className="card-hover bg-gradient-to-br from-destructive/10 to-destructive/5 border-destructive/20">
-              <CardHeader className="pb-2">
-                <CardDescription className="flex items-center gap-2">
-                  <AlertCircle className="h-4 w-4 text-destructive" />
-                  Vencido
-                </CardDescription>
-                <CardTitle className="text-3xl text-destructive">
-                  {formatCurrency(data?.summary.overdue || 0)}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  {data?.counts.overdue || 0} cobranças vencidas
-                </p>
-              </CardContent>
-            </Card>
+            <GlowCard color="destructive" intensity="intense" surfaceClassName="p-6">
+              <CardDescription className="flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 text-destructive" />
+                Vencido
+              </CardDescription>
+              <CardTitle className="text-3xl text-destructive text-glow-destructive mt-2">
+                {formatCurrency(data?.summary.overdue || 0)}
+              </CardTitle>
+              <p className="text-sm text-muted-foreground mt-2">
+                {data?.counts.overdue || 0} cobranças vencidas
+              </p>
+            </GlowCard>
 
             <Card>
               <CardHeader className="pb-2">
@@ -282,22 +271,18 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
               </CardContent>
             </Card>
 
-            <Card className="card-hover glass-card gradient-accent-border bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20">
-              <CardHeader className="pb-2">
-                <CardDescription className="flex items-center gap-2">
-                  <Repeat className="h-4 w-4 text-primary" />
-                  MRR
-                </CardDescription>
-                <CardTitle className="text-3xl text-primary">
-                  {formatCurrency(mrr)}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  Receita recorrente mensal
-                </p>
-              </CardContent>
-            </Card>
+            <GlowCard color="mrr" intensity="intense" surfaceClassName="p-6 gradient-accent-border">
+              <CardDescription className="flex items-center gap-2">
+                <Repeat className="h-4 w-4 text-primary" />
+                MRR
+              </CardDescription>
+              <CardTitle className="text-3xl text-primary text-glow-mrr mt-2">
+                {formatCurrency(mrr)}
+              </CardTitle>
+              <p className="text-sm text-muted-foreground mt-2">
+                Receita recorrente mensal
+              </p>
+            </GlowCard>
           </div>
 
           {/* Secondary Metrics */}

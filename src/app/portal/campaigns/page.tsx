@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
+import { GlowCard, type GlowColor } from "@/components/ui/glow-card"
 import {
   Dialog,
   DialogContent,
@@ -248,7 +249,7 @@ function StatCard({
   icon: Icon,
   iconColor = "text-emerald-400",
   iconBgColor = "bg-emerald-400/10",
-  gradientClass,
+  glowColor,
 }: {
   title: string
   value: string | number
@@ -256,20 +257,32 @@ function StatCard({
   icon: React.ElementType
   iconColor?: string
   iconBgColor?: string
-  gradientClass?: string
+  glowColor?: GlowColor
 }) {
-  return (
-    <div className={`rounded-xl bg-card border border-border p-5 card-hover ${gradientClass || ""}`}>
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm text-muted-foreground mb-1">{title}</p>
-          <p className="text-2xl font-bold text-foreground">{value}</p>
-          {subtitle && <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>}
-        </div>
-        <div className={`rounded-xl p-3 ${iconBgColor}`}>
-          <Icon className={`h-6 w-6 ${iconColor}`} />
-        </div>
+  const content = (
+    <div className="flex items-center justify-between">
+      <div>
+        <p className="text-sm text-muted-foreground mb-1">{title}</p>
+        <p className="text-2xl font-bold text-foreground">{value}</p>
+        {subtitle && <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>}
       </div>
+      <div className={`rounded-xl p-3 ${iconBgColor}`}>
+        <Icon className={`h-6 w-6 ${iconColor}`} />
+      </div>
+    </div>
+  )
+
+  if (glowColor) {
+    return (
+      <GlowCard color={glowColor} intensity="intense" surfaceClassName="p-5">
+        {content}
+      </GlowCard>
+    )
+  }
+
+  return (
+    <div className="rounded-xl bg-card border border-border p-5 card-hover">
+      {content}
     </div>
   )
 }
@@ -789,7 +802,7 @@ export default function PortalCampaignsPage() {
               icon={Calendar}
               iconColor="text-amber-400"
               iconBgColor="bg-amber-400/10"
-              gradientClass="bg-gradient-to-br from-warning/10 to-warning/5 border-warning/20"
+              glowColor="warning"
             />
             <StatCard
               title="Enviadas"
@@ -798,7 +811,7 @@ export default function PortalCampaignsPage() {
               icon={CheckCircle}
               iconColor="text-emerald-400"
               iconBgColor="bg-emerald-400/10"
-              gradientClass="bg-gradient-to-br from-success/10 to-success/5 border-success/20"
+              glowColor="success"
             />
             <StatCard
               title="Destinatários"
@@ -807,7 +820,7 @@ export default function PortalCampaignsPage() {
               icon={Users}
               iconColor="text-blue-400"
               iconBgColor="bg-blue-400/10"
-              gradientClass="bg-gradient-to-br from-info/10 to-info/5 border-info/20"
+              glowColor="info"
             />
             <StatCard
               title="Receita"
@@ -816,6 +829,7 @@ export default function PortalCampaignsPage() {
               icon={DollarSign}
               iconColor="text-green-400"
               iconBgColor="bg-green-400/10"
+              glowColor="success"
             />
           </div>
         )}

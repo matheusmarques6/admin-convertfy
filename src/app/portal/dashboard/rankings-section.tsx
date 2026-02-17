@@ -1,4 +1,5 @@
 import { Crown, ShoppingCart } from "lucide-react"
+import { GlowCard } from "@/components/ui/glow-card"
 import { formatCurrency, formatCurrencyCompact } from "@/lib/utils/format"
 import type { ShopifyData } from "./types"
 
@@ -10,7 +11,7 @@ export function RankingsSection({ shopify }: RankingsSectionProps) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       {/* Top Customers */}
-      <div className="rounded-xl bg-card border border-border p-5 card-hover">
+      <GlowCard color="warning" intensity="moderate" surfaceClassName="p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
             <Crown className="h-4 w-4 text-amber-400" />
@@ -53,10 +54,10 @@ export function RankingsSection({ shopify }: RankingsSectionProps) {
             </div>
           )}
         </div>
-      </div>
+      </GlowCard>
 
       {/* Top Products */}
-      <div className="rounded-xl bg-card border border-border p-5 card-hover">
+      <GlowCard color="info" intensity="moderate" surfaceClassName="p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
             <ShoppingCart className="h-4 w-4 text-info" />
@@ -93,7 +94,7 @@ export function RankingsSection({ shopify }: RankingsSectionProps) {
             </div>
           )}
         </div>
-      </div>
+      </GlowCard>
     </div>
   )
 }

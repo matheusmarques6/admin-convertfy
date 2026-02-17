@@ -1,4 +1,5 @@
 import { Ticket, Tag, Link2, Globe } from "lucide-react"
+import { GlowCard } from "@/components/ui/glow-card"
 import { formatPercent, formatCurrencyCompact } from "@/lib/utils/format"
 import type { ShopifyData } from "./types"
 
@@ -12,7 +13,7 @@ export function ConversionsSection({ shopify }: ConversionsSectionProps) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       {/* Coupon Conversions */}
-      <div className="rounded-xl bg-card border border-border p-5 card-hover">
+      <GlowCard color="primary" intensity="moderate" surfaceClassName="p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
             <Ticket className="h-4 w-4 text-primary" />
@@ -60,10 +61,10 @@ export function ConversionsSection({ shopify }: ConversionsSectionProps) {
             </div>
           )}
         </div>
-      </div>
+      </GlowCard>
 
       {/* UTM Conversions */}
-      <div className="rounded-xl bg-card border border-border p-5 card-hover">
+      <GlowCard color="info" intensity="moderate" surfaceClassName="p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
             <Link2 className="h-4 w-4 text-info" />
@@ -111,7 +112,7 @@ export function ConversionsSection({ shopify }: ConversionsSectionProps) {
             </div>
           )}
         </div>
-      </div>
+      </GlowCard>
     </div>
   )
 }

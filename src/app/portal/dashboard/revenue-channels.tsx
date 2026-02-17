@@ -1,4 +1,5 @@
 import { Zap, Send, MessageSquare, BarChart3 } from "lucide-react"
+import { GlowCard } from "@/components/ui/glow-card"
 import { formatCurrency } from "@/lib/utils/format"
 import { ChannelCard, SimpleLineChart } from "./components"
 import type { KlaviyoData, ShopifyData } from "./types"
@@ -24,7 +25,7 @@ export function RevenueChannels({ klaviyo, shopify }: RevenueChannelsProps) {
   const revenueSparkline = [12, 19, 15, 25, 22, 30, 28, 35, 32, 40, 38, 45]
 
   return (
-    <div className="rounded-xl bg-card border border-border p-5 card-hover">
+    <GlowCard color="primary" intensity="moderate" surfaceClassName="p-5">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
           <BarChart3 className="h-4 w-4 text-primary" />
@@ -76,6 +77,6 @@ export function RevenueChannels({ klaviyo, shopify }: RevenueChannelsProps) {
           <span className="text-[10px] text-muted-foreground/70">D30</span>
         </div>
       </div>
-    </div>
+    </GlowCard>
   )
 }

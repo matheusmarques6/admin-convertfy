@@ -7,6 +7,7 @@ import {
   ChevronDown,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { GlowCard } from "@/components/ui/glow-card"
 import { formatNumber } from "@/lib/utils/format"
 import { MiniBarChart } from "./components"
 import type { KlaviyoData } from "./types"
@@ -17,7 +18,7 @@ interface EmailPerformanceProps {
 
 export function EmailPerformance({ klaviyo }: EmailPerformanceProps) {
   return (
-    <div className="rounded-xl bg-card border border-border p-5 card-hover">
+    <GlowCard color="info" intensity="moderate" surfaceClassName="p-5">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
           <Mail className="h-4 w-4 text-info" />
@@ -77,6 +78,6 @@ export function EmailPerformance({ klaviyo }: EmailPerformanceProps) {
           <MiniBarChart value={klaviyo?.bounceRate || 0} max={5} color="bg-red-500" />
         </div>
       </div>
-    </div>
+    </GlowCard>
   )
 }

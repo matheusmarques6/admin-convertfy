@@ -1,5 +1,6 @@
 import { Zap, ChevronDown, BarChart3, Award, Flame } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { GlowCard } from "@/components/ui/glow-card"
 import { formatCurrencyCompact } from "@/lib/utils/format"
 import { FlowListItem, PerformanceRow } from "./components"
 import type { KlaviyoData } from "./types"
@@ -18,7 +19,7 @@ export function ThreeColumns({ klaviyo, totalKlaviyoRevenue }: ThreeColumnsProps
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       {/* Top Flows */}
-      <div className="rounded-xl bg-card border border-border p-5 card-hover">
+      <GlowCard color="success" intensity="moderate" surfaceClassName="p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
             <Zap className="h-4 w-4 text-primary" />
@@ -51,10 +52,10 @@ export function ThreeColumns({ klaviyo, totalKlaviyoRevenue }: ThreeColumnsProps
             </div>
           )}
         </div>
-      </div>
+      </GlowCard>
 
       {/* Distribution Chart */}
-      <div className="rounded-xl bg-card border border-border p-5 card-hover">
+      <GlowCard color="info" intensity="moderate" surfaceClassName="p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
             <BarChart3 className="h-4 w-4 text-info" />
@@ -86,10 +87,10 @@ export function ThreeColumns({ klaviyo, totalKlaviyoRevenue }: ThreeColumnsProps
         </div>
 
         <p className="text-xs text-muted-foreground text-center mt-2">Receita por categoria</p>
-      </div>
+      </GlowCard>
 
       {/* Performance Table */}
-      <div className="rounded-xl bg-card border border-border p-5 card-hover">
+      <GlowCard color="primary" intensity="moderate" surfaceClassName="p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
             <Award className="h-4 w-4 text-primary" />
@@ -123,7 +124,7 @@ export function ThreeColumns({ klaviyo, totalKlaviyoRevenue }: ThreeColumnsProps
             </div>
           )}
         </div>
-      </div>
+      </GlowCard>
     </div>
   )
 }

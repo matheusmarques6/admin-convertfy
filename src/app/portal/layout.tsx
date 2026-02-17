@@ -28,6 +28,7 @@ import {
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
+import { AmbientBackground } from "@/components/ui/ambient-background"
 
 interface PortalUser {
   id: string
@@ -192,12 +193,14 @@ export default function PortalLayout({
 
   return (
     <div
-      className="min-h-screen bg-background"
+      className="min-h-screen bg-background relative"
       style={branding.primary_color !== "#3b82f6" ? {
         "--portal-primary": branding.primary_color,
         "--portal-primary-foreground": "#ffffff",
       } as React.CSSProperties : undefined}
     >
+      <AmbientBackground />
+
       {/* Desktop Sidebar */}
       <aside className="hidden lg:fixed lg:inset-y-0 lg:flex lg:w-64 lg:flex-col">
         <div className="flex flex-col flex-grow border-r bg-card">

@@ -23,6 +23,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
+import { GlowCard, type GlowColor } from "@/components/ui/glow-card"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -171,7 +172,7 @@ function StatCard({
   icon: Icon,
   iconColor = "text-emerald-400",
   iconBgColor = "bg-emerald-400/10",
-  gradientClass,
+  glowColor,
 }: {
   title: string
   value: string | number
@@ -179,20 +180,32 @@ function StatCard({
   icon: React.ElementType
   iconColor?: string
   iconBgColor?: string
-  gradientClass?: string
+  glowColor?: GlowColor
 }) {
-  return (
-    <div className={`rounded-xl bg-card border border-border p-5 card-hover ${gradientClass || ""}`}>
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm text-muted-foreground mb-1">{title}</p>
-          <p className="text-2xl font-bold text-foreground">{value}</p>
-          {subtitle && <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>}
-        </div>
-        <div className={`rounded-xl p-3 ${iconBgColor}`}>
-          <Icon className={`h-6 w-6 ${iconColor}`} />
-        </div>
+  const content = (
+    <div className="flex items-center justify-between">
+      <div>
+        <p className="text-sm text-muted-foreground mb-1">{title}</p>
+        <p className="text-2xl font-bold text-foreground">{value}</p>
+        {subtitle && <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>}
       </div>
+      <div className={`rounded-xl p-3 ${iconBgColor}`}>
+        <Icon className={`h-6 w-6 ${iconColor}`} />
+      </div>
+    </div>
+  )
+
+  if (glowColor) {
+    return (
+      <GlowCard color={glowColor} intensity="intense" surfaceClassName="p-5">
+        {content}
+      </GlowCard>
+    )
+  }
+
+  return (
+    <div className="rounded-xl bg-card border border-border p-5 card-hover">
+      {content}
     </div>
   )
 }
@@ -619,7 +632,7 @@ export default function PortalInvoicesPage() {
               icon={Clock}
               iconColor="text-amber-400"
               iconBgColor="bg-amber-400/10"
-              gradientClass="bg-gradient-to-br from-warning/10 to-warning/5 border-warning/20"
+              glowColor="warning"
             />
             <StatCard
               title="Em Atraso"
@@ -628,7 +641,7 @@ export default function PortalInvoicesPage() {
               icon={AlertCircle}
               iconColor="text-red-400"
               iconBgColor="bg-red-400/10"
-              gradientClass="bg-gradient-to-br from-destructive/10 to-destructive/5 border-destructive/20"
+              glowColor="destructive"
             />
             <StatCard
               title="Pagas"
@@ -637,7 +650,7 @@ export default function PortalInvoicesPage() {
               icon={CheckCircle}
               iconColor="text-emerald-400"
               iconBgColor="bg-emerald-400/10"
-              gradientClass="bg-gradient-to-br from-success/10 to-success/5 border-success/20"
+              glowColor="success"
             />
             <StatCard
               title="Total de Faturas"
@@ -646,6 +659,7 @@ export default function PortalInvoicesPage() {
               icon={FileText}
               iconColor="text-blue-400"
               iconBgColor="bg-blue-400/10"
+              glowColor="info"
             />
           </div>
         )}

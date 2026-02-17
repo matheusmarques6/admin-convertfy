@@ -1,4 +1,5 @@
 import { Users, TrendingUp, RefreshCw } from "lucide-react"
+import { GlowCard } from "@/components/ui/glow-card"
 import { formatNumber, formatPercent } from "@/lib/utils/format"
 import type { KlaviyoData, ShopifyData } from "./types"
 
@@ -10,7 +11,7 @@ interface FooterStatsProps {
 
 export function FooterStats({ klaviyo, shopify, lastUpdated }: FooterStatsProps) {
   return (
-    <div className="rounded-xl bg-card border border-border p-4 card-hover">
+    <GlowCard color="primary" intensity="moderate" surfaceClassName="p-4">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">
@@ -34,6 +35,6 @@ export function FooterStats({ klaviyo, shopify, lastUpdated }: FooterStatsProps)
           Última atualização: {lastUpdated ? new Date(lastUpdated).toLocaleString("pt-BR") : "Agora"}
         </p>
       </div>
-    </div>
+    </GlowCard>
   )
 }
