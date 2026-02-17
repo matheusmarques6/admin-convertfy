@@ -20,7 +20,7 @@ export function EmailPerformance({ klaviyo }: EmailPerformanceProps) {
     <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-5">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-medium text-white flex items-center gap-2">
-          <Mail className="h-4 w-4 text-blue-400" />
+          <Mail className="h-4 w-4 text-[#05AFF2]" />
           Email Performance
         </h3>
         <Button variant="ghost" size="sm" className="text-zinc-400 hover:text-white h-8 px-2">

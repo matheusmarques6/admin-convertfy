@@ -214,7 +214,7 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
         <>
           {/* Main Metrics */}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-            <Card className="bg-gradient-to-br from-success/10 to-success/5 border-success/20">
+            <Card className="card-hover bg-gradient-to-br from-success/10 to-success/5 border-success/20">
               <CardHeader className="pb-2">
                 <CardDescription className="flex items-center gap-2">
                   <TrendingUp className="h-4 w-4 text-success" />
@@ -231,7 +231,7 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-warning/10 to-warning/5 border-warning/20">
+            <Card className="card-hover bg-gradient-to-br from-warning/10 to-warning/5 border-warning/20">
               <CardHeader className="pb-2">
                 <CardDescription className="flex items-center gap-2">
                   <Clock className="h-4 w-4 text-warning" />
@@ -248,7 +248,7 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-destructive/10 to-destructive/5 border-destructive/20">
+            <Card className="card-hover bg-gradient-to-br from-destructive/10 to-destructive/5 border-destructive/20">
               <CardHeader className="pb-2">
                 <CardDescription className="flex items-center gap-2">
                   <AlertCircle className="h-4 w-4 text-destructive" />
@@ -282,7 +282,7 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20">
+            <Card className="card-hover glass-card gradient-accent-border bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20">
               <CardHeader className="pb-2">
                 <CardDescription className="flex items-center gap-2">
                   <Repeat className="h-4 w-4 text-primary" />

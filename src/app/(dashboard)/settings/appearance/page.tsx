@@ -15,10 +15,7 @@ export default function AppearancePage() {
             <ArrowLeft className="h-5 w-5" />
           </Link>
         </Button>
-        <div>
-          <h1 className="text-2xl font-bold">Aparência</h1>
-          <p className="text-muted-foreground">Configurações visuais do sistema</p>
-        </div>
+        <p className="text-muted-foreground">Configurações visuais do sistema</p>
       </div>
 
       <Card>
@@ -78,19 +75,19 @@ export default function AppearancePage() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="space-y-2">
                 <div className="h-16 rounded-lg bg-primary flex items-center justify-center">
-                  <span className="text-xs text-primary-foreground font-mono">#3a68fc</span>
+                  <span className="text-xs text-primary-foreground font-mono">#5327F2</span>
                 </div>
                 <p className="text-xs text-muted-foreground text-center">Primária</p>
               </div>
               <div className="space-y-2">
-                <div className="h-16 rounded-lg bg-[#8B5CF6] flex items-center justify-center">
-                  <span className="text-xs text-white font-mono">#8B5CF6</span>
+                <div className="h-16 rounded-lg bg-[#4B53F2] flex items-center justify-center">
+                  <span className="text-xs text-white font-mono">#4B53F2</span>
                 </div>
                 <p className="text-xs text-muted-foreground text-center">Accent</p>
               </div>
               <div className="space-y-2">
                 <div className="h-16 rounded-lg bg-background border flex items-center justify-center">
-                  <span className="text-xs text-foreground font-mono">#080808</span>
+                  <span className="text-xs text-foreground font-mono">#141C26</span>
                 </div>
                 <p className="text-xs text-muted-foreground text-center">Background</p>
               </div>

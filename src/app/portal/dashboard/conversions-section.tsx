@@ -15,7 +15,7 @@ export function ConversionsSection({ shopify }: ConversionsSectionProps) {
       <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium text-white flex items-center gap-2">
-            <Ticket className="h-4 w-4 text-pink-400" />
+            <Ticket className="h-4 w-4 text-[#4B53F2]" />
             Conversões por Cupom
           </h3>
           <span className="text-xs text-zinc-500">Pedidos pagos</span>
@@ -66,7 +66,7 @@ export function ConversionsSection({ shopify }: ConversionsSectionProps) {
       <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium text-white flex items-center gap-2">
-            <Link2 className="h-4 w-4 text-cyan-400" />
+            <Link2 className="h-4 w-4 text-[#05AFF2]" />
             Conversões por UTM
           </h3>
           <span className="text-xs text-zinc-500">Pedidos pagos</span>

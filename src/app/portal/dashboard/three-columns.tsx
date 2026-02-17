@@ -21,7 +21,7 @@ export function ThreeColumns({ klaviyo, totalKlaviyoRevenue }: ThreeColumnsProps
       <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium text-white flex items-center gap-2">
-            <Zap className="h-4 w-4 text-emerald-400" />
+            <Zap className="h-4 w-4 text-[#5327F2]" />
             Top Flows
           </h3>
           <Button variant="ghost" size="sm" className="text-zinc-400 hover:text-white h-8 px-2">
@@ -57,7 +57,7 @@ export function ThreeColumns({ klaviyo, totalKlaviyoRevenue }: ThreeColumnsProps
       <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium text-white flex items-center gap-2">
-            <BarChart3 className="h-4 w-4 text-blue-400" />
+            <BarChart3 className="h-4 w-4 text-[#05AFF2]" />
             Distribuição
           </h3>
         </div>
@@ -67,12 +67,12 @@ export function ThreeColumns({ klaviyo, totalKlaviyoRevenue }: ThreeColumnsProps
             <svg width="160" height="160" viewBox="0 0 160 160">
               <circle cx="80" cy="80" r="60" fill="none" stroke="#27272a" strokeWidth="20" />
               <circle
-                cx="80" cy="80" r="60" fill="none" stroke="#10b981" strokeWidth="20"
+                cx="80" cy="80" r="60" fill="none" stroke="#5327F2" strokeWidth="20"
                 strokeDasharray={`${flowPercent * 3.77} 377`} strokeDashoffset="0"
                 transform="rotate(-90 80 80)"
               />
               <circle
-                cx="80" cy="80" r="60" fill="none" stroke="#3b82f6" strokeWidth="20"
+                cx="80" cy="80" r="60" fill="none" stroke="#05AFF2" strokeWidth="20"
                 strokeDasharray={`${campaignPercent * 3.77} 377`}
                 strokeDashoffset={`${-flowPercent * 3.77}`}
                 transform="rotate(-90 80 80)"
@@ -92,7 +92,7 @@ export function ThreeColumns({ klaviyo, totalKlaviyoRevenue }: ThreeColumnsProps
       <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium text-white flex items-center gap-2">
-            <Award className="h-4 w-4 text-amber-400" />
+            <Award className="h-4 w-4 text-[#4B53F2]" />
             Performance
           </h3>
           <div className="flex gap-1">

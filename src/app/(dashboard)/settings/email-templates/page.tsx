@@ -109,10 +109,7 @@ export default function EmailTemplatesPage() {
         <Button variant="ghost" size="icon" asChild>
           <Link href="/settings"><ArrowLeft className="h-5 w-5" /></Link>
         </Button>
-        <div>
-          <h1 className="text-2xl font-bold">Templates de Email</h1>
-          <p className="text-muted-foreground">Crie e edite templates de email</p>
-        </div>
+        <p className="text-muted-foreground">Crie e edite templates de email</p>
         <div className="ml-auto">
           <Button onClick={startNew}><Plus className="mr-2 h-4 w-4" /> Novo Template</Button>
         </div>

@@ -34,13 +34,33 @@ import { toast } from "@/lib/hooks/use-toast"
 
 const pageTitles: Record<string, string> = {
   "/dashboard": "Dashboard",
+  "/clients/new": "Novo Cliente",
   "/clients": "Clientes",
   "/pipeline": "Pipeline de Vendas",
+  "/board": "Quadro de Tarefas",
   "/financial": "Financeiro",
+  "/meetings/new": "Nova Reunião",
   "/meetings": "Reuniões",
+  "/reports/new": "Novo Relatório",
   "/reports": "Relatórios",
+  "/automations/new": "Nova Automação",
   "/automations": "Automações",
+  "/campaigns": "Campanhas",
+  "/stores": "Lojas",
+  "/onboarding": "Onboarding",
   "/tools": "Ferramentas",
+  "/notifications": "Notificações",
+  "/team": "Equipe",
+  "/settings/appearance": "Aparência",
+  "/settings/profile": "Perfil",
+  "/settings/company": "Empresa",
+  "/settings/integrations": "Integrações",
+  "/settings/users": "Usuários",
+  "/settings/permissions": "Permissões",
+  "/settings/tags": "Tags",
+  "/settings/custom-fields": "Campos Personalizados",
+  "/settings/notifications": "Notificações",
+  "/settings/email-templates": "Templates de Email",
   "/settings": "Configurações",
 }
 
@@ -146,9 +166,10 @@ export function Header({ user: userProp }: HeaderProps) {
   }
 
   const getPageTitle = () => {
-    for (const [path, title] of Object.entries(pageTitles)) {
+    const sortedPaths = Object.keys(pageTitles).sort((a, b) => b.length - a.length)
+    for (const path of sortedPaths) {
       if (pathname.startsWith(path)) {
-        return title
+        return pageTitles[path]
       }
     }
     return "Convertfy Admin"

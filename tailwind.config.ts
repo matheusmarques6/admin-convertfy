@@ -63,10 +63,11 @@ const config: Config = {
           foreground: "hsl(var(--info-foreground))",
         },
         convertfy: {
-          purple: "#8B5CF6",
-          blue: "#3a68fc",
-          cyan: "#06B6D4",
-          dark: "#080808",
+          purple: "#5327F2",
+          "purple-deep": "#34268C",
+          blue: "#4B53F2",
+          cyan: "#05AFF2",
+          dark: "#141C26",
         },
       },
       borderRadius: {

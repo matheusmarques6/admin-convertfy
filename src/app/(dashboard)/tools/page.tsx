@@ -124,12 +124,9 @@ export default function ToolsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold">Hub de Ferramentas</h1>
-        <p className="text-muted-foreground">
-          Ferramentas e utilitários para aumentar sua produtividade
-        </p>
-      </div>
+      <p className="text-muted-foreground">
+        Ferramentas e utilitários para aumentar sua produtividade
+      </p>
 
       <Tabs defaultValue="ai" className="space-y-6">
         <TabsList>

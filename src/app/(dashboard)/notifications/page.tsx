@@ -102,12 +102,9 @@ export default function NotificationsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Notificações</h1>
-          <p className="text-muted-foreground">
-            {unreadCount > 0 ? `${unreadCount} não lida${unreadCount > 1 ? "s" : ""}` : "Nenhuma notificação pendente"}
-          </p>
-        </div>
+        <p className="text-muted-foreground">
+          {unreadCount > 0 ? `${unreadCount} não lida${unreadCount > 1 ? "s" : ""}` : "Nenhuma notificação pendente"}
+        </p>
         {unreadCount > 0 && (
           <Button variant="outline" onClick={handleMarkAllAsRead}>
             <CheckCheck className="mr-2 h-4 w-4" />

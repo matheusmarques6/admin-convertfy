@@ -52,7 +52,7 @@ export function DashboardCharts({
   const hasPipelineData = pipelineData.length > 0
 
   return (
-    <Card className="h-full">
+    <Card className="h-full gradient-accent-border">
       <CardHeader>
         <CardTitle>Resumo Financeiro</CardTitle>
         <CardDescription>Acompanhe o desempenho da sua agência</CardDescription>
@@ -89,7 +89,7 @@ export function DashboardCharts({
                       }}
                       formatter={(value: number) => formatCurrency(value)}
                     />
-                    <Bar dataKey="receita" fill="#22C55E" radius={[4, 4, 0, 0]} name="Receita" />
+                    <Bar dataKey="receita" fill="#22C55E" radius={[4, 4, 0, 0]} name="Receita" isAnimationActive={true} animationDuration={800} />
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
@@ -136,7 +136,7 @@ export function DashboardCharts({
                         "Valor",
                       ]}
                     />
-                    <Bar dataKey="value" fill="#8B5CF6" radius={[0, 4, 4, 0]} />
+                    <Bar dataKey="value" fill="#5327F2" radius={[0, 4, 4, 0]} isAnimationActive={true} animationDuration={800} />
                   </BarChart>
                 </ResponsiveContainer>
               ) : (

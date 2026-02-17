@@ -16,10 +16,7 @@ export default async function ProfilePage() {
             <ArrowLeft className="h-5 w-5" />
           </Link>
         </Button>
-        <div>
-          <h1 className="text-2xl font-bold">Perfil</h1>
-          <p className="text-muted-foreground">Gerencie suas informações pessoais</p>
-        </div>
+        <p className="text-muted-foreground">Gerencie suas informações pessoais</p>
       </div>
 
       <Card>

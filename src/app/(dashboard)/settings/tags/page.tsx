@@ -83,10 +83,7 @@ export default function TagsPage() {
         <Button variant="ghost" size="icon" asChild>
           <Link href="/settings"><ArrowLeft className="h-5 w-5" /></Link>
         </Button>
-        <div>
-          <h1 className="text-2xl font-bold">Tags</h1>
-          <p className="text-muted-foreground">Gerencie as tags do sistema</p>
-        </div>
+        <p className="text-muted-foreground">Gerencie as tags do sistema</p>
       </div>
 
       <Card>

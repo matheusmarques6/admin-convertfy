@@ -16,13 +16,10 @@ export default function StoresControlPage() {
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-convertfy-purple to-convertfy-blue flex items-center justify-center">
               <Store className="w-5 h-5 text-white" />
             </div>
-            <div>
-              <h1 className="text-2xl font-bold text-white">Controle de Lojas</h1>
-              <p className="text-zinc-400 text-sm">Acompanhe resultados e gerencie calls de feedback</p>
-            </div>
+            <p className="text-muted-foreground text-sm">Acompanhe resultados e gerencie calls de feedback</p>
           </div>
         </div>
 

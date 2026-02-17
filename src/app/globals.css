@@ -5,25 +5,25 @@
 @layer base {
   :root {
     --background: 0 0% 100%;
-    --foreground: 222 47% 11%;
+    --foreground: 213 30% 11%;
 
     --card: 210 20% 98%;
-    --card-foreground: 222 47% 11%;
+    --card-foreground: 213 30% 11%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
+    --popover-foreground: 213 30% 11%;
 
-    --primary: 222 97% 61%;
+    --primary: 253 88% 55%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 220 13% 91%;
-    --secondary-foreground: 222 47% 11%;
+    --secondary: 237 30% 91%;
+    --secondary-foreground: 237 87% 40%;
 
     --muted: 220 14% 96%;
     --muted-foreground: 220 9% 46%;
 
-    --accent: 226 100% 97%;
-    --accent-foreground: 243 75% 59%;
+    --accent: 196 97% 95%;
+    --accent-foreground: 253 88% 45%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
@@ -34,37 +34,37 @@
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
 
-    --info: 217 91% 60%;
+    --info: 196 97% 49%;
     --info-foreground: 0 0% 100%;
 
     --border: 220 13% 91%;
     --input: 220 14% 96%;
-    --ring: 222 97% 61%;
+    --ring: 253 88% 55%;
 
     --radius: 0.5rem;
   }
 
   .dark {
-    --background: 222 47% 7%;
+    --background: 213 30% 11%;
     --foreground: 210 20% 98%;
 
-    --card: 217 33% 12%;
+    --card: 215 28% 14%;
     --card-foreground: 210 20% 98%;
 
-    --popover: 217 33% 12%;
+    --popover: 215 28% 14%;
     --popover-foreground: 210 20% 98%;
 
-    --primary: 222 100% 73%;
-    --primary-foreground: 222 47% 7%;
+    --primary: 253 88% 65%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 217 19% 27%;
+    --secondary: 237 25% 22%;
     --secondary-foreground: 210 20% 98%;
 
-    --muted: 217 19% 27%;
+    --muted: 215 20% 20%;
     --muted-foreground: 215 14% 65%;
 
-    --accent: 217 19% 22%;
-    --accent-foreground: 210 20% 98%;
+    --accent: 215 20% 18%;
+    --accent-foreground: 196 97% 60%;
 
     --destructive: 0 62% 50%;
     --destructive-foreground: 0 0% 100%;
@@ -73,14 +73,14 @@
     --success-foreground: 0 0% 100%;
 
     --warning: 38 92% 50%;
-    --warning-foreground: 222 47% 7%;
+    --warning-foreground: 213 30% 11%;
 
-    --info: 217 91% 60%;
+    --info: 196 97% 49%;
     --info-foreground: 0 0% 100%;
 
-    --border: 217 19% 27%;
-    --input: 217 33% 12%;
-    --ring: 222 100% 73%;
+    --border: 215 20% 22%;
+    --input: 215 28% 14%;
+    --ring: 253 88% 65%;
   }
 }
 
@@ -101,7 +101,7 @@
 
   .gradient-text {
     @apply bg-clip-text text-transparent;
-    background-image: linear-gradient(180deg, #8B5CF6 0%, #3a68fc 100%);
+    background-image: linear-gradient(135deg, #5327F2 0%, #05AFF2 100%);
   }
 
   .gradient-border {
@@ -113,7 +113,7 @@
     position: absolute;
     inset: 0;
     padding: 1px;
-    background: linear-gradient(180deg, #8B5CF6 0%, #3a68fc 100%);
+    background: linear-gradient(135deg, #5327F2 0%, #05AFF2 100%);
     -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
     mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
     -webkit-mask-composite: xor;
@@ -128,6 +128,39 @@
   .glass {
     backdrop-filter: blur(16px) saturate(180%);
     background-color: hsl(var(--background) / 0.8);
+  }
+
+  .card-hover {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  .card-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px -5px rgb(0 0 0 / 0.15);
+  }
+  .dark .card-hover:hover {
+    box-shadow: 0 8px 25px -5px rgb(83 39 242 / 0.15);
+  }
+
+  .glass-card {
+    backdrop-filter: blur(12px) saturate(150%);
+    background-color: hsl(var(--card) / 0.7);
+    border: 1px solid hsl(var(--border) / 0.5);
+  }
+
+  .gradient-accent-border {
+    position: relative;
+  }
+  .gradient-accent-border::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #5327F2, #4B53F2, #05AFF2);
+    border-radius: inherit;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
   }
 
   .scrollbar-thin {

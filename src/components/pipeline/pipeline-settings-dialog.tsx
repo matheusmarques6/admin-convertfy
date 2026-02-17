@@ -97,7 +97,7 @@ export function PipelineSettingsDialog({
       ...prev,
       {
         name: "",
-        color: "#8B5CF6",
+        color: "#5327F2",
         order: prev.length + 1,
         isNew: true,
       },

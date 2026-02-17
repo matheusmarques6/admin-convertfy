@@ -12,12 +12,9 @@ export default function FinancialPage() {
     <PermissionGate requiredFeatures={["view_financial"]}>
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold">Financeiro</h1>
-        <p className="text-muted-foreground">
-          Gerencie cobranças, assinaturas e pagamentos
-        </p>
-      </div>
+      <p className="text-muted-foreground">
+        Gerencie cobranças, assinaturas e pagamentos
+      </p>
 
       {/* Tabs */}
       <Tabs defaultValue="charges">

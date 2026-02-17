@@ -203,12 +203,9 @@ export function MeetingsPageClient({
       <div className="space-y-4 h-full flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold">Reuniões</h1>
-            <p className="text-muted-foreground">
-              Gerencie as reuniões com seus clientes
-            </p>
-          </div>
+          <p className="text-muted-foreground">
+            Gerencie as reuniões com seus clientes
+          </p>
           <div className="flex items-center gap-3">
             <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "list" | "calendar")}>
               <TabsList className="h-9">

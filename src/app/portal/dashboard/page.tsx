@@ -31,6 +31,7 @@ import { ConversionsSection } from "./conversions-section"
 import { RankingsSection } from "./rankings-section"
 import { MeetingsSection } from "./meetings-section"
 import { FooterStats } from "./footer-stats"
+import { AnimatedContainer, AnimatedItem } from "@/components/ui/animated-container"
 import type { DashboardData } from "./types"
 
 export default function PortalDashboardPage() {
@@ -83,10 +84,10 @@ export default function PortalDashboardPage() {
             <Skeleton className="h-10 w-32 bg-zinc-900" />
           </div>
         </div>
-        <div className="rounded-xl bg-gradient-to-r from-emerald-950/40 via-emerald-900/20 to-zinc-900 border border-emerald-500/10 p-6">
+        <div className="rounded-xl bg-gradient-to-r from-[#34268C]/40 via-[#5327F2]/20 to-zinc-900 border border-[#5327F2]/10 p-6">
           <div className="flex items-center gap-3 mb-4">
-            <RefreshCw className="h-5 w-5 text-emerald-400 animate-spin" />
-            <span className="text-emerald-300/70">Carregando métricas...</span>
+            <RefreshCw className="h-5 w-5 text-[#05AFF2] animate-spin" />
+            <span className="text-[#05AFF2]/70">Carregando métricas...</span>
           </div>
           <Skeleton className="h-10 w-48 bg-zinc-800/50 mb-2" />
           <Skeleton className="h-4 w-32 bg-zinc-800/50" />
@@ -124,7 +125,7 @@ export default function PortalDashboardPage() {
           </div>
           <h2 className="text-xl font-semibold text-white mb-2">Erro ao carregar</h2>
           <p className="text-zinc-400 mb-6">{error}</p>
-          <Button onClick={() => fetchDashboard()} className="bg-emerald-500 hover:bg-emerald-600">
+          <Button onClick={() => fetchDashboard()} className="bg-[#5327F2] hover:bg-[#34268C]">
             Tentar novamente
           </Button>
         </div>
@@ -150,7 +151,7 @@ export default function PortalDashboardPage() {
                 <p className="text-sm text-zinc-500">{formatDateRange(data.dateRange.start, data.dateRange.end)}</p>
               )}
               {refreshing && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 text-xs">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#5327F2]/10 text-[#05AFF2] text-xs">
                   <RefreshCw className="h-3 w-3 animate-spin" />
                   Atualizando...
                 </span>
@@ -201,29 +202,45 @@ export default function PortalDashboardPage() {
         </div>
 
         {/* Dashboard Sections */}
-        <div className="space-y-6">
-          <HeroSection klaviyo={klaviyo} shopify={shopify} />
+        <AnimatedContainer className="space-y-6">
+          <AnimatedItem>
+            <HeroSection klaviyo={klaviyo} shopify={shopify} />
+          </AnimatedItem>
 
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <MetricCard title="Pedidos" value={formatNumber(shopify?.totalOrders || 0)} subtitle="+12% vs anterior" icon={ShoppingCart} />
-            <MetricCard title="Ticket Médio" value={formatCurrency(shopify?.averageOrderValue || 0)} subtitle="+5.2% vs anterior" icon={Receipt} />
-            <MetricCard title="Campanhas" value={klaviyo?.campaignsCount || 0} subtitle="enviadas" icon={Send} />
-            <MetricCard title="Flows Ativos" value={klaviyo?.activeFlows || 0} subtitle={`de ${klaviyo?.flowsCount || 0} total`} icon={Zap} highlight />
-            <MetricCard title="Engajamento" value={formatPercent(klaviyo?.engagementRate || 0)} subtitle="dos leads" icon={Users} />
-          </div>
+          <AnimatedItem>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              <MetricCard title="Pedidos" value={formatNumber(shopify?.totalOrders || 0)} subtitle="+12% vs anterior" icon={ShoppingCart} />
+              <MetricCard title="Ticket Médio" value={formatCurrency(shopify?.averageOrderValue || 0)} subtitle="+5.2% vs anterior" icon={Receipt} />
+              <MetricCard title="Campanhas" value={klaviyo?.campaignsCount || 0} subtitle="enviadas" icon={Send} />
+              <MetricCard title="Flows Ativos" value={klaviyo?.activeFlows || 0} subtitle={`de ${klaviyo?.flowsCount || 0} total`} icon={Zap} highlight />
+              <MetricCard title="Engajamento" value={formatPercent(klaviyo?.engagementRate || 0)} subtitle="dos leads" icon={Users} />
+            </div>
+          </AnimatedItem>
 
-          <ThreeColumns klaviyo={klaviyo} totalKlaviyoRevenue={totalKlaviyoRevenue} />
+          <AnimatedItem>
+            <ThreeColumns klaviyo={klaviyo} totalKlaviyoRevenue={totalKlaviyoRevenue} />
+          </AnimatedItem>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <EmailPerformance klaviyo={klaviyo} />
-            <RevenueChannels klaviyo={klaviyo} shopify={shopify} />
-          </div>
+          <AnimatedItem>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <EmailPerformance klaviyo={klaviyo} />
+              <RevenueChannels klaviyo={klaviyo} shopify={shopify} />
+            </div>
+          </AnimatedItem>
 
-          <ConversionsSection shopify={shopify} />
-          <RankingsSection shopify={shopify} />
-          <MeetingsSection meetings={data.meetings} />
-          <FooterStats klaviyo={klaviyo} shopify={shopify} lastUpdated={data.lastUpdated} />
-        </div>
+          <AnimatedItem>
+            <ConversionsSection shopify={shopify} />
+          </AnimatedItem>
+          <AnimatedItem>
+            <RankingsSection shopify={shopify} />
+          </AnimatedItem>
+          <AnimatedItem>
+            <MeetingsSection meetings={data.meetings} />
+          </AnimatedItem>
+          <AnimatedItem>
+            <FooterStats klaviyo={klaviyo} shopify={shopify} lastUpdated={data.lastUpdated} />
+          </AnimatedItem>
+        </AnimatedContainer>
       </div>
     </div>
   )

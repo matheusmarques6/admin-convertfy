@@ -27,7 +27,7 @@ export function RevenueChannels({ klaviyo, shopify }: RevenueChannelsProps) {
     <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-5">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-medium text-white flex items-center gap-2">
-          <BarChart3 className="h-4 w-4 text-purple-400" />
+          <BarChart3 className="h-4 w-4 text-[#5327F2]" />
           Canais de Receita
         </h3>
       </div>
@@ -38,7 +38,7 @@ export function RevenueChannels({ klaviyo, shopify }: RevenueChannelsProps) {
           percent={flowPercent}
           value={flowRevenue}
           icon={Zap}
-          color="bg-emerald-500/10 text-emerald-400"
+          color="bg-[#5327F2]/10 text-[#5327F2]"
           active
         />
         <ChannelCard
@@ -60,7 +60,7 @@ export function RevenueChannels({ klaviyo, shopify }: RevenueChannelsProps) {
       <div className="flex items-center justify-between mb-4 p-3 rounded-lg bg-zinc-800/50">
         <span className="text-sm text-zinc-400">Total Atribuído</span>
         <div className="text-right">
-          <span className="text-lg font-bold text-emerald-400 mr-2">{attributionPercent.toFixed(1)}%</span>
+          <span className="text-lg font-bold text-[#05AFF2] mr-2">{attributionPercent.toFixed(1)}%</span>
           <span className="text-sm text-zinc-300">{formatCurrency(totalKlaviyoRevenue)}</span>
         </div>
       </div>

@@ -57,12 +57,9 @@ export default async function ClientsPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Clientes</h1>
-          <p className="text-muted-foreground">
-            Gerencie sua carteira de clientes
-          </p>
-        </div>
+        <p className="text-muted-foreground">
+          Gerencie sua carteira de clientes
+        </p>
         <div className="flex items-center gap-2">
           <ImportAsaasButton />
           <Button asChild>

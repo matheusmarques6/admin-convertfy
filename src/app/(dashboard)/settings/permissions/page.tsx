@@ -56,10 +56,7 @@ export default function PermissionsPage() {
         <Button variant="ghost" size="icon" asChild>
           <Link href="/settings"><ArrowLeft className="h-5 w-5" /></Link>
         </Button>
-        <div>
-          <h1 className="text-2xl font-bold">Permissões</h1>
-          <p className="text-muted-foreground">Visualize as permissões por cargo</p>
-        </div>
+        <p className="text-muted-foreground">Visualize as permissões por cargo</p>
       </div>
 
       <Card>

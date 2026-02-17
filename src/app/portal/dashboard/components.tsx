@@ -31,16 +31,16 @@ export function MetricCard({
   highlight?: boolean
 }) {
   return (
-    <div className={`rounded-xl p-4 border transition-all ${
+    <div className={`rounded-xl p-4 border transition-all card-hover ${
       highlight
-        ? "bg-emerald-500/10 border-emerald-500/30"
+        ? "bg-[#5327F2]/10 border-[#5327F2]/30 glass-card"
         : "bg-zinc-900/50 border-zinc-800 hover:border-zinc-700"
     }`}>
       <div className="flex items-center gap-2 mb-2">
-        <Icon className={`h-4 w-4 ${highlight ? "text-emerald-400" : "text-zinc-400"}`} />
+        <Icon className={`h-4 w-4 ${highlight ? "text-[#05AFF2]" : "text-zinc-400"}`} />
         <span className="text-xs text-zinc-400 uppercase tracking-wide">{title}</span>
       </div>
-      <p className={`text-2xl font-bold ${highlight ? "text-emerald-400" : "text-white"}`}>
+      <p className={`text-2xl font-bold ${highlight ? "text-[#05AFF2]" : "text-white"}`}>
         {value}
       </p>
       {subtitle && (
@@ -187,7 +187,7 @@ export function SimpleLineChart({ data, color = "emerald" }: { data: number[]; c
     return `${x},${y}`
   }).join(" ")
 
-  const strokeColor = color === "emerald" ? "#10b981" : "#3b82f6"
+  const strokeColor = color === "emerald" ? "#05AFF2" : "#5327F2"
 
   return (
     <div className="h-20 w-full">

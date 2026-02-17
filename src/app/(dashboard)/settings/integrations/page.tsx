@@ -333,12 +333,9 @@ export default function IntegrationsPage() {
         <Button variant="ghost" size="icon" onClick={() => router.back()}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
-        <div>
-          <h1 className="text-2xl font-bold">Integrações</h1>
-          <p className="text-muted-foreground">
-            Conecte suas ferramentas favoritas ao Convertfy
-          </p>
-        </div>
+        <p className="text-muted-foreground">
+          Conecte suas ferramentas favoritas ao Convertfy
+        </p>
       </div>
 
       {/* Integration Cards */}

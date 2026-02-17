@@ -80,12 +80,9 @@ export default async function AutomationsPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Automações</h1>
-          <p className="text-muted-foreground">
-            Automatize tarefas e processos repetitivos
-          </p>
-        </div>
+        <p className="text-muted-foreground">
+          Automatize tarefas e processos repetitivos
+        </p>
         <Button asChild>
           <Link href="/automations/new">
             <Plus className="mr-2 h-4 w-4" />

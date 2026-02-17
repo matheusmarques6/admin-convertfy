@@ -46,12 +46,9 @@ export default function CampaignsCalendarPage() {
     <div className="p-6 space-y-6">
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Calendário de Campanhas</h1>
-          <p className="text-muted-foreground">
-            Visualize e gerencie suas campanhas de marketing
-          </p>
-        </div>
+        <p className="text-muted-foreground">
+          Visualize e gerencie suas campanhas de marketing
+        </p>
         <div className="flex items-center gap-2">
           <Button
             variant="outline"

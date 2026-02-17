@@ -59,7 +59,7 @@ export function RankingsSection({ shopify }: RankingsSectionProps) {
       <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium text-white flex items-center gap-2">
-            <ShoppingCart className="h-4 w-4 text-emerald-400" />
+            <ShoppingCart className="h-4 w-4 text-[#05AFF2]" />
             Top Produtos
           </h3>
           <span className="text-xs text-zinc-500">Por receita no período</span>
@@ -70,7 +70,7 @@ export function RankingsSection({ shopify }: RankingsSectionProps) {
             shopify.topProducts.slice(0, 10).map((product, index) => (
               <div key={product.name} className="flex items-center gap-3 py-3 border-b border-zinc-800/50 last:border-0">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
-                  index === 0 ? "bg-emerald-500/20 text-emerald-400" :
+                  index === 0 ? "bg-[#5327F2]/20 text-[#5327F2]" :
                   index === 1 ? "bg-blue-500/20 text-blue-400" :
                   index === 2 ? "bg-purple-500/20 text-purple-400" :
                   "bg-zinc-800 text-zinc-400"
@@ -82,7 +82,7 @@ export function RankingsSection({ shopify }: RankingsSectionProps) {
                   <p className="text-xs text-zinc-500">{product.quantity} unidades</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm font-bold text-emerald-400">{formatCurrencyCompact(product.revenue)}</p>
+                  <p className="text-sm font-bold text-[#05AFF2]">{formatCurrencyCompact(product.revenue)}</p>
                 </div>
               </div>
             ))

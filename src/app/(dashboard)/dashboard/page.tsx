@@ -7,13 +7,14 @@ import { RecentActivity } from "@/components/dashboard/recent-activity"
 import { QuickActions } from "@/components/dashboard/quick-actions"
 import { TodayAgenda } from "@/components/dashboard/today-agenda"
 import { Skeleton } from "@/components/ui/skeleton"
+import { AnimatedContainer, AnimatedItem } from "@/components/ui/animated-container"
 
 export const dynamic = "force-dynamic"
 
 const STATUS_COLORS: Record<string, string> = {
   active: "#22C55E",
   prospect: "#3B82F6",
-  onboarding: "#A855F7",
+  onboarding: "#5327F2",
   inactive: "#6B7280",
   churned: "#EF4444",
 }
@@ -239,30 +240,36 @@ export default async function DashboardPage() {
   const data = await getDashboardData()
 
   return (
-    <div className="space-y-6">
+    <AnimatedContainer className="space-y-6">
       {/* Quick Actions */}
-      <QuickActions />
+      <AnimatedItem>
+        <QuickActions />
+      </AnimatedItem>
 
       {/* Billing Metrics with Period Selector */}
-      <Suspense fallback={<MetricsSkeleton />}>
-        <BillingMetrics mrr={data.mrr} />
-      </Suspense>
+      <AnimatedItem>
+        <Suspense fallback={<MetricsSkeleton />}>
+          <BillingMetrics mrr={data.mrr} />
+        </Suspense>
+      </AnimatedItem>
 
       {/* Charts and Activity */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-7">
-        <div className="col-span-full lg:col-span-4">
-          <DashboardCharts
-            revenueData={data.revenueData}
-            clientsData={data.clientsData}
-            pipelineData={data.pipelineData}
-          />
+      <AnimatedItem>
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-7">
+          <div className="col-span-full lg:col-span-4">
+            <DashboardCharts
+              revenueData={data.revenueData}
+              clientsData={data.clientsData}
+              pipelineData={data.pipelineData}
+            />
+          </div>
+          <div className="col-span-full lg:col-span-3 space-y-6">
+            <TodayAgenda meetings={data.upcomingMeetings} />
+            <DashboardAlerts meetings={data.upcomingMeetings} alerts={data.alerts} />
+            <RecentActivity activities={data.activities} />
+          </div>
         </div>
-        <div className="col-span-full lg:col-span-3 space-y-6">
-          <TodayAgenda meetings={data.upcomingMeetings} />
-          <DashboardAlerts meetings={data.upcomingMeetings} alerts={data.alerts} />
-          <RecentActivity activities={data.activities} />
-        </div>
-      </div>
-    </div>
+      </AnimatedItem>
+    </AnimatedContainer>
   )
 }

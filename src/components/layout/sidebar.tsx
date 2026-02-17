@@ -27,6 +27,7 @@ import {
   Moon,
   LucideIcon,
 } from "lucide-react"
+import { motion, LayoutGroup } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Logo, LogoIcon } from "@/components/ui/logo"
@@ -204,12 +205,19 @@ export function Sidebar({ user }: SidebarProps) {
         key={item.name}
         href={item.href}
         className={cn(
-          "flex items-center gap-3 h-10 px-3 rounded-lg transition-colors",
+          "relative flex items-center gap-3 h-10 px-3 rounded-lg transition-colors",
           isActive
-            ? "bg-primary/10 text-primary font-medium border-l-[3px] border-primary pl-[9px]"
+            ? "bg-primary/10 text-primary font-medium"
             : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
         )}
       >
+        {isActive && (
+          <motion.div
+            layoutId="sidebar-active"
+            className="absolute left-0 top-0 bottom-0 w-[3px] bg-primary rounded-full"
+            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+          />
+        )}
         <Icon className="h-5 w-5 flex-shrink-0" />
         <span className="text-sm font-medium whitespace-nowrap overflow-hidden transition-[opacity,width] duration-300">{item.name}</span>
       </Link>
@@ -237,6 +245,7 @@ export function Sidebar({ user }: SidebarProps) {
 
         {/* Navigation */}
         <ScrollArea className="flex-1 py-4">
+          <LayoutGroup>
           <nav className="px-3 space-y-4">
             {groupedNavigation.map((group) => (
               <div key={group.key}>
@@ -255,6 +264,7 @@ export function Sidebar({ user }: SidebarProps) {
               </div>
             ))}
           </nav>
+          </LayoutGroup>
         </ScrollArea>
 
         {/* Bottom Section */}

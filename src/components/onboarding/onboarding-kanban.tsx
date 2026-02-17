@@ -142,7 +142,7 @@ const STAGES: StageConfig[] = [
 
 const STEP_CATEGORIES: Record<string, { label: string; color: string }> = {
   preparacao: { label: "Preparação", color: "#6366F1" },
-  integracao: { label: "Integração", color: "#8B5CF6" },
+  integracao: { label: "Integração", color: "#5327F2" },
   configuracao: { label: "Configuração", color: "#EC4899" },
   lancamento: { label: "Lançamento", color: "#10B981" },
 }

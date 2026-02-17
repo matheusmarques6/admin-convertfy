@@ -100,12 +100,9 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold">Configurações</h1>
-        <p className="text-muted-foreground">
-          Gerencie as configurações do sistema
-        </p>
-      </div>
+      <p className="text-muted-foreground">
+        Gerencie as configurações do sistema
+      </p>
 
       {/* Settings Groups */}
       {settingsGroups.map((group) => (

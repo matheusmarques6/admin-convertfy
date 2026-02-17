@@ -92,10 +92,7 @@ export default function NotificationsPage() {
         <Button variant="ghost" size="icon" asChild>
           <Link href="/settings"><ArrowLeft className="h-5 w-5" /></Link>
         </Button>
-        <div>
-          <h1 className="text-2xl font-bold">Notificações</h1>
-          <p className="text-muted-foreground">Configure suas preferências de notificação</p>
-        </div>
+        <p className="text-muted-foreground">Configure suas preferências de notificação</p>
       </div>
 
       <Card>
