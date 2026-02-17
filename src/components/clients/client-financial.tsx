@@ -243,10 +243,13 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
     setIsLoading(true)
     setError(null)
     try {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 15000)
       const [paymentsRes, subscriptionsRes] = await Promise.all([
-        fetch(`/api/integrations/asaas/payments?client_id=${clientId}&year=${selectedYear}`),
-        fetch(`/api/integrations/asaas/subscriptions?client_id=${clientId}`),
+        fetch(`/api/integrations/asaas/payments?client_id=${clientId}&year=${selectedYear}`, { signal: controller.signal }),
+        fetch(`/api/integrations/asaas/subscriptions?client_id=${clientId}`, { signal: controller.signal }),
       ])
+      clearTimeout(timeout)
 
       const paymentsData = await paymentsRes.json()
       const subscriptionsData = await subscriptionsRes.json()

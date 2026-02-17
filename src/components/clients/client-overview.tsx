@@ -64,12 +64,15 @@ export function ClientOverview({ client }: ClientOverviewProps) {
       }
       setHasAsaasId(true)
 
-      // Fetch payments for current year
+      // Fetch payments for current year with 15s timeout
       const year = new Date().getFullYear()
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 15000)
       const [paymentsRes, subscriptionsRes] = await Promise.all([
-        fetch(`/api/integrations/asaas/payments?client_id=${client.id}&year=${year}`),
-        fetch(`/api/integrations/asaas/subscriptions?client_id=${client.id}`),
+        fetch(`/api/integrations/asaas/payments?client_id=${client.id}&year=${year}`, { signal: controller.signal }),
+        fetch(`/api/integrations/asaas/subscriptions?client_id=${client.id}`, { signal: controller.signal }),
       ])
+      clearTimeout(timeout)
 
       const paymentsData = await paymentsRes.json()
       const subscriptionsData = await subscriptionsRes.json()

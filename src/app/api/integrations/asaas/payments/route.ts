@@ -45,19 +45,20 @@ export async function GET(request: NextRequest) {
     // Filter by dueDate range on the API side to avoid fetching ALL payments
     let offset = 0
     const limit = 100
-    let hasMore = true
+    const MAX_PAGES = 20 // Safety limit: max 2000 payments per year
 
-    while (hasMore) {
-      const { data: payments, totalCount } = await asaas.listPayments({
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const result = await asaas.listPayments({
         offset,
         limit,
         customer: asaasCustomerId,
         "dueDate[ge]": `${year}-01-01`,
         "dueDate[le]": `${year}-12-31`,
       })
-      allPayments = [...allPayments, ...payments]
+      if (!result?.data?.length) break
+      allPayments = [...allPayments, ...result.data]
       offset += limit
-      hasMore = offset < totalCount
+      if (offset >= (result.totalCount || 0)) break
     }
 
     const summary = {
@@ -117,13 +118,14 @@ export async function POST(request: NextRequest) {
 
     let offset = 0
     const limit = 100
-    let hasMore = true
+    const MAX_PAGES = 50 // Safety limit for sync
 
-    while (hasMore) {
-      const { data: payments, totalCount } = await asaas.listPayments({ offset, limit })
-      allPayments = [...allPayments, ...payments]
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const result = await asaas.listPayments({ offset, limit })
+      if (!result?.data?.length) break
+      allPayments = [...allPayments, ...result.data]
       offset += limit
-      hasMore = offset < totalCount
+      if (offset >= (result.totalCount || 0)) break
     }
 
     let synced = 0, updated = 0, errors = 0
