@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
+import { useAsaasPayments, useAsaasSubscriptions } from "@/lib/hooks/use-api-data"
 import Image from "next/image"
 import {
   DollarSign,
@@ -156,25 +157,50 @@ const paymentMethodLabels: Record<string, { label: string; icon: typeof Building
 }
 
 export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) {
-  const [isLoading, setIsLoading] = useState(true)
-  const [payments, setPayments] = useState<Payment[]>([])
-  const [subscriptions, setSubscriptions] = useState<Subscription[]>([])
   const [localSubscriptions, setLocalSubscriptions] = useState<LocalSubscription[]>([])
   const [localCharges, setLocalCharges] = useState<LocalCharge[]>([])
-  const [summary, setSummary] = useState<PaymentSummary | null>(null)
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString())
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [subscriptionDialogOpen, setSubscriptionDialogOpen] = useState(false)
   const [statusDialogOpen, setStatusDialogOpen] = useState(false)
   const [selectedCharge, setSelectedCharge] = useState<LocalCharge | null>(null)
   const [isCreating, setIsCreating] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [createdPayment, setCreatedPayment] = useState<{
     id: string
     invoiceUrl?: string
     bankSlipUrl?: string
     pixQrCode?: { encodedImage: string; payload: string }
   } | null>(null)
+
+  // SWR hooks for Asaas data
+  const {
+    data: paymentsRaw,
+    error: paymentsError,
+    isLoading: paymentsLoading,
+    mutate: mutatePayments,
+  } = useAsaasPayments(clientId, parseInt(selectedYear))
+
+  const {
+    data: subscriptionsRaw,
+    mutate: mutateSubscriptions,
+  } = useAsaasSubscriptions(clientId)
+
+  // Derive Asaas state from SWR
+  const paymentsData = paymentsRaw as Record<string, unknown> | undefined
+  const subscriptionsData = subscriptionsRaw as Record<string, unknown> | undefined
+
+  const payments: Payment[] = (paymentsData?.payments as Payment[]) || []
+  const subscriptions: Subscription[] = (subscriptionsData?.subscriptions as Subscription[]) || []
+  const summary: PaymentSummary | null = (paymentsData?.summary as PaymentSummary) || null
+  const isLoading = paymentsLoading
+
+  const error = paymentsError
+    ? "Erro ao carregar dados financeiros"
+    : paymentsData?.error
+      ? (String(paymentsData.error).includes("não ativa")
+        ? "Integração Asaas não está ativa. Configure nas configurações."
+        : String(paymentsData.error))
+      : null
 
   const [chargeForm, setChargeForm] = useState({
     value: "",
@@ -201,9 +227,9 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
     notes: "",
   })
 
+  // Load local data from Supabase (not going through API)
   useEffect(() => {
-    // Paralelizar chamadas para reduzir tempo de carregamento
-    Promise.all([loadData(), loadLocalData()])
+    loadLocalData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId, selectedYear])
 
@@ -236,47 +262,6 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
       }
     } catch (err) {
       console.error("Error loading local data:", err)
-    }
-  }
-
-  async function loadData() {
-    setIsLoading(true)
-    setError(null)
-    try {
-      const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), 15000)
-      const [paymentsRes, subscriptionsRes] = await Promise.all([
-        fetch(`/api/integrations/asaas/payments?client_id=${clientId}&year=${selectedYear}`, { signal: controller.signal }),
-        fetch(`/api/integrations/asaas/subscriptions?client_id=${clientId}`, { signal: controller.signal }),
-      ])
-      clearTimeout(timeout)
-
-      const paymentsData = await paymentsRes.json()
-      const subscriptionsData = await subscriptionsRes.json()
-
-      // Check for errors
-      if (paymentsData.error) {
-        if (paymentsData.error.includes("não ativa")) {
-          setError("Integração Asaas não está ativa. Configure nas configurações.")
-        } else {
-          setError(paymentsData.error)
-        }
-        return
-      }
-
-      if (paymentsData.success) {
-        setPayments(paymentsData.payments || [])
-        setSummary(paymentsData.summary)
-      }
-
-      if (subscriptionsData.success) {
-        setSubscriptions(subscriptionsData.subscriptions || [])
-      }
-    } catch (err) {
-      console.error("Error loading financial data:", err)
-      setError("Erro ao carregar dados financeiros")
-    } finally {
-      setIsLoading(false)
     }
   }
 
@@ -316,7 +301,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
             title: "Cobrança criada!",
             description: "A cobrança foi criada com sucesso no Asaas.",
           })
-          loadData()
+          mutatePayments(); mutateSubscriptions()
         } else {
           toast({
             variant: "destructive",
@@ -397,7 +382,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
             title: "Assinatura criada no Asaas!",
             description: `ID: ${result.subscription?.id}`,
           })
-          loadData()
+          mutatePayments(); mutateSubscriptions()
           setSubscriptionDialogOpen(false)
           resetSubscriptionForm()
         } else {
@@ -567,7 +552,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           title: "Assinatura cancelada!",
           description: "A assinatura foi cancelada no Asaas.",
         })
-        loadData()
+        mutatePayments(); mutateSubscriptions()
       } else {
         toast({
           variant: "destructive",
@@ -600,7 +585,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           title: "Cobrança cancelada!",
           description: "A cobrança foi cancelada no Asaas.",
         })
-        loadData()
+        mutatePayments(); mutateSubscriptions()
       } else {
         toast({
           variant: "destructive",
@@ -760,7 +745,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           <AlertCircle className="h-12 w-12 text-destructive mb-4" />
           <h3 className="text-lg font-medium text-destructive">Erro ao carregar</h3>
           <p className="text-muted-foreground text-center mt-1">{error}</p>
-          <Button variant="outline" className="mt-4" onClick={loadData}>
+          <Button variant="outline" className="mt-4" onClick={() => { mutatePayments(); mutateSubscriptions() }}>
             <RefreshCw className="mr-2 h-4 w-4" />
             Tentar novamente
           </Button>
@@ -843,7 +828,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
               ))}
             </SelectContent>
           </Select>
-          <Button variant="outline" size="icon" onClick={() => { loadData(); loadLocalData(); }} disabled={isLoading}>
+          <Button variant="outline" size="icon" onClick={() => { mutatePayments(); mutateSubscriptions(); loadLocalData(); }} disabled={isLoading}>
             <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
           </Button>
         </div>

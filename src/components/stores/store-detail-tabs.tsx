@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState } from "react"
 import {
   Store,
   BarChart3,
@@ -17,6 +17,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { KlaviyoPerformanceReport } from "@/components/clients/klaviyo-performance-report"
+import { useKlaviyoCampaigns, useKlaviyoFlows } from "@/lib/hooks/use-api-data"
 
 interface StoreDetailTabsProps {
   storeId: string
@@ -69,41 +70,23 @@ export function StoreDetailTabs({
   language,
   integrationStatus,
 }: StoreDetailTabsProps) {
-  const [campaignsData, setCampaignsData] = useState<{ summary: Record<string, number>; campaigns: CampaignData[] } | null>(null)
-  const [flowsData, setFlowsData] = useState<{ summary: Record<string, number>; flows: FlowData[] } | null>(null)
-  const [campaignsLoading, setCampaignsLoading] = useState(false)
-  const [flowsLoading, setFlowsLoading] = useState(false)
   const [period, setPeriod] = useState<Period>("30d")
 
   const klaviyoConnected = integrationStatus.klaviyo?.connected || false
 
-  const fetchCampaigns = useCallback(async () => {
-    if (!klaviyoConnected) return
-    setCampaignsLoading(true)
-    try {
-      const res = await fetch(`/api/integrations/klaviyo/campaigns?store_id=${storeId}&period=${period}`)
-      const data = await res.json()
-      if (data.success !== false) {
-        setCampaignsData({ summary: data.summary, campaigns: data.campaigns || [] })
-      }
-    } catch { /* ignore */ } finally {
-      setCampaignsLoading(false)
-    }
-  }, [storeId, period, klaviyoConnected])
+  const {
+    data: campaignsData,
+    isLoading: campaignsInitialLoading,
+    isValidating: campaignsLoading,
+    mutate: mutateCampaigns,
+  } = useKlaviyoCampaigns(klaviyoConnected ? storeId : null, period)
 
-  const fetchFlows = useCallback(async () => {
-    if (!klaviyoConnected) return
-    setFlowsLoading(true)
-    try {
-      const res = await fetch(`/api/integrations/klaviyo/flows?store_id=${storeId}&period=${period}`)
-      const data = await res.json()
-      if (data.success !== false) {
-        setFlowsData({ summary: data.summary, flows: data.flows || [] })
-      }
-    } catch { /* ignore */ } finally {
-      setFlowsLoading(false)
-    }
-  }, [storeId, period, klaviyoConnected])
+  const {
+    data: flowsData,
+    isLoading: flowsInitialLoading,
+    isValidating: flowsLoading,
+    mutate: mutateFlows,
+  } = useKlaviyoFlows(klaviyoConnected ? storeId : null, period)
 
   return (
     <Tabs defaultValue="overview" className="space-y-6">
@@ -226,22 +209,24 @@ export function StoreDetailTabs({
       {/* Campaigns */}
       <TabsContent value="campaigns">
         <CampaignsTab
-          data={campaignsData}
-          loading={campaignsLoading}
+          data={campaignsData as { summary: Record<string, number>; campaigns: CampaignData[] } | undefined}
+          loading={campaignsInitialLoading}
+          refreshing={campaignsLoading}
           period={period}
           setPeriod={setPeriod}
-          onLoad={fetchCampaigns}
+          onRefresh={() => mutateCampaigns()}
         />
       </TabsContent>
 
       {/* Flows */}
       <TabsContent value="flows">
         <FlowsTab
-          data={flowsData}
-          loading={flowsLoading}
+          data={flowsData as { summary: Record<string, number>; flows: FlowData[] } | undefined}
+          loading={flowsInitialLoading}
+          refreshing={flowsLoading}
           period={period}
           setPeriod={setPeriod}
-          onLoad={fetchFlows}
+          onRefresh={() => mutateFlows()}
         />
       </TabsContent>
 
@@ -274,21 +259,19 @@ export function StoreDetailTabs({
 function CampaignsTab({
   data,
   loading,
+  refreshing,
   period,
   setPeriod,
-  onLoad,
+  onRefresh,
 }: {
-  data: { summary: Record<string, number>; campaigns: CampaignData[] } | null
+  data: { summary: Record<string, number>; campaigns: CampaignData[] } | undefined
   loading: boolean
+  refreshing: boolean
   period: Period
   setPeriod: (p: Period) => void
-  onLoad: () => void
+  onRefresh: () => void
 }) {
-  useEffect(() => {
-    if (!data && !loading) onLoad()
-  }, [data, loading, onLoad])
-
-  if (loading) {
+  if (loading && !data) {
     return (
       <div className="flex items-center justify-center py-20">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -303,10 +286,7 @@ function CampaignsTab({
         <div className="flex items-center gap-2">
           <select
             value={period}
-            onChange={(e) => {
-              setPeriod(e.target.value as Period)
-              // Will refetch on next render
-            }}
+            onChange={(e) => setPeriod(e.target.value as Period)}
             className="h-9 rounded-md border border-input bg-background px-3 text-sm"
           >
             <option value="7d">7 dias</option>
@@ -314,8 +294,8 @@ function CampaignsTab({
             <option value="90d">90 dias</option>
             <option value="all">Tudo</option>
           </select>
-          <Button variant="outline" size="sm" onClick={onLoad}>
-            <RefreshCw className="h-4 w-4 mr-1" />
+          <Button variant="outline" size="sm" onClick={onRefresh} disabled={refreshing}>
+            <RefreshCw className={`h-4 w-4 mr-1 ${refreshing ? "animate-spin" : ""}`} />
             Atualizar
           </Button>
         </div>
@@ -380,21 +360,19 @@ function CampaignsTab({
 function FlowsTab({
   data,
   loading,
+  refreshing,
   period,
   setPeriod,
-  onLoad,
+  onRefresh,
 }: {
-  data: { summary: Record<string, number>; flows: FlowData[] } | null
+  data: { summary: Record<string, number>; flows: FlowData[] } | undefined
   loading: boolean
+  refreshing: boolean
   period: Period
   setPeriod: (p: Period) => void
-  onLoad: () => void
+  onRefresh: () => void
 }) {
-  useEffect(() => {
-    if (!data && !loading) onLoad()
-  }, [data, loading, onLoad])
-
-  if (loading) {
+  if (loading && !data) {
     return (
       <div className="flex items-center justify-center py-20">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -417,8 +395,8 @@ function FlowsTab({
             <option value="90d">90 dias</option>
             <option value="all">Tudo</option>
           </select>
-          <Button variant="outline" size="sm" onClick={onLoad}>
-            <RefreshCw className="h-4 w-4 mr-1" />
+          <Button variant="outline" size="sm" onClick={onRefresh} disabled={refreshing}>
+            <RefreshCw className={`h-4 w-4 mr-1 ${refreshing ? "animate-spin" : ""}`} />
             Atualizar
           </Button>
         </div>

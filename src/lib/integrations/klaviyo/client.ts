@@ -114,9 +114,25 @@ export function parseDateRange(
     endDate.setHours(23, 59, 59, 999)
 
     switch (period) {
+      case "today":
+        startDate = new Date(now)
+        startDate.setHours(0, 0, 0, 0)
+        break
+      case "yesterday":
+        startDate = new Date(now)
+        startDate.setDate(now.getDate() - 1)
+        startDate.setHours(0, 0, 0, 0)
+        endDate = new Date(now)
+        endDate.setDate(now.getDate() - 1)
+        endDate.setHours(23, 59, 59, 999)
+        break
       case "7d":
         startDate = new Date(now)
         startDate.setDate(now.getDate() - 7)
+        break
+      case "15d":
+        startDate = new Date(now)
+        startDate.setDate(now.getDate() - 15)
         break
       case "30d":
         startDate = new Date(now)

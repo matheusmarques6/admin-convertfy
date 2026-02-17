@@ -1,12 +1,13 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Globe, Mail, Phone, Building, User, Calendar, Loader2, AlertCircle, CheckCircle2 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { formatCurrency, formatDate, getInitials } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
+import { useAsaasPayments, useAsaasSubscriptions } from "@/lib/hooks/use-api-data"
 import type { Client, Contract, Invoice, Meeting, User as UserType } from "@/types"
 
 interface ClientWithRelations extends Client {
@@ -26,14 +27,44 @@ interface AsaasFinancialData {
 }
 
 export function ClientOverview({ client }: ClientOverviewProps) {
-  const [asaasData, setAsaasData] = useState<AsaasFinancialData | null>(null)
-  const [isLoadingAsaas, setIsLoadingAsaas] = useState(true)
-  const [hasAsaasId, setHasAsaasId] = useState(false)
   const [activeContract, setActiveContract] = useState<Contract | null>(null)
   const [localTotalPaid, setLocalTotalPaid] = useState(0)
   const [localPendingAmount, setLocalPendingAmount] = useState(0)
   const [nextMeeting, setNextMeeting] = useState<Meeting | null>(null)
 
+  // Check if client has Asaas ID
+  const customFields = client.custom_fields as Record<string, string> | null
+  const hasAsaasId = !!customFields?.asaas_customer_id
+  const currentYear = useMemo(() => new Date().getFullYear(), [])
+
+  // SWR hooks for Asaas data (pass null to skip when no Asaas ID)
+  const { data: paymentsRaw, isLoading: paymentsLoading } = useAsaasPayments(
+    hasAsaasId ? client.id : null, currentYear
+  )
+  const { data: subscriptionsRaw } = useAsaasSubscriptions(
+    hasAsaasId ? client.id : null
+  )
+
+  // Derive Asaas data from SWR responses
+  const paymentsData = paymentsRaw as Record<string, unknown> | undefined
+  const subscriptionsData = subscriptionsRaw as Record<string, unknown> | undefined
+
+  const asaasData = useMemo<AsaasFinancialData | null>(() => {
+    if (!paymentsData?.success) return null
+    const summary = paymentsData.summary as Record<string, number> | undefined
+    const subs = subscriptionsData?.subscriptions as Array<{ isActive: boolean; value?: number }> | undefined
+    return {
+      totalPaid: summary?.paidValue || 0,
+      totalPending: summary?.pendingValue || 0,
+      totalOverdue: summary?.overdueValue || 0,
+      hasSubscription: subs?.some(s => s.isActive) || false,
+      subscriptionValue: subs?.find(s => s.isActive)?.value,
+    }
+  }, [paymentsData, subscriptionsData])
+
+  const isLoadingAsaas = hasAsaasId && paymentsLoading
+
+  // Load local data (Supabase direct queries)
   useEffect(() => {
     async function loadLocalData() {
       const supabase = createClient()
@@ -49,49 +80,7 @@ export function ClientOverview({ client }: ClientOverviewProps) {
       setNextMeeting(meetingsRes.data?.[0] || null)
     }
     loadLocalData()
-    loadAsaasData()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client.id])
-
-  async function loadAsaasData() {
-    setIsLoadingAsaas(true)
-    try {
-      // Check if client has asaas_customer_id
-      const customFields = client.custom_fields as Record<string, string> | null
-      if (!customFields?.asaas_customer_id) {
-        setHasAsaasId(false)
-        return
-      }
-      setHasAsaasId(true)
-
-      // Fetch payments for current year with 15s timeout
-      const year = new Date().getFullYear()
-      const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), 15000)
-      const [paymentsRes, subscriptionsRes] = await Promise.all([
-        fetch(`/api/integrations/asaas/payments?client_id=${client.id}&year=${year}`, { signal: controller.signal }),
-        fetch(`/api/integrations/asaas/subscriptions?client_id=${client.id}`, { signal: controller.signal }),
-      ])
-      clearTimeout(timeout)
-
-      const paymentsData = await paymentsRes.json()
-      const subscriptionsData = await subscriptionsRes.json()
-
-      if (paymentsData.success) {
-        setAsaasData({
-          totalPaid: paymentsData.summary?.paidValue || 0,
-          totalPending: paymentsData.summary?.pendingValue || 0,
-          totalOverdue: paymentsData.summary?.overdueValue || 0,
-          hasSubscription: subscriptionsData.subscriptions?.some((s: { isActive: boolean }) => s.isActive) || false,
-          subscriptionValue: subscriptionsData.subscriptions?.find((s: { isActive: boolean }) => s.isActive)?.value,
-        })
-      }
-    } catch (error) {
-      console.error("Error loading Asaas data:", error)
-    } finally {
-      setIsLoadingAsaas(false)
-    }
-  }
 
   // Use Asaas data if available, otherwise use local data
   const totalPaid = asaasData?.totalPaid ?? localTotalPaid

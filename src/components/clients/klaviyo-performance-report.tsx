@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef } from "react"
+import { useKlaviyoReport, useShopifyReport } from "@/lib/hooks/use-api-data"
 import {
   Users,
   Mail,
@@ -278,73 +279,53 @@ const CircularProgress = ({
 
 // ============ MAIN COMPONENT ============
 export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }: KlaviyoPerformanceReportProps) {
-  const [reportData, setReportData] = useState<KlaviyoReportData | null>(null)
-  const [shopifyData, setShopifyData] = useState<ShopifyReportData | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [loadingStatus, setLoadingStatus] = useState("Iniciando...")
   const [isExporting, setIsExporting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [dateRange, setDateRange] = useState<DateRange>("30d")
+  const [dateRange, setDateRange] = useState<DateRange>(
+    (savedReportData?.period as DateRange) || "30d"
+  )
   const reportRef = useRef<HTMLDivElement>(null)
 
-  const openFullscreenReport = useCallback(() => {
-    window.open(`/report?store_id=${storeId}&period=${dateRange}`, '_blank')
-  }, [storeId, dateRange])
+  // SWR hooks for data fetching
+  const {
+    data: klaviyoRaw,
+    error: klaviyoError,
+    isLoading: klaviyoLoading,
+    isValidating: klaviyoValidating,
+    mutate: mutateKlaviyo,
+  } = useKlaviyoReport(storeId, dateRange)
 
-  const loadAllData = useCallback(async (period: DateRange = dateRange) => {
-    setIsLoading(true)
-    setError(null)
-    setLoadingStatus("Conectando às APIs...")
+  const {
+    data: shopifyRaw,
+    mutate: mutateShopify,
+  } = useShopifyReport(storeId, dateRange)
 
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 180000)
+  // Derive typed data from SWR responses
+  const reportData: KlaviyoReportData | null =
+    savedReportData || (klaviyoRaw as KlaviyoReportData)?.success ? (klaviyoRaw as KlaviyoReportData) : null
+  const shopifyData: ShopifyReportData | null =
+    (shopifyRaw as ShopifyReportData)?.success && (shopifyRaw as ShopifyReportData)?.connected ? (shopifyRaw as ShopifyReportData) : null
 
-    try {
-      setLoadingStatus("Buscando dados do Klaviyo e Shopify...")
-      const [klaviyoRes, shopifyRes] = await Promise.all([
-        fetch(`/api/integrations/klaviyo/report?store_id=${storeId}&period=${period}`, { signal: controller.signal }),
-        fetch(`/api/integrations/shopify/report?store_id=${storeId}&period=${period}`, { signal: controller.signal }).catch(() => null)
-      ])
+  const isLoading = klaviyoLoading && !savedReportData
+  const error = klaviyoError
+    ? (klaviyoError instanceof Error ? klaviyoError.message : "Erro de conexão")
+    : (klaviyoRaw && !(klaviyoRaw as KlaviyoReportData)?.success)
+      ? ((klaviyoRaw as Record<string, string>)?.error || "Erro ao carregar relatório")
+      : null
 
-      clearTimeout(timeoutId)
-      setLoadingStatus("Processando dados...")
-
-      const [klaviyoData, shopifyDataRes] = await Promise.all([
-        klaviyoRes.json(),
-        shopifyRes ? shopifyRes.json() : null
-      ])
-
-      if (klaviyoData.success) {
-        setReportData(klaviyoData)
-        setShopifyData(shopifyDataRes?.success && shopifyDataRes?.connected ? shopifyDataRes : null)
-        setError(null)
-      } else {
-        setError(klaviyoData.error || "Erro ao carregar relatório")
-      }
-    } catch (err) {
-      clearTimeout(timeoutId)
-      setError(err instanceof Error && err.name === 'AbortError' ? "Tempo limite excedido." : "Erro de conexão")
-    } finally {
-      setIsLoading(false)
-      setLoadingStatus("")
-    }
-  }, [storeId, dateRange])
-
+  // Set dateRange when savedReportData changes
   useEffect(() => {
-    if (savedReportData) {
-      setDateRange(savedReportData.period as DateRange || "30d")
-      setReportData(savedReportData)
-      loadAllData(savedReportData.period as DateRange || "30d")
-    } else {
-      loadAllData()
+    if (savedReportData?.period) {
+      setDateRange(savedReportData.period as DateRange)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storeId, savedReportData])
+  }, [savedReportData])
+
+  const openFullscreenReport = () => {
+    window.open(`/report?store_id=${storeId}&period=${dateRange}`, '_blank')
+  }
 
   const handleDateRangeChange = (newRange: DateRange) => {
     if (newRange !== dateRange && !savedReportData) {
       setDateRange(newRange)
-      loadAllData(newRange)
     }
   }
 
@@ -394,7 +375,7 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
         </div>
         <div className="text-center">
           <h3 className="text-lg font-semibold text-white">Gerando Relatório</h3>
-          <p className="text-sm text-slate-400">{loadingStatus}</p>
+          <p className="text-sm text-slate-400">Buscando dados...</p>
         </div>
       </div>
     )
@@ -409,7 +390,7 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
           <h3 className="text-lg font-semibold text-white">Erro ao Carregar</h3>
           <p className="text-sm text-slate-400">{error}</p>
         </div>
-        <Button onClick={() => loadAllData()}><RefreshCw className="w-4 h-4 mr-2" />Tentar Novamente</Button>
+        <Button onClick={() => { mutateKlaviyo(); mutateShopify() }}><RefreshCw className="w-4 h-4 mr-2" />Tentar Novamente</Button>
       </div>
     )
   }
@@ -880,8 +861,8 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
               ))}
             </div>
           )}
-          <Button variant="outline" size="icon" onClick={() => loadAllData()} disabled={isLoading} className="bg-slate-900 border-slate-800 h-9 w-9 hover:bg-slate-800">
-            <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
+          <Button variant="outline" size="icon" onClick={() => { mutateKlaviyo(); mutateShopify() }} disabled={klaviyoValidating} className="bg-slate-900 border-slate-800 h-9 w-9 hover:bg-slate-800">
+            <RefreshCw className={`w-4 h-4 ${klaviyoValidating ? "animate-spin" : ""}`} />
           </Button>
           <Button variant="outline" size="icon" onClick={openFullscreenReport} className="bg-slate-900 border-slate-800 h-9 w-9 hover:bg-slate-800" title="Abrir em nova página">
             <ExternalLink className="w-4 h-4" />

@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState } from "react"
+import { useAsaasCharges } from "@/lib/hooks/use-api-data"
 import {
   AlertCircle,
   Clock,
@@ -99,43 +100,24 @@ interface ChargesData {
 }
 
 export function ChargesManager() {
-  const [data, setData] = useState<ChargesData | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [isRefreshing, setIsRefreshing] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({})
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
   const [selectedCharge, setSelectedCharge] = useState<Charge | null>(null)
   const [isCancelling, setIsCancelling] = useState(false)
 
-  const loadCharges = useCallback(async (showRefreshing = false) => {
-    if (showRefreshing) setIsRefreshing(true)
-    else setIsLoading(true)
+  const startDate = dateRange.from ? format(dateRange.from, "yyyy-MM-dd") : null
+  const endDate = dateRange.to ? format(dateRange.to, "yyyy-MM-dd") : null
+  const { data: rawData, error: fetchError, isLoading, isValidating: isRefreshing, mutate } = useAsaasCharges(startDate, endDate)
+  const data = rawData as ChargesData | undefined
 
-    try {
-      const params = new URLSearchParams()
-      if (dateRange.from) params.set("start_date", format(dateRange.from, "yyyy-MM-dd"))
-      if (dateRange.to) params.set("end_date", format(dateRange.to, "yyyy-MM-dd"))
-
-      const res = await fetch(`/api/integrations/asaas/charges/list?${params}`)
-      const result = await res.json()
-      setData(result)
-    } catch (error) {
-      console.error("Error loading charges:", error)
-      toast({
-        variant: "destructive",
-        title: "Erro ao carregar cobranças",
-        description: "Não foi possível carregar as cobranças. Tente novamente.",
-      })
-    } finally {
-      setIsLoading(false)
-      setIsRefreshing(false)
-    }
-  }, [dateRange])
-
-  useEffect(() => {
-    loadCharges()
-  }, [loadCharges])
+  if (fetchError) {
+    toast({
+      variant: "destructive",
+      title: "Erro ao carregar cobranças",
+      description: "Não foi possível carregar as cobranças. Tente novamente.",
+    })
+  }
 
   const handleCancelCharge = async () => {
     if (!selectedCharge) return
@@ -152,7 +134,7 @@ export function ChargesManager() {
           title: "Cobrança cancelada",
           description: "A cobrança foi cancelada com sucesso.",
         })
-        loadCharges(true)
+        mutate()
       } else {
         throw new Error(result.error)
       }
@@ -467,7 +449,7 @@ export function ChargesManager() {
                       >
                         Limpar
                       </Button>
-                      <Button size="sm" onClick={() => loadCharges(true)}>
+                      <Button size="sm" onClick={() => mutate()}>
                         Aplicar
                       </Button>
                     </div>
@@ -477,7 +459,7 @@ export function ChargesManager() {
               <Button
                 variant="outline"
                 size="icon"
-                onClick={() => loadCharges(true)}
+                onClick={() => mutate()}
                 disabled={isRefreshing}
               >
                 <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />

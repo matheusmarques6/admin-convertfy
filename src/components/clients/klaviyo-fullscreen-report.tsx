@@ -1,7 +1,8 @@
 "use client"
 
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useRef } from "react"
 import { useRouter } from "next/navigation"
+import { useKlaviyoReport, useShopifyReport } from "@/lib/hooks/use-api-data"
 import {
   Users,
   Mail,
@@ -258,56 +259,33 @@ const CircularProgress = ({
 // ============ MAIN COMPONENT ============
 export function KlaviyoFullscreenReport({ storeId, storeName, period }: KlaviyoFullscreenReportProps) {
   const router = useRouter()
-  const [reportData, setReportData] = useState<KlaviyoReportData | null>(null)
-  const [shopifyData, setShopifyData] = useState<ShopifyReportData | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [loadingStatus, setLoadingStatus] = useState("Iniciando...")
   const [isExporting, setIsExporting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const reportRef = useRef<HTMLDivElement>(null)
 
-  const loadAllData = useCallback(async () => {
-    setIsLoading(true)
-    setError(null)
-    setLoadingStatus("Conectando às APIs...")
+  // SWR hooks
+  const {
+    data: klaviyoRaw,
+    error: klaviyoError,
+    isLoading,
+    mutate: mutateKlaviyo,
+  } = useKlaviyoReport(storeId, period)
 
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 180000)
+  const {
+    data: shopifyRaw,
+    mutate: mutateShopify,
+  } = useShopifyReport(storeId, period)
 
-    try {
-      setLoadingStatus("Buscando dados do Klaviyo e Shopify...")
-      const [klaviyoRes, shopifyRes] = await Promise.all([
-        fetch(`/api/integrations/klaviyo/report?store_id=${storeId}&period=${period}`, { signal: controller.signal }),
-        fetch(`/api/integrations/shopify/report?store_id=${storeId}&period=${period}`, { signal: controller.signal }).catch(() => null)
-      ])
+  // Derive typed data from SWR
+  const reportData: KlaviyoReportData | null =
+    (klaviyoRaw as KlaviyoReportData)?.success ? (klaviyoRaw as KlaviyoReportData) : null
+  const shopifyData: ShopifyReportData | null =
+    (shopifyRaw as ShopifyReportData)?.success && (shopifyRaw as ShopifyReportData)?.connected ? (shopifyRaw as ShopifyReportData) : null
 
-      clearTimeout(timeoutId)
-      setLoadingStatus("Processando dados...")
-
-      const [klaviyoData, shopifyDataRes] = await Promise.all([
-        klaviyoRes.json(),
-        shopifyRes ? shopifyRes.json() : null
-      ])
-
-      if (klaviyoData.success) {
-        setReportData(klaviyoData)
-        setShopifyData(shopifyDataRes?.success && shopifyDataRes?.connected ? shopifyDataRes : null)
-        setError(null)
-      } else {
-        setError(klaviyoData.error || "Erro ao carregar relatório")
-      }
-    } catch (err) {
-      clearTimeout(timeoutId)
-      setError(err instanceof Error && err.name === 'AbortError' ? "Tempo limite excedido." : "Erro de conexão")
-    } finally {
-      setIsLoading(false)
-      setLoadingStatus("")
-    }
-  }, [storeId, period])
-
-  useEffect(() => {
-    loadAllData()
-  }, [loadAllData])
+  const error = klaviyoError
+    ? (klaviyoError instanceof Error ? klaviyoError.message : "Erro de conexão")
+    : (klaviyoRaw && !(klaviyoRaw as KlaviyoReportData)?.success)
+      ? ((klaviyoRaw as Record<string, string>)?.error || "Erro ao carregar relatório")
+      : null
 
   const handleExportPDF = async () => {
     if (!reportRef.current || isExporting) return
@@ -355,7 +333,7 @@ export function KlaviyoFullscreenReport({ storeId, storeName, period }: KlaviyoF
         </div>
         <div className="text-center">
           <h3 className="text-lg font-semibold text-white">Gerando Relatório</h3>
-          <p className="text-sm text-slate-400">{loadingStatus}</p>
+          <p className="text-sm text-slate-400">Buscando dados...</p>
         </div>
       </div>
     )
@@ -374,7 +352,7 @@ export function KlaviyoFullscreenReport({ storeId, storeName, period }: KlaviyoF
           <Button variant="outline" onClick={() => router.back()}>
             <ArrowLeft className="w-4 h-4 mr-2" />Voltar
           </Button>
-          <Button onClick={() => loadAllData()}>
+          <Button onClick={() => { mutateKlaviyo(); mutateShopify() }}>
             <RefreshCw className="w-4 h-4 mr-2" />Tentar Novamente
           </Button>
         </div>
@@ -439,7 +417,7 @@ export function KlaviyoFullscreenReport({ storeId, storeName, period }: KlaviyoF
           <span className="text-sm text-slate-400">{getFormattedDateRange()}</span>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="outline" size="icon" onClick={() => loadAllData()} disabled={isLoading} className="bg-slate-900 border-slate-700 h-9 w-9">
+          <Button variant="outline" size="icon" onClick={() => { mutateKlaviyo(); mutateShopify() }} disabled={isLoading} className="bg-slate-900 border-slate-700 h-9 w-9">
             <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
           </Button>
           <Button onClick={handleExportPDF} disabled={isExporting} className="bg-blue-600 hover:bg-blue-700 h-9 px-4">

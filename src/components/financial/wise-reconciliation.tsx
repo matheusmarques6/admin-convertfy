@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useMemo } from "react"
+import { useWiseTransactions, useWiseBalances, useWiseReconciled } from "@/lib/hooks/use-api-data"
 import {
   Wallet,
   RefreshCw,
@@ -74,18 +75,11 @@ interface Balance {
 }
 
 export function WiseReconciliation() {
-  const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
-  const [payments, setPayments] = useState<Payment[]>([])
-  const [balances, setBalances] = useState<Balance[]>([])
-  const [clients, setClients] = useState<Client[]>([])
-  const [reconciled, setReconciled] = useState<Set<string>>(new Set())
   const [searchTerm, setSearchTerm] = useState("")
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({
     from: subDays(new Date(), 30),
     to: new Date(),
   })
-  const [error, setError] = useState<string | null>(null)
 
   // Reconciliation dialog
   const [reconcileDialog, setReconcileDialog] = useState<{
@@ -95,55 +89,53 @@ export function WiseReconciliation() {
   const [selectedClient, setSelectedClient] = useState<string>("")
   const [notes, setNotes] = useState("")
   const [saving, setSaving] = useState(false)
+  const [localReconciled, setLocalReconciled] = useState<Set<string>>(new Set())
 
-  const fetchData = useCallback(async () => {
-    try {
-      setError(null)
-      const [transactionsRes, balancesRes, reconciliationsRes] = await Promise.all([
-        fetch(
-          `/api/integrations/wise/transactions?start_date=${dateRange.from.toISOString()}&end_date=${dateRange.to.toISOString()}`
-        ),
-        fetch("/api/integrations/wise/balances"),
-        fetch("/api/integrations/wise/reconcile"),
-      ])
+  // SWR hooks for all 3 data sources
+  const {
+    data: transactionsData,
+    error: transactionsError,
+    isLoading: transactionsLoading,
+    isValidating: transactionsValidating,
+    mutate: mutateTransactions,
+  } = useWiseTransactions(dateRange.from.toISOString(), dateRange.to.toISOString())
 
-      if (!transactionsRes.ok) {
-        const err = await transactionsRes.json()
-        throw new Error(err.error || "Failed to fetch transactions")
-      }
+  const {
+    data: balancesData,
+    isLoading: balancesLoading,
+    mutate: mutateBalances,
+  } = useWiseBalances()
 
-      const transactionsData = await transactionsRes.json()
-      const balancesData = balancesRes.ok ? await balancesRes.json() : { balances: [] }
-      const reconciliationsData = reconciliationsRes.ok
-        ? await reconciliationsRes.json()
-        : { reconciliations: [] }
+  const {
+    data: reconciledData,
+    isLoading: reconciledLoading,
+    mutate: mutateReconciled,
+  } = useWiseReconciled()
 
-      setPayments(transactionsData.payments || [])
-      setClients(transactionsData.clients || [])
-      setBalances(balancesData.balances || [])
+  // Derive state from SWR data
+  const payments: Payment[] = (transactionsData as Record<string, unknown>)?.payments as Payment[] || []
+  const clients: Client[] = (transactionsData as Record<string, unknown>)?.clients as Client[] || []
+  const balances: Balance[] = (balancesData as Record<string, unknown>)?.balances as Balance[] || []
 
-      // Mark already reconciled transactions
-      const reconciledRefs = new Set<string>(
-        (reconciliationsData.reconciliations || []).map(
-          (r: { transaction_reference: string }) => r.transaction_reference
-        )
+  const reconciled = useMemo(() => {
+    const refs = new Set<string>(
+      ((reconciledData as Record<string, unknown>)?.reconciliations as Array<{ transaction_reference: string }> || []).map(
+        (r) => r.transaction_reference
       )
-      setReconciled(reconciledRefs)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load data")
-    } finally {
-      setLoading(false)
-      setRefreshing(false)
-    }
-  }, [dateRange])
+    )
+    // Merge locally added reconciliations (optimistic)
+    localReconciled.forEach(ref => refs.add(ref))
+    return refs
+  }, [reconciledData, localReconciled])
 
-  useEffect(() => {
-    fetchData()
-  }, [fetchData])
+  const loading = transactionsLoading || balancesLoading || reconciledLoading
+  const refreshing = transactionsValidating
+  const error = transactionsError ? (transactionsError instanceof Error ? transactionsError.message : "Failed to load data") : null
 
   const handleRefresh = () => {
-    setRefreshing(true)
-    fetchData()
+    mutateTransactions()
+    mutateBalances()
+    mutateReconciled()
   }
 
   const openReconcileDialog = (payment: Payment) => {
@@ -187,10 +179,11 @@ export function WiseReconciliation() {
         throw new Error(err.error || "Failed to reconcile")
       }
 
-      // Update reconciled set
-      setReconciled((prev) =>
+      // Optimistic update + revalidate
+      setLocalReconciled((prev) =>
         new Set(Array.from(prev).concat([reconcileDialog.payment!.transaction.referenceNumber]))
       )
+      mutateReconciled()
 
       toast({
         title: "Pagamento reconciliado",
