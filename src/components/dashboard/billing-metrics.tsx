@@ -36,7 +36,6 @@ import { formatCurrency } from "@/lib/utils"
 import { cn } from "@/lib/utils"
 
 interface BillingData {
-  success: boolean
   connected: boolean
   period: string
   dateRange?: { from: string; to: string }
@@ -86,8 +85,8 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
         url += `&start_date=${customPeriod.start}&end_date=${customPeriod.end}`
       }
       const response = await fetch(url)
-      const result = await response.json()
-      if (result.success) {
+      if (response.ok) {
+        const result = await response.json()
         setData(result)
       }
     } catch (error) {

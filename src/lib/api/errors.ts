@@ -56,6 +56,7 @@ interface ApiErrorResponse {
 }
 
 interface ApiSuccessResponse<T> {
+  success: true
   data?: T
   message?: string
 }
@@ -111,6 +112,7 @@ export function successResponse<T>(
 ): NextResponse<ApiSuccessResponse<T> & T> {
   const origin = request.headers.get("origin")
   const body = {
+    success: true as const,
     ...data,
     ...(options?.message ? { message: options.message } : {}),
   } as ApiSuccessResponse<T> & T
