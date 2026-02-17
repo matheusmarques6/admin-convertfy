@@ -522,7 +522,7 @@ export default function PortalInvoicesPage() {
   // ============================================
   if (loading && !stats) {
     return (
-      <div className="min-h-screen bg-black p-6 space-y-6">
+      <div className="min-h-screen bg-background p-6 space-y-6">
         <div className="flex items-center justify-between">
           <Skeleton className="h-10 w-48 bg-zinc-900" />
           <Skeleton className="h-10 w-32 bg-zinc-900" />
@@ -543,7 +543,7 @@ export default function PortalInvoicesPage() {
   // ============================================
   if (error) {
     return (
-      <div className="min-h-screen bg-black flex flex-col items-center justify-center p-6">
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6">
         <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-8 text-center max-w-md">
           <div className="rounded-full bg-red-500/10 p-4 w-fit mx-auto mb-4">
             <AlertCircle className="h-10 w-10 text-red-400" />
@@ -562,7 +562,7 @@ export default function PortalInvoicesPage() {
   // RENDER: Main
   // ============================================
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div className="min-h-screen bg-background text-white">
       <div className="max-w-[1200px] mx-auto p-6 space-y-6">
 
         {/* ========== HEADER ========== */}

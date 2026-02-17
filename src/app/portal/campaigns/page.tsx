@@ -589,7 +589,7 @@ export default function PortalCampaignsPage() {
   // ============================================
   if (loading && campaigns.length === 0) {
     return (
-      <div className="min-h-screen bg-black p-6 space-y-6">
+      <div className="min-h-screen bg-background p-6 space-y-6">
         <div className="flex items-center justify-between">
           <Skeleton className="h-10 w-64 bg-zinc-900" />
           <Skeleton className="h-10 w-32 bg-zinc-900" />
@@ -610,7 +610,7 @@ export default function PortalCampaignsPage() {
   // ============================================
   if (error) {
     return (
-      <div className="min-h-screen bg-black flex flex-col items-center justify-center p-6">
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6">
         <div className="rounded-2xl bg-zinc-900 border border-zinc-800 p-8 text-center max-w-md">
           <div className="rounded-full bg-red-500/10 p-4 w-fit mx-auto mb-4">
             <AlertCircle className="h-10 w-10 text-red-400" />
@@ -636,7 +636,7 @@ export default function PortalCampaignsPage() {
       days.push(
         <div
           key={`empty-${i}`}
-          className="min-h-[120px] bg-black/50 border border-zinc-800/30"
+          className="min-h-[120px] bg-muted/30 border border-border/30"
         />
       )
     }
@@ -654,14 +654,14 @@ export default function PortalCampaignsPage() {
           className={`
             min-h-[120px] border border-zinc-800/30 p-2 cursor-pointer transition-all
             hover:bg-zinc-900/50
-            ${dayIsToday ? "bg-emerald-500/10 border-emerald-500/40" : "bg-black"}
+            ${dayIsToday ? "bg-primary/10 border-primary/40" : "bg-background"}
           `}
         >
           <div className="flex items-center justify-between mb-2">
             <span
               className={`
                 text-sm font-medium w-7 h-7 flex items-center justify-center rounded-full
-                ${dayIsToday ? "bg-emerald-500 text-white" : "text-zinc-300"}
+                ${dayIsToday ? "bg-primary text-primary-foreground" : "text-muted-foreground"}
               `}
             >
               {day}
@@ -706,7 +706,7 @@ export default function PortalCampaignsPage() {
                 min-h-[400px] rounded-xl border p-3
                 ${dayIsToday
                   ? "bg-emerald-500/10 border-emerald-500/40"
-                  : "bg-black border-zinc-800/50"
+                  : "bg-background border-border/50"
                 }
               `}
             >
@@ -755,7 +755,7 @@ export default function PortalCampaignsPage() {
   // RENDER: Main
   // ============================================
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div className="min-h-screen bg-background text-white">
       <div className="max-w-[1600px] mx-auto p-6 space-y-6">
 
         {/* ========== HEADER ========== */}
@@ -999,11 +999,11 @@ export default function PortalCampaignsPage() {
         </div>
 
         {/* ========== CALENDAR ========== */}
-        <div className="rounded-xl bg-black border border-zinc-800 overflow-hidden">
+        <div className="rounded-xl bg-card border border-border overflow-hidden">
           {viewMode === "month" ? (
             <>
               {/* Week days header */}
-              <div className="grid grid-cols-7 bg-black">
+              <div className="grid grid-cols-7 bg-background">
                 {WEEK_DAYS.map((day, index) => (
                   <div
                     key={day}
