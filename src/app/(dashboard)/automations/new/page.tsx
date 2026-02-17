@@ -3,7 +3,8 @@
 import { useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Node, Edge } from "reactflow"
+import dynamic from "next/dynamic"
+import type { Node, Edge } from "reactflow"
 import {
   ArrowLeft,
   Save,
@@ -15,7 +16,15 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
-import { WorkflowBuilder } from "@/components/automations/workflow-builder"
+import { Skeleton } from "@/components/ui/skeleton"
+
+const WorkflowBuilder = dynamic(
+  () => import("@/components/automations/workflow-builder").then(mod => ({ default: mod.WorkflowBuilder })),
+  {
+    loading: () => <div className="h-[500px] rounded-xl border"><Skeleton className="h-full w-full" /></div>,
+    ssr: false,
+  }
+)
 import { createClient } from "@/lib/supabase/client"
 import { toast } from "@/lib/hooks/use-toast"
 
