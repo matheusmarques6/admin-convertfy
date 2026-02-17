@@ -3,6 +3,7 @@ import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
 import { decryptCredentialsJson } from "@/lib/crypto"
+import { getCache, setCache } from "@/lib/cache"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("IntegrationsGoogleAnalyticsReport")
@@ -373,6 +374,15 @@ export async function GET(request: NextRequest) {
       throw new AppError("store_id é obrigatório", 400)
     }
 
+    // Check cache first (skip if force_refresh)
+    const forceRefresh = searchParams.get("force_refresh") === "true"
+    if (!forceRefresh) {
+      const cached = await getCache(supabase, storeId, "ga4", period)
+      if (cached) {
+        return NextResponse.json({ ...cached.data, _cached: true, _cachedAt: cached.cachedAt })
+      }
+    }
+
     // Get store with GA4 credentials
     const { data: store, error: storeError } = await supabase
       .from("client_stores")
@@ -473,6 +483,9 @@ export async function GET(request: NextRequest) {
         engagementRate: trafficOverview.engagementRate,
       },
     }
+
+    // Save to cache for future requests
+    await setCache(supabase, storeId, "ga4", period, reportData as unknown as Record<string, unknown>)
 
     return NextResponse.json(reportData)
   } catch (error) {

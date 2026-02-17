@@ -3,6 +3,7 @@ import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
 import { getStoreCredentials } from "@/lib/services/credentials.service"
+import { getCache, setCache } from "@/lib/cache"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("IntegrationsShopifyReport")
@@ -823,6 +824,15 @@ export async function GET(request: NextRequest) {
       throw new AppError("store_id é obrigatório", 400)
     }
 
+    // Check cache first (skip if force_refresh)
+    const forceRefresh = searchParams.get("force_refresh") === "true"
+    if (!forceRefresh) {
+      const cached = await getCache(supabase, storeId, "shopify", period)
+      if (cached) {
+        return NextResponse.json({ ...cached.data, _cached: true, _cachedAt: cached.cachedAt })
+      }
+    }
+
     // Get store with Shopify credentials (decrypted)
     const storeData = await getStoreCredentials(storeId)
     const { shopify_store_domain, shopify_access_token: accessToken } = storeData
@@ -916,6 +926,9 @@ export async function GET(request: NextRequest) {
       // Best-selling products
       bestSellingProducts: ordersSummary.bestSellingProducts,
     }
+
+    // Save to cache for future requests
+    await setCache(supabase, storeId, "shopify", period, reportData as unknown as Record<string, unknown>)
 
     return NextResponse.json(reportData)
   } catch (error) {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { getStoreCredentials } from "@/lib/services/credentials.service"
+import { getCache, setCache } from "@/lib/cache"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("KlaviyoReport")
@@ -898,6 +899,18 @@ export async function GET(request: NextRequest) {
       throw new AppError("store_id é obrigatório", 400)
     }
 
+    // Check cache first (skip if force_refresh)
+    const forceRefresh = searchParams.get("force_refresh") === "true"
+    if (!forceRefresh) {
+      const cached = await getCache(supabase, storeId, "klaviyo", period)
+      if (cached) {
+        return NextResponse.json(
+          { ...cached.data, _cached: true, _cachedAt: cached.cachedAt },
+          { headers: corsHeaders() }
+        )
+      }
+    }
+
     const storeData = await getStoreCredentials(storeId)
     const apiKey = storeData.klaviyo_private_key || storeData.klaviyo_api_key
     if (!apiKey) {
@@ -1016,21 +1029,19 @@ export async function GET(request: NextRequest) {
       getCampaigns(apiKey)
     ])
 
-    // Calculate total subscribers - always get accurate count from profiles API
-    // List/segment profile_count can be capped or outdated
+    // Calculate total subscribers using list/segment profile_count (fast)
+    // Only fall back to expensive profiles API pagination if all counts are 0
     const largestListCount = listMetrics.lists.length > 0 ? listMetrics.lists[0].profileCount : 0
     const segmentCount = segmentMetrics.totalActiveProfiles || 0
 
     log.debug(`[Klaviyo] List counts: largest=${largestListCount}, segment=${segmentCount}, sum=${listMetrics.totalSubscribers}`)
 
-    // Always fetch from profiles API for accurate count
-    log.debug("[Klaviyo] Fetching accurate profile count from API...")
-    let totalSubscribers = await getTotalProfilesFromAPI(apiKey)
+    let totalSubscribers = largestListCount || segmentCount || listMetrics.totalSubscribers
 
-    // If API count failed, fall back to list/segment count
+    // Only use expensive API pagination as last resort
     if (totalSubscribers === 0) {
-      totalSubscribers = largestListCount || segmentCount || listMetrics.totalSubscribers
-      log.debug(`[Klaviyo] API returned 0, using fallback: ${totalSubscribers}`)
+      log.debug("[Klaviyo] All counts are 0, fetching from profiles API as fallback...")
+      totalSubscribers = await getTotalProfilesFromAPI(apiKey)
     }
 
     log.debug(`[Klaviyo] totalSubscribers: ${totalSubscribers}`)
@@ -1257,6 +1268,9 @@ export async function GET(request: NextRequest) {
         placedOrderMetricId: metricId,
       },
     }
+
+    // Save to cache for future requests
+    await setCache(supabase, storeId, "klaviyo", period, reportData as unknown as Record<string, unknown>)
 
     return NextResponse.json(reportData, { headers: corsHeaders() })
 
