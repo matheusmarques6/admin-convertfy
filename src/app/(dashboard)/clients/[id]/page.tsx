@@ -33,11 +33,6 @@ async function getClient(id: string) {
     .from("clients")
     .select(`
       *,
-      contracts (*),
-      invoices (*),
-      meetings (*),
-      reports (*),
-      activities (*),
       owner:profiles!clients_owner_id_fkey (
         id,
         name,
@@ -147,14 +142,14 @@ export default async function ClientPage({
         <TabsContent value="financial">
           <div className="space-y-6">
             <ClientFinancial clientId={client.id} clientName={client.name} />
-            <ClientContracts contracts={client.contracts || []} />
+            <ClientContracts clientId={client.id} />
           </div>
         </TabsContent>
 
         <TabsContent value="timeline">
           <div className="space-y-6">
-            <ClientTimeline activities={client.activities || []} />
-            <ClientMeetings meetings={client.meetings || []} clientId={client.id} />
+            <ClientTimeline clientId={client.id} />
+            <ClientMeetings clientId={client.id} />
           </div>
         </TabsContent>
 

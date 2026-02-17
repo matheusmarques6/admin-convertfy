@@ -1,15 +1,17 @@
 "use client"
 
-import { Plus, FileText, Calendar } from "lucide-react"
+import { useEffect, useState } from "react"
+import { Plus, FileText, Calendar, Loader2 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { toast } from "@/lib/hooks/use-toast"
+import { createClient } from "@/lib/supabase/client"
 import type { Contract } from "@/types"
 
 interface ClientContractsProps {
-  contracts: Contract[]
+  clientId: string
 }
 
 const statusConfig: Record<
@@ -22,9 +24,37 @@ const statusConfig: Record<
   pending: { label: "Pendente", variant: "warning" },
 }
 
-export function ClientContracts({ contracts }: ClientContractsProps) {
+export function ClientContracts({ clientId }: ClientContractsProps) {
+  const [contracts, setContracts] = useState<Contract[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function loadContracts() {
+      const supabase = createClient()
+      const { data } = await supabase
+        .from("contracts")
+        .select("*")
+        .eq("client_id", clientId)
+        .order("created_at", { ascending: false })
+        .limit(50)
+      setContracts(data || [])
+      setLoading(false)
+    }
+    loadContracts()
+  }, [clientId])
+
   const activeContract = contracts.find((c) => c.status === "active")
   const pastContracts = contracts.filter((c) => c.status !== "active")
+
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="flex items-center justify-center py-12">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </CardContent>
+      </Card>
+    )
+  }
 
   function handleNewContract() {
     toast({

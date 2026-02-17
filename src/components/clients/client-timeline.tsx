@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import {
   UserPlus,
   DollarSign,
@@ -9,15 +10,17 @@ import {
   Edit,
   Tag,
   Mail,
+  Loader2,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { formatDateTime } from "@/lib/utils"
 import { cn } from "@/lib/utils"
+import { createClient } from "@/lib/supabase/client"
 import type { Activity } from "@/types"
 
 interface ClientTimelineProps {
-  activities: Activity[]
+  clientId: string
 }
 
 const activityIcons: Record<string, { icon: React.ElementType; color: string; bg: string }> = {
@@ -34,10 +37,38 @@ const activityIcons: Record<string, { icon: React.ElementType; color: string; bg
   whatsapp_sent: { icon: MessageSquare, color: "text-green-500", bg: "bg-green-500/10" },
 }
 
-export function ClientTimeline({ activities }: ClientTimelineProps) {
+export function ClientTimeline({ clientId }: ClientTimelineProps) {
+  const [activities, setActivities] = useState<Activity[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function loadActivities() {
+      const supabase = createClient()
+      const { data } = await supabase
+        .from("activities")
+        .select("*")
+        .eq("client_id", clientId)
+        .order("created_at", { ascending: false })
+        .limit(100)
+      setActivities(data || [])
+      setLoading(false)
+    }
+    loadActivities()
+  }, [clientId])
+
   const sortedActivities = [...activities].sort(
     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   )
+
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="flex items-center justify-center py-12">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </CardContent>
+      </Card>
+    )
+  }
 
   return (
     <Card>

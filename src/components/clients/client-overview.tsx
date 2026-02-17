@@ -6,12 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { formatCurrency, formatDate, getInitials } from "@/lib/utils"
+import { createClient } from "@/lib/supabase/client"
 import type { Client, Contract, Invoice, Meeting, User as UserType } from "@/types"
 
 interface ClientWithRelations extends Client {
-  contracts?: Contract[]
-  invoices?: Invoice[]
-  meetings?: Meeting[]
   owner?: UserType
 }
 
@@ -31,23 +29,26 @@ export function ClientOverview({ client }: ClientOverviewProps) {
   const [asaasData, setAsaasData] = useState<AsaasFinancialData | null>(null)
   const [isLoadingAsaas, setIsLoadingAsaas] = useState(true)
   const [hasAsaasId, setHasAsaasId] = useState(false)
-
-  const activeContract = client.contracts?.find((c) => c.status === "active")
-
-  // Local invoice data as fallback
-  const localTotalPaid = client.invoices
-    ?.filter((i) => i.status === "paid")
-    ?.reduce((sum, i) => sum + Number(i.amount), 0) || 0
-
-  const localPendingAmount = client.invoices
-    ?.filter((i) => i.status === "pending" || i.status === "overdue")
-    ?.reduce((sum, i) => sum + Number(i.amount), 0) || 0
-
-  const nextMeeting = client.meetings
-    ?.filter((m) => m.status === "scheduled" && new Date(m.scheduled_at) > new Date())
-    ?.sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())[0]
+  const [activeContract, setActiveContract] = useState<Contract | null>(null)
+  const [localTotalPaid, setLocalTotalPaid] = useState(0)
+  const [localPendingAmount, setLocalPendingAmount] = useState(0)
+  const [nextMeeting, setNextMeeting] = useState<Meeting | null>(null)
 
   useEffect(() => {
+    async function loadLocalData() {
+      const supabase = createClient()
+      const [contractsRes, invoicesRes, meetingsRes] = await Promise.all([
+        supabase.from("contracts").select("*").eq("client_id", client.id).eq("status", "active").limit(1),
+        supabase.from("invoices").select("amount, status").eq("client_id", client.id).limit(200),
+        supabase.from("meetings").select("*").eq("client_id", client.id).eq("status", "scheduled").gt("scheduled_at", new Date().toISOString()).order("scheduled_at", { ascending: true }).limit(1),
+      ])
+      setActiveContract(contractsRes.data?.[0] || null)
+      const invoices = invoicesRes.data || []
+      setLocalTotalPaid(invoices.filter(i => i.status === "paid").reduce((sum, i) => sum + Number(i.amount), 0))
+      setLocalPendingAmount(invoices.filter(i => i.status === "pending" || i.status === "overdue").reduce((sum, i) => sum + Number(i.amount), 0))
+      setNextMeeting(meetingsRes.data?.[0] || null)
+    }
+    loadLocalData()
     loadAsaasData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client.id])

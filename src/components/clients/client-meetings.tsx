@@ -1,15 +1,16 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import Link from "next/link"
-import { Plus, Calendar, Video, CheckCircle, XCircle, Clock } from "lucide-react"
+import { Plus, Calendar, Video, CheckCircle, XCircle, Clock, Loader2 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { formatDateTime } from "@/lib/utils"
+import { createClient } from "@/lib/supabase/client"
 import type { Meeting } from "@/types"
 
 interface ClientMeetingsProps {
-  meetings: Meeting[]
   clientId: string
 }
 
@@ -20,7 +21,35 @@ const statusConfig: Record<string, { label: string; variant: "default" | "second
   no_show: { label: "Não Compareceu", variant: "destructive", icon: XCircle },
 }
 
-export function ClientMeetings({ meetings, clientId }: ClientMeetingsProps) {
+export function ClientMeetings({ clientId }: ClientMeetingsProps) {
+  const [meetings, setMeetings] = useState<Meeting[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function loadMeetings() {
+      const supabase = createClient()
+      const { data } = await supabase
+        .from("meetings")
+        .select("*")
+        .eq("client_id", clientId)
+        .order("scheduled_at", { ascending: false })
+        .limit(50)
+      setMeetings(data || [])
+      setLoading(false)
+    }
+    loadMeetings()
+  }, [clientId])
+
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="flex items-center justify-center py-12">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </CardContent>
+      </Card>
+    )
+  }
+
   const now = new Date()
   const upcomingMeetings = meetings
     .filter((m) => m.status === "scheduled" && new Date(m.scheduled_at) > now)
