@@ -14,6 +14,7 @@ import { ClientMeetings } from "@/components/clients/client-meetings"
 import { ClientTimeline } from "@/components/clients/client-timeline"
 import { ClientStores } from "@/components/clients/client-stores"
 import { ClientPortalUsers } from "@/components/clients/client-portal-users"
+import { ClientPerformanceReview } from "@/components/clients/client-performance-review"
 import { getInitials, getHealthScoreColor, getHealthScoreEmoji } from "@/lib/utils"
 
 export const dynamic = "force-dynamic"
@@ -132,7 +133,10 @@ export default async function ClientPage({
         </TabsList>
 
         <TabsContent value="overview">
-          <ClientOverview client={client} />
+          <div className="space-y-6">
+            <ClientOverview client={client} />
+            <ClientPerformanceReview clientId={client.id} />
+          </div>
         </TabsContent>
 
         <TabsContent value="stores">

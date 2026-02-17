@@ -1,0 +1,448 @@
+import { NextRequest } from "next/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
+import { logger } from "@/lib/logger"
+import { getStoreCredentials } from "@/lib/services/credentials.service"
+import {
+  parseDateRange,
+  formatDateStr,
+  klaviyoRequest,
+  getAccountInfo,
+  findPlacedOrderMetric,
+  getTimezoneOffset,
+} from "@/lib/integrations/klaviyo"
+
+const log = logger.child("ClientPerformance")
+
+export const maxDuration = 120
+export const dynamic = "force-dynamic"
+
+interface StorePerformance {
+  storeId: string
+  storeName: string
+  hasKlaviyo: boolean
+  hasShopify: boolean
+  klaviyo: {
+    totalRevenue: number
+    campaignRevenue: number
+    flowRevenue: number
+    totalCampaigns: number
+    sentCampaigns: number
+    totalFlows: number
+    liveFlows: number
+    avgOpenRate: number
+    avgClickRate: number
+    recentCampaigns: Array<{
+      name: string
+      sendTime: string
+      recipients: number
+      openRate: number
+      clickRate: number
+      revenue: number
+    }>
+    topFlows: Array<{
+      name: string
+      status: string
+      revenue: number
+      openRate: number
+      clickRate: number
+    }>
+  } | null
+  shopify: {
+    totalRevenue: number
+    totalOrders: number
+    averageOrderValue: number
+    totalCustomers: number
+    recurringCustomerRate: number
+  } | null
+}
+
+/**
+ * GET /api/clients/[id]/performance
+ *
+ * Aggregates performance data across all stores for a client.
+ * Accepts period: today, yesterday, 7d, 15d, 30d (default: 30d)
+ */
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const supabase = await createClient()
+    const adminClient = createAdminClient()
+    await requireAuth(supabase)
+
+    const { id: clientId } = await params
+    const { searchParams } = new URL(request.url)
+    const period = searchParams.get("period") || "30d"
+
+    // Validate period
+    const validPeriods = ["today", "yesterday", "7d", "15d", "30d"]
+    if (!validPeriods.includes(period)) {
+      throw new AppError(`Período inválido: ${period}. Use: ${validPeriods.join(", ")}`, 400)
+    }
+
+    // Verify user has access to this client (RLS enforced)
+    const { data: client, error: clientError } = await supabase
+      .from("clients")
+      .select("id")
+      .eq("id", clientId)
+      .single()
+
+    if (clientError || !client) {
+      throw new AppError("Cliente não encontrado ou acesso negado", 404)
+    }
+
+    // Get client stores (admin client for credential check flags only)
+    const { data: stores, error: storesError } = await adminClient
+      .from("client_stores")
+      .select("id, store_name, klaviyo_api_key, klaviyo_private_key, shopify_store_domain, shopify_access_token")
+      .eq("client_id", clientId)
+      .eq("is_active", true)
+
+    if (storesError) throw storesError
+    if (!stores || stores.length === 0) {
+      return successResponse(request, {
+        period,
+        stores: [],
+        totals: emptyTotals(),
+        billing: { totalPaid: 0, totalPending: 0, totalOverdue: 0 },
+      })
+    }
+
+    // Calculate date range
+    const { startDate, endDate } = parseDateRange(period)
+    const startDateStr = formatDateStr(startDate)
+    const endDateStr = formatDateStr(endDate)
+
+    // Fetch performance data for each store in parallel
+    const storePromises = stores.map(async (store): Promise<StorePerformance> => {
+      const hasKlaviyo = !!(store.klaviyo_private_key || store.klaviyo_api_key)
+      const hasShopify = !!(store.shopify_store_domain && store.shopify_access_token)
+
+      let klaviyoData: StorePerformance["klaviyo"] = null
+      let shopifyData: StorePerformance["shopify"] = null
+
+      // Fetch Klaviyo data
+      if (hasKlaviyo) {
+        try {
+          const storeData = await getStoreCredentials(store.id)
+          const apiKey = storeData.klaviyo_private_key || storeData.klaviyo_api_key
+          if (apiKey) {
+            klaviyoData = await fetchKlaviyoPerformance(apiKey, startDateStr, endDateStr)
+          }
+        } catch (err) {
+          log.warn("Failed to fetch Klaviyo data for store", { storeId: store.id, error: err })
+        }
+      }
+
+      // Fetch Shopify data via internal API
+      if (hasShopify) {
+        try {
+          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+          const shopifyRes = await fetch(
+            `${baseUrl}/api/integrations/shopify/report?store_id=${store.id}&period=${period}`,
+            { headers: { cookie: request.headers.get("cookie") || "" } }
+          )
+          if (shopifyRes.ok) {
+            const shopifyJson = await shopifyRes.json()
+            const d = shopifyJson.data || shopifyJson
+            if (d.connected && d.summary) {
+              shopifyData = {
+                totalRevenue: d.summary.totalRevenue || 0,
+                totalOrders: d.summary.totalOrders || 0,
+                averageOrderValue: d.summary.averageOrderValue || 0,
+                totalCustomers: d.summary.totalCustomers || 0,
+                recurringCustomerRate: d.summary.recurringCustomerRate || 0,
+              }
+            }
+          }
+        } catch (err) {
+          log.warn("Failed to fetch Shopify data for store", { storeId: store.id, error: err })
+        }
+      }
+
+      return {
+        storeId: store.id,
+        storeName: store.store_name,
+        hasKlaviyo,
+        hasShopify,
+        klaviyo: klaviyoData,
+        shopify: shopifyData,
+      }
+    })
+
+    const storeResults = await Promise.all(storePromises)
+
+    // Aggregate billing data
+    const billing = await fetchBillingData(adminClient, clientId, startDate, endDate)
+
+    // Calculate totals across all stores
+    const totals = aggregateTotals(storeResults)
+
+    return successResponse(request, {
+      period,
+      dateRange: { start: startDateStr, end: endDateStr },
+      stores: storeResults,
+      totals,
+      billing,
+    })
+  } catch (error) {
+    log.error("Error fetching client performance", error)
+    return errorResponse(request, error, "ClientPerformance")
+  }
+}
+
+async function fetchKlaviyoPerformance(
+  apiKey: string,
+  startDate: string,
+  endDate: string
+): Promise<StorePerformance["klaviyo"]> {
+  // Get account info for timezone
+  const accountInfo = await getAccountInfo(apiKey)
+  const timezone = accountInfo?.timezone || "America/Sao_Paulo"
+  const tzOffset = getTimezoneOffset(timezone)
+
+  const startISO = `${startDate}T00:00:00${tzOffset}`
+  const endISO = `${endDate}T23:59:59${tzOffset}`
+
+  // Find Placed Order metric for revenue
+  const placedOrderMetric = await findPlacedOrderMetric(apiKey)
+
+  // Fetch campaign and flow reports in parallel
+  const [campaignReport, flowReport] = await Promise.all([
+    klaviyoRequest<KlaviyoCampaignReport>(apiKey, "campaign-values-reports/", {
+      method: "POST",
+      body: {
+        data: {
+          type: "campaign-values-report",
+          attributes: {
+            statistics: [
+              "recipients", "delivered", "open_rate", "click_rate",
+              "conversion_rate", "conversion_value", "revenue_per_recipient",
+            ],
+            timeframe: { start: startISO, end: endISO },
+            ...(placedOrderMetric ? { conversion_metric_id: placedOrderMetric } : {}),
+          },
+        },
+      },
+    }),
+    klaviyoRequest<KlaviyoFlowReport>(apiKey, "flow-values-reports/", {
+      method: "POST",
+      body: {
+        data: {
+          type: "flow-values-report",
+          attributes: {
+            statistics: [
+              "recipients", "delivered", "open_rate", "click_rate",
+              "conversion_rate", "conversion_value", "revenue_per_recipient",
+            ],
+            timeframe: { start: startISO, end: endISO },
+            ...(placedOrderMetric ? { conversion_metric_id: placedOrderMetric } : {}),
+          },
+        },
+      },
+    }),
+  ])
+
+  // Parse campaign results
+  const campaignResults = campaignReport?.data?.attributes?.results || []
+  const flowResults = flowReport?.data?.attributes?.results || []
+
+  let campaignRevenue = 0
+  let flowRevenue = 0
+  let totalCampaignRecipients = 0
+  let totalFlowRecipients = 0
+  let campaignOpenRateSum = 0
+  let campaignClickRateSum = 0
+  let campaignCount = 0
+
+  const recentCampaigns: StorePerformance["klaviyo"] extends null ? never : NonNullable<StorePerformance["klaviyo"]>["recentCampaigns"] = []
+
+  for (const r of campaignResults) {
+    const stats = r.statistics || {}
+    const rev = Number(stats.conversion_value) || 0
+    const recip = Number(stats.recipients) || 0
+    campaignRevenue += rev
+    totalCampaignRecipients += recip
+    if (stats.open_rate) { campaignOpenRateSum += Number(stats.open_rate); campaignCount++ }
+    if (stats.click_rate) { campaignClickRateSum += Number(stats.click_rate); campaignCount++ }
+
+    recentCampaigns.push({
+      name: r.groupings?.campaign_name || r.groupings?.["campaign_name"] || "Campaign",
+      sendTime: r.groupings?.send_time || "",
+      recipients: recip,
+      openRate: Number(stats.open_rate) || 0,
+      clickRate: Number(stats.click_rate) || 0,
+      revenue: rev,
+    })
+  }
+
+  // Sort campaigns by revenue desc, take top 5
+  recentCampaigns.sort((a, b) => b.revenue - a.revenue)
+  const topCampaigns = recentCampaigns.slice(0, 5)
+
+  const topFlows: NonNullable<StorePerformance["klaviyo"]>["topFlows"] = []
+  for (const r of flowResults) {
+    const stats = r.statistics || {}
+    const rev = Number(stats.conversion_value) || 0
+    const recip = Number(stats.recipients) || 0
+    flowRevenue += rev
+    totalFlowRecipients += recip
+
+    topFlows.push({
+      name: r.groupings?.flow_name || r.groupings?.["flow_name"] || "Flow",
+      status: "live",
+      revenue: rev,
+      openRate: Number(stats.open_rate) || 0,
+      clickRate: Number(stats.click_rate) || 0,
+    })
+  }
+
+  topFlows.sort((a, b) => b.revenue - a.revenue)
+
+  const totalRecipients = totalCampaignRecipients + totalFlowRecipients
+  const avgOpenRate = campaignCount > 0 ? campaignOpenRateSum / campaignCount : 0
+  const avgClickRate = campaignCount > 0 ? campaignClickRateSum / campaignCount : 0
+
+  return {
+    totalRevenue: campaignRevenue + flowRevenue,
+    campaignRevenue,
+    flowRevenue,
+    totalCampaigns: campaignResults.length,
+    sentCampaigns: campaignResults.length,
+    totalFlows: flowResults.length,
+    liveFlows: flowResults.length,
+    avgOpenRate,
+    avgClickRate,
+    recentCampaigns: topCampaigns,
+    topFlows: topFlows.slice(0, 5),
+  }
+}
+
+async function fetchBillingData(
+  adminClient: ReturnType<typeof createAdminClient>,
+  clientId: string,
+  startDate: Date,
+  endDate: Date
+) {
+  const startStr = startDate.toISOString().split("T")[0]
+  const endStr = endDate.toISOString().split("T")[0]
+
+  // Fetch invoices and local charges in parallel
+  const [invoicesRes, chargesRes] = await Promise.all([
+    adminClient
+      .from("invoices")
+      .select("amount, status")
+      .eq("client_id", clientId)
+      .gte("due_date", startStr)
+      .lte("due_date", endStr),
+    adminClient
+      .from("client_charges")
+      .select("value, status")
+      .eq("client_id", clientId)
+      .gte("due_date", startStr)
+      .lte("due_date", endStr),
+  ])
+
+  const invoices = invoicesRes.data || []
+  const charges = chargesRes.data || []
+
+  const totalPaid =
+    invoices.filter(i => i.status === "paid").reduce((s, i) => s + Number(i.amount), 0) +
+    charges.filter(c => c.status === "paid").reduce((s, c) => s + Number(c.value), 0)
+
+  const totalPending =
+    invoices.filter(i => i.status === "pending").reduce((s, i) => s + Number(i.amount), 0) +
+    charges.filter(c => c.status === "pending").reduce((s, c) => s + Number(c.value), 0)
+
+  const totalOverdue =
+    invoices.filter(i => i.status === "overdue").reduce((s, i) => s + Number(i.amount), 0) +
+    charges.filter(c => c.status === "overdue").reduce((s, c) => s + Number(c.value), 0)
+
+  return { totalPaid, totalPending, totalOverdue }
+}
+
+function aggregateTotals(stores: StorePerformance[]) {
+  let klaviyoRevenue = 0
+  let campaignRevenue = 0
+  let flowRevenue = 0
+  let totalCampaigns = 0
+  let totalFlows = 0
+  let shopifyRevenue = 0
+  let shopifyOrders = 0
+  let shopifyCustomers = 0
+  let openRateSum = 0
+  let clickRateSum = 0
+  let rateCount = 0
+
+  for (const store of stores) {
+    if (store.klaviyo) {
+      klaviyoRevenue += store.klaviyo.totalRevenue
+      campaignRevenue += store.klaviyo.campaignRevenue
+      flowRevenue += store.klaviyo.flowRevenue
+      totalCampaigns += store.klaviyo.sentCampaigns
+      totalFlows += store.klaviyo.liveFlows
+      if (store.klaviyo.avgOpenRate > 0) {
+        openRateSum += store.klaviyo.avgOpenRate
+        clickRateSum += store.klaviyo.avgClickRate
+        rateCount++
+      }
+    }
+    if (store.shopify) {
+      shopifyRevenue += store.shopify.totalRevenue
+      shopifyOrders += store.shopify.totalOrders
+      shopifyCustomers += store.shopify.totalCustomers
+    }
+  }
+
+  return {
+    klaviyoRevenue,
+    campaignRevenue,
+    flowRevenue,
+    shopifyRevenue,
+    shopifyOrders,
+    shopifyCustomers,
+    totalCampaigns,
+    totalFlows,
+    avgOpenRate: rateCount > 0 ? openRateSum / rateCount : 0,
+    avgClickRate: rateCount > 0 ? clickRateSum / rateCount : 0,
+  }
+}
+
+function emptyTotals() {
+  return {
+    klaviyoRevenue: 0,
+    campaignRevenue: 0,
+    flowRevenue: 0,
+    shopifyRevenue: 0,
+    shopifyOrders: 0,
+    shopifyCustomers: 0,
+    totalCampaigns: 0,
+    totalFlows: 0,
+    avgOpenRate: 0,
+    avgClickRate: 0,
+  }
+}
+
+// Klaviyo report response types
+interface KlaviyoReportResult {
+  groupings?: Record<string, string>
+  statistics?: Record<string, number | string>
+}
+
+interface KlaviyoCampaignReport {
+  data?: {
+    attributes?: {
+      results?: KlaviyoReportResult[]
+    }
+  }
+}
+
+interface KlaviyoFlowReport {
+  data?: {
+    attributes?: {
+      results?: KlaviyoReportResult[]
+    }
+  }
+}

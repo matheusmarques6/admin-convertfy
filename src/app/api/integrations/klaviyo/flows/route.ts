@@ -246,6 +246,95 @@ export async function GET(request: NextRequest) {
       throw new AppError("store_id é obrigatório", 400)
     }
 
+    // Calculate date range first (needed for cache check)
+    const { startDate, endDate } = parseDateRange(period, customStartDate, customEndDate)
+    const startDateStr = formatDateStr(startDate)
+    const endDateStr = formatDateStr(endDate)
+
+    // Read-first: check structured cache (klaviyo_flow_metrics)
+    const forceRefresh = searchParams.get("force_refresh") === "true"
+    if (!forceRefresh) {
+      const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString()
+      const { data: cachedMetrics } = await supabase
+        .from("klaviyo_flow_metrics")
+        .select("*")
+        .eq("store_id", storeId)
+        .eq("period_start", startDateStr)
+        .eq("period_end", endDateStr)
+        .gt("fetched_at", thirtyMinAgo)
+
+      if (cachedMetrics && cachedMetrics.length > 0) {
+        log.info(`[Cache HIT] Returning ${cachedMetrics.length} flows from structured cache`)
+
+        const flowsWithMetrics = cachedMetrics.map(row => ({
+          id: row.flow_id,
+          name: row.flow_name,
+          status: row.flow_status,
+          triggerType: row.trigger_type,
+          created: row.created || "",
+          recipients: row.recipients || 0,
+          delivered: row.delivered || 0,
+          deliveryRate: row.delivery_rate || 0,
+          opened: row.opened || 0,
+          openRate: row.open_rate || 0,
+          clicked: row.clicked || 0,
+          clickRate: row.click_rate || 0,
+          clickToOpenRate: row.click_to_open_rate || 0,
+          conversions: row.conversions || 0,
+          conversionRate: row.conversion_rate || 0,
+          conversionValue: row.conversion_value || 0,
+          revenuePerRecipient: row.revenue_per_recipient || 0,
+          averageOrderValue: row.average_order_value || 0,
+          bounced: row.bounced || 0,
+          bounceRate: row.bounce_rate || 0,
+          unsubscribed: row.unsubscribed || 0,
+          unsubscribeRate: row.unsubscribe_rate || 0,
+        })).sort((a, b) => b.conversionValue - a.conversionValue)
+
+        const totals = flowsWithMetrics.reduce((acc, flow) => ({
+          totalFlows: acc.totalFlows + 1,
+          liveFlows: acc.liveFlows + (flow.status === 'live' ? 1 : 0),
+          draftFlows: acc.draftFlows + (flow.status === 'draft' ? 1 : 0),
+          manualFlows: acc.manualFlows + (flow.status === 'manual' ? 1 : 0),
+          totalRecipients: acc.totalRecipients + flow.recipients,
+          totalDelivered: acc.totalDelivered + flow.delivered,
+          totalOpened: acc.totalOpened + flow.opened,
+          totalClicked: acc.totalClicked + flow.clicked,
+          totalConversions: acc.totalConversions + flow.conversions,
+          totalRevenue: acc.totalRevenue + flow.conversionValue,
+          totalBounced: acc.totalBounced + flow.bounced,
+          totalUnsubscribed: acc.totalUnsubscribed + flow.unsubscribed
+        }), {
+          totalFlows: 0, liveFlows: 0, draftFlows: 0, manualFlows: 0,
+          totalRecipients: 0, totalDelivered: 0, totalOpened: 0, totalClicked: 0,
+          totalConversions: 0, totalRevenue: 0, totalBounced: 0, totalUnsubscribed: 0
+        })
+
+        const avgOpenRate = totals.totalDelivered > 0 ? (totals.totalOpened / totals.totalDelivered) * 100 : 0
+        const avgClickRate = totals.totalDelivered > 0 ? (totals.totalClicked / totals.totalDelivered) * 100 : 0
+        const avgConversionRate = totals.totalDelivered > 0 ? (totals.totalConversions / totals.totalDelivered) * 100 : 0
+        const avgBounceRate = totals.totalRecipients > 0 ? (totals.totalBounced / totals.totalRecipients) * 100 : 0
+
+        return NextResponse.json({
+          success: true,
+          _cached: true,
+          _cachedAt: cachedMetrics[0].fetched_at,
+          period: { start: startDateStr, end: endDateStr, label: period },
+          summary: {
+            ...totals,
+            avgOpenRate: Math.round(avgOpenRate * 100) / 100,
+            avgClickRate: Math.round(avgClickRate * 100) / 100,
+            avgConversionRate: Math.round(avgConversionRate * 100) / 100,
+            avgBounceRate: Math.round(avgBounceRate * 100) / 100,
+            revenuePerRecipient: totals.totalRecipients > 0
+              ? Math.round((totals.totalRevenue / totals.totalRecipients) * 100) / 100
+              : 0
+          },
+          flows: flowsWithMetrics
+        }, { headers: corsHeaders() })
+      }
+    }
+
     const storeData = await getStoreCredentials(storeId)
     const apiKey = storeData.klaviyo_private_key || storeData.klaviyo_api_key
     if (!apiKey) {
@@ -257,11 +346,6 @@ export async function GET(request: NextRequest) {
     // Get account info for timezone
     const accountInfo = await getAccountInfo(apiKey)
     const timezoneOffset = getTimezoneOffset(accountInfo.timezone)
-
-    // Calculate date range
-    const { startDate, endDate } = parseDateRange(period, customStartDate, customEndDate)
-    const startDateStr = formatDateStr(startDate)
-    const endDateStr = formatDateStr(endDate)
 
     // Fetch data in parallel
     const [flows, metricId] = await Promise.all([

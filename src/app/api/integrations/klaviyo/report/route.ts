@@ -1068,12 +1068,119 @@ export async function GET(request: NextRequest) {
     const timezoneOffset = getTimezoneOffset(accountInfo.timezone)
     log.debug(`[Klaviyo] Using timezone offset: ${timezoneOffset} (from ${accountInfo.timezone})`)
 
-    // Get reporting data - query ALL flows and campaigns at once (no filtering)
-    // This matches Klaviyo dashboard behavior for the selected period
-    const [flowReport, campaignReport] = await Promise.all([
-      getFlowValuesReport(apiKey, metricId, startDateStr, endDateStr, timezoneOffset),
-      getCampaignValuesReport(apiKey, metricId, startDateStr, endDateStr, timezoneOffset)
+    // Check structured tables for recent flow/campaign data before hitting API
+    const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString()
+    const [cachedFlowRows, cachedCampaignRows] = await Promise.all([
+      supabase
+        .from("klaviyo_flow_metrics")
+        .select("*")
+        .eq("store_id", storeId)
+        .eq("period_start", startDateStr)
+        .eq("period_end", endDateStr)
+        .gt("fetched_at", thirtyMinAgo),
+      supabase
+        .from("klaviyo_campaign_metrics")
+        .select("*")
+        .eq("store_id", storeId)
+        .eq("period_start", startDateStr)
+        .eq("period_end", endDateStr)
+        .gt("fetched_at", thirtyMinAgo)
     ])
+
+    const hasFlowCache = cachedFlowRows.data && cachedFlowRows.data.length > 0
+    const hasCampaignCache = cachedCampaignRows.data && cachedCampaignRows.data.length > 0
+
+    let flowReport
+    let campaignReport
+
+    if (hasFlowCache && hasCampaignCache) {
+      log.debug(`[Klaviyo] Using structured cache: ${cachedFlowRows.data!.length} flows, ${cachedCampaignRows.data!.length} campaigns`)
+
+      // Build flowReport from cached rows
+      const flowRows = cachedFlowRows.data!
+      const flowTotalRevenue = flowRows.reduce((s, r) => s + (r.conversion_value || 0), 0)
+      const flowTotalConversions = flowRows.reduce((s, r) => s + (r.conversions || 0), 0)
+      const flowTotalDelivered = flowRows.reduce((s, r) => s + (r.delivered || 0), 0)
+      const flowTotalOpens = flowRows.reduce((s, r) => s + (r.opened || 0), 0)
+      const flowTotalClicks = flowRows.reduce((s, r) => s + (r.clicked || 0), 0)
+      const flowAvgBounceRate = flowRows.length > 0 ? flowRows.reduce((s, r) => s + (r.bounce_rate || 0), 0) / flowRows.length : 0
+      const flowAvgUnsubRate = flowRows.length > 0 ? flowRows.reduce((s, r) => s + (r.unsubscribe_rate || 0), 0) / flowRows.length : 0
+
+      flowReport = {
+        totalRevenue: flowTotalRevenue,
+        totalConversions: flowTotalConversions,
+        totalDelivered: flowTotalDelivered,
+        totalOpens: flowTotalOpens,
+        totalClicks: flowTotalClicks,
+        avgBounceRate: flowAvgBounceRate,
+        avgUnsubscribeRate: flowAvgUnsubRate,
+        flows: flowRows.map(r => ({
+          flowId: r.flow_id,
+          revenue: r.conversion_value || 0,
+          conversions: r.conversions || 0,
+          delivered: r.delivered || 0,
+          opens: r.opened || 0,
+          clicks: r.clicked || 0,
+          openRate: r.open_rate || 0,
+          clickRate: r.click_rate || 0,
+          bounceRate: r.bounce_rate || 0,
+          unsubscribeRate: r.unsubscribe_rate || 0,
+        })),
+        stats: {
+          openRate: flowTotalDelivered > 0 ? (flowTotalOpens / flowTotalDelivered) * 100 : 0,
+          clickRate: flowTotalDelivered > 0 ? (flowTotalClicks / flowTotalDelivered) * 100 : 0,
+          bounceRate: flowAvgBounceRate,
+          unsubscribeRate: flowAvgUnsubRate,
+        }
+      }
+
+      // Build campaignReport from cached rows
+      const campRows = cachedCampaignRows.data!
+      const campTotalRevenue = campRows.reduce((s, r) => s + (r.conversion_value || 0), 0)
+      const campTotalConversions = campRows.reduce((s, r) => s + (r.conversions || 0), 0)
+      const campTotalDelivered = campRows.reduce((s, r) => s + (r.delivered || 0), 0)
+      const campTotalOpens = campRows.reduce((s, r) => s + (r.opened || 0), 0)
+      const campTotalClicks = campRows.reduce((s, r) => s + (r.clicked || 0), 0)
+      const campAvgBounceRate = campRows.length > 0 ? campRows.reduce((s, r) => s + (r.bounce_rate || 0), 0) / campRows.length : 0
+      const campAvgUnsubRate = campRows.length > 0 ? campRows.reduce((s, r) => s + (r.unsubscribe_rate || 0), 0) / campRows.length : 0
+
+      campaignReport = {
+        totalRevenue: campTotalRevenue,
+        totalConversions: campTotalConversions,
+        totalDelivered: campTotalDelivered,
+        totalOpens: campTotalOpens,
+        totalClicks: campTotalClicks,
+        avgBounceRate: campAvgBounceRate,
+        avgUnsubscribeRate: campAvgUnsubRate,
+        campaigns: campRows.map(r => ({
+          campaignId: r.campaign_id,
+          revenue: r.conversion_value || 0,
+          conversions: r.conversions || 0,
+          delivered: r.delivered || 0,
+          opens: r.opened || 0,
+          clicks: r.clicked || 0,
+          openRate: r.open_rate || 0,
+          clickRate: r.click_rate || 0,
+          bounceRate: r.bounce_rate || 0,
+          unsubscribeRate: r.unsubscribe_rate || 0,
+        })),
+        stats: {
+          openRate: campTotalDelivered > 0 ? (campTotalOpens / campTotalDelivered) * 100 : 0,
+          clickRate: campTotalDelivered > 0 ? (campTotalClicks / campTotalDelivered) * 100 : 0,
+          bounceRate: campAvgBounceRate,
+          unsubscribeRate: campAvgUnsubRate,
+        }
+      }
+    } else {
+      // Get reporting data from Klaviyo API
+      log.debug("[Klaviyo] No structured cache, fetching from API...")
+      const [fr, cr] = await Promise.all([
+        getFlowValuesReport(apiKey, metricId, startDateStr, endDateStr, timezoneOffset),
+        getCampaignValuesReport(apiKey, metricId, startDateStr, endDateStr, timezoneOffset)
+      ])
+      flowReport = fr
+      campaignReport = cr
+    }
 
     // Merge flow data with names
     const flowsWithNames = flowReport.flows.map(fr => {

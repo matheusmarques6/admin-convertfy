@@ -90,6 +90,36 @@ export async function setCache(
 }
 
 /**
+ * Delete all expired entries from dashboard_cache.
+ * Called by cron job to keep the table clean.
+ */
+export async function cleanExpiredCache(
+  supabase: SupabaseClient
+): Promise<number> {
+  try {
+    const { data, error } = await supabase
+      .from("dashboard_cache")
+      .delete()
+      .lt("expires_at", new Date().toISOString())
+      .select("store_id")
+
+    if (error) {
+      log.warn("[Cache CLEANUP FAILED]:", error)
+      return 0
+    }
+
+    const count = data?.length || 0
+    if (count > 0) {
+      log.debug(`[Cache CLEANUP] Removed ${count} expired entries`)
+    }
+    return count
+  } catch (error) {
+    log.warn("[Cache CLEANUP ERROR]:", error)
+    return 0
+  }
+}
+
+/**
  * Invalidate cache entries for a specific store and type.
  */
 export async function invalidateCache(
