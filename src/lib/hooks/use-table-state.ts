@@ -5,7 +5,7 @@ type SortDirection = "asc" | "desc" | null
 interface UseTableStateOptions<T> {
   data: T[]
   pageSize?: number
-  initialSortKey?: string
+  initialSortKey?: string | null
   initialSortDir?: SortDirection
   searchFields?: (keyof T)[]
 }

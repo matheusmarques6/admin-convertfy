@@ -1,5 +1,5 @@
 import { Zap, Send, MessageSquare, BarChart3 } from "lucide-react"
-import { formatCurrency, formatCurrencyCompact } from "@/lib/utils/format"
+import { formatCurrency } from "@/lib/utils/format"
 import { ChannelCard, SimpleLineChart } from "./components"
 import type { KlaviyoData, ShopifyData } from "./types"
 
