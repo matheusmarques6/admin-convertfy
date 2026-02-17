@@ -70,12 +70,12 @@ export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps)
                   className="flex items-start gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
                 >
                   <div className={`rounded-lg p-2 ${
-                    alert.severity === "high" ? "bg-red-500/10" :
-                    alert.severity === "medium" ? "bg-amber-500/10" : "bg-muted"
+                    alert.severity === "high" ? "bg-destructive/10" :
+                    alert.severity === "medium" ? "bg-warning/10" : "bg-muted"
                   }`}>
                     <Icon className={`h-4 w-4 ${
-                      alert.severity === "high" ? "text-red-500" :
-                      alert.severity === "medium" ? "text-amber-500" : "text-muted-foreground"
+                      alert.severity === "high" ? "text-destructive" :
+                      alert.severity === "medium" ? "text-warning" : "text-muted-foreground"
                     }`} />
                   </div>
                   <div className="flex-1 min-w-0">

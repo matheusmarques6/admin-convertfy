@@ -1,0 +1,1617 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Convertfy Admin - Design System Preview</title>
+<style>
+  /* ============================================ */
+  /* RESET & BASE                                 */
+  /* ============================================ */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background: #f3f4f6;
+    color: #1f2937;
+    line-height: 1.5;
+  }
+
+  /* ============================================ */
+  /* NAVIGATION                                   */
+  /* ============================================ */
+  .top-nav {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: #1f2937;
+    color: white;
+    padding: 12px 24px;
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  }
+  .top-nav h1 { font-size: 16px; font-weight: 700; }
+  .top-nav a {
+    color: #93c5fd;
+    text-decoration: none;
+    font-size: 13px;
+    padding: 4px 12px;
+    border-radius: 6px;
+    transition: background 0.15s;
+  }
+  .top-nav a:hover { background: rgba(255,255,255,0.1); }
+  .top-nav .toggle-dark {
+    margin-left: auto;
+    background: #374151;
+    border: 1px solid #4b5563;
+    color: white;
+    padding: 6px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+
+  /* ============================================ */
+  /* LAYOUT                                       */
+  /* ============================================ */
+  .container { max-width: 1400px; margin: 0 auto; padding: 32px 24px; }
+
+  .section {
+    margin-bottom: 48px;
+    background: white;
+    border-radius: 12px;
+    padding: 32px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  .section-title {
+    font-size: 24px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    color: #111827;
+  }
+  .section-subtitle {
+    font-size: 14px;
+    color: #6b7280;
+    margin-bottom: 24px;
+  }
+
+  .compare-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+  .compare-col {
+    border: 2px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 24px;
+    position: relative;
+  }
+  .compare-col.current { border-color: #fca5a5; }
+  .compare-col.proposed { border-color: #86efac; }
+  .compare-label {
+    position: absolute;
+    top: -12px;
+    left: 16px;
+    padding: 2px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .compare-label.bad { background: #fef2f2; color: #dc2626; border: 1px solid #fca5a5; }
+  .compare-label.good { background: #f0fdf4; color: #16a34a; border: 1px solid #86efac; }
+
+  /* ============================================ */
+  /* 1. COLOR PALETTE                             */
+  /* ============================================ */
+  .color-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 12px;
+  }
+  .color-swatch {
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid #e5e7eb;
+  }
+  .color-swatch .preview {
+    height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 600;
+    color: white;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+  }
+  .color-swatch .info {
+    padding: 8px 10px;
+    background: white;
+  }
+  .color-swatch .info .name {
+    font-size: 12px;
+    font-weight: 600;
+    color: #374151;
+  }
+  .color-swatch .info .hex {
+    font-size: 11px;
+    color: #9ca3af;
+    font-family: 'Courier New', monospace;
+  }
+  .color-swatch .info .issue {
+    font-size: 10px;
+    color: #dc2626;
+    margin-top: 2px;
+    font-weight: 500;
+  }
+
+  /* ============================================ */
+  /* 2. TYPOGRAPHY                                */
+  /* ============================================ */
+  .typo-row {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    padding: 12px 0;
+    border-bottom: 1px solid #f3f4f6;
+  }
+  .typo-row:last-child { border-bottom: none; }
+  .typo-meta {
+    width: 140px;
+    flex-shrink: 0;
+    font-size: 12px;
+    color: #9ca3af;
+    font-family: 'Courier New', monospace;
+  }
+  .typo-sample { flex: 1; }
+
+  /* ============================================ */
+  /* 3. BUTTONS                                   */
+  /* ============================================ */
+  .btn-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    transition: all 0.15s ease-out;
+    white-space: nowrap;
+  }
+  .btn:hover { opacity: 0.9; transform: translateY(-1px); }
+  .btn-xs { height: 28px; padding: 0 10px; font-size: 12px; }
+  .btn-sm { height: 36px; padding: 0 12px; }
+  .btn-md { height: 40px; padding: 0 16px; }
+  .btn-lg { height: 44px; padding: 0 24px; }
+  .btn-xl { height: 52px; padding: 0 32px; font-size: 16px; }
+
+  /* Current buttons */
+  .btn-primary-current { background: #4E8FFF; color: white; }
+  .btn-secondary-current { background: #F2F4F9; color: #1f2937; }
+  .btn-destructive-current { background: #F94C4C; color: white; }
+  .btn-outline-current { background: transparent; border: 1px solid #E5E7EB; color: #1f2937; }
+  .btn-ghost-current { background: transparent; color: #1f2937; }
+  .btn-ghost-current:hover { background: #F2F4F9; }
+
+  /* Proposed buttons */
+  .btn-primary-proposed { background: #4E8FFF; color: white; box-shadow: 0 1px 3px rgba(78,143,255,0.3); }
+  .btn-primary-proposed:hover { background: #3a7de8; box-shadow: 0 4px 12px rgba(78,143,255,0.3); }
+  .btn-secondary-proposed { background: #E5E7EB; color: #374151; }
+  .btn-secondary-proposed:hover { background: #d1d5db; }
+  .btn-destructive-proposed { background: #EF4444; color: white; box-shadow: 0 1px 3px rgba(239,68,68,0.3); }
+  .btn-outline-proposed { background: transparent; border: 1px solid #d1d5db; color: #374151; }
+  .btn-outline-proposed:hover { background: #f9fafb; border-color: #9ca3af; }
+  .btn-ghost-proposed { background: transparent; color: #374151; }
+  .btn-ghost-proposed:hover { background: #f3f4f6; }
+  .btn-success-proposed { background: #10B981; color: white; box-shadow: 0 1px 3px rgba(16,185,129,0.3); }
+  .btn-warning-proposed { background: #F59E0B; color: white; }
+  .btn-loading { position: relative; color: transparent !important; pointer-events: none; }
+  .btn-loading::after {
+    content: '';
+    position: absolute;
+    width: 16px; height: 16px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ============================================ */
+  /* 4. CARDS & METRICS                           */
+  /* ============================================ */
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+  }
+  .metric-card {
+    border-radius: 10px;
+    padding: 20px;
+    border: 1px solid #e5e7eb;
+    background: white;
+  }
+  .metric-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+  .metric-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: #6b7280;
+  }
+  .metric-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+  }
+  .metric-value {
+    font-size: 28px;
+    font-weight: 700;
+    color: #111827;
+    letter-spacing: -0.02em;
+  }
+  .metric-change {
+    font-size: 12px;
+    margin-top: 4px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .metric-change.positive { color: #10b981; }
+  .metric-change.negative { color: #ef4444; }
+
+  /* Current hardcoded colors */
+  .icon-emerald { background: rgba(16,185,129,0.1); color: #10b981; }
+  .icon-blue { background: rgba(59,130,246,0.1); color: #3b82f6; }
+  .icon-purple { background: rgba(139,92,246,0.1); color: #8b5cf6; }
+  .icon-amber { background: rgba(245,158,11,0.1); color: #f59e0b; }
+
+  /* Proposed semantic colors */
+  .icon-semantic-revenue { background: hsl(160 84% 39% / 0.1); color: hsl(160 84% 39%); }
+  .icon-semantic-clients { background: hsl(222 97% 61% / 0.1); color: hsl(222 97% 61%); }
+  .icon-semantic-pipeline { background: hsl(38 92% 50% / 0.1); color: hsl(38 92% 50%); }
+  .icon-semantic-pending { background: hsl(220 9% 46% / 0.1); color: hsl(220 9% 46%); }
+
+  .metric-card-proposed {
+    border: 1px solid #e5e7eb;
+    background: white;
+    border-radius: 12px;
+    padding: 20px;
+    transition: all 0.15s ease-out;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  }
+  .metric-card-proposed:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    border-color: #d1d5db;
+  }
+
+  /* ============================================ */
+  /* 5. TABLE                                     */
+  /* ============================================ */
+  .table-wrapper {
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+  thead th {
+    text-align: left;
+    padding: 12px 16px;
+    font-weight: 500;
+    color: #6b7280;
+    font-size: 13px;
+    border-bottom: 1px solid #e5e7eb;
+    background: #f9fafb;
+  }
+  tbody td {
+    padding: 12px 16px;
+    border-bottom: 1px solid #f3f4f6;
+  }
+  /* Current: hover nearly invisible */
+  .table-current tbody tr:hover { background: rgba(242,244,249,0.5); }
+  /* Proposed: clear hover */
+  .table-proposed tbody tr { transition: background 0.15s ease-out; }
+  .table-proposed tbody tr:hover {
+    background: #f3f4f6;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,0.03);
+  }
+
+  /* Status badges */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .badge-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+  }
+  .badge-active { background: #ecfdf5; color: #059669; }
+  .badge-active .badge-dot { background: #10b981; }
+  .badge-pending { background: #fffbeb; color: #d97706; }
+  .badge-pending .badge-dot { background: #f59e0b; }
+  .badge-inactive { background: #f3f4f6; color: #6b7280; }
+  .badge-inactive .badge-dot { background: #9ca3af; }
+  .badge-overdue { background: #fef2f2; color: #dc2626; }
+  .badge-overdue .badge-dot { background: #ef4444; }
+
+  /* ============================================ */
+  /* 6. SIDEBAR PREVIEW                           */
+  /* ============================================ */
+  .sidebar-preview {
+    width: 260px;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid #e5e7eb;
+  }
+  .sidebar-current {
+    background: white;
+    padding: 16px;
+  }
+  .sidebar-proposed {
+    background: #fafbfc;
+    padding: 16px;
+  }
+  .sidebar-group-label-current {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: rgba(107, 114, 128, 0.6);
+    padding: 0 12px;
+    margin-bottom: 4px;
+    margin-top: 16px;
+  }
+  .sidebar-group-label-proposed {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: rgba(107, 114, 128, 0.75);
+    padding: 0 12px;
+    margin-bottom: 6px;
+    margin-top: 16px;
+  }
+  .sidebar-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 14px;
+    color: #4b5563;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .sidebar-item:hover { background: #f3f4f6; }
+  .sidebar-item.active-current {
+    background: hsl(222 97% 61% / 0.1);
+    color: #4E8FFF;
+    font-weight: 500;
+  }
+  .sidebar-item.active-proposed {
+    background: hsl(222 97% 61% / 0.1);
+    color: #4E8FFF;
+    font-weight: 500;
+    border-left: 3px solid #4E8FFF;
+    padding-left: 9px;
+  }
+  .sidebar-item .icon {
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+  }
+
+  /* ============================================ */
+  /* 7. TASK CARD                                 */
+  /* ============================================ */
+  .task-card {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 14px;
+    width: 280px;
+  }
+  .task-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .priority-dot-current {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: #ef4444;
+  }
+  .priority-dot-proposed {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #ef4444;
+    box-shadow: 0 0 0 3px rgba(239,68,68,0.15);
+  }
+  .priority-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .task-card-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: #1f2937;
+    margin-bottom: 8px;
+  }
+  .task-card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 12px;
+  }
+  .task-card-avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #e5e7eb;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    color: #6b7280;
+    font-weight: 600;
+  }
+  .task-card-avatar-proposed {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: #dbeafe;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    color: #3b82f6;
+    font-weight: 600;
+  }
+  .task-meta {
+    font-size: 12px;
+    color: #9ca3af;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  /* ============================================ */
+  /* 8. SKELETON / LOADING                        */
+  /* ============================================ */
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+  .skeleton {
+    border-radius: 6px;
+    background: #e5e7eb;
+  }
+  .skeleton-shimmer {
+    border-radius: 6px;
+    background: linear-gradient(90deg, #e5e7eb 25%, #f3f4f6 50%, #e5e7eb 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+  }
+  .skeleton-text { height: 14px; margin-bottom: 8px; }
+  .skeleton-title { height: 24px; width: 60%; margin-bottom: 12px; }
+  .skeleton-circle { border-radius: 50%; }
+  .skeleton-card {
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 20px;
+    background: white;
+  }
+
+  /* ============================================ */
+  /* 9. DARK MODE                                 */
+  /* ============================================ */
+  .dark-preview {
+    border-radius: 12px;
+    padding: 24px;
+    border: 1px solid #374151;
+  }
+  .dark-preview-current {
+    background: #080808;
+    color: #fafafa;
+  }
+  .dark-preview-proposed {
+    background: #111827;
+    color: #f9fafb;
+  }
+  .dark-card-current {
+    background: #0d0d0d;
+    border: 1px solid #1f1f1f;
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 12px;
+  }
+  .dark-card-proposed {
+    background: #1f2937;
+    border: 1px solid #374151;
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 12px;
+  }
+  .dark-text-muted-current { color: rgba(255,255,255,0.64); }
+  .dark-text-muted-proposed { color: #9ca3af; }
+  .dark-border-current { border-color: #1f1f1f; }
+  .dark-border-proposed { border-color: #374151; }
+
+  .dark-btn-primary-current {
+    background: hsl(222 97% 61%);
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .dark-btn-primary-proposed {
+    background: hsl(222 100% 73%);
+    color: #111827;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 1px 3px rgba(122,171,255,0.3);
+  }
+
+  /* WCAG indicator */
+  .wcag-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .wcag-fail { background: #fef2f2; color: #dc2626; border: 1px solid #fca5a5; }
+  .wcag-pass { background: #f0fdf4; color: #16a34a; border: 1px solid #86efac; }
+
+  /* ============================================ */
+  /* 10. INPUT STATES                             */
+  /* ============================================ */
+  .input-demo {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .input-field {
+    height: 40px;
+    padding: 0 12px;
+    border-radius: 6px;
+    border: 1px solid #e5e7eb;
+    font-size: 14px;
+    color: #1f2937;
+    background: white;
+    width: 100%;
+    outline: none;
+    transition: all 0.15s;
+  }
+  .input-field:focus { border-color: #4E8FFF; box-shadow: 0 0 0 3px rgba(78,143,255,0.1); }
+  .input-field.error { border-color: #ef4444; }
+  .input-field.error:focus { box-shadow: 0 0 0 3px rgba(239,68,68,0.1); }
+  .input-field.success { border-color: #10b981; }
+  .input-label {
+    font-size: 14px;
+    font-weight: 500;
+    color: #374151;
+    margin-bottom: 4px;
+  }
+  .input-helper {
+    font-size: 12px;
+    margin-top: 2px;
+  }
+  .input-helper.error-text { color: #ef4444; }
+  .input-helper.success-text { color: #10b981; }
+
+  /* ============================================ */
+  /* 11. EMPTY STATE                              */
+  /* ============================================ */
+  .empty-state {
+    text-align: center;
+    padding: 48px 24px;
+    border: 2px dashed #e5e7eb;
+    border-radius: 12px;
+    background: #fafbfc;
+  }
+  .empty-state-icon {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: #f3f4f6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 16px;
+    font-size: 28px;
+  }
+  .empty-state-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 8px;
+  }
+  .empty-state-desc {
+    font-size: 14px;
+    color: #6b7280;
+    margin-bottom: 20px;
+    max-width: 400px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  /* ============================================ */
+  /* UTILITY                                      */
+  /* ============================================ */
+  .flex { display: flex; }
+  .gap-8 { gap: 8px; }
+  .gap-12 { gap: 12px; }
+  .gap-16 { gap: 16px; }
+  .gap-24 { gap: 24px; }
+  .items-center { align-items: center; }
+  .mb-8 { margin-bottom: 8px; }
+  .mb-16 { margin-bottom: 16px; }
+  .mb-24 { margin-bottom: 24px; }
+  .mt-16 { margin-top: 16px; }
+  .text-sm { font-size: 14px; }
+  .text-xs { font-size: 12px; }
+  .text-muted { color: #6b7280; }
+  .font-bold { font-weight: 700; }
+  .font-semibold { font-weight: 600; }
+  .w-full { width: 100%; }
+  .annotation {
+    font-size: 12px;
+    color: #dc2626;
+    background: #fef2f2;
+    padding: 4px 10px;
+    border-radius: 6px;
+    display: inline-block;
+    margin-top: 8px;
+  }
+  .annotation.good {
+    color: #16a34a;
+    background: #f0fdf4;
+  }
+  .divider {
+    border: none;
+    border-top: 1px solid #e5e7eb;
+    margin: 24px 0;
+  }
+</style>
+</head>
+<body>
+
+<!-- TOP NAV -->
+<nav class="top-nav">
+  <h1>Convertfy Admin - Design System Preview</h1>
+  <a href="#colors">Cores</a>
+  <a href="#dark-mode">Dark Mode</a>
+  <a href="#typography">Tipografia</a>
+  <a href="#buttons">Botoes</a>
+  <a href="#metrics">Metricas</a>
+  <a href="#table">Tabela</a>
+  <a href="#sidebar">Sidebar</a>
+  <a href="#task-card">Task Card</a>
+  <a href="#inputs">Inputs</a>
+  <a href="#skeletons">Skeletons</a>
+  <a href="#empty">Empty State</a>
+</nav>
+
+<div class="container">
+
+  <!-- =========================================== -->
+  <!-- 1. PALETA DE CORES                          -->
+  <!-- =========================================== -->
+  <div class="section" id="colors">
+    <h2 class="section-title">1. Paleta de Cores</h2>
+    <p class="section-subtitle">Comparacao entre as cores atuais e a nova paleta proposta.</p>
+
+    <div class="compare-grid">
+      <!-- CURRENT -->
+      <div class="compare-col current">
+        <span class="compare-label bad">ATUAL</span>
+        <h3 class="font-semibold mb-16" style="margin-top: 8px;">Light Mode</h3>
+        <div class="color-grid">
+          <div class="color-swatch">
+            <div class="preview" style="background: #4E8FFF;">Aa</div>
+            <div class="info">
+              <div class="name">Primary</div>
+              <div class="hex">#4E8FFF</div>
+            </div>
+          </div>
+          <div class="color-swatch">
+            <div class="preview" style="background: #F2F4F9; color: #666;">Aa</div>
+            <div class="info">
+              <div class="name">Secondary</div>
+              <div class="hex">#F2F4F9</div>
+              <div class="issue">= Muted = Accent</div>
+            </div>
+          </div>
+          <div class="color-swatch">
+            <div class="preview" style="background: #F2F4F9; color: #666;">Aa</div>
+            <div class="info">
+              <div class="name">Muted</div>
+              <div class="hex">#F2F4F9</div>
+              <div class="issue">IDENTICA</div>
+            </div>
+          </div>
+          <div class="color-swatch">
+            <div class="preview" style="background: #F2F4F9; color: #666;">Aa</div>
+            <div class="info">
+              <div class="name">Accent</div>
+              <div class="hex">#F2F4F9</div>
+              <div class="issue">IDENTICA</div>
+            </div>
+          </div>
+          <div class="color-swatch">
+            <div class="preview" style="background: #F94C4C;">Aa</div>
+            <div class="info">
+              <div class="name">Destructive</div>
+              <div class="hex">#F94C4C</div>
+            </div>
+          </div>
+          <div class="color-swatch">
+            <div class="preview" style="background: #1DB854;">Aa</div>
+            <div class="info">
+              <div class="name">Success</div>
+              <div class="hex">#1DB854</div>
+            </div>
+          </div>
+          <div class="color-swatch">
+            <div class="preview" style="background: #FFBA00; color: #333;">Aa</div>
+            <div class="info">
+              <div class="name">Warning</div>
+              <div class="hex">#FFBA00</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PROPOSED -->
+      <div class="compare-col proposed">
+        <span class="compare-label good">PROPOSTA</span>
+        <h3 class="font-semibold mb-16" style="margin-top: 8px;">Light Mode</h3>
+        <div class="color-grid">
+          <div class="color-swatch">
+            <div class="preview" style="background: #4E8FFF;">Aa</div>
+            <div class="info">
+              <div class="name">Primary</div>
+              <div class="hex">#4E8FFF</div>
+            </div>
+          </div>
+          <div class="color-swatch">
+            <div class="preview" style="background: #E5E7EB; color: #374151;">Aa</div>
+            <div class="info">
+              <div class="name">Secondary</div>
+              <div class="hex">#E5E7EB</div>
+            </div>
+          </div>
+          <div class="color-swatch">
+            <div class="preview" style="background: #F3F4F6; color: #666;">Aa</div>
+            <div class="info">
+              <div class="name">Muted</div>
+              <div class="hex">#F3F4F6</div>
+            </div>
+          </div>
+          <div class="color-swatch">
+            <div class="preview" style="background: #EEF2FF; color: #4338ca;">Aa</div>
+            <div class="info">
+              <div class="name">Accent</div>
+              <div class="hex">#EEF2FF</div>
+            </div>
+          </div>
+          <div class="color-swatch">
+            <div class="preview" style="background: #EF4444;">Aa</div>
+            <div class="info">
+              <div class="name">Destructive</div>
+              <div class="hex">#EF4444</div>
+            </div>
+          </div>
+          <div class="color-swatch">
+            <div class="preview" style="background: #10B981;">Aa</div>
+            <div class="info">
+              <div class="name">Success</div>
+              <div class="hex">#10B981</div>
+            </div>
+          </div>
+          <div class="color-swatch">
+            <div class="preview" style="background: #F59E0B; color: #333;">Aa</div>
+            <div class="info">
+              <div class="name">Warning</div>
+              <div class="hex">#F59E0B</div>
+            </div>
+          </div>
+          <div class="color-swatch">
+            <div class="preview" style="background: #3B82F6;">Aa</div>
+            <div class="info">
+              <div class="name">Info (novo)</div>
+              <div class="hex">#3B82F6</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Neutral backgrounds -->
+    <h3 class="font-semibold mt-16 mb-16">Backgrounds Neutros</h3>
+    <div class="compare-grid">
+      <div class="compare-col current">
+        <span class="compare-label bad">ATUAL</span>
+        <div class="color-grid" style="margin-top: 8px;">
+          <div class="color-swatch">
+            <div class="preview" style="background: #FFFFFF; color: #999; border-bottom: 1px solid #eee;">Bg</div>
+            <div class="info"><div class="name">Background</div><div class="hex">#FFFFFF</div></div>
+          </div>
+          <div class="color-swatch">
+            <div class="preview" style="background: #FFFFFF; color: #999; border-bottom: 1px solid #eee;">Card</div>
+            <div class="info"><div class="name">Card</div><div class="hex">#FFFFFF</div><div class="issue">= Background</div></div>
+          </div>
+          <div class="color-swatch">
+            <div class="preview" style="background: #E5E7EB; color: #666;">Bd</div>
+            <div class="info"><div class="name">Border</div><div class="hex">#E5E7EB</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="compare-col proposed">
+        <span class="compare-label good">PROPOSTA</span>
+        <div class="color-grid" style="margin-top: 8px;">
+          <div class="color-swatch">
+            <div class="preview" style="background: #FFFFFF; color: #999; border-bottom: 1px solid #eee;">Bg</div>
+            <div class="info"><div class="name">Background</div><div class="hex">#FFFFFF</div></div>
+          </div>
+          <div class="color-swatch">
+            <div class="preview" style="background: #F9FAFB; color: #999; border-bottom: 1px solid #eee;">Card</div>
+            <div class="info"><div class="name">Card</div><div class="hex">#F9FAFB</div></div>
+          </div>
+          <div class="color-swatch">
+            <div class="preview" style="background: #E5E7EB; color: #666;">Bd</div>
+            <div class="info"><div class="name">Border</div><div class="hex">#E5E7EB</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================== -->
+  <!-- 2. DARK MODE                                -->
+  <!-- =========================================== -->
+  <div class="section" id="dark-mode">
+    <h2 class="section-title">2. Dark Mode</h2>
+    <p class="section-subtitle">A mudanca mais critica. O dark mode atual tem problemas graves de contraste e legibilidade.</p>
+
+    <div class="compare-grid">
+      <!-- CURRENT DARK -->
+      <div class="compare-col current">
+        <span class="compare-label bad">ATUAL</span>
+        <div class="dark-preview dark-preview-current" style="margin-top: 8px;">
+          <p style="font-size: 13px; color: #666; margin-bottom: 12px;">Background: #080808 (quase preto total)</p>
+
+          <div class="dark-card-current">
+            <p style="font-size: 14px; font-weight: 600; margin-bottom: 8px;">Card Component</p>
+            <p class="dark-text-muted-current" style="font-size: 13px;">Texto muted com 64% opacidade</p>
+            <hr style="border: none; border-top: 1px solid #1f1f1f; margin: 12px 0;">
+            <p style="font-size: 12px; color: #555;">Border quase invisivel (#1F1F1F sobre #0D0D0D)</p>
+          </div>
+
+          <div style="margin-bottom: 12px;">
+            <button class="dark-btn-primary-current">Botao Primary</button>
+            <span class="wcag-badge wcag-fail" style="margin-left: 8px;">FALHA WCAG 2.8:1</span>
+          </div>
+
+          <div class="dark-card-current" style="padding: 12px;">
+            <div class="flex items-center gap-8">
+              <div style="width: 4px; height: 4px; border-radius: 50%; background: #ef4444;"></div>
+              <span style="font-size: 12px; color: #888;">Priority indicator (2x2px)</span>
+            </div>
+          </div>
+
+          <p class="annotation" style="margin-top: 12px;">Swing extremo: #FFFFFF -> #080808</p>
+        </div>
+      </div>
+
+      <!-- PROPOSED DARK -->
+      <div class="compare-col proposed">
+        <span class="compare-label good">PROPOSTA</span>
+        <div class="dark-preview dark-preview-proposed" style="margin-top: 8px;">
+          <p style="font-size: 13px; color: #9ca3af; margin-bottom: 12px;">Background: #111827 (azul-escuro sofisticado)</p>
+
+          <div class="dark-card-proposed">
+            <p style="font-size: 14px; font-weight: 600; margin-bottom: 8px;">Card Component</p>
+            <p class="dark-text-muted-proposed" style="font-size: 13px;">Texto muted com boa legibilidade</p>
+            <hr style="border: none; border-top: 1px solid #374151; margin: 12px 0;">
+            <p style="font-size: 12px; color: #9ca3af;">Border visivel (#374151 sobre #1F2937)</p>
+          </div>
+
+          <div style="margin-bottom: 12px;">
+            <button class="dark-btn-primary-proposed">Botao Primary</button>
+            <span class="wcag-badge wcag-pass" style="margin-left: 8px;">PASSA WCAG 7.2:1</span>
+          </div>
+
+          <div class="dark-card-proposed" style="padding: 12px;">
+            <div class="flex items-center gap-8">
+              <div style="width: 10px; height: 10px; border-radius: 50%; background: #ef4444; box-shadow: 0 0 0 3px rgba(239,68,68,0.2);"></div>
+              <span style="font-size: 12px; color: #d1d5db;">Priority indicator (10x10px + ring)</span>
+            </div>
+          </div>
+
+          <p class="annotation good" style="margin-top: 12px;">Transicao suave: #FFFFFF -> #111827</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Dark mode colors side by side -->
+    <h3 class="font-semibold mt-16 mb-16">Paleta Dark Mode</h3>
+    <div class="compare-grid">
+      <div class="compare-col current">
+        <span class="compare-label bad">ATUAL</span>
+        <div class="color-grid" style="margin-top: 8px;">
+          <div class="color-swatch">
+            <div class="preview" style="background: #080808; color: #666;">Bg</div>
+            <div class="info"><div class="name">Background</div><div class="hex">#080808</div><div class="issue">Preto extremo</div></div>
+          </div>
+          <div class="color-swatch">
+            <div class="preview" style="background: #0D0D0D; color: #555;">Card</div>
+            <div class="info"><div class="name">Card</div><div class="hex">#0D0D0D</div><div class="issue">Quase = bg</div></div>
+          </div>
+          <div class="color-swatch">
+            <div class="preview" style="background: #1A1A1A; color: #666;">Sec</div>
+            <div class="info"><div class="name">Secondary</div><div class="hex">#1A1A1A</div><div class="issue">= Muted = Accent</div></div>
+          </div>
+          <div class="color-swatch">
+            <div class="preview" style="background: #4E8FFF;">Pri</div>
+            <div class="info"><div class="name">Primary</div><div class="hex">#4E8FFF</div><div class="issue">Nao muda!</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="compare-col proposed">
+        <span class="compare-label good">PROPOSTA</span>
+        <div class="color-grid" style="margin-top: 8px;">
+          <div class="color-swatch">
+            <div class="preview" style="background: #111827; color: #9ca3af;">Bg</div>
+            <div class="info"><div class="name">Background</div><div class="hex">#111827</div></div>
+          </div>
+          <div class="color-swatch">
+            <div class="preview" style="background: #1F2937; color: #9ca3af;">Card</div>
+            <div class="info"><div class="name">Card</div><div class="hex">#1F2937</div></div>
+          </div>
+          <div class="color-swatch">
+            <div class="preview" style="background: #374151; color: #d1d5db;">Sec</div>
+            <div class="info"><div class="name">Secondary</div><div class="hex">#374151</div></div>
+          </div>
+          <div class="color-swatch">
+            <div class="preview" style="background: #7AABFF; color: #111;">Pri</div>
+            <div class="info"><div class="name">Primary</div><div class="hex">#7AABFF</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================== -->
+  <!-- 3. TIPOGRAFIA                               -->
+  <!-- =========================================== -->
+  <div class="section" id="typography">
+    <h2 class="section-title">3. Escala Tipografica</h2>
+    <p class="section-subtitle">Escala proposta com todos os niveis necessarios para hierarquia visual clara.</p>
+
+    <div class="compare-grid">
+      <div class="compare-col current">
+        <span class="compare-label bad">ATUAL (gaps)</span>
+        <div style="margin-top: 8px;">
+          <div class="typo-row"><span class="typo-meta">11px/600</span><span class="typo-sample" style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: rgba(107,114,128,0.6);">GRUPO SIDEBAR</span></div>
+          <div class="typo-row"><span class="typo-meta">12px/400</span><span class="typo-sample" style="font-size: 12px;">Caption text</span></div>
+          <div class="typo-row"><span class="typo-meta">14px/400</span><span class="typo-sample" style="font-size: 14px;">Label de formulario</span></div>
+          <div class="typo-row"><span class="typo-meta">16px/400</span><span class="typo-sample" style="font-size: 16px;">Body text principal</span></div>
+          <div class="typo-row"><span class="typo-meta">18px/500</span><span class="typo-sample" style="font-size: 18px; font-weight: 500;">Titulo de pagina</span></div>
+          <div class="typo-row" style="border: 2px dashed #fca5a5; padding: 8px; border-radius: 6px;">
+            <span class="typo-meta" style="color: #dc2626;">GAP 20px</span>
+            <span class="typo-sample" style="font-size: 13px; color: #dc2626;">Nenhum tamanho entre 18px e 24px</span>
+          </div>
+          <div class="typo-row"><span class="typo-meta">24px/600</span><span class="typo-sample" style="font-size: 24px; font-weight: 600;">Card Title</span></div>
+          <div class="typo-row" style="border: 2px dashed #fca5a5; padding: 8px; border-radius: 6px;">
+            <span class="typo-meta" style="color: #dc2626;">GAP 28-32px</span>
+            <span class="typo-sample" style="font-size: 13px; color: #dc2626;">Nenhum tamanho entre 24px e 32px</span>
+          </div>
+        </div>
+      </div>
+      <div class="compare-col proposed">
+        <span class="compare-label good">PROPOSTA (completa)</span>
+        <div style="margin-top: 8px;">
+          <div class="typo-row"><span class="typo-meta">11px/600</span><span class="typo-sample" style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: rgba(107,114,128,0.75);">Label Small</span></div>
+          <div class="typo-row"><span class="typo-meta">12px/600</span><span class="typo-sample" style="font-size: 12px; font-weight: 600;">Label / Badge</span></div>
+          <div class="typo-row"><span class="typo-meta">12px/400</span><span class="typo-sample" style="font-size: 12px;">Caption / Hint</span></div>
+          <div class="typo-row"><span class="typo-meta">14px/600</span><span class="typo-sample" style="font-size: 14px; font-weight: 600;">Label Large</span></div>
+          <div class="typo-row"><span class="typo-meta">14px/400</span><span class="typo-sample" style="font-size: 14px;">Body Small</span></div>
+          <div class="typo-row"><span class="typo-meta">16px/400</span><span class="typo-sample" style="font-size: 16px;">Body text principal</span></div>
+          <div class="typo-row"><span class="typo-meta">18px/400</span><span class="typo-sample" style="font-size: 18px;">Body Large</span></div>
+          <div class="typo-row"><span class="typo-meta">20px/600</span><span class="typo-sample" style="font-size: 20px; font-weight: 600;">Heading 3 (novo)</span></div>
+          <div class="typo-row"><span class="typo-meta">24px/600</span><span class="typo-sample" style="font-size: 24px; font-weight: 600;">Heading 2</span></div>
+          <div class="typo-row"><span class="typo-meta">28px/600</span><span class="typo-sample" style="font-size: 28px; font-weight: 600;">Heading 1 (novo)</span></div>
+          <div class="typo-row"><span class="typo-meta">36px/700</span><span class="typo-sample" style="font-size: 36px; font-weight: 700;">Display 2 (novo)</span></div>
+          <div class="typo-row"><span class="typo-meta">48px/700</span><span class="typo-sample" style="font-size: 48px; font-weight: 700; letter-spacing: -0.02em;">Display 1</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================== -->
+  <!-- 4. BOTOES                                   -->
+  <!-- =========================================== -->
+  <div class="section" id="buttons">
+    <h2 class="section-title">4. Botoes</h2>
+    <p class="section-subtitle">Novos tamanhos xs/xl, estado de loading, e sombras com cor.</p>
+
+    <div class="compare-grid">
+      <div class="compare-col current">
+        <span class="compare-label bad">ATUAL (3 sizes)</span>
+        <div style="margin-top: 8px;">
+          <p class="text-xs text-muted mb-8">Sizes: sm, default, lg</p>
+          <div class="btn-row">
+            <button class="btn btn-sm btn-primary-current">Small</button>
+            <button class="btn btn-md btn-primary-current">Default</button>
+            <button class="btn btn-lg btn-primary-current">Large</button>
+          </div>
+          <p class="text-xs text-muted mb-8">Variantes:</p>
+          <div class="btn-row">
+            <button class="btn btn-md btn-primary-current">Primary</button>
+            <button class="btn btn-md btn-secondary-current">Secondary</button>
+            <button class="btn btn-md btn-destructive-current">Destructive</button>
+            <button class="btn btn-md btn-outline-current">Outline</button>
+            <button class="btn btn-md btn-ghost-current">Ghost</button>
+          </div>
+          <p class="annotation">Sem loading state, sem xs/xl</p>
+        </div>
+      </div>
+      <div class="compare-col proposed">
+        <span class="compare-label good">PROPOSTA (5 sizes + loading)</span>
+        <div style="margin-top: 8px;">
+          <p class="text-xs text-muted mb-8">Sizes: xs, sm, default, lg, xl</p>
+          <div class="btn-row">
+            <button class="btn btn-xs btn-primary-proposed">Extra Small</button>
+            <button class="btn btn-sm btn-primary-proposed">Small</button>
+            <button class="btn btn-md btn-primary-proposed">Default</button>
+            <button class="btn btn-lg btn-primary-proposed">Large</button>
+            <button class="btn btn-xl btn-primary-proposed">Extra Large</button>
+          </div>
+          <p class="text-xs text-muted mb-8">Variantes (com shadow colorida):</p>
+          <div class="btn-row">
+            <button class="btn btn-md btn-primary-proposed">Primary</button>
+            <button class="btn btn-md btn-secondary-proposed">Secondary</button>
+            <button class="btn btn-md btn-destructive-proposed">Destructive</button>
+            <button class="btn btn-md btn-success-proposed">Success</button>
+            <button class="btn btn-md btn-warning-proposed">Warning</button>
+            <button class="btn btn-md btn-outline-proposed">Outline</button>
+            <button class="btn btn-md btn-ghost-proposed">Ghost</button>
+          </div>
+          <p class="text-xs text-muted mb-8">Loading state:</p>
+          <div class="btn-row">
+            <button class="btn btn-md btn-primary-proposed btn-loading">Saving...</button>
+            <button class="btn btn-md btn-destructive-proposed btn-loading">Deleting...</button>
+            <button class="btn btn-md btn-outline-proposed" style="opacity: 0.5; pointer-events: none;">Disabled</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================== -->
+  <!-- 5. METRICAS DASHBOARD                       -->
+  <!-- =========================================== -->
+  <div class="section" id="metrics">
+    <h2 class="section-title">5. Metricas do Dashboard</h2>
+    <p class="section-subtitle">Substituicao de cores hardcoded por tokens semanticos do design system.</p>
+
+    <div class="compare-grid">
+      <div class="compare-col current">
+        <span class="compare-label bad">ATUAL (cores hardcoded)</span>
+        <div class="metrics-grid" style="margin-top: 8px; grid-template-columns: 1fr 1fr;">
+          <div class="metric-card">
+            <div class="metric-header">
+              <span class="metric-label">Faturamento</span>
+              <div class="metric-icon icon-emerald">$</div>
+            </div>
+            <div class="metric-value">R$ 48.2k</div>
+            <div class="metric-change positive">+12.5% vs mes anterior</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-header">
+              <span class="metric-label">Clientes</span>
+              <div class="metric-icon icon-blue">U</div>
+            </div>
+            <div class="metric-value">127</div>
+            <div class="metric-change positive">+3 vs mes anterior</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-header">
+              <span class="metric-label">Pipeline</span>
+              <div class="metric-icon icon-purple">T</div>
+            </div>
+            <div class="metric-value">R$ 85.4k</div>
+            <div class="metric-change" style="color: #6b7280;">12 deals ativos</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-header">
+              <span class="metric-label">A Receber</span>
+              <div class="metric-icon icon-amber">C</div>
+            </div>
+            <div class="metric-value">R$ 12.8k</div>
+          </div>
+        </div>
+        <p class="annotation">emerald-500, blue-500, purple-500, amber-500 hardcoded</p>
+      </div>
+      <div class="compare-col proposed">
+        <span class="compare-label good">PROPOSTA (tokens semanticos)</span>
+        <div class="metrics-grid" style="margin-top: 8px; grid-template-columns: 1fr 1fr;">
+          <div class="metric-card-proposed">
+            <div class="metric-header">
+              <span class="metric-label">Faturamento</span>
+              <div class="metric-icon icon-semantic-revenue">$</div>
+            </div>
+            <div class="metric-value">R$ 48.2k</div>
+            <div class="metric-change positive">+12.5% vs mes anterior</div>
+          </div>
+          <div class="metric-card-proposed">
+            <div class="metric-header">
+              <span class="metric-label">Clientes Ativos</span>
+              <div class="metric-icon icon-semantic-clients">U</div>
+            </div>
+            <div class="metric-value">127</div>
+            <div class="metric-change positive">+3 vs mes anterior</div>
+          </div>
+          <div class="metric-card-proposed">
+            <div class="metric-header">
+              <span class="metric-label">Pipeline</span>
+              <div class="metric-icon icon-semantic-pipeline">T</div>
+            </div>
+            <div class="metric-value">R$ 85.4k</div>
+            <div class="metric-change" style="color: #6b7280;">12 deals ativos</div>
+          </div>
+          <div class="metric-card-proposed">
+            <div class="metric-header">
+              <span class="metric-label">A Receber</span>
+              <div class="metric-icon icon-semantic-pending">C</div>
+            </div>
+            <div class="metric-value">R$ 12.8k</div>
+          </div>
+        </div>
+        <p class="annotation good">Cores via CSS variables: --success, --primary, --warning, --muted-foreground</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================== -->
+  <!-- 6. TABELA                                   -->
+  <!-- =========================================== -->
+  <div class="section" id="table">
+    <h2 class="section-title">6. Tabela de Clientes</h2>
+    <p class="section-subtitle">Hover visivel, status badges com dot + texto, e estilos mais claros.</p>
+
+    <div class="compare-grid">
+      <div class="compare-col current">
+        <span class="compare-label bad">ATUAL</span>
+        <div class="table-wrapper table-current" style="margin-top: 8px;">
+          <table>
+            <thead>
+              <tr>
+                <th>Cliente</th>
+                <th>Status</th>
+                <th>Receita</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Acme Corp</td>
+                <td><span style="color: #10b981; font-size: 12px; font-weight: 500;">Ativo</span></td>
+                <td>R$ 2.400</td>
+              </tr>
+              <tr>
+                <td>Beta Inc</td>
+                <td><span style="color: #f59e0b; font-size: 12px; font-weight: 500;">Pendente</span></td>
+                <td>R$ 1.800</td>
+              </tr>
+              <tr>
+                <td>Delta SA</td>
+                <td><span style="color: #ef4444; font-size: 12px; font-weight: 500;">Atrasado</span></td>
+                <td>R$ 3.200</td>
+              </tr>
+              <tr>
+                <td>Gamma Ltd</td>
+                <td><span style="color: #6b7280; font-size: 12px; font-weight: 500;">Inativo</span></td>
+                <td>R$ 0</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="annotation">Hover: bg-muted/50 (quase invisivel). Cor como unico indicador.</p>
+      </div>
+      <div class="compare-col proposed">
+        <span class="compare-label good">PROPOSTA</span>
+        <div class="table-wrapper table-proposed" style="margin-top: 8px;">
+          <table>
+            <thead>
+              <tr>
+                <th>Cliente</th>
+                <th>Status</th>
+                <th>Receita</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="font-weight: 500;">Acme Corp</td>
+                <td><span class="badge badge-active"><span class="badge-dot"></span>Ativo</span></td>
+                <td>R$ 2.400</td>
+              </tr>
+              <tr>
+                <td style="font-weight: 500;">Beta Inc</td>
+                <td><span class="badge badge-pending"><span class="badge-dot"></span>Pendente</span></td>
+                <td>R$ 1.800</td>
+              </tr>
+              <tr>
+                <td style="font-weight: 500;">Delta SA</td>
+                <td><span class="badge badge-overdue"><span class="badge-dot"></span>Atrasado</span></td>
+                <td>R$ 3.200</td>
+              </tr>
+              <tr>
+                <td style="font-weight: 500;">Gamma Ltd</td>
+                <td><span class="badge badge-inactive"><span class="badge-dot"></span>Inativo</span></td>
+                <td>R$ 0</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="annotation good">Hover visivel. Badges com dot + bg + texto (acessivel).</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================== -->
+  <!-- 7. SIDEBAR                                  -->
+  <!-- =========================================== -->
+  <div class="section" id="sidebar">
+    <h2 class="section-title">7. Sidebar</h2>
+    <p class="section-subtitle">Headers de grupo com melhor legibilidade e indicador de item ativo.</p>
+
+    <div class="compare-grid">
+      <div class="compare-col current">
+        <span class="compare-label bad">ATUAL</span>
+        <div class="sidebar-preview" style="margin-top: 8px;">
+          <div class="sidebar-current">
+            <div class="sidebar-group-label-current">Principal</div>
+            <div class="sidebar-item active-current">
+              <span class="icon">D</span> Dashboard
+            </div>
+            <div class="sidebar-group-label-current">CRM & Vendas</div>
+            <div class="sidebar-item">
+              <span class="icon">C</span> Clientes
+            </div>
+            <div class="sidebar-item">
+              <span class="icon">L</span> Lojas
+            </div>
+            <div class="sidebar-item">
+              <span class="icon">P</span> Pipeline
+            </div>
+            <div class="sidebar-group-label-current">Operacional</div>
+            <div class="sidebar-item">
+              <span class="icon">B</span> Board
+            </div>
+            <div class="sidebar-item">
+              <span class="icon">R</span> Reunioes
+            </div>
+          </div>
+        </div>
+        <p class="annotation">text-[11px] + opacity 60% = dificil de ler</p>
+      </div>
+      <div class="compare-col proposed">
+        <span class="compare-label good">PROPOSTA</span>
+        <div class="sidebar-preview" style="margin-top: 8px;">
+          <div class="sidebar-proposed">
+            <div class="sidebar-group-label-proposed">Principal</div>
+            <div class="sidebar-item active-proposed">
+              <span class="icon">D</span> Dashboard
+            </div>
+            <div class="sidebar-group-label-proposed">CRM & Vendas</div>
+            <div class="sidebar-item">
+              <span class="icon">C</span> Clientes
+            </div>
+            <div class="sidebar-item">
+              <span class="icon">L</span> Lojas
+            </div>
+            <div class="sidebar-item">
+              <span class="icon">P</span> Pipeline
+            </div>
+            <div class="sidebar-group-label-proposed">Operacional</div>
+            <div class="sidebar-item">
+              <span class="icon">B</span> Board
+            </div>
+            <div class="sidebar-item">
+              <span class="icon">R</span> Reunioes
+            </div>
+          </div>
+        </div>
+        <p class="annotation good">12px + opacity 75% + borda ativa lateral</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================== -->
+  <!-- 8. TASK CARD                                -->
+  <!-- =========================================== -->
+  <div class="section" id="task-card">
+    <h2 class="section-title">8. Task Card (Kanban)</h2>
+    <p class="section-subtitle">Indicador de prioridade visivel e avatar maior.</p>
+
+    <div class="compare-grid">
+      <div class="compare-col current">
+        <span class="compare-label bad">ATUAL</span>
+        <div style="margin-top: 8px;">
+          <div class="task-card">
+            <div class="task-card-header">
+              <div class="priority-dot-current"></div>
+              <span class="priority-label" style="color: #ef4444;">Urgente</span>
+              <span class="badge" style="background: #f3f4f6; color: #6b7280; font-size: 11px; margin-left: auto;">Bug</span>
+            </div>
+            <div class="task-card-title">Corrigir erro no checkout da loja X</div>
+            <div style="font-size: 12px; color: #9ca3af;">Vence em 2 dias</div>
+            <div class="task-card-footer">
+              <div class="task-card-avatar">MA</div>
+              <div class="task-meta">2</div>
+            </div>
+          </div>
+          <p class="annotation">Priority dot: 2x2px (quase invisivel). Avatar: 24px.</p>
+        </div>
+      </div>
+      <div class="compare-col proposed">
+        <span class="compare-label good">PROPOSTA</span>
+        <div style="margin-top: 8px;">
+          <div class="task-card" style="border-left: 3px solid #ef4444;">
+            <div class="task-card-header">
+              <div class="priority-dot-proposed"></div>
+              <span class="priority-label" style="color: #ef4444;">Urgente</span>
+              <span class="badge" style="background: #fef2f2; color: #dc2626; font-size: 11px; margin-left: auto;">Bug</span>
+            </div>
+            <div class="task-card-title">Corrigir erro no checkout da loja X</div>
+            <div style="font-size: 12px; color: #6b7280; display: flex; align-items: center; gap: 4px;">
+              <span style="font-size: 14px;">&#128197;</span> Vence em 2 dias
+            </div>
+            <div class="task-card-footer">
+              <div class="task-card-avatar-proposed">MA</div>
+              <div class="task-meta" style="font-size: 13px; color: #6b7280;">
+                &#128172; 2
+              </div>
+            </div>
+          </div>
+          <p class="annotation good">Priority: 10px + ring + borda lateral. Avatar: 30px.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================== -->
+  <!-- 9. INPUTS                                   -->
+  <!-- =========================================== -->
+  <div class="section" id="inputs">
+    <h2 class="section-title">9. Input States</h2>
+    <p class="section-subtitle">Estados de erro e sucesso que nao existem atualmente.</p>
+
+    <div class="compare-grid">
+      <div class="compare-col current">
+        <span class="compare-label bad">ATUAL (sem estados)</span>
+        <div class="input-demo" style="margin-top: 8px;">
+          <div>
+            <div class="input-label">Email</div>
+            <input class="input-field" type="text" value="usuario@email.com" readonly>
+          </div>
+          <div>
+            <div class="input-label">Senha</div>
+            <input class="input-field" type="text" value="" placeholder="Nenhum feedback visual de erro" readonly>
+          </div>
+          <p class="annotation">Sem variacao visual para erro/sucesso/loading</p>
+        </div>
+      </div>
+      <div class="compare-col proposed">
+        <span class="compare-label good">PROPOSTA (com estados)</span>
+        <div class="input-demo" style="margin-top: 8px;">
+          <div>
+            <div class="input-label">Email</div>
+            <input class="input-field success" type="text" value="usuario@email.com" readonly>
+            <div class="input-helper success-text">Email valido</div>
+          </div>
+          <div>
+            <div class="input-label">Senha</div>
+            <input class="input-field error" type="text" value="123" readonly>
+            <div class="input-helper error-text">Senha deve ter no minimo 8 caracteres</div>
+          </div>
+          <div>
+            <div class="input-label">Nome da loja</div>
+            <input class="input-field" type="text" value="" placeholder="Digite o nome da loja..." readonly style="border-color: #d1d5db;">
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================== -->
+  <!-- 10. SKELETON / LOADING                      -->
+  <!-- =========================================== -->
+  <div class="section" id="skeletons">
+    <h2 class="section-title">10. Skeleton / Loading States</h2>
+    <p class="section-subtitle">O skeleton atual so tem uma variante. Proposta com shimmer e variantes.</p>
+
+    <div class="compare-grid">
+      <div class="compare-col current">
+        <span class="compare-label bad">ATUAL (1 variante)</span>
+        <div style="margin-top: 8px;">
+          <div class="skeleton skeleton-title" style="width: 60%;"></div>
+          <div class="skeleton skeleton-text" style="width: 100%;"></div>
+          <div class="skeleton skeleton-text" style="width: 80%;"></div>
+          <div class="skeleton skeleton-text" style="width: 90%;"></div>
+          <p class="annotation" style="margin-top: 16px;">Cor solida sem animacao shimmer. Sem variantes (circle, card).</p>
+        </div>
+      </div>
+      <div class="compare-col proposed">
+        <span class="compare-label good">PROPOSTA (shimmer + variantes)</span>
+        <div style="margin-top: 8px;">
+          <!-- Text skeleton with shimmer -->
+          <div class="skeleton-shimmer skeleton-title" style="width: 60%;"></div>
+          <div class="skeleton-shimmer skeleton-text" style="width: 100%;"></div>
+          <div class="skeleton-shimmer skeleton-text" style="width: 80%;"></div>
+          <div class="skeleton-shimmer skeleton-text" style="width: 90%;"></div>
+
+          <hr class="divider">
+
+          <!-- Card skeleton -->
+          <div class="skeleton-card">
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+              <div class="skeleton-shimmer skeleton-circle" style="width: 40px; height: 40px;"></div>
+              <div style="flex: 1;">
+                <div class="skeleton-shimmer skeleton-text" style="width: 50%;"></div>
+                <div class="skeleton-shimmer skeleton-text" style="width: 30%; height: 12px;"></div>
+              </div>
+            </div>
+            <div class="skeleton-shimmer skeleton-text" style="width: 100%;"></div>
+            <div class="skeleton-shimmer skeleton-text" style="width: 70%;"></div>
+          </div>
+
+          <hr class="divider">
+
+          <!-- Metric skeleton -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div class="skeleton-card">
+              <div class="skeleton-shimmer skeleton-text" style="width: 40%; height: 12px;"></div>
+              <div class="skeleton-shimmer" style="width: 70%; height: 28px; margin-top: 8px; border-radius: 6px;"></div>
+            </div>
+            <div class="skeleton-card">
+              <div class="skeleton-shimmer skeleton-text" style="width: 40%; height: 12px;"></div>
+              <div class="skeleton-shimmer" style="width: 70%; height: 28px; margin-top: 8px; border-radius: 6px;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================== -->
+  <!-- 11. EMPTY STATE                             -->
+  <!-- =========================================== -->
+  <div class="section" id="empty">
+    <h2 class="section-title">11. Empty State (novo componente)</h2>
+    <p class="section-subtitle">Componente reutilizavel para estados vazios - atualmente cada pagina improvisa.</p>
+
+    <div class="compare-grid">
+      <div class="compare-col current">
+        <span class="compare-label bad">ATUAL (sem padrao)</span>
+        <div style="margin-top: 8px; padding: 40px 20px; text-align: center;">
+          <p style="color: #9ca3af; font-size: 14px;">Nenhum resultado encontrado.</p>
+          <p class="annotation" style="margin-top: 20px;">Texto solto sem icone, sem acao, sem contexto</p>
+        </div>
+      </div>
+      <div class="compare-col proposed">
+        <span class="compare-label good">PROPOSTA (componente)</span>
+        <div style="margin-top: 8px;">
+          <div class="empty-state">
+            <div class="empty-state-icon">&#128203;</div>
+            <div class="empty-state-title">Nenhum cliente encontrado</div>
+            <div class="empty-state-desc">Nao encontramos clientes com os filtros aplicados. Tente ajustar os filtros ou adicione um novo cliente.</div>
+            <button class="btn btn-md btn-primary-proposed">+ Adicionar Cliente</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================== -->
+  <!-- SUMMARY                                     -->
+  <!-- =========================================== -->
+  <div class="section" style="background: linear-gradient(135deg, #f0f9ff 0%, #f0fdf4 100%);">
+    <h2 class="section-title">Resumo das Mudancas</h2>
+    <p class="section-subtitle">Tudo o que sera implementado quando voce aprovar.</p>
+
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;">
+      <div style="background: white; padding: 20px; border-radius: 10px; border: 1px solid #e5e7eb;">
+        <h4 style="font-size: 16px; font-weight: 600; margin-bottom: 8px; color: #dc2626;">Fase 1 - Fundacao (~10h)</h4>
+        <ul style="font-size: 13px; color: #4b5563; list-style: none;">
+          <li>&#10003; Nova paleta de cores (globals.css)</li>
+          <li>&#10003; Fix dark mode primary (#7AABFF)</li>
+          <li>&#10003; Secondary != Muted != Accent</li>
+          <li>&#10003; Dark mode backgrounds suaves</li>
+          <li>&#10003; Remover cores hardcoded</li>
+          <li>&#10003; Escalas tipografia completas</li>
+          <li>&#10003; Tailwind config expandido</li>
+        </ul>
+      </div>
+      <div style="background: white; padding: 20px; border-radius: 10px; border: 1px solid #e5e7eb;">
+        <h4 style="font-size: 16px; font-weight: 600; margin-bottom: 8px; color: #f59e0b;">Fase 2 - Componentes (~24h)</h4>
+        <ul style="font-size: 13px; color: #4b5563; list-style: none;">
+          <li>&#10003; Skeleton com shimmer + variantes</li>
+          <li>&#10003; EmptyState component</li>
+          <li>&#10003; ErrorState component</li>
+          <li>&#10003; Button xs/xl + loading</li>
+          <li>&#10003; Input error/success states</li>
+          <li>&#10003; Table hover visivel</li>
+          <li>&#10003; StatusBadge semantico</li>
+          <li>&#10003; ActionMenu, FilterBar, DataTable</li>
+        </ul>
+      </div>
+      <div style="background: white; padding: 20px; border-radius: 10px; border: 1px solid #e5e7eb;">
+        <h4 style="font-size: 16px; font-weight: 600; margin-bottom: 8px; color: #10b981;">Fase 3-5 (~57h)</h4>
+        <ul style="font-size: 13px; color: #4b5563; list-style: none;">
+          <li>&#10003; Fix sidebar headers + active</li>
+          <li>&#10003; error.tsx / loading.tsx</li>
+          <li>&#10003; Dividir dashboard monolito</li>
+          <li>&#10003; Dividir campaigns page</li>
+          <li>&#10003; Fix task priority 2px -> 10px</li>
+          <li>&#10003; Lazy loading (recharts, etc)</li>
+          <li>&#10003; Acessibilidade WCAG AA</li>
+          <li>&#10003; Testes visuais</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

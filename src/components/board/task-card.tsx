@@ -115,7 +115,7 @@ export function TaskCard({
           <Badge variant={type.variant} className="text-xs">
             {type.label}
           </Badge>
-          <div className={cn("w-2 h-2 rounded-full", priority.color)} title={priority.label} />
+          <div className={cn("w-2.5 h-2.5 rounded-full ring-2 ring-offset-1 ring-offset-card", priority.color, priority.color.replace("bg-", "ring-").replace("/50", "/30"))} title={priority.label} />
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>

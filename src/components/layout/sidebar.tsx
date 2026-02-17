@@ -206,7 +206,7 @@ export function Sidebar({ user }: SidebarProps) {
         className={cn(
           "flex items-center gap-3 h-10 px-3 rounded-lg transition-colors",
           isActive
-            ? "bg-primary text-primary-foreground"
+            ? "bg-primary/10 text-primary font-medium border-l-[3px] border-primary pl-[9px]"
             : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
         )}
       >
@@ -242,7 +242,7 @@ export function Sidebar({ user }: SidebarProps) {
               <div key={group.key}>
                 {/* Group Header */}
                 {!sidebarCollapsed && (
-                  <p className="px-3 mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                  <p className="px-3 mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground/75">
                     {group.label}
                   </p>
                 )}

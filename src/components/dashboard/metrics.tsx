@@ -32,8 +32,8 @@ export function DashboardMetrics({ metrics }: DashboardMetricsProps) {
       change: "+12.5%",
       changeType: "positive" as const,
       icon: DollarSign,
-      iconColor: "text-emerald-500",
-      iconBg: "bg-emerald-500/10",
+      iconColor: "text-success",
+      iconBg: "bg-success/10",
     },
     {
       title: "Clientes Ativos",
@@ -41,23 +41,23 @@ export function DashboardMetrics({ metrics }: DashboardMetricsProps) {
       change: "+3",
       changeType: "positive" as const,
       icon: Users,
-      iconColor: "text-blue-500",
-      iconBg: "bg-blue-500/10",
+      iconColor: "text-primary",
+      iconBg: "bg-primary/10",
     },
     {
       title: "Pipeline",
       value: formatCurrency(metrics.pipelineValue),
       subtitle: `${metrics.totalDeals} deals ativos`,
       icon: Target,
-      iconColor: "text-purple-500",
-      iconBg: "bg-purple-500/10",
+      iconColor: "text-warning",
+      iconBg: "bg-warning/10",
     },
     {
       title: "A Receber",
       value: formatCurrency(metrics.pendingPayments),
       icon: Clock,
-      iconColor: "text-amber-500",
-      iconBg: "bg-amber-500/10",
+      iconColor: "text-muted-foreground",
+      iconBg: "bg-muted",
     },
   ]
 
@@ -78,7 +78,7 @@ export function DashboardMetrics({ metrics }: DashboardMetricsProps) {
             {card.change && (
               <p className={cn(
                 "text-xs flex items-center gap-1 mt-1",
-                card.changeType === "positive" ? "text-emerald-500" : "text-red-500"
+                card.changeType === "positive" ? "text-success" : "text-destructive"
               )}>
                 {card.changeType === "positive" ? (
                   <TrendingUp className="h-3 w-3" />
@@ -97,13 +97,13 @@ export function DashboardMetrics({ metrics }: DashboardMetricsProps) {
 
       {/* Overdue Alert Card */}
       {metrics.overduePayments > 0 && (
-        <Card className="md:col-span-2 lg:col-span-4 border-red-500/50 bg-red-500/5">
+        <Card className="md:col-span-2 lg:col-span-4 border-destructive/50 bg-destructive/5">
           <CardContent className="flex items-center gap-4 py-4">
-            <div className="rounded-lg p-2 bg-red-500/10">
-              <AlertCircle className="h-5 w-5 text-red-500" />
+            <div className="rounded-lg p-2 bg-destructive/10">
+              <AlertCircle className="h-5 w-5 text-destructive" />
             </div>
             <div>
-              <p className="font-medium text-red-500">Pagamentos em Atraso</p>
+              <p className="font-medium text-destructive">Pagamentos em Atraso</p>
               <p className="text-sm text-muted-foreground">
                 Você tem {formatCurrency(metrics.overduePayments)} em pagamentos vencidos
               </p>

@@ -32,30 +32,30 @@ interface RecentActivityProps {
 function getActivityIcon(type: string): { icon: LucideIcon; color: string; bg: string } {
   switch (type) {
     case "client_created":
-      return { icon: UserPlus, color: "text-blue-500", bg: "bg-blue-500/10" }
+      return { icon: UserPlus, color: "text-primary", bg: "bg-primary/10" }
     case "payment_received":
     case "payment_confirmed":
-      return { icon: DollarSign, color: "text-emerald-500", bg: "bg-emerald-500/10" }
+      return { icon: DollarSign, color: "text-success", bg: "bg-success/10" }
     case "payment_overdue":
-      return { icon: DollarSign, color: "text-red-500", bg: "bg-red-500/10" }
+      return { icon: DollarSign, color: "text-destructive", bg: "bg-destructive/10" }
     case "meeting_scheduled":
     case "meeting_completed":
-      return { icon: Calendar, color: "text-purple-500", bg: "bg-purple-500/10" }
+      return { icon: Calendar, color: "text-warning", bg: "bg-warning/10" }
     case "report_uploaded":
-      return { icon: FileText, color: "text-amber-500", bg: "bg-amber-500/10" }
+      return { icon: FileText, color: "text-warning", bg: "bg-warning/10" }
     case "deal_created":
     case "deal_updated":
-      return { icon: Kanban, color: "text-blue-500", bg: "bg-blue-500/10" }
+      return { icon: Kanban, color: "text-primary", bg: "bg-primary/10" }
     case "deal_won":
-      return { icon: TrendingUp, color: "text-emerald-500", bg: "bg-emerald-500/10" }
+      return { icon: TrendingUp, color: "text-success", bg: "bg-success/10" }
     case "deal_lost":
-      return { icon: TrendingDown, color: "text-red-500", bg: "bg-red-500/10" }
+      return { icon: TrendingDown, color: "text-destructive", bg: "bg-destructive/10" }
     case "client_updated":
     case "status_changed":
-      return { icon: Edit, color: "text-gray-500", bg: "bg-gray-500/10" }
+      return { icon: Edit, color: "text-muted-foreground", bg: "bg-muted" }
     case "email_sent":
     case "whatsapp_sent":
-      return { icon: MessageSquare, color: "text-green-500", bg: "bg-green-500/10" }
+      return { icon: MessageSquare, color: "text-success", bg: "bg-success/10" }
     default:
       return { icon: FileText, color: "text-muted-foreground", bg: "bg-muted" }
   }

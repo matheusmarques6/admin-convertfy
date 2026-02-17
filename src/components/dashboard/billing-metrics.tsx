@@ -214,13 +214,13 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
         <>
           {/* Main Metrics */}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-            <Card className="bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border-emerald-500/20">
+            <Card className="bg-gradient-to-br from-success/10 to-success/5 border-success/20">
               <CardHeader className="pb-2">
                 <CardDescription className="flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4 text-emerald-500" />
+                  <TrendingUp className="h-4 w-4 text-success" />
                   Recebido
                 </CardDescription>
-                <CardTitle className="text-3xl text-emerald-600">
+                <CardTitle className="text-3xl text-success">
                   {formatCurrency(data?.summary.received || 0)}
                 </CardTitle>
               </CardHeader>
@@ -231,13 +231,13 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-amber-500/10 to-amber-500/5 border-amber-500/20">
+            <Card className="bg-gradient-to-br from-warning/10 to-warning/5 border-warning/20">
               <CardHeader className="pb-2">
                 <CardDescription className="flex items-center gap-2">
-                  <Clock className="h-4 w-4 text-amber-500" />
+                  <Clock className="h-4 w-4 text-warning" />
                   Pendente
                 </CardDescription>
-                <CardTitle className="text-3xl text-amber-600">
+                <CardTitle className="text-3xl text-warning">
                   {formatCurrency(data?.summary.pending || 0)}
                 </CardTitle>
               </CardHeader>
@@ -248,13 +248,13 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-red-500/10 to-red-500/5 border-red-500/20">
+            <Card className="bg-gradient-to-br from-destructive/10 to-destructive/5 border-destructive/20">
               <CardHeader className="pb-2">
                 <CardDescription className="flex items-center gap-2">
-                  <AlertCircle className="h-4 w-4 text-red-500" />
+                  <AlertCircle className="h-4 w-4 text-destructive" />
                   Vencido
                 </CardDescription>
-                <CardTitle className="text-3xl text-red-600">
+                <CardTitle className="text-3xl text-destructive">
                   {formatCurrency(data?.summary.overdue || 0)}
                 </CardTitle>
               </CardHeader>
@@ -282,13 +282,13 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-purple-500/10 to-purple-500/5 border-purple-500/20">
+            <Card className="bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20">
               <CardHeader className="pb-2">
                 <CardDescription className="flex items-center gap-2">
-                  <Repeat className="h-4 w-4 text-purple-500" />
+                  <Repeat className="h-4 w-4 text-primary" />
                   MRR
                 </CardDescription>
-                <CardTitle className="text-3xl text-purple-600">
+                <CardTitle className="text-3xl text-primary">
                   {formatCurrency(mrr)}
                 </CardTitle>
               </CardHeader>
@@ -306,7 +306,7 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
               <CardHeader className="pb-2">
                 <CardDescription>Clientes Asaas</CardDescription>
                 <CardTitle className="text-2xl flex items-center gap-2">
-                  <Users className="h-5 w-5 text-blue-500" />
+                  <Users className="h-5 w-5 text-primary" />
                   {data?.summary.totalClients || 0}
                 </CardTitle>
               </CardHeader>
@@ -316,7 +316,7 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
               <CardHeader className="pb-2">
                 <CardDescription>Assinaturas Ativas</CardDescription>
                 <CardTitle className="text-2xl flex items-center gap-2">
-                  <Repeat className="h-5 w-5 text-purple-500" />
+                  <Repeat className="h-5 w-5 text-primary" />
                   {data?.summary.activeSubscriptions || 0}
                 </CardTitle>
               </CardHeader>
@@ -340,8 +340,8 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
             <CardContent>
               <div className="grid gap-4 md:grid-cols-3">
                 <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-                  <div className="rounded-lg p-2 bg-green-500/10">
-                    <QrCode className="h-5 w-5 text-green-600" />
+                  <div className="rounded-lg p-2 bg-success/10">
+                    <QrCode className="h-5 w-5 text-success" />
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">PIX</p>
@@ -350,8 +350,8 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
                 </div>
 
                 <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-                  <div className="rounded-lg p-2 bg-blue-500/10">
-                    <FileText className="h-5 w-5 text-blue-600" />
+                  <div className="rounded-lg p-2 bg-primary/10">
+                    <FileText className="h-5 w-5 text-primary" />
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Boleto</p>
@@ -360,8 +360,8 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
                 </div>
 
                 <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-                  <div className="rounded-lg p-2 bg-purple-500/10">
-                    <CreditCard className="h-5 w-5 text-purple-600" />
+                  <div className="rounded-lg p-2 bg-warning/10">
+                    <CreditCard className="h-5 w-5 text-warning" />
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Cartão</p>
