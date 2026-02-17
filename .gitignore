@@ -60,3 +60,6 @@ logs/
 
 # MCP config (contains API tokens)
 .mcp.json
+
+# AIOS framework core (large, external)
+.aios-core/
