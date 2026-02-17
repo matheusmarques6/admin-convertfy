@@ -584,7 +584,7 @@ export function TaskDialog({
                           type="checkbox"
                           checked={item.is_completed}
                           onChange={() => handleToggleChecklist(item.id, item.is_completed)}
-                          className="h-4 w-4 rounded border-gray-300"
+                          className="h-4 w-4 rounded border-border"
                         />
                         <span className={cn(
                           "flex-1 text-sm",

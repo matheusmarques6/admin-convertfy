@@ -24,10 +24,10 @@ export function RevenueChannels({ klaviyo, shopify }: RevenueChannelsProps) {
   const revenueSparkline = [12, 19, 15, 25, 22, 30, 28, 35, 32, 40, 38, 45]
 
   return (
-    <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-5">
+    <div className="rounded-xl bg-card border border-border p-5">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-medium text-white flex items-center gap-2">
-          <BarChart3 className="h-4 w-4 text-[#5327F2]" />
+        <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
+          <BarChart3 className="h-4 w-4 text-primary" />
           Canais de Receita
         </h3>
       </div>
@@ -38,7 +38,7 @@ export function RevenueChannels({ klaviyo, shopify }: RevenueChannelsProps) {
           percent={flowPercent}
           value={flowRevenue}
           icon={Zap}
-          color="bg-[#5327F2]/10 text-[#5327F2]"
+          color="bg-primary/10 text-primary"
           active
         />
         <ChannelCard
@@ -57,23 +57,23 @@ export function RevenueChannels({ klaviyo, shopify }: RevenueChannelsProps) {
         />
       </div>
 
-      <div className="flex items-center justify-between mb-4 p-3 rounded-lg bg-zinc-800/50">
-        <span className="text-sm text-zinc-400">Total Atribuído</span>
+      <div className="flex items-center justify-between mb-4 p-3 rounded-lg bg-muted/50">
+        <span className="text-sm text-muted-foreground">Total Atribuído</span>
         <div className="text-right">
-          <span className="text-lg font-bold text-[#05AFF2] mr-2">{attributionPercent.toFixed(1)}%</span>
-          <span className="text-sm text-zinc-300">{formatCurrency(totalKlaviyoRevenue)}</span>
+          <span className="text-lg font-bold text-info mr-2">{attributionPercent.toFixed(1)}%</span>
+          <span className="text-sm text-foreground/80">{formatCurrency(totalKlaviyoRevenue)}</span>
         </div>
       </div>
 
       <div>
-        <p className="text-xs text-zinc-500 mb-2">Receita Diária</p>
+        <p className="text-xs text-muted-foreground mb-2">Receita Diária</p>
         <SimpleLineChart data={revenueSparkline} />
         <div className="flex justify-between mt-2">
-          <span className="text-[10px] text-zinc-600">D1</span>
-          <span className="text-[10px] text-zinc-600">D7</span>
-          <span className="text-[10px] text-zinc-600">D14</span>
-          <span className="text-[10px] text-zinc-600">D21</span>
-          <span className="text-[10px] text-zinc-600">D30</span>
+          <span className="text-[10px] text-muted-foreground/70">D1</span>
+          <span className="text-[10px] text-muted-foreground/70">D7</span>
+          <span className="text-[10px] text-muted-foreground/70">D14</span>
+          <span className="text-[10px] text-muted-foreground/70">D21</span>
+          <span className="text-[10px] text-muted-foreground/70">D30</span>
         </div>
       </div>
     </div>

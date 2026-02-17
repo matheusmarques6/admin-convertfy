@@ -9,13 +9,13 @@ export function MeetingsSection({ meetings }: MeetingsSectionProps) {
   if (!meetings || meetings.length === 0) return null
 
   return (
-    <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-5">
+    <div className="rounded-xl bg-card border border-border p-5">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-medium text-white flex items-center gap-2">
+        <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
           <Video className="h-4 w-4 text-blue-400" />
           Próximas Reuniões
         </h3>
-        <span className="text-xs text-zinc-500">{meetings.length} agendadas</span>
+        <span className="text-xs text-muted-foreground">{meetings.length} agendadas</span>
       </div>
 
       <div className="space-y-3">
@@ -41,16 +41,16 @@ export function MeetingsSection({ meetings }: MeetingsSectionProps) {
               className={`flex items-center justify-between p-3 rounded-lg border ${
                 isToday
                   ? "border-blue-500/30 bg-blue-500/5"
-                  : "border-zinc-800 bg-zinc-800/30"
+                  : "border-border bg-muted/30"
               }`}
             >
               <div className="flex items-center gap-3">
-                <div className={`rounded-lg p-2 ${isToday ? "bg-blue-500/20" : "bg-zinc-700/50"}`}>
-                  <Video className={`h-4 w-4 ${isToday ? "text-blue-400" : "text-zinc-400"}`} />
+                <div className={`rounded-lg p-2 ${isToday ? "bg-blue-500/20" : "bg-muted"}`}>
+                  <Video className={`h-4 w-4 ${isToday ? "text-blue-400" : "text-muted-foreground"}`} />
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-white">{meeting.title}</p>
-                  <div className="flex items-center gap-2 text-xs text-zinc-500">
+                  <p className="text-sm font-medium text-foreground">{meeting.title}</p>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <Clock className="h-3 w-3" />
                     <span>{dateLabel}</span>
                     <span>•</span>
@@ -74,7 +74,7 @@ export function MeetingsSection({ meetings }: MeetingsSectionProps) {
         })}
       </div>
 
-      <p className="text-xs text-zinc-600 mt-3">
+      <p className="text-xs text-muted-foreground/70 mt-3">
         Reuniões agendadas com sua equipe de sucesso
       </p>
     </div>

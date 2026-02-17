@@ -126,7 +126,7 @@ const getStatusBadge = (status: StoreData['feedback_status'], daysUntil: number 
     default:
       return {
         label: 'Nunca feito',
-        className: 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30',
+        className: 'bg-muted/20 text-muted-foreground border-muted-foreground/30',
         icon: Calendar,
       }
   }
@@ -137,7 +137,7 @@ const getResultColor = (percentage: number): string => {
   if (percentage >= 20) return 'text-emerald-400'
   if (percentage >= 10) return 'text-amber-400'
   if (percentage > 0) return 'text-orange-400'
-  return 'text-zinc-500'
+  return 'text-muted-foreground'
 }
 
 export function StoreControlPanel() {
@@ -357,7 +357,7 @@ export function StoreControlPanel() {
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="w-8 h-8 text-emerald-500 animate-spin" />
-          <p className="text-sm text-zinc-400">Carregando lojas...</p>
+          <p className="text-sm text-muted-foreground">Carregando lojas...</p>
         </div>
       </div>
     )
@@ -370,17 +370,17 @@ export function StoreControlPanel() {
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
           <button
             onClick={() => setFilterStatus('all')}
-            className={`rounded-xl bg-zinc-900/50 border p-4 text-left transition-all hover:bg-zinc-900/70 ${
-              filterStatus === 'all' ? 'border-zinc-600 ring-1 ring-zinc-600' : 'border-zinc-800'
+            className={`rounded-xl bg-card/50 border p-4 text-left transition-all hover:bg-card/70 ${
+              filterStatus === 'all' ? 'border-border ring-1 ring-border' : 'border-border'
             }`}
           >
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-zinc-800 flex items-center justify-center">
-                <Store className="w-5 h-5 text-zinc-400" />
+              <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
+                <Store className="w-5 h-5 text-muted-foreground" />
               </div>
               <div>
-                <p className="text-2xl font-bold text-white">{summary.total}</p>
-                <p className="text-xs text-zinc-500">Total de Lojas</p>
+                <p className="text-2xl font-bold text-foreground">{summary.total}</p>
+                <p className="text-xs text-muted-foreground">Total de Lojas</p>
               </div>
             </div>
           </button>
@@ -397,7 +397,7 @@ export function StoreControlPanel() {
               </div>
               <div>
                 <p className="text-2xl font-bold text-red-400">{summary.overdue}</p>
-                <p className="text-xs text-zinc-500">Atrasadas</p>
+                <p className="text-xs text-muted-foreground">Atrasadas</p>
               </div>
             </div>
           </button>
@@ -414,7 +414,7 @@ export function StoreControlPanel() {
               </div>
               <div>
                 <p className="text-2xl font-bold text-amber-400">{summary.due_soon}</p>
-                <p className="text-xs text-zinc-500">Em breve</p>
+                <p className="text-xs text-muted-foreground">Em breve</p>
               </div>
             </div>
           </button>
@@ -431,24 +431,24 @@ export function StoreControlPanel() {
               </div>
               <div>
                 <p className="text-2xl font-bold text-emerald-400">{summary.on_track}</p>
-                <p className="text-xs text-zinc-500">Em dia</p>
+                <p className="text-xs text-muted-foreground">Em dia</p>
               </div>
             </div>
           </button>
 
           <button
             onClick={() => setFilterStatus('never')}
-            className={`rounded-xl bg-zinc-800/50 border p-4 text-left transition-all hover:bg-zinc-800/70 ${
-              filterStatus === 'never' ? 'border-zinc-500 ring-1 ring-zinc-500' : 'border-zinc-700'
+            className={`rounded-xl bg-muted/50 border p-4 text-left transition-all hover:bg-muted/70 ${
+              filterStatus === 'never' ? 'border-border ring-1 ring-border' : 'border-border'
             }`}
           >
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-zinc-700 flex items-center justify-center">
-                <Calendar className="w-5 h-5 text-zinc-400" />
+              <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
+                <Calendar className="w-5 h-5 text-muted-foreground" />
               </div>
               <div>
-                <p className="text-2xl font-bold text-zinc-400">{summary.never}</p>
-                <p className="text-xs text-zinc-500">Sem feedback</p>
+                <p className="text-2xl font-bold text-muted-foreground">{summary.never}</p>
+                <p className="text-xs text-muted-foreground">Sem feedback</p>
               </div>
             </div>
           </button>
@@ -458,18 +458,18 @@ export function StoreControlPanel() {
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             placeholder="Buscar por loja ou cliente..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9 bg-zinc-900 border-zinc-800"
+            className="pl-9 bg-card border-border"
           />
         </div>
 
         <Select value={filterStatus} onValueChange={setFilterStatus}>
-          <SelectTrigger className="w-[180px] bg-zinc-900 border-zinc-800">
-            <Filter className="w-4 h-4 mr-2 text-zinc-500" />
+          <SelectTrigger className="w-[180px] bg-card border-border">
+            <Filter className="w-4 h-4 mr-2 text-muted-foreground" />
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
@@ -481,30 +481,30 @@ export function StoreControlPanel() {
           </SelectContent>
         </Select>
 
-        <Button variant="outline" onClick={fetchStores} className="border-zinc-800">
+        <Button variant="outline" onClick={fetchStores} className="border-border">
           <RefreshCw className="w-4 h-4" />
         </Button>
       </div>
 
       {/* Stores List */}
-      <div className="rounded-xl border border-zinc-800 overflow-hidden">
+      <div className="rounded-xl border border-border overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="bg-zinc-900/50 border-b border-zinc-800">
-                <th className="text-left text-xs font-medium text-zinc-500 px-4 py-3">Loja / Cliente</th>
-                <th className="text-center text-xs font-medium text-zinc-500 px-4 py-3">Resultado 30d</th>
-                <th className="text-center text-xs font-medium text-zinc-500 px-4 py-3">Faturamento</th>
-                <th className="text-center text-xs font-medium text-zinc-500 px-4 py-3">Próximo Feedback</th>
-                <th className="text-center text-xs font-medium text-zinc-500 px-4 py-3">Última Call</th>
-                <th className="text-center text-xs font-medium text-zinc-500 px-4 py-3">Responsável</th>
-                <th className="text-center text-xs font-medium text-zinc-500 px-4 py-3">Ações</th>
+              <tr className="bg-card/50 border-b border-border">
+                <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3">Loja / Cliente</th>
+                <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Resultado 30d</th>
+                <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Faturamento</th>
+                <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Próximo Feedback</th>
+                <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Última Call</th>
+                <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Responsável</th>
+                <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Ações</th>
               </tr>
             </thead>
             <tbody>
               {filteredStores.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-12 text-zinc-500">
+                  <td colSpan={7} className="text-center py-12 text-muted-foreground">
                     Nenhuma loja encontrada
                   </td>
                 </tr>
@@ -514,16 +514,16 @@ export function StoreControlPanel() {
                   const StatusIcon = statusBadge.icon
 
                   return (
-                    <tr key={store.id} className="border-b border-zinc-800/50 hover:bg-zinc-900/30 transition-colors">
+                    <tr key={store.id} className="border-b border-border/50 hover:bg-card/30 transition-colors">
                       {/* Store / Client */}
                       <td className="px-4 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-lg bg-zinc-800 flex items-center justify-center">
-                            <Store className="w-5 h-5 text-zinc-400" />
+                          <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
+                            <Store className="w-5 h-5 text-muted-foreground" />
                           </div>
                           <div>
-                            <p className="font-medium text-white">{store.store_name}</p>
-                            <p className="text-sm text-zinc-500">{store.client_name}</p>
+                            <p className="font-medium text-foreground">{store.store_name}</p>
+                            <p className="text-sm text-muted-foreground">{store.client_name}</p>
                           </div>
                           <div className="flex gap-1 ml-2">
                             {store.has_shopify && (
@@ -542,7 +542,7 @@ export function StoreControlPanel() {
                           <span className={`text-2xl font-bold ${getResultColor(store.result_percentage)}`}>
                             {store.result_percentage.toFixed(1)}%
                           </span>
-                          <span className="text-xs text-zinc-500">da receita</span>
+                          <span className="text-xs text-muted-foreground">da receita</span>
                         </div>
                       </td>
 
@@ -552,7 +552,7 @@ export function StoreControlPanel() {
                           <span className="text-sm font-medium text-emerald-400">
                             {formatCurrency(store.klaviyo_revenue_30d)}
                           </span>
-                          <span className="text-xs text-zinc-500">
+                          <span className="text-xs text-muted-foreground">
                             de {formatCurrency(store.total_revenue_30d)}
                           </span>
                         </div>
@@ -565,13 +565,13 @@ export function StoreControlPanel() {
                           {statusBadge.label}
                         </Badge>
                         {store.next_feedback_date && (
-                          <p className="text-xs text-zinc-500 mt-1">{formatDate(store.next_feedback_date)}</p>
+                          <p className="text-xs text-muted-foreground mt-1">{formatDate(store.next_feedback_date)}</p>
                         )}
                       </td>
 
                       {/* Last Call */}
                       <td className="px-4 py-4 text-center">
-                        <span className="text-sm text-zinc-400">
+                        <span className="text-sm text-muted-foreground">
                           {formatDate(store.last_feedback_date)}
                         </span>
                       </td>
@@ -580,13 +580,13 @@ export function StoreControlPanel() {
                       <td className="px-4 py-4 text-center">
                         {store.last_feedback_by_name ? (
                           <div className="flex items-center justify-center gap-2">
-                            <div className="w-6 h-6 rounded-full bg-zinc-700 flex items-center justify-center">
-                              <User className="w-3 h-3 text-zinc-400" />
+                            <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center">
+                              <User className="w-3 h-3 text-muted-foreground" />
                             </div>
-                            <span className="text-sm text-zinc-400">{store.last_feedback_by_name}</span>
+                            <span className="text-sm text-muted-foreground">{store.last_feedback_by_name}</span>
                           </div>
                         ) : (
-                          <span className="text-sm text-zinc-600">-</span>
+                          <span className="text-sm text-muted-foreground/70">-</span>
                         )}
                       </td>
 
@@ -658,14 +658,14 @@ export function StoreControlPanel() {
           {selectedStore && (
             <div className="space-y-4">
               {/* Result Summary */}
-              <div className="rounded-lg bg-zinc-900 border border-zinc-800 p-4">
+              <div className="rounded-lg bg-card border border-border p-4">
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-zinc-400">Resultado atual (30d)</span>
+                  <span className="text-sm text-muted-foreground">Resultado atual (30d)</span>
                   <span className={`text-xl font-bold ${getResultColor(selectedStore.result_percentage)}`}>
                     {selectedStore.result_percentage.toFixed(1)}%
                   </span>
                 </div>
-                <div className="flex justify-between items-center mt-2 text-xs text-zinc-500">
+                <div className="flex justify-between items-center mt-2 text-xs text-muted-foreground">
                   <span>Receita Klaviyo: {formatCurrency(selectedStore.klaviyo_revenue_30d)}</span>
                   <span>Total: {formatCurrency(selectedStore.total_revenue_30d)}</span>
                 </div>
@@ -770,7 +770,7 @@ export function StoreControlPanel() {
         <DialogContent className="sm:max-w-[450px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Settings className="w-5 h-5 text-zinc-400" />
+              <Settings className="w-5 h-5 text-muted-foreground" />
               Configurações da Loja
             </DialogTitle>
             <DialogDescription>
@@ -785,14 +785,14 @@ export function StoreControlPanel() {
           {selectedStore && (
             <div className="space-y-4">
               {/* Store Info */}
-              <div className="rounded-lg bg-zinc-900 border border-zinc-800 p-4">
+              <div className="rounded-lg bg-card border border-border p-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-zinc-800 flex items-center justify-center">
-                    <Store className="w-5 h-5 text-zinc-400" />
+                  <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
+                    <Store className="w-5 h-5 text-muted-foreground" />
                   </div>
                   <div>
-                    <p className="font-medium text-white">{selectedStore.store_name}</p>
-                    <p className="text-sm text-zinc-500">{selectedStore.client_name}</p>
+                    <p className="font-medium text-foreground">{selectedStore.store_name}</p>
+                    <p className="text-sm text-muted-foreground">{selectedStore.client_name}</p>
                   </div>
                 </div>
               </div>
@@ -814,13 +814,13 @@ export function StoreControlPanel() {
                       <SelectItem value="monthly">
                         <div className="flex flex-col">
                           <span>Mensal</span>
-                          <span className="text-xs text-zinc-500">Início de cada mês</span>
+                          <span className="text-xs text-muted-foreground">Início de cada mês</span>
                         </div>
                       </SelectItem>
                       <SelectItem value="30_days">
                         <div className="flex flex-col">
                           <span>A cada 30 dias</span>
-                          <span className="text-xs text-zinc-500">30 dias após última call</span>
+                          <span className="text-xs text-muted-foreground">30 dias após última call</span>
                         </div>
                       </SelectItem>
                     </SelectContent>
@@ -835,20 +835,20 @@ export function StoreControlPanel() {
                     value={editForm.next_feedback_date}
                     onChange={(e) => setEditForm({ ...editForm, next_feedback_date: e.target.value })}
                   />
-                  <p className="text-xs text-zinc-500">
+                  <p className="text-xs text-muted-foreground">
                     Deixe vazio para calcular automaticamente com base na frequência
                   </p>
                 </div>
               </div>
 
               {/* Quick Actions */}
-              <div className="pt-2 border-t border-zinc-800">
-                <p className="text-xs text-zinc-500 mb-2">Ações rápidas</p>
+              <div className="pt-2 border-t border-border">
+                <p className="text-xs text-muted-foreground mb-2">Ações rápidas</p>
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
                     size="sm"
-                    className="flex-1 border-zinc-700"
+                    className="flex-1 border-border"
                     onClick={() => router.push(`/clients/${selectedStore.client_id}?tab=stores`)}
                   >
                     <Pencil className="w-3 h-3 mr-1" />
@@ -857,7 +857,7 @@ export function StoreControlPanel() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="flex-1 border-zinc-700"
+                    className="flex-1 border-border"
                     onClick={() => router.push(`/clients/${selectedStore.client_id}?tab=klaviyo`)}
                   >
                     <TrendingUp className="w-3 h-3 mr-1" />

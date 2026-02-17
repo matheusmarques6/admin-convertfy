@@ -950,30 +950,30 @@ export function ClientReports({ clientId }: ClientReportsProps) {
                 </div>
 
                 {/* Summary */}
-                <Card className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white">
+                <Card className="bg-gradient-to-r from-card via-muted to-card text-foreground">
                   <CardContent className="py-4">
                     <h4 className="font-medium mb-3">Resumo da Comparação</h4>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                       <div className="text-center p-2 rounded-lg bg-white/10">
-                        <p className="text-xs text-slate-400">Receita Klaviyo</p>
+                        <p className="text-xs text-muted-foreground">Receita Klaviyo</p>
                         <p className={`text-lg font-bold ${metrics.revenue.change >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                           {metrics.revenue.change >= 0 ? '+' : ''}{metrics.revenue.change.toFixed(1)}%
                         </p>
                       </div>
                       <div className="text-center p-2 rounded-lg bg-white/10">
-                        <p className="text-xs text-slate-400">Pedidos</p>
+                        <p className="text-xs text-muted-foreground">Pedidos</p>
                         <p className={`text-lg font-bold ${metrics.orders.change >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                           {metrics.orders.change >= 0 ? '+' : ''}{metrics.orders.change.toFixed(1)}%
                         </p>
                       </div>
                       <div className="text-center p-2 rounded-lg bg-white/10">
-                        <p className="text-xs text-slate-400">Taxa Abertura</p>
+                        <p className="text-xs text-muted-foreground">Taxa Abertura</p>
                         <p className={`text-lg font-bold ${metrics.openRate.change >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                           {metrics.openRate.change >= 0 ? '+' : ''}{metrics.openRate.change.toFixed(1)}%
                         </p>
                       </div>
                       <div className="text-center p-2 rounded-lg bg-white/10">
-                        <p className="text-xs text-slate-400">Taxa Clique</p>
+                        <p className="text-xs text-muted-foreground">Taxa Clique</p>
                         <p className={`text-lg font-bold ${metrics.clickRate.change >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                           {metrics.clickRate.change >= 0 ? '+' : ''}{metrics.clickRate.change.toFixed(1)}%
                         </p>

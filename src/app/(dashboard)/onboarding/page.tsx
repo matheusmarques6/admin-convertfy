@@ -27,11 +27,11 @@ export default function OnboardingPage() {
         <div className="flex items-center gap-4 text-sm">
           <div className="flex items-center gap-2">
             <Clock className="w-4 h-4 text-amber-400" />
-            <span className="text-zinc-400">Arraste para mover entre etapas</span>
+            <span className="text-muted-foreground">Arraste para mover entre etapas</span>
           </div>
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-            <span className="text-zinc-400">Conclusão agenda feedback em 30 dias</span>
+            <span className="text-muted-foreground">Conclusão agenda feedback em 30 dias</span>
           </div>
         </div>
       </div>

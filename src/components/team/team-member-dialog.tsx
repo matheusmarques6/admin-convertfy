@@ -454,7 +454,7 @@ export function TeamMemberDialog({
                                 type="checkbox"
                                 checked={selectedFeatures.includes(feature.key)}
                                 onChange={() => toggleFeature(feature.key)}
-                                className="h-4 w-4 rounded border-gray-300"
+                                className="h-4 w-4 rounded border-border"
                               />
                               <div className="flex-1">
                                 <p className="font-medium text-sm">{feature.name}</p>
@@ -516,7 +516,7 @@ export function TeamMemberDialog({
                             type="checkbox"
                             checked={selectedStores.includes(store.id)}
                             onChange={() => toggleStore(store.id)}
-                            className="h-4 w-4 rounded border-gray-300"
+                            className="h-4 w-4 rounded border-border"
                           />
                           <div className="flex-1">
                             <p className="font-medium text-sm">{store.store_name}</p>

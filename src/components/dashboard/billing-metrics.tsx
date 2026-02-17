@@ -325,7 +325,7 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
             <Card>
               <CardHeader className="pb-2">
                 <CardDescription>Estornado</CardDescription>
-                <CardTitle className="text-2xl flex items-center gap-2 text-gray-500">
+                <CardTitle className="text-2xl flex items-center gap-2 text-muted-foreground">
                   {formatCurrency(data?.summary.refunded || 0)}
                 </CardTitle>
               </CardHeader>
@@ -374,13 +374,13 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
 
           {/* Overdue Alert */}
           {(data?.summary.overdue || 0) > 0 && (
-            <Card className="border-red-500/50 bg-red-500/5">
+            <Card className="border-destructive/50 bg-destructive/5">
               <CardContent className="flex items-center gap-4 py-4">
-                <div className="rounded-lg p-3 bg-red-500/10">
-                  <AlertCircle className="h-6 w-6 text-red-500" />
+                <div className="rounded-lg p-3 bg-destructive/10">
+                  <AlertCircle className="h-6 w-6 text-destructive" />
                 </div>
                 <div className="flex-1">
-                  <p className="font-medium text-red-600">Atenção: Cobranças Vencidas</p>
+                  <p className="font-medium text-destructive">Atenção: Cobranças Vencidas</p>
                   <p className="text-sm text-muted-foreground">
                     Você tem {data?.counts.overdue} cobranças vencidas totalizando {formatCurrency(data?.summary.overdue || 0)}
                   </p>

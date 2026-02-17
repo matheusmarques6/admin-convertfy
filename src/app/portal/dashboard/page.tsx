@@ -76,37 +76,37 @@ export default function PortalDashboardPage() {
       <div className="min-h-screen bg-background p-6 space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-white">Dashboard</h1>
-            <p className="text-sm text-zinc-500">Carregando dados...</p>
+            <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
+            <p className="text-sm text-muted-foreground">Carregando dados...</p>
           </div>
           <div className="flex gap-3">
-            <Skeleton className="h-10 w-36 bg-zinc-900" />
-            <Skeleton className="h-10 w-32 bg-zinc-900" />
+            <Skeleton className="h-10 w-36 bg-card" />
+            <Skeleton className="h-10 w-32 bg-card" />
           </div>
         </div>
-        <div className="rounded-xl bg-gradient-to-r from-[#34268C]/40 via-[#5327F2]/20 to-zinc-900 border border-[#5327F2]/10 p-6">
+        <div className="rounded-xl bg-gradient-to-r from-primary/40 via-primary/20 to-card border border-primary/10 p-6">
           <div className="flex items-center gap-3 mb-4">
-            <RefreshCw className="h-5 w-5 text-[#05AFF2] animate-spin" />
-            <span className="text-[#05AFF2]/70">Carregando métricas...</span>
+            <RefreshCw className="h-5 w-5 text-info animate-spin" />
+            <span className="text-info/70">Carregando métricas...</span>
           </div>
-          <Skeleton className="h-10 w-48 bg-zinc-800/50 mb-2" />
-          <Skeleton className="h-4 w-32 bg-zinc-800/50" />
+          <Skeleton className="h-10 w-48 bg-muted/50 mb-2" />
+          <Skeleton className="h-4 w-32 bg-muted/50" />
         </div>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           {[1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="rounded-xl bg-zinc-900/50 border border-zinc-800 p-4">
-              <Skeleton className="h-4 w-16 bg-zinc-800 mb-2" />
-              <Skeleton className="h-8 w-24 bg-zinc-800" />
+            <div key={i} className="rounded-xl bg-card/50 border border-border p-4">
+              <Skeleton className="h-4 w-16 bg-muted mb-2" />
+              <Skeleton className="h-8 w-24 bg-muted" />
             </div>
           ))}
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="rounded-xl bg-zinc-900 border border-zinc-800 p-5 h-64">
-              <Skeleton className="h-5 w-24 bg-zinc-800 mb-4" />
+            <div key={i} className="rounded-xl bg-card border border-border p-5 h-64">
+              <Skeleton className="h-5 w-24 bg-muted mb-4" />
               <div className="space-y-3">
                 {[1, 2, 3, 4].map((j) => (
-                  <Skeleton key={j} className="h-8 w-full bg-zinc-800/50" />
+                  <Skeleton key={j} className="h-8 w-full bg-muted/50" />
                 ))}
               </div>
             </div>
@@ -119,13 +119,13 @@ export default function PortalDashboardPage() {
   if (error) {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6">
-        <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-8 text-center max-w-md">
-          <div className="rounded-full bg-red-500/10 p-4 w-fit mx-auto mb-4">
-            <AlertCircle className="h-10 w-10 text-red-400" />
+        <div className="rounded-xl bg-card border border-border p-8 text-center max-w-md">
+          <div className="rounded-full bg-destructive/10 p-4 w-fit mx-auto mb-4">
+            <AlertCircle className="h-10 w-10 text-destructive" />
           </div>
-          <h2 className="text-xl font-semibold text-white mb-2">Erro ao carregar</h2>
-          <p className="text-zinc-400 mb-6">{error}</p>
-          <Button onClick={() => fetchDashboard()} className="bg-[#5327F2] hover:bg-[#34268C]">
+          <h2 className="text-xl font-semibold text-foreground mb-2">Erro ao carregar</h2>
+          <p className="text-muted-foreground mb-6">{error}</p>
+          <Button onClick={() => fetchDashboard()} className="bg-primary hover:bg-primary/80">
             Tentar novamente
           </Button>
         </div>
@@ -140,18 +140,18 @@ export default function PortalDashboardPage() {
   const totalKlaviyoRevenue = klaviyo?.totalRevenue || 0
 
   return (
-    <div className="min-h-screen bg-background text-white">
+    <div className="min-h-screen bg-background text-foreground">
       <div className="max-w-[1600px] mx-auto p-6 space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-white">Dashboard</h1>
+            <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
             <div className="flex items-center gap-2">
               {data.dateRange && (
-                <p className="text-sm text-zinc-500">{formatDateRange(data.dateRange.start, data.dateRange.end)}</p>
+                <p className="text-sm text-muted-foreground">{formatDateRange(data.dateRange.start, data.dateRange.end)}</p>
               )}
               {refreshing && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#5327F2]/10 text-[#05AFF2] text-xs">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-info text-xs">
                   <RefreshCw className="h-3 w-3 animate-spin" />
                   Atualizando...
                 </span>
@@ -161,14 +161,14 @@ export default function PortalDashboardPage() {
 
           <div className="flex items-center gap-3">
             <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
-              <SelectTrigger className="w-[180px] bg-zinc-900 border-zinc-800 text-white">
-                <Store className="h-4 w-4 mr-2 text-zinc-400" />
+              <SelectTrigger className="w-[180px] bg-card border-border text-foreground">
+                <Store className="h-4 w-4 mr-2 text-muted-foreground" />
                 <SelectValue placeholder="Selecione a loja" />
               </SelectTrigger>
-              <SelectContent className="bg-zinc-900 border-zinc-800">
-                <SelectItem value="all" className="text-white hover:bg-zinc-800">Todas as lojas</SelectItem>
+              <SelectContent className="bg-card border-border">
+                <SelectItem value="all" className="text-foreground hover:bg-muted">Todas as lojas</SelectItem>
                 {data.stores?.map((store) => (
-                  <SelectItem key={store.id} value={store.id} className="text-white hover:bg-zinc-800">
+                  <SelectItem key={store.id} value={store.id} className="text-foreground hover:bg-muted">
                     {store.name}
                   </SelectItem>
                 ))}
@@ -176,15 +176,15 @@ export default function PortalDashboardPage() {
             </Select>
 
             <Select value={period} onValueChange={setPeriod}>
-              <SelectTrigger className="w-[140px] bg-zinc-900 border-zinc-800 text-white">
-                <CalendarDays className="h-4 w-4 mr-2 text-zinc-400" />
+              <SelectTrigger className="w-[140px] bg-card border-border text-foreground">
+                <CalendarDays className="h-4 w-4 mr-2 text-muted-foreground" />
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="bg-zinc-900 border-zinc-800">
-                <SelectItem value="7d" className="text-white hover:bg-zinc-800">7 dias</SelectItem>
-                <SelectItem value="15d" className="text-white hover:bg-zinc-800">15 dias</SelectItem>
-                <SelectItem value="30d" className="text-white hover:bg-zinc-800">30 dias</SelectItem>
-                <SelectItem value="90d" className="text-white hover:bg-zinc-800">90 dias</SelectItem>
+              <SelectContent className="bg-card border-border">
+                <SelectItem value="7d" className="text-foreground hover:bg-muted">7 dias</SelectItem>
+                <SelectItem value="15d" className="text-foreground hover:bg-muted">15 dias</SelectItem>
+                <SelectItem value="30d" className="text-foreground hover:bg-muted">30 dias</SelectItem>
+                <SelectItem value="90d" className="text-foreground hover:bg-muted">90 dias</SelectItem>
               </SelectContent>
             </Select>
 
@@ -193,7 +193,7 @@ export default function PortalDashboardPage() {
               size="icon"
               onClick={() => fetchDashboard(true)}
               disabled={refreshing}
-              className="bg-zinc-900 border-zinc-800 text-white hover:bg-zinc-800"
+              className="bg-card border-border text-foreground hover:bg-muted"
               title="Atualizar dados"
             >
               <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />

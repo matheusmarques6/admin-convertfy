@@ -18,13 +18,13 @@ export function ThreeColumns({ klaviyo, totalKlaviyoRevenue }: ThreeColumnsProps
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       {/* Top Flows */}
-      <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-5">
+      <div className="rounded-xl bg-card border border-border p-5">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-medium text-white flex items-center gap-2">
-            <Zap className="h-4 w-4 text-[#5327F2]" />
+          <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
+            <Zap className="h-4 w-4 text-primary" />
             Top Flows
           </h3>
-          <Button variant="ghost" size="sm" className="text-zinc-400 hover:text-white h-8 px-2">
+          <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground h-8 px-2">
             Filtros <ChevronDown className="h-3 w-3 ml-1" />
           </Button>
         </div>
@@ -46,18 +46,18 @@ export function ThreeColumns({ klaviyo, totalKlaviyoRevenue }: ThreeColumnsProps
             })
           ) : (
             <div className="text-center py-8">
-              <Zap className="h-8 w-8 mx-auto mb-2 text-zinc-700" />
-              <p className="text-sm text-zinc-500">Nenhum flow com receita</p>
+              <Zap className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
+              <p className="text-sm text-muted-foreground">Nenhum flow com receita</p>
             </div>
           )}
         </div>
       </div>
 
       {/* Distribution Chart */}
-      <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-5">
+      <div className="rounded-xl bg-card border border-border p-5">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-medium text-white flex items-center gap-2">
-            <BarChart3 className="h-4 w-4 text-[#05AFF2]" />
+          <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
+            <BarChart3 className="h-4 w-4 text-info" />
             Distribuição
           </h3>
         </div>
@@ -65,38 +65,38 @@ export function ThreeColumns({ klaviyo, totalKlaviyoRevenue }: ThreeColumnsProps
         <div className="flex items-center justify-center h-48">
           <div className="relative">
             <svg width="160" height="160" viewBox="0 0 160 160">
-              <circle cx="80" cy="80" r="60" fill="none" stroke="#27272a" strokeWidth="20" />
+              <circle cx="80" cy="80" r="60" fill="none" stroke="hsl(var(--border))" strokeWidth="20" />
               <circle
-                cx="80" cy="80" r="60" fill="none" stroke="#5327F2" strokeWidth="20"
+                cx="80" cy="80" r="60" fill="none" stroke="hsl(var(--primary))" strokeWidth="20"
                 strokeDasharray={`${flowPercent * 3.77} 377`} strokeDashoffset="0"
                 transform="rotate(-90 80 80)"
               />
               <circle
-                cx="80" cy="80" r="60" fill="none" stroke="#05AFF2" strokeWidth="20"
+                cx="80" cy="80" r="60" fill="none" stroke="hsl(var(--info))" strokeWidth="20"
                 strokeDasharray={`${campaignPercent * 3.77} 377`}
                 strokeDashoffset={`${-flowPercent * 3.77}`}
                 transform="rotate(-90 80 80)"
               />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <p className="text-2xl font-bold text-white">{formatCurrencyCompact(totalKlaviyoRevenue)}</p>
-              <p className="text-xs text-zinc-500">Total</p>
+              <p className="text-2xl font-bold text-foreground">{formatCurrencyCompact(totalKlaviyoRevenue)}</p>
+              <p className="text-xs text-muted-foreground">Total</p>
             </div>
           </div>
         </div>
 
-        <p className="text-xs text-zinc-500 text-center mt-2">Receita por categoria</p>
+        <p className="text-xs text-muted-foreground text-center mt-2">Receita por categoria</p>
       </div>
 
       {/* Performance Table */}
-      <div className="rounded-xl bg-zinc-900 border border-zinc-800 p-5">
+      <div className="rounded-xl bg-card border border-border p-5">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-medium text-white flex items-center gap-2">
-            <Award className="h-4 w-4 text-[#4B53F2]" />
+          <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
+            <Award className="h-4 w-4 text-primary" />
             Performance
           </h3>
           <div className="flex gap-1">
-            <span className="px-2 py-1 rounded bg-emerald-500/20 text-emerald-400 text-xs flex items-center gap-1">
+            <span className="px-2 py-1 rounded bg-success/20 text-success text-xs flex items-center gap-1">
               <Flame className="h-3 w-3" /> Top revenue
             </span>
           </div>
@@ -118,8 +118,8 @@ export function ThreeColumns({ klaviyo, totalKlaviyoRevenue }: ThreeColumnsProps
             ))
           ) : (
             <div className="text-center py-8">
-              <BarChart3 className="h-8 w-8 mx-auto mb-2 text-zinc-700" />
-              <p className="text-sm text-zinc-500">Sem dados de performance</p>
+              <BarChart3 className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
+              <p className="text-sm text-muted-foreground">Sem dados de performance</p>
             </div>
           )}
         </div>

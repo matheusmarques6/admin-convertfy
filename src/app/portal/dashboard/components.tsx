@@ -5,8 +5,8 @@ import { formatCurrencyCompact, formatNumber } from "@/lib/utils/format"
 export function VariationBadge({ value, type = "percent" }: { value: number; type?: "percent" | "currency" }) {
   const isPositive = value >= 0
   const Icon = isPositive ? TrendingUp : TrendingDown
-  const bgColor = isPositive ? "bg-emerald-500/20" : "bg-red-500/20"
-  const textColor = isPositive ? "text-emerald-400" : "text-red-400"
+  const bgColor = isPositive ? "bg-success/20" : "bg-destructive/20"
+  const textColor = isPositive ? "text-success" : "text-destructive"
 
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-sm font-medium ${bgColor} ${textColor}`}>
@@ -33,18 +33,18 @@ export function MetricCard({
   return (
     <div className={`rounded-xl p-4 border transition-all card-hover ${
       highlight
-        ? "bg-[#5327F2]/10 border-[#5327F2]/30 glass-card"
-        : "bg-zinc-900/50 border-zinc-800 hover:border-zinc-700"
+        ? "bg-primary/10 border-primary/30 glass-card"
+        : "bg-card/50 border-border hover:border-border"
     }`}>
       <div className="flex items-center gap-2 mb-2">
-        <Icon className={`h-4 w-4 ${highlight ? "text-[#05AFF2]" : "text-zinc-400"}`} />
-        <span className="text-xs text-zinc-400 uppercase tracking-wide">{title}</span>
+        <Icon className={`h-4 w-4 ${highlight ? "text-info" : "text-muted-foreground"}`} />
+        <span className="text-xs text-muted-foreground uppercase tracking-wide">{title}</span>
       </div>
-      <p className={`text-2xl font-bold ${highlight ? "text-[#05AFF2]" : "text-white"}`}>
+      <p className={`text-2xl font-bold ${highlight ? "text-info" : "text-foreground"}`}>
         {value}
       </p>
       {subtitle && (
-        <p className="text-xs text-zinc-500 mt-1">{subtitle}</p>
+        <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
       )}
     </div>
   )
@@ -63,14 +63,14 @@ export function FlowListItem({
   color: string
 }) {
   return (
-    <div className="flex items-center gap-3 py-3 border-b border-zinc-800/50 last:border-0">
+    <div className="flex items-center gap-3 py-3 border-b border-border/50 last:border-0">
       <div className={`w-2 h-2 rounded-full ${color}`} />
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-white truncate">{name}</p>
+        <p className="text-sm font-medium text-foreground truncate">{name}</p>
       </div>
       <div className="text-right">
-        <p className="text-sm font-bold text-white">{formatCurrencyCompact(value)}</p>
-        <p className="text-xs text-zinc-500">{percent.toFixed(0)}%</p>
+        <p className="text-sm font-bold text-foreground">{formatCurrencyCompact(value)}</p>
+        <p className="text-xs text-muted-foreground">{percent.toFixed(0)}%</p>
       </div>
     </div>
   )
@@ -96,16 +96,16 @@ export function ChannelCard({
     <div className={`rounded-xl p-4 border transition-all cursor-pointer ${
       active
         ? `${color} border-current`
-        : "bg-zinc-900/50 border-zinc-800 hover:border-zinc-700"
+        : "bg-card/50 border-border hover:border-border"
     }`}>
       <div className="flex items-center gap-2 mb-2">
-        <Icon className={`h-4 w-4 ${active ? "text-current" : "text-zinc-400"}`} />
-        <span className="text-xs text-zinc-400">{title}</span>
+        <Icon className={`h-4 w-4 ${active ? "text-current" : "text-muted-foreground"}`} />
+        <span className="text-xs text-muted-foreground">{title}</span>
       </div>
-      <p className={`text-2xl font-bold ${active ? "text-white" : "text-zinc-300"}`}>
+      <p className={`text-2xl font-bold ${active ? "text-foreground" : "text-foreground/80"}`}>
         {percent.toFixed(1)}%
       </p>
-      <p className="text-xs text-zinc-500 mt-1">{formatCurrencyCompact(value)}</p>
+      <p className="text-xs text-muted-foreground mt-1">{formatCurrencyCompact(value)}</p>
     </div>
   )
 }
@@ -129,31 +129,31 @@ export function PerformanceRow({
   isTop?: boolean
 }) {
   return (
-    <div className={`flex items-center gap-4 py-3 px-2 rounded-lg ${isTop ? "bg-emerald-500/5" : ""}`}>
+    <div className={`flex items-center gap-4 py-3 px-2 rounded-lg ${isTop ? "bg-success/5" : ""}`}>
       <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-        rank <= 3 ? "bg-emerald-500/20 text-emerald-400" : "bg-zinc-800 text-zinc-400"
+        rank <= 3 ? "bg-success/20 text-success" : "bg-muted text-muted-foreground"
       }`}>
         {rank}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-white truncate">{name}</p>
+        <p className="text-sm font-medium text-foreground truncate">{name}</p>
       </div>
       <div className="grid grid-cols-4 gap-4 text-right">
         <div>
-          <p className="text-sm text-zinc-300">{formatNumber(delivered)}</p>
-          <p className="text-[10px] text-zinc-600">Entregues</p>
+          <p className="text-sm text-foreground/80">{formatNumber(delivered)}</p>
+          <p className="text-[10px] text-muted-foreground/70">Entregues</p>
         </div>
         <div>
-          <p className="text-sm text-zinc-300">{openRate.toFixed(1)}%</p>
-          <p className="text-[10px] text-zinc-600">Abertura</p>
+          <p className="text-sm text-foreground/80">{openRate.toFixed(1)}%</p>
+          <p className="text-[10px] text-muted-foreground/70">Abertura</p>
         </div>
         <div>
-          <p className="text-sm text-zinc-300">{clickRate.toFixed(1)}%</p>
-          <p className="text-[10px] text-zinc-600">Clique</p>
+          <p className="text-sm text-foreground/80">{clickRate.toFixed(1)}%</p>
+          <p className="text-[10px] text-muted-foreground/70">Clique</p>
         </div>
         <div>
-          <p className="text-sm font-bold text-emerald-400">{formatCurrencyCompact(revenue)}</p>
-          <p className="text-[10px] text-zinc-600">Receita</p>
+          <p className="text-sm font-bold text-success">{formatCurrencyCompact(revenue)}</p>
+          <p className="text-[10px] text-muted-foreground/70">Receita</p>
         </div>
       </div>
     </div>
@@ -165,10 +165,10 @@ export function MiniBarChart({ value, max, color }: { value: number; max: number
   const percent = max > 0 ? (value / max) * 100 : 0
   return (
     <div className="flex items-center gap-2">
-      <div className="flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
+      <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
         <div className={`h-full ${color} rounded-full transition-all`} style={{ width: `${percent}%` }} />
       </div>
-      <span className="text-xs text-zinc-400 w-12 text-right">{value.toFixed(1)}%</span>
+      <span className="text-xs text-muted-foreground w-12 text-right">{value.toFixed(1)}%</span>
     </div>
   )
 }
@@ -187,7 +187,7 @@ export function SimpleLineChart({ data, color = "emerald" }: { data: number[]; c
     return `${x},${y}`
   }).join(" ")
 
-  const strokeColor = color === "emerald" ? "#05AFF2" : "#5327F2"
+  const strokeColor = color === "emerald" ? "hsl(var(--info))" : "hsl(var(--primary))"
 
   return (
     <div className="h-20 w-full">

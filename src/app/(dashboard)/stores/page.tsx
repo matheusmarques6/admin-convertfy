@@ -27,11 +27,11 @@ export default function StoresControlPage() {
         <div className="flex items-center gap-4 text-sm">
           <div className="flex items-center gap-2">
             <TrendingUp className="w-4 h-4 text-emerald-400" />
-            <span className="text-zinc-400">Resultado = Receita Klaviyo / Faturamento Total</span>
+            <span className="text-muted-foreground">Resultado = Receita Klaviyo / Faturamento Total</span>
           </div>
           <div className="flex items-center gap-2">
             <Phone className="w-4 h-4 text-violet-400" />
-            <span className="text-zinc-400">Calls de alinhamento mensais</span>
+            <span className="text-muted-foreground">Calls de alinhamento mensais</span>
           </div>
         </div>
       </div>

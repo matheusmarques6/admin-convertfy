@@ -483,11 +483,11 @@ export function OnboardingKanban() {
             return (
               <div
                 key={stage.id}
-                className="flex flex-col w-[320px] flex-shrink-0 bg-zinc-900/50 rounded-lg border border-zinc-800"
+                className="flex flex-col w-[320px] flex-shrink-0 bg-card/50 rounded-lg border border-border"
               >
                 {/* Stage Header */}
                 <div
-                  className="p-4 border-b border-zinc-800 rounded-t-lg"
+                  className="p-4 border-b border-border rounded-t-lg"
                   style={{ borderTopColor: stage.color, borderTopWidth: 3 }}
                 >
                   <div className="flex items-center justify-between">
@@ -520,7 +520,7 @@ export function OnboardingKanban() {
                         {...provided.droppableProps}
                         className={cn(
                           "p-2 min-h-[200px] transition-colors",
-                          snapshot.isDraggingOver && "bg-zinc-800/50"
+                          snapshot.isDraggingOver && "bg-muted/50"
                         )}
                       >
                         {stageOnboardings.map((onboarding, index) => (
@@ -535,7 +535,7 @@ export function OnboardingKanban() {
                                 {...provided.draggableProps}
                                 {...provided.dragHandleProps}
                                 className={cn(
-                                  "mb-2 cursor-grab active:cursor-grabbing transition-shadow bg-zinc-900 border-zinc-800 hover:border-zinc-700",
+                                  "mb-2 cursor-grab active:cursor-grabbing transition-shadow bg-card border-border hover:border-border",
                                   snapshot.isDragging && "shadow-lg shadow-black/50",
                                   isOverdue(onboarding.target_completion_date) &&
                                     onboarding.status !== "completed" &&
@@ -617,7 +617,7 @@ export function OnboardingKanban() {
                                   </div>
 
                                   {/* Footer */}
-                                  <div className="flex items-center justify-between mt-3 pt-2 border-t border-zinc-800">
+                                  <div className="flex items-center justify-between mt-3 pt-2 border-t border-border">
                                     {onboarding.assignee?.profile ? (
                                       <div className="flex items-center gap-1.5">
                                         <Avatar className="h-5 w-5">
@@ -780,7 +780,7 @@ export function OnboardingKanban() {
           {selectedOnboarding && (
             <div className="space-y-4">
               {/* Progress Summary */}
-              <div className="flex items-center gap-4 p-4 bg-zinc-900 rounded-lg border border-zinc-800">
+              <div className="flex items-center gap-4 p-4 bg-card rounded-lg border border-border">
                 <div className="flex-1">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-medium">Progresso Geral</span>
@@ -845,8 +845,8 @@ export function OnboardingKanban() {
                                 className={cn(
                                   "flex items-start gap-3 p-3 rounded-lg border transition-colors",
                                   step.status === "completed"
-                                    ? "bg-zinc-900/50 border-zinc-800"
-                                    : "bg-zinc-900 border-zinc-700 hover:border-zinc-600"
+                                    ? "bg-card/50 border-border"
+                                    : "bg-card border-border hover:border-border"
                                 )}
                               >
                                 <Checkbox

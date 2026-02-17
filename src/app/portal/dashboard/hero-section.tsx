@@ -22,27 +22,27 @@ export function HeroSection({ klaviyo, shopify }: HeroSectionProps) {
   const smsPercent = totalKlaviyoRevenue > 0 ? (smsRevenue / totalKlaviyoRevenue) * 100 : 0
 
   return (
-    <div className="rounded-xl bg-gradient-to-r from-[#34268C]/80 via-[#5327F2]/40 to-zinc-900 border border-[#5327F2]/20 p-6 relative overflow-hidden gradient-accent-border">
-      <div className="absolute -top-24 -right-24 w-48 h-48 bg-[#05AFF2]/10 rounded-full blur-3xl animate-pulse" />
-      <div className="absolute -bottom-16 -left-16 w-40 h-40 bg-[#5327F2]/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: "1s" }} />
+    <div className="rounded-xl bg-gradient-to-r from-primary/80 via-primary/40 to-card border border-primary/20 p-6 relative overflow-hidden gradient-accent-border">
+      <div className="absolute -top-24 -right-24 w-48 h-48 bg-info/10 rounded-full blur-3xl animate-pulse" />
+      <div className="absolute -bottom-16 -left-16 w-40 h-40 bg-primary/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: "1s" }} />
       <div className="relative flex items-start justify-between mb-6">
         <div>
-          <p className="text-sm text-[#05AFF2]/70 mb-1">Receita Convertfy</p>
+          <p className="text-sm text-info/70 mb-1">Receita Convertfy</p>
           <div className="flex items-center gap-3 mb-2">
-            <h2 className="text-4xl font-bold text-white">{formatCurrency(totalKlaviyoRevenue)}</h2>
+            <h2 className="text-4xl font-bold text-foreground">{formatCurrency(totalKlaviyoRevenue)}</h2>
             <VariationBadge value={attributionPercent} type="percent" />
             {totalKlaviyoRevenue > 0 && (
               <VariationBadge value={totalKlaviyoRevenue * 0.08} type="currency" />
             )}
           </div>
-          <p className="text-sm text-zinc-400">
+          <p className="text-sm text-muted-foreground">
             vs Receita Total: {formatCurrency(totalShopifyRevenue)}
           </p>
         </div>
         <div className="text-right">
-          <p className="text-xs text-zinc-400 mb-1">Atribuição</p>
-          <p className="text-3xl font-bold text-[#05AFF2]">{attributionPercent.toFixed(1)}%</p>
-          <p className="text-xs text-zinc-500">do faturamento</p>
+          <p className="text-xs text-muted-foreground mb-1">Atribuição</p>
+          <p className="text-3xl font-bold text-info">{attributionPercent.toFixed(1)}%</p>
+          <p className="text-xs text-muted-foreground">do faturamento</p>
         </div>
       </div>
 
@@ -50,12 +50,12 @@ export function HeroSection({ klaviyo, shopify }: HeroSectionProps) {
         <RevenueCard icon={Zap} label="Flows" value={flowRevenue} percent={flowPercent} color="violet" />
         <RevenueCard icon={Send} label="Campanhas" value={campaignRevenue} percent={campaignPercent} color="cyan" />
         <RevenueCard icon={MessageSquare} label="SMS" value={smsRevenue} percent={smsPercent} color="amber" />
-        <div className="p-3 rounded-lg bg-black/30 border border-[#5327F2]/10">
+        <div className="p-3 rounded-lg bg-black/30 border border-primary/10">
           <div className="flex items-center gap-2 mb-1">
             <div className="w-2 h-2 rounded-full bg-purple-500" />
-            <span className="text-xs text-zinc-400">Lucro Estimado</span>
+            <span className="text-xs text-muted-foreground">Lucro Estimado</span>
           </div>
-          <p className="text-lg font-bold text-white">{formatCurrencyCompact(estimatedProfit)}</p>
+          <p className="text-lg font-bold text-foreground">{formatCurrencyCompact(estimatedProfit)}</p>
           <p className="text-xs text-purple-400">30% margem</p>
         </div>
       </div>
@@ -77,12 +77,12 @@ function RevenueCard({
   color: string
 }) {
   return (
-    <div className="p-3 rounded-lg bg-black/30 border border-[#5327F2]/10">
+    <div className="p-3 rounded-lg bg-black/30 border border-primary/10">
       <div className="flex items-center gap-2 mb-1">
         <div className={`w-2 h-2 rounded-full bg-${color}-500`} />
-        <span className="text-xs text-zinc-400">{label}</span>
+        <span className="text-xs text-muted-foreground">{label}</span>
       </div>
-      <p className="text-lg font-bold text-white">{formatCurrencyCompact(value)}</p>
+      <p className="text-lg font-bold text-foreground">{formatCurrencyCompact(value)}</p>
       <p className={`text-xs text-${color}-400`}>{percent.toFixed(0)}% da receita</p>
     </div>
   )
