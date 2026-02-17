@@ -5,16 +5,18 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
   Bell,
-  Search,
   Moon,
   Sun,
   Menu,
   Check,
   Loader2,
+  PartyPopper,
+  AlertTriangle,
+  XCircle,
+  Megaphone,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -130,15 +132,16 @@ export function Header({ user: userProp }: HeaderProps) {
   }
 
   function getNotificationIcon(type: string) {
+    const baseClass = "h-4 w-4"
     switch (type) {
       case "success":
-        return "🎉"
+        return <PartyPopper className={`${baseClass} text-success`} />
       case "warning":
-        return "⚠️"
+        return <AlertTriangle className={`${baseClass} text-warning`} />
       case "error":
-        return "❌"
+        return <XCircle className={`${baseClass} text-destructive`} />
       default:
-        return "📢"
+        return <Megaphone className={`${baseClass} text-info`} />
     }
   }
 
@@ -166,18 +169,10 @@ export function Header({ user: userProp }: HeaderProps) {
       </Sheet>
 
       {/* Page Title */}
-      <h1 className="text-xl font-semibold hidden md:block">{getPageTitle()}</h1>
+      <h1 className="text-lg font-semibold truncate">{getPageTitle()}</h1>
 
-      {/* Search */}
-      <div className="flex-1 max-w-md ml-auto mr-4">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar clientes, deals, relatórios..."
-            className="pl-9 bg-muted/50"
-          />
-        </div>
-      </div>
+      {/* Spacer */}
+      <div className="flex-1" />
 
       {/* Actions */}
       <div className="flex items-center gap-2">
@@ -239,7 +234,7 @@ export function Header({ user: userProp }: HeaderProps) {
                 >
                   <div className="flex items-center justify-between w-full">
                     <span className="font-medium text-sm flex items-center gap-2">
-                      <span>{getNotificationIcon(notification.type)}</span>
+                      {getNotificationIcon(notification.type)}
                       {notification.title}
                       {notification.read && <Check className="h-3 w-3 text-muted-foreground" />}
                     </span>

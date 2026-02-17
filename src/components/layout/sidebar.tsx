@@ -211,7 +211,7 @@ export function Sidebar({ user }: SidebarProps) {
         )}
       >
         <Icon className="h-5 w-5 flex-shrink-0" />
-        <span className="text-sm font-medium">{item.name}</span>
+        <span className="text-sm font-medium whitespace-nowrap overflow-hidden transition-[opacity,width] duration-300">{item.name}</span>
       </Link>
     )
   }
@@ -242,7 +242,7 @@ export function Sidebar({ user }: SidebarProps) {
               <div key={group.key}>
                 {/* Group Header */}
                 {!sidebarCollapsed && (
-                  <p className="px-3 mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground/75">
+                  <p className="px-3 mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground/75 whitespace-nowrap overflow-hidden transition-opacity duration-300">
                     {group.label}
                   </p>
                 )}
@@ -309,7 +309,7 @@ export function Sidebar({ user }: SidebarProps) {
                     </AvatarFallback>
                   </Avatar>
                   {!sidebarCollapsed && (
-                    <div className="ml-3 text-left">
+                    <div className="ml-3 text-left overflow-hidden transition-opacity duration-300">
                       <p className="text-sm font-medium truncate max-w-[140px]">
                         {user?.name || "Usuário"}
                       </p>
