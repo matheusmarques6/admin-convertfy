@@ -18,7 +18,7 @@ export function ThreeColumns({ klaviyo, totalKlaviyoRevenue }: ThreeColumnsProps
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       {/* Top Flows */}
-      <div className="rounded-xl bg-card border border-border p-5">
+      <div className="rounded-xl bg-card border border-border p-5 card-hover">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
             <Zap className="h-4 w-4 text-primary" />
@@ -54,7 +54,7 @@ export function ThreeColumns({ klaviyo, totalKlaviyoRevenue }: ThreeColumnsProps
       </div>
 
       {/* Distribution Chart */}
-      <div className="rounded-xl bg-card border border-border p-5">
+      <div className="rounded-xl bg-card border border-border p-5 card-hover">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
             <BarChart3 className="h-4 w-4 text-info" />
@@ -89,7 +89,7 @@ export function ThreeColumns({ klaviyo, totalKlaviyoRevenue }: ThreeColumnsProps
       </div>
 
       {/* Performance Table */}
-      <div className="rounded-xl bg-card border border-border p-5">
+      <div className="rounded-xl bg-card border border-border p-5 card-hover">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
             <Award className="h-4 w-4 text-primary" />

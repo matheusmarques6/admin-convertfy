@@ -12,7 +12,7 @@ export function ConversionsSection({ shopify }: ConversionsSectionProps) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       {/* Coupon Conversions */}
-      <div className="rounded-xl bg-card border border-border p-5">
+      <div className="rounded-xl bg-card border border-border p-5 card-hover">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
             <Ticket className="h-4 w-4 text-primary" />
@@ -63,7 +63,7 @@ export function ConversionsSection({ shopify }: ConversionsSectionProps) {
       </div>
 
       {/* UTM Conversions */}
-      <div className="rounded-xl bg-card border border-border p-5">
+      <div className="rounded-xl bg-card border border-border p-5 card-hover">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
             <Link2 className="h-4 w-4 text-info" />

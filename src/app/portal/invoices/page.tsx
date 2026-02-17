@@ -171,6 +171,7 @@ function StatCard({
   icon: Icon,
   iconColor = "text-emerald-400",
   iconBgColor = "bg-emerald-400/10",
+  gradientClass,
 }: {
   title: string
   value: string | number
@@ -178,9 +179,10 @@ function StatCard({
   icon: React.ElementType
   iconColor?: string
   iconBgColor?: string
+  gradientClass?: string
 }) {
   return (
-    <div className="rounded-xl bg-card border border-border p-5">
+    <div className={`rounded-xl bg-card border border-border p-5 card-hover ${gradientClass || ""}`}>
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm text-muted-foreground mb-1">{title}</p>
@@ -617,6 +619,7 @@ export default function PortalInvoicesPage() {
               icon={Clock}
               iconColor="text-amber-400"
               iconBgColor="bg-amber-400/10"
+              gradientClass="bg-gradient-to-br from-warning/10 to-warning/5 border-warning/20"
             />
             <StatCard
               title="Em Atraso"
@@ -625,6 +628,7 @@ export default function PortalInvoicesPage() {
               icon={AlertCircle}
               iconColor="text-red-400"
               iconBgColor="bg-red-400/10"
+              gradientClass="bg-gradient-to-br from-destructive/10 to-destructive/5 border-destructive/20"
             />
             <StatCard
               title="Pagas"
@@ -633,6 +637,7 @@ export default function PortalInvoicesPage() {
               icon={CheckCircle}
               iconColor="text-emerald-400"
               iconBgColor="bg-emerald-400/10"
+              gradientClass="bg-gradient-to-br from-success/10 to-success/5 border-success/20"
             />
             <StatCard
               title="Total de Faturas"

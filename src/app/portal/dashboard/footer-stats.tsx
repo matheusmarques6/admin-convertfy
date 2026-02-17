@@ -10,7 +10,7 @@ interface FooterStatsProps {
 
 export function FooterStats({ klaviyo, shopify, lastUpdated }: FooterStatsProps) {
   return (
-    <div className="rounded-xl bg-card border border-border p-4">
+    <div className="rounded-xl bg-card border border-border p-4 card-hover">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">

@@ -9,7 +9,7 @@ export function MeetingsSection({ meetings }: MeetingsSectionProps) {
   if (!meetings || meetings.length === 0) return null
 
   return (
-    <div className="rounded-xl bg-card border border-border p-5">
+    <div className="rounded-xl bg-card border border-border p-5 card-hover">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
           <Video className="h-4 w-4 text-blue-400" />

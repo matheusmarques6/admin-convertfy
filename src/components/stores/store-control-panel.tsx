@@ -387,8 +387,8 @@ export function StoreControlPanel() {
 
           <button
             onClick={() => setFilterStatus('overdue')}
-            className={`rounded-xl bg-red-500/5 border p-4 text-left transition-all hover:bg-red-500/10 ${
-              filterStatus === 'overdue' ? 'border-red-500 ring-1 ring-red-500' : 'border-red-500/20'
+            className={`rounded-xl bg-gradient-to-br from-destructive/10 to-destructive/5 border p-4 text-left transition-all hover:bg-destructive/15 ${
+              filterStatus === 'overdue' ? 'border-destructive ring-1 ring-destructive' : 'border-destructive/20'
             }`}
           >
             <div className="flex items-center gap-3">
@@ -404,8 +404,8 @@ export function StoreControlPanel() {
 
           <button
             onClick={() => setFilterStatus('due_soon')}
-            className={`rounded-xl bg-amber-500/5 border p-4 text-left transition-all hover:bg-amber-500/10 ${
-              filterStatus === 'due_soon' ? 'border-amber-500 ring-1 ring-amber-500' : 'border-amber-500/20'
+            className={`rounded-xl bg-gradient-to-br from-warning/10 to-warning/5 border p-4 text-left transition-all hover:bg-warning/15 ${
+              filterStatus === 'due_soon' ? 'border-warning ring-1 ring-warning' : 'border-warning/20'
             }`}
           >
             <div className="flex items-center gap-3">
@@ -421,8 +421,8 @@ export function StoreControlPanel() {
 
           <button
             onClick={() => setFilterStatus('on_track')}
-            className={`rounded-xl bg-emerald-500/5 border p-4 text-left transition-all hover:bg-emerald-500/10 ${
-              filterStatus === 'on_track' ? 'border-emerald-500 ring-1 ring-emerald-500' : 'border-emerald-500/20'
+            className={`rounded-xl bg-gradient-to-br from-success/10 to-success/5 border p-4 text-left transition-all hover:bg-success/15 ${
+              filterStatus === 'on_track' ? 'border-success ring-1 ring-success' : 'border-success/20'
             }`}
           >
             <div className="flex items-center gap-3">

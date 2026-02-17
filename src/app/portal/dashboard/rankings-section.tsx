@@ -10,7 +10,7 @@ export function RankingsSection({ shopify }: RankingsSectionProps) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       {/* Top Customers */}
-      <div className="rounded-xl bg-card border border-border p-5">
+      <div className="rounded-xl bg-card border border-border p-5 card-hover">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
             <Crown className="h-4 w-4 text-amber-400" />
@@ -56,7 +56,7 @@ export function RankingsSection({ shopify }: RankingsSectionProps) {
       </div>
 
       {/* Top Products */}
-      <div className="rounded-xl bg-card border border-border p-5">
+      <div className="rounded-xl bg-card border border-border p-5 card-hover">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
             <ShoppingCart className="h-4 w-4 text-info" />
