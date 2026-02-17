@@ -165,13 +165,11 @@ export function ClientsTable({ clients }: ClientsTableProps) {
         }
 
         const data = await response.json()
-        if (data.success) {
-          const statusData = data.clientsStatus || {}
-          setClientsStatus(statusData)
-          setCachedStatus(statusData)
-          setLoadError(false)
-          break
-        }
+        const statusData = data.clientsStatus || data.data?.clientsStatus || {}
+        setClientsStatus(statusData)
+        setCachedStatus(statusData)
+        setLoadError(false)
+        break
       } catch (error) {
         attempts++
         console.error(`Attempt ${attempts} failed:`, error)
