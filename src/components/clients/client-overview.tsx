@@ -50,13 +50,14 @@ export function ClientOverview({ client }: ClientOverviewProps) {
   const subscriptionsData = subscriptionsRaw as Record<string, unknown> | undefined
 
   const asaasData = useMemo<AsaasFinancialData | null>(() => {
-    if (!paymentsData?.success) return null
-    const summary = paymentsData.summary as Record<string, number> | undefined
-    const subs = subscriptionsData?.subscriptions as Array<{ isActive: boolean; value?: number }> | undefined
+    if (!paymentsData) return null
+    const summary = (paymentsData.summary || (paymentsData.data as Record<string, unknown>)?.summary) as Record<string, number> | undefined
+    if (!summary) return null
+    const subs = (subscriptionsData?.subscriptions || (subscriptionsData?.data as Record<string, unknown>)?.subscriptions) as Array<{ isActive: boolean; value?: number }> | undefined
     return {
-      totalPaid: summary?.paidValue || 0,
-      totalPending: summary?.pendingValue || 0,
-      totalOverdue: summary?.overdueValue || 0,
+      totalPaid: summary.paidValue || 0,
+      totalPending: summary.pendingValue || 0,
+      totalOverdue: summary.overdueValue || 0,
       hasSubscription: subs?.some(s => s.isActive) || false,
       subscriptionValue: subs?.find(s => s.isActive)?.value,
     }

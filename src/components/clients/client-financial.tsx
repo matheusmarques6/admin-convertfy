@@ -295,7 +295,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
 
         const result = await response.json()
 
-        if (result.success) {
+        if (response.ok && result.payment) {
           setCreatedPayment(result.payment)
           toast({
             title: "Cobrança criada!",
@@ -377,7 +377,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
 
         const result = await response.json()
 
-        if (result.success) {
+        if (response.ok && result.subscription) {
           toast({
             title: "Assinatura criada no Asaas!",
             description: `ID: ${result.subscription?.id}`,
@@ -547,7 +547,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
 
       const result = await response.json()
 
-      if (result.success) {
+      if (response.ok) {
         toast({
           title: "Assinatura cancelada!",
           description: "A assinatura foi cancelada no Asaas.",
@@ -580,7 +580,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
 
       const result = await response.json()
 
-      if (result.success) {
+      if (response.ok) {
         toast({
           title: "Cobrança cancelada!",
           description: "A cobrança foi cancelada no Asaas.",
