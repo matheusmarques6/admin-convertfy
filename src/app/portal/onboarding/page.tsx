@@ -15,6 +15,7 @@ import {
   PartyPopper,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
@@ -60,9 +61,9 @@ const categoryIcons: Record<string, React.ElementType> = {
 
 const statusConfig: Record<string, { label: string; color: string }> = {
   pending: { label: "Pendente", color: "text-muted-foreground" },
-  in_progress: { label: "Em andamento", color: "text-blue-500" },
-  blocked: { label: "Bloqueado", color: "text-red-500" },
-  completed: { label: "Concluído", color: "text-emerald-500" },
+  in_progress: { label: "Em andamento", color: "text-info" },
+  blocked: { label: "Bloqueado", color: "text-destructive" },
+  completed: { label: "Concluído", color: "text-success" },
   skipped: { label: "Pulado", color: "text-muted-foreground" },
 }
 
@@ -138,15 +139,15 @@ export default function PortalOnboardingPage() {
       </div>
 
       {/* Progress Card */}
-      <Card>
+      <GlowCard color="primary" intensity="subtle">
         <CardContent className="pt-6">
           {isCompleted ? (
             <div className="flex items-center gap-4">
-              <div className="flex items-center justify-center h-14 w-14 rounded-full bg-emerald-100 dark:bg-emerald-500/20">
-                <PartyPopper className="h-7 w-7 text-emerald-600 dark:text-emerald-400" />
+              <div className="flex items-center justify-center h-14 w-14 rounded-full bg-success/20">
+                <PartyPopper className="h-7 w-7 text-success" />
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-emerald-600 dark:text-emerald-400">
+                <h3 className="text-lg font-semibold text-success">
                   Onboarding concluído!
                 </h3>
                 <p className="text-sm text-muted-foreground">
@@ -174,7 +175,7 @@ export default function PortalOnboardingPage() {
             </div>
           )}
         </CardContent>
-      </Card>
+      </GlowCard>
 
       {/* Steps by Category */}
       <div className="space-y-4">
@@ -183,11 +184,11 @@ export default function PortalOnboardingPage() {
           const allDone = group.completed === group.total
 
           return (
-            <Card key={group.category}>
+            <GlowCard key={group.category} color="primary" intensity="subtle">
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <CardTitle className="flex items-center gap-2 text-base">
-                    <Icon className={cn("h-5 w-5", allDone ? "text-emerald-500" : "text-muted-foreground")} />
+                    <Icon className={cn("h-5 w-5", allDone ? "text-success" : "text-muted-foreground")} />
                     {group.label}
                   </CardTitle>
                   <Badge variant={allDone ? "default" : "secondary"} className="text-xs">
@@ -213,11 +214,11 @@ export default function PortalOnboardingPage() {
                       >
                         {/* Status icon */}
                         {isDone ? (
-                          <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0" />
+                          <CheckCircle2 className="h-5 w-5 text-success shrink-0" />
                         ) : step.status === "in_progress" ? (
-                          <Clock className="h-5 w-5 text-blue-500 shrink-0" />
+                          <Clock className="h-5 w-5 text-info shrink-0" />
                         ) : step.status === "blocked" ? (
-                          <AlertCircle className="h-5 w-5 text-red-500 shrink-0" />
+                          <AlertCircle className="h-5 w-5 text-destructive shrink-0" />
                         ) : (
                           <Circle className="h-5 w-5 text-muted-foreground/40 shrink-0" />
                         )}
@@ -264,7 +265,7 @@ export default function PortalOnboardingPage() {
                   })}
                 </div>
               </CardContent>
-            </Card>
+            </GlowCard>
           )
         })}
       </div>

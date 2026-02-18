@@ -11,7 +11,8 @@ import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
 import { toast } from "@/lib/hooks/use-toast"
 import { rateLimitService } from "@/lib/services"
 
@@ -114,11 +115,11 @@ export default function LoginPage() {
         </div>
 
         {isRateLimited ? (
-          <Card className="border-border/50">
+          <GlowCard color="primary" intensity="subtle" className="border-border/50">
             <CardHeader className="space-y-1 text-center">
               <div className="flex justify-center mb-4">
-                <div className="rounded-full bg-amber-500/10 p-4">
-                  <AlertTriangle className="h-8 w-8 text-amber-500" />
+                <div className="rounded-full bg-warning/10 p-4">
+                  <AlertTriangle className="h-8 w-8 text-warning" />
                 </div>
               </div>
               <CardTitle className="text-2xl">Conta Temporariamente Bloqueada</CardTitle>
@@ -153,9 +154,9 @@ export default function LoginPage() {
                 Tentar novamente
               </Button>
             </CardFooter>
-          </Card>
+          </GlowCard>
         ) : (
-          <Card className="border-border/50">
+          <GlowCard color="primary" intensity="subtle" className="border-border/50">
             <CardHeader className="space-y-1">
               <CardTitle className="text-2xl">Entrar</CardTitle>
               <CardDescription>
@@ -236,7 +237,7 @@ export default function LoginPage() {
                 </p>
               </CardFooter>
             </form>
-          </Card>
+          </GlowCard>
         )}
       </div>
     </div>

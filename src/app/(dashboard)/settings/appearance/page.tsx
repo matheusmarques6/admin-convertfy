@@ -1,6 +1,7 @@
 "use client"
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft, Palette, Moon, Check, Info } from "lucide-react"
 import Link from "next/link"
@@ -18,7 +19,7 @@ export default function AppearancePage() {
         <p className="text-muted-foreground">Configurações visuais do sistema</p>
       </div>
 
-      <Card>
+      <GlowCard color="primary" intensity="subtle">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Palette className="h-5 w-5" />
@@ -51,9 +52,9 @@ export default function AppearancePage() {
             </p>
           </div>
         </CardContent>
-      </Card>
+      </GlowCard>
 
-      <Card>
+      <GlowCard color="primary" intensity="subtle">
         <CardHeader>
           <CardTitle>Identidade Visual</CardTitle>
           <CardDescription>Cores e logo do sistema</CardDescription>
@@ -104,29 +105,29 @@ export default function AppearancePage() {
             <h4 className="text-sm font-medium mb-3">Status</h4>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="space-y-2">
-                <div className="h-12 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
-                  <span className="text-xs text-emerald-500 font-medium">Sucesso</span>
+                <div className="h-12 rounded-lg bg-success/10 border border-success/20 flex items-center justify-center">
+                  <span className="text-xs text-success font-medium">Sucesso</span>
                 </div>
               </div>
               <div className="space-y-2">
-                <div className="h-12 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
-                  <span className="text-xs text-amber-500 font-medium">Aviso</span>
+                <div className="h-12 rounded-lg bg-warning/10 border border-warning/20 flex items-center justify-center">
+                  <span className="text-xs text-warning font-medium">Aviso</span>
                 </div>
               </div>
               <div className="space-y-2">
-                <div className="h-12 rounded-lg bg-red-500/10 border border-red-500/20 flex items-center justify-center">
-                  <span className="text-xs text-red-500 font-medium">Erro</span>
+                <div className="h-12 rounded-lg bg-destructive/10 border border-destructive/20 flex items-center justify-center">
+                  <span className="text-xs text-destructive font-medium">Erro</span>
                 </div>
               </div>
               <div className="space-y-2">
-                <div className="h-12 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
-                  <span className="text-xs text-blue-500 font-medium">Info</span>
+                <div className="h-12 rounded-lg bg-info/10 border border-info/20 flex items-center justify-center">
+                  <span className="text-xs text-info font-medium">Info</span>
                 </div>
               </div>
             </div>
           </div>
         </CardContent>
-      </Card>
+      </GlowCard>
     </div>
   )
 }

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
 export default function ChangePasswordPage() {
@@ -114,11 +115,11 @@ export default function ChangePasswordPage() {
   if (success) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted p-4">
-        <Card className="w-full max-w-md">
+        <GlowCard color="primary" intensity="subtle" className="w-full max-w-md">
           <CardContent className="pt-6">
             <div className="flex flex-col items-center text-center">
-              <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mb-4">
-                <CheckCircle className="h-8 w-8 text-green-600" />
+              <div className="w-16 h-16 rounded-full bg-success/10 flex items-center justify-center mb-4">
+                <CheckCircle className="h-8 w-8 text-success" />
               </div>
               <h2 className="text-xl font-semibold mb-2">Senha alterada com sucesso!</h2>
               <p className="text-muted-foreground">
@@ -126,7 +127,7 @@ export default function ChangePasswordPage() {
               </p>
             </div>
           </CardContent>
-        </Card>
+        </GlowCard>
       </div>
     )
   }
@@ -145,7 +146,7 @@ export default function ChangePasswordPage() {
           </p>
         </div>
 
-        <Card>
+        <GlowCard color="primary" intensity="subtle">
           <CardHeader className="text-center">
             <CardTitle>Primeira vez acessando?</CardTitle>
             <CardDescription>
@@ -226,24 +227,24 @@ export default function ChangePasswordPage() {
               <div className="space-y-2 text-sm">
                 <p className="font-medium text-muted-foreground">Requisitos da senha:</p>
                 <ul className="space-y-1">
-                  <li className={`flex items-center gap-2 ${hasMinLength ? "text-green-600" : "text-muted-foreground"}`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${hasMinLength ? "bg-green-600" : "bg-muted-foreground"}`} />
+                  <li className={`flex items-center gap-2 ${hasMinLength ? "text-success" : "text-muted-foreground"}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${hasMinLength ? "bg-success" : "bg-muted-foreground"}`} />
                     Mínimo de 8 caracteres
                   </li>
-                  <li className={`flex items-center gap-2 ${hasUpperCase ? "text-green-600" : "text-muted-foreground"}`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${hasUpperCase ? "bg-green-600" : "bg-muted-foreground"}`} />
+                  <li className={`flex items-center gap-2 ${hasUpperCase ? "text-success" : "text-muted-foreground"}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${hasUpperCase ? "bg-success" : "bg-muted-foreground"}`} />
                     Uma letra maiúscula
                   </li>
-                  <li className={`flex items-center gap-2 ${hasLowerCase ? "text-green-600" : "text-muted-foreground"}`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${hasLowerCase ? "bg-green-600" : "bg-muted-foreground"}`} />
+                  <li className={`flex items-center gap-2 ${hasLowerCase ? "text-success" : "text-muted-foreground"}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${hasLowerCase ? "bg-success" : "bg-muted-foreground"}`} />
                     Uma letra minúscula
                   </li>
-                  <li className={`flex items-center gap-2 ${hasNumber ? "text-green-600" : "text-muted-foreground"}`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${hasNumber ? "bg-green-600" : "bg-muted-foreground"}`} />
+                  <li className={`flex items-center gap-2 ${hasNumber ? "text-success" : "text-muted-foreground"}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${hasNumber ? "bg-success" : "bg-muted-foreground"}`} />
                     Um número
                   </li>
-                  <li className={`flex items-center gap-2 ${passwordsMatch ? "text-green-600" : "text-muted-foreground"}`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${passwordsMatch ? "bg-green-600" : "bg-muted-foreground"}`} />
+                  <li className={`flex items-center gap-2 ${passwordsMatch ? "text-success" : "text-muted-foreground"}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${passwordsMatch ? "bg-success" : "bg-muted-foreground"}`} />
                     Senhas coincidem
                   </li>
                 </ul>
@@ -265,7 +266,7 @@ export default function ChangePasswordPage() {
               </Button>
             </form>
           </CardContent>
-        </Card>
+        </GlowCard>
 
         <p className="mt-6 text-center text-xs text-muted-foreground">
           &copy; {new Date().getFullYear()} Convertfy. Todos os direitos reservados.

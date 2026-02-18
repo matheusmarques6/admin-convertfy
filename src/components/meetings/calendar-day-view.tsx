@@ -131,7 +131,7 @@ export function CalendarDayView({
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <Video className="h-4 w-4 flex-shrink-0 text-purple-600 dark:text-purple-400" />
+                        <Video className="h-4 w-4 flex-shrink-0 text-primary dark:text-primary" />
                         <span className="font-semibold text-sm truncate">
                           {meeting.title}
                         </span>
@@ -211,7 +211,7 @@ export function CalendarDayView({
                             }}
                             title="Marcar como realizada"
                           >
-                            <CheckCircle className="h-4 w-4 text-emerald-500" />
+                            <CheckCircle className="h-4 w-4 text-success" />
                           </Button>
                         )}
                       </div>

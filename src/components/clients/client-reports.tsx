@@ -23,6 +23,7 @@ import {
   MousePointerClick,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -523,11 +524,11 @@ export function ClientReports({ clientId }: ClientReportsProps) {
 
       {/* No stores warning */}
       {stores.length === 0 && (
-        <Card className="border-amber-500/50 bg-amber-500/10">
+        <Card className="border-warning/50 bg-warning/10">
           <CardContent className="flex items-start gap-3 py-4">
-            <Store className="h-5 w-5 text-amber-500 mt-0.5" />
+            <Store className="h-5 w-5 text-warning mt-0.5" />
             <div>
-              <p className="font-medium text-amber-600">Configure uma loja</p>
+              <p className="font-medium text-warning">Configure uma loja</p>
               <p className="text-sm text-muted-foreground">
                 Para criar relatórios, configure a API do Klaviyo em pelo menos uma loja.
               </p>
@@ -563,7 +564,7 @@ export function ClientReports({ clientId }: ClientReportsProps) {
             const { currency, locale } = getReportCurrency(report)
 
             return (
-              <Card key={report.id} className="hover:border-primary/50 transition-colors">
+              <GlowCard key={report.id} color="primary" intensity="subtle">
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between">
                     <CardTitle className="text-base flex items-center gap-2">
@@ -598,23 +599,23 @@ export function ClientReports({ clientId }: ClientReportsProps) {
                   {/* Quick Stats */}
                   <div className="grid grid-cols-2 gap-3">
                     {revenue?.klaviyoAttributedRevenue !== undefined && (
-                      <div className="p-2 rounded-lg bg-emerald-500/10">
+                      <div className="p-2 rounded-lg bg-success/10">
                         <p className="text-xs text-muted-foreground flex items-center gap-1">
                           <DollarSign className="h-3 w-3" />
                           Receita Klaviyo
                         </p>
-                        <p className="text-sm font-bold text-emerald-500">
+                        <p className="text-sm font-bold text-success">
                           {formatCurrencyWithCode(revenue.klaviyoAttributedRevenue, currency, locale)}
                         </p>
                       </div>
                     )}
                     {overview?.totalSubscribers !== undefined && (
-                      <div className="p-2 rounded-lg bg-blue-500/10">
+                      <div className="p-2 rounded-lg bg-info/10">
                         <p className="text-xs text-muted-foreground flex items-center gap-1">
                           <Mail className="h-3 w-3" />
                           Contatos
                         </p>
-                        <p className="text-sm font-bold text-blue-500">
+                        <p className="text-sm font-bold text-info">
                           {overview.totalSubscribers?.toLocaleString() || 0}
                         </p>
                       </div>
@@ -634,7 +635,7 @@ export function ClientReports({ clientId }: ClientReportsProps) {
                     </Button>
                   </div>
                 </CardContent>
-              </Card>
+              </GlowCard>
             )
           })}
         </div>
@@ -907,15 +908,15 @@ export function ClientReports({ clientId }: ClientReportsProps) {
                           <div className="grid grid-cols-3 gap-4 items-center">
                             <div className="flex items-center gap-2">
                               {key === 'revenue' || key === 'totalRevenue' || key === 'avgOrderValue' ? (
-                                <DollarSign className="h-4 w-4 text-emerald-500" />
+                                <DollarSign className="h-4 w-4 text-success" />
                               ) : key === 'subscribers' ? (
-                                <Users className="h-4 w-4 text-blue-500" />
+                                <Users className="h-4 w-4 text-info" />
                               ) : key === 'openRate' || key === 'clickRate' ? (
-                                <MousePointerClick className="h-4 w-4 text-purple-500" />
+                                <MousePointerClick className="h-4 w-4 text-primary" />
                               ) : key === 'orders' ? (
-                                <TrendingUp className="h-4 w-4 text-amber-500" />
+                                <TrendingUp className="h-4 w-4 text-warning" />
                               ) : (
-                                <Mail className="h-4 w-4 text-blue-500" />
+                                <Mail className="h-4 w-4 text-info" />
                               )}
                               <span className="font-medium text-sm">{metric.label}</span>
                             </div>
@@ -930,7 +931,7 @@ export function ClientReports({ clientId }: ClientReportsProps) {
                               </p>
                               <div className={`flex items-center justify-center gap-1 text-sm ${
                                 isNeutral ? 'text-muted-foreground' :
-                                isPositive ? 'text-emerald-500' : 'text-rose-500'
+                                isPositive ? 'text-success' : 'text-destructive'
                               }`}>
                                 {isNeutral ? (
                                   <Minus className="h-3 w-3" />
@@ -956,25 +957,25 @@ export function ClientReports({ clientId }: ClientReportsProps) {
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                       <div className="text-center p-2 rounded-lg bg-white/10">
                         <p className="text-xs text-muted-foreground">Receita Klaviyo</p>
-                        <p className={`text-lg font-bold ${metrics.revenue.change >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        <p className={`text-lg font-bold ${metrics.revenue.change >= 0 ? 'text-success' : 'text-destructive'}`}>
                           {metrics.revenue.change >= 0 ? '+' : ''}{metrics.revenue.change.toFixed(1)}%
                         </p>
                       </div>
                       <div className="text-center p-2 rounded-lg bg-white/10">
                         <p className="text-xs text-muted-foreground">Pedidos</p>
-                        <p className={`text-lg font-bold ${metrics.orders.change >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        <p className={`text-lg font-bold ${metrics.orders.change >= 0 ? 'text-success' : 'text-destructive'}`}>
                           {metrics.orders.change >= 0 ? '+' : ''}{metrics.orders.change.toFixed(1)}%
                         </p>
                       </div>
                       <div className="text-center p-2 rounded-lg bg-white/10">
                         <p className="text-xs text-muted-foreground">Taxa Abertura</p>
-                        <p className={`text-lg font-bold ${metrics.openRate.change >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        <p className={`text-lg font-bold ${metrics.openRate.change >= 0 ? 'text-success' : 'text-destructive'}`}>
                           {metrics.openRate.change >= 0 ? '+' : ''}{metrics.openRate.change.toFixed(1)}%
                         </p>
                       </div>
                       <div className="text-center p-2 rounded-lg bg-white/10">
                         <p className="text-xs text-muted-foreground">Taxa Clique</p>
-                        <p className={`text-lg font-bold ${metrics.clickRate.change >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        <p className={`text-lg font-bold ${metrics.clickRate.change >= 0 ? 'text-success' : 'text-destructive'}`}>
                           {metrics.clickRate.change >= 0 ? '+' : ''}{metrics.clickRate.change.toFixed(1)}%
                         </p>
                       </div>

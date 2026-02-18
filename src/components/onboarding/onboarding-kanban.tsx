@@ -539,7 +539,7 @@ export function OnboardingKanban() {
                                   snapshot.isDragging && "shadow-lg shadow-black/50",
                                   isOverdue(onboarding.target_completion_date) &&
                                     onboarding.status !== "completed" &&
-                                    "border-red-500/50"
+                                    "border-destructive/50"
                                 )}
                               >
                                 <CardContent className="p-3">
@@ -651,7 +651,7 @@ export function OnboardingKanban() {
                                           "flex items-center gap-1 text-xs",
                                           isOverdue(onboarding.target_completion_date) &&
                                             onboarding.status !== "completed"
-                                            ? "text-red-500"
+                                            ? "text-destructive"
                                             : "text-muted-foreground"
                                         )}
                                       >
@@ -869,7 +869,7 @@ export function OnboardingKanban() {
                                     </p>
                                   )}
                                   {step.completed_at && (
-                                    <p className="text-xs text-emerald-500 mt-1">
+                                    <p className="text-xs text-success mt-1">
                                       Concluído em{" "}
                                       {new Date(step.completed_at).toLocaleDateString("pt-BR")}
                                     </p>

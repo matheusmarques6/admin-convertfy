@@ -11,7 +11,8 @@ import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
 import { toast } from "@/lib/hooks/use-toast"
 
 const registerSchema = z.object({
@@ -94,7 +95,7 @@ export default function RegisterPage() {
           <p className="text-muted-foreground mt-1">Sistema de Gestão para Agências</p>
         </div>
 
-        <Card className="border-border/50">
+        <GlowCard color="primary" intensity="subtle" className="border-border/50">
           <CardHeader className="space-y-1">
             <CardTitle className="text-2xl">Criar conta</CardTitle>
             <CardDescription>
@@ -195,7 +196,7 @@ export default function RegisterPage() {
               </p>
             </CardFooter>
           </form>
-        </Card>
+        </GlowCard>
       </div>
     </div>
   )

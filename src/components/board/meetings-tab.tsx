@@ -18,6 +18,7 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
 import { Badge } from "@/components/ui/badge"
 import {
   DropdownMenu,
@@ -165,7 +166,7 @@ export function MeetingsTab({ meetings, clients, members = [] }: MeetingsTabProp
 
           {/* Stats Cards */}
           <div className="grid gap-4 md:grid-cols-3">
-            <Card>
+            <GlowCard color="primary" intensity="intense">
               <CardContent className="flex items-center gap-4 pt-6">
                 <div className="rounded-lg p-3 bg-primary/10">
                   <Calendar className="h-5 w-5 text-primary" />
@@ -175,11 +176,11 @@ export function MeetingsTab({ meetings, clients, members = [] }: MeetingsTabProp
                   <p className="text-2xl font-bold">{upcomingMeetings.length}</p>
                 </div>
               </CardContent>
-            </Card>
-            <Card>
+            </GlowCard>
+            <GlowCard color="success" intensity="intense">
               <CardContent className="flex items-center gap-4 pt-6">
-                <div className="rounded-lg p-3 bg-emerald-500/10">
-                  <CheckCircle className="h-5 w-5 text-emerald-500" />
+                <div className="rounded-lg p-3 bg-success/10">
+                  <CheckCircle className="h-5 w-5 text-success" />
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Realizadas</p>
@@ -188,22 +189,22 @@ export function MeetingsTab({ meetings, clients, members = [] }: MeetingsTabProp
                   </p>
                 </div>
               </CardContent>
-            </Card>
-            <Card>
+            </GlowCard>
+            <GlowCard color="warning" intensity="intense">
               <CardContent className="flex items-center gap-4 pt-6">
-                <div className="rounded-lg p-3 bg-amber-500/10">
-                  <Video className="h-5 w-5 text-amber-500" />
+                <div className="rounded-lg p-3 bg-warning/10">
+                  <Video className="h-5 w-5 text-warning" />
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Hoje</p>
                   <p className="text-2xl font-bold">{todayMeetings.length}</p>
                 </div>
               </CardContent>
-            </Card>
+            </GlowCard>
           </div>
 
           {/* Upcoming Meetings */}
-          <Card>
+          <GlowCard color="primary" intensity="subtle">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <Calendar className="h-5 w-5 text-primary" />
@@ -232,7 +233,7 @@ export function MeetingsTab({ meetings, clients, members = [] }: MeetingsTabProp
                         className={cn(
                           "flex items-center justify-between p-4 rounded-lg border transition-colors",
                           isHappeningNow && "border-primary bg-primary/5",
-                          isToday(new Date(meeting.scheduled_at)) && !isHappeningNow && "bg-amber-50/50 dark:bg-amber-950/20"
+                          isToday(new Date(meeting.scheduled_at)) && !isHappeningNow && "bg-warning/5 dark:bg-warning/10"
                         )}
                       >
                         <div className="flex items-center gap-4">
@@ -314,11 +315,11 @@ export function MeetingsTab({ meetings, clients, members = [] }: MeetingsTabProp
                 </div>
               )}
             </CardContent>
-          </Card>
+          </GlowCard>
 
           {/* Past Meetings */}
           {pastMeetings.length > 0 && (
-            <Card>
+            <GlowCard color="primary" intensity="subtle">
               <CardHeader>
                 <CardTitle className="text-base">Histórico</CardTitle>
               </CardHeader>
@@ -335,8 +336,8 @@ export function MeetingsTab({ meetings, clients, members = [] }: MeetingsTabProp
                         <div className="flex items-center gap-3">
                           <config.icon className={cn(
                             "h-4 w-4",
-                            meeting.status === "completed" && "text-emerald-500",
-                            meeting.status === "no_show" && "text-red-500",
+                            meeting.status === "completed" && "text-success",
+                            meeting.status === "no_show" && "text-destructive",
                             meeting.status === "cancelled" && "text-muted-foreground"
                           )} />
                           <div>
@@ -353,7 +354,7 @@ export function MeetingsTab({ meetings, clients, members = [] }: MeetingsTabProp
                   })}
                 </div>
               </CardContent>
-            </Card>
+            </GlowCard>
           )}
         </div>
       </div>

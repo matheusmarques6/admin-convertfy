@@ -28,6 +28,7 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
 import { Badge } from "@/components/ui/badge"
 import {
   DropdownMenu,
@@ -114,7 +115,7 @@ function getStatusBadge(status: ReportStatus | undefined) {
     case "published":
       return <Badge variant="default"><CheckCircle className="mr-1 h-3 w-3" />Publicado</Badge>
     case "sent":
-      return <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/30"><Send className="mr-1 h-3 w-3" />Enviado</Badge>
+      return <Badge variant="outline" className="bg-success/10 text-success border-success/30"><Send className="mr-1 h-3 w-3" />Enviado</Badge>
     case "archived":
       return <Badge variant="outline"><Archive className="mr-1 h-3 w-3" />Arquivado</Badge>
     default:
@@ -382,7 +383,7 @@ export default function ReportPage() {
       {revenue && (
         <>
           <h2 className="text-lg font-semibold flex items-center gap-2">
-            <DollarSign className="h-5 w-5 text-emerald-500" />
+            <DollarSign className="h-5 w-5 text-success" />
             Métricas de Receita
           </h2>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -390,10 +391,10 @@ export default function ReportPage() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Faturamento Total</CardTitle>
-                  <TrendingUp className="h-4 w-4 text-emerald-500" />
+                  <TrendingUp className="h-4 w-4 text-success" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-emerald-600">
+                  <div className="text-2xl font-bold text-success">
                     {formatReportCurrency(revenue.totalRevenue)}
                   </div>
                 </CardContent>
@@ -404,10 +405,10 @@ export default function ReportPage() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Receita Klaviyo</CardTitle>
-                  <Mail className="h-4 w-4 text-purple-500" />
+                  <Mail className="h-4 w-4 text-primary" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-purple-600">
+                  <div className="text-2xl font-bold text-primary">
                     {formatReportCurrency(revenue.klaviyoAttributedRevenue)}
                   </div>
                 </CardContent>
@@ -418,7 +419,7 @@ export default function ReportPage() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Pedidos</CardTitle>
-                  <ShoppingCart className="h-4 w-4 text-blue-500" />
+                  <ShoppingCart className="h-4 w-4 text-info" />
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">{revenue.totalOrders}</div>
@@ -430,7 +431,7 @@ export default function ReportPage() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Ticket Médio</CardTitle>
-                  <DollarSign className="h-4 w-4 text-amber-500" />
+                  <DollarSign className="h-4 w-4 text-warning" />
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
@@ -447,7 +448,7 @@ export default function ReportPage() {
       {overview && (
         <>
           <h2 className="text-lg font-semibold flex items-center gap-2">
-            <Users className="h-5 w-5 text-blue-500" />
+            <Users className="h-5 w-5 text-info" />
             Visão Geral
           </h2>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -455,7 +456,7 @@ export default function ReportPage() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Total de Contatos</CardTitle>
-                  <Users className="h-4 w-4 text-blue-500" />
+                  <Users className="h-4 w-4 text-info" />
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
@@ -469,7 +470,7 @@ export default function ReportPage() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Engajados (90d)</CardTitle>
-                  <Zap className="h-4 w-4 text-amber-500" />
+                  <Zap className="h-4 w-4 text-warning" />
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
@@ -483,7 +484,7 @@ export default function ReportPage() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Flows Ativos</CardTitle>
-                  <Zap className="h-4 w-4 text-purple-500" />
+                  <Zap className="h-4 w-4 text-primary" />
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">{overview.totalFlows}</div>
@@ -495,7 +496,7 @@ export default function ReportPage() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Campanhas</CardTitle>
-                  <Mail className="h-4 w-4 text-blue-500" />
+                  <Mail className="h-4 w-4 text-info" />
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">{overview.totalCampaigns}</div>
@@ -510,7 +511,7 @@ export default function ReportPage() {
       {emailPerformance && (
         <>
           <h2 className="text-lg font-semibold flex items-center gap-2">
-            <Mail className="h-5 w-5 text-purple-500" />
+            <Mail className="h-5 w-5 text-primary" />
             Performance de E-mail
           </h2>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -537,10 +538,10 @@ export default function ReportPage() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Taxa de Abertura</CardTitle>
-                  <MousePointer className="h-4 w-4 text-emerald-500" />
+                  <MousePointer className="h-4 w-4 text-success" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-emerald-600">
+                  <div className="text-2xl font-bold text-success">
                     {emailPerformance.openRate.toFixed(1)}%
                   </div>
                   {emailPerformance.opened !== undefined && (
@@ -556,10 +557,10 @@ export default function ReportPage() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Taxa de Clique</CardTitle>
-                  <MousePointer className="h-4 w-4 text-blue-500" />
+                  <MousePointer className="h-4 w-4 text-info" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-blue-600">
+                  <div className="text-2xl font-bold text-info">
                     {emailPerformance.clickRate.toFixed(1)}%
                   </div>
                   {emailPerformance.clicked !== undefined && (
@@ -575,10 +576,10 @@ export default function ReportPage() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Taxa de Bounce</CardTitle>
-                  <TrendingUp className="h-4 w-4 text-rose-500" />
+                  <TrendingUp className="h-4 w-4 text-destructive" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-rose-600">
+                  <div className="text-2xl font-bold text-destructive">
                     {emailPerformance.bounceRate.toFixed(2)}%
                   </div>
                   {emailPerformance.bounced !== undefined && (
@@ -595,10 +596,10 @@ export default function ReportPage() {
 
       {/* Top Flows */}
       {reportData?.flows && reportData.flows.length > 0 && (
-        <Card>
+        <GlowCard color="primary" intensity="subtle">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Zap className="h-5 w-5 text-purple-500" />
+              <Zap className="h-5 w-5 text-primary" />
               Top Flows
             </CardTitle>
             <CardDescription>Flows com maior receita no período</CardDescription>
@@ -619,7 +620,7 @@ export default function ReportPage() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="font-bold text-emerald-600">
+                    <p className="font-bold text-success">
                       {formatReportCurrency(flow.revenue || 0)}
                     </p>
                   </div>
@@ -627,15 +628,15 @@ export default function ReportPage() {
               ))}
             </div>
           </CardContent>
-        </Card>
+        </GlowCard>
       )}
 
       {/* Top Campaigns */}
       {reportData?.campaigns && reportData.campaigns.length > 0 && (
-        <Card>
+        <GlowCard color="primary" intensity="subtle">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Mail className="h-5 w-5 text-blue-500" />
+              <Mail className="h-5 w-5 text-info" />
               Top Campanhas
             </CardTitle>
             <CardDescription>Campanhas com maior receita no período</CardDescription>
@@ -656,7 +657,7 @@ export default function ReportPage() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="font-bold text-emerald-600">
+                    <p className="font-bold text-success">
                       {formatReportCurrency(campaign.revenue || 0)}
                     </p>
                   </div>
@@ -664,12 +665,12 @@ export default function ReportPage() {
               ))}
             </div>
           </CardContent>
-        </Card>
+        </GlowCard>
       )}
 
       {/* Notes */}
       {report.notes && (
-        <Card>
+        <GlowCard color="primary" intensity="subtle">
           <CardHeader>
             <CardTitle>Observações</CardTitle>
             <CardDescription>Notas e insights sobre o período</CardDescription>
@@ -677,11 +678,11 @@ export default function ReportPage() {
           <CardContent>
             <p className="whitespace-pre-wrap">{report.notes}</p>
           </CardContent>
-        </Card>
+        </GlowCard>
       )}
 
       {/* Metadata */}
-      <Card>
+      <GlowCard color="primary" intensity="subtle">
         <CardHeader>
           <CardTitle>Informações do Relatório</CardTitle>
         </CardHeader>
@@ -723,7 +724,7 @@ export default function ReportPage() {
             )}
           </dl>
         </CardContent>
-      </Card>
+      </GlowCard>
 
       {/* Delete Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

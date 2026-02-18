@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
 import { Switch } from "@/components/ui/switch"
 import {
   Select,
@@ -265,7 +266,7 @@ export default function EditAutomationPage() {
       {/* Form */}
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         {/* Basic Info */}
-        <Card>
+        <GlowCard color="primary" intensity="subtle">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Zap className="h-5 w-5" />
@@ -316,10 +317,10 @@ export default function EditAutomationPage() {
               />
             </div>
           </CardContent>
-        </Card>
+        </GlowCard>
 
         {/* Trigger */}
-        <Card>
+        <GlowCard color="primary" intensity="subtle">
           <CardHeader>
             <CardTitle>Gatilho</CardTitle>
             <CardDescription>
@@ -350,10 +351,10 @@ export default function EditAutomationPage() {
               )}
             </div>
           </CardContent>
-        </Card>
+        </GlowCard>
 
         {/* Actions */}
-        <Card>
+        <GlowCard color="primary" intensity="subtle">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
@@ -439,7 +440,7 @@ export default function EditAutomationPage() {
               </div>
             )}
           </CardContent>
-        </Card>
+        </GlowCard>
 
         {/* Actions */}
         <div className="flex justify-end gap-4">

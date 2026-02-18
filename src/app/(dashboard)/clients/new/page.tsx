@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
 import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
@@ -217,11 +218,11 @@ export default function NewClientPage() {
 
       {/* Asaas Fields Warning */}
       {!hasRequiredAsaasFields() && (
-        <Card className="border-amber-500/50 bg-amber-500/10">
+        <Card className="border-warning/50 bg-warning/10">
           <CardContent className="flex items-start gap-3 py-4">
-            <AlertCircle className="h-5 w-5 text-amber-500 mt-0.5" />
+            <AlertCircle className="h-5 w-5 text-warning mt-0.5" />
             <div>
-              <p className="font-medium text-amber-600">Campos obrigatórios para cobranças automáticas</p>
+              <p className="font-medium text-warning">Campos obrigatórios para cobranças automáticas</p>
               <p className="text-sm text-muted-foreground">
                 Para criar o cliente no Asaas automaticamente, preencha: <strong>Nome</strong>, <strong>CPF/CNPJ</strong> e <strong>Email ou Telefone</strong>
               </p>
@@ -231,11 +232,11 @@ export default function NewClientPage() {
       )}
 
       {hasRequiredAsaasFields() && (
-        <Card className="border-emerald-500/50 bg-emerald-500/10">
+        <Card className="border-success/50 bg-success/10">
           <CardContent className="flex items-start gap-3 py-4">
-            <CheckCircle2 className="h-5 w-5 text-emerald-500 mt-0.5" />
+            <CheckCircle2 className="h-5 w-5 text-success mt-0.5" />
             <div>
-              <p className="font-medium text-emerald-600">Pronto para integração Asaas</p>
+              <p className="font-medium text-success">Pronto para integração Asaas</p>
               <p className="text-sm text-muted-foreground">
                 O cliente será criado automaticamente no Asaas ao salvar.
               </p>
@@ -247,7 +248,7 @@ export default function NewClientPage() {
       {/* Form */}
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         {/* Required Fields for Asaas */}
-        <Card className="border-primary/50">
+        <GlowCard color="primary" intensity="subtle" className="border-primary/50">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               Dados Obrigatórios
@@ -311,10 +312,10 @@ export default function NewClientPage() {
             </div>
             <p className="text-xs text-muted-foreground">* Pelo menos email ou telefone é obrigatório</p>
           </CardContent>
-        </Card>
+        </GlowCard>
 
         {/* Additional Info */}
-        <Card>
+        <GlowCard color="primary" intensity="subtle">
           <CardHeader>
             <CardTitle>Informações Adicionais</CardTitle>
             <CardDescription>
@@ -368,10 +369,10 @@ export default function NewClientPage() {
               </Select>
             </div>
           </CardContent>
-        </Card>
+        </GlowCard>
 
         {/* Address */}
-        <Card>
+        <GlowCard color="primary" intensity="subtle">
           <CardHeader>
             <CardTitle>Endereço</CardTitle>
             <CardDescription>
@@ -482,10 +483,10 @@ export default function NewClientPage() {
               </div>
             </div>
           </CardContent>
-        </Card>
+        </GlowCard>
 
         {/* Integration */}
-        <Card>
+        <GlowCard color="primary" intensity="subtle">
           <CardHeader>
             <CardTitle>Integração Asaas</CardTitle>
             <CardDescription>
@@ -506,10 +507,10 @@ export default function NewClientPage() {
               </p>
             </div>
           </CardContent>
-        </Card>
+        </GlowCard>
 
         {/* Notes */}
-        <Card>
+        <GlowCard color="primary" intensity="subtle">
           <CardHeader>
             <CardTitle>Observações</CardTitle>
             <CardDescription>
@@ -524,7 +525,7 @@ export default function NewClientPage() {
               rows={4}
             />
           </CardContent>
-        </Card>
+        </GlowCard>
 
         {/* Actions */}
         <div className="flex justify-end gap-4">

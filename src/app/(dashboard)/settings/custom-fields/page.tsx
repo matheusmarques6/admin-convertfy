@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -103,7 +104,7 @@ export default function CustomFieldsPage() {
         <p className="text-muted-foreground">Crie campos extras para clientes e deals</p>
       </div>
 
-      <Card>
+      <GlowCard color="primary" intensity="subtle">
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Layers className="h-5 w-5" /> Novo Campo</CardTitle>
           <CardDescription>Adicione campos customizados às suas entidades</CardDescription>
@@ -151,9 +152,9 @@ export default function CustomFieldsPage() {
             <Plus className="mr-2 h-4 w-4" /> Criar Campo
           </Button>
         </CardContent>
-      </Card>
+      </GlowCard>
 
-      <Card>
+      <GlowCard color="primary" intensity="subtle">
         <CardHeader>
           <CardTitle>Campos Existentes</CardTitle>
           <CardDescription>{fields.length} campo(s) cadastrado(s)</CardDescription>
@@ -180,7 +181,7 @@ export default function CustomFieldsPage() {
             </div>
           )}
         </CardContent>
-      </Card>
+      </GlowCard>
     </div>
   )
 }

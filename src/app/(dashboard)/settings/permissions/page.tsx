@@ -1,4 +1,5 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft, Key, ShieldCheck, ShieldAlert, Shield, Eye } from "lucide-react"
 import Link from "next/link"
@@ -59,7 +60,7 @@ export default function PermissionsPage() {
         <p className="text-muted-foreground">Visualize as permissões por cargo</p>
       </div>
 
-      <Card>
+      <GlowCard color="primary" intensity="subtle">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Key className="h-5 w-5" />
@@ -93,7 +94,7 @@ export default function PermissionsPage() {
                     const val = role.permissions[key as keyof typeof role.permissions]
                     return (
                       <TableCell key={role.name} className="text-center">
-                        <span className={val === "Não" ? "text-muted-foreground" : val === "Total" || val === "Sim" ? "text-green-600 font-medium" : ""}>
+                        <span className={val === "Não" ? "text-muted-foreground" : val === "Total" || val === "Sim" ? "text-success font-medium" : ""}>
                           {val}
                         </span>
                       </TableCell>
@@ -104,7 +105,7 @@ export default function PermissionsPage() {
             </TableBody>
           </Table>
         </CardContent>
-      </Card>
+      </GlowCard>
     </div>
   )
 }

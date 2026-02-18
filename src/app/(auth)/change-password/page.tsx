@@ -8,7 +8,8 @@ import { Lock, Loader2, Eye, EyeOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
 import { useToast } from "@/lib/hooks/use-toast"
 
 const changePasswordSchema = z
@@ -87,7 +88,7 @@ export default function ChangePasswordPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
-      <Card className="w-full max-w-md">
+      <GlowCard color="primary" intensity="subtle" className="w-full max-w-md">
         <CardHeader className="space-y-1 text-center">
           <div className="mx-auto mb-4 rounded-full bg-primary/10 p-3 w-fit">
             <Lock className="h-6 w-6 text-primary" />
@@ -177,7 +178,7 @@ export default function ChangePasswordPage() {
             </Button>
           </form>
         </CardContent>
-      </Card>
+      </GlowCard>
     </div>
   )
 }

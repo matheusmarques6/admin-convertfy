@@ -17,6 +17,7 @@ import {
   FileJson,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -520,7 +521,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
           {stores.map((store) => (
-            <Card key={store.id}>
+            <GlowCard key={store.id} color="primary" intensity="subtle">
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
@@ -700,7 +701,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
                   </Button>
                 </div>
               </CardContent>
-            </Card>
+            </GlowCard>
           ))}
         </div>
       )}

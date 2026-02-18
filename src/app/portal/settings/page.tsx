@@ -12,7 +12,8 @@ import {
   AlertCircle,
   CheckCircle,
 } from "lucide-react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -193,7 +194,7 @@ export default function PortalSettingsPage() {
       )}
 
       {success && (
-        <Alert className="border-green-200 bg-green-50 text-green-700">
+        <Alert className="border-success/20 bg-success/10 text-success">
           <CheckCircle className="h-4 w-4" />
           <AlertDescription>{success}</AlertDescription>
         </Alert>
@@ -201,7 +202,7 @@ export default function PortalSettingsPage() {
 
       <div className="grid gap-6 md:grid-cols-2">
         {/* Profile */}
-        <Card>
+        <GlowCard color="primary" intensity="subtle">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <User className="h-5 w-5" />
@@ -260,10 +261,10 @@ export default function PortalSettingsPage() {
               Salvar Perfil
             </Button>
           </CardContent>
-        </Card>
+        </GlowCard>
 
         {/* Change Password */}
-        <Card>
+        <GlowCard color="primary" intensity="subtle">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Lock className="h-5 w-5" />
@@ -322,10 +323,10 @@ export default function PortalSettingsPage() {
               </Button>
             </form>
           </CardContent>
-        </Card>
+        </GlowCard>
 
         {/* Notifications */}
-        <Card className="md:col-span-2">
+        <GlowCard color="primary" intensity="subtle" className="md:col-span-2">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Bell className="h-5 w-5" />
@@ -453,7 +454,7 @@ export default function PortalSettingsPage() {
               </Button>
             </div>
           </CardContent>
-        </Card>
+        </GlowCard>
       </div>
     </div>
   )

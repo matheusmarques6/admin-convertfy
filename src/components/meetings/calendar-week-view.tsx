@@ -72,10 +72,10 @@ export function CalendarWeekView({
   }
 
   const statusColors: Record<MeetingStatus, string> = {
-    scheduled: "bg-purple-100 border-purple-300 text-purple-800 dark:bg-purple-900/40 dark:border-purple-700 dark:text-purple-200",
-    completed: "bg-emerald-100 border-emerald-300 text-emerald-800 dark:bg-emerald-900/40 dark:border-emerald-700 dark:text-emerald-200",
-    cancelled: "bg-gray-100 border-gray-300 text-gray-500 dark:bg-gray-800/40 dark:border-gray-600 dark:text-gray-400",
-    no_show: "bg-red-100 border-red-300 text-red-800 dark:bg-red-900/40 dark:border-red-700 dark:text-red-200",
+    scheduled: "bg-primary/10 border-primary/30 text-primary dark:bg-primary/20 dark:border-primary/30 dark:text-primary",
+    completed: "bg-success/10 border-success/30 text-success dark:bg-success/20 dark:border-success/30 dark:text-success",
+    cancelled: "bg-muted border-border text-muted-foreground dark:bg-muted dark:border-border dark:text-muted-foreground",
+    no_show: "bg-destructive/10 border-destructive/30 text-destructive dark:bg-destructive/20 dark:border-destructive/30 dark:text-destructive",
   }
 
   return (

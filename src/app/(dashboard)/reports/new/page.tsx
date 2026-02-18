@@ -16,6 +16,7 @@ import {
   BarChart3,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -458,7 +459,7 @@ export default function NewReportPage() {
         <div className="grid gap-6 lg:grid-cols-3">
           {/* Main Form */}
           <div className="lg:col-span-2 space-y-6">
-            <Card>
+            <GlowCard color="primary" intensity="subtle">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <FileText className="h-5 w-5" />
@@ -523,11 +524,11 @@ export default function NewReportPage() {
                         </SelectContent>
                       </Select>
                     ) : (
-                      <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-4">
+                      <div className="rounded-lg border border-warning/50 bg-warning/10 p-4">
                         <div className="flex items-start gap-3">
-                          <AlertCircle className="h-5 w-5 text-amber-500 mt-0.5" />
+                          <AlertCircle className="h-5 w-5 text-warning mt-0.5" />
                           <div>
-                            <p className="font-medium text-amber-600">Nenhuma loja encontrada</p>
+                            <p className="font-medium text-warning">Nenhuma loja encontrada</p>
                             <p className="text-sm text-muted-foreground">
                               Este cliente não possui lojas cadastradas ou nenhuma possui integrações configuradas.
                             </p>
@@ -672,7 +673,7 @@ export default function NewReportPage() {
                   />
                 </div>
               </CardContent>
-            </Card>
+            </GlowCard>
 
             {/* Submit Button */}
             <div className="flex gap-3">
@@ -692,7 +693,7 @@ export default function NewReportPage() {
 
           {/* Preview Panel */}
           <div className="space-y-6">
-            <Card>
+            <GlowCard color="primary" intensity="subtle">
               <CardHeader>
                 <CardTitle className="text-base">Resumo</CardTitle>
               </CardHeader>
@@ -744,13 +745,13 @@ export default function NewReportPage() {
                     <p className="text-sm text-muted-foreground mb-2">Integrações</p>
                     <div className="space-y-2">
                       <div className="flex items-center gap-2">
-                        <div className={`h-2 w-2 rounded-full ${selectedStoreDetails.has_klaviyo ? "bg-emerald-500" : "bg-muted"}`} />
+                        <div className={`h-2 w-2 rounded-full ${selectedStoreDetails.has_klaviyo ? "bg-success" : "bg-muted"}`} />
                         <span className={`text-sm ${selectedStoreDetails.has_klaviyo ? "" : "text-muted-foreground"}`}>
                           Klaviyo {selectedStoreDetails.has_klaviyo ? "conectado" : "não configurado"}
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <div className={`h-2 w-2 rounded-full ${selectedStoreDetails.has_shopify ? "bg-emerald-500" : "bg-muted"}`} />
+                        <div className={`h-2 w-2 rounded-full ${selectedStoreDetails.has_shopify ? "bg-success" : "bg-muted"}`} />
                         <span className={`text-sm ${selectedStoreDetails.has_shopify ? "" : "text-muted-foreground"}`}>
                           Shopify {selectedStoreDetails.has_shopify ? "conectado" : "não configurado"}
                         </span>
@@ -759,10 +760,10 @@ export default function NewReportPage() {
                   </div>
                 )}
               </CardContent>
-            </Card>
+            </GlowCard>
 
             {/* Help Card */}
-            <Card className="bg-muted/50">
+            <GlowCard color="primary" intensity="subtle" className="bg-muted/50">
               <CardContent className="pt-6">
                 <h4 className="font-medium mb-2">Dicas</h4>
                 <ul className="text-sm text-muted-foreground space-y-2">
@@ -780,7 +781,7 @@ export default function NewReportPage() {
                   </li>
                 </ul>
               </CardContent>
-            </Card>
+            </GlowCard>
           </div>
         </div>
       )}

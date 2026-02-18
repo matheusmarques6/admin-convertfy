@@ -13,6 +13,7 @@ import {
   AlertCircle,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -234,121 +235,105 @@ export function ClientPerformanceReview({ clientId }: { clientId: string }) {
           {/* KPI Cards */}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             {/* Revenue Klaviyo */}
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Revenue Klaviyo
-                </CardTitle>
-                <TrendingUp className="h-4 w-4 text-emerald-500" />
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-bold">{formatCurrency(data.totals.klaviyoRevenue)}</p>
-                <div className="flex gap-2 mt-1">
-                  <span className="text-xs text-muted-foreground">
-                    Campanhas: {formatCurrency(data.totals.campaignRevenue)}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    Flows: {formatCurrency(data.totals.flowRevenue)}
-                  </span>
-                </div>
-              </CardContent>
-            </Card>
+            <GlowCard color="success" intensity="intense" surfaceClassName="p-6">
+              <div className="flex items-center justify-between pb-2">
+                <span className="text-sm font-medium text-muted-foreground">Revenue Klaviyo</span>
+                <TrendingUp className="h-4 w-4 text-success" />
+              </div>
+              <p className="text-2xl font-bold">{formatCurrency(data.totals.klaviyoRevenue)}</p>
+              <div className="flex gap-2 mt-1">
+                <span className="text-xs text-muted-foreground">
+                  Campanhas: {formatCurrency(data.totals.campaignRevenue)}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  Flows: {formatCurrency(data.totals.flowRevenue)}
+                </span>
+              </div>
+            </GlowCard>
 
             {/* Revenue Shopify */}
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Revenue Shopify
-                </CardTitle>
-                <ShoppingCart className="h-4 w-4 text-blue-500" />
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-bold">{formatCurrency(data.totals.shopifyRevenue)}</p>
-                <div className="flex gap-2 mt-1">
-                  <span className="text-xs text-muted-foreground">
-                    {data.totals.shopifyOrders} pedidos
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {data.totals.shopifyCustomers} clientes
-                  </span>
-                </div>
-              </CardContent>
-            </Card>
+            <GlowCard color="info" intensity="intense" surfaceClassName="p-6">
+              <div className="flex items-center justify-between pb-2">
+                <span className="text-sm font-medium text-muted-foreground">Revenue Shopify</span>
+                <ShoppingCart className="h-4 w-4 text-info" />
+              </div>
+              <p className="text-2xl font-bold">{formatCurrency(data.totals.shopifyRevenue)}</p>
+              <div className="flex gap-2 mt-1">
+                <span className="text-xs text-muted-foreground">
+                  {data.totals.shopifyOrders} pedidos
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {data.totals.shopifyCustomers} clientes
+                </span>
+              </div>
+            </GlowCard>
 
             {/* Campanhas & Flows */}
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Campanhas & Flows
-                </CardTitle>
-                <Mail className="h-4 w-4 text-violet-500" />
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-bold">{data.totals.totalCampaigns + data.totals.totalFlows}</p>
-                <div className="flex gap-2 mt-1">
-                  <span className="text-xs text-muted-foreground">
-                    {data.totals.totalCampaigns} campanhas
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {data.totals.totalFlows} flows
-                  </span>
-                </div>
-              </CardContent>
-            </Card>
+            <GlowCard color="primary" intensity="intense" surfaceClassName="p-6">
+              <div className="flex items-center justify-between pb-2">
+                <span className="text-sm font-medium text-muted-foreground">Campanhas & Flows</span>
+                <Mail className="h-4 w-4 text-primary" />
+              </div>
+              <p className="text-2xl font-bold">{data.totals.totalCampaigns + data.totals.totalFlows}</p>
+              <div className="flex gap-2 mt-1">
+                <span className="text-xs text-muted-foreground">
+                  {data.totals.totalCampaigns} campanhas
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {data.totals.totalFlows} flows
+                </span>
+              </div>
+            </GlowCard>
 
             {/* Faturamento */}
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Faturamento
-                </CardTitle>
-                <DollarSign className="h-4 w-4 text-amber-500" />
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-bold text-emerald-500">
-                  {formatCurrency(data.billing.totalPaid)}
-                </p>
-                <div className="flex gap-2 mt-1">
-                  {data.billing.totalPending > 0 && (
-                    <span className="text-xs text-amber-500">
-                      Pendente: {formatCurrency(data.billing.totalPending)}
-                    </span>
-                  )}
-                  {data.billing.totalOverdue > 0 && (
-                    <span className="text-xs text-red-500">
-                      Vencido: {formatCurrency(data.billing.totalOverdue)}
-                    </span>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+            <GlowCard color="warning" intensity="intense" surfaceClassName="p-6">
+              <div className="flex items-center justify-between pb-2">
+                <span className="text-sm font-medium text-muted-foreground">Faturamento</span>
+                <DollarSign className="h-4 w-4 text-warning" />
+              </div>
+              <p className="text-2xl font-bold text-success">
+                {formatCurrency(data.billing.totalPaid)}
+              </p>
+              <div className="flex gap-2 mt-1">
+                {data.billing.totalPending > 0 && (
+                  <span className="text-xs text-warning">
+                    Pendente: {formatCurrency(data.billing.totalPending)}
+                  </span>
+                )}
+                {data.billing.totalOverdue > 0 && (
+                  <span className="text-xs text-destructive">
+                    Vencido: {formatCurrency(data.billing.totalOverdue)}
+                  </span>
+                )}
+              </div>
+            </GlowCard>
           </div>
 
           {/* Email Performance Summary */}
           {(data.totals.avgOpenRate > 0 || data.totals.avgClickRate > 0) && (
             <div className="grid gap-4 md:grid-cols-2">
-              <Card>
+              <GlowCard color="info" intensity="moderate">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium">Taxa de Abertura (Média)</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <p className="text-3xl font-bold">{(data.totals.avgOpenRate * 100).toFixed(1)}%</p>
                 </CardContent>
-              </Card>
-              <Card>
+              </GlowCard>
+              <GlowCard color="info" intensity="moderate">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium">Taxa de Clique (Média)</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <p className="text-3xl font-bold">{(data.totals.avgClickRate * 100).toFixed(1)}%</p>
                 </CardContent>
-              </Card>
+              </GlowCard>
             </div>
           )}
 
           {/* Recent Campaigns Table */}
           {allCampaigns.length > 0 && (
-            <Card>
+            <GlowCard color="primary" intensity="subtle">
               <CardHeader>
                 <CardTitle className="text-base">Campanhas Recentes</CardTitle>
               </CardHeader>
@@ -394,12 +379,12 @@ export function ClientPerformanceReview({ clientId }: { clientId: string }) {
                   </TableBody>
                 </Table>
               </CardContent>
-            </Card>
+            </GlowCard>
           )}
 
           {/* Top Flows Table */}
           {allFlows.length > 0 && (
-            <Card>
+            <GlowCard color="primary" intensity="subtle">
               <CardHeader>
                 <CardTitle className="text-base">Top Flows por Revenue</CardTitle>
               </CardHeader>
@@ -441,7 +426,7 @@ export function ClientPerformanceReview({ clientId }: { clientId: string }) {
                   </TableBody>
                 </Table>
               </CardContent>
-            </Card>
+            </GlowCard>
           )}
 
           {/* Empty state */}

@@ -13,6 +13,7 @@ import {
   Loader2,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { formatDateTime } from "@/lib/utils"
 import { cn } from "@/lib/utils"
@@ -24,17 +25,17 @@ interface ClientTimelineProps {
 }
 
 const activityIcons: Record<string, { icon: React.ElementType; color: string; bg: string }> = {
-  client_created: { icon: UserPlus, color: "text-blue-500", bg: "bg-blue-500/10" },
-  client_updated: { icon: Edit, color: "text-gray-500", bg: "bg-gray-500/10" },
-  status_changed: { icon: Tag, color: "text-purple-500", bg: "bg-purple-500/10" },
-  meeting_scheduled: { icon: Calendar, color: "text-blue-500", bg: "bg-blue-500/10" },
-  meeting_completed: { icon: Calendar, color: "text-emerald-500", bg: "bg-emerald-500/10" },
-  payment_received: { icon: DollarSign, color: "text-emerald-500", bg: "bg-emerald-500/10" },
-  payment_overdue: { icon: DollarSign, color: "text-red-500", bg: "bg-red-500/10" },
-  report_uploaded: { icon: FileText, color: "text-amber-500", bg: "bg-amber-500/10" },
-  note_added: { icon: MessageSquare, color: "text-gray-500", bg: "bg-gray-500/10" },
-  email_sent: { icon: Mail, color: "text-blue-500", bg: "bg-blue-500/10" },
-  whatsapp_sent: { icon: MessageSquare, color: "text-green-500", bg: "bg-green-500/10" },
+  client_created: { icon: UserPlus, color: "text-info", bg: "bg-info/10" },
+  client_updated: { icon: Edit, color: "text-muted-foreground", bg: "bg-muted" },
+  status_changed: { icon: Tag, color: "text-primary", bg: "bg-primary/10" },
+  meeting_scheduled: { icon: Calendar, color: "text-info", bg: "bg-info/10" },
+  meeting_completed: { icon: Calendar, color: "text-success", bg: "bg-success/10" },
+  payment_received: { icon: DollarSign, color: "text-success", bg: "bg-success/10" },
+  payment_overdue: { icon: DollarSign, color: "text-destructive", bg: "bg-destructive/10" },
+  report_uploaded: { icon: FileText, color: "text-warning", bg: "bg-warning/10" },
+  note_added: { icon: MessageSquare, color: "text-muted-foreground", bg: "bg-muted" },
+  email_sent: { icon: Mail, color: "text-info", bg: "bg-info/10" },
+  whatsapp_sent: { icon: MessageSquare, color: "text-success", bg: "bg-success/10" },
 }
 
 export function ClientTimeline({ clientId }: ClientTimelineProps) {
@@ -71,7 +72,7 @@ export function ClientTimeline({ clientId }: ClientTimelineProps) {
   }
 
   return (
-    <Card>
+    <GlowCard color="primary" intensity="subtle">
       <CardHeader>
         <CardTitle className="text-base">Histórico de Atividades</CardTitle>
       </CardHeader>
@@ -123,6 +124,6 @@ export function ClientTimeline({ clientId }: ClientTimelineProps) {
           </ScrollArea>
         )}
       </CardContent>
-    </Card>
+    </GlowCard>
   )
 }

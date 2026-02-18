@@ -5,7 +5,8 @@ import { format, isToday, parseISO } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { Video, ExternalLink, Calendar, ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import type { Meeting } from "@/types"
@@ -29,7 +30,7 @@ export function TodayAgenda({ meetings }: TodayAgendaProps) {
   const now = new Date()
 
   return (
-    <Card>
+    <GlowCard color="info" intensity="subtle">
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center justify-between text-base">
           <div className="flex items-center gap-2">
@@ -102,6 +103,6 @@ export function TodayAgenda({ meetings }: TodayAgendaProps) {
           </div>
         )}
       </CardContent>
-    </Card>
+    </GlowCard>
   )
 }

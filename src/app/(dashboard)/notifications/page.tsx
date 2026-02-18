@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { Bell, Check, CheckCheck, Trash2, Loader2, Info, AlertTriangle, XCircle, PartyPopper } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -13,13 +14,13 @@ import { toast } from "@/lib/hooks/use-toast"
 function getNotificationIcon(type: string) {
   switch (type) {
     case "success":
-      return <PartyPopper className="h-4 w-4 text-green-500" />
+      return <PartyPopper className="h-4 w-4 text-success" />
     case "warning":
-      return <AlertTriangle className="h-4 w-4 text-yellow-500" />
+      return <AlertTriangle className="h-4 w-4 text-warning" />
     case "error":
-      return <XCircle className="h-4 w-4 text-red-500" />
+      return <XCircle className="h-4 w-4 text-destructive" />
     default:
-      return <Info className="h-4 w-4 text-blue-500" />
+      return <Info className="h-4 w-4 text-info" />
   }
 }
 
@@ -148,8 +149,10 @@ export default function NotificationsPage() {
           ) : (
             <div className="space-y-2">
               {filtered.map((notification) => (
-                <Card
+                <GlowCard
                   key={notification.id}
+                  color="primary"
+                  intensity="subtle"
                   className={`transition-colors ${!notification.read ? "bg-primary/5 border-primary/20" : ""}`}
                 >
                   <CardContent className="flex items-start gap-3 p-4">
@@ -197,7 +200,7 @@ export default function NotificationsPage() {
                       </Button>
                     </div>
                   </CardContent>
-                </Card>
+                </GlowCard>
               ))}
             </div>
           )}

@@ -254,22 +254,18 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
               </p>
             </GlowCard>
 
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription className="flex items-center gap-2">
-                  <DollarSign className="h-4 w-4" />
-                  Total Período
-                </CardDescription>
-                <CardTitle className="text-3xl">
-                  {formatCurrency((data?.summary.received || 0) + (data?.summary.pending || 0))}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  {data?.counts.total || 0} cobranças no período
-                </p>
-              </CardContent>
-            </Card>
+            <GlowCard color="primary" intensity="moderate" surfaceClassName="p-6">
+              <CardDescription className="flex items-center gap-2">
+                <DollarSign className="h-4 w-4" />
+                Total Período
+              </CardDescription>
+              <CardTitle className="text-3xl mt-2">
+                {formatCurrency((data?.summary.received || 0) + (data?.summary.pending || 0))}
+              </CardTitle>
+              <p className="text-sm text-muted-foreground mt-2">
+                {data?.counts.total || 0} cobranças no período
+              </p>
+            </GlowCard>
 
             <GlowCard color="mrr" intensity="intense" surfaceClassName="p-6 gradient-accent-border">
               <CardDescription className="flex items-center gap-2">
@@ -287,38 +283,32 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
 
           {/* Secondary Metrics */}
           <div className="grid gap-4 md:grid-cols-3">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>Clientes Asaas</CardDescription>
-                <CardTitle className="text-2xl flex items-center gap-2">
-                  <Users className="h-5 w-5 text-primary" />
-                  {data?.summary.totalClients || 0}
-                </CardTitle>
-              </CardHeader>
-            </Card>
+            <GlowCard color="primary" intensity="subtle" surfaceClassName="p-6">
+              <CardDescription>Clientes Asaas</CardDescription>
+              <CardTitle className="text-2xl flex items-center gap-2 mt-2">
+                <Users className="h-5 w-5 text-primary" />
+                {data?.summary.totalClients || 0}
+              </CardTitle>
+            </GlowCard>
 
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>Assinaturas Ativas</CardDescription>
-                <CardTitle className="text-2xl flex items-center gap-2">
-                  <Repeat className="h-5 w-5 text-primary" />
-                  {data?.summary.activeSubscriptions || 0}
-                </CardTitle>
-              </CardHeader>
-            </Card>
+            <GlowCard color="mrr" intensity="subtle" surfaceClassName="p-6">
+              <CardDescription>Assinaturas Ativas</CardDescription>
+              <CardTitle className="text-2xl flex items-center gap-2 mt-2">
+                <Repeat className="h-5 w-5 text-primary" />
+                {data?.summary.activeSubscriptions || 0}
+              </CardTitle>
+            </GlowCard>
 
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>Estornado</CardDescription>
-                <CardTitle className="text-2xl flex items-center gap-2 text-muted-foreground">
-                  {formatCurrency(data?.summary.refunded || 0)}
-                </CardTitle>
-              </CardHeader>
-            </Card>
+            <GlowCard color="primary" intensity="subtle" surfaceClassName="p-6">
+              <CardDescription>Estornado</CardDescription>
+              <CardTitle className="text-2xl flex items-center gap-2 text-muted-foreground mt-2">
+                {formatCurrency(data?.summary.refunded || 0)}
+              </CardTitle>
+            </GlowCard>
           </div>
 
           {/* By Payment Type */}
-          <Card>
+          <GlowCard color="primary" intensity="moderate">
             <CardHeader>
               <CardTitle className="text-base">Faturamento por Método</CardTitle>
             </CardHeader>
@@ -355,7 +345,7 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
                 </div>
               </div>
             </CardContent>
-          </Card>
+          </GlowCard>
 
           {/* Overdue Alert */}
           {(data?.summary.overdue || 0) > 0 && (

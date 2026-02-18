@@ -14,7 +14,8 @@ import {
   Sparkles,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -235,7 +236,7 @@ export default function OnboardingWizardPage() {
                     className={cn(
                       "flex items-center justify-center w-10 h-10 rounded-full border-2 transition-colors",
                       isActive && "border-primary bg-primary text-primary-foreground",
-                      isComplete && "border-emerald-500 bg-emerald-500 text-white",
+                      isComplete && "border-success bg-success text-white",
                       !isActive && !isComplete && "border-muted-foreground/30 text-muted-foreground/50"
                     )}
                   >
@@ -245,7 +246,7 @@ export default function OnboardingWizardPage() {
                     <div
                       className={cn(
                         "w-12 sm:w-20 h-0.5 mx-2",
-                        i < currentStep ? "bg-emerald-500" : "bg-muted-foreground/20"
+                        i < currentStep ? "bg-success" : "bg-muted-foreground/20"
                       )}
                     />
                   )}
@@ -259,7 +260,7 @@ export default function OnboardingWizardPage() {
         </div>
 
         {/* Step Content */}
-        <Card>
+        <GlowCard color="primary" intensity="subtle">
           <CardHeader>
             <CardTitle>{STEPS[currentStep].label}</CardTitle>
             <CardDescription>
@@ -422,7 +423,7 @@ export default function OnboardingWizardPage() {
               </div>
             )}
           </CardContent>
-        </Card>
+        </GlowCard>
 
         {/* Navigation */}
         <div className="flex items-center justify-between mt-6">

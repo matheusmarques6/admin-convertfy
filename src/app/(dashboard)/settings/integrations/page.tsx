@@ -20,7 +20,8 @@ import {
   Plug,
   ArrowLeft,
 } from "lucide-react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -351,10 +352,12 @@ export default function IntegrationsPage() {
             const isConnected = status?.connected
 
             return (
-              <Card
+              <GlowCard
                 key={config.type}
-                className={`relative overflow-hidden transition-all hover:shadow-md ${
-                  isConnected ? "border-green-500/50" : ""
+                color="primary"
+                intensity="subtle"
+                className={`relative overflow-hidden ${
+                  isConnected ? "border-success/50" : ""
                 }`}
               >
                 <CardHeader className="pb-3">
@@ -373,7 +376,7 @@ export default function IntegrationsPage() {
                         <CardTitle className="text-base">{config.name}</CardTitle>
                         <div className="flex items-center gap-2 mt-1">
                           {isConnected ? (
-                            <Badge variant="outline" className="text-green-600 border-green-600">
+                            <Badge variant="outline" className="text-success border-success">
                               <CheckCircle2 className="h-3 w-3 mr-1" />
                               Conectado
                             </Badge>
@@ -398,7 +401,7 @@ export default function IntegrationsPage() {
                       <ul className="space-y-1">
                         {config.features.slice(0, 2).map((feature, i) => (
                           <li key={i} className="flex items-center gap-1">
-                            <CheckCircle2 className="h-3 w-3 text-green-500" />
+                            <CheckCircle2 className="h-3 w-3 text-success" />
                             {feature}
                           </li>
                         ))}
@@ -468,7 +471,7 @@ export default function IntegrationsPage() {
                     </div>
                   </div>
                 </CardContent>
-              </Card>
+              </GlowCard>
             )
           })}
         </div>

@@ -5,7 +5,8 @@ import { Eye, EyeOff, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { createClient } from "@/lib/supabase/client"
 
@@ -100,7 +101,7 @@ export default function PortalLoginPage() {
           <p className="text-muted-foreground">Portal do Cliente</p>
         </div>
 
-        <Card>
+        <GlowCard color="primary" intensity="subtle">
           <CardHeader className="text-center">
             <CardTitle>Bem-vindo de volta</CardTitle>
             <CardDescription>
@@ -184,7 +185,7 @@ export default function PortalLoginPage() {
               </p>
             </div>
           </CardContent>
-        </Card>
+        </GlowCard>
 
         <p className="mt-6 text-center text-xs text-muted-foreground">
           &copy; {new Date().getFullYear()} Convertfy. Todos os direitos reservados.

@@ -59,16 +59,22 @@
     /* Glow parameters (light mode — subtle) */
     --glow-opacity-intense: 0.14;
     --glow-opacity-moderate: 0.07;
+    --glow-opacity-subtle: 0.03;
     --glow-blur-intense: 19px;
     --glow-blur-moderate: 10px;
+    --glow-blur-subtle: 6px;
     --glow-spread-intense: -8px;
     --glow-spread-moderate: -5px;
+    --glow-spread-subtle: -3px;
     --line-opacity-intense: 0.7;
     --line-opacity-moderate: 0.35;
+    --line-opacity-subtle: 0.15;
     --border-opacity-intense: 0.25;
     --border-opacity-moderate: 0.1;
+    --border-opacity-subtle: 0.06;
     --tint-intense: 0.04;
     --tint-moderate: 0.02;
+    --tint-subtle: 0.01;
   }
 
   .dark {
@@ -121,16 +127,22 @@
     /* Glow parameters (dark mode — more visible) */
     --glow-opacity-intense: 0.25;
     --glow-opacity-moderate: 0.13;
+    --glow-opacity-subtle: 0.05;
     --glow-blur-intense: 27px;
     --glow-blur-moderate: 14px;
+    --glow-blur-subtle: 8px;
     --glow-spread-intense: -12px;
     --glow-spread-moderate: -6px;
+    --glow-spread-subtle: -3px;
     --line-opacity-intense: 0.85;
     --line-opacity-moderate: 0.5;
+    --line-opacity-subtle: 0.2;
     --border-opacity-intense: 0.35;
     --border-opacity-moderate: 0.15;
+    --border-opacity-subtle: 0.08;
     --tint-intense: 0.06;
     --tint-moderate: 0.03;
+    --tint-subtle: 0.015;
   }
 }
 
@@ -243,7 +255,7 @@
     transition: transform 0.3s ease, box-shadow 0.3s ease;
     contain: layout style paint;
   }
-  .glow-card:hover {
+  .glow-card-hover:hover {
     transform: translateY(-2px);
   }
 
@@ -261,6 +273,10 @@
   .glow-card[data-intensity="moderate"] .glow-halo {
     inset: var(--glow-spread-moderate);
     filter: blur(var(--glow-blur-moderate));
+  }
+  .glow-card[data-intensity="subtle"] .glow-halo {
+    inset: var(--glow-spread-subtle);
+    filter: blur(var(--glow-blur-subtle));
   }
 
   /* Surface (glass layer) */
@@ -300,6 +316,10 @@
   .glow-card[data-intensity="moderate"] .glow-line-top-blur {
     height: 5px;
     filter: blur(3px);
+  }
+  .glow-card[data-intensity="subtle"] .glow-line-top-blur {
+    height: 3px;
+    filter: blur(2px);
   }
 
   /* Line left (intense only) */
@@ -359,6 +379,23 @@
   .glow-card[data-color="success"][data-intensity="moderate"] .glow-line-top-blur {
     background: linear-gradient(90deg, transparent, hsla(var(--success-h), var(--success-s), var(--success-l), 0.12), transparent);
   }
+  .glow-card[data-color="success"][data-intensity="subtle"] .glow-halo {
+    background: radial-gradient(ellipse at center,
+      hsla(var(--success-h), var(--success-s), var(--success-l), var(--glow-opacity-subtle)) 0%, transparent 70%);
+  }
+  .glow-card[data-color="success"][data-intensity="subtle"] .glow-surface {
+    background: linear-gradient(180deg, hsl(var(--card-alpha)),
+      hsla(var(--success-h), var(--success-s), var(--success-l), var(--tint-subtle)));
+    border-color: hsla(var(--success-h), var(--success-s), var(--success-l), var(--border-opacity-subtle));
+  }
+  .glow-card[data-color="success"][data-intensity="subtle"] .glow-line-top {
+    background: linear-gradient(90deg, transparent 15%,
+      hsla(var(--success-h), var(--success-s), var(--success-l), var(--line-opacity-subtle)) 50%,
+      transparent 85%);
+  }
+  .glow-card[data-color="success"][data-intensity="subtle"] .glow-line-top-blur {
+    background: linear-gradient(90deg, transparent, hsla(var(--success-h), var(--success-s), var(--success-l), 0.06), transparent);
+  }
   .glow-card[data-color="success"] .glow-line-left {
     background: linear-gradient(180deg, hsla(var(--success-h), var(--success-s), var(--success-l), 0.7), hsla(var(--success-h), var(--success-s), var(--success-l), 0.05));
   }
@@ -402,6 +439,23 @@
   }
   .glow-card[data-color="warning"][data-intensity="moderate"] .glow-line-top-blur {
     background: linear-gradient(90deg, transparent, hsla(var(--warning-h), var(--warning-s), var(--warning-l), 0.12), transparent);
+  }
+  .glow-card[data-color="warning"][data-intensity="subtle"] .glow-halo {
+    background: radial-gradient(ellipse at center,
+      hsla(var(--warning-h), var(--warning-s), var(--warning-l), var(--glow-opacity-subtle)) 0%, transparent 70%);
+  }
+  .glow-card[data-color="warning"][data-intensity="subtle"] .glow-surface {
+    background: linear-gradient(180deg, hsl(var(--card-alpha)),
+      hsla(var(--warning-h), var(--warning-s), var(--warning-l), var(--tint-subtle)));
+    border-color: hsla(var(--warning-h), var(--warning-s), var(--warning-l), var(--border-opacity-subtle));
+  }
+  .glow-card[data-color="warning"][data-intensity="subtle"] .glow-line-top {
+    background: linear-gradient(90deg, transparent 15%,
+      hsla(var(--warning-h), var(--warning-s), var(--warning-l), var(--line-opacity-subtle)) 50%,
+      transparent 85%);
+  }
+  .glow-card[data-color="warning"][data-intensity="subtle"] .glow-line-top-blur {
+    background: linear-gradient(90deg, transparent, hsla(var(--warning-h), var(--warning-s), var(--warning-l), 0.06), transparent);
   }
   .glow-card[data-color="warning"] .glow-line-left {
     background: linear-gradient(180deg, hsla(var(--warning-h), var(--warning-s), var(--warning-l), 0.7), hsla(var(--warning-h), var(--warning-s), var(--warning-l), 0.05));
@@ -447,6 +501,23 @@
   .glow-card[data-color="destructive"][data-intensity="moderate"] .glow-line-top-blur {
     background: linear-gradient(90deg, transparent, hsla(var(--destructive-h), var(--destructive-s), var(--destructive-l), 0.12), transparent);
   }
+  .glow-card[data-color="destructive"][data-intensity="subtle"] .glow-halo {
+    background: radial-gradient(ellipse at center,
+      hsla(var(--destructive-h), var(--destructive-s), var(--destructive-l), var(--glow-opacity-subtle)) 0%, transparent 70%);
+  }
+  .glow-card[data-color="destructive"][data-intensity="subtle"] .glow-surface {
+    background: linear-gradient(180deg, hsl(var(--card-alpha)),
+      hsla(var(--destructive-h), var(--destructive-s), var(--destructive-l), var(--tint-subtle)));
+    border-color: hsla(var(--destructive-h), var(--destructive-s), var(--destructive-l), var(--border-opacity-subtle));
+  }
+  .glow-card[data-color="destructive"][data-intensity="subtle"] .glow-line-top {
+    background: linear-gradient(90deg, transparent 15%,
+      hsla(var(--destructive-h), var(--destructive-s), var(--destructive-l), var(--line-opacity-subtle)) 50%,
+      transparent 85%);
+  }
+  .glow-card[data-color="destructive"][data-intensity="subtle"] .glow-line-top-blur {
+    background: linear-gradient(90deg, transparent, hsla(var(--destructive-h), var(--destructive-s), var(--destructive-l), 0.06), transparent);
+  }
   .glow-card[data-color="destructive"] .glow-line-left {
     background: linear-gradient(180deg, hsla(var(--destructive-h), var(--destructive-s), var(--destructive-l), 0.7), hsla(var(--destructive-h), var(--destructive-s), var(--destructive-l), 0.05));
   }
@@ -490,6 +561,23 @@
   }
   .glow-card[data-color="primary"][data-intensity="intense"] .glow-line-top-blur {
     background: linear-gradient(90deg, transparent, hsla(var(--primary-h), var(--primary-s), var(--primary-l), 0.25), transparent);
+  }
+  .glow-card[data-color="primary"][data-intensity="subtle"] .glow-halo {
+    background: radial-gradient(ellipse at center,
+      hsla(var(--primary-h), var(--primary-s), var(--primary-l), var(--glow-opacity-subtle)) 0%, transparent 70%);
+  }
+  .glow-card[data-color="primary"][data-intensity="subtle"] .glow-surface {
+    background: linear-gradient(180deg, hsl(var(--card-alpha)),
+      hsla(var(--primary-h), var(--primary-s), var(--primary-l), var(--tint-subtle)));
+    border-color: hsla(var(--primary-h), var(--primary-s), var(--primary-l), var(--border-opacity-subtle));
+  }
+  .glow-card[data-color="primary"][data-intensity="subtle"] .glow-line-top {
+    background: linear-gradient(90deg, transparent 15%,
+      hsla(var(--primary-h), var(--primary-s), var(--primary-l), var(--line-opacity-subtle)) 50%,
+      transparent 85%);
+  }
+  .glow-card[data-color="primary"][data-intensity="subtle"] .glow-line-top-blur {
+    background: linear-gradient(90deg, transparent, hsla(var(--primary-h), var(--primary-s), var(--primary-l), 0.06), transparent);
   }
   .glow-card[data-color="primary"] .glow-line-left {
     background: linear-gradient(180deg, hsla(var(--primary-h), var(--primary-s), var(--primary-l), 0.7), hsla(var(--primary-h), var(--primary-s), var(--primary-l), 0.05));
@@ -535,6 +623,23 @@
   .glow-card[data-color="info"][data-intensity="intense"] .glow-line-top-blur {
     background: linear-gradient(90deg, transparent, hsla(var(--info-h), var(--info-s), var(--info-l), 0.25), transparent);
   }
+  .glow-card[data-color="info"][data-intensity="subtle"] .glow-halo {
+    background: radial-gradient(ellipse at center,
+      hsla(var(--info-h), var(--info-s), var(--info-l), var(--glow-opacity-subtle)) 0%, transparent 70%);
+  }
+  .glow-card[data-color="info"][data-intensity="subtle"] .glow-surface {
+    background: linear-gradient(180deg, hsl(var(--card-alpha)),
+      hsla(var(--info-h), var(--info-s), var(--info-l), var(--tint-subtle)));
+    border-color: hsla(var(--info-h), var(--info-s), var(--info-l), var(--border-opacity-subtle));
+  }
+  .glow-card[data-color="info"][data-intensity="subtle"] .glow-line-top {
+    background: linear-gradient(90deg, transparent 15%,
+      hsla(var(--info-h), var(--info-s), var(--info-l), var(--line-opacity-subtle)) 50%,
+      transparent 85%);
+  }
+  .glow-card[data-color="info"][data-intensity="subtle"] .glow-line-top-blur {
+    background: linear-gradient(90deg, transparent, hsla(var(--info-h), var(--info-s), var(--info-l), 0.06), transparent);
+  }
   .glow-card[data-color="info"] .glow-line-left {
     background: linear-gradient(180deg, hsla(var(--info-h), var(--info-s), var(--info-l), 0.7), hsla(var(--info-h), var(--info-s), var(--info-l), 0.05));
   }
@@ -578,6 +683,23 @@
   }
   .glow-card[data-color="mrr"][data-intensity="moderate"] .glow-line-top-blur {
     background: linear-gradient(90deg, transparent, hsla(var(--mrr-h), var(--mrr-s), var(--mrr-l), 0.12), transparent);
+  }
+  .glow-card[data-color="mrr"][data-intensity="subtle"] .glow-halo {
+    background: radial-gradient(ellipse at center,
+      hsla(var(--mrr-h), var(--mrr-s), var(--mrr-l), var(--glow-opacity-subtle)) 0%, transparent 70%);
+  }
+  .glow-card[data-color="mrr"][data-intensity="subtle"] .glow-surface {
+    background: linear-gradient(180deg, hsl(var(--card-alpha)),
+      hsla(var(--mrr-h), var(--mrr-s), var(--mrr-l), var(--tint-subtle)));
+    border-color: hsla(var(--mrr-h), var(--mrr-s), var(--mrr-l), var(--border-opacity-subtle));
+  }
+  .glow-card[data-color="mrr"][data-intensity="subtle"] .glow-line-top {
+    background: linear-gradient(90deg, transparent 15%,
+      hsla(var(--mrr-h), var(--mrr-s), var(--mrr-l), var(--line-opacity-subtle)) 50%,
+      transparent 85%);
+  }
+  .glow-card[data-color="mrr"][data-intensity="subtle"] .glow-line-top-blur {
+    background: linear-gradient(90deg, transparent, hsla(var(--mrr-h), var(--mrr-s), var(--mrr-l), 0.06), transparent);
   }
   .glow-card[data-color="mrr"] .glow-line-left {
     background: linear-gradient(180deg, hsla(var(--mrr-h), var(--mrr-s), var(--mrr-l), 0.7), hsla(var(--mrr-h), var(--mrr-s), var(--mrr-l), 0.05));

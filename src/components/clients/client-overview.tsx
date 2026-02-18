@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { Globe, Mail, Phone, Building, User, Calendar, Loader2, AlertCircle, CheckCircle2 } from "lucide-react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { formatCurrency, formatDate, getInitials } from "@/lib/utils"
@@ -91,7 +92,7 @@ export function ClientOverview({ client }: ClientOverviewProps) {
   return (
     <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
       {/* Contact Info */}
-      <Card>
+      <GlowCard color="primary" intensity="subtle">
         <CardHeader>
           <CardTitle className="text-base">Informações de Contato</CardTitle>
         </CardHeader>
@@ -152,10 +153,10 @@ export function ClientOverview({ client }: ClientOverviewProps) {
             </div>
           )}
         </CardContent>
-      </Card>
+      </GlowCard>
 
       {/* Contract & Financial Summary */}
-      <Card>
+      <GlowCard color="success" intensity="moderate">
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-base">Resumo Financeiro</CardTitle>
           {isLoadingAsaas ? (
@@ -180,7 +181,7 @@ export function ClientOverview({ client }: ClientOverviewProps) {
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Valor Mensal</p>
-                <p className="text-lg font-semibold text-emerald-500">
+                <p className="text-lg font-semibold text-success">
                   {formatCurrency(asaasData?.subscriptionValue || activeContract?.monthly_value || 0)}
                 </p>
               </div>
@@ -193,13 +194,13 @@ export function ClientOverview({ client }: ClientOverviewProps) {
           <div className="grid grid-cols-2 gap-4 pt-2 border-t">
             <div>
               <p className="text-xs text-muted-foreground">Total Pago</p>
-              <p className="text-sm font-medium text-emerald-500">
+              <p className="text-sm font-medium text-success">
                 {formatCurrency(totalPaid)}
               </p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Pendente</p>
-              <p className="text-sm font-medium text-amber-500">
+              <p className="text-sm font-medium text-warning">
                 {formatCurrency(pendingAmount)}
               </p>
             </div>
@@ -216,10 +217,10 @@ export function ClientOverview({ client }: ClientOverviewProps) {
             </div>
           )}
         </CardContent>
-      </Card>
+      </GlowCard>
 
       {/* Responsible & Next Meeting */}
-      <Card>
+      <GlowCard color="primary" intensity="subtle">
         <CardHeader>
           <CardTitle className="text-base">Gestão</CardTitle>
         </CardHeader>
@@ -265,11 +266,11 @@ export function ClientOverview({ client }: ClientOverviewProps) {
             <p className="text-sm">{formatDate(client.created_at)}</p>
           </div>
         </CardContent>
-      </Card>
+      </GlowCard>
 
       {/* Custom Fields - filter out asaas internal fields */}
       {client.custom_fields && Object.keys(client.custom_fields).filter(k => !k.startsWith('asaas_')).length > 0 && (
-        <Card className="md:col-span-2 lg:col-span-3">
+        <GlowCard color="primary" intensity="subtle" className="md:col-span-2 lg:col-span-3">
           <CardHeader>
             <CardTitle className="text-base">Campos Personalizados</CardTitle>
           </CardHeader>
@@ -287,7 +288,7 @@ export function ClientOverview({ client }: ClientOverviewProps) {
               ))}
             </div>
           </CardContent>
-        </Card>
+        </GlowCard>
       )}
     </div>
   )

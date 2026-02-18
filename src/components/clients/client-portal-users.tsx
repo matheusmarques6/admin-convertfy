@@ -17,7 +17,8 @@ import {
   EyeOff,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
@@ -219,7 +220,7 @@ export function ClientPortalUsers({ clientId, clientName }: ClientPortalUsersPro
   }
 
   return (
-    <Card>
+    <GlowCard color="primary" intensity="subtle">
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
@@ -496,6 +497,6 @@ export function ClientPortalUsers({ clientId, clientName }: ClientPortalUsersPro
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </Card>
+    </GlowCard>
   )
 }

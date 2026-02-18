@@ -56,7 +56,7 @@ export function MeetingInviteActions({
 
   if (currentStatus === "accepted") {
     return (
-      <Badge variant="outline" className="text-emerald-600 border-emerald-300 bg-emerald-50 dark:bg-emerald-900/20 text-xs">
+      <Badge variant="outline" className="text-success border-success/30 bg-success/10 dark:bg-success/20 text-xs">
         <Check className="mr-1 h-3 w-3" />
         Aceito
       </Badge>
@@ -65,7 +65,7 @@ export function MeetingInviteActions({
 
   if (currentStatus === "declined") {
     return (
-      <Badge variant="outline" className="text-red-600 border-red-300 bg-red-50 dark:bg-red-900/20 text-xs">
+      <Badge variant="outline" className="text-destructive border-destructive/30 bg-destructive/10 dark:bg-destructive/20 text-xs">
         <X className="mr-1 h-3 w-3" />
         Recusado
       </Badge>
@@ -74,7 +74,7 @@ export function MeetingInviteActions({
 
   if (currentStatus === "tentative") {
     return (
-      <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50 dark:bg-amber-900/20 text-xs">
+      <Badge variant="outline" className="text-warning border-warning/30 bg-warning/10 dark:bg-warning/20 text-xs">
         <Clock className="mr-1 h-3 w-3" />
         Talvez
       </Badge>
@@ -92,7 +92,7 @@ export function MeetingInviteActions({
         disabled={isLoading}
         title="Aceitar"
       >
-        <Check className={compact ? "h-3.5 w-3.5 text-emerald-600" : "mr-1 h-3 w-3 text-emerald-600"} />
+        <Check className={compact ? "h-3.5 w-3.5 text-success" : "mr-1 h-3 w-3 text-success"} />
         {!compact && "Aceitar"}
       </Button>
       <Button
@@ -103,7 +103,7 @@ export function MeetingInviteActions({
         disabled={isLoading}
         title="Recusar"
       >
-        <X className={compact ? "h-3.5 w-3.5 text-red-600" : "mr-1 h-3 w-3 text-red-600"} />
+        <X className={compact ? "h-3.5 w-3.5 text-destructive" : "mr-1 h-3 w-3 text-destructive"} />
         {!compact && "Recusar"}
       </Button>
     </div>

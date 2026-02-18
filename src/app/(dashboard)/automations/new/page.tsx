@@ -14,7 +14,8 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
 import { Switch } from "@/components/ui/switch"
 import { Skeleton } from "@/components/ui/skeleton"
 
@@ -151,7 +152,7 @@ export default function NewAutomationPage() {
       </div>
 
       {/* Basic Info */}
-      <Card>
+      <GlowCard color="primary" intensity="subtle">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <Zap className="h-4 w-4" />
@@ -178,10 +179,10 @@ export default function NewAutomationPage() {
             </div>
           </div>
         </CardContent>
-      </Card>
+      </GlowCard>
 
       {/* Workflow Builder */}
-      <Card>
+      <GlowCard color="primary" intensity="subtle">
         <CardHeader>
           <CardTitle className="text-base">Construtor de Fluxo</CardTitle>
           <CardDescription>
@@ -192,15 +193,15 @@ export default function NewAutomationPage() {
         <CardContent>
           <WorkflowBuilder onChange={handleWorkflowChange} />
         </CardContent>
-      </Card>
+      </GlowCard>
 
       {/* Tips */}
-      <Card className="bg-muted/50">
+      <GlowCard color="primary" intensity="subtle" className="bg-muted/50">
         <CardContent className="pt-6">
           <div className="grid gap-4 md:grid-cols-3 text-sm">
             <div className="flex items-start gap-3">
-              <div className="rounded-lg p-2 bg-amber-500/10">
-                <Zap className="h-4 w-4 text-amber-500" />
+              <div className="rounded-lg p-2 bg-warning/10">
+                <Zap className="h-4 w-4 text-warning" />
               </div>
               <div>
                 <p className="font-medium">Gatilho</p>
@@ -210,8 +211,8 @@ export default function NewAutomationPage() {
               </div>
             </div>
             <div className="flex items-start gap-3">
-              <div className="rounded-lg p-2 bg-emerald-500/10">
-                <svg className="h-4 w-4 text-emerald-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <div className="rounded-lg p-2 bg-success/10">
+                <svg className="h-4 w-4 text-success" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M5 12h14M12 5l7 7-7 7" />
                 </svg>
               </div>
@@ -223,8 +224,8 @@ export default function NewAutomationPage() {
               </div>
             </div>
             <div className="flex items-start gap-3">
-              <div className="rounded-lg p-2 bg-blue-500/10">
-                <svg className="h-4 w-4 text-blue-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <div className="rounded-lg p-2 bg-info/10">
+                <svg className="h-4 w-4 text-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <circle cx="12" cy="12" r="10" />
                   <path d="M12 6v6l4 2" />
                 </svg>
@@ -238,7 +239,7 @@ export default function NewAutomationPage() {
             </div>
           </div>
         </CardContent>
-      </Card>
+      </GlowCard>
     </div>
   )
 }

@@ -2,7 +2,8 @@
 
 import Link from "next/link"
 import { Calendar, AlertCircle, Clock, FileText, HeartPulse } from "lucide-react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -44,7 +45,7 @@ export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps)
   const totalAlerts = alerts.length
 
   return (
-    <Card>
+    <GlowCard color="warning" intensity="subtle">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div>
@@ -130,6 +131,6 @@ export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps)
           </>
         )}
       </CardContent>
-    </Card>
+    </GlowCard>
   )
 }

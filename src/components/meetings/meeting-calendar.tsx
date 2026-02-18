@@ -107,10 +107,10 @@ export function MeetingCalendar({
   const selectedDateMeetings = selectedDate ? getMeetingsForDay(selectedDate) : []
 
   const statusColors: Record<MeetingStatus, string> = {
-    scheduled: "bg-purple-100 text-purple-700",
-    completed: "bg-emerald-100 text-emerald-700",
-    cancelled: "bg-gray-100 text-gray-500",
-    no_show: "bg-red-100 text-red-700",
+    scheduled: "bg-primary/10 text-primary",
+    completed: "bg-success/10 text-success",
+    cancelled: "bg-muted text-muted-foreground",
+    no_show: "bg-destructive/10 text-destructive",
   }
 
   const handleSlotClick = (date: Date) => {
@@ -258,10 +258,10 @@ export function MeetingCalendar({
                           <button
                             key={meeting.id}
                             onClick={() => onMeetingClick?.(meeting)}
-                            className="w-full text-left p-3 rounded-lg border hover:bg-accent/50 transition-colors bg-purple-50/50 border-purple-200 dark:bg-purple-900/20 dark:border-purple-800"
+                            className="w-full text-left p-3 rounded-lg border hover:bg-accent/50 transition-colors bg-primary/5 border-primary/20 dark:bg-primary/10 dark:border-primary/20"
                           >
                             <div className="flex items-start gap-2">
-                              <Video className="h-4 w-4 mt-0.5 text-purple-600 dark:text-purple-400" />
+                              <Video className="h-4 w-4 mt-0.5 text-primary dark:text-primary" />
                               <div className="flex-1 min-w-0">
                                 <p className="font-medium text-sm truncate">{meeting.title}</p>
                                 {meeting.client && (

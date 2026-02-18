@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils"
 
 export type GlowColor = "success" | "warning" | "destructive" | "primary" | "info" | "mrr"
-export type GlowIntensity = "intense" | "moderate"
+export type GlowIntensity = "intense" | "moderate" | "subtle"
 
 interface GlowCardProps {
   color: GlowColor
@@ -22,7 +22,7 @@ export function GlowCard({
 
   return (
     <div
-      className={cn("glow-card", className)}
+      className={cn("glow-card", intensity !== "subtle" && "glow-card-hover", className)}
       data-color={color}
       data-intensity={intensity}
     >

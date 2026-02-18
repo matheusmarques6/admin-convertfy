@@ -177,7 +177,7 @@ export function TaskCard({
             <div
               className={cn(
                 "flex items-center gap-1 text-xs",
-                isOverdue ? "text-red-500" : "text-muted-foreground"
+                isOverdue ? "text-destructive" : "text-muted-foreground"
               )}
             >
               {isOverdue ? (

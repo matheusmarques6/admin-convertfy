@@ -234,7 +234,7 @@ export function BoardCalendarView({
                             "text-xs truncate px-1 py-0.5 rounded",
                             event.type === "task"
                               ? priorityColors[event.priority || "medium"]
-                              : "bg-purple-100 text-purple-700"
+                              : "bg-primary/10 text-primary"
                           )}
                           title={event.title}
                         >
@@ -255,10 +255,10 @@ export function BoardCalendarView({
                     <div className="flex-1 flex items-end justify-center pb-1">
                       <div className="flex gap-0.5">
                         {taskCount > 0 && (
-                          <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                          <div className="w-1.5 h-1.5 rounded-full bg-info" />
                         )}
                         {meetingCount > 0 && (
-                          <div className="w-1.5 h-1.5 rounded-full bg-purple-500" />
+                          <div className="w-1.5 h-1.5 rounded-full bg-primary" />
                         )}
                       </div>
                     </div>
@@ -272,19 +272,19 @@ export function BoardCalendarView({
         {/* Legend */}
         <div className="flex items-center gap-4 mt-4 pt-4 border-t">
           <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <div className="w-3 h-3 rounded bg-blue-100 border border-blue-200" />
+            <div className="w-3 h-3 rounded bg-info/10 border border-info/20" />
             Tarefa
           </div>
           <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <div className="w-3 h-3 rounded bg-purple-100 border border-purple-200" />
+            <div className="w-3 h-3 rounded bg-primary/10 border border-primary/20" />
             Reunião
           </div>
           <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <div className="w-3 h-3 rounded bg-red-100 border border-red-200" />
+            <div className="w-3 h-3 rounded bg-destructive/10 border border-destructive/20" />
             Urgente
           </div>
           <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <div className="w-3 h-3 rounded bg-amber-100 border border-amber-200" />
+            <div className="w-3 h-3 rounded bg-warning/10 border border-warning/20" />
             Alta prioridade
           </div>
         </div>
@@ -325,12 +325,12 @@ export function BoardCalendarView({
                         "hover:bg-accent/50",
                         event.type === "task"
                           ? priorityColors[event.priority || "medium"]
-                          : "bg-purple-50 border-purple-200"
+                          : "bg-primary/5 border-primary/20"
                       )}
                     >
                       <div className="flex items-start gap-2">
                         {event.type === "meeting" ? (
-                          <Video className="h-4 w-4 mt-0.5 text-purple-600" />
+                          <Video className="h-4 w-4 mt-0.5 text-primary" />
                         ) : (
                           <StatusIcon className="h-4 w-4 mt-0.5" />
                         )}

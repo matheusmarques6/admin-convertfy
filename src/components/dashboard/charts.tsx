@@ -12,7 +12,8 @@ import {
   Pie,
   Cell,
 } from "recharts"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatCurrency } from "@/lib/utils"
 
@@ -52,7 +53,7 @@ export function DashboardCharts({
   const hasPipelineData = pipelineData.length > 0
 
   return (
-    <Card className="h-full gradient-accent-border">
+    <GlowCard color="primary" intensity="subtle" className="h-full" surfaceClassName="gradient-accent-border">
       <CardHeader>
         <CardTitle>Resumo Financeiro</CardTitle>
         <CardDescription>Acompanhe o desempenho da sua agência</CardDescription>
@@ -197,6 +198,6 @@ export function DashboardCharts({
           </TabsContent>
         </Tabs>
       </CardContent>
-    </Card>
+    </GlowCard>
   )
 }

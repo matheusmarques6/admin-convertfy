@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { Plus, FileText, Calendar, Loader2 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { formatCurrency, formatDate } from "@/lib/utils"
@@ -67,7 +68,7 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
     <div className="space-y-6">
       {/* Active Contract */}
       {activeContract ? (
-        <Card className="border-emerald-500/50">
+        <GlowCard color="success" intensity="moderate">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle className="text-base">Contrato Ativo</CardTitle>
@@ -81,7 +82,7 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
             <div className="grid gap-4 md:grid-cols-3">
               <div>
                 <p className="text-xs text-muted-foreground">Valor Mensal</p>
-                <p className="text-2xl font-bold text-emerald-500">
+                <p className="text-2xl font-bold text-success">
                   {formatCurrency(activeContract.monthly_value)}
                 </p>
               </div>
@@ -121,7 +122,7 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
               </div>
             )}
           </CardContent>
-        </Card>
+        </GlowCard>
       ) : (
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center justify-center py-8">
@@ -141,7 +142,7 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
 
       {/* Contract History */}
       {pastContracts.length > 0 && (
-        <Card>
+        <GlowCard color="primary" intensity="subtle">
           <CardHeader>
             <CardTitle className="text-base">Histórico de Contratos</CardTitle>
           </CardHeader>
@@ -177,7 +178,7 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
               )
             })}
           </CardContent>
-        </Card>
+        </GlowCard>
       )}
     </div>
   )

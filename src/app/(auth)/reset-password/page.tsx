@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
 import { toast } from "@/lib/hooks/use-toast"
 import { rateLimitService } from "@/lib/services"
 
@@ -60,9 +61,9 @@ function PasswordStrengthIndicator({ password }: { password: string }) {
   const metCount = Object.values(strength).filter(Boolean).length
   const strengthLevel = metCount === 5 ? "strong" : metCount >= 3 ? "medium" : "weak"
   const strengthColors = {
-    weak: "bg-red-500",
-    medium: "bg-yellow-500",
-    strong: "bg-green-500",
+    weak: "bg-destructive",
+    medium: "bg-warning",
+    strong: "bg-success",
   }
 
   const rules = [
@@ -90,8 +91,8 @@ function PasswordStrengthIndicator({ password }: { password: string }) {
         <p className="text-xs text-muted-foreground">
           Força da senha:{" "}
           <span className={`font-medium ${
-            strengthLevel === "strong" ? "text-green-500" :
-            strengthLevel === "medium" ? "text-yellow-500" : "text-red-500"
+            strengthLevel === "strong" ? "text-success" :
+            strengthLevel === "medium" ? "text-warning" : "text-destructive"
           }`}>
             {strengthLevel === "strong" ? "Forte" : strengthLevel === "medium" ? "Média" : "Fraca"}
           </span>
@@ -104,7 +105,7 @@ function PasswordStrengthIndicator({ password }: { password: string }) {
           <li
             key={rule.key}
             className={`flex items-center gap-2 text-xs ${
-              rule.met ? "text-green-500" : "text-muted-foreground"
+              rule.met ? "text-success" : "text-muted-foreground"
             }`}
           >
             {rule.met ? (
@@ -254,11 +255,11 @@ function ResetPasswordContent() {
         </div>
 
         {isExpired ? (
-          <Card className="border-border/50">
+          <GlowCard color="primary" intensity="subtle" className="border-border/50">
             <CardHeader className="space-y-1 text-center">
               <div className="flex justify-center mb-4">
-                <div className="rounded-full bg-amber-500/10 p-4">
-                  <AlertTriangle className="h-8 w-8 text-amber-500" />
+                <div className="rounded-full bg-warning/10 p-4">
+                  <AlertTriangle className="h-8 w-8 text-warning" />
                 </div>
               </div>
               <CardTitle className="text-2xl">Link Expirado</CardTitle>
@@ -276,13 +277,13 @@ function ResetPasswordContent() {
                 <Link href="/forgot-password">Solicitar Novo Link</Link>
               </Button>
             </CardFooter>
-          </Card>
+          </GlowCard>
         ) : isSuccess ? (
-          <Card className="border-border/50">
+          <GlowCard color="primary" intensity="subtle" className="border-border/50">
             <CardHeader className="space-y-1 text-center">
               <div className="flex justify-center mb-4">
-                <div className="rounded-full bg-emerald-500/10 p-4">
-                  <CheckCircle className="h-8 w-8 text-emerald-500" />
+                <div className="rounded-full bg-success/10 p-4">
+                  <CheckCircle className="h-8 w-8 text-success" />
                 </div>
               </div>
               <CardTitle className="text-2xl">Senha Redefinida!</CardTitle>
@@ -300,9 +301,9 @@ function ResetPasswordContent() {
                 <Link href="/login">Ir para Login</Link>
               </Button>
             </CardFooter>
-          </Card>
+          </GlowCard>
         ) : (
-          <Card className="border-border/50">
+          <GlowCard color="primary" intensity="subtle" className="border-border/50">
             <CardHeader className="space-y-1">
               <CardTitle className="text-2xl">Redefinir Senha</CardTitle>
               <CardDescription>
@@ -396,7 +397,7 @@ function ResetPasswordContent() {
                 </p>
               </CardFooter>
             </form>
-          </Card>
+          </GlowCard>
         )}
       </div>
     </div>

@@ -16,6 +16,7 @@ import {
   Settings,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -263,7 +264,7 @@ export default function PortalStoresPage() {
           {stores.map((store) => {
             const needsSetup = !store.klaviyo_api_key || !store.shopify_access_token
             return (
-              <Card key={store.id} className="hover:shadow-md transition-shadow">
+              <GlowCard key={store.id} color="primary" intensity="subtle">
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
@@ -286,11 +287,11 @@ export default function PortalStoresPage() {
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Klaviyo</span>
                       {store.klaviyo_api_key ? (
-                        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                        <Badge variant="outline" className="bg-success/10 text-success border-success/20">
                           Conectado
                         </Badge>
                       ) : (
-                        <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
+                        <Badge variant="outline" className="bg-warning/10 text-warning border-warning/20">
                           Não conectado
                         </Badge>
                       )}
@@ -298,11 +299,11 @@ export default function PortalStoresPage() {
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Shopify</span>
                       {store.shopify_access_token ? (
-                        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                        <Badge variant="outline" className="bg-success/10 text-success border-success/20">
                           Conectado
                         </Badge>
                       ) : (
-                        <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
+                        <Badge variant="outline" className="bg-warning/10 text-warning border-warning/20">
                           Não conectado
                         </Badge>
                       )}
@@ -334,7 +335,7 @@ export default function PortalStoresPage() {
                     )}
                   </div>
                 </CardContent>
-              </Card>
+              </GlowCard>
             )
           })}
         </div>
@@ -342,15 +343,15 @@ export default function PortalStoresPage() {
 
       {/* Quick Stats Legend */}
       {stores.length > 0 && (
-        <Card>
+        <GlowCard color="primary" intensity="subtle">
           <CardHeader>
             <CardTitle className="text-base">Como ler seus relatórios</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid gap-4 md:grid-cols-4">
               <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
-                  <Users className="h-4 w-4 text-blue-600" />
+                <div className="w-8 h-8 rounded-lg bg-info/10 flex items-center justify-center flex-shrink-0">
+                  <Users className="h-4 w-4 text-info" />
                 </div>
                 <div>
                   <p className="font-medium text-sm">Total de Leads</p>
@@ -360,8 +361,8 @@ export default function PortalStoresPage() {
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0">
-                  <TrendingUp className="h-4 w-4 text-green-600" />
+                <div className="w-8 h-8 rounded-lg bg-success/10 flex items-center justify-center flex-shrink-0">
+                  <TrendingUp className="h-4 w-4 text-success" />
                 </div>
                 <div>
                   <p className="font-medium text-sm">Leads Engajados</p>
@@ -371,8 +372,8 @@ export default function PortalStoresPage() {
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center flex-shrink-0">
-                  <DollarSign className="h-4 w-4 text-purple-600" />
+                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <DollarSign className="h-4 w-4 text-primary" />
                 </div>
                 <div>
                   <p className="font-medium text-sm">Receita Atribuída</p>
@@ -382,8 +383,8 @@ export default function PortalStoresPage() {
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center flex-shrink-0">
-                  <Mail className="h-4 w-4 text-orange-600" />
+                <div className="w-8 h-8 rounded-lg bg-warning/10 flex items-center justify-center flex-shrink-0">
+                  <Mail className="h-4 w-4 text-warning" />
                 </div>
                 <div>
                   <p className="font-medium text-sm">Campanhas</p>
@@ -394,7 +395,7 @@ export default function PortalStoresPage() {
               </div>
             </div>
           </CardContent>
-        </Card>
+        </GlowCard>
       )}
 
       {/* Credentials Dialog */}
@@ -412,7 +413,7 @@ export default function PortalStoresPage() {
             {selectedStore && !selectedStore.klaviyo_api_key && (
               <div className="space-y-4">
                 <h4 className="font-medium flex items-center gap-2">
-                  <Key className="h-4 w-4 text-purple-500" />
+                  <Key className="h-4 w-4 text-primary" />
                   Klaviyo
                 </h4>
                 <div className="space-y-2">
@@ -441,7 +442,7 @@ export default function PortalStoresPage() {
                   Testar Conexão
                 </Button>
                 {testResult?.type === "klaviyo" && (
-                  <div className={`flex items-center gap-2 text-sm ${testResult.success ? "text-emerald-600" : "text-red-600"}`}>
+                  <div className={`flex items-center gap-2 text-sm ${testResult.success ? "text-success" : "text-destructive"}`}>
                     {testResult.success ? (
                       <CheckCircle2 className="h-4 w-4" />
                     ) : (
@@ -457,7 +458,7 @@ export default function PortalStoresPage() {
             {selectedStore && !selectedStore.shopify_access_token && (
               <div className="space-y-4">
                 <h4 className="font-medium flex items-center gap-2">
-                  <Store className="h-4 w-4 text-green-500" />
+                  <Store className="h-4 w-4 text-success" />
                   Shopify
                 </h4>
                 <div className="space-y-2">
@@ -497,7 +498,7 @@ export default function PortalStoresPage() {
                   Testar Conexão
                 </Button>
                 {testResult?.type === "shopify" && (
-                  <div className={`flex items-center gap-2 text-sm ${testResult.success ? "text-emerald-600" : "text-red-600"}`}>
+                  <div className={`flex items-center gap-2 text-sm ${testResult.success ? "text-success" : "text-destructive"}`}>
                     {testResult.success ? (
                       <CheckCircle2 className="h-4 w-4" />
                     ) : (
@@ -511,7 +512,7 @@ export default function PortalStoresPage() {
 
             {/* All connected message */}
             {selectedStore?.klaviyo_api_key && selectedStore?.shopify_access_token && (
-              <div className="flex items-center gap-3 py-4 text-emerald-600">
+              <div className="flex items-center gap-3 py-4 text-success">
                 <CheckCircle2 className="h-6 w-6" />
                 <p className="font-medium">Todas as integrações estão conectadas!</p>
               </div>

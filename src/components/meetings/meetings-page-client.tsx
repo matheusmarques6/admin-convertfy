@@ -29,6 +29,7 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
@@ -228,8 +229,8 @@ export function MeetingsPageClient({
 
         {/* Stats */}
         <div className="grid gap-4 md:grid-cols-3">
-          <Card>
-            <CardContent className="flex items-center gap-4 pt-6">
+          <GlowCard color="primary" intensity="moderate" surfaceClassName="pt-6">
+            <CardContent className="flex items-center gap-4">
               <div className="rounded-lg p-3 bg-primary/10">
                 <Calendar className="h-5 w-5 text-primary" />
               </div>
@@ -238,11 +239,11 @@ export function MeetingsPageClient({
                 <p className="text-2xl font-bold">{upcomingMeetings.length}</p>
               </div>
             </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="flex items-center gap-4 pt-6">
-              <div className="rounded-lg p-3 bg-emerald-500/10">
-                <CheckCircle className="h-5 w-5 text-emerald-500" />
+          </GlowCard>
+          <GlowCard color="success" intensity="moderate" surfaceClassName="pt-6">
+            <CardContent className="flex items-center gap-4">
+              <div className="rounded-lg p-3 bg-success/10">
+                <CheckCircle className="h-5 w-5 text-success" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Realizadas</p>
@@ -251,18 +252,18 @@ export function MeetingsPageClient({
                 </p>
               </div>
             </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="flex items-center gap-4 pt-6">
-              <div className="rounded-lg p-3 bg-amber-500/10">
-                <Video className="h-5 w-5 text-amber-500" />
+          </GlowCard>
+          <GlowCard color="warning" intensity="moderate" surfaceClassName="pt-6">
+            <CardContent className="flex items-center gap-4">
+              <div className="rounded-lg p-3 bg-warning/10">
+                <Video className="h-5 w-5 text-warning" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Hoje</p>
                 <p className="text-2xl font-bold">{todayMeetings.length}</p>
               </div>
             </CardContent>
-          </Card>
+          </GlowCard>
         </div>
 
         {/* Filters */}
@@ -273,7 +274,7 @@ export function MeetingsPageClient({
           {viewMode === "list" ? (
             <div className="space-y-6 pb-6">
               {/* Upcoming */}
-              <Card>
+              <GlowCard color="info" intensity="subtle">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-base">
                     <Calendar className="h-5 w-5 text-primary" />
@@ -380,11 +381,11 @@ export function MeetingsPageClient({
                     </div>
                   )}
                 </CardContent>
-              </Card>
+              </GlowCard>
 
               {/* History */}
               {pastMeetings.length > 0 && (
-                <Card>
+                <GlowCard color="primary" intensity="subtle">
                   <CardHeader>
                     <CardTitle className="text-base">Histórico</CardTitle>
                   </CardHeader>
@@ -401,8 +402,8 @@ export function MeetingsPageClient({
                             <div className="flex items-center gap-3">
                               <config.icon className={cn(
                                 "h-4 w-4",
-                                meeting.status === "completed" && "text-emerald-500",
-                                meeting.status === "no_show" && "text-red-500",
+                                meeting.status === "completed" && "text-success",
+                                meeting.status === "no_show" && "text-destructive",
                                 meeting.status === "cancelled" && "text-muted-foreground"
                               )} />
                               <div>
@@ -419,7 +420,7 @@ export function MeetingsPageClient({
                       })}
                     </div>
                   </CardContent>
-                </Card>
+                </GlowCard>
               )}
             </div>
           ) : (

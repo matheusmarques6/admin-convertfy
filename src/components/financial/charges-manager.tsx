@@ -19,6 +19,7 @@ import {
   Search,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -261,7 +262,7 @@ export function ChargesManager() {
           </TableRow>
         ) : (
           charges.map((charge) => (
-            <TableRow key={charge.id} className={charge.isOverdue ? "bg-red-950/20" : ""}>
+            <TableRow key={charge.id} className={charge.isOverdue ? "bg-destructive/10" : ""}>
               <TableCell>
                 {charge.client ? (
                   <Link href={`/clients/${charge.client.id}`} className="hover:underline">
@@ -337,77 +338,77 @@ export function ChargesManager() {
     <div className="space-y-6">
       {/* Summary Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="border-red-500/20 bg-red-950/10">
+        <GlowCard color="destructive" intensity="intense">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <AlertCircle className="h-4 w-4 text-red-500" />
+              <AlertCircle className="h-4 w-4 text-destructive" />
               Vencidas
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-500">
+            <div className="text-2xl font-bold text-destructive">
               {formatCurrency(data.summary.overdue.value)}
             </div>
             <p className="text-xs text-muted-foreground">
               {data.summary.overdue.count} cobranças
             </p>
           </CardContent>
-        </Card>
+        </GlowCard>
 
-        <Card className="border-amber-500/20 bg-amber-950/10">
+        <GlowCard color="warning" intensity="intense">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <Clock className="h-4 w-4 text-amber-500" />
+              <Clock className="h-4 w-4 text-warning" />
               Pendentes
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-amber-500">
+            <div className="text-2xl font-bold text-warning">
               {formatCurrency(data.summary.pending.value)}
             </div>
             <p className="text-xs text-muted-foreground">
               {data.summary.pending.count} cobranças
             </p>
           </CardContent>
-        </Card>
+        </GlowCard>
 
-        <Card className="border-blue-500/20 bg-blue-950/10">
+        <GlowCard color="info" intensity="intense">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-blue-500" />
+              <Calendar className="h-4 w-4 text-info" />
               Próximos 7 dias
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-blue-500">
+            <div className="text-2xl font-bold text-info">
               {formatCurrency(data.summary.upcoming.value)}
             </div>
             <p className="text-xs text-muted-foreground">
               {data.summary.upcoming.count} cobranças
             </p>
           </CardContent>
-        </Card>
+        </GlowCard>
 
-        <Card className="border-emerald-500/20 bg-emerald-950/10">
+        <GlowCard color="success" intensity="intense">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+              <CheckCircle2 className="h-4 w-4 text-success" />
               Recebidas
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-emerald-500">
+            <div className="text-2xl font-bold text-success">
               {formatCurrency(data.summary.received.value)}
             </div>
             <p className="text-xs text-muted-foreground">
               {data.summary.received.count} cobranças
             </p>
           </CardContent>
-        </Card>
+        </GlowCard>
       </div>
 
       {/* Filters and Table */}
-      <Card>
+      <GlowCard color="primary" intensity="subtle">
         <CardHeader>
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
@@ -520,7 +521,7 @@ export function ChargesManager() {
             </TabsContent>
           </Tabs>
         </CardContent>
-      </Card>
+      </GlowCard>
 
       {/* Cancel Dialog */}
       <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
@@ -536,7 +537,7 @@ export function ChargesManager() {
                   <p><strong>Vencimento:</strong> {formatDate(selectedCharge.dueDate)}</p>
                 </div>
               )}
-              <p className="mt-2 text-amber-500">
+              <p className="mt-2 text-warning">
                 Esta ação não pode ser desfeita.
               </p>
             </AlertDialogDescription>

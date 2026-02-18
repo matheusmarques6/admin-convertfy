@@ -4,6 +4,7 @@ import { Plus, Zap, Play, Pause, MoreHorizontal, Trash2, Edit } from "lucide-rea
 import { createClient } from "@/lib/supabase/server"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
 import { Badge } from "@/components/ui/badge"
 import { AutomationToggle } from "@/components/automations/automation-toggle"
 import {
@@ -93,8 +94,8 @@ export default async function AutomationsPage() {
 
       {/* Stats */}
       <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardContent className="flex items-center gap-4 pt-6">
+        <GlowCard color="primary" intensity="moderate" surfaceClassName="pt-6">
+          <CardContent className="flex items-center gap-4">
             <div className="rounded-lg p-3 bg-primary/10">
               <Zap className="h-5 w-5 text-primary" />
             </div>
@@ -103,11 +104,11 @@ export default async function AutomationsPage() {
               <p className="text-2xl font-bold">{automations.length}</p>
             </div>
           </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-4 pt-6">
-            <div className="rounded-lg p-3 bg-emerald-500/10">
-              <Play className="h-5 w-5 text-emerald-500" />
+        </GlowCard>
+        <GlowCard color="success" intensity="moderate" surfaceClassName="pt-6">
+          <CardContent className="flex items-center gap-4">
+            <div className="rounded-lg p-3 bg-success/10">
+              <Play className="h-5 w-5 text-success" />
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Ativas</p>
@@ -116,9 +117,9 @@ export default async function AutomationsPage() {
               </p>
             </div>
           </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="flex items-center gap-4 pt-6">
+        </GlowCard>
+        <GlowCard color="primary" intensity="subtle" surfaceClassName="pt-6">
+          <CardContent className="flex items-center gap-4">
             <div className="rounded-lg p-3 bg-muted">
               <Pause className="h-5 w-5 text-muted-foreground" />
             </div>
@@ -129,7 +130,7 @@ export default async function AutomationsPage() {
               </p>
             </div>
           </CardContent>
-        </Card>
+        </GlowCard>
       </div>
 
       {/* Automations List */}
@@ -159,7 +160,7 @@ export default async function AutomationsPage() {
               const triggerLabel = triggerLabels[triggerType] || triggerType
 
               return (
-                <Card key={automation.id} className="relative">
+                <GlowCard key={automation.id} color="primary" intensity="subtle" className="relative">
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-3">
@@ -221,7 +222,7 @@ export default async function AutomationsPage() {
                       <AutomationToggle automationId={automation.id} isActive={automation.is_active} />
                     </div>
                   </CardContent>
-                </Card>
+                </GlowCard>
               )
             })}
           </div>

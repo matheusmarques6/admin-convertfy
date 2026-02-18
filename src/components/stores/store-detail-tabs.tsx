@@ -14,6 +14,7 @@ import {
 } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { KlaviyoPerformanceReport } from "@/components/clients/klaviyo-performance-report"
@@ -117,7 +118,7 @@ export function StoreDetailTabs({
       <TabsContent value="overview">
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {/* Store Info */}
-          <Card>
+          <GlowCard color="primary" intensity="subtle">
             <CardHeader>
               <CardTitle className="text-base">Informações da Loja</CardTitle>
             </CardHeader>
@@ -157,10 +158,10 @@ export function StoreDetailTabs({
                 </div>
               )}
             </CardContent>
-          </Card>
+          </GlowCard>
 
           {/* Integration Status */}
-          <Card className="md:col-span-2">
+          <GlowCard color="primary" intensity="subtle" className="md:col-span-2">
             <CardHeader>
               <CardTitle className="text-base">Status das Integrações</CardTitle>
               <CardDescription>Serviços conectados a esta loja</CardDescription>
@@ -183,7 +184,7 @@ export function StoreDetailTabs({
                       className="flex items-center gap-3 p-3 rounded-lg border"
                     >
                       {connected ? (
-                        <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                        <CheckCircle2 className="h-5 w-5 text-success" />
                       ) : (
                         <XCircle className="h-5 w-5 text-muted-foreground/40" />
                       )}
@@ -202,7 +203,7 @@ export function StoreDetailTabs({
                 })}
               </div>
             </CardContent>
-          </Card>
+          </GlowCard>
         </div>
       </TabsContent>
 
@@ -237,7 +238,7 @@ export function StoreDetailTabs({
 
       {/* Settings */}
       <TabsContent value="settings">
-        <Card>
+        <GlowCard color="primary" intensity="subtle">
           <CardHeader>
             <CardTitle>Configurações da Loja</CardTitle>
             <CardDescription>
@@ -249,7 +250,7 @@ export function StoreDetailTabs({
               As configurações de credenciais (Shopify, Klaviyo, etc.) podem ser gerenciadas na página do cliente.
             </p>
           </CardContent>
-        </Card>
+        </GlowCard>
       </TabsContent>
     </Tabs>
   )
@@ -311,7 +312,7 @@ function CampaignsTab({
       )}
 
       {data?.campaigns && data.campaigns.length > 0 ? (
-        <Card>
+        <GlowCard color="primary" intensity="subtle">
           <CardContent className="pt-6">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -344,7 +345,7 @@ function CampaignsTab({
               </table>
             </div>
           </CardContent>
-        </Card>
+        </GlowCard>
       ) : (
         <Card>
           <CardContent className="py-10 text-center text-muted-foreground">
@@ -412,7 +413,7 @@ function FlowsTab({
       )}
 
       {data?.flows && data.flows.length > 0 ? (
-        <Card>
+        <GlowCard color="primary" intensity="subtle">
           <CardContent className="pt-6">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -445,7 +446,7 @@ function FlowsTab({
               </table>
             </div>
           </CardContent>
-        </Card>
+        </GlowCard>
       ) : (
         <Card>
           <CardContent className="py-10 text-center text-muted-foreground">
@@ -460,11 +461,11 @@ function FlowsTab({
 // --- Metric Card ---
 function MetricCard({ label, value }: { label: string; value: string | number }) {
   return (
-    <Card>
+    <GlowCard color="primary" intensity="moderate">
       <CardContent className="pt-4 pb-3">
         <p className="text-xs text-muted-foreground">{label}</p>
         <p className="text-xl font-bold mt-1">{value}</p>
       </CardContent>
-    </Card>
+    </GlowCard>
   )
 }

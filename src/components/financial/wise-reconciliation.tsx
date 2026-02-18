@@ -16,6 +16,7 @@ import {
   Building2,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -272,20 +273,20 @@ export function WiseReconciliation() {
       {balances.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {Object.entries(totalByCurrency).map(([currency, amount]) => (
-            <Card key={currency}>
+            <GlowCard key={currency} color="success" intensity="moderate">
               <CardHeader className="pb-2">
                 <CardDescription>Saldo {currency}</CardDescription>
                 <CardTitle className="text-xl">
                   {formatCurrency(amount, currency)}
                 </CardTitle>
               </CardHeader>
-            </Card>
+            </GlowCard>
           ))}
         </div>
       )}
 
       {/* Filters */}
-      <Card>
+      <GlowCard color="primary" intensity="subtle">
         <CardHeader>
           <CardTitle className="text-base">Filtros</CardTitle>
         </CardHeader>
@@ -336,13 +337,13 @@ export function WiseReconciliation() {
             </div>
           </div>
         </CardContent>
-      </Card>
+      </GlowCard>
 
       {/* Transactions Table */}
-      <Card>
+      <GlowCard color="primary" intensity="subtle">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
-            <ArrowDownRight className="h-4 w-4 text-green-500" />
+            <ArrowDownRight className="h-4 w-4 text-success" />
             Pagamentos Recebidos
             <Badge variant="secondary" className="ml-2">
               {filteredPayments.length}
@@ -396,7 +397,7 @@ export function WiseReconciliation() {
                           payment.transaction.details.paymentReference ||
                           "—"}
                       </TableCell>
-                      <TableCell className="text-right font-medium text-green-600">
+                      <TableCell className="text-right font-medium text-success">
                         +{formatCurrency(
                           payment.transaction.amount.value,
                           payment.currency
@@ -406,7 +407,7 @@ export function WiseReconciliation() {
                         {isReconciled ? (
                           <Badge
                             variant="default"
-                            className="bg-green-500/10 text-green-600 hover:bg-green-500/20"
+                            className="bg-success/10 text-success hover:bg-success/20"
                           >
                             <Check className="h-3 w-3 mr-1" />
                             Reconciliado
@@ -434,7 +435,7 @@ export function WiseReconciliation() {
             </Table>
           )}
         </CardContent>
-      </Card>
+      </GlowCard>
 
       {/* Reconcile Dialog */}
       <Dialog
@@ -458,7 +459,7 @@ export function WiseReconciliation() {
                 <div className="grid gap-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Valor:</span>
-                    <span className="font-semibold text-green-600">
+                    <span className="font-semibold text-success">
                       {formatCurrency(
                         reconcileDialog.payment.transaction.amount.value,
                         reconcileDialog.payment.currency

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import { Plus, Calendar, Video, CheckCircle, XCircle, Clock, Loader2 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { formatDateTime } from "@/lib/utils"
@@ -72,7 +73,7 @@ export function ClientMeetings({ clientId }: ClientMeetingsProps) {
       </div>
 
       {/* Upcoming Meetings */}
-      <Card>
+      <GlowCard color="info" intensity="subtle">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <Calendar className="h-5 w-5 text-primary" />
@@ -122,11 +123,11 @@ export function ClientMeetings({ clientId }: ClientMeetingsProps) {
             </div>
           )}
         </CardContent>
-      </Card>
+      </GlowCard>
 
       {/* Past Meetings */}
       {pastMeetings.length > 0 && (
-        <Card>
+        <GlowCard color="primary" intensity="subtle">
           <CardHeader>
             <CardTitle className="text-base">Histórico de Reuniões</CardTitle>
           </CardHeader>
@@ -160,7 +161,7 @@ export function ClientMeetings({ clientId }: ClientMeetingsProps) {
               })}
             </div>
           </CardContent>
-        </Card>
+        </GlowCard>
       )}
     </div>
   )

@@ -12,7 +12,8 @@ import {
   Kanban,
   LucideIcon,
 } from "lucide-react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 
@@ -83,7 +84,7 @@ export function RecentActivity({ activities = [] }: RecentActivityProps) {
   const hasActivities = activities.length > 0
 
   return (
-    <Card>
+    <GlowCard color="primary" intensity="subtle">
       <CardHeader className="pb-3">
         <CardTitle className="text-base">Atividade Recente</CardTitle>
         <CardDescription>Últimas ações no sistema</CardDescription>
@@ -121,6 +122,6 @@ export function RecentActivity({ activities = [] }: RecentActivityProps) {
           )}
         </ScrollArea>
       </CardContent>
-    </Card>
+    </GlowCard>
   )
 }
