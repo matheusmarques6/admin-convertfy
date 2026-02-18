@@ -9,7 +9,9 @@ import {
   Target,
   Clock,
 } from "lucide-react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
+import type { GlowColor } from "@/components/ui/glow-card"
 import { formatCurrency, formatNumber } from "@/lib/utils"
 import { cn } from "@/lib/utils"
 
@@ -25,7 +27,17 @@ interface DashboardMetricsProps {
 }
 
 export function DashboardMetrics({ metrics }: DashboardMetricsProps) {
-  const cards = [
+  const cards: Array<{
+    title: string
+    value: string
+    change?: string
+    changeType?: "positive" | "negative"
+    subtitle?: string
+    icon: React.ElementType
+    iconColor: string
+    iconBg: string
+    glowColor: GlowColor
+  }> = [
     {
       title: "Faturamento",
       value: formatCurrency(metrics.totalRevenue),
@@ -34,6 +46,7 @@ export function DashboardMetrics({ metrics }: DashboardMetricsProps) {
       icon: DollarSign,
       iconColor: "text-success",
       iconBg: "bg-success/10",
+      glowColor: "success",
     },
     {
       title: "Clientes Ativos",
@@ -43,6 +56,7 @@ export function DashboardMetrics({ metrics }: DashboardMetricsProps) {
       icon: Users,
       iconColor: "text-primary",
       iconBg: "bg-primary/10",
+      glowColor: "primary",
     },
     {
       title: "Pipeline",
@@ -51,6 +65,7 @@ export function DashboardMetrics({ metrics }: DashboardMetricsProps) {
       icon: Target,
       iconColor: "text-warning",
       iconBg: "bg-warning/10",
+      glowColor: "warning",
     },
     {
       title: "A Receber",
@@ -58,41 +73,40 @@ export function DashboardMetrics({ metrics }: DashboardMetricsProps) {
       icon: Clock,
       iconColor: "text-muted-foreground",
       iconBg: "bg-muted",
+      glowColor: "info",
     },
   ]
 
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
       {cards.map((card) => (
-        <Card key={card.title} className="relative overflow-hidden">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
+        <GlowCard key={card.title} color={card.glowColor} intensity="intense" surfaceClassName="p-6">
+          <div className="flex flex-row items-center justify-between pb-2">
+            <span className="text-sm font-medium text-muted-foreground">
               {card.title}
-            </CardTitle>
+            </span>
             <div className={cn("rounded-lg p-2", card.iconBg)}>
               <card.icon className={cn("h-4 w-4", card.iconColor)} />
             </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{card.value}</div>
-            {card.change && (
-              <p className={cn(
-                "text-xs flex items-center gap-1 mt-1",
-                card.changeType === "positive" ? "text-success" : "text-destructive"
-              )}>
-                {card.changeType === "positive" ? (
-                  <TrendingUp className="h-3 w-3" />
-                ) : (
-                  <TrendingDown className="h-3 w-3" />
-                )}
-                {card.change} vs mês anterior
-              </p>
-            )}
-            {card.subtitle && (
-              <p className="text-xs text-muted-foreground mt-1">{card.subtitle}</p>
-            )}
-          </CardContent>
-        </Card>
+          </div>
+          <div className="text-2xl font-bold">{card.value}</div>
+          {card.change && (
+            <p className={cn(
+              "text-xs flex items-center gap-1 mt-1",
+              card.changeType === "positive" ? "text-success" : "text-destructive"
+            )}>
+              {card.changeType === "positive" ? (
+                <TrendingUp className="h-3 w-3" />
+              ) : (
+                <TrendingDown className="h-3 w-3" />
+              )}
+              {card.change} vs mês anterior
+            </p>
+          )}
+          {card.subtitle && (
+            <p className="text-xs text-muted-foreground mt-1">{card.subtitle}</p>
+          )}
+        </GlowCard>
       ))}
 
       {/* Overdue Alert Card */}

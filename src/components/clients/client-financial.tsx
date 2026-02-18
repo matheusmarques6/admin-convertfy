@@ -27,6 +27,7 @@ import {
   Ban,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -758,61 +759,45 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
     <div className="space-y-6">
       {/* Summary Cards */}
       <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Total Recebido</CardDescription>
-            <CardTitle className="text-2xl text-green-600">
-              {formatCurrency(computedSummary.paidValue)}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-xs text-muted-foreground">
-              {computedSummary.paidCount} cobranças pagas
-            </p>
-          </CardContent>
-        </Card>
+        <GlowCard color="success" intensity="intense" surfaceClassName="p-6">
+          <p className="text-sm text-muted-foreground mb-1">Total Recebido</p>
+          <p className="text-2xl font-bold text-success">
+            {formatCurrency(computedSummary.paidValue)}
+          </p>
+          <p className="text-xs text-muted-foreground mt-2">
+            {computedSummary.paidCount} cobranças pagas
+          </p>
+        </GlowCard>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Pendente</CardDescription>
-            <CardTitle className="text-2xl text-yellow-600">
-              {formatCurrency(computedSummary.pendingValue)}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-xs text-muted-foreground">
-              {computedSummary.pendingCount} cobranças pendentes
-            </p>
-          </CardContent>
-        </Card>
+        <GlowCard color="warning" intensity="intense" surfaceClassName="p-6">
+          <p className="text-sm text-muted-foreground mb-1">Pendente</p>
+          <p className="text-2xl font-bold text-warning">
+            {formatCurrency(computedSummary.pendingValue)}
+          </p>
+          <p className="text-xs text-muted-foreground mt-2">
+            {computedSummary.pendingCount} cobranças pendentes
+          </p>
+        </GlowCard>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Vencido</CardDescription>
-            <CardTitle className="text-2xl text-red-600">
-              {formatCurrency(computedSummary.overdueValue)}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-xs text-muted-foreground">
-              {computedSummary.overdueCount} cobranças vencidas
-            </p>
-          </CardContent>
-        </Card>
+        <GlowCard color="destructive" intensity="intense" surfaceClassName="p-6">
+          <p className="text-sm text-muted-foreground mb-1">Vencido</p>
+          <p className="text-2xl font-bold text-destructive">
+            {formatCurrency(computedSummary.overdueValue)}
+          </p>
+          <p className="text-xs text-muted-foreground mt-2">
+            {computedSummary.overdueCount} cobranças vencidas
+          </p>
+        </GlowCard>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Assinaturas Ativas</CardDescription>
-            <CardTitle className="text-2xl">
-              {computedSummary.activeSubsCount}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-xs text-muted-foreground">
-              {formatCurrency(computedSummary.activeSubsValue)}/mês
-            </p>
-          </CardContent>
-        </Card>
+        <GlowCard color="primary" intensity="intense" surfaceClassName="p-6">
+          <p className="text-sm text-muted-foreground mb-1">Assinaturas Ativas</p>
+          <p className="text-2xl font-bold text-foreground">
+            {computedSummary.activeSubsCount}
+          </p>
+          <p className="text-xs text-muted-foreground mt-2">
+            {formatCurrency(computedSummary.activeSubsValue)}/mês
+          </p>
+        </GlowCard>
       </div>
 
       {/* Actions Bar */}

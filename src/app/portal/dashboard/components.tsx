@@ -1,5 +1,7 @@
 import { TrendingUp, TrendingDown } from "lucide-react"
 import { formatCurrencyCompact, formatNumber } from "@/lib/utils/format"
+import { GlowCard } from "@/components/ui/glow-card"
+import type { GlowColor } from "@/components/ui/glow-card"
 
 // Badge de variação (up/down)
 export function VariationBadge({ value, type = "percent" }: { value: number; type?: "percent" | "currency" }) {
@@ -23,19 +25,20 @@ export function MetricCard({
   subtitle,
   icon: Icon,
   highlight = false,
+  glowColor,
 }: {
   title: string
   value: string | number
   subtitle?: string
   icon: React.ElementType
   highlight?: boolean
+  glowColor?: GlowColor
 }) {
+  const color = glowColor || (highlight ? "primary" : "info")
+  const intensity = highlight ? "intense" : "moderate"
+
   return (
-    <div className={`rounded-xl p-4 border transition-all card-hover ${
-      highlight
-        ? "bg-primary/10 border-primary/30 glass-card"
-        : "bg-card/50 border-border hover:border-border"
-    }`}>
+    <GlowCard color={color} intensity={intensity} surfaceClassName="p-4">
       <div className="flex items-center gap-2 mb-2">
         <Icon className={`h-4 w-4 ${highlight ? "text-info" : "text-muted-foreground"}`} />
         <span className="text-xs text-muted-foreground uppercase tracking-wide">{title}</span>
@@ -46,7 +49,7 @@ export function MetricCard({
       {subtitle && (
         <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
       )}
-    </div>
+    </GlowCard>
   )
 }
 

@@ -1,4 +1,3 @@
-import { Zap, Send, MessageSquare } from "lucide-react"
 import { formatCurrency, formatCurrencyCompact } from "@/lib/utils/format"
 import { VariationBadge } from "./components"
 import type { KlaviyoData, ShopifyData } from "./types"
@@ -47,10 +46,10 @@ export function HeroSection({ klaviyo, shopify }: HeroSectionProps) {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <RevenueCard icon={Zap} label="Flows" value={flowRevenue} percent={flowPercent} color="violet" />
-        <RevenueCard icon={Send} label="Campanhas" value={campaignRevenue} percent={campaignPercent} color="cyan" />
-        <RevenueCard icon={MessageSquare} label="SMS" value={smsRevenue} percent={smsPercent} color="amber" />
-        <div className="p-3 rounded-lg bg-black/30 border border-primary/10">
+        <RevenueCard label="Flows" value={flowRevenue} percent={flowPercent} color="violet" />
+        <RevenueCard label="Campanhas" value={campaignRevenue} percent={campaignPercent} color="cyan" />
+        <RevenueCard label="SMS" value={smsRevenue} percent={smsPercent} color="amber" />
+        <div className="p-3 rounded-lg bg-purple-500/15 border border-purple-500/20">
           <div className="flex items-center gap-2 mb-1">
             <div className="w-2 h-2 rounded-full bg-purple-500" />
             <span className="text-xs text-muted-foreground">Lucro Estimado</span>
@@ -64,26 +63,29 @@ export function HeroSection({ klaviyo, shopify }: HeroSectionProps) {
 }
 
 function RevenueCard({
-  icon: Icon,
   label,
   value,
   percent,
   color,
 }: {
-  icon: React.ElementType
   label: string
   value: number
   percent: number
   color: string
 }) {
+  const bgClasses: Record<string, string> = { violet: "bg-purple-500/15", cyan: "bg-info/15", amber: "bg-warning/15" }
+  const borderClasses: Record<string, string> = { violet: "border-purple-500/20", cyan: "border-info/20", amber: "border-warning/20" }
+  const textClasses: Record<string, string> = { violet: "text-purple-400", cyan: "text-info", amber: "text-warning" }
+  const dotClasses: Record<string, string> = { violet: "bg-purple-500", cyan: "bg-info", amber: "bg-warning" }
+
   return (
-    <div className="p-3 rounded-lg bg-black/30 border border-primary/10">
+    <div className={`p-3 rounded-lg border ${bgClasses[color] || bgClasses.violet} ${borderClasses[color] || borderClasses.violet}`}>
       <div className="flex items-center gap-2 mb-1">
-        <div className={`w-2 h-2 rounded-full bg-${color}-500`} />
+        <div className={`w-2 h-2 rounded-full ${dotClasses[color] || dotClasses.violet}`} />
         <span className="text-xs text-muted-foreground">{label}</span>
       </div>
       <p className="text-lg font-bold text-foreground">{formatCurrencyCompact(value)}</p>
-      <p className={`text-xs text-${color}-400`}>{percent.toFixed(0)}% da receita</p>
+      <p className={`text-xs ${textClasses[color] || textClasses.violet}`}>{percent.toFixed(0)}% da receita</p>
     </div>
   )
 }

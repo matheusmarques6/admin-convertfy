@@ -17,7 +17,8 @@ import {
   BarChart3,
   Percent,
 } from "lucide-react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -249,75 +250,61 @@ export default function PortalStoreReportPage({
         <TabsContent value="overview" className="space-y-6">
           {/* Key Metrics */}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total de Leads</CardTitle>
-                <Users className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  {formatNumber(klaviyo?.totalLeads || 0)}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Contatos na base
-                </p>
-              </CardContent>
-            </Card>
+            <GlowCard color="primary" intensity="intense" surfaceClassName="p-6">
+              <div className="flex items-center justify-between pb-2">
+                <span className="text-sm font-medium text-muted-foreground">Total de Leads</span>
+                <Users className="h-4 w-4 text-primary" />
+              </div>
+              <div className="text-2xl font-bold">
+                {formatNumber(klaviyo?.totalLeads || 0)}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">Contatos na base</p>
+            </GlowCard>
 
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Leads Engajados</CardTitle>
-                <TrendingUp className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  {formatNumber(klaviyo?.engagedLeads || 0)}
-                </div>
-                <div className="flex items-center text-xs text-muted-foreground">
-                  <span>{formatPercent(klaviyo?.engagementRate || 0)} de engajamento</span>
-                </div>
-              </CardContent>
-            </Card>
+            <GlowCard color="info" intensity="intense" surfaceClassName="p-6">
+              <div className="flex items-center justify-between pb-2">
+                <span className="text-sm font-medium text-muted-foreground">Leads Engajados</span>
+                <TrendingUp className="h-4 w-4 text-info" />
+              </div>
+              <div className="text-2xl font-bold">
+                {formatNumber(klaviyo?.engagedLeads || 0)}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {formatPercent(klaviyo?.engagementRate || 0)} de engajamento
+              </p>
+            </GlowCard>
 
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Receita Email</CardTitle>
-                <DollarSign className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-green-600">
-                  {formatCurrency(klaviyo?.totalRevenue || 0)}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Atribuída via Klaviyo
-                </p>
-              </CardContent>
-            </Card>
+            <GlowCard color="success" intensity="intense" surfaceClassName="p-6">
+              <div className="flex items-center justify-between pb-2">
+                <span className="text-sm font-medium text-muted-foreground">Receita Email</span>
+                <DollarSign className="h-4 w-4 text-success" />
+              </div>
+              <div className="text-2xl font-bold text-success">
+                {formatCurrency(klaviyo?.totalRevenue || 0)}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">Atribuída via Klaviyo</p>
+            </GlowCard>
 
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Pedidos</CardTitle>
-                <ShoppingCart className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  {formatNumber(shopify?.totalOrders || 0)}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  No período selecionado
-                </p>
-              </CardContent>
-            </Card>
+            <GlowCard color="warning" intensity="intense" surfaceClassName="p-6">
+              <div className="flex items-center justify-between pb-2">
+                <span className="text-sm font-medium text-muted-foreground">Total Pedidos</span>
+                <ShoppingCart className="h-4 w-4 text-warning" />
+              </div>
+              <div className="text-2xl font-bold">
+                {formatNumber(shopify?.totalOrders || 0)}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">No período selecionado</p>
+            </GlowCard>
           </div>
 
           {/* Email Performance Summary */}
           {klaviyo && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Performance de Email</CardTitle>
-                <CardDescription>Métricas de engajamento no período</CardDescription>
-              </CardHeader>
-              <CardContent>
+            <GlowCard color="info" intensity="moderate" surfaceClassName="p-6">
+              <div className="mb-4">
+                <h3 className="text-lg font-semibold text-foreground">Performance de Email</h3>
+                <p className="text-sm text-muted-foreground">Métricas de engajamento no período</p>
+              </div>
+              <div>
                 <div className="grid gap-6 md:grid-cols-4">
                   <div>
                     <div className="flex items-center justify-between mb-2">
@@ -352,19 +339,19 @@ export default function PortalStoreReportPage({
                     <p className="text-xs text-muted-foreground mt-2">No período</p>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </GlowCard>
           )}
 
           {/* Revenue Breakdown */}
           {klaviyo && (
             <div className="grid gap-6 md:grid-cols-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Receita por Canal</CardTitle>
-                  <CardDescription>Distribuição de receita atribuída</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
+              <GlowCard color="success" intensity="moderate" surfaceClassName="p-6">
+                <div className="mb-4">
+                  <h3 className="text-lg font-semibold text-foreground">Receita por Canal</h3>
+                  <p className="text-sm text-muted-foreground">Distribuição de receita atribuída</p>
+                </div>
+                <div className="space-y-4">
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm font-medium">Campanhas</span>
@@ -385,16 +372,16 @@ export default function PortalStoreReportPage({
                       className="h-2"
                     />
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </GlowCard>
 
               {shopify && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Métricas E-commerce</CardTitle>
-                    <CardDescription>Dados da loja</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
+                <GlowCard color="warning" intensity="moderate" surfaceClassName="p-6">
+                  <div className="mb-4">
+                    <h3 className="text-lg font-semibold text-foreground">Métricas E-commerce</h3>
+                    <p className="text-sm text-muted-foreground">Dados da loja</p>
+                  </div>
+                  <div className="space-y-4">
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-muted-foreground">Receita Total</span>
                       <span className="font-bold">{formatCurrency(shopify.totalRevenue)}</span>
@@ -411,8 +398,8 @@ export default function PortalStoreReportPage({
                       <span className="text-sm text-muted-foreground">Novos Clientes</span>
                       <span className="font-bold">{formatNumber(shopify.newCustomers)}</span>
                     </div>
-                  </CardContent>
-                </Card>
+                  </div>
+                </GlowCard>
               )}
             </div>
           )}
@@ -423,12 +410,11 @@ export default function PortalStoreReportPage({
           {klaviyo ? (
             <>
               {/* Recent Campaigns */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Campanhas Recentes</CardTitle>
-                  <CardDescription>Últimos emails enviados</CardDescription>
-                </CardHeader>
-                <CardContent>
+              <GlowCard color="primary" intensity="moderate" surfaceClassName="p-6">
+                <div className="mb-4">
+                  <h3 className="text-lg font-semibold text-foreground">Campanhas Recentes</h3>
+                  <p className="text-sm text-muted-foreground">Últimos emails enviados</p>
+                </div>
                   {klaviyo.recentCampaigns.length === 0 ? (
                     <div className="text-center py-8 text-muted-foreground">
                       <Mail className="h-8 w-8 mx-auto mb-2 opacity-50" />
@@ -471,23 +457,21 @@ export default function PortalStoreReportPage({
                             </div>
                             <div>
                               <p className="text-muted-foreground">Receita</p>
-                              <p className="font-medium text-green-600">{formatCurrency(campaign.revenue)}</p>
+                              <p className="font-medium text-success">{formatCurrency(campaign.revenue)}</p>
                             </div>
                           </div>
                         </div>
                       ))}
                     </div>
                   )}
-                </CardContent>
-              </Card>
+              </GlowCard>
 
               {/* Top Flows */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Top Automações</CardTitle>
-                  <CardDescription>Flows com melhor performance</CardDescription>
-                </CardHeader>
-                <CardContent>
+              <GlowCard color="success" intensity="moderate" surfaceClassName="p-6">
+                <div className="mb-4">
+                  <h3 className="text-lg font-semibold text-foreground">Top Automações</h3>
+                  <p className="text-sm text-muted-foreground">Flows com melhor performance</p>
+                </div>
                   {klaviyo.topFlows.length === 0 ? (
                     <div className="text-center py-8 text-muted-foreground">
                       <BarChart3 className="h-8 w-8 mx-auto mb-2 opacity-50" />
@@ -510,7 +494,7 @@ export default function PortalStoreReportPage({
                             </p>
                           </div>
                           <div className="text-right">
-                            <p className="font-bold text-green-600">{formatCurrency(flow.revenue)}</p>
+                            <p className="font-bold text-success">{formatCurrency(flow.revenue)}</p>
                             <p className="text-xs text-muted-foreground">
                               {formatPercent(flow.openRate)} abertura
                             </p>
@@ -519,16 +503,14 @@ export default function PortalStoreReportPage({
                       ))}
                     </div>
                   )}
-                </CardContent>
-              </Card>
+              </GlowCard>
 
               {/* Lists */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Listas de Email</CardTitle>
-                  <CardDescription>Segmentação da base</CardDescription>
-                </CardHeader>
-                <CardContent>
+              <GlowCard color="info" intensity="moderate" surfaceClassName="p-6">
+                <div className="mb-4">
+                  <h3 className="text-lg font-semibold text-foreground">Listas de Email</h3>
+                  <p className="text-sm text-muted-foreground">Segmentação da base</p>
+                </div>
                   {klaviyo.lists.length === 0 ? (
                     <div className="text-center py-8 text-muted-foreground">
                       <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
@@ -547,8 +529,7 @@ export default function PortalStoreReportPage({
                       ))}
                     </div>
                   )}
-                </CardContent>
-              </Card>
+              </GlowCard>
             </>
           ) : (
             <Card>
@@ -569,58 +550,49 @@ export default function PortalStoreReportPage({
             <>
               {/* E-commerce Metrics */}
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Receita Total</CardTitle>
-                    <DollarSign className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{formatCurrency(shopify.totalRevenue)}</div>
-                    <p className="text-xs text-muted-foreground">No período</p>
-                  </CardContent>
-                </Card>
+                <GlowCard color="success" intensity="intense" surfaceClassName="p-6">
+                  <div className="flex items-center justify-between pb-2">
+                    <span className="text-sm font-medium text-muted-foreground">Receita Total</span>
+                    <DollarSign className="h-4 w-4 text-success" />
+                  </div>
+                  <div className="text-2xl font-bold">{formatCurrency(shopify.totalRevenue)}</div>
+                  <p className="text-xs text-muted-foreground mt-1">No período</p>
+                </GlowCard>
 
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Total de Pedidos</CardTitle>
-                    <ShoppingCart className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{formatNumber(shopify.totalOrders)}</div>
-                    <p className="text-xs text-muted-foreground">Pedidos finalizados</p>
-                  </CardContent>
-                </Card>
+                <GlowCard color="warning" intensity="intense" surfaceClassName="p-6">
+                  <div className="flex items-center justify-between pb-2">
+                    <span className="text-sm font-medium text-muted-foreground">Total de Pedidos</span>
+                    <ShoppingCart className="h-4 w-4 text-warning" />
+                  </div>
+                  <div className="text-2xl font-bold">{formatNumber(shopify.totalOrders)}</div>
+                  <p className="text-xs text-muted-foreground mt-1">Pedidos finalizados</p>
+                </GlowCard>
 
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Ticket Médio</CardTitle>
-                    <BarChart3 className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{formatCurrency(shopify.averageOrderValue)}</div>
-                    <p className="text-xs text-muted-foreground">Valor médio por pedido</p>
-                  </CardContent>
-                </Card>
+                <GlowCard color="info" intensity="intense" surfaceClassName="p-6">
+                  <div className="flex items-center justify-between pb-2">
+                    <span className="text-sm font-medium text-muted-foreground">Ticket Médio</span>
+                    <BarChart3 className="h-4 w-4 text-info" />
+                  </div>
+                  <div className="text-2xl font-bold">{formatCurrency(shopify.averageOrderValue)}</div>
+                  <p className="text-xs text-muted-foreground mt-1">Valor médio por pedido</p>
+                </GlowCard>
 
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Clientes Recorrentes</CardTitle>
-                    <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{formatPercent(shopify.recurringCustomerRate)}</div>
-                    <p className="text-xs text-muted-foreground">Taxa de recompra</p>
-                  </CardContent>
-                </Card>
+                <GlowCard color="primary" intensity="intense" surfaceClassName="p-6">
+                  <div className="flex items-center justify-between pb-2">
+                    <span className="text-sm font-medium text-muted-foreground">Clientes Recorrentes</span>
+                    <TrendingUp className="h-4 w-4 text-primary" />
+                  </div>
+                  <div className="text-2xl font-bold">{formatPercent(shopify.recurringCustomerRate)}</div>
+                  <p className="text-xs text-muted-foreground mt-1">Taxa de recompra</p>
+                </GlowCard>
               </div>
 
               {/* Top Products */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Produtos Mais Vendidos</CardTitle>
-                  <CardDescription>Top produtos no período</CardDescription>
-                </CardHeader>
-                <CardContent>
+              <GlowCard color="warning" intensity="moderate" surfaceClassName="p-6">
+                <div className="mb-4">
+                  <h3 className="text-lg font-semibold text-foreground">Produtos Mais Vendidos</h3>
+                  <p className="text-sm text-muted-foreground">Top produtos no período</p>
+                </div>
                   {shopify.topProducts.length === 0 ? (
                     <div className="text-center py-8 text-muted-foreground">
                       <ShoppingCart className="h-8 w-8 mx-auto mb-2 opacity-50" />
@@ -649,8 +621,7 @@ export default function PortalStoreReportPage({
                       ))}
                     </div>
                   )}
-                </CardContent>
-              </Card>
+              </GlowCard>
             </>
           ) : (
             <Card>
