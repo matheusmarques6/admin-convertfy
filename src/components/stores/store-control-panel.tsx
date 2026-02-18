@@ -47,6 +47,7 @@ import {
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
+import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/lib/hooks/use-toast"
 
 interface StoreData {
@@ -108,19 +109,19 @@ const getStatusBadge = (status: StoreData['feedback_status'], daysUntil: number 
     case 'overdue':
       return {
         label: daysUntil !== null ? `${Math.abs(daysUntil)}d atrasado` : 'Atrasado',
-        className: 'bg-red-500/20 text-red-400 border-red-500/30',
+        className: 'bg-destructive/15 text-destructive border-destructive/30',
         icon: AlertTriangle,
       }
     case 'due_soon':
       return {
         label: daysUntil !== null ? `Em ${daysUntil}d` : 'Em breve',
-        className: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+        className: 'bg-warning/15 text-warning border-warning/30',
         icon: Clock,
       }
     case 'on_track':
       return {
         label: daysUntil !== null ? `Em ${daysUntil}d` : 'Em dia',
-        className: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+        className: 'bg-success/15 text-success border-success/30',
         icon: CheckCircle,
       }
     default:
@@ -134,9 +135,9 @@ const getStatusBadge = (status: StoreData['feedback_status'], daysUntil: number 
 
 // Get result percentage color
 const getResultColor = (percentage: number): string => {
-  if (percentage >= 20) return 'text-emerald-400'
-  if (percentage >= 10) return 'text-amber-400'
-  if (percentage > 0) return 'text-orange-400'
+  if (percentage >= 20) return 'text-success'
+  if (percentage >= 10) return 'text-warning'
+  if (percentage > 0) return 'text-warning'
   return 'text-muted-foreground'
 }
 
@@ -351,13 +352,47 @@ export function StoreControlPanel() {
     return matchesSearch && matchesFilter
   })
 
-  // Loading state
+  // Loading state - skeleton table for better perceived performance
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="w-8 h-8 text-emerald-500 animate-spin" />
-          <p className="text-sm text-muted-foreground">Carregando lojas...</p>
+      <div className="space-y-6">
+        {/* Summary skeleton */}
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="rounded-xl border border-border p-4">
+              <div className="flex items-center gap-3">
+                <Skeleton className="w-10 h-10 rounded-lg" />
+                <div className="space-y-2">
+                  <Skeleton className="h-6 w-10" />
+                  <Skeleton className="h-3 w-20" />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+        {/* Table skeleton */}
+        <div className="rounded-xl border border-border overflow-hidden">
+          <div className="bg-card/50 border-b border-border px-4 py-3 flex gap-8">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className="h-3 w-24" />
+            ))}
+          </div>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-8 px-4 py-4 border-b border-border/50">
+              <div className="flex items-center gap-3 flex-1">
+                <Skeleton className="w-10 h-10 rounded-lg" />
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-3 w-20" />
+                </div>
+              </div>
+              <Skeleton className="h-6 w-16" />
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-6 w-20 rounded-full" />
+              <Skeleton className="h-4 w-16" />
+              <Skeleton className="h-4 w-20" />
+            </div>
+          ))}
         </div>
       </div>
     )
@@ -392,11 +427,11 @@ export function StoreControlPanel() {
             }`}
           >
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-red-500/10 flex items-center justify-center">
-                <AlertTriangle className="w-5 h-5 text-red-400" />
+              <div className="w-10 h-10 rounded-lg bg-destructive/10 flex items-center justify-center">
+                <AlertTriangle className="w-5 h-5 text-destructive" />
               </div>
               <div>
-                <p className="text-2xl font-bold text-red-400">{summary.overdue}</p>
+                <p className="text-2xl font-bold text-destructive">{summary.overdue}</p>
                 <p className="text-xs text-muted-foreground">Atrasadas</p>
               </div>
             </div>
@@ -409,11 +444,11 @@ export function StoreControlPanel() {
             }`}
           >
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center">
-                <Clock className="w-5 h-5 text-amber-400" />
+              <div className="w-10 h-10 rounded-lg bg-warning/10 flex items-center justify-center">
+                <Clock className="w-5 h-5 text-warning" />
               </div>
               <div>
-                <p className="text-2xl font-bold text-amber-400">{summary.due_soon}</p>
+                <p className="text-2xl font-bold text-warning">{summary.due_soon}</p>
                 <p className="text-xs text-muted-foreground">Em breve</p>
               </div>
             </div>
@@ -426,11 +461,11 @@ export function StoreControlPanel() {
             }`}
           >
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center">
-                <CheckCircle className="w-5 h-5 text-emerald-400" />
+              <div className="w-10 h-10 rounded-lg bg-success/10 flex items-center justify-center">
+                <CheckCircle className="w-5 h-5 text-success" />
               </div>
               <div>
-                <p className="text-2xl font-bold text-emerald-400">{summary.on_track}</p>
+                <p className="text-2xl font-bold text-success">{summary.on_track}</p>
                 <p className="text-xs text-muted-foreground">Em dia</p>
               </div>
             </div>
@@ -504,8 +539,20 @@ export function StoreControlPanel() {
             <tbody>
               {filteredStores.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-12 text-muted-foreground">
-                    Nenhuma loja encontrada
+                  <td colSpan={7} className="text-center py-16">
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
+                        <Store className="w-6 h-6 text-muted-foreground" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-muted-foreground">Nenhuma loja encontrada</p>
+                        <p className="text-xs text-muted-foreground/70 mt-1">
+                          {searchQuery || filterStatus !== 'all'
+                            ? 'Tente ajustar os filtros de busca'
+                            : 'Cadastre lojas nos clientes para vê-las aqui'}
+                        </p>
+                      </div>
+                    </div>
                   </td>
                 </tr>
               ) : (
@@ -527,10 +574,10 @@ export function StoreControlPanel() {
                           </div>
                           <div className="flex gap-1 ml-2">
                             {store.has_shopify && (
-                              <Badge variant="outline" className="text-[10px] border-green-500/30 text-green-400">Shopify</Badge>
+                              <Badge variant="outline" className="text-[10px] border-success/30 text-success">Shopify</Badge>
                             )}
                             {store.has_klaviyo && (
-                              <Badge variant="outline" className="text-[10px] border-purple-500/30 text-purple-400">Klaviyo</Badge>
+                              <Badge variant="outline" className="text-[10px] border-primary/30 text-primary">Klaviyo</Badge>
                             )}
                           </div>
                         </div>
@@ -549,7 +596,7 @@ export function StoreControlPanel() {
                       {/* Revenue */}
                       <td className="px-4 py-4 text-center">
                         <div className="flex flex-col items-center">
-                          <span className="text-sm font-medium text-emerald-400">
+                          <span className="text-sm font-medium text-success">
                             {formatCurrency(store.klaviyo_revenue_30d)}
                           </span>
                           <span className="text-xs text-muted-foreground">

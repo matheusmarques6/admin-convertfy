@@ -26,3 +26,8 @@ export {
 export {
   findPlacedOrderMetric,
 } from "./metrics"
+
+export {
+  getKlaviyoRevenueForStore,
+  type KlaviyoRevenueSummary,
+} from "./report-summary"

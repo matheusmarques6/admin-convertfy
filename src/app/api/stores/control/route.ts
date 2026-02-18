@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
+import { getShopifyReportForStore } from "@/lib/integrations/shopify/report"
+import { getKlaviyoRevenueForStore } from "@/lib/integrations/klaviyo/report-summary"
 
 const log = logger.child("StoresControl")
 
@@ -119,43 +120,33 @@ export async function GET(request: Request) {
         const hasShopify = !!store.shopify_access_token
         const hasKlaviyo = !!store.klaviyo_private_key
 
-        // Try to get cached/recent revenue data or fetch from APIs
-        // For performance, we'll fetch summary data
+        // Fetch revenue data via direct module calls (no HTTP self-fetch)
         if (hasShopify || hasKlaviyo) {
-          try {
-            // Fetch Shopify data
-            if (hasShopify) {
-              const shopifyRes = await fetch(
-                `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/integrations/shopify/report?store_id=${store.id}&period=30d`,
-                { cache: 'no-store' }
-              )
-              if (shopifyRes.ok) {
-                const shopifyData = await shopifyRes.json()
-                if (shopifyData.success && shopifyData.summary) {
-                  totalRevenue = shopifyData.summary.totalRevenue || 0
-                }
-              }
-            }
+          const [shopifyResult, klaviyoResult] = await Promise.all([
+            hasShopify
+              ? getShopifyReportForStore(store.id, '30d').catch((err) => {
+                  log.error(`Error fetching Shopify for store ${store.id}:`, err)
+                  return null
+                })
+              : Promise.resolve(null),
+            hasKlaviyo
+              ? getKlaviyoRevenueForStore(store.id, '30d').catch((err) => {
+                  log.error(`Error fetching Klaviyo for store ${store.id}:`, err)
+                  return null
+                })
+              : Promise.resolve(null),
+          ])
 
-            // Fetch Klaviyo data
-            if (hasKlaviyo) {
-              const klaviyoRes = await fetch(
-                `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/integrations/klaviyo/report?store_id=${store.id}&period=30d`,
-                { cache: 'no-store' }
-              )
-              if (klaviyoRes.ok) {
-                const klaviyoData = await klaviyoRes.json()
-                if (klaviyoData.success && klaviyoData.revenue) {
-                  klaviyoRevenue = klaviyoData.revenue.klaviyoAttributedRevenue || 0
-                  // If we don't have Shopify, use Klaviyo's total
-                  if (!hasShopify && klaviyoData.revenue.totalRevenue) {
-                    totalRevenue = klaviyoData.revenue.totalRevenue
-                  }
-                }
-              }
+          if (shopifyResult?.connected && shopifyResult.summary) {
+            totalRevenue = shopifyResult.summary.totalRevenue || 0
+          }
+
+          if (klaviyoResult) {
+            klaviyoRevenue = klaviyoResult.totalRevenue || 0
+            // If we don't have Shopify, use Klaviyo's total as fallback
+            if (!hasShopify && klaviyoResult.totalRevenue > 0) {
+              totalRevenue = klaviyoResult.totalRevenue
             }
-          } catch (err) {
-            log.error(`Error fetching revenue for store ${store.id}:`, err)
           }
         }
 
