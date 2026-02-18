@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import {
   ChevronLeft,
   ChevronRight,
@@ -8,6 +9,8 @@ import {
   Mail,
   Store,
   X,
+  Calendar,
+  List,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PermissionGate } from "@/components/permission-gate"
@@ -24,6 +27,7 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { CampaignModal } from "@/components/campaigns/campaign-modal"
 import { CampaignFormModal } from "@/components/campaigns/campaign-form-modal"
+import { CampaignsListView } from "@/components/campaigns/campaigns-list-view"
 import { useCampaignsCalendar } from "./use-campaigns-calendar"
 import { CalendarGrid, channelConfig } from "./calendar-grid"
 

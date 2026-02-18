@@ -60,6 +60,11 @@ interface BillingData {
     pending: number
     overdue: number
   }
+  inadimplentes?: {
+    totalClients: number
+    totalValue: number
+    totalCharges: number
+  }
 }
 
 interface BillingMetricsProps {

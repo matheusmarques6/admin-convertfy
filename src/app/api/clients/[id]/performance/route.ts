@@ -11,6 +11,7 @@ import {
   findPlacedOrderMetric,
   getTimezoneOffset,
 } from "@/lib/integrations/klaviyo"
+import { getShopifyReportForStore } from "@/lib/integrations/shopify/report"
 
 const log = logger.child("ClientPerformance")
 
@@ -55,6 +56,7 @@ interface StorePerformance {
     totalCustomers: number
     recurringCustomerRate: number
   } | null
+  errors: Array<{ integration: string; message: string; code?: string }>
 }
 
 /**
@@ -122,6 +124,7 @@ export async function GET(
 
       let klaviyoData: StorePerformance["klaviyo"] = null
       let shopifyData: StorePerformance["shopify"] = null
+      const errors: StorePerformance["errors"] = []
 
       // Fetch Klaviyo data
       if (hasKlaviyo) {
@@ -132,33 +135,29 @@ export async function GET(
             klaviyoData = await fetchKlaviyoPerformance(apiKey, startDateStr, endDateStr)
           }
         } catch (err) {
+          const message = err instanceof Error ? err.message : "Erro desconhecido ao buscar dados do Klaviyo"
           log.warn("Failed to fetch Klaviyo data for store", { storeId: store.id, error: err })
+          errors.push({ integration: "klaviyo", message })
         }
       }
 
-      // Fetch Shopify data via internal API
+      // Fetch Shopify data via direct module call (no HTTP self-fetch)
       if (hasShopify) {
         try {
-          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
-          const shopifyRes = await fetch(
-            `${baseUrl}/api/integrations/shopify/report?store_id=${store.id}&period=${period}`,
-            { headers: { cookie: request.headers.get("cookie") || "" } }
-          )
-          if (shopifyRes.ok) {
-            const shopifyJson = await shopifyRes.json()
-            const d = shopifyJson.data || shopifyJson
-            if (d.connected && d.summary) {
-              shopifyData = {
-                totalRevenue: d.summary.totalRevenue || 0,
-                totalOrders: d.summary.totalOrders || 0,
-                averageOrderValue: d.summary.averageOrderValue || 0,
-                totalCustomers: d.summary.totalCustomers || 0,
-                recurringCustomerRate: d.summary.recurringCustomerRate || 0,
-              }
+          const report = await getShopifyReportForStore(store.id, period)
+          if (report.connected && report.summary) {
+            shopifyData = {
+              totalRevenue: report.summary.totalRevenue || 0,
+              totalOrders: report.summary.totalOrders || 0,
+              averageOrderValue: report.summary.averageOrderValue || 0,
+              totalCustomers: report.summary.totalCustomers || 0,
+              recurringCustomerRate: report.summary.recurringCustomerRate || 0,
             }
           }
         } catch (err) {
+          const message = err instanceof Error ? err.message : "Erro desconhecido ao buscar dados do Shopify"
           log.warn("Failed to fetch Shopify data for store", { storeId: store.id, error: err })
+          errors.push({ integration: "shopify", message })
         }
       }
 
@@ -169,6 +168,7 @@ export async function GET(
         hasShopify,
         klaviyo: klaviyoData,
         shopify: shopifyData,
+        errors,
       }
     })
 
@@ -186,6 +186,10 @@ export async function GET(
       stores: storeResults,
       totals,
       billing,
+      storeErrors: storeResults.filter(s => s.errors.length > 0).map(s => ({
+        storeName: s.storeName,
+        errors: s.errors,
+      })),
     })
   } catch (error) {
     log.error("Error fetching client performance", error)
@@ -301,7 +305,6 @@ async function fetchKlaviyoPerformance(
 
   topFlows.sort((a, b) => b.revenue - a.revenue)
 
-  const totalRecipients = totalCampaignRecipients + totalFlowRecipients
   const avgOpenRate = campaignCount > 0 ? campaignOpenRateSum / campaignCount : 0
   const avgClickRate = campaignCount > 0 ? campaignClickRateSum / campaignCount : 0
 

@@ -92,6 +92,9 @@ export async function POST(request: NextRequest) {
       tags: body.tags || [],
       color: body.color,
       notes: body.notes || null,
+      instructions_doc_url: body.instructions_doc_url || null,
+      is_quick: body.is_quick || false,
+      copy_status: body.instructions_doc_url ? "pending" : null,
       created_by: user.id,
     }
 

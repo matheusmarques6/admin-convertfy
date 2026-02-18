@@ -112,6 +112,30 @@ export async function GET(request: NextRequest) {
     const subsData = await subsResponse.json()
     const activeSubscriptions = subsData.totalCount || 0
 
+    // Fetch ALL overdue payments (no date filter) to count inadimplent clients
+    let allOverduePayments: Array<{ customer: string; value: number }> = []
+    let overdueOffset = 0
+    let overdueHasMore = true
+    while (overdueHasMore) {
+      const { data: overdueData, totalCount: overdueTotalCount } = await asaas.listPayments({
+        status: "OVERDUE", offset: overdueOffset, limit: 100,
+      } as never)
+      allOverduePayments = [...allOverduePayments, ...overdueData]
+      overdueOffset += 100
+      overdueHasMore = overdueOffset < overdueTotalCount
+    }
+
+    const inadimplentClients = new Map<string, number>()
+    for (const payment of allOverduePayments) {
+      const current = inadimplentClients.get(payment.customer) || 0
+      inadimplentClients.set(payment.customer, current + payment.value)
+    }
+    const inadimplentes = {
+      totalClients: inadimplentClients.size,
+      totalValue: allOverduePayments.reduce((sum, p) => sum + p.value, 0),
+      totalCharges: allOverduePayments.length,
+    }
+
     const byType = {
       PIX: allPayments.filter(p => p.billingType === "PIX").reduce((sum, p) => sum + p.value, 0),
       BOLETO: allPayments.filter(p => p.billingType === "BOLETO").reduce((sum, p) => sum + p.value, 0),
@@ -129,7 +153,7 @@ export async function GET(request: NextRequest) {
       connected: true, period,
       dateRange: { from: dateFrom, to: dateTo },
       summary: { received, confirmed, pending, overdue, refunded, totalClients, activeSubscriptions },
-      byType, counts,
+      byType, counts, inadimplentes,
       recentPayments: allPayments.slice(0, 10),
     })
   } catch (error) {

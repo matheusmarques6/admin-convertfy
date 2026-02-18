@@ -45,6 +45,9 @@ export const campaignCreateSchema = z.object({
   tags: z.array(z.string()).optional(),
   color: z.string().default("#3b82f6"),
   notes: z.string().optional(),
+  instructions_doc_url: z.string().url().optional().or(z.literal("")),
+  is_quick: z.boolean().default(false),
+  copy_status: z.enum(["pending", "generating", "ready", "approved"]).optional(),
 })
 
 // --- Organization ---
