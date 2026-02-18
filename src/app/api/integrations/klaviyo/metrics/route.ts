@@ -5,11 +5,12 @@ import { getStoreCredentials } from "@/lib/services/credentials.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("KlaviyoMetrics")
-import { corsHeaders, klaviyoRequest } from "@/lib/integrations/klaviyo"
+import { klaviyoRequest } from "@/lib/integrations/klaviyo"
+import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 
 // Handle OPTIONS preflight requests
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders() })
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPreFlight(request)
 }
 
 interface KlaviyoMetricResponse {

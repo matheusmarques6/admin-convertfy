@@ -9,7 +9,6 @@ import {
   orgMemberCreateSchema,
   taskCreateSchema,
   portalUserCreateSchema,
-  storeCredentialsSchema,
 } from "./common"
 
 describe("emailSchema", () => {
@@ -78,7 +77,7 @@ describe("campaignCreateSchema", () => {
     name: "Black Friday Campaign",
     scheduled_date: "2026-11-29",
     channel: "email" as const,
-    campaign_type: "campaign" as const,
+    campaign_type: "promotional" as const,
   }
 
   it("should accept valid campaign data", () => {
@@ -115,9 +114,9 @@ describe("orgMemberCreateSchema", () => {
     const result = orgMemberCreateSchema.parse({
       org_id: "550e8400-e29b-41d4-a716-446655440000",
       profile_id: "550e8400-e29b-41d4-a716-446655440001",
-      role: "agent",
+      role: "developer",
     })
-    expect(result.role).toBe("agent")
+    expect(result.role).toBe("developer")
   })
 
   it("should accept with email + name (no profile_id)", () => {
@@ -125,7 +124,7 @@ describe("orgMemberCreateSchema", () => {
       org_id: "550e8400-e29b-41d4-a716-446655440000",
       email: "user@test.com",
       name: "John",
-      role: "viewer",
+      role: "analyst",
     })
     expect(result.email).toBe("user@test.com")
   })
@@ -133,7 +132,7 @@ describe("orgMemberCreateSchema", () => {
   it("should reject without profile_id and without email+name", () => {
     expect(() => orgMemberCreateSchema.parse({
       org_id: "550e8400-e29b-41d4-a716-446655440000",
-      role: "agent",
+      role: "developer",
     })).toThrow()
   })
 })
@@ -166,18 +165,3 @@ describe("portalUserCreateSchema", () => {
   })
 })
 
-describe("storeCredentialsSchema", () => {
-  it("should accept with at least one credential", () => {
-    const result = storeCredentialsSchema.parse({
-      store_id: "550e8400-e29b-41d4-a716-446655440000",
-      klaviyo_private_key: "pk_abc123",
-    })
-    expect(result.klaviyo_private_key).toBe("pk_abc123")
-  })
-
-  it("should reject without any credential", () => {
-    expect(() => storeCredentialsSchema.parse({
-      store_id: "550e8400-e29b-41d4-a716-446655440000",
-    })).toThrow()
-  })
-})

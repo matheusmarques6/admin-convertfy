@@ -8,6 +8,7 @@ import { QuickActions } from "@/components/dashboard/quick-actions"
 import { TodayAgenda } from "@/components/dashboard/today-agenda"
 import { Skeleton } from "@/components/ui/skeleton"
 import { AnimatedContainer, AnimatedItem } from "@/components/ui/animated-container"
+import type { DashboardAlert } from "@/types"
 
 export const dynamic = "force-dynamic"
 
@@ -45,11 +46,18 @@ async function getDashboardData() {
   const now = new Date()
   const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1)
 
-  const { data: paidCharges } = await supabase
-    .from("client_charges")
-    .select("value, due_date")
-    .in("status", ["paid", "RECEIVED", "CONFIRMED"])
-    .gte("due_date", sixMonthsAgo.toISOString())
+  const [{ data: paidCharges }, { data: paidInvoices }] = await Promise.all([
+    supabase
+      .from("client_charges")
+      .select("value, due_date")
+      .in("status", ["paid", "RECEIVED", "CONFIRMED"])
+      .gte("due_date", sixMonthsAgo.toISOString()),
+    supabase
+      .from("invoices")
+      .select("amount, due_date")
+      .eq("status", "paid")
+      .gte("due_date", sixMonthsAgo.toISOString()),
+  ])
 
   const revenueByMonth = new Map<string, number>()
   for (let i = 0; i < 6; i++) {
@@ -61,6 +69,12 @@ async function getDashboardData() {
     const key = c.due_date?.slice(0, 7)
     if (key && revenueByMonth.has(key)) {
       revenueByMonth.set(key, (revenueByMonth.get(key) || 0) + (c.value || 0))
+    }
+  })
+  paidInvoices?.forEach((inv) => {
+    const key = inv.due_date?.slice(0, 7)
+    if (key && revenueByMonth.has(key)) {
+      revenueByMonth.set(key, (revenueByMonth.get(key) || 0) + (inv.amount || 0))
     }
   })
   const revenueData = Array.from(revenueByMonth.entries()).map(([key, value]) => ({
@@ -168,14 +182,7 @@ async function getDashboardData() {
   const overdueClientMap = new Map(overdueClients?.map((c) => [c.id, c.name]) || [])
 
   // Build alerts array
-  type AlertItem = {
-    id: string
-    type: "payment_overdue" | "contract_expiring" | "health_low"
-    title: string
-    description: string
-    severity: "high" | "medium" | "low"
-  }
-  const alerts: AlertItem[] = []
+  const alerts: DashboardAlert[] = []
 
   overdueCharges?.forEach((c) => {
     const clientName = overdueClientMap.get(c.client_id) || "Cliente"

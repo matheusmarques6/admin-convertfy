@@ -1,3 +1,7 @@
+// TODO [TECH-DEBT INC-01]: This static role-based permission system coexists with the dynamic
+// feature-based system in src/lib/hooks/use-permissions.tsx + PermissionGate.
+// Consolidate into a single permission model. The dynamic system (use-permissions) is the
+// actively used one; this static matrix is legacy and may be removable.
 import type { UserRole } from '@/types';
 
 /**

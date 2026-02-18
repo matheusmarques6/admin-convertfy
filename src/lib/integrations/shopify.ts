@@ -20,7 +20,7 @@ export class ShopifyService {
   constructor(config: ShopifyConfig) {
     this.storeUrl = config.storeUrl.replace(/^https?:\/\//, "").replace(/\/$/, "")
     this.accessToken = config.accessToken
-    this.apiVersion = config.apiVersion || "2024-01"
+    this.apiVersion = config.apiVersion || "2025-01"
   }
 
   private get baseUrl(): string {

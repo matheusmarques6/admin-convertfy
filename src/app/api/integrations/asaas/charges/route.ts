@@ -1,3 +1,6 @@
+// TODO [TECH-DEBT INC-15/16]: Financial data comes from 3 sources (client_charges, invoices, contracts).
+// Credentials are stored in integrations.credentials JSON, while Klaviyo uses client_stores columns.
+// Standardize credential storage and document the financial data flow.
 import { NextRequest } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAsaasService } from "@/lib/integrations/asaas"

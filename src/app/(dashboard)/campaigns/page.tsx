@@ -29,6 +29,9 @@ import { CalendarGrid, channelConfig } from "./calendar-grid"
 
 const statusColors: Record<string, string> = {
   draft: "bg-muted-foreground",
+  pending_review: "bg-blue-500",
+  approved: "bg-emerald-500",
+  rejected: "bg-orange-500",
   scheduled: "bg-warning",
   sent: "bg-success",
   cancelled: "bg-destructive",

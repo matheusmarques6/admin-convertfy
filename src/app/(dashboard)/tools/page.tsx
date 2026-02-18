@@ -1,3 +1,5 @@
+// TODO [TECH-DEBT INC-17]: All tools on this page are 100% mocked with setTimeout and hardcoded data.
+// Replace with real API integrations (AI subject generator, ad copy generator, benchmarks).
 "use client"
 
 import { useState } from "react"

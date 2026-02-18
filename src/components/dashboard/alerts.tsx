@@ -8,26 +8,20 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { formatDateTime } from "@/lib/utils"
-import type { Meeting } from "@/types"
+import type { Meeting, DashboardAlert } from "@/types"
 import type { LucideIcon } from "lucide-react"
-
-interface AlertItem {
-  id: string
-  type: "payment_overdue" | "contract_expiring" | "health_low"
-  title: string
-  description: string
-  severity: "high" | "medium" | "low"
-}
 
 interface DashboardAlertsProps {
   meetings: Meeting[]
-  alerts?: AlertItem[]
+  alerts?: DashboardAlert[]
 }
 
 const ALERT_ICONS: Record<string, LucideIcon> = {
   payment_overdue: AlertCircle,
   contract_expiring: FileText,
   health_low: HeartPulse,
+  meeting_overdue: Calendar,
+  report_pending: Clock,
 }
 
 export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps) {

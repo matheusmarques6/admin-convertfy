@@ -23,12 +23,12 @@ export interface DashboardMetrics {
 
 export interface DashboardAlert {
   id: string
-  type: "meeting_overdue" | "payment_overdue" | "contract_expiring" | "report_pending"
+  type: "payment_overdue" | "contract_expiring" | "health_low" | "meeting_overdue" | "report_pending"
   title: string
   description: string
   client_id?: string
   severity: "low" | "medium" | "high"
-  created_at: string
+  created_at?: string
 }
 
 // API Response Types

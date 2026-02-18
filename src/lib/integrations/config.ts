@@ -173,9 +173,9 @@ export const INTEGRATION_CONFIGS: Record<string, IntegrationConfig> = {
         label: "Versão da API",
         type: "select",
         options: [
-          { value: "2024-01", label: "2024-01 (Recomendado)" },
-          { value: "2023-10", label: "2023-10" },
-          { value: "2023-07", label: "2023-07" },
+          { value: "2025-01", label: "2025-01 (Recomendado)" },
+          { value: "2024-10", label: "2024-10" },
+          { value: "2024-07", label: "2024-07" },
         ],
       },
     ],

@@ -1,3 +1,5 @@
+// TODO [TECH-DEBT INC-18]: Permissions page shows static matrix only.
+// Implement actual permission management UI for org_member_features and store access.
 import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { GlowCard } from "@/components/ui/glow-card"
 import { Button } from "@/components/ui/button"

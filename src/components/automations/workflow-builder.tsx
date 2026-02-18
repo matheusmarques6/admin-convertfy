@@ -32,13 +32,18 @@ import {
   FileText,
   AlertCircle,
   Target,
-  ShoppingCart,
   GitBranch,
   Shuffle,
   Code,
-  PhoneCall,
   HelpCircle,
   Crown,
+  TrendingDown,
+  ArrowRight,
+  PlusCircle,
+  ScrollText,
+  Bell,
+  Tag,
+  RefreshCw,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -69,26 +74,37 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 
-// Trigger types
+// Trigger types — aligned with AutomationTriggerType
 const triggerTypes = [
-  { type: "abandoned_cart", label: "Carrinho abandonado criado", icon: ShoppingCart, color: "#22c55e" },
   { type: "new_client", label: "Novo Cliente cadastrado", icon: Users, color: "#22c55e" },
-  { type: "client_status_changed", label: "Status de cliente alterado", icon: Users, color: "#22c55e" },
+  { type: "client_status_changed", label: "Status de cliente alterado", icon: RefreshCw, color: "#22c55e" },
   { type: "payment_confirmed", label: "Pagamento confirmado", icon: DollarSign, color: "#22c55e" },
   { type: "payment_overdue", label: "Pagamento vencido", icon: AlertCircle, color: "#22c55e" },
-  { type: "meeting_scheduled", label: "Reunião agendada", icon: Calendar, color: "#22c55e" },
-  { type: "meeting_reminder", label: "Lembrete de reunião", icon: Clock, color: "#22c55e" },
-  { type: "report_due", label: "Relatório pendente", icon: FileText, color: "#22c55e" },
+  { type: "meeting_overdue", label: "Reunião atrasada", icon: Calendar, color: "#22c55e" },
+  { type: "meeting_upcoming", label: "Reunião próxima", icon: Clock, color: "#22c55e" },
+  { type: "report_overdue", label: "Relatório atrasado", icon: FileText, color: "#22c55e" },
+  { type: "contract_expiring", label: "Contrato expirando", icon: ScrollText, color: "#22c55e" },
+  { type: "revenue_dropped", label: "Queda de receita", icon: TrendingDown, color: "#22c55e" },
+  { type: "deal_moved", label: "Deal movido", icon: ArrowRight, color: "#22c55e" },
+  { type: "deal_created", label: "Deal criado", icon: PlusCircle, color: "#22c55e" },
   { type: "deal_won", label: "Deal ganho", icon: Target, color: "#22c55e" },
   { type: "deal_lost", label: "Deal perdido", icon: Target, color: "#22c55e" },
+  { type: "scheduled_date", label: "Data agendada", icon: Calendar, color: "#22c55e" },
 ]
 
-// Action types with icons matching Reportana style
+// Action types — aligned with AutomationActionType
 const actionTypes = [
   { type: "send_email", label: "Enviar E-mail", icon: Mail, color: "#3b82f6" },
   { type: "send_whatsapp", label: "Enviar WhatsApp", icon: MessageSquare, color: "#22c55e" },
   { type: "send_sms", label: "Enviar SMS", icon: Phone, color: "#8b5cf6" },
-  { type: "send_call", label: "Enviar Ligação telefônica", icon: PhoneCall, color: "#f59e0b" },
+  { type: "create_task", label: "Criar Tarefa", icon: PlusCircle, color: "#f59e0b" },
+  { type: "send_notification", label: "Enviar Notificação", icon: Bell, color: "#f59e0b" },
+  { type: "update_field", label: "Atualizar Campo", icon: RefreshCw, color: "#6366f1" },
+  { type: "update_status", label: "Atualizar Status", icon: ArrowRight, color: "#6366f1" },
+  { type: "add_tag", label: "Adicionar Tag", icon: Tag, color: "#14b8a6" },
+  { type: "remove_tag", label: "Remover Tag", icon: Tag, color: "#ef4444" },
+  { type: "create_invoice", label: "Criar Fatura", icon: DollarSign, color: "#f59e0b" },
+  { type: "schedule_meeting", label: "Agendar Reunião", icon: Calendar, color: "#3b82f6" },
   { type: "webhook", label: "Enviar Webhook", icon: Webhook, color: "#6b7280", premium: true },
 ]
 

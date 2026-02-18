@@ -9,7 +9,6 @@ export {
   KLAVIYO_REVISION,
   MIN_REQUEST_INTERVAL,
   sleep,
-  corsHeaders,
   klaviyoRequest,
   getCurrencySymbol,
   parseDateRange,

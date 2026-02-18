@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
-import { getStoreCredentials } from "@/lib/services/credentials.service"
-import { getCache, setCache } from "@/lib/cache"
+import { errorResponse, requireAuth } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("KlaviyoReport")
@@ -10,7 +8,6 @@ import {
   KLAVIYO_API_URL,
   MIN_REQUEST_INTERVAL,
   sleep,
-  corsHeaders,
   klaviyoRequest,
   getCurrencySymbol,
   parseDateRange,
@@ -20,20 +17,21 @@ import {
   getTimezoneOffset,
   findPlacedOrderMetric,
 } from "@/lib/integrations/klaviyo"
+import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 
 // Vercel serverless function configuration
 // Extended timeout to allow fetching all Klaviyo data
 export const maxDuration = 300 // 5 minutes (Pro plan limit)
 export const dynamic = 'force-dynamic'
 
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders() })
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPreFlight(request)
 }
 
 // Get total profiles count using profiles endpoint
 // Counts ALL profiles for accurate count
 async function getTotalProfilesFromAPI(apiKey: string): Promise<number> {
-  log.debug("[Klaviyo] Fetching total profiles count (full count)...")
+  log.info("[Klaviyo] Fetching total profiles count (full count)...")
 
   let totalCount = 0
   let nextPage: string | null = "/profiles/?page[size]=100"
@@ -55,7 +53,7 @@ async function getTotalProfilesFromAPI(apiKey: string): Promise<number> {
 
     // Log progress every 50 pages
     if (pagesChecked % 50 === 0) {
-      log.debug(`[Klaviyo] Profiles counted: ${totalCount} (page ${pagesChecked})`)
+      log.info(`[Klaviyo] Profiles counted: ${totalCount} (page ${pagesChecked})`)
     }
 
     const nextLink: string | undefined = page.links?.next
@@ -65,7 +63,7 @@ async function getTotalProfilesFromAPI(apiKey: string): Promise<number> {
     await sleep(30) // Fast rate limit
   }
 
-  log.debug(`[Klaviyo] Total profiles: ${totalCount} (${pagesChecked} pages)`)
+  log.info(`[Klaviyo] Total profiles: ${totalCount} (${pagesChecked} pages)`)
   return totalCount
 }
 
@@ -113,23 +111,23 @@ async function getLists(apiKey: string) {
   // https://developers.klaviyo.com/en/reference/get_lists
   let nextPage: string | null = "/lists/?page[size]=100&additional-fields[list]=profile_count"
 
-  log.debug("[Klaviyo] Fetching lists...")
+  log.info("[Klaviyo] Fetching lists...")
 
   while (nextPage) {
     const response: ListsResponse | null = await klaviyoRequest<ListsResponse>(apiKey, nextPage)
 
     if (!response?.data) {
-      log.debug("[Klaviyo] No data in lists response")
+      log.info("[Klaviyo] No data in lists response")
       break
     }
 
-    log.debug(`[Klaviyo] Lists page returned ${response.data.length} lists`)
+    log.info(`[Klaviyo] Lists page returned ${response.data.length} lists`)
 
     for (const l of response.data) {
       // Log raw attributes for debugging
-      log.debug(`[Klaviyo] Raw list attributes:`, JSON.stringify(l.attributes))
+      log.info(`[Klaviyo] Raw list attributes:`, JSON.stringify(l.attributes))
       const profileCount = l.attributes.profile_count ?? 0
-      log.debug(`[Klaviyo] List: "${l.attributes.name}" - ${profileCount} profiles`)
+      log.info(`[Klaviyo] List: "${l.attributes.name}" - ${profileCount} profiles`)
       allLists.push({
         id: l.id,
         name: l.attributes.name,
@@ -147,11 +145,11 @@ async function getLists(apiKey: string) {
 
   let totalSubscribers = allLists.reduce((sum, l) => sum + l.profileCount, 0)
 
-  log.debug(`[Klaviyo] Fetched ${allLists.length} total lists with ${totalSubscribers} subscribers (from bulk)`)
+  log.info(`[Klaviyo] Fetched ${allLists.length} total lists with ${totalSubscribers} subscribers (from bulk)`)
 
   // If profile_count is 0 for all lists, fetch count individually for the largest lists
   if (totalSubscribers === 0 && allLists.length > 0) {
-    log.debug("[Klaviyo] profile_count not in bulk response, fetching individually...")
+    log.info("[Klaviyo] profile_count not in bulk response, fetching individually...")
 
     // Fetch profile count for up to 5 lists to find the one with most profiles
     const listsToCheck = allLists.slice(0, 5)
@@ -165,13 +163,13 @@ async function getLists(apiKey: string) {
 
       if (detailResponse?.data?.attributes?.profile_count) {
         list.profileCount = detailResponse.data.attributes.profile_count
-        log.debug(`[Klaviyo] List "${list.name}" individual count: ${list.profileCount}`)
+        log.info(`[Klaviyo] List "${list.name}" individual count: ${list.profileCount}`)
       }
       await sleep(200)
     }
 
     totalSubscribers = allLists.reduce((sum, l) => sum + l.profileCount, 0)
-    log.debug(`[Klaviyo] Total after individual fetch: ${totalSubscribers}`)
+    log.info(`[Klaviyo] Total after individual fetch: ${totalSubscribers}`)
   }
 
   // Sort by profileCount descending
@@ -218,7 +216,7 @@ async function getFlows(apiKey: string) {
     if (nextPage) await sleep(500)
   }
 
-  log.debug(`[Klaviyo] Fetched ${allFlows.length} total flows`)
+  log.info(`[Klaviyo] Fetched ${allFlows.length} total flows`)
   return allFlows
 }
 
@@ -239,7 +237,7 @@ async function findEngagedSegment(apiKey: string): Promise<{
   name: string
   profileCount: number
 } | null> {
-  log.debug("[Klaviyo] ========== SEARCHING FOR ENGAGED SEGMENT ==========")
+  log.info("[Klaviyo] ========== SEARCHING FOR ENGAGED SEGMENT ==========")
 
   // Try multiple filter patterns to find the engaged segment
   const filterPatterns = [
@@ -252,7 +250,7 @@ async function findEngagedSegment(apiKey: string): Promise<{
   ]
 
   for (const filter of filterPatterns) {
-    log.debug(`[Klaviyo] Trying filter: ${filter}`)
+    log.info(`[Klaviyo] Trying filter: ${filter}`)
 
     const encodedFilter = encodeURIComponent(filter)
     const response = await klaviyoRequest<{
@@ -263,9 +261,9 @@ async function findEngagedSegment(apiKey: string): Promise<{
     }>(apiKey, `/segments/?filter=${encodedFilter}&additional-fields[segment]=profile_count`)
 
     if (response?.data && response.data.length > 0) {
-      log.debug(`[Klaviyo] Filter "${filter}" returned ${response.data.length} segments:`)
+      log.info(`[Klaviyo] Filter "${filter}" returned ${response.data.length} segments:`)
       response.data.forEach(s => {
-        log.debug(`[Klaviyo] -> "${s.attributes.name}" (ID: ${s.id}) profile_count: ${s.attributes.profile_count}`)
+        log.info(`[Klaviyo] -> "${s.attributes.name}" (ID: ${s.id}) profile_count: ${s.attributes.profile_count}`)
       })
 
       // Look for segment with both "engajados/engaged" AND "90" in name
@@ -277,7 +275,7 @@ async function findEngagedSegment(apiKey: string): Promise<{
       })
 
       if (engagedSegment) {
-        log.debug(`[Klaviyo] ✓ Found engaged segment: "${engagedSegment.attributes.name}" (ID: ${engagedSegment.id})`)
+        log.info(`[Klaviyo] ✓ Found engaged segment: "${engagedSegment.attributes.name}" (ID: ${engagedSegment.id})`)
 
         // Now count profiles directly - don't rely on profile_count attribute
         const profileCount = await countSegmentProfiles(apiKey, engagedSegment.id)
@@ -293,14 +291,14 @@ async function findEngagedSegment(apiKey: string): Promise<{
     await sleep(200) // Rate limit between filter attempts
   }
 
-  log.debug("[Klaviyo] ✗ No engaged segment found via filters")
+  log.info("[Klaviyo] ✗ No engaged segment found via filters")
   return null
 }
 
 // Count profiles in a segment by paginating through all profiles
 // This is the most reliable method as profile_count attribute can be stale/unavailable
 async function countSegmentProfiles(apiKey: string, segmentId: string): Promise<number> {
-  log.debug(`[Klaviyo] Counting profiles for segment ${segmentId}...`)
+  log.info(`[Klaviyo] Counting profiles for segment ${segmentId}...`)
 
   type ProfilesResponse = {
     data: Array<{ id: string }>
@@ -316,12 +314,12 @@ async function countSegmentProfiles(apiKey: string, segmentId: string): Promise<
     const response: ProfilesResponse | null = await klaviyoRequest<ProfilesResponse>(apiKey, nextPage)
 
     if (!response) {
-      log.debug(`[Klaviyo] API request failed at page ${pageCount}`)
+      log.info(`[Klaviyo] API request failed at page ${pageCount}`)
       break
     }
 
     if (!response.data || response.data.length === 0) {
-      log.debug(`[Klaviyo] No data at page ${pageCount}, stopping`)
+      log.info(`[Klaviyo] No data at page ${pageCount}, stopping`)
       break
     }
 
@@ -330,12 +328,12 @@ async function countSegmentProfiles(apiKey: string, segmentId: string): Promise<
 
     // Log progress every 20 pages
     if (pageCount % 20 === 0) {
-      log.debug(`[Klaviyo] Profile count progress: ${totalProfiles} (page ${pageCount})`)
+      log.info(`[Klaviyo] Profile count progress: ${totalProfiles} (page ${pageCount})`)
     }
 
     const nextUrl: string | undefined = response.links?.next
     if (!nextUrl) {
-      log.debug(`[Klaviyo] No next page link at page ${pageCount}`)
+      log.info(`[Klaviyo] No next page link at page ${pageCount}`)
       break
     }
 
@@ -343,7 +341,7 @@ async function countSegmentProfiles(apiKey: string, segmentId: string): Promise<
     await sleep(30) // Fast pagination
   }
 
-  log.debug(`[Klaviyo] ✓ Total profiles counted: ${totalProfiles} (${pageCount} pages)`)
+  log.info(`[Klaviyo] ✓ Total profiles counted: ${totalProfiles} (${pageCount} pages)`)
   return totalProfiles
 }
 
@@ -361,21 +359,21 @@ async function getSegments(apiKey: string) {
   // https://developers.klaviyo.com/en/reference/get_segments
   let nextPage: string | null = "/segments/?page[size]=100&additional-fields[segment]=profile_count"
 
-  log.debug("[Klaviyo] Fetching segments...")
+  log.info("[Klaviyo] Fetching segments...")
 
   while (nextPage) {
     const response: SegmentsResponse | null = await klaviyoRequest<SegmentsResponse>(apiKey, nextPage)
 
     if (!response?.data) {
-      log.debug("[Klaviyo] No data in segments response")
+      log.info("[Klaviyo] No data in segments response")
       break
     }
 
-    log.debug(`[Klaviyo] Segments page returned ${response.data.length} segments`)
+    log.info(`[Klaviyo] Segments page returned ${response.data.length} segments`)
 
     for (const s of response.data) {
       // Log raw attributes for debugging
-      log.debug(`[Klaviyo] Raw segment attributes:`, JSON.stringify(s.attributes))
+      log.info(`[Klaviyo] Raw segment attributes:`, JSON.stringify(s.attributes))
       const profileCount = s.attributes.profile_count ?? 0
       allSegments.push({
         id: s.id,
@@ -394,14 +392,14 @@ async function getSegments(apiKey: string) {
     if (nextPage) await sleep(500)
   }
 
-  log.debug(`[Klaviyo] Fetched ${allSegments.length} total segments`)
+  log.info(`[Klaviyo] Fetched ${allSegments.length} total segments`)
 
   // Log ALL segments for debugging
-  log.debug(`[Klaviyo] ========== ALL SEGMENTS ==========`)
+  log.info(`[Klaviyo] ========== ALL SEGMENTS ==========`)
   allSegments.forEach((s, i) => {
-    log.debug(`[Klaviyo] [${i}] "${s.name}" (ID: ${s.id}) - profileCount: ${s.profileCount}`)
+    log.info(`[Klaviyo] [${i}] "${s.name}" (ID: ${s.id}) - profileCount: ${s.profileCount}`)
   })
-  log.debug(`[Klaviyo] ==================================`)
+  log.info(`[Klaviyo] ==================================`)
 
   // Use dedicated function to find and count engaged segment
   // This uses API filters for more reliable search
@@ -423,7 +421,7 @@ async function getSegments(apiKey: string) {
   for (const pattern of totalProfilesPatterns) {
     totalProfilesSegment = allSegments.find(s => pattern.test(s.name))
     if (totalProfilesSegment) {
-      log.debug(`[Klaviyo] Found total profiles segment: "${totalProfilesSegment.name}" with ${totalProfilesSegment.profileCount} profiles`)
+      log.info(`[Klaviyo] Found total profiles segment: "${totalProfilesSegment.name}" with ${totalProfilesSegment.profileCount} profiles`)
       break
     }
   }
@@ -436,7 +434,7 @@ async function getSegments(apiKey: string) {
   // If all segments have 0 profiles, fetch counts individually for up to 5 segments
   const allZero = allSegments.every(s => s.profileCount === 0)
   if (allZero && allSegments.length > 0) {
-    log.debug("[Klaviyo] All segments have 0 profiles, fetching individually...")
+    log.info("[Klaviyo] All segments have 0 profiles, fetching individually...")
     const segmentsToCheck = allSegments.slice(0, 5)
     for (const seg of segmentsToCheck) {
       const detailResponse = await klaviyoRequest<{
@@ -448,7 +446,7 @@ async function getSegments(apiKey: string) {
 
       if (detailResponse?.data?.attributes?.profile_count) {
         seg.profileCount = detailResponse.data.attributes.profile_count
-        log.debug(`[Klaviyo] Segment "${seg.name}" individual count: ${seg.profileCount}`)
+        log.info(`[Klaviyo] Segment "${seg.name}" individual count: ${seg.profileCount}`)
       }
       await sleep(200)
     }
@@ -458,15 +456,15 @@ async function getSegments(apiKey: string) {
   }
 
   if (largestSegment) {
-    log.debug(`[Klaviyo] Largest segment: "${largestSegment.name}" with ${largestSegment.profileCount} profiles`)
+    log.info(`[Klaviyo] Largest segment: "${largestSegment.name}" with ${largestSegment.profileCount} profiles`)
   } else {
-    log.debug(`[Klaviyo] No segments found`)
+    log.info(`[Klaviyo] No segments found`)
   }
 
   // Log final engaged result
-  log.debug(`[Klaviyo] ========== ENGAGED SEGMENT FINAL ==========`)
-  log.debug(`[Klaviyo] engagedResult: ${engagedResult ? JSON.stringify(engagedResult) : 'null'}`)
-  log.debug(`[Klaviyo] ==============================================`)
+  log.info(`[Klaviyo] ========== ENGAGED SEGMENT FINAL ==========`)
+  log.info(`[Klaviyo] engagedResult: ${engagedResult ? JSON.stringify(engagedResult) : 'null'}`)
+  log.info(`[Klaviyo] ==============================================`)
 
   return {
     totalSegments: allSegments.length,
@@ -502,7 +500,7 @@ async function getCampaigns(apiKey: string) {
       for (const c of response.data) {
         const status = c.attributes.status
         const sendTime = c.attributes.send_time
-        log.debug(`[Klaviyo] Campaign: "${c.attributes.name}" | channel: ${channel} | status: ${status} | sendTime: ${sendTime || 'null'}`)
+        log.info(`[Klaviyo] Campaign: "${c.attributes.name}" | channel: ${channel} | status: ${status} | sendTime: ${sendTime || 'null'}`)
 
         allCampaigns.push({
           id: c.id,
@@ -523,7 +521,7 @@ async function getCampaigns(apiKey: string) {
   }
 
   const sentCount = allCampaigns.filter(c => c.status === 'sent').length
-  log.debug(`[Klaviyo] Fetched ${allCampaigns.length} total campaigns (${sentCount} sent)`)
+  log.info(`[Klaviyo] Fetched ${allCampaigns.length} total campaigns (${sentCount} sent)`)
   return allCampaigns
 }
 
@@ -536,7 +534,7 @@ async function getFlowValuesReport(
   endDate: string,
   timezoneOffset: string = "+00:00"
 ) {
-  log.debug(`[Klaviyo] Getting flow values report: ${startDate} to ${endDate} (timezone: ${timezoneOffset})`)
+  log.info(`[Klaviyo] Getting flow values report: ${startDate} to ${endDate} (timezone: ${timezoneOffset})`)
 
   // Valid statistics per Klaviyo Reporting API
   // Note: bounces, unsubscribes, spam_complaints are NOT valid for flow-values-reports
@@ -614,12 +612,12 @@ async function getFlowValuesReport(
   }>(apiKey, "/flow-values-reports/", { method: "POST", body })
 
   if (!response?.data?.attributes?.results) {
-    log.debug("[Klaviyo] No flow results returned")
+    log.info("[Klaviyo] No flow results returned")
     return { totalRevenue: 0, totalConversions: 0, flows: [], stats: {} }
   }
 
   const results = response.data.attributes.results
-  log.debug(`[Klaviyo] Flow results: ${results.length} entries`)
+  log.info(`[Klaviyo] Flow results: ${results.length} entries`)
 
   // Aggregate by flow_id
   const flowMap = new Map<string, {
@@ -679,7 +677,7 @@ async function getFlowValuesReport(
     })
   }
 
-  log.debug(`[Klaviyo] Flow totals - Revenue: ${totalRevenue.toFixed(2)}, Conversions: ${totalConversions}`)
+  log.info(`[Klaviyo] Flow totals - Revenue: ${totalRevenue.toFixed(2)}, Conversions: ${totalConversions}`)
 
   const avgBounceRate = rateCount > 0 ? sumBounceRate / rateCount : 0
   const avgUnsubscribeRate = rateCount > 0 ? sumUnsubscribeRate / rateCount : 0
@@ -715,7 +713,7 @@ async function getCampaignValuesReport(
   endDate: string,
   timezoneOffset: string = "+00:00"
 ) {
-  log.debug(`[Klaviyo] Getting campaign values report: ${startDate} to ${endDate} (timezone: ${timezoneOffset})`)
+  log.info(`[Klaviyo] Getting campaign values report: ${startDate} to ${endDate} (timezone: ${timezoneOffset})`)
 
   // Use same statistics as flows for consistency
   const statistics = [
@@ -790,12 +788,12 @@ async function getCampaignValuesReport(
   }>(apiKey, "/campaign-values-reports/", { method: "POST", body })
 
   if (!response?.data?.attributes?.results) {
-    log.debug("[Klaviyo] No campaign results returned")
+    log.info("[Klaviyo] No campaign results returned")
     return { totalRevenue: 0, totalConversions: 0, campaigns: [], stats: {} }
   }
 
   const results = response.data.attributes.results
-  log.debug(`[Klaviyo] Campaign results: ${results.length} entries`)
+  log.info(`[Klaviyo] Campaign results: ${results.length} entries`)
 
   // Aggregate by campaign_id
   const campaignMap = new Map<string, {
@@ -823,7 +821,7 @@ async function getCampaignValuesReport(
     const campaignId = r.groupings.campaign_id
     const stats = r.statistics
 
-    log.debug(`[Klaviyo] Campaign ${campaignId}: conversion_value=${stats.conversion_value}, delivered=${stats.delivered}`)
+    log.info(`[Klaviyo] Campaign ${campaignId}: conversion_value=${stats.conversion_value}, delivered=${stats.delivered}`)
 
     totalRevenue += stats.conversion_value || 0
     totalConversions += stats.conversions || 0
@@ -857,7 +855,7 @@ async function getCampaignValuesReport(
     })
   }
 
-  log.debug(`[Klaviyo] Campaign totals - Revenue: ${totalRevenue.toFixed(2)}, Conversions: ${totalConversions}`)
+  log.info(`[Klaviyo] Campaign totals - Revenue: ${totalRevenue.toFixed(2)}, Conversions: ${totalConversions}`)
 
   const avgBounceRate = rateCount > 0 ? sumBounceRate / rateCount : 0
   const avgUnsubscribeRate = rateCount > 0 ? sumUnsubscribeRate / rateCount : 0
@@ -896,37 +894,39 @@ export async function GET(request: NextRequest) {
     const customEndDate = searchParams.get("end_date")
 
     if (!storeId) {
-      throw new AppError("store_id é obrigatório", 400)
+      return NextResponse.json({ error: "store_id é obrigatório" }, { status: 400, headers: corsHeaders(request.headers.get("origin")) })
     }
 
-    // Check cache first (skip if force_refresh)
-    const forceRefresh = searchParams.get("force_refresh") === "true"
-    if (!forceRefresh) {
-      const cached = await getCache(supabase, storeId, "klaviyo", period)
-      if (cached) {
-        return NextResponse.json(
-          { ...cached.data, _cached: true, _cachedAt: cached.cachedAt },
-          { headers: corsHeaders() }
-        )
-      }
+    // Get store
+    const { data: store, error: storeError } = await supabase
+      .from("client_stores")
+      .select("klaviyo_api_key, klaviyo_private_key, store_name, client_id")
+      .eq("id", storeId)
+      .single()
+
+    if (storeError || !store) {
+      return NextResponse.json({ error: "Loja não encontrada" }, { status: 404, headers: corsHeaders(request.headers.get("origin")) })
     }
 
-    const storeData = await getStoreCredentials(storeId)
-    const apiKey = storeData.klaviyo_private_key || storeData.klaviyo_api_key
+    const apiKey = store.klaviyo_private_key || store.klaviyo_api_key
     if (!apiKey) {
-      throw new AppError("API Key do Klaviyo não configurada", 400)
+      return NextResponse.json({
+        success: false,
+        connected: false,
+        error: "API Key não configurada",
+      }, { headers: corsHeaders(request.headers.get("origin")) })
     }
 
-    log.debug("[Klaviyo] ========== STARTING REPORT ==========")
-    log.debug("[Klaviyo] Store:", storeData.store_name)
-    log.debug("[Klaviyo] Period:", period)
+    log.info("[Klaviyo] ========== STARTING REPORT ==========")
+    log.info("[Klaviyo] Store:", store.store_name)
+    log.info("[Klaviyo] Period:", period)
 
     // Calculate date range based on period
     const { startDate, endDate } = parseDateRange(period, customStartDate, customEndDate)
     const startDateStr = formatDateStr(startDate)
     const endDateStr = formatDateStr(endDate)
 
-    log.debug(`[Klaviyo] Date range: ${startDateStr} to ${endDateStr}`)
+    log.info(`[Klaviyo] Date range: ${startDateStr} to ${endDateStr}`)
 
     // Test API connection first
     const isConnected = await testApiConnection(apiKey)
@@ -935,12 +935,12 @@ export async function GET(request: NextRequest) {
         success: false,
         connected: false,
         error: "Não foi possível conectar à API do Klaviyo. Verifique a API Key.",
-      }, { status: 401, headers: corsHeaders() })
+      }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // Get account info first
     const accountInfo = await getAccountInfo(apiKey)
-    log.debug("[Klaviyo] Account currency:", accountInfo.currency)
+    log.info("[Klaviyo] Account currency:", accountInfo.currency)
 
     // Find Placed Order metric
     const metricId = await findPlacedOrderMetric(apiKey)
@@ -961,16 +961,16 @@ export async function GET(request: NextRequest) {
 
       // If still 0, use profiles API directly
       if (errorCaseTotalSubscribers === 0) {
-        log.debug("[Klaviyo] All counts are 0, fetching from profiles API...")
+        log.info("[Klaviyo] All counts are 0, fetching from profiles API...")
         errorCaseTotalSubscribers = await getTotalProfilesFromAPI(apiKey)
       }
 
-      log.debug(`[Klaviyo] Error case totalSubscribers: ${errorCaseTotalSubscribers} (largest list: ${largestListCount}, segment: ${segmentMetrics.totalActiveProfiles})`)
+      log.info(`[Klaviyo] Error case totalSubscribers: ${errorCaseTotalSubscribers} (largest list: ${largestListCount}, segment: ${segmentMetrics.totalActiveProfiles})`)
 
       return NextResponse.json({
         success: true,
         connected: true,
-        storeName: storeData.store_name,
+        storeName: store.store_name,
         generatedAt: new Date().toISOString(),
         period,
         dateRange: { start: startDateStr, end: endDateStr },
@@ -1018,7 +1018,7 @@ export async function GET(request: NextRequest) {
         flows: allFlows, // ALL flows
         campaigns: allCampaigns.filter(c => c.status === "sent"), // ALL sent campaigns
         integrations: { hasEcommerce: false }
-      }, { headers: corsHeaders() })
+      }, { headers: corsHeaders(request.headers.get("origin")) })
     }
 
     // Get all data
@@ -1029,36 +1029,38 @@ export async function GET(request: NextRequest) {
       getCampaigns(apiKey)
     ])
 
-    // Calculate total subscribers using list/segment profile_count (fast)
-    // Only fall back to expensive profiles API pagination if all counts are 0
+    // Calculate total subscribers - always get accurate count from profiles API
+    // List/segment profile_count can be capped or outdated
     const largestListCount = listMetrics.lists.length > 0 ? listMetrics.lists[0].profileCount : 0
     const segmentCount = segmentMetrics.totalActiveProfiles || 0
 
-    log.debug(`[Klaviyo] List counts: largest=${largestListCount}, segment=${segmentCount}, sum=${listMetrics.totalSubscribers}`)
+    log.info(`[Klaviyo] List counts: largest=${largestListCount}, segment=${segmentCount}, sum=${listMetrics.totalSubscribers}`)
 
-    let totalSubscribers = largestListCount || segmentCount || listMetrics.totalSubscribers
+    // Always fetch from profiles API for accurate count
+    log.info("[Klaviyo] Fetching accurate profile count from API...")
+    let totalSubscribers = await getTotalProfilesFromAPI(apiKey)
 
-    // Only use expensive API pagination as last resort
+    // If API count failed, fall back to list/segment count
     if (totalSubscribers === 0) {
-      log.debug("[Klaviyo] All counts are 0, fetching from profiles API as fallback...")
-      totalSubscribers = await getTotalProfilesFromAPI(apiKey)
+      totalSubscribers = largestListCount || segmentCount || listMetrics.totalSubscribers
+      log.info(`[Klaviyo] API returned 0, using fallback: ${totalSubscribers}`)
     }
 
-    log.debug(`[Klaviyo] totalSubscribers: ${totalSubscribers}`)
+    log.info(`[Klaviyo] totalSubscribers: ${totalSubscribers}`)
 
     // Filter campaigns by send_time in period
     const inicio = new Date(startDateStr)
     const fim = new Date(endDateStr)
     fim.setHours(23, 59, 59, 999)
 
-    log.debug(`[Klaviyo] Total campaigns fetched: ${allCampaigns.length}`)
-    log.debug(`[Klaviyo] Filtering for period: ${inicio.toISOString()} to ${fim.toISOString()}`)
+    log.info(`[Klaviyo] Total campaigns fetched: ${allCampaigns.length}`)
+    log.info(`[Klaviyo] Filtering for period: ${inicio.toISOString()} to ${fim.toISOString()}`)
 
     // Log all campaigns with send times for debugging
     const sentCampaigns = allCampaigns.filter(c => c.status === "sent")
-    log.debug(`[Klaviyo] Sent campaigns: ${sentCampaigns.length}`)
+    log.info(`[Klaviyo] Sent campaigns: ${sentCampaigns.length}`)
     sentCampaigns.forEach(c => {
-      log.debug(`[Klaviyo] Campaign: ${c.name} | sendTime: ${c.sendTime} | createdAt: ${c.createdAt} | status: ${c.status}`)
+      log.info(`[Klaviyo] Campaign: ${c.name} | sendTime: ${c.sendTime} | createdAt: ${c.createdAt} | status: ${c.status}`)
     })
 
     // We'll determine campaigns in period after getting reporting data
@@ -1066,121 +1068,14 @@ export async function GET(request: NextRequest) {
 
     // Get timezone offset from account settings to match Klaviyo dashboard
     const timezoneOffset = getTimezoneOffset(accountInfo.timezone)
-    log.debug(`[Klaviyo] Using timezone offset: ${timezoneOffset} (from ${accountInfo.timezone})`)
+    log.info(`[Klaviyo] Using timezone offset: ${timezoneOffset} (from ${accountInfo.timezone})`)
 
-    // Check structured tables for recent flow/campaign data before hitting API
-    const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString()
-    const [cachedFlowRows, cachedCampaignRows] = await Promise.all([
-      supabase
-        .from("klaviyo_flow_metrics")
-        .select("*")
-        .eq("store_id", storeId)
-        .eq("period_start", startDateStr)
-        .eq("period_end", endDateStr)
-        .gt("fetched_at", thirtyMinAgo),
-      supabase
-        .from("klaviyo_campaign_metrics")
-        .select("*")
-        .eq("store_id", storeId)
-        .eq("period_start", startDateStr)
-        .eq("period_end", endDateStr)
-        .gt("fetched_at", thirtyMinAgo)
+    // Get reporting data - query ALL flows and campaigns at once (no filtering)
+    // This matches Klaviyo dashboard behavior for the selected period
+    const [flowReport, campaignReport] = await Promise.all([
+      getFlowValuesReport(apiKey, metricId, startDateStr, endDateStr, timezoneOffset),
+      getCampaignValuesReport(apiKey, metricId, startDateStr, endDateStr, timezoneOffset)
     ])
-
-    const hasFlowCache = cachedFlowRows.data && cachedFlowRows.data.length > 0
-    const hasCampaignCache = cachedCampaignRows.data && cachedCampaignRows.data.length > 0
-
-    let flowReport
-    let campaignReport
-
-    if (hasFlowCache && hasCampaignCache) {
-      log.debug(`[Klaviyo] Using structured cache: ${cachedFlowRows.data!.length} flows, ${cachedCampaignRows.data!.length} campaigns`)
-
-      // Build flowReport from cached rows
-      const flowRows = cachedFlowRows.data!
-      const flowTotalRevenue = flowRows.reduce((s, r) => s + (r.conversion_value || 0), 0)
-      const flowTotalConversions = flowRows.reduce((s, r) => s + (r.conversions || 0), 0)
-      const flowTotalDelivered = flowRows.reduce((s, r) => s + (r.delivered || 0), 0)
-      const flowTotalOpens = flowRows.reduce((s, r) => s + (r.opened || 0), 0)
-      const flowTotalClicks = flowRows.reduce((s, r) => s + (r.clicked || 0), 0)
-      const flowAvgBounceRate = flowRows.length > 0 ? flowRows.reduce((s, r) => s + (r.bounce_rate || 0), 0) / flowRows.length : 0
-      const flowAvgUnsubRate = flowRows.length > 0 ? flowRows.reduce((s, r) => s + (r.unsubscribe_rate || 0), 0) / flowRows.length : 0
-
-      flowReport = {
-        totalRevenue: flowTotalRevenue,
-        totalConversions: flowTotalConversions,
-        totalDelivered: flowTotalDelivered,
-        totalOpens: flowTotalOpens,
-        totalClicks: flowTotalClicks,
-        avgBounceRate: flowAvgBounceRate,
-        avgUnsubscribeRate: flowAvgUnsubRate,
-        flows: flowRows.map(r => ({
-          flowId: r.flow_id,
-          revenue: r.conversion_value || 0,
-          conversions: r.conversions || 0,
-          delivered: r.delivered || 0,
-          opens: r.opened || 0,
-          clicks: r.clicked || 0,
-          openRate: r.open_rate || 0,
-          clickRate: r.click_rate || 0,
-          bounceRate: r.bounce_rate || 0,
-          unsubscribeRate: r.unsubscribe_rate || 0,
-        })),
-        stats: {
-          openRate: flowTotalDelivered > 0 ? (flowTotalOpens / flowTotalDelivered) * 100 : 0,
-          clickRate: flowTotalDelivered > 0 ? (flowTotalClicks / flowTotalDelivered) * 100 : 0,
-          bounceRate: flowAvgBounceRate,
-          unsubscribeRate: flowAvgUnsubRate,
-        }
-      }
-
-      // Build campaignReport from cached rows
-      const campRows = cachedCampaignRows.data!
-      const campTotalRevenue = campRows.reduce((s, r) => s + (r.conversion_value || 0), 0)
-      const campTotalConversions = campRows.reduce((s, r) => s + (r.conversions || 0), 0)
-      const campTotalDelivered = campRows.reduce((s, r) => s + (r.delivered || 0), 0)
-      const campTotalOpens = campRows.reduce((s, r) => s + (r.opened || 0), 0)
-      const campTotalClicks = campRows.reduce((s, r) => s + (r.clicked || 0), 0)
-      const campAvgBounceRate = campRows.length > 0 ? campRows.reduce((s, r) => s + (r.bounce_rate || 0), 0) / campRows.length : 0
-      const campAvgUnsubRate = campRows.length > 0 ? campRows.reduce((s, r) => s + (r.unsubscribe_rate || 0), 0) / campRows.length : 0
-
-      campaignReport = {
-        totalRevenue: campTotalRevenue,
-        totalConversions: campTotalConversions,
-        totalDelivered: campTotalDelivered,
-        totalOpens: campTotalOpens,
-        totalClicks: campTotalClicks,
-        avgBounceRate: campAvgBounceRate,
-        avgUnsubscribeRate: campAvgUnsubRate,
-        campaigns: campRows.map(r => ({
-          campaignId: r.campaign_id,
-          revenue: r.conversion_value || 0,
-          conversions: r.conversions || 0,
-          delivered: r.delivered || 0,
-          opens: r.opened || 0,
-          clicks: r.clicked || 0,
-          openRate: r.open_rate || 0,
-          clickRate: r.click_rate || 0,
-          bounceRate: r.bounce_rate || 0,
-          unsubscribeRate: r.unsubscribe_rate || 0,
-        })),
-        stats: {
-          openRate: campTotalDelivered > 0 ? (campTotalOpens / campTotalDelivered) * 100 : 0,
-          clickRate: campTotalDelivered > 0 ? (campTotalClicks / campTotalDelivered) * 100 : 0,
-          bounceRate: campAvgBounceRate,
-          unsubscribeRate: campAvgUnsubRate,
-        }
-      }
-    } else {
-      // Get reporting data from Klaviyo API
-      log.debug("[Klaviyo] No structured cache, fetching from API...")
-      const [fr, cr] = await Promise.all([
-        getFlowValuesReport(apiKey, metricId, startDateStr, endDateStr, timezoneOffset),
-        getCampaignValuesReport(apiKey, metricId, startDateStr, endDateStr, timezoneOffset)
-      ])
-      flowReport = fr
-      campaignReport = cr
-    }
 
     // Merge flow data with names
     const flowsWithNames = flowReport.flows.map(fr => {
@@ -1205,7 +1100,7 @@ export async function GET(request: NextRequest) {
     // Count campaigns in period based on Reporting API data
     // This is more reliable than filtering by send_time as it shows actual activity
     const campaignsInPeriodCount = campaignReport.campaigns.length
-    log.debug(`[Klaviyo] Campaigns with activity in period (from Reporting API): ${campaignsInPeriodCount}`)
+    log.info(`[Klaviyo] Campaigns with activity in period (from Reporting API): ${campaignsInPeriodCount}`)
 
     // Also create a list of campaign IDs that had activity for reference
     const campaignsInPeriod = campaignReport.campaigns.map(cr => {
@@ -1218,9 +1113,9 @@ export async function GET(request: NextRequest) {
         delivered: cr.delivered || 0
       }
     })
-    log.debug(`[Klaviyo] Campaigns in period details:`)
+    log.info(`[Klaviyo] Campaigns in period details:`)
     campaignsInPeriod.forEach(c => {
-      log.debug(`[Klaviyo] -> ${c.name} (${c.id}): delivered=${c.delivered}`)
+      log.info(`[Klaviyo] -> ${c.name} (${c.id}): delivered=${c.delivered}`)
     })
 
     // Calculate totals
@@ -1232,18 +1127,18 @@ export async function GET(request: NextRequest) {
     const avgBounceRate = ((flowReport.avgBounceRate || 0) + (campaignReport.avgBounceRate || 0)) / 2
     const avgUnsubscribeRate = ((flowReport.avgUnsubscribeRate || 0) + (campaignReport.avgUnsubscribeRate || 0)) / 2
 
-    log.debug("[Klaviyo] ========== FINAL SUMMARY ==========")
-    log.debug(`[Klaviyo] Total Klaviyo Revenue: ${accountInfo.currency} ${totalKlaviyoRevenue.toFixed(2)}`)
-    log.debug(`[Klaviyo] - Campaigns: ${accountInfo.currency} ${campaignReport.totalRevenue.toFixed(2)}`)
-    log.debug(`[Klaviyo] - Flows: ${accountInfo.currency} ${flowReport.totalRevenue.toFixed(2)}`)
-    log.debug(`[Klaviyo] Total Conversions: ${totalConversions}`)
-    log.debug(`[Klaviyo] Total Delivered: ${totalDelivered}`)
-    log.debug("[Klaviyo] ========================================")
+    log.info("[Klaviyo] ========== FINAL SUMMARY ==========")
+    log.info(`[Klaviyo] Total Klaviyo Revenue: ${accountInfo.currency} ${totalKlaviyoRevenue.toFixed(2)}`)
+    log.info(`[Klaviyo] - Campaigns: ${accountInfo.currency} ${campaignReport.totalRevenue.toFixed(2)}`)
+    log.info(`[Klaviyo] - Flows: ${accountInfo.currency} ${flowReport.totalRevenue.toFixed(2)}`)
+    log.info(`[Klaviyo] Total Conversions: ${totalConversions}`)
+    log.info(`[Klaviyo] Total Delivered: ${totalDelivered}`)
+    log.info("[Klaviyo] ========================================")
 
     const reportData = {
       success: true,
       connected: true,
-      storeName: storeData.store_name,
+      storeName: store.store_name,
       generatedAt: new Date().toISOString(),
       period,
       dateRange: { start: startDateStr, end: endDateStr },
@@ -1376,10 +1271,7 @@ export async function GET(request: NextRequest) {
       },
     }
 
-    // Save to cache for future requests
-    await setCache(supabase, storeId, "klaviyo", period, reportData as unknown as Record<string, unknown>)
-
-    return NextResponse.json(reportData, { headers: corsHeaders() })
+    return NextResponse.json(reportData, { headers: corsHeaders(request.headers.get("origin")) })
 
   } catch (error) {
     return errorResponse(request, error, "IntegrationsKlaviyoReport")

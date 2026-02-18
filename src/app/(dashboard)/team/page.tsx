@@ -26,31 +26,43 @@ async function getTeamMembers() {
     return []
   }
 
-  // For each member, get their features and store access count
-  const membersWithDetails = await Promise.all(
-    (members || []).map(async (member) => {
-      const [featuresRes, accessRes] = await Promise.all([
-        supabase
-          .from("org_member_features")
-          .select("feature_key")
-          .eq("org_member_id", member.id)
-          .eq("enabled", true),
-        supabase
-          .from("agent_store_access")
-          .select("id")
-          .eq("org_member_id", member.id)
-          .eq("can_view", true),
-      ])
+  const memberIds = (members || []).map((m) => m.id)
 
-      return {
-        ...member,
-        enabled_features: featuresRes.data?.map((f) => f.feature_key) || [],
-        store_access_count: accessRes.data?.length || 0,
-      }
-    })
-  )
+  if (memberIds.length === 0) return []
 
-  return membersWithDetails
+  // Batch: fetch all features and store access in 2 queries instead of 2*N
+  const [featuresRes, accessRes] = await Promise.all([
+    supabase
+      .from("org_member_features")
+      .select("org_member_id, feature_key")
+      .in("org_member_id", memberIds)
+      .eq("enabled", true),
+    supabase
+      .from("agent_store_access")
+      .select("org_member_id, id")
+      .in("org_member_id", memberIds)
+      .eq("can_view", true),
+  ])
+
+  // Group features by member
+  const featuresByMember = new Map<string, string[]>()
+  featuresRes.data?.forEach((f) => {
+    const list = featuresByMember.get(f.org_member_id) || []
+    list.push(f.feature_key)
+    featuresByMember.set(f.org_member_id, list)
+  })
+
+  // Count store access by member
+  const accessCountByMember = new Map<string, number>()
+  accessRes.data?.forEach((a) => {
+    accessCountByMember.set(a.org_member_id, (accessCountByMember.get(a.org_member_id) || 0) + 1)
+  })
+
+  return (members || []).map((member) => ({
+    ...member,
+    enabled_features: featuresByMember.get(member.id) || [],
+    store_access_count: accessCountByMember.get(member.id) || 0,
+  }))
 }
 
 async function getFeaturesCatalog() {

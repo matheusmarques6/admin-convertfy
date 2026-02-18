@@ -35,8 +35,8 @@ export const campaignCreateSchema = z.object({
   scheduled_date: z.string().min(1, "Data é obrigatória"),
   scheduled_time: z.string().optional(),
   channel: z.enum(["email", "sms", "push", "whatsapp"]).default("email"),
-  campaign_type: z.enum(["campaign", "flow", "automation", "promotional"]).default("promotional"),
-  status: z.enum(["draft", "scheduled", "sent", "cancelled"]).default("draft"),
+  campaign_type: z.enum(["promotional", "newsletter", "transactional", "automation", "seasonal", "launch", "other"]).default("promotional"),
+  status: z.enum(["draft", "pending_review", "approved", "rejected", "scheduled", "sent", "cancelled"]).default("draft"),
   description: z.string().optional(),
   subject_line: z.string().optional(),
   preview_text: z.string().optional(),
@@ -63,7 +63,7 @@ export const orgMemberCreateSchema = z.object({
   profile_id: uuidSchema.optional(),
   email: emailSchema.optional(),
   name: z.string().min(1).optional(),
-  role: z.enum(["owner", "manager", "agent", "viewer"]),
+  role: z.enum(["owner", "manager", "coordinator", "copywriter", "designer", "developer", "support", "analyst"]),
   job_title: z.string().optional(),
   features: z.array(z.string()).optional(),
   store_ids: z.array(uuidSchema).optional(),
@@ -77,7 +77,7 @@ export const orgMemberCreateSchema = z.object({
 export const taskCreateSchema = z.object({
   title: z.string().min(1, "Título é obrigatório"),
   description: z.string().optional(),
-  type: z.enum(["general", "task", "bug", "feature", "improvement"]).default("general"),
+  type: z.enum(["onboarding", "campaign", "request", "general", "meeting", "deadline"]).default("general"),
   priority: z.enum(["low", "medium", "high", "urgent"]).default("medium"),
   assignee_id: uuidSchema.nullable().optional(),
   client_id: uuidSchema.nullable().optional(),
@@ -103,18 +103,6 @@ export const portalUserCreateSchema = z.object({
     manage_stores: z.boolean().optional(),
   }).optional(),
 })
-
-// --- Store Credentials ---
-
-export const storeCredentialsSchema = z.object({
-  store_id: uuidSchema,
-  klaviyo_private_key: z.string().optional(),
-  shopify_store_domain: z.string().optional(),
-  shopify_access_token: z.string().optional(),
-}).refine(
-  (data) => data.klaviyo_private_key || data.shopify_store_domain || data.shopify_access_token,
-  { message: "Pelo menos uma credencial deve ser informada" }
-)
 
 // --- Search/Filter ---
 
