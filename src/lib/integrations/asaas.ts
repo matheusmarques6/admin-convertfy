@@ -79,7 +79,7 @@ export class AsaasService {
     cpfCnpj?: string
   }): Promise<{ data: AsaasCustomer[]; totalCount: number }> {
     const queryParams = new URLSearchParams()
-    if (params?.offset) queryParams.set("offset", params.offset.toString())
+    if (params?.offset != null) queryParams.set("offset", params.offset.toString())
     if (params?.limit) queryParams.set("limit", params.limit.toString())
     if (params?.email) queryParams.set("email", params.email)
     if (params?.cpfCnpj) queryParams.set("cpfCnpj", params.cpfCnpj)
@@ -122,7 +122,7 @@ export class AsaasService {
     if (params?.customer) queryParams.set("customer", params.customer)
     if (params?.billingType) queryParams.set("billingType", params.billingType)
     if (params?.status) queryParams.set("status", params.status)
-    if (params?.offset) queryParams.set("offset", params.offset.toString())
+    if (params?.offset != null) queryParams.set("offset", params.offset.toString())
     if (params?.limit) queryParams.set("limit", params.limit.toString())
     if (params?.["dueDate[ge]"]) queryParams.set("dueDate[ge]", params["dueDate[ge]"])
     if (params?.["dueDate[le]"]) queryParams.set("dueDate[le]", params["dueDate[le]"])
@@ -187,7 +187,7 @@ export class AsaasService {
   }> {
     const query = new URLSearchParams()
     if (params?.status) query.set("status", params.status)
-    if (params?.offset) query.set("offset", String(params.offset))
+    if (params?.offset != null) query.set("offset", String(params.offset))
     if (params?.limit) query.set("limit", String(params.limit))
     return this.request(`/subscriptions?${query.toString()}`)
   }
