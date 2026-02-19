@@ -294,28 +294,32 @@ export function ClientOverview({ client }: ClientOverviewProps) {
         </CardContent>
       </GlowCard>
 
-      {/* Custom Fields - filter out asaas internal fields */}
-      {client.custom_fields && Object.keys(client.custom_fields).filter(k => !k.startsWith('asaas_')).length > 0 && (
-        <GlowCard color="primary" intensity="subtle" className="md:col-span-2 lg:col-span-3">
-          <CardHeader>
-            <CardTitle className="text-base">Campos Personalizados</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 md:grid-cols-3">
-              {Object.entries(client.custom_fields)
-                .filter(([key]) => !key.startsWith('asaas_') && key !== 'cpf_cnpj')
-                .map(([key, value]) => (
-                <div key={key}>
-                  <p className="text-xs text-muted-foreground capitalize">
-                    {key.replace(/_/g, " ")}
-                  </p>
-                  <p className="text-sm">{String(value)}</p>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </GlowCard>
-      )}
+      {/* Custom Fields - filter out asaas internal fields and cpf_cnpj */}
+      {(() => {
+        const displayFields = client.custom_fields
+          ? Object.entries(client.custom_fields).filter(([key]) => !key.startsWith('asaas_') && key !== 'cpf_cnpj')
+          : []
+        if (displayFields.length === 0) return null
+        return (
+          <GlowCard color="primary" intensity="subtle" className="md:col-span-2 lg:col-span-3">
+            <CardHeader>
+              <CardTitle className="text-base">Campos Personalizados</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-4 md:grid-cols-3">
+                {displayFields.map(([key, value]) => (
+                  <div key={key}>
+                    <p className="text-xs text-muted-foreground capitalize">
+                      {key.replace(/_/g, " ")}
+                    </p>
+                    <p className="text-sm">{String(value)}</p>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </GlowCard>
+        )
+      })()}
     </div>
   )
 }

@@ -231,6 +231,7 @@ async function fetchKlaviyoPerformance(
   const [campaignReport, flowReport] = await Promise.all([
     klaviyoRequest<KlaviyoCampaignReport>(apiKey, "campaign-values-reports/", {
       method: "POST",
+      logTag: "CampaignReport",
       body: {
         data: {
           type: "campaign-values-report",
@@ -247,6 +248,7 @@ async function fetchKlaviyoPerformance(
     }),
     klaviyoRequest<KlaviyoFlowReport>(apiKey, "flow-values-reports/", {
       method: "POST",
+      logTag: "FlowReport",
       body: {
         data: {
           type: "flow-values-report",
@@ -262,6 +264,11 @@ async function fetchKlaviyoPerformance(
       },
     }),
   ])
+
+  // If both API calls failed (returned null), throw so the error surfaces in storeErrors
+  if (!campaignReport && !flowReport) {
+    throw new Error("Falha ao conectar com a API do Klaviyo. Verifique as credenciais.")
+  }
 
   // Parse campaign results
   const campaignResults = campaignReport?.data?.attributes?.results || []
