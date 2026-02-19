@@ -109,9 +109,6 @@ export async function POST(request: NextRequest) {
       tags: body.tags || [],
       color: body.color,
       notes: body.notes || null,
-      instructions_doc_url: body.instructions_doc_url || null,
-      is_quick: body.is_quick || false,
-      copy_status: body.instructions_doc_url ? "pending" : null,
       created_by: user.id,
     }
 
@@ -126,8 +123,8 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) {
-      log.error("Campaign insert failed", { error: error.message, code: error.code, details: error.details, hint: error.hint })
-      throw new AppError(`Erro ao criar campanha: ${error.message}`, 500)
+      log.error("Campaign insert failed", { error: error.message, code: error.code })
+      throw new AppError("Erro ao criar campanha", 500)
     }
 
     return successResponse(request, { campaign }, { status: 201, message: "Campanha criada com sucesso" })

@@ -45,7 +45,6 @@ export function QuickCampaignModal({
           channel: "email",
           campaign_type: "promotional",
           status: "draft",
-          is_quick: true,
           color: "#94a3b8",
         }),
       })
