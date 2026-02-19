@@ -820,11 +820,12 @@ async function getProductsSummary(
     const maxProductPages = 20
 
     for (let page = 0; productsEndpoint && page < maxProductPages; page++) {
-      const { data: pageData, nextPageUrl } = await shopifyPaginatedRequest<{
-        products: ProductItem[]
-      }>(storeDomain, accessToken, productsEndpoint)
-      products.push(...(pageData.products || []))
-      productsEndpoint = nextPageUrl
+      const result: ShopifyPaginatedResponse<{ products: ProductItem[] }> =
+        await shopifyPaginatedRequest<{ products: ProductItem[] }>(
+          storeDomain, accessToken, productsEndpoint
+        )
+      products.push(...(result.data.products || []))
+      productsEndpoint = result.nextPageUrl
     }
     const activeProducts = products.filter((p) => p.status === "active").length
     const draftProducts = products.filter((p) => p.status === "draft").length
