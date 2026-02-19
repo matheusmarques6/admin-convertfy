@@ -29,8 +29,8 @@ export const loginSchema = z.object({
 // --- Campaign ---
 
 export const campaignCreateSchema = z.object({
-  store_id: uuidSchema,
-  client_id: uuidSchema,
+  store_id: uuidSchema.optional(),
+  client_id: uuidSchema.optional(),
   name: z.string().min(1, "Nome é obrigatório"),
   scheduled_date: z.string().min(1, "Data é obrigatória"),
   scheduled_time: z.string().optional(),

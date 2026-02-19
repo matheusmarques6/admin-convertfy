@@ -1,30 +1,12 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState } from "react"
 import { X, Zap, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { useToast } from "@/lib/hooks/use-toast"
-
-interface StoreItem {
-  id: string
-  store_name: string
-  client_id: string
-  client?: {
-    id: string
-    name: string
-    company: string
-  }
-}
 
 interface QuickCampaignModalProps {
   initialDate?: string
@@ -39,34 +21,8 @@ export function QuickCampaignModal({
 }: QuickCampaignModalProps) {
   const { toast } = useToast()
   const [loading, setLoading] = useState(false)
-  const [loadingStores, setLoadingStores] = useState(false)
-  const [stores, setStores] = useState<StoreItem[]>([])
   const [name, setName] = useState("")
   const [date, setDate] = useState(initialDate || new Date().toISOString().split("T")[0])
-  const [selectedStoreId, setSelectedStoreId] = useState("")
-
-  const fetchStores = useCallback(async () => {
-    setLoadingStores(true)
-    try {
-      const response = await fetch("/api/stores")
-      if (response.ok) {
-        const data = await response.json()
-        const storeList = data.stores || []
-        setStores(storeList)
-        if (storeList.length === 1) {
-          setSelectedStoreId(storeList[0].id)
-        }
-      }
-    } catch {
-      console.error("Error fetching stores")
-    } finally {
-      setLoadingStores(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    fetchStores()
-  }, [fetchStores])
 
   const handleSave = async () => {
     if (!name.trim()) {
@@ -77,13 +33,6 @@ export function QuickCampaignModal({
       toast({ variant: "destructive", title: "Erro", description: "Data é obrigatória" })
       return
     }
-    if (!selectedStoreId) {
-      toast({ variant: "destructive", title: "Erro", description: "Selecione uma loja" })
-      return
-    }
-
-    const store = stores.find(s => s.id === selectedStoreId)
-    if (!store) return
 
     setLoading(true)
     try {
@@ -91,8 +40,6 @@ export function QuickCampaignModal({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          store_id: selectedStoreId,
-          client_id: store.client_id || store.client?.id,
           name: name.trim(),
           scheduled_date: date,
           channel: "email",
@@ -153,29 +100,6 @@ export function QuickCampaignModal({
               value={date}
               onChange={(e) => setDate(e.target.value)}
             />
-          </div>
-
-          <div className="space-y-2">
-            <Label>Loja</Label>
-            {loadingStores ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Carregando lojas...
-              </div>
-            ) : (
-              <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione a loja" />
-                </SelectTrigger>
-                <SelectContent>
-                  {stores.map((store) => (
-                    <SelectItem key={store.id} value={store.id}>
-                      {store.store_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
           </div>
 
           <div className="flex gap-2 pt-2">

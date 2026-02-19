@@ -75,8 +75,8 @@ export async function POST(request: NextRequest) {
     }
 
     const campaignData = {
-      store_id: body.store_id,
-      client_id: body.client_id,
+      store_id: body.store_id || null,
+      client_id: body.client_id || null,
       name: body.name,
       description: body.description || null,
       scheduled_date: body.scheduled_date,
