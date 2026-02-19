@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
-import { X, Loader2, Search, FileText, Store } from "lucide-react"
+import { X, Loader2, Search, Store } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -128,12 +128,9 @@ export function CampaignFormModal({
     campaign_type: "promotional",
     status: "scheduled",
     subject_line: "",
-    preview_text: "",
     segment_name: "",
-    estimated_recipients: "",
     color: "#3b82f6",
     notes: "",
-    instructions_doc_url: "",
   })
 
   // Fetch stores from API if not provided
@@ -253,17 +250,6 @@ export function CampaignFormModal({
     // Build scheduled_at datetime
     const scheduledAt = new Date(`${formData.scheduled_date}T${formData.scheduled_time}:00`)
 
-    // Validate URL if provided
-    if (formData.instructions_doc_url && formData.instructions_doc_url.trim()) {
-      try {
-        new URL(formData.instructions_doc_url)
-      } catch {
-        setError("URL do documento de instruções inválida")
-        setLoading(false)
-        return
-      }
-    }
-
     try {
       const response = await fetch("/api/admin/campaign-batches", {
         method: "POST",
@@ -272,7 +258,6 @@ export function CampaignFormModal({
           name: formData.name.trim(),
           campaign_type: formData.channel, // Using channel as campaign_type for the API
           scheduled_at: scheduledAt.toISOString(),
-          instructions_doc_url: formData.instructions_doc_url?.trim() || null,
           store_ids: selectedStoreIds,
           notes: formData.notes?.trim() || null,
         }),
@@ -442,66 +427,26 @@ export function CampaignFormModal({
 
             {/* Email specific fields */}
             {formData.channel === "email" && (
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="subject_line">Assunto do Email</Label>
-                  <Input
-                    id="subject_line"
-                    value={formData.subject_line}
-                    onChange={(e) => setFormData({ ...formData, subject_line: e.target.value })}
-                    placeholder="Ex: 🔥 Últimas horas! Até 70% OFF"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="preview_text">Texto de Preview</Label>
-                  <Input
-                    id="preview_text"
-                    value={formData.preview_text}
-                    onChange={(e) => setFormData({ ...formData, preview_text: e.target.value })}
-                    placeholder="Texto que aparece na prévia"
-                  />
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="subject_line">Assunto do Email</Label>
+                <Input
+                  id="subject_line"
+                  value={formData.subject_line}
+                  onChange={(e) => setFormData({ ...formData, subject_line: e.target.value })}
+                  placeholder="Ex: 🔥 Últimas horas! Até 70% OFF"
+                />
               </div>
             )}
 
             {/* Segment info */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="segment_name">Segmento/Lista</Label>
-                <Input
-                  id="segment_name"
-                  value={formData.segment_name}
-                  onChange={(e) => setFormData({ ...formData, segment_name: e.target.value })}
-                  placeholder="Ex: Compradores VIP"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="estimated_recipients">Destinatários Est.</Label>
-                <Input
-                  id="estimated_recipients"
-                  type="number"
-                  value={formData.estimated_recipients}
-                  onChange={(e) => setFormData({ ...formData, estimated_recipients: e.target.value })}
-                  placeholder="Ex: 5000"
-                />
-              </div>
-            </div>
-
-            {/* Instructions Doc URL (Internal) */}
             <div className="space-y-2">
-              <Label htmlFor="docUrl" className="flex items-center gap-2">
-                <FileText className="h-4 w-4" />
-                Link do Documento de Instruções
-              </Label>
+              <Label htmlFor="segment_name">Segmento/Lista</Label>
               <Input
-                id="docUrl"
-                value={formData.instructions_doc_url}
-                onChange={(e) => setFormData({ ...formData, instructions_doc_url: e.target.value })}
-                placeholder="https://docs.google.com/document/d/..."
+                id="segment_name"
+                value={formData.segment_name}
+                onChange={(e) => setFormData({ ...formData, segment_name: e.target.value })}
+                placeholder="Ex: Compradores VIP"
               />
-              <p className="text-xs text-muted-foreground">
-                Este link é interno e NÃO será visível para os clientes
-              </p>
             </div>
 
             {/* Quick Filters for Stores */}

@@ -10,9 +10,12 @@ import {
   Trophy,
   Store,
   Filter,
+  TrendingUp,
+  TrendingDown,
+  Medal,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { GlowCard } from "@/components/ui/glow-card"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -27,6 +30,17 @@ import { Campaign } from "@/types"
 interface StoreItem {
   id: string
   store_name: string
+}
+
+interface StorePerformance {
+  store_id: string
+  store_name: string
+  totalCampaigns: number
+  totalRevenue: number
+  totalRecipients: number
+  avgOpenRate: number
+  avgClickRate: number
+  bestCampaign: Campaign | null
 }
 
 type SortField = "name" | "scheduled_date" | "recipients" | "opened" | "clicked" | "revenue" | "store"
@@ -135,12 +149,6 @@ export function CampaignsListView() {
     return list
   }, [campaigns, sortField, sortDir])
 
-  // Find top performer by revenue
-  const topRevenue = useMemo(() => {
-    if (!campaigns.length) return null
-    return campaigns.reduce((best, c) => (c.revenue || 0) > (best.revenue || 0) ? c : best, campaigns[0])
-  }, [campaigns])
-
   // Summary stats
   const summary = useMemo(() => {
     const total = campaigns.length
@@ -157,6 +165,69 @@ export function CampaignsListView() {
     return { total, sent, totalRevenue, totalRecipients, avgOpenRate }
   }, [campaigns])
 
+  // Store performance ranking
+  const storePerformance = useMemo(() => {
+    const map = new Map<string, StorePerformance>()
+
+    for (const c of campaigns) {
+      const storeId = c.store_id || c.store?.id || "unknown"
+      const storeName = c.store?.store_name || "Loja desconhecida"
+
+      if (!map.has(storeId)) {
+        map.set(storeId, {
+          store_id: storeId,
+          store_name: storeName,
+          totalCampaigns: 0,
+          totalRevenue: 0,
+          totalRecipients: 0,
+          avgOpenRate: 0,
+          avgClickRate: 0,
+          bestCampaign: null,
+        })
+      }
+
+      const perf = map.get(storeId)!
+      perf.totalCampaigns++
+      perf.totalRevenue += c.revenue || 0
+      perf.totalRecipients += c.recipients || 0
+
+      if (!perf.bestCampaign || (c.revenue || 0) > (perf.bestCampaign.revenue || 0)) {
+        perf.bestCampaign = c
+      }
+    }
+
+    // Calculate avg rates
+    for (const [storeId, perf] of map) {
+      const storeCampaigns = campaigns.filter(c => (c.store_id || c.store?.id) === storeId)
+      const withRecipients = storeCampaigns.filter(c => (c.recipients || 0) > 0)
+
+      if (withRecipients.length > 0) {
+        perf.avgOpenRate = withRecipients.reduce((sum, c) => {
+          return sum + ((c.opened || 0) / (c.recipients || 1)) * 100
+        }, 0) / withRecipients.length
+
+        perf.avgClickRate = withRecipients.reduce((sum, c) => {
+          return sum + ((c.clicked || 0) / (c.recipients || 1)) * 100
+        }, 0) / withRecipients.length
+      }
+    }
+
+    return Array.from(map.values()).sort((a, b) => b.totalRevenue - a.totalRevenue)
+  }, [campaigns])
+
+  // Top and bottom performers
+  const topStores = useMemo(() => storePerformance.slice(0, 3), [storePerformance])
+  const bottomStores = useMemo(() => {
+    if (storePerformance.length <= 3) return []
+    return [...storePerformance].reverse().slice(0, 3)
+  }, [storePerformance])
+
+  // Find top performer by revenue
+  const topRevenue = useMemo(() => {
+    if (!campaigns.length) return null
+    return campaigns.reduce((best, c) => (c.revenue || 0) > (best.revenue || 0) ? c : best, campaigns[0])
+  }, [campaigns])
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -166,7 +237,7 @@ export function CampaignsListView() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2">
         <Filter className="h-4 w-4 text-muted-foreground" />
@@ -227,7 +298,7 @@ export function CampaignsListView() {
         </Button>
       </div>
 
-      {/* Summary Cards */}
+      {/* Summary KPI Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <GlowCard color="primary" intensity="moderate">
           <CardContent className="pt-4 pb-3">
@@ -261,84 +332,115 @@ export function CampaignsListView() {
         </GlowCard>
       </div>
 
-      {/* Table */}
-      {sorted.length > 0 ? (
+      {/* Store Performance: Top & Bottom */}
+      {storePerformance.length > 1 && filterStore === "all" && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          {/* Top Performing Stores */}
+          <GlowCard color="primary" intensity="subtle">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <TrendingUp className="h-4 w-4 text-emerald-500" />
+                Lojas com Melhor Desempenho
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="space-y-3">
+                {topStores.map((store, i) => (
+                  <div key={store.store_id} className="flex items-center gap-3">
+                    <div className={`flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold ${
+                      i === 0 ? "bg-yellow-500/20 text-yellow-600 dark:text-yellow-400"
+                      : i === 1 ? "bg-zinc-300/20 text-zinc-500"
+                      : "bg-orange-500/20 text-orange-600 dark:text-orange-400"
+                    }`}>
+                      {i === 0 ? <Medal className="h-3.5 w-3.5" /> : i + 1}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{store.store_name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {store.totalCampaigns} campanhas • {store.avgOpenRate.toFixed(1)}% abertura
+                      </p>
+                    </div>
+                    <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+                      R$ {store.totalRevenue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </GlowCard>
+
+          {/* Bottom Performing Stores */}
+          {bottomStores.length > 0 && (
+            <GlowCard color="primary" intensity="subtle">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <TrendingDown className="h-4 w-4 text-orange-500" />
+                  Lojas com Menor Desempenho
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="space-y-3">
+                  {bottomStores.map((store) => (
+                    <div key={store.store_id} className="flex items-center gap-3">
+                      <div className="flex items-center justify-center w-7 h-7 rounded-full bg-muted text-xs font-medium text-muted-foreground">
+                        <Store className="h-3.5 w-3.5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{store.store_name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {store.totalCampaigns} campanhas • {store.avgOpenRate.toFixed(1)}% abertura
+                        </p>
+                      </div>
+                      <p className="text-sm font-medium text-muted-foreground">
+                        R$ {store.totalRevenue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </GlowCard>
+          )}
+        </div>
+      )}
+
+      {/* Best Campaign per Store */}
+      {storePerformance.length > 0 && filterStore === "all" && (
         <GlowCard color="primary" intensity="subtle">
-          <CardContent className="pt-6">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Trophy className="h-4 w-4 text-warning" />
+              Melhor Campanha por Loja
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b text-muted-foreground">
-                    <th className="text-left pb-2 font-medium pr-4">
-                      <button onClick={() => toggleSort("name")} className="flex items-center hover:text-foreground">
-                        Nome <SortIcon field="name" />
-                      </button>
-                    </th>
-                    <th className="text-left pb-2 font-medium pr-4">
-                      <button onClick={() => toggleSort("store")} className="flex items-center hover:text-foreground">
-                        <Store className="h-3 w-3 mr-1" /> Loja <SortIcon field="store" />
-                      </button>
-                    </th>
-                    <th className="text-left pb-2 font-medium pr-4">Status</th>
-                    <th className="text-left pb-2 font-medium pr-4">Canal</th>
-                    <th className="text-left pb-2 font-medium pr-4">
-                      <button onClick={() => toggleSort("scheduled_date")} className="flex items-center hover:text-foreground">
-                        Data <SortIcon field="scheduled_date" />
-                      </button>
-                    </th>
-                    <th className="text-right pb-2 font-medium">
-                      <button onClick={() => toggleSort("recipients")} className="flex items-center justify-end hover:text-foreground ml-auto">
-                        Enviados <SortIcon field="recipients" />
-                      </button>
-                    </th>
-                    <th className="text-right pb-2 font-medium">
-                      <button onClick={() => toggleSort("opened")} className="flex items-center justify-end hover:text-foreground ml-auto">
-                        Abertura <SortIcon field="opened" />
-                      </button>
-                    </th>
-                    <th className="text-right pb-2 font-medium">
-                      <button onClick={() => toggleSort("clicked")} className="flex items-center justify-end hover:text-foreground ml-auto">
-                        Clique <SortIcon field="clicked" />
-                      </button>
-                    </th>
-                    <th className="text-right pb-2 font-medium">
-                      <button onClick={() => toggleSort("revenue")} className="flex items-center justify-end hover:text-foreground ml-auto">
-                        Receita <SortIcon field="revenue" />
-                      </button>
-                    </th>
+                    <th className="text-left pb-2 font-medium pr-4">Loja</th>
+                    <th className="text-left pb-2 font-medium pr-4">Melhor Campanha</th>
+                    <th className="text-right pb-2 font-medium pr-4">Abertura</th>
+                    <th className="text-right pb-2 font-medium pr-4">Clique</th>
+                    <th className="text-right pb-2 font-medium">Receita</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {sorted.map((c) => {
+                  {storePerformance.filter(s => s.bestCampaign).map((store) => {
+                    const c = store.bestCampaign!
                     const recipients = c.recipients || 0
                     const openRate = recipients > 0 ? ((c.opened || 0) / recipients) * 100 : 0
                     const clickRate = recipients > 0 ? ((c.clicked || 0) / recipients) * 100 : 0
-                    const isTop = topRevenue && c.id === topRevenue.id && (c.revenue || 0) > 0
 
                     return (
-                      <tr key={c.id} className="border-b last:border-0 hover:bg-muted/30">
-                        <td className="py-2 pr-4 font-medium max-w-[200px] truncate">
-                          <div className="flex items-center gap-1">
-                            {isTop && <Trophy className="h-3.5 w-3.5 text-warning flex-shrink-0" />}
-                            {c.is_quick && <span className="text-warning text-xs" title="Campanha Rápida">⚡</span>}
-                            <span className="truncate">{c.name}</span>
-                          </div>
-                        </td>
+                      <tr key={store.store_id} className="border-b last:border-0 hover:bg-muted/30">
                         <td className="py-2 pr-4 text-muted-foreground text-xs max-w-[140px] truncate">
-                          {c.store?.store_name || "-"}
+                          {store.store_name}
                         </td>
-                        <td className="py-2 pr-4">
-                          <Badge variant={c.status === "sent" ? "success" : c.status === "draft" ? "secondary" : "outline"} className="text-xs">
-                            {c.status}
-                          </Badge>
+                        <td className="py-2 pr-4 font-medium max-w-[200px] truncate">
+                          {c.name}
                         </td>
-                        <td className="py-2 pr-4 text-xs capitalize">{c.channel}</td>
-                        <td className="py-2 pr-4 text-xs">
-                          {c.scheduled_date ? new Date(c.scheduled_date + "T12:00:00").toLocaleDateString("pt-BR") : "-"}
-                        </td>
-                        <td className="py-2 text-right">{recipients.toLocaleString()}</td>
-                        <td className="py-2 text-right">{openRate.toFixed(1)}%</td>
-                        <td className="py-2 text-right">{clickRate.toFixed(1)}%</td>
+                        <td className="py-2 pr-4 text-right">{openRate.toFixed(1)}%</td>
+                        <td className="py-2 pr-4 text-right">{clickRate.toFixed(1)}%</td>
                         <td className="py-2 text-right font-medium">
                           R$ {(c.revenue || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                         </td>
@@ -350,13 +452,107 @@ export function CampaignsListView() {
             </div>
           </CardContent>
         </GlowCard>
-      ) : (
-        <Card>
-          <CardContent className="py-10 text-center text-muted-foreground">
-            Nenhuma campanha encontrada para os filtros selecionados.
-          </CardContent>
-        </Card>
       )}
+
+      {/* Campaigns Table */}
+      <div>
+        <h3 className="text-sm font-semibold mb-3 text-muted-foreground">Campanhas Recentes</h3>
+        {sorted.length > 0 ? (
+          <GlowCard color="primary" intensity="subtle">
+            <CardContent className="pt-6">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-muted-foreground">
+                      <th className="text-left pb-2 font-medium pr-4">
+                        <button onClick={() => toggleSort("name")} className="flex items-center hover:text-foreground">
+                          Nome <SortIcon field="name" />
+                        </button>
+                      </th>
+                      <th className="text-left pb-2 font-medium pr-4">
+                        <button onClick={() => toggleSort("store")} className="flex items-center hover:text-foreground">
+                          <Store className="h-3 w-3 mr-1" /> Loja <SortIcon field="store" />
+                        </button>
+                      </th>
+                      <th className="text-left pb-2 font-medium pr-4">Status</th>
+                      <th className="text-left pb-2 font-medium pr-4">Canal</th>
+                      <th className="text-left pb-2 font-medium pr-4">
+                        <button onClick={() => toggleSort("scheduled_date")} className="flex items-center hover:text-foreground">
+                          Data <SortIcon field="scheduled_date" />
+                        </button>
+                      </th>
+                      <th className="text-right pb-2 font-medium">
+                        <button onClick={() => toggleSort("recipients")} className="flex items-center justify-end hover:text-foreground ml-auto">
+                          Enviados <SortIcon field="recipients" />
+                        </button>
+                      </th>
+                      <th className="text-right pb-2 font-medium">
+                        <button onClick={() => toggleSort("opened")} className="flex items-center justify-end hover:text-foreground ml-auto">
+                          Abertura <SortIcon field="opened" />
+                        </button>
+                      </th>
+                      <th className="text-right pb-2 font-medium">
+                        <button onClick={() => toggleSort("clicked")} className="flex items-center justify-end hover:text-foreground ml-auto">
+                          Clique <SortIcon field="clicked" />
+                        </button>
+                      </th>
+                      <th className="text-right pb-2 font-medium">
+                        <button onClick={() => toggleSort("revenue")} className="flex items-center justify-end hover:text-foreground ml-auto">
+                          Receita <SortIcon field="revenue" />
+                        </button>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sorted.map((c) => {
+                      const recipients = c.recipients || 0
+                      const openRate = recipients > 0 ? ((c.opened || 0) / recipients) * 100 : 0
+                      const clickRate = recipients > 0 ? ((c.clicked || 0) / recipients) * 100 : 0
+                      const isTop = topRevenue && c.id === topRevenue.id && (c.revenue || 0) > 0
+
+                      return (
+                        <tr key={c.id} className="border-b last:border-0 hover:bg-muted/30">
+                          <td className="py-2 pr-4 font-medium max-w-[200px] truncate">
+                            <div className="flex items-center gap-1">
+                              {isTop && <Trophy className="h-3.5 w-3.5 text-warning flex-shrink-0" />}
+                              {c.is_quick && <span className="text-warning text-xs" title="Campanha Rápida">⚡</span>}
+                              <span className="truncate">{c.name}</span>
+                            </div>
+                          </td>
+                          <td className="py-2 pr-4 text-muted-foreground text-xs max-w-[140px] truncate">
+                            {c.store?.store_name || "-"}
+                          </td>
+                          <td className="py-2 pr-4">
+                            <Badge variant={c.status === "sent" ? "success" : c.status === "draft" ? "secondary" : "outline"} className="text-xs">
+                              {c.status}
+                            </Badge>
+                          </td>
+                          <td className="py-2 pr-4 text-xs capitalize">{c.channel}</td>
+                          <td className="py-2 pr-4 text-xs">
+                            {c.scheduled_date ? new Date(c.scheduled_date + "T12:00:00").toLocaleDateString("pt-BR") : "-"}
+                          </td>
+                          <td className="py-2 text-right">{recipients.toLocaleString()}</td>
+                          <td className="py-2 text-right">{openRate.toFixed(1)}%</td>
+                          <td className="py-2 text-right">{clickRate.toFixed(1)}%</td>
+                          <td className="py-2 text-right font-medium">
+                            R$ {(c.revenue || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </GlowCard>
+        ) : (
+          <Card>
+            <CardContent className="py-10 text-center text-muted-foreground">
+              Nenhuma campanha encontrada para os filtros selecionados.
+            </CardContent>
+          </Card>
+        )}
+      </div>
     </div>
   )
 }

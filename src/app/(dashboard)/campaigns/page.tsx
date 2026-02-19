@@ -10,7 +10,10 @@ import {
   Store,
   X,
   Calendar,
-  List,
+  BarChart3,
+  Zap,
+  PenLine,
+  Construction,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PermissionGate } from "@/components/permission-gate"
@@ -47,7 +50,7 @@ const monthNames = [
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
 ]
 
-type ViewMode = "calendar" | "list"
+type ViewMode = "calendar" | "performance" | "copy"
 
 export default function CampaignsCalendarPage() {
   const cal = useCampaignsCalendar()
@@ -77,17 +80,37 @@ export default function CampaignsCalendarPage() {
               Calendário
             </button>
             <button
-              onClick={() => setViewMode("list")}
+              onClick={() => setViewMode("performance")}
               className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                viewMode === "list"
+                viewMode === "performance"
                   ? "bg-background text-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              <List className="h-3.5 w-3.5" />
-              Lista
+              <BarChart3 className="h-3.5 w-3.5" />
+              Desempenho
+            </button>
+            <button
+              onClick={() => setViewMode("copy")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                viewMode === "copy"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <PenLine className="h-3.5 w-3.5" />
+              Copy
             </button>
           </div>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowQuickModal(true)}
+          >
+            <Zap className="h-4 w-4 mr-2" />
+            Rápida
+          </Button>
 
           <Button
             variant="outline"
@@ -102,8 +125,21 @@ export default function CampaignsCalendarPage() {
         </div>
       </div>
 
-      {/* List View */}
-      {viewMode === "list" && <CampaignsListView />}
+      {/* Performance View */}
+      {viewMode === "performance" && <CampaignsListView />}
+
+      {/* Copy View - Em Desenvolvimento */}
+      {viewMode === "copy" && (
+        <div className="flex flex-col items-center justify-center py-24 text-center">
+          <div className="rounded-full bg-muted p-4 mb-4">
+            <Construction className="h-8 w-8 text-muted-foreground" />
+          </div>
+          <h3 className="text-lg font-semibold">Copy</h3>
+          <p className="text-muted-foreground mt-1 max-w-md">
+            Geração de copys para campanhas em desenvolvimento. Em breve você poderá criar e gerenciar copys diretamente por aqui.
+          </p>
+        </div>
+      )}
 
       {/* Calendar View */}
       {viewMode === "calendar" && (<>
