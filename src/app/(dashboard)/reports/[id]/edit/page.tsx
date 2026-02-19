@@ -290,7 +290,9 @@ export default function EditReportPage() {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-bold">Editar Relatório</h1>
-              <Badge variant="outline">{report.report_type}</Badge>
+              <Badge variant="outline">
+                {{ klaviyo: "Klaviyo", shopify: "Shopify", combined: "Combinado", manual: "Manual" }[report.report_type] || report.report_type}
+              </Badge>
             </div>
             <p className="text-muted-foreground">
               {report.store_name || report.client?.name}

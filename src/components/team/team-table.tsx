@@ -50,31 +50,7 @@ import {
 import { getInitials } from "@/lib/utils"
 import { toast } from "@/lib/hooks/use-toast"
 import { TeamMemberDialog } from "./team-member-dialog"
-import type { FeatureCatalog, Organization, OrgRole } from "@/types"
-
-interface UserProfile {
-  id: string
-  name: string
-  email: string
-  avatar_url?: string
-}
-
-interface MemberWithDetails {
-  id: string
-  org_id: string
-  profile_id: string
-  role: OrgRole
-  is_active: boolean
-  invited_at?: string
-  joined_at?: string
-  created_at: string
-  updated_at: string
-  job_title?: string
-  organization?: Organization
-  profile?: UserProfile
-  enabled_features?: string[]
-  store_access_count?: number
-}
+import type { FeatureCatalog, MemberWithDetails, Organization } from "@/types"
 
 interface StoreWithClient {
   id: string
@@ -297,7 +273,7 @@ export function TeamTable({ members, features, organizations, stores }: TeamTabl
                   <TableCell>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon">
+                        <Button variant="ghost" size="icon" aria-label="Ações do membro">
                           <MoreHorizontal className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>

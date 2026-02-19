@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAsaasService } from "@/lib/integrations/asaas"
+import type { AsaasPaymentStatus } from "@/lib/integrations/types"
 import { decryptCredentialsJson } from "@/lib/crypto"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
@@ -37,8 +38,11 @@ export async function GET(request: NextRequest) {
       if (asaasId) customerToClient.set(asaasId, { id: c.id, name: c.name, company: c.company })
     })
 
-    const params: Record<string, string | number> = { limit: 100, offset: 0 }
-    if (status && status !== "all") params.status = status
+    const params: {
+      limit: number; offset: number; status?: AsaasPaymentStatus;
+      "dueDate[ge]"?: string; "dueDate[le]"?: string;
+    } = { limit: 100, offset: 0 }
+    if (status && status !== "all") params.status = status as AsaasPaymentStatus
     if (startDate) params["dueDate[ge]"] = startDate
     if (endDate) params["dueDate[le]"] = endDate
 
@@ -54,7 +58,7 @@ export async function GET(request: NextRequest) {
 
     while (hasMore) {
       params.offset = offset
-      const { data: payments, totalCount } = await asaas.listPayments(params as never)
+      const { data: payments, totalCount } = await asaas.listPayments(params)
       allPayments = [...allPayments, ...payments]
       offset += 100
       hasMore = offset < totalCount

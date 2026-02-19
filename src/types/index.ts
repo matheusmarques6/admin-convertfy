@@ -480,6 +480,7 @@ export type ActivityType =
   | "deal_updated"
   | "deal_won"
   | "deal_lost"
+  | "member_added"
 
 export interface Activity {
   id: string
@@ -764,6 +765,24 @@ export interface FeatureCatalog {
   is_active: boolean
   sort_order: number
   created_at: string
+}
+
+/** OrgMember with joined profile data and computed fields (for team UI) */
+export interface MemberWithDetails {
+  id: string
+  org_id: string
+  profile_id: string
+  role: OrgRole
+  is_active: boolean
+  invited_at?: string
+  joined_at?: string
+  created_at: string
+  updated_at: string
+  job_title?: string
+  organization?: Organization
+  profile?: { id: string; name: string; email: string; avatar_url?: string }
+  enabled_features?: string[]
+  store_access_count?: number
 }
 
 export interface OrgMemberFeature {

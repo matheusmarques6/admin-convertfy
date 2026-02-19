@@ -15,6 +15,7 @@ export type ActivityType =
   | "deal_updated"
   | "deal_won"
   | "deal_lost"
+  | "member_added"
 
 export interface Activity {
   id: string

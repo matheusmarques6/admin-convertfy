@@ -358,7 +358,7 @@ export async function POST(request: NextRequest) {
     // Log activity
     await supabase.from("activities").insert({
       user_id: user.id,
-      type: "client_created", // Using existing type
+      type: "member_added",
       description: `Membro "${member.profile?.name}" adicionado à organização`,
       metadata: { member_id: member.id, role: body.role },
     })

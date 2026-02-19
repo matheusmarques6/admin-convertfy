@@ -157,6 +157,7 @@ export function BoardCalendarView({
             <Button
               variant="outline"
               size="icon"
+              aria-label="Mês anterior"
               onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
             >
               <ChevronLeft className="h-4 w-4" />
@@ -174,6 +175,7 @@ export function BoardCalendarView({
             <Button
               variant="outline"
               size="icon"
+              aria-label="Próximo mês"
               onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
             >
               <ChevronRight className="h-4 w-4" />
@@ -200,8 +202,6 @@ export function BoardCalendarView({
             const isCurrentMonth = isSameMonth(day, currentMonth)
             const isSelected = selectedDate && isSameDay(day, selectedDate)
             const hasEvents = dayEvents.length > 0
-            const taskCount = dayEvents.filter((e) => e.type === "task").length
-            const meetingCount = dayEvents.filter((e) => e.type === "meeting").length
 
             return (
               <button
@@ -252,16 +252,7 @@ export function BoardCalendarView({
                     </div>
                   )}
                   {!hasEvents && isCurrentMonth && (
-                    <div className="flex-1 flex items-end justify-center pb-1">
-                      <div className="flex gap-0.5">
-                        {taskCount > 0 && (
-                          <div className="w-1.5 h-1.5 rounded-full bg-info" />
-                        )}
-                        {meetingCount > 0 && (
-                          <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-                        )}
-                      </div>
-                    </div>
+                    <div className="flex-1" />
                   )}
                 </div>
               </button>

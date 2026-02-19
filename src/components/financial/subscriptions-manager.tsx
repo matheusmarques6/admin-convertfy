@@ -196,6 +196,9 @@ export function SubscriptionsManager() {
       case "BIWEEKLY":
         monthlyValue = s.value * 2
         break
+      case "BIMONTHLY":
+        monthlyValue = s.value / 2
+        break
       case "QUARTERLY":
         monthlyValue = s.value / 3
         break

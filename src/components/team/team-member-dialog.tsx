@@ -24,31 +24,7 @@ import {
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "@/lib/hooks/use-toast"
-import type { FeatureCatalog, Organization, OrgRole } from "@/types"
-
-interface UserProfile {
-  id: string
-  name: string
-  email: string
-  avatar_url?: string
-}
-
-interface MemberWithDetails {
-  id: string
-  org_id: string
-  profile_id: string
-  role: OrgRole
-  is_active: boolean
-  invited_at?: string
-  joined_at?: string
-  created_at: string
-  updated_at: string
-  job_title?: string
-  organization?: Organization
-  profile?: UserProfile
-  enabled_features?: string[]
-  store_access_count?: number
-}
+import type { FeatureCatalog, MemberWithDetails, Organization, OrgRole } from "@/types"
 
 interface StoreWithClient {
   id: string
@@ -177,7 +153,11 @@ export function TeamMemberDialog({
         setSelectedStores(data.access?.map((a: { store_id: string }) => a.store_id) || [])
       }
     } catch {
-      // Ignore errors
+      toast({
+        variant: "destructive",
+        title: "Erro ao carregar acessos",
+        description: "Não foi possível carregar os acessos às lojas deste membro.",
+      })
     }
   }
 

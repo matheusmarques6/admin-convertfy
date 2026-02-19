@@ -97,6 +97,7 @@ export function MeetingsPageClient({
   const [viewMode, setViewMode] = useState<"list" | "calendar">("list")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingMeeting, setEditingMeeting] = useState<MeetingWithRelations | null>(null)
+  const [initialDate, setInitialDate] = useState<Date | undefined>()
   const [filters, setFilters] = useState<MeetingFiltersState>({
     status: "all",
     period: "all",
@@ -146,6 +147,7 @@ export function MeetingsPageClient({
   // Dialog handlers
   const handleNewMeeting = () => {
     setEditingMeeting(null)
+    setInitialDate(undefined)
     setDialogOpen(true)
   }
 
@@ -194,6 +196,7 @@ export function MeetingsPageClient({
   // Calendar slot click → open dialog with pre-filled date
   const handleSlotClick = (date: Date) => {
     setEditingMeeting(null)
+    setInitialDate(date)
     setDialogOpen(true)
   }
 
@@ -343,7 +346,7 @@ export function MeetingsPageClient({
                               )}
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                                  <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Ações da reunião">
                                     <MoreHorizontal className="h-4 w-4" />
                                   </Button>
                                 </DropdownMenuTrigger>
@@ -443,6 +446,7 @@ export function MeetingsPageClient({
         meeting={editingMeeting as Parameters<typeof MeetingDialog>[0]["meeting"]}
         clients={clients}
         members={members}
+        initialDate={initialDate}
       />
     </>
   )

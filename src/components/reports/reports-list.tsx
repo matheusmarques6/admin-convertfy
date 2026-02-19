@@ -550,7 +550,7 @@ export function ReportsList({
               <FileText className="h-8 w-8 text-muted-foreground" />
             </div>
             <h3 className="text-lg font-medium">
-              {hasActiveFilters ? "Nenhum relatório encontrado" : "Nenhum relatório encontrado"}
+              {hasActiveFilters ? "Nenhum relatório encontrado com esses filtros" : "Nenhum relatório encontrado"}
             </h3>
             <p className="text-muted-foreground mt-1">
               {hasActiveFilters

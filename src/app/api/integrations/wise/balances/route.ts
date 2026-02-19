@@ -3,10 +3,6 @@ import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api
 import { createClient } from "@/lib/supabase/server"
 import { createWiseService } from "@/lib/integrations/wise"
 import { decryptCredentialsJson } from "@/lib/crypto"
-import { logger } from "@/lib/logger"
-
-const log = logger.child("IntegrationsWiseBalances")
-
 export const dynamic = "force-dynamic"
 
 export async function GET(request: NextRequest) {

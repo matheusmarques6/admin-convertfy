@@ -130,13 +130,13 @@ export function MeetingCalendar({
         </div>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1">
-            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => navigate("prev")}>
+            <Button variant="outline" size="icon" className="h-8 w-8" aria-label="Período anterior" onClick={() => navigate("prev")}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <Button variant="outline" size="sm" className="h-8" onClick={goToToday}>
               Hoje
             </Button>
-            <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => navigate("next")}>
+            <Button variant="outline" size="icon" className="h-8 w-8" aria-label="Próximo período" onClick={() => navigate("next")}>
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>

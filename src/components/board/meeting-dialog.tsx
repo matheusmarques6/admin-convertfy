@@ -76,6 +76,7 @@ interface MeetingDialogProps {
   meeting?: MeetingWithRelations | null
   clients: ClientInfo[]
   members?: ParticipantOption[]
+  initialDate?: Date
 }
 
 const schema = z.object({
@@ -98,6 +99,7 @@ export function MeetingDialog({
   meeting,
   clients,
   members = [],
+  initialDate,
 }: MeetingDialogProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [scheduledDate, setScheduledDate] = useState<Date | undefined>()
@@ -172,14 +174,19 @@ export function MeetingDialog({
         })
         setStatus("scheduled")
         setSelectedParticipants([])
-        // Default to tomorrow at 9am
-        const tomorrow = new Date()
-        tomorrow.setDate(tomorrow.getDate() + 1)
-        setScheduledDate(tomorrow)
-        setScheduledTime("09:00")
+        if (initialDate) {
+          setScheduledDate(initialDate)
+          setScheduledTime(format(initialDate, "HH:mm"))
+        } else {
+          // Default to tomorrow at 9am
+          const tomorrow = new Date()
+          tomorrow.setDate(tomorrow.getDate() + 1)
+          setScheduledDate(tomorrow)
+          setScheduledTime("09:00")
+        }
       }
     }
-  }, [open, meeting, setValue, reset])
+  }, [open, meeting, initialDate, setValue, reset])
 
   async function onSubmit(data: FormData) {
     if (!scheduledDate) {

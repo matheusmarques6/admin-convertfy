@@ -83,7 +83,11 @@ export async function GET(request: NextRequest) {
       const meetingIdsFromParticipants = participantMeetings?.map((p) => p.meeting_id) || []
 
       // Also include meetings where user is the organizer (user_id)
-      query = query.or(`user_id.eq.${participantId},id.in.(${meetingIdsFromParticipants.join(",")})`)
+      if (meetingIdsFromParticipants.length === 0) {
+        query = query.eq("user_id", participantId)
+      } else {
+        query = query.or(`user_id.eq.${participantId},id.in.(${meetingIdsFromParticipants.join(",")})`)
+      }
     }
 
     const { data: meetings, error } = await query
