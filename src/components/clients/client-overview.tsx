@@ -6,6 +6,7 @@ import { CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { GlowCard } from "@/components/ui/glow-card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
+import { SkeletonShimmer } from "@/components/ui/skeleton"
 import { formatCurrency, formatDate, getInitials } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
 import { useAsaasPayments, useAsaasSubscriptions } from "@/lib/hooks/use-api-data"
@@ -171,40 +172,65 @@ export function ClientOverview({ client }: ClientOverviewProps) {
           )}
         </CardHeader>
         <CardContent className="space-y-4">
-          {activeContract || asaasData?.hasSubscription ? (
-            <>
+          {isLoadingAsaas ? (
+            <div className="space-y-4">
               <div>
-                <p className="text-xs text-muted-foreground">Plano/Assinatura</p>
-                <p className="text-lg font-semibold">
-                  {activeContract?.plan_name || "Assinatura Ativa"}
-                </p>
+                <SkeletonShimmer className="h-3 w-24 mb-1" />
+                <SkeletonShimmer className="h-6 w-40" />
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">Valor Mensal</p>
-                <p className="text-lg font-semibold text-success">
-                  {formatCurrency(asaasData?.subscriptionValue || activeContract?.monthly_value || 0)}
-                </p>
+                <SkeletonShimmer className="h-3 w-20 mb-1" />
+                <SkeletonShimmer className="h-6 w-32" />
+              </div>
+              <div className="grid grid-cols-2 gap-4 pt-2 border-t">
+                <div>
+                  <SkeletonShimmer className="h-3 w-16 mb-1" />
+                  <SkeletonShimmer className="h-4 w-24" />
+                </div>
+                <div>
+                  <SkeletonShimmer className="h-3 w-16 mb-1" />
+                  <SkeletonShimmer className="h-4 w-24" />
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
+              {activeContract || asaasData?.hasSubscription ? (
+                <>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Plano/Assinatura</p>
+                    <p className="text-lg font-semibold">
+                      {activeContract?.plan_name || "Assinatura Ativa"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Valor Mensal</p>
+                    <p className="text-lg font-semibold text-success">
+                      {formatCurrency(asaasData?.subscriptionValue || activeContract?.monthly_value || 0)}
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <div>
+                  <p className="text-muted-foreground">Sem contrato/assinatura ativa</p>
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-4 pt-2 border-t">
+                <div>
+                  <p className="text-xs text-muted-foreground">Total Pago</p>
+                  <p className="text-sm font-medium text-success">
+                    {formatCurrency(totalPaid)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Pendente</p>
+                  <p className="text-sm font-medium text-warning">
+                    {formatCurrency(pendingAmount)}
+                  </p>
+                </div>
               </div>
             </>
-          ) : (
-            <div>
-              <p className="text-muted-foreground">Sem contrato/assinatura ativa</p>
-            </div>
           )}
-          <div className="grid grid-cols-2 gap-4 pt-2 border-t">
-            <div>
-              <p className="text-xs text-muted-foreground">Total Pago</p>
-              <p className="text-sm font-medium text-success">
-                {formatCurrency(totalPaid)}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Pendente</p>
-              <p className="text-sm font-medium text-warning">
-                {formatCurrency(pendingAmount)}
-              </p>
-            </div>
-          </div>
           {overdueAmount > 0 && (
             <div className="flex items-center gap-2 p-2 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800">
               <AlertCircle className="h-4 w-4 text-red-500" />

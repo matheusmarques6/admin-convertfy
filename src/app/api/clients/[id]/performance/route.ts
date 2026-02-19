@@ -2,7 +2,7 @@ import { NextRequest } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
-import { getStoreCredentials } from "@/lib/services/credentials.service"
+import { getCache, setCache } from "@/lib/cache"
 import {
   parseDateRange,
   formatDateStr,
@@ -77,6 +77,7 @@ export async function GET(
     const { id: clientId } = await params
     const { searchParams } = new URL(request.url)
     const period = searchParams.get("period") || "30d"
+    const forceRefresh = searchParams.get("force_refresh") === "true"
 
     // Validate period
     const validPeriods = ["today", "yesterday", "7d", "15d", "30d"]
@@ -95,7 +96,15 @@ export async function GET(
       throw new AppError("Cliente não encontrado ou acesso negado", 404)
     }
 
-    // Get client stores (admin client for credential check flags only)
+    // Check cache first (using clientId as storeId key)
+    if (!forceRefresh) {
+      const cached = await getCache(adminClient, clientId, "client_performance", period)
+      if (cached) {
+        return successResponse(request, { ...cached.data, fromCache: true, cachedAt: cached.cachedAt })
+      }
+    }
+
+    // Get client stores — query already includes credentials, no need for getStoreCredentials()
     const { data: stores, error: storesError } = await adminClient
       .from("client_stores")
       .select("id, store_name, klaviyo_api_key, klaviyo_private_key, shopify_store_domain, shopify_access_token")
@@ -118,6 +127,7 @@ export async function GET(
     const endDateStr = formatDateStr(endDate)
 
     // Fetch performance data for each store in parallel
+    // Use credentials directly from the client_stores query (no extra getStoreCredentials call)
     const storePromises = stores.map(async (store): Promise<StorePerformance> => {
       const hasKlaviyo = !!(store.klaviyo_private_key || store.klaviyo_api_key)
       const hasShopify = !!(store.shopify_store_domain && store.shopify_access_token)
@@ -126,11 +136,10 @@ export async function GET(
       let shopifyData: StorePerformance["shopify"] = null
       const errors: StorePerformance["errors"] = []
 
-      // Fetch Klaviyo data
+      // Fetch Klaviyo data using credentials from the stores query directly
       if (hasKlaviyo) {
         try {
-          const storeData = await getStoreCredentials(store.id)
-          const apiKey = storeData.klaviyo_private_key || storeData.klaviyo_api_key
+          const apiKey = store.klaviyo_private_key || store.klaviyo_api_key
           if (apiKey) {
             klaviyoData = await fetchKlaviyoPerformance(apiKey, startDateStr, endDateStr)
           }
@@ -180,7 +189,7 @@ export async function GET(
     // Calculate totals across all stores
     const totals = aggregateTotals(storeResults)
 
-    return successResponse(request, {
+    const responseData = {
       period,
       dateRange: { start: startDateStr, end: endDateStr },
       stores: storeResults,
@@ -190,7 +199,12 @@ export async function GET(
         storeName: s.storeName,
         errors: s.errors,
       })),
-    })
+    }
+
+    // Save to cache (fire-and-forget)
+    setCache(adminClient, clientId, "client_performance", period, responseData as unknown as Record<string, unknown>).catch(() => {})
+
+    return successResponse(request, responseData)
   } catch (error) {
     log.error("Error fetching client performance", error)
     return errorResponse(request, error, "ClientPerformance")

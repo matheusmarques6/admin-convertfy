@@ -6,9 +6,9 @@ import {
   Mail,
   Zap,
   ShoppingCart,
-  Loader2,
   RefreshCw,
   AlertCircle,
+  Settings,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { GlowCard } from "@/components/ui/glow-card"
@@ -22,6 +22,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { SkeletonShimmer, SkeletonMetric } from "@/components/ui/skeleton"
 import { formatCurrency } from "@/lib/utils"
 import {
   useClientPerformance,
@@ -29,7 +30,6 @@ import {
   ClientPerformanceContext,
   PERIODS,
 } from "@/lib/hooks/use-client-performance"
-
 // ─── Provider: wraps KPIs + Tables to share state ────────────────────────────
 
 export function ClientPerformanceProvider({
@@ -47,10 +47,44 @@ export function ClientPerformanceProvider({
   )
 }
 
+// ─── Skeleton for KPI cards ──────────────────────────────────────────────────
+
+function KPISkeletons() {
+  return (
+    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <SkeletonMetric key={i} />
+      ))}
+    </div>
+  )
+}
+
+// ─── Skeleton for tables ─────────────────────────────────────────────────────
+
+function TableSkeleton() {
+  return (
+    <Card>
+      <CardHeader>
+        <SkeletonShimmer className="h-5 w-40" />
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-4">
+            <SkeletonShimmer className="h-4 flex-1" />
+            <SkeletonShimmer className="h-4 w-16" />
+            <SkeletonShimmer className="h-4 w-16" />
+            <SkeletonShimmer className="h-4 w-20" />
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  )
+}
+
 // ─── KPIs: Header + KPI Cards + Error Badges (compact, goes on TOP) ─────────
 
 export function ClientPerformanceKPIs() {
-  const { data, loading, error, period, setPeriod, refresh } =
+  const { data, loading, isValidating, error, period, setPeriod, refresh } =
     useClientPerformanceContext()
 
   return (
@@ -83,20 +117,15 @@ export function ClientPerformanceKPIs() {
             variant="ghost"
             size="icon"
             onClick={refresh}
-            disabled={loading}
+            disabled={loading || isValidating}
           >
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+            <RefreshCw className={`h-4 w-4 ${isValidating ? "animate-spin" : ""}`} />
           </Button>
         </div>
       </div>
 
-      {/* Loading state */}
-      {loading && (
-        <div className="flex items-center justify-center py-8">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          <span className="ml-3 text-sm text-muted-foreground">Carregando dados...</span>
-        </div>
-      )}
+      {/* Skeleton loading state */}
+      {loading && <KPISkeletons />}
 
       {/* Error state */}
       {error && !loading && (
@@ -222,23 +251,60 @@ export function ClientPerformanceKPIs() {
 // ─── Tables: Campanhas + Flows (goes BELOW ClientOverview) ───────────────────
 
 export function ClientPerformanceTables() {
-  const { data, loading, error, allCampaigns, allFlows } =
+  const { data, loading, error, allCampaigns, allFlows, hasIntegrations } =
     useClientPerformanceContext()
 
-  if (loading || error || !data) return null
+  // Show skeleton while loading
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <TableSkeleton />
+        <TableSkeleton />
+      </div>
+    )
+  }
+
+  if (error || !data) return null
 
   const hasContent = allCampaigns.length > 0 || allFlows.length > 0
 
+  // No integrations configured — CTA to set up
+  if (!hasIntegrations && data.stores.length === 0) {
+    return (
+      <Card>
+        <CardContent className="flex flex-col items-center justify-center py-12">
+          <Settings className="h-10 w-10 text-muted-foreground mb-3" />
+          <p className="text-sm font-medium">Nenhuma integração configurada</p>
+          <p className="text-xs text-muted-foreground mt-1 text-center max-w-sm">
+            Configure as integrações Klaviyo e Shopify nas lojas do cliente para visualizar dados de performance.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-4"
+            onClick={() => {
+              // Radix TabsTrigger renders value as native button attribute
+              const storesTab = document.querySelector<HTMLButtonElement>('button[value="stores"]')
+              storesTab?.click()
+            }}
+          >
+            Configurar Integrações
+          </Button>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  // Has stores with integrations but no data for this period
   if (!hasContent && data.totals.klaviyoRevenue === 0) {
     return (
       <Card>
         <CardContent className="flex flex-col items-center justify-center py-12">
           <Zap className="h-10 w-10 text-muted-foreground mb-3" />
-          <p className="text-sm text-muted-foreground">
-            Nenhum dado de performance encontrado para este período
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">
-            Verifique se as lojas do cliente possuem integração Klaviyo ativa
+          <p className="text-sm font-medium">Nenhum dado encontrado neste período</p>
+          <p className="text-xs text-muted-foreground mt-1 text-center max-w-sm">
+            Não há dados de campanhas ou flows para o período selecionado.
+            Tente selecionar um período maior (ex: 30 dias).
           </p>
         </CardContent>
       </Card>

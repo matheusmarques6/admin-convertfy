@@ -128,3 +128,11 @@ export function useWiseBalances() {
 export function useWiseReconciled() {
   return useSWR("/api/integrations/wise/reconcile", apiFetcher, DEFAULT_OPTIONS)
 }
+
+// ---------------------------------------------------------------------------
+// Hook: Client Performance (aggregated Klaviyo + Shopify + Billing)
+// ---------------------------------------------------------------------------
+export function useClientPerformanceAPI(clientId: string | null, period: string) {
+  const key = clientId ? `/api/clients/${clientId}/performance?period=${period}` : null
+  return useSWR(key, apiFetcher, REPORT_OPTIONS)
+}

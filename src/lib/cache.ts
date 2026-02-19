@@ -10,6 +10,7 @@ const CACHE_TTL: Record<string, Record<string, number>> = {
   ga4: { "7d": 15, "15d": 20, "30d": 30, "90d": 60, all: 60 },
   asaas_payments: { "7d": 10, "15d": 15, "30d": 30, "90d": 60, all: 60 },
   asaas_billing: { "7d": 10, "15d": 15, "30d": 30, "90d": 60, all: 60 },
+  client_performance: { today: 15, yesterday: 30, "7d": 30, "15d": 45, "30d": 60 },
 }
 
 function getTTLMinutes(cacheType: string, period: string): number {
