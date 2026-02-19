@@ -87,16 +87,26 @@ export function SubscriptionsManager() {
 
       const allSubscriptions: Subscription[] = []
 
-      // Fetch subscriptions for each client
-      for (const client of clients || []) {
-        const asaasCustomerId = (client.custom_fields as Record<string, string>)?.asaas_customer_id
-        if (!asaasCustomerId) continue
+      // Filter clients that have asaas_customer_id
+      const clientsWithAsaas = (clients || []).filter(
+        (c) => (c.custom_fields as Record<string, string>)?.asaas_customer_id
+      )
 
-        try {
-          const res = await fetch(`/api/integrations/asaas/subscriptions?client_id=${client.id}`)
-          const data = await res.json()
+      // Fetch subscriptions in parallel batches (max 5 concurrent)
+      const BATCH_SIZE = 5
+      for (let i = 0; i < clientsWithAsaas.length; i += BATCH_SIZE) {
+        const batch = clientsWithAsaas.slice(i, i + BATCH_SIZE)
+        const results = await Promise.allSettled(
+          batch.map(async (client) => {
+            const res = await fetch(`/api/integrations/asaas/subscriptions?client_id=${client.id}`)
+            const data = await res.json()
+            return { client, data }
+          })
+        )
 
-          if (data.success && data.subscriptions) {
+        for (const result of results) {
+          if (result.status === "fulfilled" && result.value.data.success && result.value.data.subscriptions) {
+            const { client, data } = result.value
             data.subscriptions.forEach((sub: Subscription) => {
               allSubscriptions.push({
                 ...sub,
@@ -106,8 +116,6 @@ export function SubscriptionsManager() {
               })
             })
           }
-        } catch {
-          // Continue with next client
         }
       }
 

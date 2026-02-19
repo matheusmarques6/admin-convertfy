@@ -804,19 +804,28 @@ async function getProductsSummary(
       count: number
     }>(storeDomain, accessToken, "/products/count.json")
 
-    const inventoryResponse = await shopifyRequest<{
-      products: Array<{
-        id: number
-        title: string
-        status: string
-        variants: Array<{
-          inventory_quantity: number
-          price: string
-        }>
+    // Fetch all products with pagination
+    type ProductItem = {
+      id: number
+      title: string
+      status: string
+      variants: Array<{
+        inventory_quantity: number
+        price: string
       }>
-    }>(storeDomain, accessToken, "/products.json?limit=250")
+    }
 
-    const products = inventoryResponse.products || []
+    const products: ProductItem[] = []
+    let productsEndpoint: string | null = "/products.json?limit=250"
+    const maxProductPages = 20
+
+    for (let page = 0; productsEndpoint && page < maxProductPages; page++) {
+      const { data: pageData, nextPageUrl } = await shopifyPaginatedRequest<{
+        products: ProductItem[]
+      }>(storeDomain, accessToken, productsEndpoint)
+      products.push(...(pageData.products || []))
+      productsEndpoint = nextPageUrl
+    }
     const activeProducts = products.filter((p) => p.status === "active").length
     const draftProducts = products.filter((p) => p.status === "draft").length
     const archivedProducts = products.filter((p) => p.status === "archived").length

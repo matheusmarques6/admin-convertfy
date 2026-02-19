@@ -41,14 +41,18 @@ export function CalendarWeekView({
   onMeetingClick,
   onSlotClick,
 }: CalendarWeekViewProps) {
-  const weekStart = startOfWeek(currentDate, { locale: ptBR })
-  const weekEnd = endOfWeek(currentDate, { locale: ptBR })
-  const days = eachDayOfInterval({ start: weekStart, end: weekEnd })
+  const days = useMemo(() => {
+    const weekStart = startOfWeek(currentDate, { locale: ptBR })
+    const weekEnd = endOfWeek(currentDate, { locale: ptBR })
+    return eachDayOfInterval({ start: weekStart, end: weekEnd })
+  }, [currentDate])
 
-  const hours = eachHourOfInterval({
-    start: set(currentDate, { hours: HOUR_START, minutes: 0, seconds: 0 }),
-    end: set(currentDate, { hours: HOUR_END, minutes: 0, seconds: 0 }),
-  })
+  const hours = useMemo(() => {
+    return eachHourOfInterval({
+      start: set(currentDate, { hours: HOUR_START, minutes: 0, seconds: 0 }),
+      end: set(currentDate, { hours: HOUR_END, minutes: 0, seconds: 0 }),
+    })
+  }, [currentDate])
 
   const meetingsByDay = useMemo(() => {
     const map = new Map<string, MeetingWithRelations[]>()

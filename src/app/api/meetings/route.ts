@@ -73,6 +73,19 @@ export async function GET(request: NextRequest) {
       query = query.gte("scheduled_at", new Date().toISOString())
     }
 
+    // Pre-filter by participant in SQL to reduce data transfer
+    if (participantId) {
+      const { data: participantMeetings } = await adminClient
+        .from("meeting_participants")
+        .select("meeting_id")
+        .eq("participant_id", participantId)
+
+      const meetingIdsFromParticipants = participantMeetings?.map((p) => p.meeting_id) || []
+
+      // Also include meetings where user is the organizer (user_id)
+      query = query.or(`user_id.eq.${participantId},id.in.(${meetingIdsFromParticipants.join(",")})`)
+    }
+
     const { data: meetings, error } = await query
 
     if (error) {
@@ -80,14 +93,7 @@ export async function GET(request: NextRequest) {
       throw new AppError("Erro ao buscar reuniões", 500)
     }
 
-    // If filtering by participant, filter meetings that include this participant
-    let filteredMeetings = meetings || []
-    if (participantId) {
-      filteredMeetings = filteredMeetings.filter(m => {
-        const participants = m.participants || []
-        return participants.some((p: { participant_id: string }) => p.participant_id === participantId) || m.user_id === participantId
-      })
-    }
+    const filteredMeetings = meetings || []
 
     // Fetch profiles for participants separately (polymorphic participant_id has no FK)
     const participantProfileIds = new Set<string>()

@@ -87,29 +87,43 @@ export async function GET(request: NextRequest) {
       throw new AppError("Erro ao buscar membros", 500)
     }
 
-    // For each member, get their features and store access count
-    const membersWithDetails = await Promise.all(
-      (members || []).map(async (member) => {
-        const [featuresRes, accessRes] = await Promise.all([
-          supabase
-            .from("org_member_features")
-            .select("feature_key, enabled")
-            .eq("org_member_id", member.id)
-            .eq("enabled", true),
-          supabase
-            .from("agent_store_access")
-            .select("id")
-            .eq("org_member_id", member.id)
-            .eq("can_view", true),
-        ])
+    // Batch: fetch all features and store access in 2 queries instead of 2*N
+    const memberIds = (members || []).map((m) => m.id)
 
-        return {
-          ...member,
-          enabled_features: featuresRes.data?.map((f) => f.feature_key) || [],
-          store_access_count: accessRes.data?.length || 0,
-        }
-      })
-    )
+    if (memberIds.length === 0) {
+      return successResponse(request, { members: [] })
+    }
+
+    const [featuresRes, accessRes] = await Promise.all([
+      supabase
+        .from("org_member_features")
+        .select("org_member_id, feature_key")
+        .in("org_member_id", memberIds)
+        .eq("enabled", true),
+      supabase
+        .from("agent_store_access")
+        .select("org_member_id, id")
+        .in("org_member_id", memberIds)
+        .eq("can_view", true),
+    ])
+
+    const featuresByMember = new Map<string, string[]>()
+    featuresRes.data?.forEach((f) => {
+      const list = featuresByMember.get(f.org_member_id) || []
+      list.push(f.feature_key)
+      featuresByMember.set(f.org_member_id, list)
+    })
+
+    const accessCountByMember = new Map<string, number>()
+    accessRes.data?.forEach((a) => {
+      accessCountByMember.set(a.org_member_id, (accessCountByMember.get(a.org_member_id) || 0) + 1)
+    })
+
+    const membersWithDetails = (members || []).map((member) => ({
+      ...member,
+      enabled_features: featuresByMember.get(member.id) || [],
+      store_access_count: accessCountByMember.get(member.id) || 0,
+    }))
 
     return successResponse(request, { members: membersWithDetails })
   } catch (error) {
@@ -142,7 +156,7 @@ export async function POST(request: NextRequest) {
     // Check if user is owner/admin of the target organization
     let isOrgAdmin = false
     if (body.org_id) {
-      const { data: orgMember, error: orgMemberError } = await supabase
+      const { data: orgMember } = await supabase
         .from("org_members")
         .select("role")
         .eq("org_id", body.org_id)

@@ -39,6 +39,8 @@ export async function GET(request: NextRequest) {
 
     const params: Record<string, string | number> = { limit: 100, offset: 0 }
     if (status && status !== "all") params.status = status
+    if (startDate) params["dueDate[ge]"] = startDate
+    if (endDate) params["dueDate[le]"] = endDate
 
     interface AsaasPayment {
       id: string; customer: string; value: number; netValue?: number; status: string;
@@ -56,15 +58,6 @@ export async function GET(request: NextRequest) {
       allPayments = [...allPayments, ...payments]
       offset += 100
       hasMore = offset < totalCount
-    }
-
-    if (startDate || endDate) {
-      allPayments = allPayments.filter(p => {
-        const dueDate = new Date(p.dueDate)
-        if (startDate && dueDate < new Date(startDate)) return false
-        if (endDate && dueDate > new Date(endDate)) return false
-        return true
-      })
     }
 
     allPayments.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
