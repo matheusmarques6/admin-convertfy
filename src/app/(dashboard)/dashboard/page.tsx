@@ -5,6 +5,7 @@ import { DashboardCharts } from "@/components/dashboard/charts"
 import { DashboardAlerts } from "@/components/dashboard/alerts"
 import { RecentActivity } from "@/components/dashboard/recent-activity"
 import { QuickActions } from "@/components/dashboard/quick-actions"
+import { TotalRevenueBanner } from "@/components/dashboard/total-revenue-banner"
 import { TodayAgenda } from "@/components/dashboard/today-agenda"
 import { Skeleton } from "@/components/ui/skeleton"
 import { AnimatedContainer, AnimatedItem } from "@/components/ui/animated-container"
@@ -248,6 +249,11 @@ export default async function DashboardPage() {
 
   return (
     <AnimatedContainer className="space-y-6">
+      {/* Total Revenue Banner */}
+      <AnimatedItem>
+        <TotalRevenueBanner />
+      </AnimatedItem>
+
       {/* Quick Actions */}
       <AnimatedItem>
         <QuickActions />

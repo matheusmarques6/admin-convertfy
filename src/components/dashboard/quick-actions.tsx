@@ -10,6 +10,7 @@ const linkActions = [
     href: "/clients/new",
     icon: UserPlus,
     variant: "default" as const,
+    className: "bg-[#5327F2] hover:bg-[#5327F2]/90 text-white",
   },
   {
     label: "Novo Deal",
@@ -41,7 +42,7 @@ export function QuickActions() {
   return (
     <div className="flex flex-wrap gap-2">
       {linkActions.map((action) => (
-        <Button key={action.label} variant={action.variant} size="sm" asChild>
+        <Button key={action.label} variant={action.variant} size="sm" className={"className" in action ? action.className : undefined} asChild>
           <Link href={action.href}>
             <action.icon className="mr-2 h-4 w-4" />
             {action.label}

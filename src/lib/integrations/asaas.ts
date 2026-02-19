@@ -177,6 +177,21 @@ export class AsaasService {
     return this.request(`/subscriptions/${id}`, { method: "DELETE" })
   }
 
+  async listSubscriptions(params?: {
+    status?: string
+    offset?: number
+    limit?: number
+  }): Promise<{
+    data: Array<{ id: string; customer: string; value: number; cycle: string; status: string }>
+    totalCount: number
+  }> {
+    const query = new URLSearchParams()
+    if (params?.status) query.set("status", params.status)
+    if (params?.offset) query.set("offset", String(params.offset))
+    if (params?.limit) query.set("limit", String(params.limit))
+    return this.request(`/subscriptions?${query.toString()}`)
+  }
+
   // Webhook validation
   static validateWebhook(
     payload: string,

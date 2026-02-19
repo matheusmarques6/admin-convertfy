@@ -38,6 +38,7 @@ import { GlowCard } from "@/components/ui/glow-card"
 
 interface BillingData {
   connected: boolean
+  errorMessage?: string
   period: string
   dateRange?: { from: string; to: string }
   summary: {
@@ -49,6 +50,7 @@ interface BillingData {
     totalClients: number
     activeSubscriptions: number
   }
+  asaasMrr?: number
   byType: {
     PIX: number
     BOLETO: number
@@ -77,6 +79,7 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
   const [customEnd, setCustomEnd] = useState("")
   const [isLoading, setIsLoading] = useState(true)
   const [data, setData] = useState<BillingData | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     loadData()
@@ -85,18 +88,25 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
 
   async function loadData(customPeriod?: { start: string; end: string }) {
     setIsLoading(true)
+    setError(null)
     try {
       let url = `/api/integrations/asaas/billing?period=${period}`
       if (period === "custom" && customPeriod) {
         url += `&start_date=${customPeriod.start}&end_date=${customPeriod.end}`
       }
       const response = await fetch(url)
-      if (response.ok) {
-        const result = await response.json()
-        setData(result)
+      if (!response.ok) {
+        setError("Não foi possível carregar os dados financeiros. Tente novamente.")
+        return
       }
-    } catch (error) {
-      console.error("Error loading billing:", error)
+      const result = await response.json()
+      if (result.errorMessage) {
+        setError(result.errorMessage)
+      }
+      setData(result)
+    } catch (err) {
+      console.error("Error loading billing:", err)
+      setError("Erro de conexão ao carregar dados financeiros.")
     } finally {
       setIsLoading(false)
     }
@@ -126,6 +136,30 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
           ))}
         </div>
       </div>
+    )
+  }
+
+  // Show error state
+  if (error && (!data || !data.connected)) {
+    return (
+      <Card className="border-destructive/50 bg-destructive/5">
+        <CardContent className="flex flex-col items-center justify-center py-12">
+          <AlertCircle className="h-12 w-12 text-destructive mb-4" />
+          <h3 className="text-lg font-medium">Erro no Resumo Financeiro</h3>
+          <p className="text-muted-foreground text-center mt-1 max-w-md">
+            {error}
+          </p>
+          <div className="flex gap-2 mt-4">
+            <Button variant="outline" onClick={() => loadData()}>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Tentar Novamente
+            </Button>
+            <Button variant="outline" asChild>
+              <Link href="/settings/integrations">Verificar Integração</Link>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     )
   }
 
@@ -278,7 +312,7 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
                 MRR
               </CardDescription>
               <CardTitle className="text-3xl text-primary text-glow-mrr mt-2">
-                {formatCurrency(mrr)}
+                {formatCurrency(data?.connected && data?.asaasMrr ? data.asaasMrr : mrr)}
               </CardTitle>
               <p className="text-sm text-muted-foreground mt-2">
                 Receita recorrente mensal

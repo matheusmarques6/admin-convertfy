@@ -14,6 +14,19 @@ const inadimplentesCache = new Map<string, {
 }>()
 const INADIMPLENTES_CACHE_TTL = 5 * 60 * 1000
 
+function normalizeToMonthly(value: number, cycle: string): number {
+  switch (cycle) {
+    case "WEEKLY": return value * 4.33
+    case "BIWEEKLY": return value * 2.17
+    case "MONTHLY": return value
+    case "BIMONTHLY": return value / 2
+    case "QUARTERLY": return value / 3
+    case "SEMIANNUALLY": return value / 6
+    case "YEARLY": return value / 12
+    default: return value
+  }
+}
+
 async function getInadimplentesData(asaas: AsaasService, cacheKey: string) {
   const now = Date.now()
   const cached = inadimplentesCache.get(cacheKey)
@@ -78,6 +91,18 @@ export async function GET(request: NextRequest) {
     }
 
     const credentials = decryptCredentialsJson(integration.credentials)
+
+    if (!credentials.api_key) {
+      return successResponse(request, {
+        connected: false,
+        errorMessage: "Chave de API do Asaas não configurada. Verifique a integração.",
+        summary: {
+          received: 0, confirmed: 0, pending: 0, overdue: 0, refunded: 0,
+          totalClients: 0, activeSubscriptions: 0,
+        }
+      })
+    }
+
     const asaas = createAsaasService(credentials)
 
     const now = new Date()
@@ -142,22 +167,22 @@ export async function GET(request: NextRequest) {
 
     const { totalCount: totalClients } = await asaas.listCustomers({ limit: 1 })
 
-    const environment = (credentials.environment as string) || "sandbox"
-    const asaasBaseUrl = environment === "production"
-      ? "https://api.asaas.com/v3"
-      : "https://sandbox.asaas.com/api/v3"
-
-    const subsResponse = await fetch(
-      `${asaasBaseUrl}/subscriptions?status=ACTIVE&limit=1`,
-      {
-        headers: {
-          "Content-Type": "application/json",
-          access_token: credentials.api_key as string,
-        },
+    // Calculate MRR from all active subscriptions (also yields totalCount)
+    let asaasMrr = 0
+    let activeSubscriptions = 0
+    let subsOffset = 0
+    let subsHasMore = true
+    while (subsHasMore) {
+      const { data: subs, totalCount: subsTotalCount } = await asaas.listSubscriptions({
+        status: "ACTIVE", offset: subsOffset, limit: 100,
+      })
+      activeSubscriptions = subsTotalCount
+      for (const sub of subs) {
+        asaasMrr += normalizeToMonthly(sub.value, sub.cycle)
       }
-    )
-    const subsData = await subsResponse.json()
-    const activeSubscriptions = subsData.totalCount || 0
+      subsOffset += 100
+      subsHasMore = subsOffset < subsTotalCount
+    }
 
     // Fetch ALL overdue payments (no date filter) to count inadimplent clients
     // Cached for 5 minutes to avoid excessive API calls
@@ -181,10 +206,26 @@ export async function GET(request: NextRequest) {
       connected: true, period,
       dateRange: { from: dateFrom, to: dateTo },
       summary: { received, confirmed, pending, overdue, refunded, totalClients, activeSubscriptions },
+      asaasMrr,
       byType, counts, inadimplentes,
       recentPayments: allPayments.slice(0, 10),
     })
   } catch (error) {
+    const message = error instanceof Error ? error.message : "Erro desconhecido"
+    const isAuthError = message.includes("401") || message.includes("403") || message.includes("Unauthorized") || message.includes("access_token")
+
+    if (isAuthError) {
+      log.warn("Asaas auth error:", message)
+      return successResponse(request, {
+        connected: false,
+        errorMessage: "Credenciais do Asaas inválidas ou expiradas. Verifique a chave de API nas configurações.",
+        summary: {
+          received: 0, confirmed: 0, pending: 0, overdue: 0, refunded: 0,
+          totalClients: 0, activeSubscriptions: 0,
+        }
+      })
+    }
+
     return errorResponse(request, error, "AsaasBilling GET")
   }
 }
