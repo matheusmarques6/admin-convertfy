@@ -126,8 +126,8 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) {
-      log.error("Campaign insert failed", { error: error.message })
-      throw new AppError("Erro ao criar campanha", 500)
+      log.error("Campaign insert failed", { error: error.message, code: error.code, details: error.details, hint: error.hint })
+      throw new AppError(`Erro ao criar campanha: ${error.message}`, 500)
     }
 
     return successResponse(request, { campaign }, { status: 201, message: "Campanha criada com sucesso" })
