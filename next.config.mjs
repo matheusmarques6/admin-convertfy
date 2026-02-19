@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   compress: true,
+  cleanDistDir: true,
 
   images: {
     remotePatterns: [
