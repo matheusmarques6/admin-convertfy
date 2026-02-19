@@ -4,6 +4,12 @@ import type {
   User,
   Client,
   Integration,
+  Pipeline,
+  PipelineStage,
+  DealWithRelations,
+  PipelineMember,
+  PipelineImportRule,
+  PipelineMemberRole,
 } from "@/types"
 
 // Auth Store
@@ -98,6 +104,42 @@ interface IntegrationsState {
   setTesting: (type: string | null) => void
 }
 
+// Pipeline Store
+interface PipelineState {
+  pipelines: Pipeline[]
+  selectedPipeline: Pipeline | null
+  stages: PipelineStage[]
+  deals: DealWithRelations[]
+  members: PipelineMember[]
+  importRules: PipelineImportRule[]
+  currentUserRole: PipelineMemberRole | null
+  setPipelines: (pipelines: Pipeline[]) => void
+  setSelectedPipeline: (pipeline: Pipeline | null) => void
+  setStages: (stages: PipelineStage[]) => void
+  setDeals: (deals: DealWithRelations[]) => void
+  setMembers: (members: PipelineMember[]) => void
+  setImportRules: (rules: PipelineImportRule[]) => void
+  setCurrentUserRole: (role: PipelineMemberRole | null) => void
+}
+
+export const usePipelineStore = create<PipelineState>()((set) => ({
+  pipelines: [],
+  selectedPipeline: null,
+  stages: [],
+  deals: [],
+  members: [],
+  importRules: [],
+  currentUserRole: null,
+  setPipelines: (pipelines) => set({ pipelines }),
+  setSelectedPipeline: (selectedPipeline) => set({ selectedPipeline }),
+  setStages: (stages) => set({ stages }),
+  setDeals: (deals) => set({ deals }),
+  setMembers: (members) => set({ members }),
+  setImportRules: (importRules) => set({ importRules }),
+  setCurrentUserRole: (currentUserRole) => set({ currentUserRole }),
+}))
+
+// Integrations Store
 export const useIntegrationsStore = create<IntegrationsState>((set) => ({
   integrations: [],
   statuses: {},

@@ -7,7 +7,24 @@ import { KANBAN_FETCH_STATUSES } from "@/lib/constants/board"
 
 export const dynamic = "force-dynamic"
 
-async function getTasks() {
+async function resolveOrgId() {
+  const supabase = await createClient()
+  const adminClient = createAdminClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+
+  const { data: currentMember } = await adminClient
+    .from("org_members")
+    .select("org_id")
+    .eq("profile_id", user.id)
+    .eq("is_active", true)
+    .limit(1)
+    .single()
+
+  return currentMember?.org_id || null
+}
+
+async function getTasks(orgId: string) {
   const adminClient = createAdminClient()
 
   const { data: tasks, error } = await adminClient
@@ -23,6 +40,7 @@ async function getTasks() {
       client:clients(id, name, company),
       store:client_stores(id, store_name, platform)
     `)
+    .eq("org_id", orgId)
     .in("status", KANBAN_FETCH_STATUSES)
     .order("position", { ascending: true })
 
@@ -71,20 +89,30 @@ async function getTeamMembers() {
   }))
 }
 
-async function getClients() {
+async function getClients(orgId: string) {
   const adminClient = createAdminClient()
 
   const { data: clients } = await adminClient
     .from("clients")
     .select("id, name, company")
+    .eq("org_id", orgId)
     .in("status", ["active", "onboarding"])
     .order("name", { ascending: true })
 
   return clients || []
 }
 
-async function getStores() {
+async function getStores(orgId: string) {
   const adminClient = createAdminClient()
+
+  // Get org's client IDs first, then filter stores
+  const { data: orgClients } = await adminClient
+    .from("clients")
+    .select("id")
+    .eq("org_id", orgId)
+
+  const orgClientIds = orgClients?.map(c => c.id) || []
+  if (orgClientIds.length === 0) return []
 
   const { data: stores } = await adminClient
     .from("client_stores")
@@ -94,6 +122,7 @@ async function getStores() {
       platform,
       client:clients(id, name)
     `)
+    .in("client_id", orgClientIds)
     .eq("is_active", true)
     .order("store_name", { ascending: true })
 
@@ -104,7 +133,7 @@ async function getStores() {
   }))
 }
 
-async function getMeetings() {
+async function getMeetings(orgId: string) {
   const supabase = await createClient()
   const adminClient = createAdminClient()
 
@@ -124,7 +153,7 @@ async function getMeetings() {
     orgMemberId = orgMember?.id || null
   }
 
-  // First, get meetings the user owns or is a participant of
+  // Get meetings scoped to org
   const { data: meetings } = await adminClient
     .from("meetings")
     .select(`
@@ -139,6 +168,7 @@ async function getMeetings() {
         response_status
       )
     `)
+    .eq("org_id", orgId)
     .order("scheduled_at", { ascending: true })
 
   // Filter to include meetings where user is owner OR participant
@@ -209,12 +239,21 @@ function BoardSkeleton() {
 }
 
 export default async function BoardPage() {
+  const orgId = await resolveOrgId()
+  if (!orgId) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-muted-foreground">Acesso negado — organização não encontrada.</p>
+      </div>
+    )
+  }
+
   const [tasks, members, clients, stores, meetings] = await Promise.all([
-    getTasks(),
+    getTasks(orgId),
     getTeamMembers(),
-    getClients(),
-    getStores(),
-    getMeetings(),
+    getClients(orgId),
+    getStores(orgId),
+    getMeetings(orgId),
   ])
 
   return (
