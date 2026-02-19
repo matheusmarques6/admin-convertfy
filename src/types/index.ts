@@ -640,9 +640,6 @@ export interface Campaign {
   tags: string[]
   color: string
   notes?: string
-  instructions_doc_url?: string
-  is_quick: boolean
-  copy_status?: "pending" | "generating" | "ready" | "approved"
   created_by?: string
   // Approval workflow fields
   submitted_by?: string

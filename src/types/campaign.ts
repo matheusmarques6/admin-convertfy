@@ -5,7 +5,6 @@ import type { User } from "./user"
 export type CampaignStatus = "draft" | "pending_review" | "approved" | "rejected" | "scheduled" | "sent" | "cancelled"
 export type CampaignChannel = "email" | "sms" | "push" | "whatsapp"
 export type CampaignType = "promotional" | "newsletter" | "transactional" | "automation" | "seasonal" | "launch" | "other"
-export type CopyStatus = "pending" | "generating" | "ready" | "approved"
 
 export interface Campaign {
   id: string
@@ -36,9 +35,6 @@ export interface Campaign {
   tags: string[]
   color: string
   notes?: string
-  instructions_doc_url?: string
-  is_quick: boolean
-  copy_status?: CopyStatus
   created_by?: string
   // Approval workflow fields
   submitted_by?: string

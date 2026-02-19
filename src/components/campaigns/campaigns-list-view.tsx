@@ -515,7 +515,6 @@ export function CampaignsListView() {
                           <td className="py-2 pr-4 font-medium max-w-[200px] truncate">
                             <div className="flex items-center gap-1">
                               {isTop && <Trophy className="h-3.5 w-3.5 text-warning flex-shrink-0" />}
-                              {c.is_quick && <span className="text-warning text-xs" title="Campanha Rápida">⚡</span>}
                               <span className="truncate">{c.name}</span>
                             </div>
                           </td>
