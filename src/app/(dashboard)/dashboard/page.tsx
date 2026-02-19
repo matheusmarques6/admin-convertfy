@@ -1,11 +1,13 @@
+import { Suspense } from "react"
 import { createClient } from "@/lib/supabase/server"
-import { FinancialSummary } from "@/components/dashboard/financial-summary"
+import { BillingMetrics } from "@/components/dashboard/billing-metrics"
 import { DashboardCharts } from "@/components/dashboard/charts"
 import { DashboardAlerts } from "@/components/dashboard/alerts"
 import { RecentActivity } from "@/components/dashboard/recent-activity"
 import { QuickActions } from "@/components/dashboard/quick-actions"
 import { TotalRevenueBanner } from "@/components/dashboard/total-revenue-banner"
 import { TodayAgenda } from "@/components/dashboard/today-agenda"
+import { Skeleton } from "@/components/ui/skeleton"
 import { AnimatedContainer, AnimatedItem } from "@/components/ui/animated-container"
 import type { DashboardAlert } from "@/types"
 
@@ -27,6 +29,8 @@ const STATUS_LABELS: Record<string, string> = {
   churned: "Churned",
 }
 
+const MONTH_LABELS = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+
 async function getDashboardData() {
   const supabase = await createClient()
 
@@ -39,7 +43,45 @@ async function getDashboardData() {
     .order("scheduled_at", { ascending: true })
     .limit(5)
 
+  // --- Revenue last 6 months ---
   const now = new Date()
+  const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1)
+
+  const [{ data: paidCharges }, { data: paidInvoices }] = await Promise.all([
+    supabase
+      .from("client_charges")
+      .select("value, due_date")
+      .in("status", ["paid", "RECEIVED", "CONFIRMED"])
+      .gte("due_date", sixMonthsAgo.toISOString()),
+    supabase
+      .from("invoices")
+      .select("amount, due_date")
+      .eq("status", "paid")
+      .gte("due_date", sixMonthsAgo.toISOString()),
+  ])
+
+  const revenueByMonth = new Map<string, number>()
+  for (let i = 0; i < 6; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - 5 + i, 1)
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+    revenueByMonth.set(key, 0)
+  }
+  paidCharges?.forEach((c) => {
+    const key = c.due_date?.slice(0, 7)
+    if (key && revenueByMonth.has(key)) {
+      revenueByMonth.set(key, (revenueByMonth.get(key) || 0) + (c.value || 0))
+    }
+  })
+  paidInvoices?.forEach((inv) => {
+    const key = inv.due_date?.slice(0, 7)
+    if (key && revenueByMonth.has(key)) {
+      revenueByMonth.set(key, (revenueByMonth.get(key) || 0) + (inv.amount || 0))
+    }
+  })
+  const revenueData = Array.from(revenueByMonth.entries()).map(([key, value]) => ({
+    month: MONTH_LABELS[parseInt(key.split("-")[1]) - 1],
+    receita: value,
+  }))
 
   // --- Clients by status ---
   const { data: clientRows } = await supabase
@@ -82,6 +124,14 @@ async function getDashboardData() {
       value: data.value,
       deals: data.deals,
     }))
+
+  // --- MRR from active contracts ---
+  const { data: activeContracts } = await supabase
+    .from("contracts")
+    .select("monthly_value")
+    .eq("status", "active")
+
+  const mrr = activeContracts?.reduce((sum, c) => sum + (c.monthly_value || 0), 0) || 0
 
   // --- Recent activities ---
   const { data: activities } = await supabase
@@ -169,11 +219,29 @@ async function getDashboardData() {
 
   return {
     upcomingMeetings: meetings || [],
+    revenueData,
     clientsData,
     pipelineData,
+    mrr,
     activities: activities || [],
     alerts,
   }
+}
+
+function MetricsSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-2">
+        <Skeleton className="h-10 w-48" />
+        <Skeleton className="h-10 w-10" />
+      </div>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {[...Array(4)].map((_, i) => (
+          <Skeleton key={i} className="h-32" />
+        ))}
+      </div>
+    </div>
+  )
 }
 
 export default async function DashboardPage() {
@@ -191,9 +259,11 @@ export default async function DashboardPage() {
         <QuickActions />
       </AnimatedItem>
 
-      {/* Financial Summary */}
+      {/* Billing Metrics with Period Selector */}
       <AnimatedItem>
-        <FinancialSummary />
+        <Suspense fallback={<MetricsSkeleton />}>
+          <BillingMetrics mrr={data.mrr} />
+        </Suspense>
       </AnimatedItem>
 
       {/* Charts and Activity */}
@@ -201,6 +271,7 @@ export default async function DashboardPage() {
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-7">
           <div className="col-span-full lg:col-span-4">
             <DashboardCharts
+              revenueData={data.revenueData}
               clientsData={data.clientsData}
               pipelineData={data.pipelineData}
             />

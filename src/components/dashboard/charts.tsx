@@ -17,6 +17,12 @@ import { GlowCard } from "@/components/ui/glow-card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatCurrency } from "@/lib/utils"
 
+interface RevenueData {
+  month: string
+  receita: number
+  [key: string]: string | number
+}
+
 interface ClientsData {
   name: string
   value: number
@@ -32,29 +38,74 @@ interface PipelineData {
 }
 
 interface DashboardChartsProps {
+  revenueData?: RevenueData[]
   clientsData?: ClientsData[]
   pipelineData?: PipelineData[]
 }
 
 export function DashboardCharts({
+  revenueData = [],
   clientsData = [],
   pipelineData = []
 }: DashboardChartsProps) {
+  const hasRevenueData = revenueData.some((d) => d.receita > 0)
   const hasClientsData = clientsData.some((d) => d.value > 0)
   const hasPipelineData = pipelineData.length > 0
 
   return (
     <GlowCard color="primary" intensity="subtle" className="h-full" surfaceClassName="gradient-accent-border">
       <CardHeader>
-        <CardTitle>Visão Geral</CardTitle>
-        <CardDescription>Pipeline e distribuição de clientes</CardDescription>
+        <CardTitle>Resumo Financeiro</CardTitle>
+        <CardDescription>Acompanhe o desempenho da sua agência</CardDescription>
       </CardHeader>
       <CardContent>
-        <Tabs defaultValue="pipeline" className="space-y-4">
+        <Tabs defaultValue="revenue" className="space-y-4">
           <TabsList>
+            <TabsTrigger value="revenue">Receita</TabsTrigger>
             <TabsTrigger value="pipeline">Pipeline</TabsTrigger>
             <TabsTrigger value="clients">Clientes</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="revenue" className="space-y-4">
+            <div className="h-[300px]">
+              {hasRevenueData ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={revenueData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis
+                      dataKey="month"
+                      stroke="hsl(var(--muted-foreground))"
+                      fontSize={12}
+                    />
+                    <YAxis
+                      stroke="hsl(var(--muted-foreground))"
+                      fontSize={12}
+                      tickFormatter={(value) => `${value / 1000}k`}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: "hsl(var(--card))",
+                        border: "1px solid hsl(var(--border))",
+                        borderRadius: "8px",
+                      }}
+                      formatter={(value: number) => formatCurrency(value)}
+                    />
+                    <Bar dataKey="receita" fill="#22C55E" radius={[4, 4, 0, 0]} name="Receita" isAnimationActive={true} animationDuration={800} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex items-center justify-center h-full text-muted-foreground">
+                  Nenhum dado de receita disponível
+                </div>
+              )}
+            </div>
+            <div className="flex justify-center gap-6 text-sm">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-success" />
+                <span className="text-muted-foreground">Receita (últimos 6 meses)</span>
+              </div>
+            </div>
+          </TabsContent>
 
           <TabsContent value="pipeline" className="space-y-4">
             <div className="h-[300px]">
