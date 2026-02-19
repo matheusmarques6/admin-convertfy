@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, AppError } from "@/lib/api/errors"
+import { NextRequest } from "next/server"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { createWiseService } from "@/lib/integrations/wise"
 import { decryptCredentialsJson } from "@/lib/crypto"
@@ -13,14 +13,7 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
     const searchParams = request.nextUrl.searchParams
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    await requireAuth(supabase)
 
     // Get date range (default: last 30 days)
     const endDate = searchParams.get("end_date") || new Date().toISOString()
@@ -51,7 +44,7 @@ export async function GET(request: NextRequest) {
       .from("clients")
       .select("id, name, email, company")
 
-    return NextResponse.json({
+    return successResponse(request, {
       payments,
       clients: clients || [],
       period: { start: startDate, end: endDate },

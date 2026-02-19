@@ -191,6 +191,10 @@ export default function EditReportPage() {
           try {
             const response = await fetch(url, { signal: controller.signal })
             clearTimeout(timeoutId)
+            if (!response.ok) {
+              const errorText = await response.text().catch(() => "Unknown error")
+              throw new Error(`API error ${response.status}: ${errorText}`)
+            }
             return response.json()
           } catch (error) {
             clearTimeout(timeoutId)

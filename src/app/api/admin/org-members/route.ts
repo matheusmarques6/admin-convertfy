@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest } from "next/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { OrgMemberFormData } from "@/types"
 import { generateTempPassword } from "@/lib/utils/generate-password"
-import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("AdminOrgMembers")
@@ -121,25 +121,21 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    log.debug("[Org Members POST] Auth check:", { userId: user?.id, authError })
-
-    if (authError || !user) {
-      throw new AppError("Não autorizado", 401)
-    }
+    const user = await requireAuth(supabase)
 
     const body: OrgMemberFormData = await request.json()
-    log.debug("[Org Members POST] Body received:", { org_id: body.org_id, role: body.role, email: body.email })
+
+    // Validate required fields first (Fix 3.6)
+    if (!body.org_id || !body.role) {
+      throw new AppError("Campos obrigatórios: org_id, role", 400)
+    }
 
     // Check if user has permission: system admin OR org owner/admin
-    const { data: profile, error: profileError } = await supabase
+    const { data: profile } = await supabase
       .from("profiles")
       .select("role")
       .eq("id", user.id)
       .single()
-
-    log.debug("[Org Members POST] Profile check:", { profile, profileError })
 
     const isSystemAdmin = profile?.role === "admin"
 
@@ -153,20 +149,11 @@ export async function POST(request: NextRequest) {
         .eq("profile_id", user.id)
         .single()
 
-      log.debug("[Org Members POST] OrgMember check:", { orgMember, orgMemberError, org_id: body.org_id, profile_id: user.id })
-
       isOrgAdmin = orgMember?.role === "owner" || orgMember?.role === "manager"
     }
 
-    log.debug("[Org Members POST] Permission result:", { isSystemAdmin, isOrgAdmin })
-
     if (!isSystemAdmin && !isOrgAdmin) {
-      log.debug("[Org Members POST] ACCESS DENIED - User has no permission")
       throw new AppError("Acesso negado", 403)
-    }
-
-    if (!body.org_id || !body.role) {
-      throw new AppError("Campos obrigatórios: org_id, role", 400)
     }
 
     // If profile_id is provided, use it; otherwise, we need email and name to create a new user
@@ -191,44 +178,64 @@ export async function POST(request: NextRequest) {
         // Create new auth user and profile
         const adminClient = createAdminClient()
 
-        // First check if auth user already exists (might be orphan from failed attempt)
-        const { data: existingUsers } = await adminClient.auth.admin.listUsers()
-        const existingAuthUser = existingUsers?.users?.find(
-          (u) => u.email?.toLowerCase() === body.email?.toLowerCase()
-        )
-
+        // Try to create the auth user directly; handle "already exists" for orphan cases
         let authUserId: string
+        const tempPassword = generateTempPassword()
 
-        if (existingAuthUser) {
-          // User exists in auth, use their ID
-          log.debug("[Org Members] Found existing auth user:", existingAuthUser.id)
-          authUserId = existingAuthUser.id
-        } else {
-          // Create user with temporary password
-          const tempPassword = generateTempPassword()
-          tempPasswordForResponse = tempPassword // Save for response to admin
+        const { data: authUser, error: createError } = await adminClient.auth.admin.createUser({
+          email: body.email.toLowerCase(),
+          password: tempPassword,
+          email_confirm: true,
+          user_metadata: {
+            name: body.name,
+            is_agent: true,
+            must_change_password: true,
+          },
+        })
 
-          const { data: authUser, error: createError } = await adminClient.auth.admin.createUser({
-            email: body.email.toLowerCase(),
-            password: tempPassword,
-            email_confirm: true,
-            user_metadata: {
-              name: body.name,
-              is_agent: true,
-              must_change_password: true, // Flag to force password change on first login
-            },
-          })
+        if (createError) {
+          const isDuplicate =
+            createError.message?.toLowerCase().includes("already") ||
+            (createError as { status?: number }).status === 422
 
-          if (createError) {
+          if (isDuplicate) {
+            log.debug("[Org Members] Auth user already exists, searching by email")
+
+            // Paginate through auth users to find the orphan
+            let page = 1
+            let foundUserId: string | null = null
+
+            while (!foundUserId) {
+              const { data: usersPage } = await adminClient.auth.admin.listUsers({ page, perPage: 50 })
+              const users = usersPage?.users || []
+              const match = users.find(
+                (u) => u.email?.toLowerCase() === body.email?.toLowerCase()
+              )
+              if (match) {
+                foundUserId = match.id
+                log.debug("[Org Members] Found orphan auth user:", match.id)
+              } else if (users.length < 50) {
+                break
+              } else {
+                page++
+                if (page > 20) break // Safety cap
+              }
+            }
+
+            if (!foundUserId) {
+              log.error("[Org Members] Auth reports duplicate but user not found:", createError)
+              throw new AppError("Erro ao criar usuário: " + createError.message, 500)
+            }
+
+            authUserId = foundUserId
+          } else {
             log.error("[Org Members] Create user error:", createError)
-            return NextResponse.json(
-              { error: "Erro ao criar usuário: " + createError.message },
-              { status: 500, headers: corsHeaders(request.headers.get("origin")) }
-            )
+            throw new AppError("Erro ao criar usuário: " + createError.message, 500)
           }
-
+        } else {
           log.debug("[Org Members] User created successfully:", authUser.user.id)
           authUserId = authUser.user.id
+          tempPasswordForResponse = tempPassword
         }
 
         // Check if profile already exists for this auth user
@@ -262,10 +269,7 @@ export async function POST(request: NextRequest) {
 
           if (profileError) {
             log.error("[Org Members] Profile error:", profileError.message)
-            return NextResponse.json(
-              { error: "Erro ao criar perfil: " + profileError.message },
-              { status: 500, headers: corsHeaders(request.headers.get("origin")) }
-            )
+            throw new AppError("Erro ao criar perfil: " + profileError.message, 500)
           }
 
           profileId = newProfile.id
@@ -306,10 +310,7 @@ export async function POST(request: NextRequest) {
 
     if (insertError) {
       log.error("[Org Members] Insert error:", insertError)
-      return NextResponse.json(
-        { error: "Erro ao criar membro: " + insertError.message },
-        { status: 500, headers: corsHeaders(request.headers.get("origin")) }
-      )
+      throw new AppError("Erro ao criar membro: " + insertError.message, 500)
     }
 
     // If features are provided, assign them
@@ -364,7 +365,7 @@ export async function POST(request: NextRequest) {
       response.temp_password = tempPasswordForResponse
     }
 
-    return NextResponse.json(response, { status: 201, headers: corsHeaders(request.headers.get("origin")) })
+    return successResponse(request, response, { status: 201 })
   } catch (error) {
     return errorResponse(request, error, "AdminOrgMembers")
   }

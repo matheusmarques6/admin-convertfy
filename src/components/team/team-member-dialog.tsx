@@ -221,6 +221,16 @@ export function TeamMemberDialog({
   }
 
   async function onSubmit(data: FormData) {
+    // Client-side validation: email and name required when creating
+    if (!isEditing && (!data.email || !data.name)) {
+      toast({
+        variant: "destructive",
+        title: "Campos obrigatórios",
+        description: "Email e nome são obrigatórios para criar um novo membro.",
+      })
+      return
+    }
+
     setIsSubmitting(true)
 
     try {

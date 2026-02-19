@@ -287,13 +287,26 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
           </div>
 
           {/* Secondary Metrics */}
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <GlowCard color="primary" intensity="subtle" surfaceClassName="p-6">
               <CardDescription>Clientes Asaas</CardDescription>
               <CardTitle className="text-2xl flex items-center gap-2 mt-2">
                 <Users className="h-5 w-5 text-primary" />
                 {data?.summary.totalClients || 0}
               </CardTitle>
+            </GlowCard>
+
+            <GlowCard color="destructive" intensity="subtle" surfaceClassName="p-6">
+              <CardDescription className="flex items-center gap-2">
+                <Users className="h-4 w-4 text-destructive" />
+                Clientes Inadimplentes
+              </CardDescription>
+              <CardTitle className="text-2xl text-destructive mt-2">
+                {data?.inadimplentes?.totalClients || 0}
+              </CardTitle>
+              <p className="text-sm text-muted-foreground mt-1">
+                {data?.inadimplentes?.totalCharges || 0} cobranças · {formatCurrency(data?.inadimplentes?.totalValue || 0)}
+              </p>
             </GlowCard>
 
             <GlowCard color="mrr" intensity="subtle" surfaceClassName="p-6">

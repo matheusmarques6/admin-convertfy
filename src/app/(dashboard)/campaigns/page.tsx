@@ -28,6 +28,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { CampaignModal } from "@/components/campaigns/campaign-modal"
 import { CampaignFormModal } from "@/components/campaigns/campaign-form-modal"
 import { CampaignsListView } from "@/components/campaigns/campaigns-list-view"
+import { QuickCampaignModal } from "@/components/campaigns/quick-campaign-modal"
 import { useCampaignsCalendar } from "./use-campaigns-calendar"
 import { CalendarGrid, channelConfig } from "./calendar-grid"
 
@@ -46,8 +47,12 @@ const monthNames = [
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
 ]
 
+type ViewMode = "calendar" | "list"
+
 export default function CampaignsCalendarPage() {
   const cal = useCampaignsCalendar()
+  const [viewMode, setViewMode] = useState<ViewMode>("calendar")
+  const [showQuickModal, setShowQuickModal] = useState(false)
 
   return (
     <PermissionGate requiredFeatures={["campaign_control", "campaign_view"]}>
@@ -58,6 +63,32 @@ export default function CampaignsCalendarPage() {
           Visualize e gerencie suas campanhas de marketing
         </p>
         <div className="flex items-center gap-2">
+          {/* View Toggle */}
+          <div className="flex rounded-lg border bg-muted p-1">
+            <button
+              onClick={() => setViewMode("calendar")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                viewMode === "calendar"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Calendar className="h-3.5 w-3.5" />
+              Calendário
+            </button>
+            <button
+              onClick={() => setViewMode("list")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                viewMode === "list"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <List className="h-3.5 w-3.5" />
+              Lista
+            </button>
+          </div>
+
           <Button
             variant="outline"
             onClick={() => {
@@ -70,6 +101,12 @@ export default function CampaignsCalendarPage() {
           </Button>
         </div>
       </div>
+
+      {/* List View */}
+      {viewMode === "list" && <CampaignsListView />}
+
+      {/* Calendar View */}
+      {viewMode === "calendar" && (<>
 
       {/* Filters and Navigation */}
       <GlowCard color="primary" intensity="subtle">
@@ -168,6 +205,8 @@ export default function CampaignsCalendarPage() {
         </CardContent>
       </GlowCard>
 
+      </>)}
+
       {/* Campaign Detail Modal */}
       {cal.selectedCampaign && (
         <CampaignModal
@@ -182,7 +221,7 @@ export default function CampaignsCalendarPage() {
       )}
 
       {/* Day Campaigns List Modal */}
-      {cal.selectedDate && !cal.showFormModal && !cal.selectedCampaign && (
+      {cal.selectedDate && !cal.showFormModal && !cal.selectedCampaign && !showQuickModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <Card className="w-full max-w-md mx-4">
             <CardHeader className="flex flex-row items-center justify-between">
@@ -228,16 +267,41 @@ export default function CampaignsCalendarPage() {
                     )
                   })}
               </div>
-              <Button
-                className="w-full mt-4"
-                onClick={() => cal.setShowFormModal(true)}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Nova Campanha
-              </Button>
+              <div className="flex gap-2 mt-4">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setShowQuickModal(true)}
+                >
+                  Rápida
+                </Button>
+                <Button
+                  className="flex-1"
+                  onClick={() => cal.setShowFormModal(true)}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Completa
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {/* Quick Campaign Modal */}
+      {showQuickModal && (
+        <QuickCampaignModal
+          initialDate={cal.selectedDate || undefined}
+          onClose={() => {
+            setShowQuickModal(false)
+            cal.setSelectedDate(null)
+          }}
+          onSave={() => {
+            cal.fetchCampaigns()
+            setShowQuickModal(false)
+            cal.setSelectedDate(null)
+          }}
+        />
       )}
 
       {/* Campaign Form Modal */}

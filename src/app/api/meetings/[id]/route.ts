@@ -1,10 +1,25 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest } from "next/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
-import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("Meetings")
+
+async function resolveOrgId(supabase: Awaited<ReturnType<typeof createClient>>, userId: string): Promise<string> {
+  const { data: orgMember } = await supabase
+    .from("org_members")
+    .select("org_id")
+    .eq("profile_id", userId)
+    .eq("is_active", true)
+    .limit(1)
+    .single()
+
+  if (!orgMember?.org_id) {
+    throw new AppError("Acesso negado", 403)
+  }
+  return orgMember.org_id
+}
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -21,7 +36,8 @@ export async function GET(
 ) {
   try {
     const supabase = await createClient()
-    await requireAuth(supabase)
+    const user = await requireAuth(supabase)
+    const orgId = await resolveOrgId(supabase, user.id)
 
     const { id } = await params
     const adminClient = createAdminClient()
@@ -41,6 +57,7 @@ export async function GET(
         )
       `)
       .eq("id", id)
+      .eq("org_id", orgId)
       .single()
 
     if (error || !meeting) {
@@ -91,11 +108,24 @@ export async function PUT(
 ) {
   try {
     const supabase = await createClient()
+    const user = await requireAuth(supabase)
+    const orgId = await resolveOrgId(supabase, user.id)
     const adminClient = createAdminClient()
-    await requireAuth(supabase)
 
     const { id } = await params
     const body = await request.json()
+
+    // Verify meeting belongs to user's org
+    const { data: existingMeeting, error: fetchErr } = await adminClient
+      .from("meetings")
+      .select("id")
+      .eq("id", id)
+      .eq("org_id", orgId)
+      .single()
+
+    if (fetchErr || !existingMeeting) {
+      throw new AppError("Reunião não encontrada", 404)
+    }
 
     // Build update object with only provided fields
     const updateData: Record<string, unknown> = {}
@@ -108,10 +138,27 @@ export async function PUT(
     if (body.meeting_url !== undefined) updateData.meeting_url = body.meeting_url || null
     if (body.notes !== undefined) updateData.notes = body.notes || null
 
+    // Handle participant response (accept/decline invite)
+    if (body.participant_response) {
+      const { participant_id, status: responseStatus } = body.participant_response
+      if (participant_id && responseStatus) {
+        const { error: responseError } = await adminClient
+          .from("meeting_participants")
+          .update({ response_status: responseStatus })
+          .eq("meeting_id", id)
+          .eq("participant_id", participant_id)
+
+        if (responseError) {
+          log.error("[Meeting] Error updating participant response:", responseError)
+        }
+      }
+    }
+
     const { error: updateError } = await adminClient
       .from("meetings")
       .update(updateData)
       .eq("id", id)
+      .eq("org_id", orgId)
 
     if (updateError) {
       log.error("[Meeting] Update error:", updateError)
@@ -223,10 +270,7 @@ export async function PUT(
       })),
     }
 
-    return NextResponse.json(
-      { meeting: transformedMeeting, message: "Reunião atualizada com sucesso" },
-      { headers: corsHeaders(request.headers.get("origin")) }
-    )
+    return successResponse(request, { meeting: transformedMeeting, message: "Reunião atualizada com sucesso" })
   } catch (error) {
     return errorResponse(request, error, "Meetings")
   }
@@ -239,15 +283,29 @@ export async function DELETE(
 ) {
   try {
     const supabase = await createClient()
-    await requireAuth(supabase)
+    const user = await requireAuth(supabase)
+    const orgId = await resolveOrgId(supabase, user.id)
 
     const { id } = await params
     const adminClient = createAdminClient()
+
+    // Verify meeting belongs to user's org before deleting
+    const { data: existingMeeting, error: fetchErr } = await adminClient
+      .from("meetings")
+      .select("id")
+      .eq("id", id)
+      .eq("org_id", orgId)
+      .single()
+
+    if (fetchErr || !existingMeeting) {
+      throw new AppError("Reunião não encontrada", 404)
+    }
 
     const { error: deleteError } = await adminClient
       .from("meetings")
       .delete()
       .eq("id", id)
+      .eq("org_id", orgId)
 
     if (deleteError) {
       log.error("[Meeting] Delete error:", deleteError)

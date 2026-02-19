@@ -6,6 +6,22 @@ import { logger } from "@/lib/logger"
 
 const log = logger.child("Tasks")
 
+async function resolveOrgId(supabase: Awaited<ReturnType<typeof createClient>>, userId: string): Promise<string> {
+  const { data: orgMember } = await supabase
+    .from("org_members")
+    .select("org_id")
+    .eq("profile_id", userId)
+    .eq("is_active", true)
+    .limit(1)
+    .single()
+
+  if (!orgMember?.org_id) {
+    throw new AppError("Acesso negado", 403)
+  }
+
+  return orgMember.org_id
+}
+
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
 }
@@ -22,7 +38,8 @@ export async function GET(
   try {
     const { id } = await params
     const supabase = await createClient()
-    await requireAuth(supabase)
+    const user = await requireAuth(supabase)
+    const orgId = await resolveOrgId(supabase, user.id)
 
     const adminClient = createAdminClient()
 
@@ -41,6 +58,7 @@ export async function GET(
         store:client_stores(id, store_name, store_url, platform)
       `)
       .eq("id", id)
+      .eq("org_id", orgId)
       .single()
 
     if (error || !task) {
@@ -97,10 +115,23 @@ export async function PUT(
   try {
     const { id } = await params
     const supabase = await createClient()
-    await requireAuth(supabase)
+    const user = await requireAuth(supabase)
+    const orgId = await resolveOrgId(supabase, user.id)
 
     const body = await request.json()
     const adminClient = createAdminClient()
+
+    // Verify task belongs to user's org
+    const { data: existingTask, error: fetchError } = await adminClient
+      .from("tasks")
+      .select("id")
+      .eq("id", id)
+      .eq("org_id", orgId)
+      .single()
+
+    if (fetchError || !existingTask) {
+      throw new AppError("Tarefa não encontrada", 404)
+    }
 
     // Build update object with only provided fields
     const updateData: Record<string, unknown> = {}
@@ -142,6 +173,7 @@ export async function PUT(
       .from("tasks")
       .update(updateData)
       .eq("id", id)
+      .eq("org_id", orgId)
       .select(`
         *,
         assignee:org_members(
@@ -174,14 +206,28 @@ export async function DELETE(
   try {
     const { id } = await params
     const supabase = await createClient()
-    await requireAuth(supabase)
+    const user = await requireAuth(supabase)
+    const orgId = await resolveOrgId(supabase, user.id)
 
     const adminClient = createAdminClient()
+
+    // Verify task belongs to user's org before deleting
+    const { data: existingTask, error: fetchError } = await adminClient
+      .from("tasks")
+      .select("id")
+      .eq("id", id)
+      .eq("org_id", orgId)
+      .single()
+
+    if (fetchError || !existingTask) {
+      throw new AppError("Tarefa não encontrada", 404)
+    }
 
     const { error: deleteError } = await adminClient
       .from("tasks")
       .delete()
       .eq("id", id)
+      .eq("org_id", orgId)
 
     if (deleteError) {
       log.error("[Task] Delete error:", deleteError)

@@ -6,6 +6,21 @@ import { logger } from "@/lib/logger"
 
 const log = logger.child("Meetings")
 
+async function resolveOrgId(supabase: Awaited<ReturnType<typeof createClient>>, userId: string): Promise<string> {
+  const { data: orgMember } = await supabase
+    .from("org_members")
+    .select("org_id")
+    .eq("profile_id", userId)
+    .eq("is_active", true)
+    .limit(1)
+    .single()
+
+  if (!orgMember?.org_id) {
+    throw new AppError("Acesso negado", 403)
+  }
+  return orgMember.org_id
+}
+
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
 }
@@ -19,6 +34,7 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
     const user = await requireAuth(supabase)
+    const orgId = await resolveOrgId(supabase, user.id)
 
     const searchParams = request.nextUrl.searchParams
     const status = searchParams.get("status")
@@ -42,6 +58,7 @@ export async function GET(request: NextRequest) {
           response_status
         )
       `)
+      .eq("org_id", orgId)
       .order("scheduled_at", { ascending: true })
 
     if (status) {

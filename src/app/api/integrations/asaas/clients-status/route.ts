@@ -67,8 +67,18 @@ export async function GET(request: NextRequest) {
     }
 
     try {
-      const { data: overduePayments } = await asaas.listPayments({ status: "OVERDUE", limit: 100 } as never)
-      for (const payment of overduePayments || []) {
+      let allOverduePayments: Array<{ customer: string; value: number }> = []
+      let overdueOffset = 0
+      let overdueHasMore = true
+      while (overdueHasMore) {
+        const { data: overdueData, totalCount: overdueTotalCount } = await asaas.listPayments({
+          status: "OVERDUE", offset: overdueOffset, limit: 100,
+        })
+        allOverduePayments = [...allOverduePayments, ...overdueData]
+        overdueOffset += 100
+        overdueHasMore = overdueOffset < overdueTotalCount
+      }
+      for (const payment of allOverduePayments) {
         const clientId = clientMap[payment.customer]
         if (clientId && clientsStatus[clientId]) {
           clientsStatus[clientId].hasOverdue = true
@@ -81,7 +91,7 @@ export async function GET(request: NextRequest) {
     }
 
     try {
-      const { data: pendingPayments } = await asaas.listPayments({ status: "PENDING", limit: 100 } as never)
+      const { data: pendingPayments } = await asaas.listPayments({ status: "PENDING", limit: 100 })
       for (const payment of pendingPayments || []) {
         const clientId = clientMap[payment.customer]
         if (clientId && clientsStatus[clientId]) {

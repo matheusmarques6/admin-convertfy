@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useAsaasCharges } from "@/lib/hooks/use-api-data"
 import {
   AlertCircle,
@@ -112,13 +112,15 @@ export function ChargesManager() {
   const { data: rawData, error: fetchError, isLoading, isValidating: isRefreshing, mutate } = useAsaasCharges(startDate, endDate)
   const data = rawData as ChargesData | undefined
 
-  if (fetchError) {
-    toast({
-      variant: "destructive",
-      title: "Erro ao carregar cobranças",
-      description: "Não foi possível carregar as cobranças. Tente novamente.",
-    })
-  }
+  useEffect(() => {
+    if (fetchError) {
+      toast({
+        variant: "destructive",
+        title: "Erro ao carregar cobranças",
+        description: "Não foi possível carregar as cobranças. Tente novamente.",
+      })
+    }
+  }, [fetchError])
 
   const handleCancelCharge = async () => {
     if (!selectedCharge) return

@@ -1,11 +1,53 @@
 import { NextRequest } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { createAsaasService } from "@/lib/integrations/asaas"
+import { createAsaasService, AsaasService } from "@/lib/integrations/asaas"
 import { decryptCredentialsJson } from "@/lib/crypto"
 import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("AsaasBilling")
+
+// Cache for inadimplentes data (5 minutes), keyed by API key hash to prevent cross-tenant leakage
+const inadimplentesCache = new Map<string, {
+  data: { totalClients: number; totalValue: number; totalCharges: number }
+  timestamp: number
+}>()
+const INADIMPLENTES_CACHE_TTL = 5 * 60 * 1000
+
+async function getInadimplentesData(asaas: AsaasService, cacheKey: string) {
+  const now = Date.now()
+  const cached = inadimplentesCache.get(cacheKey)
+  if (cached && (now - cached.timestamp) < INADIMPLENTES_CACHE_TTL) {
+    return cached.data
+  }
+
+  let allOverduePayments: Array<{ customer: string; value: number }> = []
+  let overdueOffset = 0
+  let overdueHasMore = true
+  while (overdueHasMore) {
+    const { data: overdueData, totalCount: overdueTotalCount } = await asaas.listPayments({
+      status: "OVERDUE", offset: overdueOffset, limit: 100,
+    })
+    allOverduePayments = [...allOverduePayments, ...overdueData]
+    overdueOffset += 100
+    overdueHasMore = overdueOffset < overdueTotalCount
+  }
+
+  const inadimplentClients = new Map<string, number>()
+  for (const payment of allOverduePayments) {
+    const current = inadimplentClients.get(payment.customer) || 0
+    inadimplentClients.set(payment.customer, current + payment.value)
+  }
+
+  const result = {
+    totalClients: inadimplentClients.size,
+    totalValue: allOverduePayments.reduce((sum, p) => sum + p.value, 0),
+    totalCharges: allOverduePayments.length,
+  }
+
+  inadimplentesCache.set(cacheKey, { data: result, timestamp: now })
+  return result
+}
 
 // GET - Get billing summary for dashboard
 export async function GET(request: NextRequest) {
@@ -100,8 +142,13 @@ export async function GET(request: NextRequest) {
 
     const { totalCount: totalClients } = await asaas.listCustomers({ limit: 1 })
 
+    const environment = (credentials.environment as string) || "sandbox"
+    const asaasBaseUrl = environment === "production"
+      ? "https://api.asaas.com/v3"
+      : "https://sandbox.asaas.com/api/v3"
+
     const subsResponse = await fetch(
-      "https://api.asaas.com/v3/subscriptions?status=ACTIVE&limit=1",
+      `${asaasBaseUrl}/subscriptions?status=ACTIVE&limit=1`,
       {
         headers: {
           "Content-Type": "application/json",
@@ -113,28 +160,9 @@ export async function GET(request: NextRequest) {
     const activeSubscriptions = subsData.totalCount || 0
 
     // Fetch ALL overdue payments (no date filter) to count inadimplent clients
-    let allOverduePayments: Array<{ customer: string; value: number }> = []
-    let overdueOffset = 0
-    let overdueHasMore = true
-    while (overdueHasMore) {
-      const { data: overdueData, totalCount: overdueTotalCount } = await asaas.listPayments({
-        status: "OVERDUE", offset: overdueOffset, limit: 100,
-      } as never)
-      allOverduePayments = [...allOverduePayments, ...overdueData]
-      overdueOffset += 100
-      overdueHasMore = overdueOffset < overdueTotalCount
-    }
-
-    const inadimplentClients = new Map<string, number>()
-    for (const payment of allOverduePayments) {
-      const current = inadimplentClients.get(payment.customer) || 0
-      inadimplentClients.set(payment.customer, current + payment.value)
-    }
-    const inadimplentes = {
-      totalClients: inadimplentClients.size,
-      totalValue: allOverduePayments.reduce((sum, p) => sum + p.value, 0),
-      totalCharges: allOverduePayments.length,
-    }
+    // Cached for 5 minutes to avoid excessive API calls
+    const cacheKey = String(credentials.api_key).slice(-8)
+    const inadimplentes = await getInadimplentesData(asaas, cacheKey)
 
     const byType = {
       PIX: allPayments.filter(p => p.billingType === "PIX").reduce((sum, p) => sum + p.value, 0),

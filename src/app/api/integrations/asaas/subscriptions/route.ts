@@ -36,9 +36,15 @@ export async function GET(request: NextRequest) {
       return successResponse(request, { subscriptions: [], message: "Cliente não possui ID Asaas vinculado" })
     }
 
+    const credentials = decryptCredentialsJson(integration.credentials)
+    const environment = (credentials.environment as string) || "sandbox"
+    const asaasBaseUrl = environment === "production"
+      ? "https://api.asaas.com/v3"
+      : "https://sandbox.asaas.com/api/v3"
+
     const response = await fetch(
-      `https://api.asaas.com/v3/subscriptions?customer=${asaasCustomerId}`,
-      { headers: { "Content-Type": "application/json", access_token: decryptCredentialsJson(integration.credentials).api_key as string } }
+      `${asaasBaseUrl}/subscriptions?customer=${asaasCustomerId}`,
+      { headers: { "Content-Type": "application/json", access_token: credentials.api_key as string } }
     )
 
     if (!response.ok) {

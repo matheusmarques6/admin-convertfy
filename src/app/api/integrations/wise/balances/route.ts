@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, AppError } from "@/lib/api/errors"
+import { NextRequest } from "next/server"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { createWiseService } from "@/lib/integrations/wise"
 import { decryptCredentialsJson } from "@/lib/crypto"
@@ -12,14 +12,7 @@ export const dynamic = "force-dynamic"
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    await requireAuth(supabase)
 
     // Get Wise integration
     const { data: integration, error: integrationError } = await supabase
@@ -36,7 +29,7 @@ export async function GET(request: NextRequest) {
     const wise = createWiseService(decryptCredentialsJson(integration.credentials))
     const balances = await wise.getBalances()
 
-    return NextResponse.json({ balances })
+    return successResponse(request, { balances })
   } catch (error) {
     return errorResponse(request, error, "IntegrationsWiseBalances")
   }

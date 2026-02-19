@@ -321,6 +321,10 @@ export default function NewReportPage() {
             try {
               const response = await fetch(url, { signal: controller.signal })
               clearTimeout(timeoutId)
+              if (!response.ok) {
+                const errorText = await response.text().catch(() => "Unknown error")
+                throw new Error(`API error ${response.status}: ${errorText}`)
+              }
               return response.json()
             } catch (error) {
               clearTimeout(timeoutId)
@@ -339,12 +343,20 @@ export default function NewReportPage() {
         // Combine results based on report type
         if (reportType === "klaviyo") {
           reportData = results[0]
+          // Map engagement.engagedProfiles to overview.engagedSegmentSize for report display
+          if (reportData?.engagement?.engagedProfiles !== undefined && reportData?.overview) {
+            reportData.overview.engagedSegmentSize = reportData.engagement.engagedProfiles
+          }
         } else if (reportType === "shopify") {
           reportData = results[0]
         } else if (reportType === "combined") {
           // Merge Klaviyo and Shopify data
           const klaviyoData = results[0]
           const shopifyData = results[1]
+          // Map engagement.engagedProfiles to overview.engagedSegmentSize
+          if (klaviyoData?.engagement?.engagedProfiles !== undefined && klaviyoData?.overview) {
+            klaviyoData.overview.engagedSegmentSize = klaviyoData.engagement.engagedProfiles
+          }
           reportData = {
             ...klaviyoData,
             shopify: shopifyData,

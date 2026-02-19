@@ -1,4 +1,7 @@
 import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("MeetingsPage")
 import { PagePermissionWrapper } from "@/components/page-permission-wrapper"
 import { MeetingsPageClient } from "@/components/meetings/meetings-page-client"
 
@@ -11,7 +14,18 @@ export default async function MeetingsPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
 
-  // Fetch meetings with relations (no nested profile on participants — participant_id is polymorphic with no FK)
+  // Resolve org_id for multi-tenant scoping
+  const { data: currentMember } = await adminClient
+    .from("org_members")
+    .select("org_id")
+    .eq("profile_id", user.id)
+    .eq("is_active", true)
+    .limit(1)
+    .single()
+
+  if (!currentMember?.org_id) return null
+
+  // Fetch meetings with relations scoped to org
   const { data: meetings, error: meetingsError } = await adminClient
     .from("meetings")
     .select(`
@@ -26,10 +40,11 @@ export default async function MeetingsPage() {
         response_status
       )
     `)
+    .eq("org_id", currentMember.org_id)
     .order("scheduled_at", { ascending: true })
 
   if (meetingsError) {
-    console.error("[MeetingsPage] Error fetching meetings:", meetingsError)
+    log.error("Error fetching meetings:", meetingsError)
   }
 
   // Fetch profiles for participants separately (polymorphic participant_id has no FK)

@@ -5,6 +5,9 @@ import { Button } from "@/components/ui/button"
 import { TeamTable } from "@/components/team/team-table"
 import { Skeleton } from "@/components/ui/skeleton"
 import { PagePermissionWrapper } from "@/components/page-permission-wrapper"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("TeamPage")
 
 export const dynamic = "force-dynamic"
 
@@ -22,7 +25,7 @@ async function getTeamMembers() {
     .order("created_at", { ascending: false })
 
   if (error) {
-    console.error("Error fetching team members:", error)
+    log.error("Error fetching team members:", error)
     return []
   }
 

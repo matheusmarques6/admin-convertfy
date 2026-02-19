@@ -4,6 +4,9 @@ import { TaskBoardWithCalendar } from "@/components/board/task-board-with-calend
 import { Skeleton } from "@/components/ui/skeleton"
 import { PagePermissionWrapper } from "@/components/page-permission-wrapper"
 import { KANBAN_FETCH_STATUSES } from "@/lib/constants/board"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("BoardPage")
 
 export const dynamic = "force-dynamic"
 
@@ -45,7 +48,7 @@ async function getTasks(orgId: string) {
     .order("position", { ascending: true })
 
   if (error) {
-    console.error("Error fetching tasks:", error)
+    log.error("Error fetching tasks:", error)
     return []
   }
 
