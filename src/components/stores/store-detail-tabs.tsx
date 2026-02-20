@@ -11,14 +11,19 @@ import {
   CheckCircle2,
   XCircle,
   RefreshCw,
+  BookOpen,
+  FileText,
+  AlertTriangle,
 } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { GlowCard } from "@/components/ui/glow-card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Progress } from "@/components/ui/progress"
 import { KlaviyoPerformanceReport } from "@/components/clients/klaviyo-performance-report"
 import { useKlaviyoCampaigns, useKlaviyoFlows } from "@/lib/hooks/use-api-data"
+import { StoreBriefingTab } from "@/components/stores/store-briefing-tab"
 
 interface StoreDetailTabsProps {
   storeId: string
@@ -28,8 +33,12 @@ interface StoreDetailTabsProps {
   niche?: string | null
   country?: string | null
   language?: string | null
-  integrationStatus: Record<string, { connected: boolean; connected_at?: string }>
+  integrationStatus: Record<string, { connected: boolean; connected_at?: string; hasReportingAccess?: boolean }>
   clientId: string
+  onboardingFormComplete?: boolean
+  onboardingStatus?: string | null
+  onboardingProgress?: number
+  hasBriefing?: boolean
 }
 
 interface CampaignData {
@@ -70,6 +79,11 @@ export function StoreDetailTabs({
   country,
   language,
   integrationStatus,
+  clientId,
+  onboardingFormComplete,
+  onboardingStatus,
+  onboardingProgress,
+  hasBriefing,
 }: StoreDetailTabsProps) {
   const [period, setPeriod] = useState<Period>("30d")
 
@@ -107,6 +121,10 @@ export function StoreDetailTabs({
         <TabsTrigger value="report" disabled={!klaviyoConnected}>
           <BarChart3 className="h-4 w-4 mr-2" />
           Relatório
+        </TabsTrigger>
+        <TabsTrigger value="briefing">
+          <BookOpen className="h-4 w-4 mr-2" />
+          Briefing
         </TabsTrigger>
         <TabsTrigger value="settings">
           <Settings className="h-4 w-4 mr-2" />
@@ -160,6 +178,61 @@ export function StoreDetailTabs({
             </CardContent>
           </GlowCard>
 
+          {/* Onboarding Status */}
+          {onboardingStatus && (
+            <GlowCard color="primary" intensity="subtle">
+              <CardHeader>
+                <CardTitle className="text-base">Status do Onboarding</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <div className="flex justify-between items-center">
+                  <span className="text-muted-foreground">Fase</span>
+                  <Badge variant="secondary">
+                    {onboardingStatus === "in_progress" ? "Em Andamento" :
+                     onboardingStatus === "not_started" ? "Não Iniciado" :
+                     onboardingStatus === "paused" ? "Pausado" :
+                     onboardingStatus === "completed" ? "Concluído" : onboardingStatus}
+                  </Badge>
+                </div>
+                <div>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="text-muted-foreground">Progresso</span>
+                    <span className="font-medium">{onboardingProgress || 0}%</span>
+                  </div>
+                  <Progress value={onboardingProgress || 0} className="h-1.5" />
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-muted-foreground">Formulário</span>
+                  {onboardingFormComplete ? (
+                    <Badge variant="success" className="text-[10px]">
+                      <CheckCircle2 className="h-3 w-3 mr-1" />
+                      Preenchido
+                    </Badge>
+                  ) : (
+                    <Badge variant="warning" className="text-[10px]">
+                      <AlertTriangle className="h-3 w-3 mr-1" />
+                      Pendente
+                    </Badge>
+                  )}
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-muted-foreground">Briefing</span>
+                  {hasBriefing ? (
+                    <Badge variant="success" className="text-[10px]">
+                      <CheckCircle2 className="h-3 w-3 mr-1" />
+                      Gerado
+                    </Badge>
+                  ) : (
+                    <Badge variant="secondary" className="text-[10px]">
+                      <FileText className="h-3 w-3 mr-1" />
+                      Não gerado
+                    </Badge>
+                  )}
+                </div>
+              </CardContent>
+            </GlowCard>
+          )}
+
           {/* Integration Status */}
           <GlowCard color="primary" intensity="subtle" className="md:col-span-2">
             <CardHeader>
@@ -178,6 +251,9 @@ export function StoreDetailTabs({
                 ].map(({ key, label }) => {
                   const status = integrationStatus[key]
                   const connected = status?.connected || false
+                  const hasReporting = key === "klaviyo" && connected
+                    ? status?.hasReportingAccess
+                    : undefined
                   return (
                     <div
                       key={key}
@@ -197,6 +273,17 @@ export function StoreDetailTabs({
                               : "Conectado"
                             : "Não conectado"}
                         </p>
+                        {key === "klaviyo" && connected && hasReporting === false && (
+                          <p className="text-xs text-yellow-500 flex items-center gap-1 mt-0.5">
+                            <AlertTriangle className="h-3 w-3" />
+                            Sem acesso a relatórios
+                          </p>
+                        )}
+                        {key === "klaviyo" && connected && hasReporting === true && (
+                          <p className="text-xs text-success mt-0.5">
+                            Relatórios ativos
+                          </p>
+                        )}
                       </div>
                     </div>
                   )
@@ -234,6 +321,11 @@ export function StoreDetailTabs({
       {/* Report */}
       <TabsContent value="report">
         <KlaviyoPerformanceReport storeId={storeId} storeName={storeName} />
+      </TabsContent>
+
+      {/* Briefing */}
+      <TabsContent value="briefing">
+        <StoreBriefingTab storeId={storeId} clientId={clientId} />
       </TabsContent>
 
       {/* Settings */}

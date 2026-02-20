@@ -1,0 +1,99 @@
+"use client"
+
+import { useState, useEffect, useCallback } from "react"
+import { Loader2 } from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { StoreBriefingView } from "@/components/onboarding/store-briefing-view"
+import { StoreOnboardingForm } from "@/components/onboarding/store-onboarding-form"
+import type { StoreBriefing } from "@/types/onboarding"
+
+interface StoreBriefingTabProps {
+  storeId: string
+  clientId: string
+}
+
+export function StoreBriefingTab({ storeId, clientId }: StoreBriefingTabProps) {
+  const [briefing, setBriefing] = useState<StoreBriefing | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [formDialogOpen, setFormDialogOpen] = useState(false)
+  const [formInitialData, setFormInitialData] = useState<Record<string, unknown> | null>(null)
+  const [formLoading, setFormLoading] = useState(false)
+
+  const fetchBriefing = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/onboarding/store-briefing?store_id=${storeId}`)
+      const data = await res.json()
+      setBriefing(data.briefing || null)
+    } catch {
+      setBriefing(null)
+    } finally {
+      setLoading(false)
+    }
+  }, [storeId])
+
+  useEffect(() => {
+    fetchBriefing()
+  }, [fetchBriefing])
+
+  async function openFormDialog() {
+    setFormLoading(true)
+    setFormDialogOpen(true)
+    try {
+      const res = await fetch(`/api/onboarding/store-data?store_id=${storeId}`)
+      const data = await res.json()
+      setFormInitialData(data)
+    } catch {
+      setFormInitialData(null)
+    } finally {
+      setFormLoading(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  return (
+    <>
+      <StoreBriefingView
+        storeId={storeId}
+        briefing={briefing}
+        onRefresh={fetchBriefing}
+        onEditForm={openFormDialog}
+      />
+
+      <Dialog open={formDialogOpen} onOpenChange={setFormDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Formulário de Onboarding</DialogTitle>
+          </DialogHeader>
+          {formLoading ? (
+            <div className="flex items-center justify-center py-10">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <StoreOnboardingForm
+              storeId={storeId}
+              clientId={clientId}
+              initialData={formInitialData as Record<string, unknown> | undefined}
+              onComplete={() => {
+                setFormDialogOpen(false)
+                fetchBriefing()
+              }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}

@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { StoreDetailTabs } from "@/components/stores/store-detail-tabs"
@@ -10,6 +10,7 @@ export const dynamic = "force-dynamic"
 
 async function getStore(id: string) {
   const supabase = await createClient()
+  const adminClient = createAdminClient()
 
   const { data: store, error } = await supabase
     .from("client_stores")
@@ -38,7 +39,37 @@ async function getStore(id: string) {
     return null
   }
 
-  return store
+  // Fetch extra onboarding data
+  const { data: onboardingData } = await adminClient
+    .from("store_onboarding_data")
+    .select("is_complete, filled_at")
+    .eq("store_id", id)
+    .single()
+
+  const { data: onboarding } = await adminClient
+    .from("client_onboardings")
+    .select("status, progress_percent")
+    .eq("store_id", id)
+    .in("status", ["not_started", "in_progress", "paused"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .single()
+
+  const { data: briefing } = await adminClient
+    .from("store_briefings")
+    .select("id")
+    .eq("store_id", id)
+    .eq("status", "current")
+    .limit(1)
+    .single()
+
+  return {
+    ...store,
+    onboarding_form_complete: onboardingData?.is_complete || false,
+    onboarding_status: onboarding?.status || null,
+    onboarding_progress: onboarding?.progress_percent || 0,
+    has_briefing: !!briefing,
+  }
 }
 
 export default async function StoreDetailPage({
@@ -105,6 +136,10 @@ export default async function StoreDetailPage({
         language={store.language}
         integrationStatus={integrationStatus}
         clientId={store.client_id}
+        onboardingFormComplete={store.onboarding_form_complete}
+        onboardingStatus={store.onboarding_status}
+        onboardingProgress={store.onboarding_progress}
+        hasBriefing={store.has_briefing}
       />
     </div>
   )

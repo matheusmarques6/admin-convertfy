@@ -21,6 +21,7 @@ import {
   Store,
   Calendar,
   AlertCircle,
+  FileText,
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -70,6 +71,7 @@ interface OnboardingWithRelations {
   notes?: string
   created_at: string
   updated_at: string
+  form_complete?: boolean
   client?: {
     id: string
     name: string
@@ -171,7 +173,28 @@ export function OnboardingKanban() {
       const res = await fetch("/api/onboarding")
       const data = await res.json()
       if (data.onboardings) {
-        setOnboardings(data.onboardings)
+        const onboardingsWithForm = data.onboardings.map(
+          (o: OnboardingWithRelations) => ({ ...o, form_complete: undefined as boolean | undefined })
+        )
+        setOnboardings(onboardingsWithForm)
+
+        // Fetch form status for each onboarding with a store
+        for (const o of onboardingsWithForm) {
+          if (o.store_id) {
+            fetch(`/api/onboarding/store-data?store_id=${o.store_id}`)
+              .then((r) => r.json())
+              .then((d) => {
+                setOnboardings((prev) =>
+                  prev.map((item) =>
+                    item.id === o.id
+                      ? { ...item, form_complete: d.onboarding_data?.is_complete || false }
+                      : item
+                  )
+                )
+              })
+              .catch(() => {})
+          }
+        }
       }
     } catch (error) {
       console.error("Error fetching onboardings:", error)
@@ -602,6 +625,23 @@ export function OnboardingKanban() {
                                       {onboarding.store.platform && (
                                         <Badge variant="outline" className="text-[10px] ml-1">
                                           {onboarding.store.platform}
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {/* Form status badge */}
+                                  {onboarding.form_complete !== undefined && (
+                                    <div className="mt-2">
+                                      {onboarding.form_complete ? (
+                                        <Badge variant="success" className="text-[10px]">
+                                          <CheckCircle2 className="h-3 w-3 mr-1" />
+                                          Formulário preenchido
+                                        </Badge>
+                                      ) : (
+                                        <Badge variant="warning" className="text-[10px]">
+                                          <FileText className="h-3 w-3 mr-1" />
+                                          Formulário pendente
                                         </Badge>
                                       )}
                                     </div>

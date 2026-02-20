@@ -1,7 +1,7 @@
 import { Metadata } from "next"
 import { Rocket, Clock, CheckCircle2 } from "lucide-react"
-import { OnboardingKanban } from "@/components/onboarding/onboarding-kanban"
 import { PagePermissionWrapper } from "@/components/page-permission-wrapper"
+import { OnboardingTabs } from "@/components/onboarding/onboarding-tabs"
 
 export const metadata: Metadata = {
   title: "Onboarding | Convertfy Admin",
@@ -36,8 +36,8 @@ export default function OnboardingPage() {
         </div>
       </div>
 
-      {/* Onboarding Kanban */}
-      <OnboardingKanban />
+      {/* Onboarding Tabs */}
+      <OnboardingTabs />
     </div>
     </PagePermissionWrapper>
   )

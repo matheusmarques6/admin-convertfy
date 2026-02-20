@@ -44,6 +44,7 @@ export interface Client {
 export interface ClientStore {
   id: string
   client_id: string
+  org_id?: string
   platform: "shopify" | "nuvemshop" | "woocommerce" | "other"
   store_name: string
   store_url: string
@@ -51,7 +52,15 @@ export interface ClientStore {
   api_secret?: string
   access_token?: string
   is_active: boolean
+  niche?: string | null
+  country?: string | null
+  language?: string | null
+  target_audience?: string | null
+  free_shipping_type?: string | null
+  shopify_collaborator_code?: string | null
+  integration_status?: Record<string, { connected: boolean; connected_at?: string }>
   created_at: string
+  updated_at?: string
 }
 
 // Contract Types
