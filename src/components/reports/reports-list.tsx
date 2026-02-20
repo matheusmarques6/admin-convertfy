@@ -82,6 +82,7 @@ interface ReportsListProps {
   thisMonthCount: number
   pendingCount: number
   pendingStores: PendingStore[]
+  initialStoreId?: string
 }
 
 const months: Record<string, string> = {
@@ -196,20 +197,33 @@ export function ReportsList({
   thisMonthCount,
   pendingCount,
   pendingStores,
+  initialStoreId,
 }: ReportsListProps) {
   const [reports, setReports] = useState(initialReports)
 
   // Filters
   const [searchTerm, setSearchTerm] = useState("")
   const [clientFilter, setClientFilter] = useState<string>("all")
+  const [storeFilter, setStoreFilter] = useState<string>(initialStoreId || "all")
   const [typeFilter, setTypeFilter] = useState<string>("all")
   const [statusFilter, setStatusFilter] = useState<string>("all")
-  const [showFilters, setShowFilters] = useState(false)
+  const [showFilters, setShowFilters] = useState(!!initialStoreId)
 
   // Delete dialog
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [reportToDelete, setReportToDelete] = useState<ReportWithRelations | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+
+  // Unique stores for filter dropdown
+  const storeOptions = useMemo(() => {
+    const stores = new Map<string, string>()
+    reports.forEach(r => {
+      if (r.store_id && r.store?.store_name) {
+        stores.set(r.store_id, r.store.store_name)
+      }
+    })
+    return Array.from(stores.entries()).map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name))
+  }, [reports])
 
   // Filter reports
   const filteredReports = useMemo(() => {
@@ -228,6 +242,11 @@ export function ReportsList({
         return false
       }
 
+      // Store filter
+      if (storeFilter !== "all" && report.store_id !== storeFilter) {
+        return false
+      }
+
       // Type filter
       if (typeFilter !== "all" && report.report_type !== typeFilter) {
         return false
@@ -240,7 +259,7 @@ export function ReportsList({
 
       return true
     })
-  }, [reports, searchTerm, clientFilter, typeFilter, statusFilter])
+  }, [reports, searchTerm, clientFilter, storeFilter, typeFilter, statusFilter])
 
   // Group by month
   const groupedReports = useMemo(() => {
@@ -325,11 +344,12 @@ export function ReportsList({
     }
   }
 
-  const hasActiveFilters = searchTerm || clientFilter !== "all" || typeFilter !== "all" || statusFilter !== "all"
+  const hasActiveFilters = searchTerm || clientFilter !== "all" || storeFilter !== "all" || typeFilter !== "all" || statusFilter !== "all"
 
   function clearFilters() {
     setSearchTerm("")
     setClientFilter("all")
+    setStoreFilter("all")
     setTypeFilter("all")
     setStatusFilter("all")
   }
@@ -483,6 +503,23 @@ export function ReportsList({
                       {clients.map(client => (
                         <SelectItem key={client.id} value={client.id}>
                           {client.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">Loja</label>
+                  <Select value={storeFilter} onValueChange={setStoreFilter}>
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="Todas" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas as lojas</SelectItem>
+                      {storeOptions.map(store => (
+                        <SelectItem key={store.id} value={store.id}>
+                          {store.name}
                         </SelectItem>
                       ))}
                     </SelectContent>

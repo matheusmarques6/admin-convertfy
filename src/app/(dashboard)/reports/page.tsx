@@ -133,7 +133,12 @@ async function getThisMonthCount(): Promise<number> {
   return count || 0
 }
 
-export default async function ReportsPage() {
+export default async function ReportsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ store_id?: string }>
+}) {
+  const params = await searchParams
   const [reports, clients, pendingStores, thisMonthCount] = await Promise.all([
     getReports(),
     getClients(),
@@ -150,6 +155,7 @@ export default async function ReportsPage() {
         thisMonthCount={thisMonthCount}
         pendingCount={pendingStores.length}
         pendingStores={pendingStores}
+        initialStoreId={params.store_id}
       />
     </PagePermissionWrapper>
   )

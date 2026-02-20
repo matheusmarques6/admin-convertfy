@@ -19,6 +19,7 @@ interface StoreWithResults {
   total_revenue_30d: number
   klaviyo_revenue_30d: number
   result_percentage: number
+  revenue_status: 'loaded' | 'no_integration' | 'error'
   // Feedback control
   feedback_frequency: 'monthly' | '30_days'
   last_feedback_date: string | null
@@ -27,6 +28,9 @@ interface StoreWithResults {
   last_feedback_by_name: string | null
   feedback_status: 'on_track' | 'due_soon' | 'overdue' | 'never'
   days_until_feedback: number | null
+  // Last call (max of feedback + meeting)
+  last_call_date: string | null
+  last_call_source: 'feedback' | 'meeting' | null
   // Integration status
   has_shopify: boolean
   has_klaviyo: boolean
@@ -78,6 +82,23 @@ export async function GET(request: Request) {
       return NextResponse.json({ success: false, error: error.message }, { status: 500 })
     }
 
+    // Fetch last completed meeting per client
+    const { data: meetingsData } = await supabase
+      .from('meetings')
+      .select('client_id, scheduled_at')
+      .eq('status', 'completed')
+      .order('scheduled_at', { ascending: false })
+
+    // Build map: client_id -> last meeting date
+    const lastMeetingByClient = new Map<string, string>()
+    if (meetingsData) {
+      for (const m of meetingsData) {
+        if (!lastMeetingByClient.has(m.client_id)) {
+          lastMeetingByClient.set(m.client_id, m.scheduled_at)
+        }
+      }
+    }
+
     // Process each store to calculate result percentage and feedback status
     const storesWithResults: StoreWithResults[] = await Promise.all(
       (stores || []).map(async (store) => {
@@ -115,6 +136,7 @@ export async function GET(request: Request) {
         // Fetch revenue data (simplified - in production you'd cache this)
         let totalRevenue = 0
         let klaviyoRevenue = 0
+        let revenueStatus: 'loaded' | 'no_integration' | 'error' = 'no_integration'
 
         // Check if integrations are configured
         const hasShopify = !!store.shopify_access_token
@@ -122,16 +144,19 @@ export async function GET(request: Request) {
 
         // Fetch revenue data via direct module calls (no HTTP self-fetch)
         if (hasShopify || hasKlaviyo) {
+          let hadError = false
           const [shopifyResult, klaviyoResult] = await Promise.all([
             hasShopify
               ? getShopifyReportForStore(store.id, '30d').catch((err) => {
                   log.error(`Error fetching Shopify for store ${store.id}:`, err)
+                  hadError = true
                   return null
                 })
               : Promise.resolve(null),
             hasKlaviyo
               ? getKlaviyoRevenueForStore(store.id, '30d').catch((err) => {
                   log.error(`Error fetching Klaviyo for store ${store.id}:`, err)
+                  hadError = true
                   return null
                 })
               : Promise.resolve(null),
@@ -148,10 +173,47 @@ export async function GET(request: Request) {
               totalRevenue = klaviyoResult.totalRevenue
             }
           }
+
+          // Determine revenue status
+          if (shopifyResult || klaviyoResult) {
+            revenueStatus = 'loaded'
+          } else if (hadError) {
+            revenueStatus = 'error'
+          }
         }
 
         // Calculate result percentage
         const resultPercentage = totalRevenue > 0 ? (klaviyoRevenue / totalRevenue) * 100 : 0
+
+        // Determine last call date (max of feedback and meeting)
+        const feedbackDate = store.last_feedback_date ? new Date(store.last_feedback_date) : null
+        const meetingDate = lastMeetingByClient.has(store.client_id)
+          ? new Date(lastMeetingByClient.get(store.client_id)!)
+          : null
+
+        let lastCallDate: string | null = null
+        let lastCallSource: 'feedback' | 'meeting' | null = null
+
+        if (feedbackDate && meetingDate) {
+          if (feedbackDate >= meetingDate) {
+            lastCallDate = store.last_feedback_date
+            lastCallSource = 'feedback'
+          } else {
+            lastCallDate = lastMeetingByClient.get(store.client_id)!
+            lastCallSource = 'meeting'
+          }
+        } else if (feedbackDate) {
+          lastCallDate = store.last_feedback_date
+          lastCallSource = 'feedback'
+        } else if (meetingDate) {
+          lastCallDate = lastMeetingByClient.get(store.client_id)!
+          lastCallSource = 'meeting'
+        }
+
+        // Recalculate feedback_status using last_call_date if no next_feedback_date
+        if (!store.next_feedback_date && lastCallDate && feedbackStatus === 'never') {
+          feedbackStatus = 'overdue'
+        }
 
         return {
           id: store.id,
@@ -165,6 +227,7 @@ export async function GET(request: Request) {
           total_revenue_30d: totalRevenue,
           klaviyo_revenue_30d: klaviyoRevenue,
           result_percentage: Math.round(resultPercentage * 10) / 10,
+          revenue_status: revenueStatus,
           feedback_frequency: store.feedback_frequency || 'monthly',
           last_feedback_date: store.last_feedback_date,
           next_feedback_date: store.next_feedback_date,
@@ -172,6 +235,8 @@ export async function GET(request: Request) {
           last_feedback_by_name: profile?.name || null,
           feedback_status: feedbackStatus,
           days_until_feedback: daysUntilFeedback,
+          last_call_date: lastCallDate,
+          last_call_source: lastCallSource,
           has_shopify: hasShopify,
           has_klaviyo: hasKlaviyo,
         }

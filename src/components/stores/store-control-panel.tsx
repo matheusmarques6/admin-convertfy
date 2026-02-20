@@ -19,6 +19,7 @@ import {
   Search,
   Settings,
   Pencil,
+  Video,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -62,6 +63,7 @@ interface StoreData {
   total_revenue_30d: number
   klaviyo_revenue_30d: number
   result_percentage: number
+  revenue_status: 'loaded' | 'no_integration' | 'error'
   feedback_frequency: 'monthly' | '30_days'
   last_feedback_date: string | null
   next_feedback_date: string | null
@@ -69,6 +71,8 @@ interface StoreData {
   last_feedback_by_name: string | null
   feedback_status: 'on_track' | 'due_soon' | 'overdue' | 'never'
   days_until_feedback: number | null
+  last_call_date: string | null
+  last_call_source: 'feedback' | 'meeting' | null
   has_shopify: boolean
   has_klaviyo: boolean
 }
@@ -585,24 +589,39 @@ export function StoreControlPanel() {
 
                       {/* Result % */}
                       <td className="px-4 py-4 text-center">
-                        <div className="flex flex-col items-center">
-                          <span className={`text-2xl font-bold ${getResultColor(store.result_percentage)}`}>
-                            {store.result_percentage.toFixed(1)}%
-                          </span>
-                          <span className="text-xs text-muted-foreground">da receita</span>
-                        </div>
+                        {store.revenue_status === 'no_integration' ? (
+                          <span className="text-sm text-muted-foreground">Sem integração</span>
+                        ) : store.revenue_status === 'error' ? (
+                          <div className="flex flex-col items-center gap-1">
+                            <AlertTriangle className="w-4 h-4 text-warning" />
+                            <span className="text-xs text-warning">Erro ao carregar</span>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col items-center">
+                            <span className={`text-2xl font-bold ${getResultColor(store.result_percentage)}`}>
+                              {store.result_percentage.toFixed(1)}%
+                            </span>
+                            <span className="text-xs text-muted-foreground">da receita</span>
+                          </div>
+                        )}
                       </td>
 
                       {/* Revenue */}
                       <td className="px-4 py-4 text-center">
-                        <div className="flex flex-col items-center">
-                          <span className="text-sm font-medium text-success">
-                            {formatCurrency(store.klaviyo_revenue_30d)}
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            de {formatCurrency(store.total_revenue_30d)}
-                          </span>
-                        </div>
+                        {store.revenue_status === 'no_integration' ? (
+                          <span className="text-sm text-muted-foreground">-</span>
+                        ) : store.revenue_status === 'error' ? (
+                          <span className="text-sm text-muted-foreground">-</span>
+                        ) : (
+                          <div className="flex flex-col items-center">
+                            <span className="text-sm font-medium text-success">
+                              {formatCurrency(store.klaviyo_revenue_30d)}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              de {formatCurrency(store.total_revenue_30d)}
+                            </span>
+                          </div>
+                        )}
                       </td>
 
                       {/* Next Feedback */}
@@ -618,9 +637,16 @@ export function StoreControlPanel() {
 
                       {/* Last Call */}
                       <td className="px-4 py-4 text-center">
-                        <span className="text-sm text-muted-foreground">
-                          {formatDate(store.last_feedback_date)}
-                        </span>
+                        <div className="flex items-center justify-center gap-1.5">
+                          {store.last_call_source === 'meeting' ? (
+                            <span title="Reunião"><Video className="w-3.5 h-3.5 text-primary" /></span>
+                          ) : store.last_call_source === 'feedback' ? (
+                            <span title="Feedback"><Phone className="w-3.5 h-3.5 text-emerald-500" /></span>
+                          ) : null}
+                          <span className="text-sm text-muted-foreground">
+                            {formatDate(store.last_call_date)}
+                          </span>
+                        </div>
                       </td>
 
                       {/* Responsible */}
@@ -905,7 +931,7 @@ export function StoreControlPanel() {
                     variant="outline"
                     size="sm"
                     className="flex-1 border-border"
-                    onClick={() => router.push(`/clients/${selectedStore.client_id}?tab=klaviyo`)}
+                    onClick={() => router.push(`/reports?store_id=${selectedStore.id}`)}
                   >
                     <TrendingUp className="w-3 h-3 mr-1" />
                     Ver Relatório
