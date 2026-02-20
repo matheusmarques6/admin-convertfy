@@ -72,7 +72,7 @@ export async function getKlaviyoRevenueForStore(
 
     // Fetch campaign and flow reports in parallel
     const [campaignReport, flowReport] = await Promise.all([
-      klaviyoRequest<KlaviyoValuesReport>(apiKey, "campaign-values-reports/", {
+      klaviyoRequest<KlaviyoValuesReport>(apiKey, "/campaign-values-reports/", {
         method: "POST",
         body: {
           data: {
@@ -82,7 +82,7 @@ export async function getKlaviyoRevenueForStore(
         },
         logTag: "KlaviyoReportSummary",
       }),
-      klaviyoRequest<KlaviyoValuesReport>(apiKey, "flow-values-reports/", {
+      klaviyoRequest<KlaviyoValuesReport>(apiKey, "/flow-values-reports/", {
         method: "POST",
         body: {
           data: {

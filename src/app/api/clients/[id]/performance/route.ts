@@ -244,7 +244,7 @@ async function fetchKlaviyoPerformance(
 
   // Fetch campaign and flow reports in parallel
   const [campaignReport, flowReport] = await Promise.all([
-    klaviyoRequest<KlaviyoCampaignReport>(apiKey, "campaign-values-reports/", {
+    klaviyoRequest<KlaviyoCampaignReport>(apiKey, "/campaign-values-reports/", {
       method: "POST",
       logTag: "CampaignReport",
       body: {
@@ -261,7 +261,7 @@ async function fetchKlaviyoPerformance(
         },
       },
     }),
-    klaviyoRequest<KlaviyoFlowReport>(apiKey, "flow-values-reports/", {
+    klaviyoRequest<KlaviyoFlowReport>(apiKey, "/flow-values-reports/", {
       method: "POST",
       logTag: "FlowReport",
       body: {
