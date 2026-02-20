@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { requireAuth } from "@/lib/api/errors"
+import { requireAuth, errorResponse } from "@/lib/api/errors"
+import { getStoreCredentials } from "@/lib/services/credentials.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("IntKlaviyoCampaigns")
@@ -262,10 +263,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "store_id é obrigatório" }, { status: 400, headers: corsHeaders(request.headers.get("origin")) })
     }
 
-    // Get store
+    // Get store display info (non-sensitive)
     const { data: store, error: storeError } = await supabase
       .from("client_stores")
-      .select("klaviyo_api_key, klaviyo_private_key, store_name")
+      .select("store_name")
       .eq("id", storeId)
       .single()
 
@@ -273,7 +274,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Loja não encontrada" }, { status: 404, headers: corsHeaders(request.headers.get("origin")) })
     }
 
-    const apiKey = store.klaviyo_private_key || store.klaviyo_api_key
+    // Get decrypted credentials via credentials service
+    const credentials = await getStoreCredentials(storeId)
+    const apiKey = credentials.klaviyo_private_key || credentials.klaviyo_api_key
     if (!apiKey) {
       return NextResponse.json({
         success: false,
@@ -469,10 +472,6 @@ export async function GET(request: NextRequest) {
     }, { headers: corsHeaders(request.headers.get("origin")) })
 
   } catch (error) {
-    log.error("[Klaviyo Campaigns] Error:", error)
-    return NextResponse.json({
-      success: false,
-      error: error instanceof Error ? error.message : "Erro ao buscar campanhas"
-    }, { status: 500, headers: corsHeaders(request.headers.get("origin")) })
+    return errorResponse(request, error, "IntegrationsKlaviyoCampaigns")
   }
 }

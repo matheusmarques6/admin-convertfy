@@ -573,7 +573,7 @@ export class KlaviyoSyncService {
 
     // Sync metrics for sent campaigns
     const sentCampaignIds = campaigns
-      .filter((c) => c.attributes.status === "Sent")
+      .filter((c) => c.attributes.status?.toLowerCase() === "sent")
       .map((c) => c.id)
 
     if (sentCampaignIds.length > 0) {
