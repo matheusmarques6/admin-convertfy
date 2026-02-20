@@ -12,6 +12,7 @@ import {
   getTimezoneOffset,
 } from "@/lib/integrations/klaviyo"
 import { getShopifyReportForStore } from "@/lib/integrations/shopify/report"
+import { decryptStoreCredentials } from "@/lib/crypto"
 
 const log = logger.child("ClientPerformance")
 
@@ -104,14 +105,15 @@ export async function GET(
       }
     }
 
-    // Get client stores — query already includes credentials, no need for getStoreCredentials()
-    const { data: stores, error: storesError } = await adminClient
+    // Get client stores and decrypt credentials
+    const { data: rawStores, error: storesError } = await adminClient
       .from("client_stores")
       .select("id, store_name, klaviyo_api_key, klaviyo_private_key, shopify_store_domain, shopify_access_token")
       .eq("client_id", clientId)
       .eq("is_active", true)
 
     if (storesError) throw storesError
+    const stores = (rawStores || []).map(s => decryptStoreCredentials(s))
     if (!stores || stores.length === 0) {
       return successResponse(request, {
         period,
@@ -127,7 +129,6 @@ export async function GET(
     const endDateStr = formatDateStr(endDate)
 
     // Fetch performance data for each store in parallel
-    // Use credentials directly from the client_stores query (no extra getStoreCredentials call)
     const storePromises = stores.map(async (store): Promise<StorePerformance> => {
       const hasKlaviyo = !!(store.klaviyo_private_key || store.klaviyo_api_key)
       const hasShopify = !!(store.shopify_store_domain && store.shopify_access_token)
@@ -136,7 +137,7 @@ export async function GET(
       let shopifyData: StorePerformance["shopify"] = null
       const errors: StorePerformance["errors"] = []
 
-      // Fetch Klaviyo data using credentials from the stores query directly
+      // Fetch Klaviyo data
       if (hasKlaviyo) {
         try {
           const apiKey = store.klaviyo_private_key || store.klaviyo_api_key
