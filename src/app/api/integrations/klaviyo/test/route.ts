@@ -1,54 +1,73 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, AppError } from "@/lib/api/errors"
+import { createClient } from "@/lib/supabase/server"
+import { requireAuth, errorResponse, AppError } from "@/lib/api/errors"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { getAccountInfo } from "@/lib/integrations/klaviyo/account"
+import { findPlacedOrderMetric } from "@/lib/integrations/klaviyo/metrics"
+import { logger } from "@/lib/logger"
 
+const log = logger.child("IntegrationsKlaviyoTest")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
 }
 
-// CORS headers helper
-
-
-// Handle OPTIONS preflight requests
-
-
 // POST - Test Klaviyo API connection
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { api_key } = body
+    const supabase = await createClient()
+    await requireAuth(supabase)
 
-    if (!api_key) {
+    const body = await request.json()
+    // Accept both private_key and api_key (same pattern used across the app)
+    const apiKey = body.private_key || body.api_key
+
+    if (!apiKey) {
       throw new AppError("API key é obrigatória", 400)
     }
 
-    // Test Klaviyo API connection
-    const response = await fetch("https://a.klaviyo.com/api/accounts/", {
-      method: "GET",
-      headers: {
-        "Authorization": `Klaviyo-API-Key ${api_key}`,
-        "revision": "2024-10-15",
-        "Accept": "application/json",
-      },
-    })
-
     const origin = request.headers.get("origin")
 
-    if (response.ok) {
-      const data = await response.json()
-      return NextResponse.json({
-        success: true,
-        message: "Conexão bem sucedida!",
-        account: data.data?.[0]?.attributes?.contact_information?.organization_name || "Conta Klaviyo",
-      }, { headers: corsHeaders(origin) })
-    } else {
-      const errorData = await response.json().catch(() => ({}))
+    // Step 1: Test account access via klaviyoRequest (with retry/rate-limit)
+    log.info("Testing Klaviyo connection...")
+    const accountInfo = await getAccountInfo(apiKey)
+
+    // If getAccountInfo returns defaults without orgName, the key may be invalid
+    // but getAccountInfo doesn't throw — it falls back. Let's check deeper.
+    if (!accountInfo.orgName) {
+      // Account endpoint returned no data - likely invalid key
       return NextResponse.json({
         success: false,
-        error: errorData.errors?.[0]?.detail || "Falha na autenticação",
-      }, { status: response.status, headers: corsHeaders(origin) })
+        error: "API Key inválida ou sem permissões. Verifique se é uma Private API Key válida.",
+      }, { status: 401, headers: corsHeaders(origin) })
     }
+
+    // Step 2: Test reporting permissions by checking if we can find metrics
+    let hasReportingAccess = false
+    try {
+      const metricId = await findPlacedOrderMetric(apiKey)
+      hasReportingAccess = !!metricId
+    } catch {
+      hasReportingAccess = false
+    }
+
+    log.info("Klaviyo connection successful:", {
+      orgName: accountInfo.orgName,
+      timezone: accountInfo.timezone,
+      hasReportingAccess,
+    })
+
+    return NextResponse.json({
+      success: true,
+      message: "Conexão bem sucedida!",
+      account: accountInfo.orgName,
+      details: {
+        timezone: accountInfo.timezone,
+        currency: accountInfo.currency,
+        locale: accountInfo.locale,
+        hasReportingAccess,
+      },
+    }, { headers: corsHeaders(origin) })
   } catch (error) {
     return errorResponse(request, error, "IntegrationsKlaviyoTest")
   }
