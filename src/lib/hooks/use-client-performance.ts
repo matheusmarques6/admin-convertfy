@@ -93,6 +93,7 @@ export interface ClientPerformanceState {
   allCampaigns: (CampaignData & { storeName: string })[]
   allFlows: (FlowData & { storeName: string })[]
   hasIntegrations: boolean
+  onNavigateToStores?: () => void
 }
 
 export const PERIODS = [

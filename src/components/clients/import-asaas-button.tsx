@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { Download, Loader2, RefreshCw, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -23,10 +24,30 @@ interface ImportStats {
 }
 
 export function ImportAsaasButton() {
+  const router = useRouter()
   const [open, setOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
   const [stats, setStats] = useState<ImportStats | null>(null)
+  const [pendingCount, setPendingCount] = useState(0)
+
+  // Fetch stats on mount to show pending badge
+  useEffect(() => {
+    async function fetchPendingCount() {
+      try {
+        const response = await fetch("/api/integrations/asaas/customers")
+        const data = await response.json()
+        if (data?.connected && data.asaasCustomers > data.syncedClients) {
+          setPendingCount(data.asaasCustomers - data.syncedClients)
+        }
+      } catch {
+        // Silently ignore - badge just won't show
+      }
+    }
+    fetchPendingCount()
+    const interval = setInterval(fetchPendingCount, 5 * 60 * 1000)
+    return () => clearInterval(interval)
+  }, [])
 
   useEffect(() => {
     if (open) {
@@ -40,6 +61,11 @@ export function ImportAsaasButton() {
       const response = await fetch("/api/integrations/asaas/customers")
       const data = await response.json()
       setStats(data)
+      if (data?.connected && data.asaasCustomers > data.syncedClients) {
+        setPendingCount(data.asaasCustomers - data.syncedClients)
+      } else {
+        setPendingCount(0)
+      }
     } catch (error) {
       console.error("Error loading stats:", error)
     } finally {
@@ -60,9 +86,10 @@ export function ImportAsaasButton() {
           title: "Importação concluída!",
           description: `${result.stats.imported} novos clientes importados, ${result.stats.updated} atualizados.`,
         })
+        setPendingCount(0)
         setOpen(false)
-        // Reload the page to show new clients
-        window.location.reload()
+        // Revalidate server components to refresh client list
+        router.refresh()
       } else {
         toast({
           variant: "destructive",
@@ -84,9 +111,14 @@ export function ImportAsaasButton() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline">
+        <Button variant="outline" className="relative">
           <Download className="mr-2 h-4 w-4" />
           Importar do Asaas
+          {pendingCount > 0 && (
+            <span className="absolute -top-2 -right-2 h-5 min-w-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center px-1">
+              {pendingCount > 99 ? "99+" : pendingCount}
+            </span>
+          )}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">

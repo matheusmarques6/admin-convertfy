@@ -1,11 +1,29 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { Plus, FileText, Calendar, Loader2 } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
+import { Plus, FileText, Calendar, Loader2, Upload, X, Paperclip, ExternalLink } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { GlowCard } from "@/components/ui/glow-card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { toast } from "@/lib/hooks/use-toast"
 import { createClient } from "@/lib/supabase/client"
@@ -25,27 +43,178 @@ const statusConfig: Record<
   pending: { label: "Pendente", variant: "warning" },
 }
 
+interface ContractFormData {
+  plan_name: string
+  monthly_value: string
+  start_date: string
+  end_date: string
+  status: string
+  notes: string
+}
+
 export function ClientContracts({ clientId }: ClientContractsProps) {
   const [contracts, setContracts] = useState<Contract[]>([])
   const [loading, setLoading] = useState(true)
+  const [showDialog, setShowDialog] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [formData, setFormData] = useState<ContractFormData>({
+    plan_name: "",
+    monthly_value: "",
+    start_date: "",
+    end_date: "",
+    status: "active",
+    notes: "",
+  })
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [downloadingDoc, setDownloadingDoc] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  async function loadContracts() {
+    const supabase = createClient()
+    const { data } = await supabase
+      .from("contracts")
+      .select("*")
+      .eq("client_id", clientId)
+      .order("created_at", { ascending: false })
+      .limit(50)
+    setContracts(data || [])
+    setLoading(false)
+  }
 
   useEffect(() => {
-    async function loadContracts() {
-      const supabase = createClient()
-      const { data } = await supabase
-        .from("contracts")
-        .select("*")
-        .eq("client_id", clientId)
-        .order("created_at", { ascending: false })
-        .limit(50)
-      setContracts(data || [])
-      setLoading(false)
-    }
     loadContracts()
-  }, [clientId])
+  }, [clientId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const activeContract = contracts.find((c) => c.status === "active")
   const pastContracts = contracts.filter((c) => c.status !== "active")
+
+  function handleOpenDialog() {
+    setFormData({
+      plan_name: "",
+      monthly_value: "",
+      start_date: new Date().toISOString().split("T")[0],
+      end_date: "",
+      status: "active",
+      notes: "",
+    })
+    setSelectedFile(null)
+    if (fileInputRef.current) fileInputRef.current.value = ""
+    setShowDialog(true)
+  }
+
+  function handleFileSelect(file: File) {
+    const ext = "." + file.name.split(".").pop()?.toLowerCase()
+    if (![".pdf", ".doc", ".docx"].includes(ext)) {
+      toast({ variant: "destructive", title: "Tipo de arquivo não permitido. Use PDF, DOC ou DOCX." })
+      return
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ variant: "destructive", title: "Arquivo muito grande. Máximo: 10MB." })
+      return
+    }
+    setSelectedFile(file)
+  }
+
+  function handleRemoveFile() {
+    setSelectedFile(null)
+    if (fileInputRef.current) fileInputRef.current.value = ""
+  }
+
+  async function handleCreateContract() {
+    if (!formData.plan_name.trim()) {
+      toast({ variant: "destructive", title: "Nome do plano é obrigatório" })
+      return
+    }
+    if (!formData.monthly_value || Number(formData.monthly_value) < 0) {
+      toast({ variant: "destructive", title: "Valor mensal inválido" })
+      return
+    }
+    if (!formData.start_date) {
+      toast({ variant: "destructive", title: "Data de início é obrigatória" })
+      return
+    }
+
+    setSaving(true)
+    try {
+      // Upload file first if selected
+      let documentPath: string | null = null
+      if (selectedFile) {
+        const uploadBody = new FormData()
+        uploadBody.append("file", selectedFile)
+        uploadBody.append("client_id", clientId)
+
+        const uploadResponse = await fetch("/api/upload/contracts", {
+          method: "POST",
+          body: uploadBody,
+        })
+
+        const uploadResult = await uploadResponse.json()
+
+        if (!uploadResponse.ok) {
+          throw new Error(uploadResult.error || "Erro ao fazer upload do arquivo")
+        }
+
+        documentPath = uploadResult.path
+      }
+
+      // Create contract with file path (not signed URL)
+      const response = await fetch("/api/clients/contracts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          client_id: clientId,
+          plan_name: formData.plan_name.trim(),
+          monthly_value: Number(formData.monthly_value),
+          start_date: formData.start_date,
+          end_date: formData.end_date || null,
+          status: formData.status,
+          notes: formData.notes.trim() || null,
+          document_url: documentPath,
+        }),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || "Erro ao criar contrato")
+      }
+
+      toast({ title: "Contrato criado com sucesso!" })
+      setShowDialog(false)
+      await loadContracts()
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Erro ao criar contrato",
+        description: error instanceof Error ? error.message : "Erro desconhecido",
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleViewDocument(storagePath: string) {
+    setDownloadingDoc(storagePath)
+    try {
+      const response = await fetch(`/api/upload/contracts?path=${encodeURIComponent(storagePath)}`)
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || "Erro ao gerar URL do documento")
+      }
+
+      const url = result.url
+      window.open(url, "_blank", "noopener,noreferrer")
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Erro ao abrir documento",
+        description: error instanceof Error ? error.message : "Erro desconhecido",
+      })
+    } finally {
+      setDownloadingDoc(null)
+    }
+  }
 
   if (loading) {
     return (
@@ -57,11 +226,26 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
     )
   }
 
-  function handleNewContract() {
-    toast({
-      title: "Em desenvolvimento",
-      description: "A criação de contratos será implementada em breve.",
-    })
+  function renderDocumentButton(contract: Contract) {
+    if (!contract.document_url) return null
+    const isDownloading = downloadingDoc === contract.document_url
+    return (
+      <div className="pt-4 border-t">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={isDownloading}
+          onClick={() => handleViewDocument(contract.document_url!)}
+        >
+          {isDownloading ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <ExternalLink className="mr-2 h-4 w-4" />
+          )}
+          {isDownloading ? "Gerando link..." : "Ver Documento"}
+        </Button>
+      </div>
+    )
   }
 
   return (
@@ -76,7 +260,13 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
                 {activeContract.plan_name}
               </p>
             </div>
-            <Badge variant="success">Ativo</Badge>
+            <div className="flex items-center gap-2">
+              <Badge variant="success">Ativo</Badge>
+              <Button variant="outline" size="sm" onClick={handleOpenDialog}>
+                <Plus className="mr-2 h-4 w-4" />
+                Novo Contrato
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-4 md:grid-cols-3">
@@ -107,20 +297,7 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
                 <p className="text-sm mt-1">{activeContract.notes}</p>
               </div>
             )}
-            {activeContract.document_url && (
-              <div className="pt-4 border-t">
-                <Button variant="outline" size="sm" asChild>
-                  <a
-                    href={activeContract.document_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <FileText className="mr-2 h-4 w-4" />
-                    Ver Documento
-                  </a>
-                </Button>
-              </div>
-            )}
+            {renderDocumentButton(activeContract)}
           </CardContent>
         </GlowCard>
       ) : (
@@ -132,7 +309,7 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
             <p className="text-muted-foreground mb-4">
               Nenhum contrato ativo
             </p>
-            <Button onClick={handleNewContract}>
+            <Button onClick={handleOpenDialog}>
               <Plus className="mr-2 h-4 w-4" />
               Novo Contrato
             </Button>
@@ -169,6 +346,21 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
+                    {contract.document_url && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        disabled={downloadingDoc === contract.document_url}
+                        onClick={() => handleViewDocument(contract.document_url!)}
+                      >
+                        {downloadingDoc === contract.document_url ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <FileText className="h-4 w-4" />
+                        )}
+                      </Button>
+                    )}
                     <p className="font-medium">
                       {formatCurrency(contract.monthly_value)}/mês
                     </p>
@@ -180,6 +372,139 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
           </CardContent>
         </GlowCard>
       )}
+
+      {/* New Contract Dialog */}
+      <Dialog open={showDialog} onOpenChange={setShowDialog}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Novo Contrato</DialogTitle>
+            <DialogDescription>
+              Preencha os dados do novo contrato para este cliente.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="plan_name">Nome do Plano *</Label>
+              <Input
+                id="plan_name"
+                placeholder="Ex: Plano Growth"
+                value={formData.plan_name}
+                onChange={(e) => setFormData(prev => ({ ...prev, plan_name: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="monthly_value">Valor Mensal (R$) *</Label>
+              <Input
+                id="monthly_value"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="0.00"
+                value={formData.monthly_value}
+                onChange={(e) => setFormData(prev => ({ ...prev, monthly_value: e.target.value }))}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="start_date">Data de Início *</Label>
+                <Input
+                  id="start_date"
+                  type="date"
+                  value={formData.start_date}
+                  onChange={(e) => setFormData(prev => ({ ...prev, start_date: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="end_date">Data de Término</Label>
+                <Input
+                  id="end_date"
+                  type="date"
+                  value={formData.end_date}
+                  onChange={(e) => setFormData(prev => ({ ...prev, end_date: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="status">Status *</Label>
+              <Select
+                value={formData.status}
+                onValueChange={(value) => setFormData(prev => ({ ...prev, status: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Ativo</SelectItem>
+                  <SelectItem value="pending">Pendente</SelectItem>
+                  <SelectItem value="expired">Expirado</SelectItem>
+                  <SelectItem value="cancelled">Cancelado</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="notes">Observações</Label>
+              <Textarea
+                id="notes"
+                placeholder="Observações sobre o contrato..."
+                value={formData.notes}
+                onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Documento (PDF, DOC, DOCX)</Label>
+              {selectedFile ? (
+                <div className="flex items-center gap-2 p-3 rounded-lg border bg-muted/50">
+                  <Paperclip className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <span className="text-sm truncate flex-1">{selectedFile.name}</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 shrink-0"
+                    onClick={handleRemoveFile}
+                    disabled={saving}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ) : (
+                <div
+                  className="flex items-center justify-center gap-2 p-4 rounded-lg border-2 border-dashed cursor-pointer hover:border-primary/50 hover:bg-muted/50 transition-colors"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Upload className="h-5 w-5 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">
+                    Clique para anexar arquivo
+                  </span>
+                </div>
+              )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.doc,.docx"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) handleFileSelect(file)
+                }}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDialog(false)} disabled={saving}>
+              Cancelar
+            </Button>
+            <Button onClick={handleCreateContract} disabled={saving}>
+              {saving ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="mr-2 h-4 w-4" />
+              )}
+              {saving ? "Criando..." : "Criar Contrato"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

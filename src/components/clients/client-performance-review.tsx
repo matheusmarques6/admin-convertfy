@@ -8,6 +8,7 @@ import {
   ShoppingCart,
   RefreshCw,
   AlertCircle,
+  AlertTriangle,
   Settings,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -35,13 +36,16 @@ import {
 export function ClientPerformanceProvider({
   clientId,
   children,
+  onNavigateToStores,
 }: {
   clientId: string
   children: React.ReactNode
+  onNavigateToStores?: () => void
 }) {
   const state = useClientPerformance(clientId)
+  const value = { ...state, onNavigateToStores }
   return (
-    <ClientPerformanceContext.Provider value={state}>
+    <ClientPerformanceContext.Provider value={value}>
       {children}
     </ClientPerformanceContext.Provider>
   )
@@ -232,14 +236,34 @@ export function ClientPerformanceKPIs() {
           {/* Integration Error Badges */}
           {data.storeErrors && data.storeErrors.length > 0 && (
             <div className="flex flex-wrap gap-2">
-              {data.storeErrors.map((store, i) => (
-                <div key={i} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-destructive/10 border border-destructive/20">
-                  <AlertCircle className="h-3.5 w-3.5 text-destructive" />
-                  <span className="text-xs text-destructive">
-                    {store.storeName}: {store.errors.map(e => `${e.integration} - ${e.message}`).join(", ")}
-                  </span>
-                </div>
-              ))}
+              {data.storeErrors.map((store, i) =>
+                store.errors.map((err, j) => {
+                  const isRateLimit = err.code === "RATE_LIMIT"
+                  const isNoData = err.message.includes("sem dados")
+                  const isWarning = isRateLimit || isNoData
+
+                  const Icon = isWarning ? AlertTriangle : AlertCircle
+                  const bgClass = isWarning
+                    ? "bg-yellow-500/10 border-yellow-500/20"
+                    : "bg-destructive/10 border-destructive/20"
+                  const textClass = isWarning
+                    ? "text-yellow-600 dark:text-yellow-400"
+                    : "text-destructive"
+
+                  return (
+                    <div
+                      key={`${i}-${j}`}
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${bgClass}`}
+                      title={err.message}
+                    >
+                      <Icon className={`h-3.5 w-3.5 shrink-0 ${textClass}`} />
+                      <span className={`text-xs ${textClass}`}>
+                        {store.storeName}: {err.integration} - {err.message}
+                      </span>
+                    </div>
+                  )
+                })
+              )}
             </div>
           )}
         </>
@@ -251,7 +275,7 @@ export function ClientPerformanceKPIs() {
 // ─── Tables: Campanhas + Flows (goes BELOW ClientOverview) ───────────────────
 
 export function ClientPerformanceTables() {
-  const { data, loading, error, allCampaigns, allFlows, hasIntegrations } =
+  const { data, loading, error, allCampaigns, allFlows, hasIntegrations, onNavigateToStores } =
     useClientPerformanceContext()
 
   // Show skeleton while loading
@@ -282,13 +306,37 @@ export function ClientPerformanceTables() {
             variant="outline"
             size="sm"
             className="mt-4"
-            onClick={() => {
-              // Radix TabsTrigger renders value as native button attribute
-              const storesTab = document.querySelector<HTMLButtonElement>('button[value="stores"]')
-              storesTab?.click()
-            }}
+            onClick={onNavigateToStores}
+            disabled={!onNavigateToStores}
           >
             Configurar Integrações
+          </Button>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  // All stores have errors — suggest checking integrations
+  const allStoresFailed = data.storeErrors && data.storeErrors.length > 0 &&
+    data.storeErrors.length === data.stores.length && !hasContent
+  if (allStoresFailed) {
+    return (
+      <Card className="border-yellow-500/30">
+        <CardContent className="flex flex-col items-center justify-center py-12">
+          <AlertTriangle className="h-10 w-10 text-yellow-500 mb-3" />
+          <p className="text-sm font-medium">Erro ao carregar dados de performance</p>
+          <p className="text-xs text-muted-foreground mt-1 text-center max-w-sm">
+            Todas as lojas retornaram erro ao buscar métricas. O teste de conexão na aba Lojas verifica apenas a autenticação,
+            enquanto a Visão Geral busca dados completos de campanhas e flows.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-4"
+            onClick={onNavigateToStores}
+            disabled={!onNavigateToStores}
+          >
+            Verificar Integrações
           </Button>
         </CardContent>
       </Card>

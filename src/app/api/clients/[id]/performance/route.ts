@@ -144,9 +144,23 @@ export async function GET(
             klaviyoData = await fetchKlaviyoPerformance(apiKey, startDateStr, endDateStr)
           }
         } catch (err) {
-          const message = err instanceof Error ? err.message : "Erro desconhecido ao buscar dados do Klaviyo"
+          const rawMsg = err instanceof Error ? err.message : String(err)
+          let message = rawMsg
+          let code: string | undefined
+
+          if (rawMsg.includes("401") || rawMsg.includes("403") || rawMsg.toLowerCase().includes("unauthorized")) {
+            message = "API Key sem permissão para métricas. Verifique os scopes da chave Klaviyo."
+            code = "AUTH_ERROR"
+          } else if (rawMsg.includes("429")) {
+            message = "Limite de requisições Klaviyo excedido. Tente novamente em alguns minutos."
+            code = "RATE_LIMIT"
+          } else if (rawMsg.includes("Falha ao conectar")) {
+            message = "Falha ao conectar com a API do Klaviyo. Verifique as credenciais."
+            code = "CONNECTION_ERROR"
+          }
+
           log.warn("Failed to fetch Klaviyo data for store", { storeId: store.id, error: err })
-          errors.push({ integration: "klaviyo", message })
+          errors.push({ integration: "klaviyo", message, code })
         }
       }
 

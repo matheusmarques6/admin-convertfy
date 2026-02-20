@@ -10,9 +10,9 @@ import { SkeletonShimmer } from "@/components/ui/skeleton"
 import { formatCurrency, formatDate, getInitials } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
 import { useAsaasPayments, useAsaasSubscriptions } from "@/lib/hooks/use-api-data"
-import type { Client, Contract, Invoice, Meeting, User as UserType } from "@/types"
+import type { Client, Contract, Meeting, User as UserType } from "@/types"
 
-interface ClientWithRelations extends Client {
+export interface ClientWithRelations extends Client {
   owner?: UserType
 }
 
@@ -33,6 +33,7 @@ export function ClientOverview({ client }: ClientOverviewProps) {
   const [localTotalPaid, setLocalTotalPaid] = useState(0)
   const [localPendingAmount, setLocalPendingAmount] = useState(0)
   const [nextMeeting, setNextMeeting] = useState<Meeting | null>(null)
+  const [localLoading, setLocalLoading] = useState(true)
 
   // Check if client has Asaas ID
   const customFields = client.custom_fields as Record<string, string> | null
@@ -81,6 +82,7 @@ export function ClientOverview({ client }: ClientOverviewProps) {
       setLocalTotalPaid(invoices.filter(i => i.status === "paid").reduce((sum, i) => sum + Number(i.amount), 0))
       setLocalPendingAmount(invoices.filter(i => i.status === "pending" || i.status === "overdue").reduce((sum, i) => sum + Number(i.amount), 0))
       setNextMeeting(meetingsRes.data?.[0] || null)
+      setLocalLoading(false)
     }
     loadLocalData()
   }, [client.id])
@@ -278,7 +280,9 @@ export function ClientOverview({ client }: ClientOverviewProps) {
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Próxima Reunião</p>
-              {nextMeeting ? (
+              {localLoading ? (
+                <SkeletonShimmer className="h-4 w-28 mt-1" />
+              ) : nextMeeting ? (
                 <p className="text-sm">
                   {formatDate(nextMeeting.scheduled_at)}
                 </p>
