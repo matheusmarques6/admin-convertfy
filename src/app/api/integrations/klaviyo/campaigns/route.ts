@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { requireAuth, errorResponse } from "@/lib/api/errors"
 import { getStoreCredentials } from "@/lib/services/credentials.service"
 import { logger } from "@/lib/logger"
@@ -263,8 +263,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "store_id é obrigatório" }, { status: 400, headers: corsHeaders(request.headers.get("origin")) })
     }
 
-    // Get store display info (non-sensitive)
-    const { data: store, error: storeError } = await supabase
+    // Get store display info using admin client (RLS on client_stores
+    // may block access depending on org membership; auth is already
+    // verified by requireAuth above)
+    const adminClient = createAdminClient()
+    const { data: store, error: storeError } = await adminClient
       .from("client_stores")
       .select("store_name")
       .eq("id", storeId)
@@ -405,7 +408,7 @@ export async function GET(request: NextRequest) {
     try {
       const sentCampaigns = campaignsWithMetrics.filter(c => c.status === 'sent')
       if (sentCampaigns.length > 0) {
-        const { error: upsertError } = await supabase
+        const { error: upsertError } = await adminClient
           .from("klaviyo_campaign_metrics")
           .upsert(
             sentCampaigns.map(campaign => ({
