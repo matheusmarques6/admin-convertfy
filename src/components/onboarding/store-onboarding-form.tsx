@@ -28,12 +28,14 @@ import {
 import { toast } from "@/lib/hooks/use-toast"
 
 interface StoreOnboardingFormProps {
-  storeId: string
+  storeId?: string
   clientId: string
   initialData?: {
-    store?: Record<string, unknown>
+    store?: Record<string, unknown> | null
     onboarding_data?: Record<string, unknown> | null
   }
+  onSave?: (isComplete: boolean) => void
+  /** @deprecated Use onSave instead */
   onComplete?: () => void
 }
 
@@ -73,14 +75,17 @@ const STEPS = [
 ]
 
 export function StoreOnboardingForm({
-  storeId,
+  storeId: initialStoreId,
   clientId,
   initialData,
+  onSave,
   onComplete,
 }: StoreOnboardingFormProps) {
   const [currentStep, setCurrentStep] = useState(0)
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [currentStoreId, setCurrentStoreId] = useState<string | undefined>(initialStoreId)
+  const hasExistingData = !!(initialData?.onboarding_data || initialData?.store)
 
   // Form state
   const [formData, setFormData] = useState({
@@ -139,11 +144,15 @@ export function StoreOnboardingForm({
   }, [])
 
   async function handleFileUpload(file: File, fileType: "logo" | "design" | "brand_manual") {
+    if (!currentStoreId) {
+      toast({ variant: "destructive", title: "Salve o formulário primeiro", description: "Salve o rascunho antes de enviar arquivos para criar a loja." })
+      return
+    }
     setUploading(true)
     try {
       const fd = new FormData()
       fd.append("file", file)
-      fd.append("store_id", storeId)
+      fd.append("store_id", currentStoreId)
       fd.append("file_type", fileType)
 
       const res = await fetch("/api/upload/store-files", { method: "POST", body: fd })
@@ -192,12 +201,17 @@ export function StoreOnboardingForm({
   async function handleSave(complete: boolean) {
     setSaving(true)
     try {
-      const payload = {
-        store_id: storeId,
-        client_id: clientId,
+      const payload: Record<string, unknown> = {
         ...formData,
         price_sensitivity: formData.price_sensitivity || null,
         is_complete: complete,
+      }
+
+      // Send store_id if we have one, otherwise send client_id to create a new store
+      if (currentStoreId) {
+        payload.store_id = currentStoreId
+      } else {
+        payload.client_id = clientId
       }
 
       const res = await fetch("/api/onboarding/store-data", {
@@ -209,12 +223,20 @@ export function StoreOnboardingForm({
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Erro ao salvar")
 
+      // Update local storeId if a new store was created by the API
+      if (data.store_id && !currentStoreId) {
+        setCurrentStoreId(data.store_id)
+      }
+
       toast({
         title: complete ? "Formulário concluído" : "Rascunho salvo",
         description: data.message,
       })
 
-      if (complete && onComplete) {
+      // Notify parent - onSave takes precedence over deprecated onComplete
+      if (onSave) {
+        onSave(complete)
+      } else if (onComplete) {
         onComplete()
       }
     } catch (error) {
@@ -238,28 +260,33 @@ export function StoreOnboardingForm({
     <Card>
       <CardHeader className="pb-4">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-lg">Formulário de Onboarding</CardTitle>
+          <CardTitle className="text-lg">
+            {hasExistingData ? "Editar Formulário de Onboarding" : "Formulário de Onboarding"}
+          </CardTitle>
           <span className="text-sm text-muted-foreground">
             Etapa {currentStep + 1} de {STEPS.length}
           </span>
         </div>
         <Progress value={progressPercent} className="h-2 mt-2" />
         <div className="flex gap-2 mt-2">
-          {STEPS.map((step, i) => (
-            <button
-              key={i}
-              onClick={() => i <= currentStep && setCurrentStep(i)}
-              className={`text-xs px-2 py-1 rounded-full transition-colors ${
-                i === currentStep
-                  ? "bg-primary text-primary-foreground"
-                  : i < currentStep
-                  ? "bg-primary/20 text-primary cursor-pointer"
-                  : "bg-muted text-muted-foreground"
-              }`}
-            >
-              {step.title}
-            </button>
-          ))}
+          {STEPS.map((step, i) => {
+            const canNavigate = hasExistingData || i <= currentStep
+            return (
+              <button
+                key={i}
+                onClick={() => canNavigate && setCurrentStep(i)}
+                className={`text-xs px-2 py-1 rounded-full transition-colors ${
+                  i === currentStep
+                    ? "bg-primary text-primary-foreground"
+                    : canNavigate
+                    ? "bg-primary/20 text-primary cursor-pointer hover:bg-primary/30"
+                    : "bg-muted text-muted-foreground"
+                }`}
+              >
+                {step.title}
+              </button>
+            )
+          })}
         </div>
       </CardHeader>
 
@@ -505,7 +532,7 @@ export function StoreOnboardingForm({
                 disabled={saving || !canAdvance()}
               >
                 {saving ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-1" />}
-                Concluir
+                {hasExistingData ? "Salvar Alterações" : "Concluir"}
               </Button>
             )}
           </div>

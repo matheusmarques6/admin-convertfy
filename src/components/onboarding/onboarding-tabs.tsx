@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import {
   Kanban,
   FileText,
@@ -37,13 +37,13 @@ import { StoreOnboardingForm } from "./store-onboarding-form"
 import { StoreBriefingView } from "./store-briefing-view"
 import type { StoreBriefing } from "@/types/onboarding"
 
-interface StoreItem {
+interface ClientItem {
   id: string
-  store_name: string
-  store_url: string | null
-  platform: string | null
-  client_id: string
-  client_name: string
+  name: string
+  company: string | null
+  email: string | null
+  has_store: boolean
+  store_id: string | null
   form_complete: boolean
 }
 
@@ -58,66 +58,90 @@ interface BriefingItem {
 }
 
 export function OnboardingTabs() {
-  const [stores, setStores] = useState<StoreItem[]>([])
+  const [clients, setClients] = useState<ClientItem[]>([])
   const [briefings, setBriefings] = useState<BriefingItem[]>([])
   const [loading, setLoading] = useState(false)
   const [briefingsLoading, setBriefingsLoading] = useState(false)
 
   // Form tab state
-  const [selectedStoreId, setSelectedStoreId] = useState<string>("")
+  const [selectedClientId, setSelectedClientId] = useState<string>("")
   const [formInitialData, setFormInitialData] = useState<Record<string, unknown> | null>(null)
   const [formLoading, setFormLoading] = useState(false)
+  const [formKey, setFormKey] = useState(0)
 
   // Briefing dialog state
   const [briefingDialogOpen, setBriefingDialogOpen] = useState(false)
   const [selectedBriefing, setSelectedBriefing] = useState<StoreBriefing | null>(null)
   const [selectedBriefingStoreId, setSelectedBriefingStoreId] = useState<string>("")
 
-  const fetchStores = useCallback(async () => {
+  // Track if auto-select already happened
+  const autoSelectedRef = useRef(false)
+
+  const fetchClients = useCallback(async () => {
     setLoading(true)
     try {
+      // Fetch stores with client info
       const storesRes = await fetch("/api/stores")
       const storesData = await storesRes.json()
       const allStores = storesData.stores || []
 
-      const result: StoreItem[] = allStores.map(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (store: any) => ({
-          id: store.id,
-          store_name: store.store_name,
-          store_url: store.store_url,
-          platform: store.platform,
-          client_id: store.client_id,
-          client_name: store.client?.name || store.clients?.name || "Cliente",
-          form_complete: false,
-        })
-      )
-
-      // Check form status for all stores
-      for (const s of result) {
-        try {
-          const res = await fetch(`/api/onboarding/store-data?store_id=${s.id}`)
-          const data = await res.json()
-          if (data.onboarding_data) {
-            s.form_complete = data.onboarding_data.is_complete || false
-          }
-        } catch {
-          // ignore
+      // Build a map of client_id -> store info + form status
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const clientStoreMap = new Map<string, any>()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const store of allStores as any[]) {
+        const cid = store.client_id
+        if (!clientStoreMap.has(cid)) {
+          clientStoreMap.set(cid, {
+            client_name: store.client?.name || "Cliente",
+            client_company: store.client?.company || null,
+            client_email: store.client?.email || null,
+            store_id: store.id,
+          })
         }
       }
 
-      setStores(result)
+      // Check form status for all stores in parallel
+      const entries = Array.from(clientStoreMap.entries())
+      const formStatuses = await Promise.all(
+        entries.map(async ([, info]) => {
+          try {
+            const res = await fetch(`/api/onboarding/store-data?store_id=${info.store_id}`)
+            const data = await res.json()
+            return data.onboarding_data?.is_complete || false
+          } catch {
+            return false
+          }
+        })
+      )
 
-      // Auto-select first store if none selected
-      if (result.length > 0 && !selectedStoreId) {
-        setSelectedStoreId(result[0].id)
+      const result: ClientItem[] = entries.map(([cid, info], idx) => ({
+        id: cid,
+        name: info.client_name,
+        company: info.client_company,
+        email: info.client_email,
+        has_store: true,
+        store_id: info.store_id,
+        form_complete: formStatuses[idx],
+      }))
+
+      // Also include clients without stores from the stores endpoint's client data
+      // This is already handled - clients without stores won't appear in allStores
+      // For now, those clients can be selected from the client page onboarding
+
+      setClients(result)
+
+      // Auto-select first client only on first load
+      if (result.length > 0 && !autoSelectedRef.current) {
+        autoSelectedRef.current = true
+        setSelectedClientId(result[0].id)
       }
     } catch {
       // ignore
     } finally {
       setLoading(false)
     }
-  }, [selectedStoreId])
+  }, [])
 
   const fetchBriefings = useCallback(async () => {
     setBriefingsLoading(true)
@@ -126,28 +150,32 @@ export function OnboardingTabs() {
       const storesData = await storesRes.json()
       const allStores = storesData.stores || []
 
-      const items: BriefingItem[] = []
-      for (const store of allStores) {
-        try {
-          const res = await fetch(`/api/onboarding/store-briefing?store_id=${store.id}`)
-          const data = await res.json()
-          if (data.briefing) {
-            items.push({
-              id: data.briefing.id,
-              store_id: store.id,
-              store_name: store.store_name,
-              client_name: store.client?.name || store.clients?.name || "Cliente",
-              version: data.briefing.version,
-              generated_at: data.briefing.generated_at,
-              status: data.briefing.status,
-            })
+      // Fetch briefings in parallel
+      const briefingResults = await Promise.all(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        allStores.map(async (store: any) => {
+          try {
+            const res = await fetch(`/api/onboarding/store-briefing?store_id=${store.id}`)
+            const data = await res.json()
+            if (data.briefing) {
+              return {
+                id: data.briefing.id,
+                store_id: store.id,
+                store_name: store.store_name,
+                client_name: store.client?.name || store.clients?.name || "Cliente",
+                version: data.briefing.version,
+                generated_at: data.briefing.generated_at,
+                status: data.briefing.status,
+              } as BriefingItem
+            }
+          } catch {
+            // ignore
           }
-        } catch {
-          // ignore
-        }
-      }
+          return null
+        })
+      )
 
-      setBriefings(items)
+      setBriefings(briefingResults.filter((b): b is BriefingItem => b !== null))
     } catch {
       // ignore
     } finally {
@@ -155,28 +183,47 @@ export function OnboardingTabs() {
     }
   }, [])
 
-  // Load form data when selected store changes
+  // Load form data when selected client changes
   useEffect(() => {
-    if (!selectedStoreId) return
+    if (!selectedClientId) return
     setFormLoading(true)
-    fetch(`/api/onboarding/store-data?store_id=${selectedStoreId}`)
+
+    const selectedClient = clients.find((c) => c.id === selectedClientId)
+    const url = selectedClient?.store_id
+      ? `/api/onboarding/store-data?store_id=${selectedClient.store_id}`
+      : `/api/onboarding/store-data?client_id=${selectedClientId}`
+
+    fetch(url)
       .then((res) => res.json())
       .then((data) => setFormInitialData(data))
       .catch(() => setFormInitialData(null))
       .finally(() => setFormLoading(false))
-  }, [selectedStoreId])
+  // Only re-fetch when selectedClientId changes, not when clients array ref changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedClientId])
 
-  const selectedStore = stores.find((s) => s.id === selectedStoreId) || null
+  const selectedClient = clients.find((c) => c.id === selectedClientId) || null
 
-  function handleFormComplete() {
-    // Re-fetch to update form_complete status
-    fetchStores()
-    // Reload form data
-    if (selectedStoreId) {
+  function handleFormSaved(isComplete: boolean) {
+    if (isComplete) {
+      // Full re-fetch only on "Concluir" to update statuses
+      fetchClients()
+    }
+    // Always reload the form data to get updated store_id (if created) and fresh data
+    if (selectedClientId) {
       setFormLoading(true)
-      fetch(`/api/onboarding/store-data?store_id=${selectedStoreId}`)
+      const client = clients.find((c) => c.id === selectedClientId)
+      const url = client?.store_id
+        ? `/api/onboarding/store-data?store_id=${client.store_id}`
+        : `/api/onboarding/store-data?client_id=${selectedClientId}`
+
+      fetch(url)
         .then((res) => res.json())
-        .then((data) => setFormInitialData(data))
+        .then((data) => {
+          setFormInitialData(data)
+          // Bump form key to force remount with new storeId from API
+          setFormKey((k) => k + 1)
+        })
         .catch(() => setFormInitialData(null))
         .finally(() => setFormLoading(false))
     }
@@ -202,7 +249,7 @@ export function OnboardingTabs() {
             <Kanban className="h-4 w-4 mr-2" />
             Kanban
           </TabsTrigger>
-          <TabsTrigger value="forms" onClick={() => stores.length === 0 && fetchStores()}>
+          <TabsTrigger value="forms" onClick={() => clients.length === 0 && fetchClients()}>
             <FileText className="h-4 w-4 mr-2" />
             Formulários
           </TabsTrigger>
@@ -221,32 +268,34 @@ export function OnboardingTabs() {
             <div className="flex items-center justify-center py-20">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
-          ) : stores.length === 0 ? (
+          ) : clients.length === 0 ? (
             <Card>
               <CardContent className="py-10 text-center text-muted-foreground">
-                Nenhuma loja encontrada. Cadastre lojas primeiro.
+                Nenhum cliente encontrado. Cadastre clientes primeiro.
               </CardContent>
             </Card>
           ) : (
             <div className="space-y-4">
-              {/* Seletor de loja + link + status */}
+              {/* Seletor de cliente + link + status */}
               <Card>
                 <CardContent className="p-4 space-y-4">
                   <div className="flex items-end gap-4">
                     <div className="flex-1 space-y-1.5">
-                      <Label>Selecione a loja</Label>
-                      <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
+                      <Label>Cliente</Label>
+                      <Select value={selectedClientId} onValueChange={setSelectedClientId}>
                         <SelectTrigger>
-                          <SelectValue placeholder="Escolha uma loja..." />
+                          <SelectValue placeholder="Selecione o cliente..." />
                         </SelectTrigger>
                         <SelectContent>
-                          {stores.map((store) => (
-                            <SelectItem key={store.id} value={store.id}>
+                          {clients.map((client) => (
+                            <SelectItem key={client.id} value={client.id}>
                               <span className="flex items-center gap-2">
-                                {store.store_name}
-                                <span className="text-muted-foreground text-xs">
-                                  ({store.client_name})
-                                </span>
+                                {client.name}
+                                {client.company && (
+                                  <span className="text-muted-foreground text-xs">
+                                    ({client.company})
+                                  </span>
+                                )}
                               </span>
                             </SelectItem>
                           ))}
@@ -254,12 +303,12 @@ export function OnboardingTabs() {
                       </Select>
                     </div>
 
-                    {selectedStore && (
+                    {selectedClient && (
                       <Badge
-                        variant={selectedStore.form_complete ? "success" : "secondary"}
+                        variant={selectedClient.form_complete ? "success" : "secondary"}
                         className="gap-1 whitespace-nowrap"
                       >
-                        {selectedStore.form_complete ? (
+                        {selectedClient.form_complete ? (
                           <><CheckCircle2 className="h-3 w-3" /> Preenchido</>
                         ) : (
                           <><AlertCircle className="h-3 w-3" /> Pendente</>
@@ -304,13 +353,13 @@ export function OnboardingTabs() {
                 <div className="flex items-center justify-center py-10">
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
-              ) : selectedStore ? (
+              ) : selectedClient ? (
                 <StoreOnboardingForm
-                  key={selectedStoreId}
-                  storeId={selectedStore.id}
-                  clientId={selectedStore.client_id}
-                  initialData={formInitialData as Record<string, unknown> | undefined}
-                  onComplete={handleFormComplete}
+                  key={`${selectedClientId}-${formKey}`}
+                  storeId={selectedClient.store_id || (formInitialData as { store?: { id?: string } } | null)?.store?.id || undefined}
+                  clientId={selectedClient.id}
+                  initialData={formInitialData as { store?: Record<string, unknown> | null; onboarding_data?: Record<string, unknown> | null } | undefined}
+                  onSave={handleFormSaved}
                 />
               ) : null}
             </div>
@@ -372,7 +421,10 @@ export function OnboardingTabs() {
             onRefresh={() => openBriefingDialog(selectedBriefingStoreId)}
             onEditForm={() => {
               setBriefingDialogOpen(false)
-              setSelectedStoreId(selectedBriefingStoreId)
+              const client = clients.find((c) => c.store_id === selectedBriefingStoreId)
+              if (client) {
+                setSelectedClientId(client.id)
+              }
             }}
           />
         </DialogContent>

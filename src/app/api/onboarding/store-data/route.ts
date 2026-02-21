@@ -7,8 +7,9 @@ import { generateBriefing } from "@/lib/services/briefing.service"
 const log = logger.child("OnboardingStoreData")
 
 /**
- * GET /api/onboarding/store-data?store_id=X
- * Returns combined data from client_stores + store_onboarding_data
+ * GET /api/onboarding/store-data?store_id=X or ?client_id=X
+ * Returns combined data from client_stores + store_onboarding_data.
+ * If client_id is provided, returns data for the first store of that client (if any).
  */
 export async function GET(request: NextRequest) {
   try {
@@ -16,32 +17,59 @@ export async function GET(request: NextRequest) {
     await requireAuth(supabase)
 
     const storeId = request.nextUrl.searchParams.get("store_id")
-    if (!storeId) {
-      throw new AppError("store_id é obrigatório", 400)
+    const clientId = request.nextUrl.searchParams.get("client_id")
+
+    if (!storeId && !clientId) {
+      throw new AppError("store_id ou client_id é obrigatório", 400)
     }
 
     const adminClient = createAdminClient()
 
-    // Fetch store data
-    const { data: store, error: storeError } = await adminClient
-      .from("client_stores")
-      .select("id, client_id, org_id, store_name, store_url, platform, niche, country, language, target_audience, free_shipping_type, shopify_collaborator_code")
-      .eq("id", storeId)
-      .single()
+    let store = null
+    let onboardingData = null
 
-    if (storeError || !store) {
-      throw new AppError("Loja não encontrada", 404)
+    if (storeId) {
+      // Fetch by store_id
+      const { data, error } = await adminClient
+        .from("client_stores")
+        .select("id, client_id, org_id, store_name, store_url, platform, niche, country, language, target_audience, free_shipping_type, shopify_collaborator_code")
+        .eq("id", storeId)
+        .single()
+
+      if (error || !data) {
+        throw new AppError("Loja não encontrada", 404)
+      }
+      store = data
+
+      const { data: od } = await adminClient
+        .from("store_onboarding_data")
+        .select("*")
+        .eq("store_id", storeId)
+        .single()
+      onboardingData = od
+    } else if (clientId) {
+      // Fetch first store for this client (if any)
+      const { data: stores } = await adminClient
+        .from("client_stores")
+        .select("id, client_id, org_id, store_name, store_url, platform, niche, country, language, target_audience, free_shipping_type, shopify_collaborator_code")
+        .eq("client_id", clientId)
+        .order("created_at", { ascending: true })
+        .limit(1)
+
+      if (stores && stores.length > 0) {
+        store = stores[0]
+        const { data: od } = await adminClient
+          .from("store_onboarding_data")
+          .select("*")
+          .eq("store_id", store.id)
+          .single()
+        onboardingData = od
+      }
+      // If no store exists, return nulls - the form will create one on save
     }
 
-    // Fetch onboarding data
-    const { data: onboardingData } = await adminClient
-      .from("store_onboarding_data")
-      .select("*")
-      .eq("store_id", storeId)
-      .single()
-
     return successResponse(request, {
-      store,
+      store: store || null,
       onboarding_data: onboardingData || null,
     })
   } catch (error) {
@@ -51,7 +79,8 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/onboarding/store-data
- * Save form data. Splits fields between client_stores and store_onboarding_data.
+ * Save form data. Accepts store_id (update existing) or client_id (create new store if needed).
+ * Splits fields between client_stores and store_onboarding_data.
  * Auto-generates briefing when is_complete=true.
  */
 export async function POST(request: NextRequest) {
@@ -62,19 +91,73 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
 
-    if (!body.store_id) {
-      throw new AppError("store_id é obrigatório", 400)
+    if (!body.store_id && !body.client_id) {
+      throw new AppError("store_id ou client_id é obrigatório", 400)
     }
 
-    // Verify store exists
-    const { data: store, error: storeError } = await adminClient
-      .from("client_stores")
-      .select("id, client_id, org_id")
-      .eq("id", body.store_id)
-      .single()
+    let storeId = body.store_id as string | null
+    let clientId = body.client_id as string
+    let orgId: string
 
-    if (storeError || !store) {
-      throw new AppError("Loja não encontrada", 404)
+    if (storeId) {
+      // Existing store - verify it exists
+      const { data: store, error: storeError } = await adminClient
+        .from("client_stores")
+        .select("id, client_id, org_id")
+        .eq("id", storeId)
+        .single()
+
+      if (storeError || !store) {
+        throw new AppError("Loja não encontrada", 404)
+      }
+      clientId = store.client_id
+      orgId = store.org_id
+    } else {
+      // No store_id - get client's org_id and check if a store already exists
+      const { data: client, error: clientError } = await adminClient
+        .from("clients")
+        .select("id, org_id")
+        .eq("id", clientId)
+        .single()
+
+      if (clientError || !client) {
+        throw new AppError("Cliente não encontrado", 404)
+      }
+      orgId = client.org_id
+
+      // Check if client already has a store
+      const { data: existingStores } = await adminClient
+        .from("client_stores")
+        .select("id")
+        .eq("client_id", clientId)
+        .order("created_at", { ascending: true })
+        .limit(1)
+
+      if (existingStores && existingStores.length > 0) {
+        storeId = existingStores[0].id
+      } else {
+        // Create new store for this client
+        const newStoreData: Record<string, unknown> = {
+          client_id: clientId,
+          org_id: orgId,
+          store_name: body.store_name || "Nova Loja",
+          store_url: body.store_url || null,
+          platform: body.platform || null,
+          is_active: true,
+        }
+
+        const { data: newStore, error: createError } = await adminClient
+          .from("client_stores")
+          .insert(newStoreData)
+          .select("id")
+          .single()
+
+        if (createError || !newStore) {
+          log.error("Error creating store for client", createError)
+          throw new AppError("Erro ao criar loja para o cliente", 500)
+        }
+        storeId = newStore.id
+      }
     }
 
     // Update client_stores fields
@@ -91,7 +174,7 @@ export async function POST(request: NextRequest) {
       const { error: updateError } = await adminClient
         .from("client_stores")
         .update(storeUpdate)
-        .eq("id", body.store_id)
+        .eq("id", storeId)
 
       if (updateError) {
         log.error("Error updating client_stores", updateError)
@@ -101,9 +184,9 @@ export async function POST(request: NextRequest) {
 
     // Upsert store_onboarding_data
     const onboardingDataFields: Record<string, unknown> = {
-      store_id: body.store_id,
-      client_id: store.client_id,
-      org_id: store.org_id,
+      store_id: storeId,
+      client_id: clientId,
+      org_id: orgId,
       updated_at: new Date().toISOString(),
     }
 
@@ -137,14 +220,14 @@ export async function POST(request: NextRequest) {
     let briefing = null
     if (body.is_complete) {
       try {
-        briefing = await generateBriefing(body.store_id)
+        briefing = await generateBriefing(storeId!)
       } catch (err) {
         log.error("Error generating briefing", err)
-        // Don't fail the whole request if briefing generation fails
       }
     }
 
     return successResponse(request, {
+      store_id: storeId,
       onboarding_data: onboardingData,
       briefing,
       message: body.is_complete ? "Formulário concluído e briefing gerado" : "Rascunho salvo",
