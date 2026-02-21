@@ -20,15 +20,33 @@ import { createGoogleAdsService } from "./google-ads"
 import { createShopifyService } from "./shopify"
 import { createWhatsAppService } from "./whatsapp"
 import { createGoogleCalendarService } from "./google-calendar"
-import { testApiConnection } from "./klaviyo"
+import { testApiConnection, getAccountInfo, findPlacedOrderMetric } from "./klaviyo"
 
 // Minimal Klaviyo adapter for the factory pattern
 function createKlaviyoAdapter(credentials: Record<string, string>) {
   const apiKey = credentials.private_key || credentials.api_key || ""
   return {
-    async testConnection(): Promise<{ success: boolean; error?: string }> {
-      const result = await testApiConnection(apiKey)
-      return { success: result, ...(result ? {} : { error: "Klaviyo API connection failed" }) }
+    async testConnection(): Promise<{ success: boolean; error?: string; details?: Record<string, unknown> }> {
+      const connected = await testApiConnection(apiKey)
+      if (!connected) {
+        return { success: false, error: "Klaviyo API connection failed" }
+      }
+
+      // Check reporting access by fetching account info + placed order metric
+      const [accountInfo, placedOrderMetricId] = await Promise.all([
+        getAccountInfo(apiKey).catch(() => null),
+        findPlacedOrderMetric(apiKey).catch(() => null),
+      ])
+
+      return {
+        success: true,
+        details: {
+          hasReportingAccess: placedOrderMetricId !== null,
+          timezone: accountInfo?.timezone,
+          orgName: accountInfo?.orgName,
+          currency: accountInfo?.currency,
+        },
+      }
     },
   }
 }
@@ -65,7 +83,7 @@ export function createIntegrationService(
 export async function testIntegrationConnection(
   type: IntegrationType,
   credentials: Record<string, string>
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; details?: Record<string, unknown> }> {
   try {
     const service = createIntegrationService(type, credentials)
 

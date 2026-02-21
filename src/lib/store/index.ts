@@ -88,6 +88,7 @@ interface IntegrationStatus {
   connected: boolean
   error?: string
   lastSync?: string
+  details?: Record<string, unknown>
 }
 
 interface IntegrationsState {

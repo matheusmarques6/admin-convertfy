@@ -19,6 +19,8 @@ import {
   RefreshCw,
   Plug,
   ArrowLeft,
+  AlertTriangle,
+  BarChart3,
 } from "lucide-react"
 import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { GlowCard } from "@/components/ui/glow-card"
@@ -51,7 +53,7 @@ import type { IntegrationType, Integration } from "@/types"
 async function testIntegrationConnection(
   type: string,
   credentials: Record<string, string>
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; details?: Record<string, unknown> }> {
   const response = await fetch("/api/integrations/test", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -136,11 +138,28 @@ export default function IntegrationsPage() {
       const result = await testIntegrationConnection(selectedType, credentials)
 
       if (result.success) {
-        setStatus(selectedType, { connected: true, error: undefined })
-        toast({
-          title: "Conexão bem sucedida!",
-          description: "A integração está funcionando corretamente.",
-        })
+        setStatus(selectedType, { connected: true, error: undefined, details: result.details })
+
+        // Klaviyo: differentiated toast based on reporting access
+        if (selectedType === "klaviyo" && result.details) {
+          if (result.details.hasReportingAccess) {
+            toast({
+              title: "Conexão completa!",
+              description: "Relatórios disponíveis.",
+            })
+          } else {
+            toast({
+              title: "Conectado, mas sem acesso a relatórios",
+              description: "Verifique os scopes da API Key no Klaviyo.",
+              variant: "destructive",
+            })
+          }
+        } else {
+          toast({
+            title: "Conexão bem sucedida!",
+            description: "A integração está funcionando corretamente.",
+          })
+        }
       } else {
         setStatus(selectedType, { connected: false, error: result.error })
         toast({
@@ -222,6 +241,7 @@ export default function IntegrationsPage() {
         connected: testResult.success,
         lastSync: testResult.success ? now : undefined,
         error: testResult.error,
+        details: testResult.details,
       })
 
       toast({
@@ -374,7 +394,7 @@ export default function IntegrationsPage() {
                       </div>
                       <div>
                         <CardTitle className="text-base">{config.name}</CardTitle>
-                        <div className="flex items-center gap-2 mt-1">
+                        <div className="flex items-center gap-2 mt-1 flex-wrap">
                           {isConnected ? (
                             <Badge variant="outline" className="text-success border-success">
                               <CheckCircle2 className="h-3 w-3 mr-1" />
@@ -385,6 +405,19 @@ export default function IntegrationsPage() {
                               <XCircle className="h-3 w-3 mr-1" />
                               Desconectado
                             </Badge>
+                          )}
+                          {isConnected && config.type === "klaviyo" && status?.details && (
+                            status.details.hasReportingAccess ? (
+                              <Badge variant="outline" className="text-success border-success">
+                                <BarChart3 className="h-3 w-3 mr-1" />
+                                Relatórios OK
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-yellow-500 border-yellow-500">
+                                <AlertTriangle className="h-3 w-3 mr-1" />
+                                Sem relatórios
+                              </Badge>
+                            )
                           )}
                         </div>
                       </div>

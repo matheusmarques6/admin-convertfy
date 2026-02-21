@@ -26,6 +26,7 @@ import {
   Star,
   UserCheck,
   BarChart2,
+  AlertTriangle,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -842,9 +843,24 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
     </div>
   )
 
+  // Detect zero-data scenario (connected but no reporting data)
+  const isAllDataZero = campaignRevenue === 0 && flowRevenue === 0
+    && sentCampaigns === 0 && totalFlows === 0 && delivered === 0
+
   // Main Render
   return (
     <>
+      {isAllDataZero && (
+        <div className="flex items-center gap-3 p-4 mb-4 rounded-xl border border-yellow-500/30 bg-yellow-500/5">
+          <AlertTriangle className="h-5 w-5 text-yellow-500 shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-yellow-500">Nenhum dado encontrado</p>
+            <p className="text-xs text-muted-foreground">
+              Verifique se a API Key do Klaviyo tem permissão para acessar relatórios (Reporting scope).
+            </p>
+          </div>
+        </div>
+      )}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-2 text-sm text-muted-foreground bg-card px-4 py-2 rounded-xl border border-border">
           <Calendar className="w-4 h-4" />
