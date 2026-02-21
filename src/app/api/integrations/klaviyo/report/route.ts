@@ -7,6 +7,7 @@ import { logger } from "@/lib/logger"
 const log = logger.child("KlaviyoReport")
 import {
   KLAVIYO_API_URL,
+  KLAVIYO_REVISION,
   MIN_REQUEST_INTERVAL,
   sleep,
   klaviyoRequest,
@@ -942,10 +943,43 @@ export async function GET(request: NextRequest) {
     log.info("[Klaviyo] Account currency:", accountInfo.currency)
 
     // Small delay to avoid rate limiting before next call
-    await sleep(350)
+    await sleep(500)
 
-    // Find Placed Order metric
-    const metricId = await findPlacedOrderMetric(apiKey)
+    // Find Placed Order metric - with diagnostic logging
+    let metricId = await findPlacedOrderMetric(apiKey)
+
+    // If findPlacedOrderMetric failed, try direct fetch as fallback (debug endpoint style)
+    if (!metricId) {
+      log.warn("[Klaviyo] findPlacedOrderMetric returned null, trying direct fetch fallback...")
+      await sleep(500)
+      try {
+        const directRes = await fetch(`${KLAVIYO_API_URL}/metrics/`, {
+          headers: {
+            "Authorization": `Klaviyo-API-Key ${apiKey}`,
+            "Accept": "application/json",
+            "revision": KLAVIYO_REVISION,
+          },
+        })
+        log.info(`[Klaviyo] Direct metrics fetch status: ${directRes.status}`)
+        if (directRes.ok) {
+          const metricsData = await directRes.json()
+          const metrics = metricsData?.data || []
+          log.info(`[Klaviyo] Direct fetch found ${metrics.length} metrics`)
+          const match = metrics.find((m: { attributes: { name: string } }) =>
+            m.attributes.name === "Placed Order"
+          )
+          if (match) {
+            metricId = match.id
+            log.info(`[Klaviyo] Found via fallback: Placed Order (${metricId})`)
+          }
+        } else {
+          const errText = await directRes.text()
+          log.error(`[Klaviyo] Direct metrics fetch failed: ${errText.substring(0, 300)}`)
+        }
+      } catch (e) {
+        log.error("[Klaviyo] Direct metrics fetch error:", e)
+      }
+    }
 
     if (!metricId) {
       // Return basic data without revenue
