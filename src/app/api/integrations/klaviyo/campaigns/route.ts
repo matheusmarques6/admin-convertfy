@@ -295,11 +295,10 @@ export async function GET(request: NextRequest) {
     const startDateStr = formatDateStr(startDate)
     const endDateStr = formatDateStr(endDate)
 
-    // Fetch data in parallel
-    const [campaigns, metricId] = await Promise.all([
-      getAllCampaigns(apiKey),
-      findPlacedOrderMetric(apiKey)
-    ])
+    // Fetch data sequentially to avoid Klaviyo rate limiting
+    const campaigns = await getAllCampaigns(apiKey)
+    await sleep(350)
+    const metricId = await findPlacedOrderMetric(apiKey)
 
     // Get metrics if we have the metric ID
     let campaignMetrics = new Map()

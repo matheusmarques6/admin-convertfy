@@ -13,7 +13,6 @@ import {
   getCurrencySymbol,
   parseDateRange,
   formatDateStr,
-  testApiConnection,
   getAccountInfo,
   getTimezoneOffset,
   findPlacedOrderMetric,
@@ -931,28 +930,33 @@ export async function GET(request: NextRequest) {
 
     log.info(`[Klaviyo] Date range: ${startDateStr} to ${endDateStr}`)
 
-    // Test API connection first
-    const isConnected = await testApiConnection(apiKey)
-    if (!isConnected) {
+    // Get account info (also validates connection - no need for separate testApiConnection)
+    const accountInfo = await getAccountInfo(apiKey)
+    if (!accountInfo.orgName) {
       return NextResponse.json({
         success: false,
         connected: false,
         error: "Não foi possível conectar à API do Klaviyo. Verifique a API Key.",
       }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
-
-    // Get account info first
-    const accountInfo = await getAccountInfo(apiKey)
     log.info("[Klaviyo] Account currency:", accountInfo.currency)
+
+    // Small delay to avoid rate limiting before next call
+    await sleep(350)
 
     // Find Placed Order metric
     const metricId = await findPlacedOrderMetric(apiKey)
 
     if (!metricId) {
       // Return basic data without revenue
-      const [listMetrics, segmentMetrics, allFlows, allCampaigns] = await Promise.all([
+      // Stagger parallel calls to avoid Klaviyo rate limiting (3 req/s burst)
+      await sleep(350)
+      const [listMetrics, segmentMetrics] = await Promise.all([
         getLists(apiKey),
         getSegments(apiKey),
+      ])
+      await sleep(350)
+      const [allFlows, allCampaigns] = await Promise.all([
         getFlows(apiKey),
         getCampaigns(apiKey)
       ])
@@ -1024,10 +1028,14 @@ export async function GET(request: NextRequest) {
       }, { headers: corsHeaders(request.headers.get("origin")) })
     }
 
-    // Get all data
-    const [listMetrics, segmentMetrics, allFlows, allCampaigns] = await Promise.all([
+    // Get all data - stagger to avoid Klaviyo rate limiting (3 req/s burst)
+    await sleep(350)
+    const [listMetrics, segmentMetrics] = await Promise.all([
       getLists(apiKey),
       getSegments(apiKey),
+    ])
+    await sleep(350)
+    const [allFlows, allCampaigns] = await Promise.all([
       getFlows(apiKey),
       getCampaigns(apiKey)
     ])

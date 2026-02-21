@@ -278,11 +278,10 @@ export async function GET(request: NextRequest) {
     const startDateStr = formatDateStr(startDate)
     const endDateStr = formatDateStr(endDate)
 
-    // Fetch data in parallel
-    const [flows, metricId] = await Promise.all([
-      getAllFlows(apiKey),
-      findPlacedOrderMetric(apiKey)
-    ])
+    // Fetch data sequentially to avoid Klaviyo rate limiting
+    const flows = await getAllFlows(apiKey)
+    await sleep(350)
+    const metricId = await findPlacedOrderMetric(apiKey)
 
     // Get metrics if we have the metric ID
     let flowMetrics = new Map()
