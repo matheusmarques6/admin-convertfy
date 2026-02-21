@@ -24,6 +24,7 @@ import { Progress } from "@/components/ui/progress"
 import { KlaviyoPerformanceReport } from "@/components/clients/klaviyo-performance-report"
 import { useKlaviyoCampaigns, useKlaviyoFlows } from "@/lib/hooks/use-api-data"
 import { StoreBriefingTab } from "@/components/stores/store-briefing-tab"
+import { StoreFormTab } from "@/components/stores/store-form-tab"
 
 interface StoreDetailTabsProps {
   storeId: string
@@ -121,6 +122,10 @@ export function StoreDetailTabs({
         <TabsTrigger value="report" disabled={!klaviyoConnected}>
           <BarChart3 className="h-4 w-4 mr-2" />
           Relatório
+        </TabsTrigger>
+        <TabsTrigger value="form">
+          <FileText className="h-4 w-4 mr-2" />
+          Formulário
         </TabsTrigger>
         <TabsTrigger value="briefing">
           <BookOpen className="h-4 w-4 mr-2" />
@@ -321,6 +326,11 @@ export function StoreDetailTabs({
       {/* Report */}
       <TabsContent value="report">
         <KlaviyoPerformanceReport storeId={storeId} storeName={storeName} />
+      </TabsContent>
+
+      {/* Formulário */}
+      <TabsContent value="form">
+        <StoreFormTab storeId={storeId} clientId={clientId} />
       </TabsContent>
 
       {/* Briefing */}

@@ -41,7 +41,9 @@ const PLATFORMS = [
   { value: "shopify", label: "Shopify" },
   { value: "nuvemshop", label: "Nuvemshop" },
   { value: "woocommerce", label: "WooCommerce" },
-  { value: "other", label: "Outra" },
+  { value: "tray", label: "Tray" },
+  { value: "dupla_estrutura", label: "Dupla Estrutura" },
+  { value: "other", label: "Outros" },
 ]
 
 const SHIPPING_TYPES = [

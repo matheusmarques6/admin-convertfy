@@ -1,39 +1,50 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import {
   Kanban,
   FileText,
   BookOpen,
   Loader2,
   ExternalLink,
+  Copy,
+  Link as LinkIcon,
+  CheckCircle2,
+  AlertCircle,
 } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { toast } from "@/lib/hooks/use-toast"
 import { OnboardingKanban } from "./onboarding-kanban"
-import { StoreOnboardingCard } from "./store-onboarding-card"
 import { StoreOnboardingForm } from "./store-onboarding-form"
 import { StoreBriefingView } from "./store-briefing-view"
 import type { StoreBriefing } from "@/types/onboarding"
 
-interface StoreWithOnboarding {
+interface StoreItem {
   id: string
   store_name: string
   store_url: string | null
   platform: string | null
   client_id: string
   client_name: string
-  onboarding_status: string | null
-  progress_percent: number
   form_complete: boolean
-  last_feedback_at: string | null
 }
 
 interface BriefingItem {
@@ -47,18 +58,17 @@ interface BriefingItem {
 }
 
 export function OnboardingTabs() {
-  const [stores, setStores] = useState<StoreWithOnboarding[]>([])
+  const [stores, setStores] = useState<StoreItem[]>([])
   const [briefings, setBriefings] = useState<BriefingItem[]>([])
   const [loading, setLoading] = useState(false)
   const [briefingsLoading, setBriefingsLoading] = useState(false)
 
-  // Dialog state for form
-  const [formDialogOpen, setFormDialogOpen] = useState(false)
-  const [selectedStore, setSelectedStore] = useState<{ id: string; clientId: string } | null>(null)
+  // Form tab state
+  const [selectedStoreId, setSelectedStoreId] = useState<string>("")
   const [formInitialData, setFormInitialData] = useState<Record<string, unknown> | null>(null)
   const [formLoading, setFormLoading] = useState(false)
 
-  // Dialog state for briefing
+  // Briefing dialog state
   const [briefingDialogOpen, setBriefingDialogOpen] = useState(false)
   const [selectedBriefing, setSelectedBriefing] = useState<StoreBriefing | null>(null)
   const [selectedBriefingStoreId, setSelectedBriefingStoreId] = useState<string>("")
@@ -66,42 +76,24 @@ export function OnboardingTabs() {
   const fetchStores = useCallback(async () => {
     setLoading(true)
     try {
-      // Fetch all onboardings to cross-reference
-      const [onbRes, storesRes] = await Promise.all([
-        fetch("/api/onboarding"),
-        fetch("/api/stores"),
-      ])
-      const onbData = await onbRes.json()
+      const storesRes = await fetch("/api/stores")
       const storesData = await storesRes.json()
-
-      const onboardings = onbData.onboardings || []
       const allStores = storesData.stores || []
 
-      // Cross-reference stores with their onboarding data
-      const result: StoreWithOnboarding[] = []
+      const result: StoreItem[] = allStores.map(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (store: any) => ({
+          id: store.id,
+          store_name: store.store_name,
+          store_url: store.store_url,
+          platform: store.platform,
+          client_id: store.client_id,
+          client_name: store.client?.name || store.clients?.name || "Cliente",
+          form_complete: false,
+        })
+      )
 
-      for (const store of allStores) {
-        const onboarding = onboardings.find(
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (o: any) => o.store_id === store.id && o.status !== "cancelled"
-        )
-        if (onboarding) {
-          result.push({
-            id: store.id,
-            store_name: store.store_name,
-            store_url: store.store_url,
-            platform: store.platform,
-            client_id: store.client_id,
-            client_name: store.client?.name || store.clients?.name || "Cliente",
-            onboarding_status: onboarding.status,
-            progress_percent: onboarding.progress_percent || 0,
-            form_complete: false, // Will be updated
-            last_feedback_at: null,
-          })
-        }
-      }
-
-      // Check form status for these stores
+      // Check form status for all stores
       for (const s of result) {
         try {
           const res = await fetch(`/api/onboarding/store-data?store_id=${s.id}`)
@@ -115,12 +107,17 @@ export function OnboardingTabs() {
       }
 
       setStores(result)
+
+      // Auto-select first store if none selected
+      if (result.length > 0 && !selectedStoreId) {
+        setSelectedStoreId(result[0].id)
+      }
     } catch {
       // ignore
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [selectedStoreId])
 
   const fetchBriefings = useCallback(async () => {
     setBriefingsLoading(true)
@@ -158,26 +155,36 @@ export function OnboardingTabs() {
     }
   }, [])
 
-  async function openFormDialog(storeId: string, clientId: string) {
-    setSelectedStore({ id: storeId, clientId })
+  // Load form data when selected store changes
+  useEffect(() => {
+    if (!selectedStoreId) return
     setFormLoading(true)
-    setFormDialogOpen(true)
+    fetch(`/api/onboarding/store-data?store_id=${selectedStoreId}`)
+      .then((res) => res.json())
+      .then((data) => setFormInitialData(data))
+      .catch(() => setFormInitialData(null))
+      .finally(() => setFormLoading(false))
+  }, [selectedStoreId])
 
-    try {
-      const res = await fetch(`/api/onboarding/store-data?store_id=${storeId}`)
-      const data = await res.json()
-      setFormInitialData(data)
-    } catch {
-      setFormInitialData(null)
-    } finally {
-      setFormLoading(false)
+  const selectedStore = stores.find((s) => s.id === selectedStoreId) || null
+
+  function handleFormComplete() {
+    // Re-fetch to update form_complete status
+    fetchStores()
+    // Reload form data
+    if (selectedStoreId) {
+      setFormLoading(true)
+      fetch(`/api/onboarding/store-data?store_id=${selectedStoreId}`)
+        .then((res) => res.json())
+        .then((data) => setFormInitialData(data))
+        .catch(() => setFormInitialData(null))
+        .finally(() => setFormLoading(false))
     }
   }
 
   async function openBriefingDialog(storeId: string) {
     setSelectedBriefingStoreId(storeId)
     setBriefingDialogOpen(true)
-
     try {
       const res = await fetch(`/api/onboarding/store-briefing?store_id=${storeId}`)
       const data = await res.json()
@@ -217,86 +224,95 @@ export function OnboardingTabs() {
           ) : stores.length === 0 ? (
             <Card>
               <CardContent className="py-10 text-center text-muted-foreground">
-                Nenhuma loja com onboarding ativo encontrada.
+                Nenhuma loja encontrada. Cadastre lojas primeiro.
               </CardContent>
             </Card>
           ) : (
-            <div className="space-y-6">
-              {/* Pending */}
-              {stores.filter((s) => !s.form_complete).length > 0 && (
-                <div>
-                  <h3 className="font-semibold text-sm text-muted-foreground mb-3">
-                    Formulários Pendentes ({stores.filter((s) => !s.form_complete).length})
-                  </h3>
-                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    {stores
-                      .filter((s) => !s.form_complete)
-                      .map((store) => (
-                        <div key={store.id} className="space-y-2">
-                          <StoreOnboardingCard
-                            storeId={store.id}
-                            storeName={store.store_name}
-                            storeUrl={store.store_url}
-                            platform={store.platform}
-                            clientId={store.client_id}
-                            clientName={store.client_name}
-                            onboardingStatus={store.onboarding_status || undefined}
-                            progressPercent={store.progress_percent}
-                            formComplete={store.form_complete}
-                            lastFeedbackAt={store.last_feedback_at}
-                          />
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="w-full"
-                            onClick={() => openFormDialog(store.id, store.client_id)}
-                          >
-                            <FileText className="h-4 w-4 mr-1" />
-                            Preencher Formulário
-                          </Button>
-                        </div>
-                      ))}
-                  </div>
-                </div>
-              )}
+            <div className="space-y-4">
+              {/* Seletor de loja + link + status */}
+              <Card>
+                <CardContent className="p-4 space-y-4">
+                  <div className="flex items-end gap-4">
+                    <div className="flex-1 space-y-1.5">
+                      <Label>Selecione a loja</Label>
+                      <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Escolha uma loja..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {stores.map((store) => (
+                            <SelectItem key={store.id} value={store.id}>
+                              <span className="flex items-center gap-2">
+                                {store.store_name}
+                                <span className="text-muted-foreground text-xs">
+                                  ({store.client_name})
+                                </span>
+                              </span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
 
-              {/* Completed */}
-              {stores.filter((s) => s.form_complete).length > 0 && (
-                <div>
-                  <h3 className="font-semibold text-sm text-muted-foreground mb-3">
-                    Formulários Preenchidos ({stores.filter((s) => s.form_complete).length})
-                  </h3>
-                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    {stores
-                      .filter((s) => s.form_complete)
-                      .map((store) => (
-                        <div key={store.id} className="space-y-2">
-                          <StoreOnboardingCard
-                            storeId={store.id}
-                            storeName={store.store_name}
-                            storeUrl={store.store_url}
-                            platform={store.platform}
-                            clientId={store.client_id}
-                            clientName={store.client_name}
-                            onboardingStatus={store.onboarding_status || undefined}
-                            progressPercent={store.progress_percent}
-                            formComplete={store.form_complete}
-                            lastFeedbackAt={store.last_feedback_at}
-                          />
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="w-full"
-                            onClick={() => openFormDialog(store.id, store.client_id)}
-                          >
-                            <FileText className="h-4 w-4 mr-1" />
-                            Editar Formulário
-                          </Button>
-                        </div>
-                      ))}
+                    {selectedStore && (
+                      <Badge
+                        variant={selectedStore.form_complete ? "success" : "secondary"}
+                        className="gap-1 whitespace-nowrap"
+                      >
+                        {selectedStore.form_complete ? (
+                          <><CheckCircle2 className="h-3 w-3" /> Preenchido</>
+                        ) : (
+                          <><AlertCircle className="h-3 w-3" /> Pendente</>
+                        )}
+                      </Badge>
+                    )}
                   </div>
+
+                  {/* Link compartilhável */}
+                  <div className="pt-2 border-t">
+                    <div className="flex items-center gap-2 mb-2">
+                      <LinkIcon className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">Link de acesso do cliente</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        readOnly
+                        value={`${typeof window !== "undefined" ? window.location.origin : ""}/portal/onboarding/wizard`}
+                        className="text-xs bg-muted/50"
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const link = `${window.location.origin}/portal/onboarding/wizard`
+                          navigator.clipboard.writeText(link)
+                          toast({ title: "Link copiado!", description: "O link do portal foi copiado para a área de transferência." })
+                        }}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1.5">
+                      O cliente acessa este link para preencher o formulário. Você pode editar todos os campos abaixo.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Formulário direto */}
+              {formLoading ? (
+                <div className="flex items-center justify-center py-10">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
-              )}
+              ) : selectedStore ? (
+                <StoreOnboardingForm
+                  key={selectedStoreId}
+                  storeId={selectedStore.id}
+                  clientId={selectedStore.client_id}
+                  initialData={formInitialData as Record<string, unknown> | undefined}
+                  onComplete={handleFormComplete}
+                />
+              ) : null}
             </div>
           )}
         </TabsContent>
@@ -344,31 +360,6 @@ export function OnboardingTabs() {
         </TabsContent>
       </Tabs>
 
-      {/* Form Dialog */}
-      <Dialog open={formDialogOpen} onOpenChange={setFormDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Formulário de Onboarding</DialogTitle>
-          </DialogHeader>
-          {formLoading ? (
-            <div className="flex items-center justify-center py-10">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            </div>
-          ) : selectedStore ? (
-            <StoreOnboardingForm
-              storeId={selectedStore.id}
-              clientId={selectedStore.clientId}
-              initialData={formInitialData as Record<string, unknown> | undefined}
-              onComplete={() => {
-                setFormDialogOpen(false)
-                fetchStores()
-                fetchBriefings()
-              }}
-            />
-          ) : null}
-        </DialogContent>
-      </Dialog>
-
       {/* Briefing Dialog */}
       <Dialog open={briefingDialogOpen} onOpenChange={setBriefingDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -381,10 +372,7 @@ export function OnboardingTabs() {
             onRefresh={() => openBriefingDialog(selectedBriefingStoreId)}
             onEditForm={() => {
               setBriefingDialogOpen(false)
-              const store = stores.find((s) => s.id === selectedBriefingStoreId)
-              if (store) {
-                openFormDialog(store.id, store.client_id)
-              }
+              setSelectedStoreId(selectedBriefingStoreId)
             }}
           />
         </DialogContent>

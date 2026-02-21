@@ -318,9 +318,10 @@ export default function OnboardingWizardPage() {
                       <SelectContent>
                         <SelectItem value="shopify">Shopify</SelectItem>
                         <SelectItem value="woocommerce">WooCommerce</SelectItem>
-                        <SelectItem value="vtex">VTEX</SelectItem>
                         <SelectItem value="nuvemshop">Nuvemshop</SelectItem>
-                        <SelectItem value="other">Outra</SelectItem>
+                        <SelectItem value="tray">Tray</SelectItem>
+                        <SelectItem value="dupla_estrutura">Dupla Estrutura</SelectItem>
+                        <SelectItem value="other">Outros</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
