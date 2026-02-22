@@ -544,8 +544,8 @@ async function getFlowValuesReport(
     "bounce_rate",
     "click_rate",
     "click_to_open_rate",
-    "clicks",
-    "clicks_unique",
+    "clicked",
+    "clicked_unique",
     "conversion_rate",
     "conversion_uniques",
     "conversion_value",
@@ -553,8 +553,8 @@ async function getFlowValuesReport(
     "delivered",
     "delivery_rate",
     "open_rate",
-    "opens",
-    "opens_unique",
+    "opened",
+    "opened_unique",
     "recipients",
     "revenue_per_recipient",
     "unsubscribe_rate"
@@ -590,10 +590,10 @@ async function getFlowValuesReport(
           }
           statistics: {
             delivered?: number
-            opens?: number
-            opens_unique?: number
-            clicks?: number
-            clicks_unique?: number
+            opened?: number
+            opened_unique?: number
+            clicked?: number
+            clicked_unique?: number
             conversion_value?: number
             conversions?: number
             conversion_uniques?: number
@@ -649,8 +649,8 @@ async function getFlowValuesReport(
     totalRevenue += stats.conversion_value || 0
     totalConversions += stats.conversions || 0
     totalDelivered += stats.delivered || 0
-    totalOpens += stats.opens_unique || 0
-    totalClicks += stats.clicks_unique || 0
+    totalOpens += stats.opened_unique || 0
+    totalClicks += stats.clicked_unique || 0
 
     if (stats.bounce_rate !== undefined) {
       sumBounceRate += stats.bounce_rate
@@ -669,8 +669,8 @@ async function getFlowValuesReport(
       revenue: existing.revenue + (stats.conversion_value || 0),
       conversions: existing.conversions + (stats.conversions || 0),
       delivered: existing.delivered + (stats.delivered || 0),
-      opens: existing.opens + (stats.opens_unique || 0),
-      clicks: existing.clicks + (stats.clicks_unique || 0),
+      opens: existing.opens + (stats.opened_unique || 0),
+      clicks: existing.clicks + (stats.clicked_unique || 0),
       openRate: stats.open_rate || existing.openRate,
       clickRate: stats.click_rate || existing.clickRate,
       bounceRate: stats.bounce_rate || existing.bounceRate,
@@ -722,8 +722,8 @@ async function getCampaignValuesReport(
     "bounce_rate",
     "click_rate",
     "click_to_open_rate",
-    "clicks",
-    "clicks_unique",
+    "clicked",
+    "clicked_unique",
     "conversion_rate",
     "conversion_uniques",
     "conversion_value",
@@ -731,8 +731,8 @@ async function getCampaignValuesReport(
     "delivered",
     "delivery_rate",
     "open_rate",
-    "opens",
-    "opens_unique",
+    "opened",
+    "opened_unique",
     "recipients",
     "revenue_per_recipient",
     "unsubscribe_rate"
@@ -766,10 +766,10 @@ async function getCampaignValuesReport(
           }
           statistics: {
             delivered?: number
-            opens?: number
-            opens_unique?: number
-            clicks?: number
-            clicks_unique?: number
+            opened?: number
+            opened_unique?: number
+            clicked?: number
+            clicked_unique?: number
             conversion_value?: number
             conversions?: number
             conversion_uniques?: number
@@ -827,8 +827,8 @@ async function getCampaignValuesReport(
     totalRevenue += stats.conversion_value || 0
     totalConversions += stats.conversions || 0
     totalDelivered += stats.delivered || 0
-    totalOpens += stats.opens_unique || 0
-    totalClicks += stats.clicks_unique || 0
+    totalOpens += stats.opened_unique || 0
+    totalClicks += stats.clicked_unique || 0
 
     if (stats.bounce_rate !== undefined) {
       sumBounceRate += stats.bounce_rate
@@ -847,8 +847,8 @@ async function getCampaignValuesReport(
       revenue: existing.revenue + (stats.conversion_value || 0),
       conversions: existing.conversions + (stats.conversions || 0),
       delivered: existing.delivered + (stats.delivered || 0),
-      opens: existing.opens + (stats.opens_unique || 0),
-      clicks: existing.clicks + (stats.clicks_unique || 0),
+      opens: existing.opens + (stats.opened_unique || 0),
+      clicks: existing.clicks + (stats.clicked_unique || 0),
       openRate: stats.open_rate || existing.openRate,
       clickRate: stats.click_rate || existing.clickRate,
       bounceRate: stats.bounce_rate || existing.bounceRate,

@@ -101,8 +101,8 @@ async function getCampaignMetrics(
     "bounced",
     "click_rate",
     "click_to_open_rate",
-    "clicks",
-    "clicks_unique",
+    "clicked",
+    "clicked_unique",
     "conversion_rate",
     "conversion_uniques",
     "conversion_value",
@@ -110,13 +110,13 @@ async function getCampaignMetrics(
     "delivered",
     "delivery_rate",
     "open_rate",
-    "opens",
-    "opens_unique",
+    "opened",
+    "opened_unique",
     "recipients",
     "revenue_per_recipient",
+    "spam_complaint_rate",
     "unsubscribe_rate",
-    "unsubscribed",
-    "spam_complaints"
+    "unsubscribed"
   ]
 
   const body = {
@@ -145,10 +145,10 @@ async function getCampaignMetrics(
           }
           statistics: {
             delivered?: number
-            opens?: number
-            opens_unique?: number
-            clicks?: number
-            clicks_unique?: number
+            opened?: number
+            opened_unique?: number
+            clicked?: number
+            clicked_unique?: number
             conversion_value?: number
             conversions?: number
             conversion_uniques?: number
@@ -162,7 +162,7 @@ async function getCampaignMetrics(
             click_to_open_rate?: number
             unsubscribe_rate?: number
             unsubscribed?: number
-            spam_complaints?: number
+            spam_complaint_rate?: number
             average_order_value?: number
             revenue_per_recipient?: number
           }
@@ -194,7 +194,7 @@ async function getCampaignMetrics(
     bounceRate: number
     unsubscribed: number
     unsubscribeRate: number
-    spamComplaints: number
+    spamComplaintRate: number
   }>()
 
   for (const r of response.data.attributes.results) {
@@ -219,16 +219,16 @@ async function getCampaignMetrics(
       bounceRate: 0,
       unsubscribed: 0,
       unsubscribeRate: 0,
-      spamComplaints: 0
+      spamComplaintRate: 0
     }
 
     campaignMetrics.set(campaignId, {
       recipients: existing.recipients + (stats.recipients || 0),
       delivered: existing.delivered + (stats.delivered || 0),
       deliveryRate: stats.delivery_rate || existing.deliveryRate,
-      opened: existing.opened + (stats.opens_unique || 0),
+      opened: existing.opened + (stats.opened_unique || 0),
       openRate: stats.open_rate || existing.openRate,
-      clicked: existing.clicked + (stats.clicks_unique || 0),
+      clicked: existing.clicked + (stats.clicked_unique || 0),
       clickRate: stats.click_rate || existing.clickRate,
       clickToOpenRate: stats.click_to_open_rate || existing.clickToOpenRate,
       conversions: existing.conversions + (stats.conversions || 0),
@@ -240,7 +240,7 @@ async function getCampaignMetrics(
       bounceRate: stats.bounce_rate || existing.bounceRate,
       unsubscribed: existing.unsubscribed + (stats.unsubscribed || 0),
       unsubscribeRate: stats.unsubscribe_rate || existing.unsubscribeRate,
-      spamComplaints: existing.spamComplaints + (stats.spam_complaints || 0)
+      spamComplaintRate: stats.spam_complaint_rate || existing.spamComplaintRate
     })
   }
 
@@ -331,7 +331,7 @@ export async function GET(request: NextRequest) {
           bounceRate: 0,
           unsubscribed: 0,
           unsubscribeRate: 0,
-          spamComplaints: 0
+          spamComplaintRate: 0
         }
 
         return {
@@ -378,7 +378,7 @@ export async function GET(request: NextRequest) {
       totalRevenue: acc.totalRevenue + campaign.conversionValue,
       totalBounced: acc.totalBounced + campaign.bounced,
       totalUnsubscribed: acc.totalUnsubscribed + campaign.unsubscribed,
-      totalSpamComplaints: acc.totalSpamComplaints + campaign.spamComplaints
+      totalSpamComplaintRate: acc.totalSpamComplaintRate + campaign.spamComplaintRate
     }), {
       totalCampaigns: 0,
       sentCampaigns: 0,
@@ -395,7 +395,7 @@ export async function GET(request: NextRequest) {
       totalRevenue: 0,
       totalBounced: 0,
       totalUnsubscribed: 0,
-      totalSpamComplaints: 0
+      totalSpamComplaintRate: 0
     })
 
     // Calculate average rates
@@ -438,7 +438,7 @@ export async function GET(request: NextRequest) {
               bounce_rate: campaign.bounceRate,
               unsubscribed: campaign.unsubscribed,
               unsubscribe_rate: campaign.unsubscribeRate,
-              spam_complaints: campaign.spamComplaints,
+              spam_complaint_rate: campaign.spamComplaintRate,
               fetched_at: new Date().toISOString()
             })),
             { onConflict: 'store_id,campaign_id,period_start,period_end' }

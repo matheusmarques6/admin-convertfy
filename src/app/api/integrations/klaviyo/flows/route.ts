@@ -83,14 +83,14 @@ async function getFlowMetrics(
   endDate: string,
   timezoneOffset: string
 ) {
+  // Note: bounced and unsubscribed are NOT valid for flow-values-reports
   const statistics = [
     "average_order_value",
     "bounce_rate",
-    "bounced",
     "click_rate",
     "click_to_open_rate",
-    "clicks",
-    "clicks_unique",
+    "clicked",
+    "clicked_unique",
     "conversion_rate",
     "conversion_uniques",
     "conversion_value",
@@ -98,12 +98,11 @@ async function getFlowMetrics(
     "delivered",
     "delivery_rate",
     "open_rate",
-    "opens",
-    "opens_unique",
+    "opened",
+    "opened_unique",
     "recipients",
     "revenue_per_recipient",
-    "unsubscribe_rate",
-    "unsubscribed"
+    "unsubscribe_rate"
   ]
 
   const body = {
@@ -133,10 +132,10 @@ async function getFlowMetrics(
           }
           statistics: {
             delivered?: number
-            opens?: number
-            opens_unique?: number
-            clicks?: number
-            clicks_unique?: number
+            opened?: number
+            opened_unique?: number
+            clicked?: number
+            clicked_unique?: number
             conversion_value?: number
             conversions?: number
             conversion_uniques?: number
@@ -144,12 +143,10 @@ async function getFlowMetrics(
             recipients?: number
             delivery_rate?: number
             bounce_rate?: number
-            bounced?: number
             open_rate?: number
             click_rate?: number
             click_to_open_rate?: number
             unsubscribe_rate?: number
-            unsubscribed?: number
             average_order_value?: number
             revenue_per_recipient?: number
           }
@@ -211,9 +208,9 @@ async function getFlowMetrics(
       recipients: existing.recipients + (stats.recipients || 0),
       delivered: existing.delivered + (stats.delivered || 0),
       deliveryRate: stats.delivery_rate || existing.deliveryRate,
-      opened: existing.opened + (stats.opens_unique || 0),
+      opened: existing.opened + (stats.opened_unique || 0),
       openRate: stats.open_rate || existing.openRate,
-      clicked: existing.clicked + (stats.clicks_unique || 0),
+      clicked: existing.clicked + (stats.clicked_unique || 0),
       clickRate: stats.click_rate || existing.clickRate,
       clickToOpenRate: stats.click_to_open_rate || existing.clickToOpenRate,
       conversions: existing.conversions + (stats.conversions || 0),
@@ -221,9 +218,9 @@ async function getFlowMetrics(
       conversionValue: existing.conversionValue + (stats.conversion_value || 0),
       revenuePerRecipient: stats.revenue_per_recipient || existing.revenuePerRecipient,
       averageOrderValue: stats.average_order_value || existing.averageOrderValue,
-      bounced: existing.bounced + (stats.bounced || 0),
+      bounced: existing.bounced,
       bounceRate: stats.bounce_rate || existing.bounceRate,
-      unsubscribed: existing.unsubscribed + (stats.unsubscribed || 0),
+      unsubscribed: existing.unsubscribed,
       unsubscribeRate: stats.unsubscribe_rate || existing.unsubscribeRate
     })
   }

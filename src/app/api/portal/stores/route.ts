@@ -61,6 +61,7 @@ export async function GET(request: NextRequest) {
         is_active,
         created_at,
         klaviyo_api_key,
+        klaviyo_private_key,
         shopify_access_token,
         shopify_store_domain
       `)
@@ -80,7 +81,7 @@ export async function GET(request: NextRequest) {
       store_url: store.store_url,
       is_active: store.is_active,
       created_at: store.created_at,
-      klaviyo_api_key: !!store.klaviyo_api_key,
+      hasKlaviyo: !!(store.klaviyo_private_key || store.klaviyo_api_key),
       shopify_access_token: !!store.shopify_access_token,
       shopify_store_domain: store.shopify_store_domain || "",
     }))
@@ -128,6 +129,7 @@ export async function PUT(request: NextRequest) {
     if (klaviyo_private_key) {
       updateData.klaviyo_private_key = encrypt(klaviyo_private_key)
       updateData.klaviyo_api_key = encrypt(klaviyo_private_key) // backward compat
+      updateData.integration_status = "connected"
     }
     if (shopify_store_domain) {
       updateData.shopify_store_domain = shopify_store_domain

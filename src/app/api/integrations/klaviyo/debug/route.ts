@@ -142,7 +142,7 @@ export async function GET(request: NextRequest) {
               data: {
                 type: "flow-values-report",
                 attributes: {
-                  statistics: ["delivered", "opens_unique", "clicks_unique", "conversion_value", "conversion_uniques"],
+                  statistics: ["delivered", "opened_unique", "clicked_unique", "conversion_value", "conversion_uniques"],
                   timeframe: {
                     start: startDate.toISOString().split('.')[0] + "+00:00",
                     end: now.toISOString().split('.')[0] + "+00:00",

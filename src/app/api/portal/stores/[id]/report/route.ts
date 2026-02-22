@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
 
@@ -27,8 +27,11 @@ export async function GET(
     const searchParams = request.nextUrl.searchParams
     const period = searchParams.get("period") || "30d"
 
+    // Use admin client to bypass RLS for portal user lookups
+    const adminClient = createAdminClient()
+
     // Get portal user
-    const { data: portalUser } = await supabase
+    const { data: portalUser } = await adminClient
       .from("client_portal_users")
       .select("id, client_id, permissions")
       .eq("auth_user_id", user.id)
@@ -46,7 +49,7 @@ export async function GET(
     }
 
     // Verify store belongs to client
-    const { data: store, error: storeError } = await supabase
+    const { data: store, error: storeError } = await adminClient
       .from("client_stores")
       .select("id, client_id, store_name, platform, store_url, klaviyo_private_key, klaviyo_api_key, shopify_access_token, shopify_store_domain")
       .eq("id", storeId)
@@ -117,7 +120,7 @@ export async function GET(
         startDate.setDate(now.getDate() - 30)
     }
 
-    const { data: campaigns } = await supabase
+    const { data: campaigns } = await adminClient
       .from("campaigns")
       .select("*")
       .eq("store_id", storeId)
@@ -125,7 +128,7 @@ export async function GET(
       .order("scheduled_date", { ascending: false })
 
     // Log activity
-    await supabase.from("client_portal_activity").insert({
+    await adminClient.from("client_portal_activity").insert({
       portal_user_id: portalUser.id,
       client_id: portalUser.client_id,
       action: "view_report",

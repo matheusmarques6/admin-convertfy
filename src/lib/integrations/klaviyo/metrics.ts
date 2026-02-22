@@ -24,22 +24,40 @@ interface KlaviyoMetric {
  * Returns null if no matching metric is found (e.g. no e-commerce integration).
  */
 export async function findPlacedOrderMetric(apiKey: string): Promise<string | null> {
-  log.info("Fetching metrics...")
+  log.info("Fetching metrics with pagination...")
 
-  const response = await klaviyoRequest<{
-    data: KlaviyoMetric[]
-  }>(apiKey, "/metrics/?page[size]=100")
+  const allMetrics: KlaviyoMetric[] = []
+  let nextPage: string | null = "/metrics/?page[size]=100"
+  let pageCount = 0
+  const maxPages = 20 // Up to 2,000 metrics
 
-  if (!response?.data) return null
+  while (nextPage && pageCount < maxPages) {
+    type MetricsPage = { data: KlaviyoMetric[]; links?: { next?: string } }
+    const response: MetricsPage | null = await klaviyoRequest<MetricsPage>(apiKey, nextPage)
 
-  const metrics = response.data
-  log.info(`Total metrics: ${metrics.length}`)
+    if (!response?.data) break
 
-  // Log all metrics for debugging
-  metrics.forEach(m => {
-    log.debug(`Metric: ${m.attributes.name} (${m.id}) - Integration: ${m.attributes.integration?.name || 'none'}`)
-  })
+    allMetrics.push(...response.data)
+    pageCount++
 
+    // Check for match on each page to return early
+    const match = findMatch(response.data)
+    if (match) {
+      log.info(`Using metric (found on page ${pageCount}): ${match.attributes.name} (${match.id})`)
+      return match.id
+    }
+
+    const nextLink: string | undefined = response.links?.next
+    if (!nextLink) break
+    // Strip base URL if present to get relative path
+    nextPage = nextLink.includes("://") ? nextLink.replace(/^https?:\/\/[^/]+\/api/, "") : nextLink
+  }
+
+  log.info(`Total metrics scanned: ${allMetrics.length} (${pageCount} pages) - No Placed Order metric found`)
+  return null
+}
+
+function findMatch(metrics: KlaviyoMetric[]): KlaviyoMetric | undefined {
   // 1. Exact match (English)
   let match = metrics.find(m => m.attributes.name === "Placed Order")
 
@@ -54,11 +72,5 @@ export async function findPlacedOrderMetric(apiKey: string): Promise<string | nu
     })
   }
 
-  if (match) {
-    log.info(`Using metric: ${match.attributes.name} (${match.id})`)
-    return match.id
-  }
-
-  log.info("No Placed Order metric found")
-  return null
+  return match
 }

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { cleanExpiredCache, setCache } from "@/lib/cache"
 import { logger } from "@/lib/logger"
-import { decrypt } from "@/lib/crypto"
+import { getStoreCredentials } from "@/lib/services/credentials.service"
 import {
   klaviyoRequest,
   parseDateRange,
@@ -19,18 +19,6 @@ const log = logger.child("CronSyncReports")
 
 export const maxDuration = 300
 export const dynamic = "force-dynamic"
-
-function decryptField(value: string | null | undefined): string | null {
-  if (!value) return null
-  if (value.startsWith("enc:v1:")) {
-    try {
-      return decrypt(value)
-    } catch {
-      return null
-    }
-  }
-  return value
-}
 
 export async function GET(request: NextRequest) {
   try {
@@ -54,7 +42,7 @@ export async function GET(request: NextRequest) {
     // Get all stores with Klaviyo credentials
     const { data: stores, error: storesError } = await supabase
       .from("client_stores")
-      .select("id, store_name, klaviyo_api_key, klaviyo_private_key")
+      .select("id, store_name")
       .not("klaviyo_private_key", "is", null)
 
     if (storesError || !stores) {
@@ -62,20 +50,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Failed to fetch stores" }, { status: 500 })
     }
 
-    // Filter stores that actually have a valid Klaviyo key
-    const validStores = stores.filter(s => {
-      const key = decryptField(s.klaviyo_private_key) || decryptField(s.klaviyo_api_key)
-      return !!key
-    })
-
-    log.info(`[Cron] Found ${validStores.length} stores with Klaviyo credentials`)
+    log.info(`[Cron] Found ${stores.length} stores with Klaviyo credentials`)
 
     const results: Array<{ storeId: string; storeName: string; status: string; error?: string }> = []
 
-    for (const store of validStores) {
+    for (const store of stores) {
       const storeStart = Date.now()
       try {
-        const apiKey = decryptField(store.klaviyo_private_key) || decryptField(store.klaviyo_api_key)
+        const credentials = await getStoreCredentials(store.id)
+        const apiKey = credentials.klaviyo_private_key || credentials.klaviyo_api_key
         if (!apiKey) {
           results.push({ storeId: store.id, storeName: store.store_name, status: "skipped", error: "No valid API key" })
           continue
@@ -122,11 +105,11 @@ export async function GET(request: NextRequest) {
                 },
                 conversion_metric_id: metricId,
                 statistics: [
-                  "average_order_value", "bounce_rate", "bounced", "click_rate",
-                  "click_to_open_rate", "clicks", "clicks_unique", "conversion_rate",
+                  "average_order_value", "bounce_rate", "click_rate",
+                  "click_to_open_rate", "clicked", "clicked_unique", "conversion_rate",
                   "conversion_uniques", "conversion_value", "conversions", "delivered",
-                  "delivery_rate", "open_rate", "opens", "opens_unique", "recipients",
-                  "revenue_per_recipient", "unsubscribe_rate", "unsubscribed",
+                  "delivery_rate", "open_rate", "opened", "opened_unique", "recipients",
+                  "revenue_per_recipient", "unsubscribe_rate",
                 ],
               },
             },
@@ -144,9 +127,9 @@ export async function GET(request: NextRequest) {
               recipients: (ex.recipients || 0) + (s.recipients || 0),
               delivered: (ex.delivered || 0) + (s.delivered || 0),
               delivery_rate: s.delivery_rate ?? ex.delivery_rate ?? 0,
-              opened: (ex.opened || 0) + (s.opens_unique || 0),
+              opened: (ex.opened || 0) + (s.opened_unique || 0),
               open_rate: s.open_rate ?? ex.open_rate ?? 0,
-              clicked: (ex.clicked || 0) + (s.clicks_unique || 0),
+              clicked: (ex.clicked || 0) + (s.clicked_unique || 0),
               click_rate: s.click_rate ?? ex.click_rate ?? 0,
               click_to_open_rate: s.click_to_open_rate ?? ex.click_to_open_rate ?? 0,
               conversions: (ex.conversions || 0) + (s.conversions || 0),
@@ -154,9 +137,9 @@ export async function GET(request: NextRequest) {
               conversion_value: (ex.conversion_value || 0) + (s.conversion_value || 0),
               revenue_per_recipient: s.revenue_per_recipient ?? ex.revenue_per_recipient ?? 0,
               average_order_value: s.average_order_value ?? ex.average_order_value ?? 0,
-              bounced: (ex.bounced || 0) + (s.bounced || 0),
+              bounced: ex.bounced || 0,
               bounce_rate: s.bounce_rate ?? ex.bounce_rate ?? 0,
-              unsubscribed: (ex.unsubscribed || 0) + (s.unsubscribed || 0),
+              unsubscribed: ex.unsubscribed || 0,
               unsubscribe_rate: s.unsubscribe_rate ?? ex.unsubscribe_rate ?? 0,
             })
           }
@@ -240,10 +223,10 @@ export async function GET(request: NextRequest) {
                 conversion_metric_id: metricId,
                 statistics: [
                   "average_order_value", "bounce_rate", "bounced", "click_rate",
-                  "click_to_open_rate", "clicks", "clicks_unique", "conversion_rate",
+                  "click_to_open_rate", "clicked", "clicked_unique", "conversion_rate",
                   "conversion_uniques", "conversion_value", "conversions", "delivered",
-                  "delivery_rate", "open_rate", "opens", "opens_unique", "recipients",
-                  "revenue_per_recipient", "unsubscribe_rate", "unsubscribed", "spam_complaints",
+                  "delivery_rate", "open_rate", "opened", "opened_unique", "recipients",
+                  "revenue_per_recipient", "spam_complaint_rate", "unsubscribe_rate", "unsubscribed",
                 ],
               },
             },
@@ -260,9 +243,9 @@ export async function GET(request: NextRequest) {
               recipients: (ex.recipients || 0) + (s.recipients || 0),
               delivered: (ex.delivered || 0) + (s.delivered || 0),
               delivery_rate: s.delivery_rate ?? ex.delivery_rate ?? 0,
-              opened: (ex.opened || 0) + (s.opens_unique || 0),
+              opened: (ex.opened || 0) + (s.opened_unique || 0),
               open_rate: s.open_rate ?? ex.open_rate ?? 0,
-              clicked: (ex.clicked || 0) + (s.clicks_unique || 0),
+              clicked: (ex.clicked || 0) + (s.clicked_unique || 0),
               click_rate: s.click_rate ?? ex.click_rate ?? 0,
               click_to_open_rate: s.click_to_open_rate ?? ex.click_to_open_rate ?? 0,
               conversions: (ex.conversions || 0) + (s.conversions || 0),
@@ -274,7 +257,7 @@ export async function GET(request: NextRequest) {
               bounce_rate: s.bounce_rate ?? ex.bounce_rate ?? 0,
               unsubscribed: (ex.unsubscribed || 0) + (s.unsubscribed || 0),
               unsubscribe_rate: s.unsubscribe_rate ?? ex.unsubscribe_rate ?? 0,
-              spam_complaints: (ex.spam_complaints || 0) + (s.spam_complaints || 0),
+              spam_complaint_rate: s.spam_complaint_rate ?? ex.spam_complaint_rate ?? 0,
             })
           }
 
@@ -344,7 +327,7 @@ export async function GET(request: NextRequest) {
                 bounce_rate: m.bounce_rate,
                 unsubscribed: m.unsubscribed,
                 unsubscribe_rate: m.unsubscribe_rate,
-                spam_complaints: m.spam_complaints,
+                spam_complaints: m.spam_complaint_rate,
                 fetched_at: new Date().toISOString(),
               }
             })
@@ -388,7 +371,7 @@ export async function GET(request: NextRequest) {
     }
 
     const totalElapsed = Date.now() - startTime
-    log.info(`[Cron] Sync completed in ${totalElapsed}ms. ${results.filter(r => r.status === "success").length}/${validStores.length} stores synced.`)
+    log.info(`[Cron] Sync completed in ${totalElapsed}ms. ${results.filter(r => r.status === "success").length}/${stores.length} stores synced.`)
 
     return NextResponse.json({
       success: true,
