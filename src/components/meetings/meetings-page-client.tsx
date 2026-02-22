@@ -40,6 +40,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { MeetingDialog } from "@/components/board/meeting-dialog"
+import { MeetingCompletionDialog } from "@/components/meetings/meeting-completion-dialog"
 import { MeetingCalendar } from "@/components/meetings/meeting-calendar"
 import { MeetingFilters, type MeetingFiltersState } from "@/components/meetings/meeting-filters"
 import { toast } from "@/lib/hooks/use-toast"
@@ -58,6 +59,7 @@ interface ClientInfo {
   id: string
   name: string
   company?: string
+  stores?: string[]
 }
 
 interface ParticipantOption {
@@ -81,6 +83,17 @@ interface MeetingsPageClientProps {
   members: ParticipantOption[]
 }
 
+function getShortName(fullName: string): string {
+  const parts = fullName.trim().split(/\s+/)
+  return parts.length >= 2 ? `${parts[0]} ${parts[1]}` : parts[0]
+}
+
+function formatClientDisplay(client: ClientInfo): string {
+  const storeName = client.stores?.[0]
+  const shortName = getShortName(client.name)
+  return storeName ? `${storeName} — ${shortName}` : shortName
+}
+
 function formatMeetingDate(date: string) {
   const d = new Date(date)
   if (isToday(d)) return `Hoje, ${format(d, "HH:mm")}`
@@ -98,6 +111,7 @@ export function MeetingsPageClient({
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingMeeting, setEditingMeeting] = useState<MeetingWithRelations | null>(null)
   const [initialDate, setInitialDate] = useState<Date | undefined>()
+  const [completionMeeting, setCompletionMeeting] = useState<MeetingWithRelations | null>(null)
   const [filters, setFilters] = useState<MeetingFiltersState>({
     status: "all",
     period: "all",
@@ -163,6 +177,19 @@ export function MeetingsPageClient({
 
   const handleDialogSuccess = () => {
     handleDialogClose()
+    router.refresh()
+  }
+
+  const handleOpenCompletion = (meeting: MeetingWithRelations) => {
+    setCompletionMeeting(meeting)
+  }
+
+  const handleCompletionClose = () => {
+    setCompletionMeeting(null)
+  }
+
+  const handleCompletionSuccess = () => {
+    setCompletionMeeting(null)
     router.refresh()
   }
 
@@ -327,7 +354,7 @@ export function MeetingsPageClient({
                                   )}
                                 </div>
                                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                  {meeting.client && <span>{meeting.client.name}</span>}
+                                  {meeting.client && <span>{formatClientDisplay(meeting.client)}</span>}
                                   {meeting.client && <span>•</span>}
                                   <span>{formatMeetingDate(meeting.scheduled_at)}</span>
                                   <span>•</span>
@@ -355,9 +382,9 @@ export function MeetingsPageClient({
                                     <Pencil className="mr-2 h-4 w-4" />
                                     Editar
                                   </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => handleStatusChange(meeting.id, "completed")}>
+                                  <DropdownMenuItem onClick={() => handleOpenCompletion(meeting)}>
                                     <CheckCircle className="mr-2 h-4 w-4" />
-                                    Marcar como realizada
+                                    Concluir reunião
                                   </DropdownMenuItem>
                                   <DropdownMenuItem onClick={() => handleStatusChange(meeting.id, "no_show")}>
                                     <AlertCircle className="mr-2 h-4 w-4" />
@@ -400,7 +427,7 @@ export function MeetingsPageClient({
                           <div
                             key={meeting.id}
                             className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted/70 transition-colors cursor-pointer"
-                            onClick={() => handleEditMeeting(meeting)}
+                            onClick={() => handleOpenCompletion(meeting)}
                           >
                             <div className="flex items-center gap-3">
                               <config.icon className={cn(
@@ -412,7 +439,7 @@ export function MeetingsPageClient({
                               <div>
                                 <p className="text-sm font-medium">{meeting.title}</p>
                                 <p className="text-xs text-muted-foreground">
-                                  {meeting.client?.name && `${meeting.client.name} • `}
+                                  {meeting.client && `${formatClientDisplay(meeting.client)} • `}
                                   {format(new Date(meeting.scheduled_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
                                 </p>
                               </div>
@@ -448,6 +475,15 @@ export function MeetingsPageClient({
         members={members}
         initialDate={initialDate}
       />
+
+      {completionMeeting && (
+        <MeetingCompletionDialog
+          open={!!completionMeeting}
+          onClose={handleCompletionClose}
+          onSuccess={handleCompletionSuccess}
+          meeting={completionMeeting}
+        />
+      )}
     </>
   )
 }

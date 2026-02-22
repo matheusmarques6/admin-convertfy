@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
       .from("meetings")
       .select(`
         *,
-        client:clients(id, name, company),
+        client:clients(id, name, company, client_stores(id, store_name)),
         user:profiles!meetings_user_id_fkey(id, name, email, avatar_url),
         participants:meeting_participants(
           id,
@@ -135,15 +135,25 @@ export async function GET(request: NextRequest) {
     }
 
     // Transform data to handle Supabase array quirk
-    const transformedMeetings = filteredMeetings.map(m => ({
-      ...m,
-      client: Array.isArray(m.client) ? m.client[0] : m.client,
-      user: Array.isArray(m.user) ? m.user[0] : m.user,
-      participants: (m.participants || []).map((p: Record<string, unknown>) => ({
-        ...p,
-        profile: profilesMap.get(p.participant_id as string) || null,
-      })),
-    }))
+    const transformedMeetings = filteredMeetings.map(m => {
+      const clientData = Array.isArray(m.client) ? m.client[0] : m.client
+      return {
+        ...m,
+        client: clientData ? {
+          id: clientData.id,
+          name: clientData.name,
+          company: clientData.company,
+          stores: (Array.isArray(clientData.client_stores) ? clientData.client_stores : [])
+            .map((s: { store_name: string }) => s.store_name)
+            .filter(Boolean),
+        } : null,
+        user: Array.isArray(m.user) ? m.user[0] : m.user,
+        participants: (m.participants || []).map((p: Record<string, unknown>) => ({
+          ...p,
+          profile: profilesMap.get(p.participant_id as string) || null,
+        })),
+      }
+    })
 
     return successResponse(request, { meetings: transformedMeetings })
   } catch (error) {
@@ -179,7 +189,7 @@ export async function POST(request: NextRequest) {
       })
       .select(`
         *,
-        client:clients(id, name, company),
+        client:clients(id, name, company, client_stores(id, store_name)),
         user:profiles!meetings_user_id_fkey(id, name, email, avatar_url)
       `)
       .single()
@@ -225,7 +235,7 @@ export async function POST(request: NextRequest) {
       .from("meetings")
       .select(`
         *,
-        client:clients(id, name, company),
+        client:clients(id, name, company, client_stores(id, store_name)),
         user:profiles!meetings_user_id_fkey(id, name, email, avatar_url),
         participants:meeting_participants(
           id,
@@ -260,10 +270,22 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Transform data
+    // Transform data (extract stores from client)
+    function transformClient(raw: Record<string, unknown> | null) {
+      if (!raw) return null
+      return {
+        id: raw.id,
+        name: raw.name,
+        company: raw.company,
+        stores: (Array.isArray(raw.client_stores) ? raw.client_stores : [])
+          .map((s: Record<string, unknown>) => s.store_name)
+          .filter(Boolean),
+      }
+    }
+
     const transformedMeeting = fullMeeting ? {
       ...fullMeeting,
-      client: Array.isArray(fullMeeting.client) ? fullMeeting.client[0] : fullMeeting.client,
+      client: transformClient(Array.isArray(fullMeeting.client) ? fullMeeting.client[0] : fullMeeting.client),
       user: Array.isArray(fullMeeting.user) ? fullMeeting.user[0] : fullMeeting.user,
       participants: (fullMeeting.participants || []).map((p: Record<string, unknown>) => ({
         ...p,
@@ -271,7 +293,7 @@ export async function POST(request: NextRequest) {
       })),
     } : {
       ...meeting,
-      client: Array.isArray(meeting.client) ? meeting.client[0] : meeting.client,
+      client: transformClient(Array.isArray(meeting.client) ? meeting.client[0] : meeting.client),
       user: Array.isArray(meeting.user) ? meeting.user[0] : meeting.user,
       participants: [],
     }

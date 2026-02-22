@@ -111,6 +111,9 @@ export interface PortalMeeting {
   scheduledAt: string
   duration: number
   meetingUrl?: string
+  status: string
+  completionNotes?: string
+  completedAt?: string
 }
 
 export interface DashboardData {

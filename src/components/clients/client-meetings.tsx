@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { Plus, Calendar, Video, CheckCircle, XCircle, Clock, Loader2 } from "lucide-react"
+import { Plus, Calendar, Video, CheckCircle, XCircle, Clock, Loader2, FileText } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { GlowCard } from "@/components/ui/glow-card"
 import { Button } from "@/components/ui/button"
@@ -138,24 +138,37 @@ export function ClientMeetings({ clientId }: ClientMeetingsProps) {
                 return (
                   <div
                     key={meeting.id}
-                    className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
+                    className="p-3 rounded-lg bg-muted/50"
                   >
-                    <div className="flex items-center gap-3">
-                      <config.icon className={`h-4 w-4 ${
-                        meeting.status === "completed"
-                          ? "text-emerald-500"
-                          : meeting.status === "no_show"
-                          ? "text-red-500"
-                          : "text-muted-foreground"
-                      }`} />
-                      <div>
-                        <p className="text-sm font-medium">{meeting.title}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {formatDateTime(meeting.scheduled_at)}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <config.icon className={`h-4 w-4 ${
+                          meeting.status === "completed"
+                            ? "text-emerald-500"
+                            : meeting.status === "no_show"
+                            ? "text-red-500"
+                            : "text-muted-foreground"
+                        }`} />
+                        <div>
+                          <p className="text-sm font-medium">{meeting.title}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatDateTime(meeting.scheduled_at)}
+                          </p>
+                        </div>
+                      </div>
+                      <Badge variant={config.variant}>{config.label}</Badge>
+                    </div>
+                    {meeting.completion_notes && (
+                      <div className="mt-2 ml-7 p-2 rounded bg-background/50 border-l-2 border-primary/30">
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1">
+                          <FileText className="h-3 w-3" />
+                          Notas da reunião
+                        </div>
+                        <p className="text-sm whitespace-pre-wrap line-clamp-3">
+                          {meeting.completion_notes}
                         </p>
                       </div>
-                    </div>
-                    <Badge variant={config.variant}>{config.label}</Badge>
+                    )}
                   </div>
                 )
               })}

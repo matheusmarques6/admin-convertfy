@@ -52,6 +52,7 @@ interface ClientInfo {
   id: string
   name: string
   company?: string
+  stores?: string[]
 }
 
 interface ParticipantOption {
@@ -88,6 +89,11 @@ const schema = z.object({
 })
 
 type FormData = z.infer<typeof schema>
+
+function getShortName(fullName: string): string {
+  const parts = fullName.trim().split(/\s+/)
+  return parts.length >= 2 ? `${parts[0]} ${parts[1]}` : parts[0]
+}
 
 const durationOptions = MEETING_DURATION_OPTIONS
 const statusOptions = MEETING_STATUS_OPTIONS
@@ -288,11 +294,23 @@ export function MeetingDialog({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="_none">Nenhum</SelectItem>
-                    {clients.map((client) => (
-                      <SelectItem key={client.id} value={client.id}>
-                        {client.name} {client.company && `(${client.company})`}
-                      </SelectItem>
-                    ))}
+                    {clients.map((client) => {
+                      const storeName = client.stores?.[0]
+                      const shortName = getShortName(client.name)
+                      return (
+                        <SelectItem key={client.id} value={client.id}>
+                          {storeName ? (
+                            <span>
+                              <span className="font-semibold">{storeName}</span>
+                              {" — "}
+                              {shortName}
+                            </span>
+                          ) : (
+                            shortName
+                          )}
+                        </SelectItem>
+                      )
+                    })}
                   </SelectContent>
                 </Select>
               </div>

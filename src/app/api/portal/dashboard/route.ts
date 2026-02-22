@@ -111,15 +111,14 @@ export async function GET(request: NextRequest) {
         .order("due_date", { ascending: false })
         .limit(20),
 
-      // Upcoming meetings
+      // Meetings: upcoming scheduled + recent completed (with notes)
       adminClient
         .from("meetings")
         .select("*")
         .eq("client_id", clientId)
-        .gte("scheduled_at", new Date().toISOString())
-        .eq("status", "scheduled")
-        .order("scheduled_at")
-        .limit(5),
+        .in("status", ["scheduled", "completed"])
+        .order("scheduled_at", { ascending: false })
+        .limit(10),
 
       // Upcoming campaigns (scheduled)
       adminClient
@@ -198,6 +197,9 @@ export async function GET(request: NextRequest) {
         scheduledAt: m.scheduled_at,
         duration: m.duration_minutes,
         meetingUrl: m.meeting_url,
+        status: m.status,
+        completionNotes: m.completion_notes,
+        completedAt: m.completed_at,
       })),
 
       lastUpdated: new Date().toISOString(),

@@ -21,6 +21,18 @@ async function resolveOrgId(supabase: Awaited<ReturnType<typeof createClient>>, 
   return orgMember.org_id
 }
 
+function transformClient(raw: Record<string, unknown> | null) {
+  if (!raw) return null
+  return {
+    id: raw.id,
+    name: raw.name,
+    company: raw.company,
+    stores: (Array.isArray(raw.client_stores) ? raw.client_stores : [])
+      .map((s: Record<string, unknown>) => s.store_name)
+      .filter(Boolean),
+  }
+}
+
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
 }
@@ -46,7 +58,7 @@ export async function GET(
       .from("meetings")
       .select(`
         *,
-        client:clients(id, name, company),
+        client:clients(id, name, company, client_stores(id, store_name)),
         user:profiles!meetings_user_id_fkey(id, name, email, avatar_url),
         participants:meeting_participants(
           id,
@@ -87,7 +99,7 @@ export async function GET(
     // Transform data
     const transformedMeeting = {
       ...meeting,
-      client: Array.isArray(meeting.client) ? meeting.client[0] : meeting.client,
+      client: transformClient(Array.isArray(meeting.client) ? meeting.client[0] : meeting.client),
       user: Array.isArray(meeting.user) ? meeting.user[0] : meeting.user,
       participants: (meeting.participants || []).map((p: Record<string, unknown>) => ({
         ...p,
@@ -137,6 +149,13 @@ export async function PUT(
     if (body.status !== undefined) updateData.status = body.status
     if (body.meeting_url !== undefined) updateData.meeting_url = body.meeting_url || null
     if (body.notes !== undefined) updateData.notes = body.notes || null
+    if (body.completion_notes !== undefined) updateData.completion_notes = body.completion_notes
+
+    // Auto-fill completion metadata when marking as completed
+    if (body.status === "completed") {
+      updateData.completed_at = new Date().toISOString()
+      updateData.completed_by = user.id
+    }
 
     // Handle participant response (accept/decline invite)
     if (body.participant_response) {
@@ -222,7 +241,7 @@ export async function PUT(
       .from("meetings")
       .select(`
         *,
-        client:clients(id, name, company),
+        client:clients(id, name, company, client_stores(id, store_name)),
         user:profiles!meetings_user_id_fkey(id, name, email, avatar_url),
         participants:meeting_participants(
           id,
@@ -262,7 +281,7 @@ export async function PUT(
     // Transform data
     const transformedMeeting = {
       ...meeting,
-      client: Array.isArray(meeting.client) ? meeting.client[0] : meeting.client,
+      client: transformClient(Array.isArray(meeting.client) ? meeting.client[0] : meeting.client),
       user: Array.isArray(meeting.user) ? meeting.user[0] : meeting.user,
       participants: (meeting.participants || []).map((p: Record<string, unknown>) => ({
         ...p,

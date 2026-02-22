@@ -30,7 +30,7 @@ export default async function MeetingsPage() {
     .from("meetings")
     .select(`
       *,
-      client:clients (id, name, company),
+      client:clients (id, name, company, client_stores(id, store_name)),
       user:profiles!meetings_user_id_fkey (id, name, email, avatar_url),
       participants:meeting_participants(
         id,
@@ -83,12 +83,21 @@ export default async function MeetingsPage() {
     })
   }
 
-  // Fetch clients for the dialog
-  const { data: clients } = await adminClient
+  // Fetch clients for the dialog (with stores for display)
+  const { data: clientsRaw } = await adminClient
     .from("clients")
-    .select("id, name, company")
+    .select("id, name, company, client_stores(id, store_name)")
     .in("status", ["active", "onboarding", "prospect"])
     .order("name")
+
+  const clients = (clientsRaw || []).map((c) => ({
+    id: c.id,
+    name: c.name,
+    company: c.company,
+    stores: (Array.isArray(c.client_stores) ? c.client_stores : [])
+      .map((s: { id: string; store_name: string }) => s.store_name)
+      .filter(Boolean),
+  }))
 
   // Fetch org members for participants selector
   const { data: profile } = await adminClient
@@ -119,21 +128,31 @@ export default async function MeetingsPage() {
   }
 
   // Transform meetings for client component
-  const transformedMeetings = (meetings || []).map((m) => ({
-    ...m,
-    client: Array.isArray(m.client) ? m.client[0] : m.client,
-    user: Array.isArray(m.user) ? m.user[0] : m.user,
-    participants: (m.participants || []).map((p: Record<string, unknown>) => ({
-      ...p,
-      profile: profilesMap.get(p.participant_id as string) || null,
-    })),
-  }))
+  const transformedMeetings = (meetings || []).map((m) => {
+    const clientRaw = Array.isArray(m.client) ? m.client[0] : m.client
+    return {
+      ...m,
+      client: clientRaw ? {
+        id: clientRaw.id,
+        name: clientRaw.name,
+        company: clientRaw.company,
+        stores: (Array.isArray(clientRaw.client_stores) ? clientRaw.client_stores : [])
+          .map((s: { store_name: string }) => s.store_name)
+          .filter(Boolean),
+      } : null,
+      user: Array.isArray(m.user) ? m.user[0] : m.user,
+      participants: (m.participants || []).map((p: Record<string, unknown>) => ({
+        ...p,
+        profile: profilesMap.get(p.participant_id as string) || null,
+      })),
+    }
+  })
 
   return (
     <PagePermissionWrapper requiredFeatures={["calendar_control"]}>
       <MeetingsPageClient
         meetings={transformedMeetings}
-        clients={clients || []}
+        clients={clients}
         members={members}
       />
     </PagePermissionWrapper>
