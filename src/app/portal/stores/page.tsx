@@ -38,7 +38,7 @@ interface StoreData {
   store_url: string
   platform: string
   is_active: boolean
-  klaviyo_api_key: boolean
+  hasKlaviyo: boolean
   shopify_access_token: boolean
   shopify_store_domain: string
 }
@@ -262,7 +262,7 @@ export default function PortalStoresPage() {
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {stores.map((store) => {
-            const needsSetup = !store.klaviyo_api_key || !store.shopify_access_token
+            const needsSetup = !store.hasKlaviyo || !store.shopify_access_token
             return (
               <GlowCard key={store.id} color="primary" intensity="subtle">
                 <CardHeader className="pb-3">
@@ -286,7 +286,7 @@ export default function PortalStoresPage() {
                   <div className="space-y-2 mb-4">
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Klaviyo</span>
-                      {store.klaviyo_api_key ? (
+                      {store.hasKlaviyo ? (
                         <Badge variant="outline" className="bg-success/10 text-success border-success/20">
                           Conectado
                         </Badge>
@@ -410,7 +410,7 @@ export default function PortalStoresPage() {
 
           <div className="space-y-6 py-4">
             {/* Klaviyo Section */}
-            {selectedStore && !selectedStore.klaviyo_api_key && (
+            {selectedStore && !selectedStore.hasKlaviyo && (
               <div className="space-y-4">
                 <h4 className="font-medium flex items-center gap-2">
                   <Key className="h-4 w-4 text-primary" />
@@ -511,7 +511,7 @@ export default function PortalStoresPage() {
             )}
 
             {/* All connected message */}
-            {selectedStore?.klaviyo_api_key && selectedStore?.shopify_access_token && (
+            {selectedStore?.hasKlaviyo && selectedStore?.shopify_access_token && (
               <div className="flex items-center gap-3 py-4 text-success">
                 <CheckCircle2 className="h-6 w-6" />
                 <p className="font-medium">Todas as integrações estão conectadas!</p>

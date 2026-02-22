@@ -2,6 +2,7 @@ import { notFound } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { getStoreIntegrationStatus } from "@/lib/services/credentials.service"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { StoreDetailTabs } from "@/components/stores/store-detail-tabs"
@@ -9,10 +10,10 @@ import { StoreDetailTabs } from "@/components/stores/store-detail-tabs"
 export const dynamic = "force-dynamic"
 
 async function getStore(id: string) {
-  const supabase = await createClient()
   const adminClient = createAdminClient()
 
-  const { data: store, error } = await supabase
+  // Use admin client to bypass RLS — admin/agent users may not have RLS access to client_stores
+  const { data: store, error } = await adminClient
     .from("client_stores")
     .select(`
       id,
@@ -23,7 +24,6 @@ async function getStore(id: string) {
       niche,
       country,
       language,
-      integration_status,
       created_at,
       updated_at,
       client_id,
@@ -37,6 +37,18 @@ async function getStore(id: string) {
 
   if (error || !store) {
     return null
+  }
+
+  // Get integration status from centralized service (infers from credentials if field is null)
+  let integrationStatus: Record<string, { connected: boolean; connected_at?: string }> = {}
+  try {
+    const status = await getStoreIntegrationStatus(id)
+    // Convert typed IntegrationStatus to Record for the component
+    integrationStatus = Object.fromEntries(
+      Object.entries(status).filter(([, v]) => v !== undefined)
+    ) as Record<string, { connected: boolean; connected_at?: string }>
+  } catch {
+    // If store not found in service, leave empty
   }
 
   // Fetch extra onboarding data
@@ -65,6 +77,7 @@ async function getStore(id: string) {
 
   return {
     ...store,
+    integrationStatus,
     onboarding_form_complete: onboardingData?.is_complete || false,
     onboarding_status: onboarding?.status || null,
     onboarding_progress: onboarding?.progress_percent || 0,
@@ -84,7 +97,7 @@ export default async function StoreDetailPage({
     notFound()
   }
 
-  const integrationStatus = (store.integration_status as Record<string, { connected: boolean }>) || {}
+  const integrationStatus = store.integrationStatus
   const connectedCount = Object.values(integrationStatus).filter(s => s?.connected).length
 
   return (

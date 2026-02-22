@@ -114,7 +114,7 @@ export async function PUT(request: NextRequest) {
     // Verify store belongs to this client
     const { data: store } = await adminClient
       .from("client_stores")
-      .select("id, client_id")
+      .select("id, client_id, integration_status")
       .eq("id", store_id)
       .eq("client_id", portalUser.client_id)
       .single()
@@ -125,17 +125,27 @@ export async function PUT(request: NextRequest) {
 
     // Build update data
     const updateData: Record<string, unknown> = {}
+    const currentStatus = (store.integration_status as Record<string, unknown>) || {}
 
     if (klaviyo_private_key) {
       updateData.klaviyo_private_key = encrypt(klaviyo_private_key)
       updateData.klaviyo_api_key = encrypt(klaviyo_private_key) // backward compat
-      updateData.integration_status = "connected"
+      updateData.integration_status = {
+        ...currentStatus,
+        klaviyo: { connected: true, connected_at: new Date().toISOString() },
+      }
     }
     if (shopify_store_domain) {
       updateData.shopify_store_domain = shopify_store_domain
     }
     if (shopify_access_token) {
       updateData.shopify_access_token = encrypt(shopify_access_token)
+      // Merge shopify status into integration_status
+      const statusSoFar = (updateData.integration_status as Record<string, unknown>) || currentStatus
+      updateData.integration_status = {
+        ...statusSoFar,
+        shopify: { connected: true, connected_at: new Date().toISOString() },
+      }
     }
 
     if (Object.keys(updateData).length === 0) {
