@@ -28,6 +28,7 @@ interface ClientInfo {
   id: string
   name: string
   company?: string
+  stores?: string[]
 }
 
 interface StoreWithClient {

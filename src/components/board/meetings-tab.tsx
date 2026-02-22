@@ -44,6 +44,18 @@ interface ClientInfo {
   id: string
   name: string
   company?: string
+  stores?: string[]
+}
+
+function getShortName(fullName: string): string {
+  const parts = fullName.trim().split(/\s+/)
+  return parts.length >= 2 ? `${parts[0]} ${parts[1]}` : parts[0]
+}
+
+function formatClientDisplay(client: ClientInfo): string {
+  const storeName = client.stores?.[0]
+  const shortName = getShortName(client.name)
+  return storeName ? `${storeName} — ${shortName}` : shortName
 }
 
 interface ParticipantOption {
@@ -257,7 +269,7 @@ export function MeetingsTab({ meetings, clients, members = [] }: MeetingsTabProp
                             </div>
                             <div className="flex items-center gap-2 text-sm text-muted-foreground">
                               {meeting.client && (
-                                <span>{meeting.client.name}</span>
+                                <span>{formatClientDisplay(meeting.client)}</span>
                               )}
                               {meeting.client && <span>•</span>}
                               <span>{formatMeetingDate(meeting.scheduled_at)}</span>
@@ -343,7 +355,7 @@ export function MeetingsTab({ meetings, clients, members = [] }: MeetingsTabProp
                           <div>
                             <p className="text-sm font-medium">{meeting.title}</p>
                             <p className="text-xs text-muted-foreground">
-                              {meeting.client?.name && `${meeting.client.name} • `}
+                              {meeting.client && `${formatClientDisplay(meeting.client)} • `}
                               {format(new Date(meeting.scheduled_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
                             </p>
                           </div>

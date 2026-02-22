@@ -97,12 +97,19 @@ async function getClients(orgId: string) {
 
   const { data: clients } = await adminClient
     .from("clients")
-    .select("id, name, company")
+    .select("id, name, company, client_stores(id, store_name)")
     .eq("org_id", orgId)
     .in("status", ["active", "onboarding"])
     .order("name", { ascending: true })
 
-  return clients || []
+  return (clients || []).map((c) => ({
+    id: c.id,
+    name: c.name,
+    company: c.company,
+    stores: (Array.isArray(c.client_stores) ? c.client_stores : [])
+      .map((s: { id: string; store_name: string }) => s.store_name)
+      .filter(Boolean),
+  }))
 }
 
 async function getStores(orgId: string) {
@@ -161,7 +168,7 @@ async function getMeetings(orgId: string) {
     .from("meetings")
     .select(`
       *,
-      client:clients (id, name, company),
+      client:clients (id, name, company, client_stores(id, store_name)),
       user:profiles!meetings_user_id_fkey (id, name, email, avatar_url),
       participants:meeting_participants(
         id,
@@ -213,15 +220,24 @@ async function getMeetings(orgId: string) {
     })
   }
 
-  return filteredMeetings.map(m => ({
+  return filteredMeetings.map(m => {
+    const clientRaw = Array.isArray(m.client) ? m.client[0] : m.client
+    return {
     ...m,
-    client: Array.isArray(m.client) ? m.client[0] : m.client,
+    client: clientRaw ? {
+      id: clientRaw.id,
+      name: clientRaw.name,
+      company: clientRaw.company,
+      stores: (Array.isArray(clientRaw.client_stores) ? clientRaw.client_stores : [])
+        .map((s: { store_name: string }) => s.store_name)
+        .filter(Boolean),
+    } : null,
     user: Array.isArray(m.user) ? m.user[0] : m.user,
     participants: (m.participants || []).map((p: Record<string, unknown>) => ({
       ...p,
       profile: boardProfilesMap.get(p.participant_id as string) || null,
     })),
-  }))
+  }})
 }
 
 function BoardSkeleton() {
