@@ -112,6 +112,9 @@ export interface Meeting {
   notes?: string
   google_event_id?: string
   created_at: string
+  completion_notes?: string
+  completed_at?: string
+  completed_by?: string
   // Joined data
   participants?: MeetingParticipant[]
   client?: Client
