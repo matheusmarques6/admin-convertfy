@@ -3,232 +3,216 @@ import { createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { corsHeaders } from "@/lib/cors"
 import { getStoreCredentials } from "@/lib/services/credentials.service"
-import { logger } from "@/lib/logger"
 import { KLAVIYO_API_URL, KLAVIYO_REVISION } from "@/lib/integrations/klaviyo/client"
 
-const log = logger.child("KlaviyoDebug")
-
-// Debug endpoint to test Klaviyo API directly
+/**
+ * GET /api/integrations/klaviyo/debug?store_id=XXX
+ *
+ * Diagnostic endpoint that tests EVERY URL variation the report needs.
+ * Tests each Klaviyo endpoint with different parameter combinations
+ * to identify exactly which parameters are accepted/rejected.
+ */
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
     await requireAuth(supabase)
 
-    const searchParams = request.nextUrl.searchParams
-    const storeId = searchParams.get("store_id")
-
+    const storeId = request.nextUrl.searchParams.get("store_id")
     if (!storeId) {
       throw new AppError("store_id é obrigatório", 400)
     }
 
-    const storeData = await getStoreCredentials(storeId)
-    const apiKey = storeData.klaviyo_private_key || storeData.klaviyo_api_key
+    // Get API key
+    const creds = await getStoreCredentials(storeId)
+    const apiKey = creds.klaviyo_private_key || creds.klaviyo_api_key
     if (!apiKey) {
-      throw new AppError("API Key do Klaviyo não configurada", 400)
+      return NextResponse.json({ error: "No API key" }, { status: 400, headers: corsHeaders(request.headers.get("origin")) })
     }
 
-    const results: Record<string, unknown> = {
-      storeName: storeData.store_name,
-      apiKeyPresent: !!apiKey,
-      apiKeyLast4: apiKey.slice(-4),
+    const headers = {
+      "Authorization": `Klaviyo-API-Key ${apiKey}`,
+      "Accept": "application/json",
+      "revision": KLAVIYO_REVISION,
     }
 
-    // 1. Test basic connection - Get Account
-    try {
-      const accountRes = await fetch(`${KLAVIYO_API_URL}/accounts/`, {
-        headers: {
-          "Authorization": `Klaviyo-API-Key ${apiKey}`,
-          "Accept": "application/json",
-          "revision": KLAVIYO_REVISION,
-        },
-      })
-      const accountData = await accountRes.json()
-      results.account = {
-        status: accountRes.status,
-        data: accountData,
-      }
-    } catch (e) {
-      results.account = { error: String(e) }
-    }
+    // Helper: test a GET endpoint and return status + item count + preview
+    async function testGet(label: string, path: string) {
+      try {
+        const url = `${KLAVIYO_API_URL}${path}`
+        const res = await fetch(url, { headers })
+        const text = await res.text()
+        let itemCount = 0
+        let firstItem = null
+        let error = null
 
-    // 2. Get all metrics to find Placed Order
-    try {
-      const metricsRes = await fetch(`${KLAVIYO_API_URL}/metrics/`, {
-        headers: {
-          "Authorization": `Klaviyo-API-Key ${apiKey}`,
-          "Accept": "application/json",
-          "revision": KLAVIYO_REVISION,
-        },
-      })
-      const metricsData = await metricsRes.json()
-
-      const metrics = metricsData.data || []
-      const placedOrderMetric = metrics.find((m: { attributes: { name: string } }) =>
-        m.attributes.name.toLowerCase() === "placed order" ||
-        m.attributes.name.toLowerCase().includes("order")
-      )
-
-      results.metrics = {
-        status: metricsRes.status,
-        totalMetrics: metrics.length,
-        allMetrics: metrics.map((m: { id: string; attributes: { name: string; integration?: { name: string } } }) => ({
-          id: m.id,
-          name: m.attributes.name,
-          integration: m.attributes.integration?.name,
-        })),
-        placedOrderMetric: placedOrderMetric ? {
-          id: placedOrderMetric.id,
-          name: placedOrderMetric.attributes.name,
-        } : null,
-      }
-
-      // 3. If we found Placed Order metric, test metric aggregates
-      if (placedOrderMetric) {
-        const now = new Date()
-        const startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-
-        // Test 1: Simple total revenue query
         try {
-          const totalRevenueRes = await fetch(`${KLAVIYO_API_URL}/metric-aggregates/`, {
-            method: "POST",
-            headers: {
-              "Authorization": `Klaviyo-API-Key ${apiKey}`,
-              "Accept": "application/json",
-              "Content-Type": "application/json",
-              "revision": KLAVIYO_REVISION,
-            },
-            body: JSON.stringify({
-              data: {
-                type: "metric-aggregate",
-                attributes: {
-                  metric_id: placedOrderMetric.id,
-                  measurements: ["value", "count", "unique"],
-                  filter: [
-                    `greater-or-equal(datetime,${startDate.toISOString().split('.')[0]})`,
-                    `less-than(datetime,${now.toISOString().split('.')[0]})`,
-                  ],
-                  timezone: "UTC",
-                },
-              },
-            }),
-          })
-          const totalRevenueData = await totalRevenueRes.json()
-          results.metricAggregates_totalRevenue = {
-            status: totalRevenueRes.status,
-            request: {
-              metric_id: placedOrderMetric.id,
-              dateRange: {
-                start: startDate.toISOString(),
-                end: now.toISOString(),
-              },
-            },
-            response: totalRevenueData,
+          const json = JSON.parse(text)
+          if (Array.isArray(json.data)) {
+            itemCount = json.data.length
+            firstItem = json.data[0] ? {
+              id: json.data[0].id,
+              type: json.data[0].type,
+              name: json.data[0].attributes?.name || json.data[0].attributes?.status || null,
+            } : null
           }
-        } catch (e) {
-          results.metricAggregates_totalRevenue = { error: String(e) }
+          if (json.errors) {
+            error = json.errors[0]?.detail || json.errors[0]?.title || "Unknown error"
+          }
+        } catch {
+          // not JSON
         }
 
-        // Test 2: Flow values report
-        try {
-          const flowReportRes = await fetch(`${KLAVIYO_API_URL}/flow-values-reports/`, {
-            method: "POST",
-            headers: {
-              "Authorization": `Klaviyo-API-Key ${apiKey}`,
-              "Accept": "application/json",
-              "Content-Type": "application/json",
-              "revision": KLAVIYO_REVISION,
-            },
-            body: JSON.stringify({
-              data: {
-                type: "flow-values-report",
-                attributes: {
-                  statistics: ["delivered", "opened_unique", "clicked_unique", "conversion_value", "conversion_uniques"],
-                  timeframe: {
-                    start: startDate.toISOString().split('.')[0] + "+00:00",
-                    end: now.toISOString().split('.')[0] + "+00:00",
-                  },
-                  conversion_metric_id: placedOrderMetric.id,
-                },
-              },
-            }),
-          })
-          const flowReportData = await flowReportRes.json()
-          results.flowValuesReport = {
-            status: flowReportRes.status,
-            request: {
-              conversion_metric_id: placedOrderMetric.id,
-              timeframe: {
-                start: startDate.toISOString().split('.')[0] + "+00:00",
-                end: now.toISOString().split('.')[0] + "+00:00",
-              },
-            },
-            response: flowReportData,
-          }
-        } catch (e) {
-          results.flowValuesReport = { error: String(e) }
+        return {
+          label,
+          path,
+          status: res.status,
+          itemCount,
+          firstItem,
+          error,
+          bodyPreview: text.substring(0, 200),
         }
+      } catch (e) {
+        return { label, path, status: 0, error: String(e) }
       }
-    } catch (e) {
-      results.metrics = { error: String(e) }
     }
 
-    // 4. Get campaigns
-    try {
-      const campaignsRes = await fetch(`${KLAVIYO_API_URL}/campaigns/`, {
-        headers: {
-          "Authorization": `Klaviyo-API-Key ${apiKey}`,
-          "Accept": "application/json",
-          "revision": KLAVIYO_REVISION,
+    // Helper: test a POST endpoint
+    async function testPost(label: string, path: string, body: object) {
+      try {
+        const url = `${KLAVIYO_API_URL}${path}`
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { ...headers, "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        })
+        const text = await res.text()
+        let resultCount = 0
+        let totalRevenue = 0
+        let totalDelivered = 0
+
+        try {
+          const json = JSON.parse(text)
+          const results = json?.data?.attributes?.results || []
+          resultCount = results.length
+          for (const r of results) {
+            totalRevenue += r.statistics?.conversion_value || 0
+            totalDelivered += r.statistics?.delivered || 0
+          }
+        } catch {
+          // not JSON
+        }
+
+        return {
+          label,
+          path,
+          status: res.status,
+          resultCount,
+          totalRevenue,
+          totalDelivered,
+          bodyPreview: text.substring(0, 300),
+        }
+      } catch (e) {
+        return { label, path, status: 0, error: String(e) }
+      }
+    }
+
+    // Small delay helper
+    const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
+
+    // ============================================
+    // TEST ALL URL VARIATIONS
+    // ============================================
+    const results: Record<string, unknown> = {}
+
+    // --- LISTS ---
+    results.lists_simple = await testGet("Lists (simple)", "/lists/")
+    await sleep(500)
+    results.lists_additional_fields = await testGet("Lists (additional-fields)", "/lists/?additional-fields[list]=profile_count")
+    await sleep(500)
+    results.lists_page_size = await testGet("Lists (page[size]=10)", "/lists/?page[size]=10")
+    await sleep(500)
+
+    // --- SEGMENTS ---
+    results.segments_simple = await testGet("Segments (simple)", "/segments/")
+    await sleep(500)
+    results.segments_additional_fields = await testGet("Segments (additional-fields)", "/segments/?additional-fields[segment]=profile_count")
+    await sleep(500)
+
+    // --- FLOWS ---
+    results.flows_simple = await testGet("Flows (simple)", "/flows/")
+    await sleep(500)
+    results.flows_page_size = await testGet("Flows (page[size]=50)", "/flows/?page[size]=50")
+    await sleep(500)
+
+    // --- CAMPAIGNS ---
+    results.campaigns_email = await testGet("Campaigns email (no slash)", "/campaigns?filter=equals(messages.channel,'email')")
+    await sleep(500)
+    results.campaigns_email_slash = await testGet("Campaigns email (slash)", "/campaigns/?filter=equals(messages.channel,'email')")
+    await sleep(500)
+
+    // --- METRICS ---
+    results.metrics_simple = await testGet("Metrics (simple)", "/metrics/")
+    await sleep(500)
+
+    // --- PROFILES ---
+    results.profiles_page1 = await testGet("Profiles (page[size]=1)", "/profiles/?page[size]=1")
+    await sleep(500)
+
+    // --- FLOW VALUES REPORT ---
+    const now = new Date()
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+    const startStr = thirtyDaysAgo.toISOString().split("T")[0]
+    const endStr = now.toISOString().split("T")[0]
+
+    results.flow_report = await testPost("Flow Values Report", "/flow-values-reports/", {
+      data: {
+        type: "flow-values-report",
+        attributes: {
+          statistics: ["delivered", "conversion_value", "opened_unique", "clicked_unique"],
+          timeframe: {
+            start: `${startStr}T00:00:00-03:00`,
+            end: `${endStr}T23:59:59-03:00`,
+          },
+          conversion_metric_id: "RuR2Vf",
         },
-      })
-      const campaignsData = await campaignsRes.json()
-      const campaigns = campaignsData.data || []
-      const sentCampaigns = campaigns.filter((c: { attributes: { status: string } }) => c.attributes.status === "sent")
-
-      results.campaigns = {
-        status: campaignsRes.status,
-        total: campaigns.length,
-        sent: sentCampaigns.length,
-        first5Sent: sentCampaigns.slice(0, 5).map((c: { id: string; attributes: { name: string; status: string; send_time: string } }) => ({
-          id: c.id,
-          name: c.attributes.name,
-          status: c.attributes.status,
-          sendTime: c.attributes.send_time,
-        })),
-      }
-    } catch (e) {
-      results.campaigns = { error: String(e) }
-    }
-
-    // 5. Get flows
-    try {
-      const flowsRes = await fetch(`${KLAVIYO_API_URL}/flows/`, {
-        headers: {
-          "Authorization": `Klaviyo-API-Key ${apiKey}`,
-          "Accept": "application/json",
-          "revision": KLAVIYO_REVISION,
-        },
-      })
-      const flowsData = await flowsRes.json()
-      const flows = flowsData.data || []
-
-      results.flows = {
-        status: flowsRes.status,
-        total: flows.length,
-        flows: flows.slice(0, 10).map((f: { id: string; attributes: { name: string; status: string } }) => ({
-          id: f.id,
-          name: f.attributes.name,
-          status: f.attributes.status,
-        })),
-      }
-    } catch (e) {
-      results.flows = { error: String(e) }
-    }
-
-    const origin = request.headers.get("origin")
-    return NextResponse.json(results, {
-      headers: corsHeaders(origin),
+      },
     })
+    await sleep(1500)
+
+    // --- CAMPAIGN VALUES REPORT ---
+    results.campaign_report = await testPost("Campaign Values Report", "/campaign-values-reports/", {
+      data: {
+        type: "campaign-values-report",
+        attributes: {
+          statistics: ["delivered", "conversion_value", "opened_unique", "clicked_unique"],
+          timeframe: {
+            start: `${startStr}T00:00:00-03:00`,
+            end: `${endStr}T23:59:59-03:00`,
+          },
+          conversion_metric_id: "RuR2Vf",
+        },
+      },
+    })
+
+    // ============================================
+    // SUMMARY
+    // ============================================
+    const summary: Record<string, string> = {}
+    for (const [key, val] of Object.entries(results)) {
+      const v = val as { status: number; label: string; itemCount?: number; resultCount?: number; error?: string }
+      const count = v.itemCount ?? v.resultCount ?? "?"
+      summary[key] = `${v.status} ${v.status === 200 ? "OK" : "FAIL"} (${count} items)${v.error ? ` - ${v.error}` : ""}`
+    }
+
+    return NextResponse.json({
+      timestamp: new Date().toISOString(),
+      storeId,
+      storeName: creds.store_name,
+      revision: KLAVIYO_REVISION,
+      summary,
+      details: results,
+    }, { headers: corsHeaders(request.headers.get("origin")) })
+
   } catch (error) {
     return errorResponse(request, error, "IntegrationsKlaviyoDebug")
   }
