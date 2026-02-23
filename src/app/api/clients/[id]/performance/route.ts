@@ -324,7 +324,7 @@ async function fetchKlaviyoPerformance(
         type: "metric-aggregate",
         attributes: {
           metric_id: placedOrderMetric,
-          measurements: ["sum", "count"],
+          measurements: ["sum_value", "count"],
           filter: [
             `greater-or-equal(datetime,${startISO})`,
             `less-than(datetime,${endISO})`,
@@ -348,8 +348,8 @@ async function fetchKlaviyoPerformance(
   let storeOrders = 0
   for (const row of aggData) {
     const measurements = row.measurements || {}
-    // measurements.sum/count may be arrays [total] or numbers
-    const val = Array.isArray(measurements.sum) ? measurements.sum[0] : measurements.sum
+    // measurements.sum_value/count may be arrays [total] or numbers
+    const val = Array.isArray(measurements.sum_value) ? measurements.sum_value[0] : measurements.sum_value
     const cnt = Array.isArray(measurements.count) ? measurements.count[0] : measurements.count
     storeRevenue += Number(val) || 0
     storeOrders += Number(cnt) || 0

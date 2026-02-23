@@ -50,37 +50,35 @@ export async function GET(request: NextRequest) {
     const startStr = start.toISOString().split("T")[0]
     const endStr = now.toISOString().split("T")[0]
 
-    // Test each measurement name individually to find valid ones
-    const candidates = ["count", "sum", "value", "unique", "sum_value", "total", "revenue", "count_value"]
-    const results: Record<string, { status: number; preview: string }> = {}
-
-    for (const m of candidates) {
-      const body = {
-        data: {
-          type: "metric-aggregate",
-          attributes: {
-            metric_id: metricId,
-            measurements: [m],
-            filter: [
-              `greater-or-equal(datetime,${startStr}T00:00:00)`,
-              `less-than(datetime,${endStr}T23:59:59)`,
-            ],
-            timezone: "America/Sao_Paulo",
-          },
+    // Fetch full response with sum_value + count
+    const body = {
+      data: {
+        type: "metric-aggregate",
+        attributes: {
+          metric_id: metricId,
+          measurements: ["sum_value", "count"],
+          filter: [
+            `greater-or-equal(datetime,${startStr}T00:00:00)`,
+            `less-than(datetime,${endStr}T23:59:59)`,
+          ],
+          timezone: "America/Sao_Paulo",
         },
-      }
-
-      await new Promise(r => setTimeout(r, 600))
-      const res = await fetch(`${KLAVIYO_API_URL}/metric-aggregates/`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body),
-      })
-      const text = await res.text()
-      results[m] = { status: res.status, preview: text.slice(0, 400) }
+      },
     }
 
-    return NextResponse.json({ metricId, period: { start: startStr, end: endStr }, results })
+    const res = await fetch(`${KLAVIYO_API_URL}/metric-aggregates/`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    })
+    const json = await res.json()
+
+    return NextResponse.json({
+      metricId,
+      period: { start: startStr, end: endStr },
+      status: res.status,
+      fullResponse: json,
+    })
   } catch (error) {
     return errorResponse(request, error, "KlaviyoDebugAgg")
   }
