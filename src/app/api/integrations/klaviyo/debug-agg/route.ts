@@ -50,94 +50,37 @@ export async function GET(request: NextRequest) {
     const startStr = start.toISOString().split("T")[0]
     const endStr = now.toISOString().split("T")[0]
 
-    // Test 1: Simple format (no timezone offset in filter)
-    const body1 = {
-      data: {
-        type: "metric-aggregate",
-        attributes: {
-          metric_id: metricId,
-          measurements: ["sum", "count"],
-          filter: [
-            `greater-or-equal(datetime,${startStr}T00:00:00)`,
-            `less-than(datetime,${endStr}T23:59:59)`,
-          ],
-          timezone: "America/Sao_Paulo",
+    // Test each measurement name individually to find valid ones
+    const candidates = ["count", "sum", "value", "unique", "sum_value", "total", "revenue", "count_value"]
+    const results: Record<string, { status: number; preview: string }> = {}
+
+    for (const m of candidates) {
+      const body = {
+        data: {
+          type: "metric-aggregate",
+          attributes: {
+            metric_id: metricId,
+            measurements: [m],
+            filter: [
+              `greater-or-equal(datetime,${startStr}T00:00:00)`,
+              `less-than(datetime,${endStr}T23:59:59)`,
+            ],
+            timezone: "America/Sao_Paulo",
+          },
         },
-      },
+      }
+
+      await new Promise(r => setTimeout(r, 600))
+      const res = await fetch(`${KLAVIYO_API_URL}/metric-aggregates/`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+      })
+      const text = await res.text()
+      results[m] = { status: res.status, preview: text.slice(0, 400) }
     }
 
-    const res1 = await fetch(`${KLAVIYO_API_URL}/metric-aggregates/`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body1),
-    })
-    const text1 = await res1.text()
-
-    // Test 2: With interval
-    const body2 = {
-      data: {
-        type: "metric-aggregate",
-        attributes: {
-          metric_id: metricId,
-          measurements: ["sum", "count"],
-          filter: [
-            `greater-or-equal(datetime,${startStr}T00:00:00)`,
-            `less-than(datetime,${endStr}T23:59:59)`,
-          ],
-          interval: "month",
-          timezone: "America/Sao_Paulo",
-        },
-      },
-    }
-
-    await new Promise(r => setTimeout(r, 1200))
-    const res2 = await fetch(`${KLAVIYO_API_URL}/metric-aggregates/`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body2),
-    })
-    const text2 = await res2.text()
-
-    // Test 3: With timezone offset in filter (what performance route sends)
-    const body3 = {
-      data: {
-        type: "metric-aggregate",
-        attributes: {
-          metric_id: metricId,
-          measurements: ["sum", "count"],
-          filter: [
-            `greater-or-equal(datetime,${startStr}T00:00:00-03:00)`,
-            `less-than(datetime,${endStr}T23:59:59-03:00)`,
-          ],
-          timezone: "America/Sao_Paulo",
-        },
-      },
-    }
-
-    await new Promise(r => setTimeout(r, 1200))
-    const res3 = await fetch(`${KLAVIYO_API_URL}/metric-aggregates/`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body3),
-    })
-    const text3 = await res3.text()
-
-    return NextResponse.json({
-      metricId,
-      period: { start: startStr, end: endStr },
-      test1_noOffset: {
-        status: res1.status,
-        body: text1.slice(0, 800),
-      },
-      test2_withInterval: {
-        status: res2.status,
-        body: text2.slice(0, 800),
-      },
-      test3_withTzOffset: {
-        status: res3.status,
-        body: text3.slice(0, 800),
-      },
-    })
+    return NextResponse.json({ metricId, period: { start: startStr, end: endStr }, results })
   } catch (error) {
     return errorResponse(request, error, "KlaviyoDebugAgg")
   }
