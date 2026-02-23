@@ -181,14 +181,6 @@ async function getMeetings(orgId: string) {
     .eq("org_id", orgId)
     .order("scheduled_at", { ascending: true })
 
-  // Debug: log meeting data to verify DB state
-  log.info(`[getMeetings] userId=${userId}, orgMemberId=${orgMemberId}, orgId=${orgId}, totalFromDB=${(meetings || []).length}`)
-  if (meetings && meetings.length > 0) {
-    meetings.forEach((m: Record<string, unknown>) => {
-      log.info(`[getMeetings] meeting id=${m.id}, title=${m.title}, user_id=${m.user_id}, status=${m.status}, matchesUser=${m.user_id === userId}`)
-    })
-  }
-
   // Filter to include meetings where user is owner OR participant
   const filteredMeetings = (meetings || []).filter(m => {
     // User is owner
@@ -204,8 +196,6 @@ async function getMeetings(orgId: string) {
       return false
     })
   })
-
-  log.info(`[getMeetings] afterFilter=${filteredMeetings.length}`)
 
   // Fetch profiles for participants separately (polymorphic participant_id has no FK)
   const boardProfIds = new Set<string>()
