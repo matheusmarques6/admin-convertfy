@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import {
   isToday,
@@ -102,11 +102,12 @@ function formatMeetingDate(date: string) {
 }
 
 export function MeetingsPageClient({
-  meetings,
+  meetings: initialMeetings,
   clients,
   members,
 }: MeetingsPageClientProps) {
   const router = useRouter()
+  const [localMeetings, setLocalMeetings] = useState<MeetingWithRelations[]>(initialMeetings)
   const [viewMode, setViewMode] = useState<"list" | "calendar">("list")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingMeeting, setEditingMeeting] = useState<MeetingWithRelations | null>(null)
@@ -117,9 +118,14 @@ export function MeetingsPageClient({
     period: "all",
   })
 
+  // Sync server props → local state
+  useEffect(() => {
+    setLocalMeetings(initialMeetings)
+  }, [initialMeetings])
+
   // Filter meetings
   const filteredMeetings = useMemo(() => {
-    return meetings.filter((m) => {
+    return localMeetings.filter((m) => {
       // Status filter
       if (filters.status !== "all" && m.status !== filters.status) return false
 
@@ -145,7 +151,7 @@ export function MeetingsPageClient({
 
       return true
     })
-  }, [meetings, filters])
+  }, [localMeetings, filters])
 
   const upcomingMeetings = filteredMeetings
     .filter((m) => m.status === "scheduled" && isFuture(new Date(m.scheduled_at)))
@@ -175,8 +181,19 @@ export function MeetingsPageClient({
     setEditingMeeting(null)
   }
 
-  const handleDialogSuccess = () => {
+  const handleDialogSuccess = (newMeeting?: MeetingWithRelations) => {
+    const wasEditing = !!editingMeeting
     handleDialogClose()
+
+    if (newMeeting) {
+      setLocalMeetings((prev) => {
+        if (wasEditing) {
+          return prev.map((m) => (m.id === newMeeting.id ? { ...m, ...newMeeting } : m))
+        }
+        return [newMeeting, ...prev]
+      })
+    }
+
     router.refresh()
   }
 
@@ -189,7 +206,13 @@ export function MeetingsPageClient({
   }
 
   const handleCompletionSuccess = () => {
+    const completedId = completionMeeting?.id
     setCompletionMeeting(null)
+    if (completedId) {
+      setLocalMeetings((prev) =>
+        prev.map((m) => (m.id === completedId ? { ...m, status: "completed" as const } : m))
+      )
+    }
     router.refresh()
   }
 
@@ -199,6 +222,7 @@ export function MeetingsPageClient({
       const res = await fetch(`/api/meetings/${meetingId}`, { method: "DELETE" })
       if (!res.ok) throw new Error()
       toast({ title: "Reunião excluída" })
+      setLocalMeetings((prev) => prev.filter((m) => m.id !== meetingId))
       router.refresh()
     } catch {
       toast({ variant: "destructive", title: "Erro ao excluir reunião" })
@@ -214,6 +238,9 @@ export function MeetingsPageClient({
       })
       if (!res.ok) throw new Error()
       toast({ title: "Status atualizado" })
+      setLocalMeetings((prev) =>
+        prev.map((m) => (m.id === meetingId ? { ...m, status: newStatus } : m))
+      )
       router.refresh()
     } catch {
       toast({ variant: "destructive", title: "Erro ao atualizar status" })
