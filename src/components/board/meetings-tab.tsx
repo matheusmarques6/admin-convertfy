@@ -1,7 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
 import { format, isToday, isTomorrow, isPast, isFuture } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import {
@@ -90,7 +89,6 @@ function formatMeetingDate(date: string) {
 }
 
 export function MeetingsTab({ meetings, clients, members = [], onMeetingChange }: MeetingsTabProps) {
-  const router = useRouter()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingMeeting, setEditingMeeting] = useState<MeetingWithRelations | null>(null)
 
@@ -135,8 +133,6 @@ export function MeetingsTab({ meetings, clients, members = [], onMeetingChange }
         return [newMeeting, ...prev]
       })
     }
-
-    router.refresh()
   }
 
   const handleDeleteMeeting = async (meetingId: string) => {
@@ -150,7 +146,6 @@ export function MeetingsTab({ meetings, clients, members = [], onMeetingChange }
       if (onMeetingChange) {
         onMeetingChange((prev) => prev.filter((m) => m.id !== meetingId))
       }
-      router.refresh()
     } catch {
       toast({ variant: "destructive", title: "Erro ao excluir reunião" })
     }
@@ -171,7 +166,6 @@ export function MeetingsTab({ meetings, clients, members = [], onMeetingChange }
           prev.map((m) => (m.id === meetingId ? { ...m, status: newStatus } : m))
         )
       }
-      router.refresh()
     } catch {
       toast({ variant: "destructive", title: "Erro ao atualizar status" })
     }

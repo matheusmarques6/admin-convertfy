@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useMemo, useEffect } from "react"
-import { useRouter } from "next/navigation"
 import {
   isToday,
   isFuture,
@@ -106,7 +105,6 @@ export function MeetingsPageClient({
   clients,
   members,
 }: MeetingsPageClientProps) {
-  const router = useRouter()
   const [localMeetings, setLocalMeetings] = useState<MeetingWithRelations[]>(initialMeetings)
   const [viewMode, setViewMode] = useState<"list" | "calendar">("list")
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -193,8 +191,6 @@ export function MeetingsPageClient({
         return [newMeeting, ...prev]
       })
     }
-
-    router.refresh()
   }
 
   const handleOpenCompletion = (meeting: MeetingWithRelations) => {
@@ -213,7 +209,6 @@ export function MeetingsPageClient({
         prev.map((m) => (m.id === completedId ? { ...m, status: "completed" as const } : m))
       )
     }
-    router.refresh()
   }
 
   const handleDeleteMeeting = async (meetingId: string) => {
@@ -223,7 +218,6 @@ export function MeetingsPageClient({
       if (!res.ok) throw new Error()
       toast({ title: "Reunião excluída" })
       setLocalMeetings((prev) => prev.filter((m) => m.id !== meetingId))
-      router.refresh()
     } catch {
       toast({ variant: "destructive", title: "Erro ao excluir reunião" })
     }
@@ -241,7 +235,6 @@ export function MeetingsPageClient({
       setLocalMeetings((prev) =>
         prev.map((m) => (m.id === meetingId ? { ...m, status: newStatus } : m))
       )
-      router.refresh()
     } catch {
       toast({ variant: "destructive", title: "Erro ao atualizar status" })
     }
