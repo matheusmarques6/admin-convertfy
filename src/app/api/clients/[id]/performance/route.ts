@@ -335,14 +335,14 @@ async function fetchKlaviyoPerformance(
     },
   })
 
-  // If all three API calls failed, throw so the error surfaces in storeErrors
-  if (!campaignReport && !flowReport && !metricAgg) {
+  // If campaign+flow both failed, throw so the error surfaces in storeErrors
+  // metric-aggregates failure is non-fatal (storeRevenue will be 0)
+  if (!campaignReport && !flowReport) {
     throw new Error("Falha ao conectar com a API do Klaviyo. Verifique as credenciais.")
   }
 
   // Parse store-wide revenue from metric-aggregates
-  // DEBUG: log raw response to diagnose structure
-  log.info("[MetricAgg] Raw response:", JSON.stringify(metricAgg?.data?.attributes).slice(0, 500))
+  log.info("[MetricAgg] Raw response:", JSON.stringify(metricAgg ?? "null").slice(0, 500))
   const aggData = metricAgg?.data?.attributes?.data || []
   let storeRevenue = 0
   let storeOrders = 0
