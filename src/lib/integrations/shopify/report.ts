@@ -393,13 +393,17 @@ async function getOrdersSummary(
   try {
     const orders = await fetchAllOrders(storeDomain, accessToken, dateRange)
 
-    const totalOrders = orders.length
-    const paidOrders = orders.filter((o) => o.financial_status === "paid")
-    const totalRevenue = orders.reduce((sum, o) => sum + parseFloat(o.total_price || "0"), 0)
+    // Exclude refunded/voided/cancelled orders from revenue calculations
+    const validOrders = orders.filter((o) =>
+      o.financial_status !== "refunded" && o.financial_status !== "voided"
+    )
+    const totalOrders = validOrders.length
+    const paidOrders = validOrders.filter((o) => o.financial_status === "paid")
+    const totalRevenue = validOrders.reduce((sum, o) => sum + parseFloat(o.total_price || "0"), 0)
     const paidRevenue = paidOrders.reduce((sum, o) => sum + parseFloat(o.total_price || "0"), 0)
-    const totalTax = orders.reduce((sum, o) => sum + parseFloat(o.total_tax || "0"), 0)
-    const totalDiscounts = orders.reduce((sum, o) => sum + parseFloat(o.total_discounts || "0"), 0)
-    const subtotal = orders.reduce((sum, o) => sum + parseFloat(o.subtotal_price || "0"), 0)
+    const totalTax = validOrders.reduce((sum, o) => sum + parseFloat(o.total_tax || "0"), 0)
+    const totalDiscounts = validOrders.reduce((sum, o) => sum + parseFloat(o.total_discounts || "0"), 0)
+    const subtotal = validOrders.reduce((sum, o) => sum + parseFloat(o.subtotal_price || "0"), 0)
 
     const totalItems = orders.reduce(
       (sum, o) => sum + o.line_items.reduce((s, item) => s + item.quantity, 0),
@@ -493,7 +497,7 @@ async function getOrdersSummary(
 
     // SMS Attribution
     const smsKeywords = ["sms", "ysms", "sms-marketing", "sms_marketing", "text", "whatsapp"]
-    const smsOrders = orders.filter((order) => {
+    const smsOrders = validOrders.filter((order) => {
       const tags = (order.tags || "").toLowerCase()
       const source = (order.source_name || "").toLowerCase()
       const referrer = (order.referring_site || "").toLowerCase()
@@ -706,9 +710,9 @@ async function getOrdersSummary(
       voided: orders.filter((o) => o.financial_status === "voided").length,
     }
 
-    // Daily breakdown
+    // Daily breakdown (only valid orders for revenue consistency)
     const dailyData: Record<string, { revenue: number; orders: number }> = {}
-    orders.forEach((order) => {
+    validOrders.forEach((order) => {
       const date = order.created_at.split("T")[0]
       if (!dailyData[date]) {
         dailyData[date] = { revenue: 0, orders: 0 }
