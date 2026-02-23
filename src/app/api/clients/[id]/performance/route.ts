@@ -12,6 +12,7 @@ import {
   getTimezoneOffset,
   sleep,
   MIN_REQUEST_INTERVAL,
+  KLAVIYO_API_URL,
 } from "@/lib/integrations/klaviyo"
 import { getShopifyReportForStore } from "@/lib/integrations/shopify/report"
 import { decryptStoreCredentials } from "@/lib/crypto"
@@ -312,63 +313,115 @@ async function fetchKlaviyoPerformance(
     throw new Error("Falha ao conectar com a API do Klaviyo. Verifique as credenciais.")
   }
 
-  // Parse campaign results
+  // Parse campaign results - aggregate by campaign_id (API returns per-message rows)
   const campaignResults = campaignReport?.data?.attributes?.results || []
   const flowResults = flowReport?.data?.attributes?.results || []
 
-  let campaignRevenue = 0
-  let flowRevenue = 0
-  let totalCampaignRecipients = 0
-  let totalFlowRecipients = 0
-  let campaignOpenRateSum = 0
-  let campaignClickRateSum = 0
-  let campaignCount = 0
-
-  const recentCampaigns: StorePerformance["klaviyo"] extends null ? never : NonNullable<StorePerformance["klaviyo"]>["recentCampaigns"] = []
-
+  // Aggregate campaign metrics by campaign_id
+  const campAgg = new Map<string, { recipients: number; delivered: number; opensUnique: number; clickRate: number; conversionValue: number }>()
   for (const r of campaignResults) {
+    const cid = r.groupings?.campaign_id
+    if (!cid) continue
     const stats = r.statistics || {}
-    const rev = Number(stats.conversion_value) || 0
-    const recip = Number(stats.recipients) || 0
-    campaignRevenue += rev
-    totalCampaignRecipients += recip
-    const delivered = Number(stats.delivered) || 0
-    const opensUnique = Number(stats.opens_unique) || 0
-    const openRate = delivered > 0 ? (opensUnique / delivered) * 100 : 0
-    if (openRate > 0) { campaignOpenRateSum += openRate; campaignCount++ }
-    if (stats.click_rate) { campaignClickRateSum += Number(stats.click_rate); campaignCount++ }
-
-    recentCampaigns.push({
-      name: r.groupings?.campaign_name || r.groupings?.["campaign_name"] || "Campaign",
-      sendTime: r.groupings?.send_time || "",
-      recipients: recip,
-      openRate: Math.round(openRate * 100) / 100,
-      clickRate: Number(stats.click_rate) || 0,
-      revenue: rev,
+    const ex = campAgg.get(cid) || { recipients: 0, delivered: 0, opensUnique: 0, clickRate: 0, conversionValue: 0 }
+    campAgg.set(cid, {
+      recipients: ex.recipients + (Number(stats.recipients) || 0),
+      delivered: ex.delivered + (Number(stats.delivered) || 0),
+      opensUnique: ex.opensUnique + (Number(stats.opens_unique) || 0),
+      clickRate: Number(stats.click_rate) || ex.clickRate,
+      conversionValue: ex.conversionValue + (Number(stats.conversion_value) || 0),
     })
   }
 
-  // Sort campaigns by revenue desc, take top 5
+  // Aggregate flow metrics by flow_id
+  const flowAgg = new Map<string, { recipients: number; delivered: number; opensUnique: number; clickRate: number; conversionValue: number }>()
+  for (const r of flowResults) {
+    const fid = r.groupings?.flow_id
+    if (!fid) continue
+    const stats = r.statistics || {}
+    const ex = flowAgg.get(fid) || { recipients: 0, delivered: 0, opensUnique: 0, clickRate: 0, conversionValue: 0 }
+    flowAgg.set(fid, {
+      recipients: ex.recipients + (Number(stats.recipients) || 0),
+      delivered: ex.delivered + (Number(stats.delivered) || 0),
+      opensUnique: ex.opensUnique + (Number(stats.opens_unique) || 0),
+      clickRate: Number(stats.click_rate) || ex.clickRate,
+      conversionValue: ex.conversionValue + (Number(stats.conversion_value) || 0),
+    })
+  }
+
+  // Fetch campaign names from Klaviyo API
+  type NameListResp = { data: Array<{ id: string; attributes: { name: string; status?: string; send_time?: string | null } }>; links?: { next?: string } }
+  const campNames = new Map<string, { name: string; sendTime: string }>()
+  if (campAgg.size > 0) {
+    await sleep(MIN_REQUEST_INTERVAL)
+    let campPage: string | null = "/campaigns/"
+    while (campPage) {
+      const resp: NameListResp | null = await klaviyoRequest<NameListResp>(apiKey, campPage)
+      if (!resp?.data) break
+      for (const c of resp.data) {
+        campNames.set(c.id, { name: c.attributes.name, sendTime: c.attributes.send_time || "" })
+      }
+      campPage = resp.links?.next ? resp.links.next.replace(KLAVIYO_API_URL, "") : null
+      if (campPage) await sleep(500)
+    }
+  }
+
+  // Fetch flow names from Klaviyo API
+  const flowNames = new Map<string, { name: string; status: string }>()
+  if (flowAgg.size > 0) {
+    await sleep(MIN_REQUEST_INTERVAL)
+    let flowPage: string | null = "/flows/"
+    while (flowPage) {
+      const resp: NameListResp | null = await klaviyoRequest<NameListResp>(apiKey, flowPage)
+      if (!resp?.data) break
+      for (const f of resp.data) {
+        flowNames.set(f.id, { name: f.attributes.name, status: f.attributes.status || "unknown" })
+      }
+      flowPage = resp.links?.next ? resp.links.next.replace(KLAVIYO_API_URL, "") : null
+      if (flowPage) await sleep(500)
+    }
+  }
+
+  // Build campaign list with names
+  let campaignRevenue = 0
+  let campaignOpenRateSum = 0
+  let campaignClickRateSum = 0
+  let campaignCount = 0
+  const recentCampaigns: NonNullable<StorePerformance["klaviyo"]>["recentCampaigns"] = []
+
+  for (const [cid, m] of campAgg) {
+    campaignRevenue += m.conversionValue
+    const openRate = m.delivered > 0 ? (m.opensUnique / m.delivered) * 100 : 0
+    if (openRate > 0) { campaignOpenRateSum += openRate; campaignCount++ }
+    if (m.clickRate > 0) { campaignClickRateSum += m.clickRate; campaignCount++ }
+    const info = campNames.get(cid)
+    recentCampaigns.push({
+      name: info?.name || `Campaign ${cid.slice(0, 6)}`,
+      sendTime: info?.sendTime || "",
+      recipients: m.recipients,
+      openRate: Math.round(openRate * 100) / 100,
+      clickRate: m.clickRate,
+      revenue: m.conversionValue,
+    })
+  }
+
   recentCampaigns.sort((a, b) => b.revenue - a.revenue)
   const topCampaigns = recentCampaigns.slice(0, 5)
 
+  // Build flow list with names
+  let flowRevenue = 0
   const topFlows: NonNullable<StorePerformance["klaviyo"]>["topFlows"] = []
-  for (const r of flowResults) {
-    const stats = r.statistics || {}
-    const rev = Number(stats.conversion_value) || 0
-    const recip = Number(stats.recipients) || 0
-    const flowDelivered = Number(stats.delivered) || 0
-    const flowOpensUnique = Number(stats.opens_unique) || 0
-    const flowOpenRate = flowDelivered > 0 ? (flowOpensUnique / flowDelivered) * 100 : 0
-    flowRevenue += rev
-    totalFlowRecipients += recip
 
+  for (const [fid, m] of flowAgg) {
+    flowRevenue += m.conversionValue
+    const openRate = m.delivered > 0 ? (m.opensUnique / m.delivered) * 100 : 0
+    const info = flowNames.get(fid)
     topFlows.push({
-      name: r.groupings?.flow_name || r.groupings?.["flow_name"] || "Flow",
-      status: "live",
-      revenue: rev,
-      openRate: Math.round(flowOpenRate * 100) / 100,
-      clickRate: Number(stats.click_rate) || 0,
+      name: info?.name || `Flow ${fid.slice(0, 6)}`,
+      status: info?.status || "live",
+      revenue: m.conversionValue,
+      openRate: Math.round(openRate * 100) / 100,
+      clickRate: m.clickRate,
     })
   }
 
