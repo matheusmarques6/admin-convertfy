@@ -73,7 +73,7 @@ interface MeetingWithRelations extends Omit<Meeting, "client" | "user"> {
 interface MeetingDialogProps {
   open: boolean
   onClose: () => void
-  onSuccess: () => void
+  onSuccess: (meeting?: MeetingWithRelations) => void
   meeting?: MeetingWithRelations | null
   clients: ClientInfo[]
   members?: ParticipantOption[]
@@ -243,7 +243,7 @@ export function MeetingDialog({
         description: result.message,
       })
 
-      onSuccess()
+      onSuccess(result.meeting)
     } catch (error) {
       toast({
         variant: "destructive",

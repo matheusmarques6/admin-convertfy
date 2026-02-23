@@ -77,6 +77,7 @@ interface MeetingsTabProps {
   meetings: MeetingWithRelations[]
   clients: ClientInfo[]
   members?: ParticipantOption[]
+  onMeetingChange?: React.Dispatch<React.SetStateAction<MeetingWithRelations[]>>
 }
 
 const statusConfig = MEETING_STATUS_CONFIG
@@ -88,7 +89,7 @@ function formatMeetingDate(date: string) {
   return format(d, "dd/MM 'às' HH:mm", { locale: ptBR })
 }
 
-export function MeetingsTab({ meetings, clients, members = [] }: MeetingsTabProps) {
+export function MeetingsTab({ meetings, clients, members = [], onMeetingChange }: MeetingsTabProps) {
   const router = useRouter()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingMeeting, setEditingMeeting] = useState<MeetingWithRelations | null>(null)
@@ -122,8 +123,19 @@ export function MeetingsTab({ meetings, clients, members = [] }: MeetingsTabProp
     setEditingMeeting(null)
   }
 
-  const handleDialogSuccess = () => {
+  const handleDialogSuccess = (newMeeting?: MeetingWithRelations) => {
+    const wasEditing = !!editingMeeting
     handleDialogClose()
+
+    if (newMeeting && onMeetingChange) {
+      onMeetingChange((prev) => {
+        if (wasEditing) {
+          return prev.map((m) => (m.id === newMeeting.id ? { ...m, ...newMeeting } : m))
+        }
+        return [newMeeting, ...prev]
+      })
+    }
+
     router.refresh()
   }
 
@@ -135,6 +147,9 @@ export function MeetingsTab({ meetings, clients, members = [] }: MeetingsTabProp
       if (!response.ok) throw new Error("Erro ao excluir")
 
       toast({ title: "Reunião excluída" })
+      if (onMeetingChange) {
+        onMeetingChange((prev) => prev.filter((m) => m.id !== meetingId))
+      }
       router.refresh()
     } catch {
       toast({ variant: "destructive", title: "Erro ao excluir reunião" })
@@ -151,6 +166,11 @@ export function MeetingsTab({ meetings, clients, members = [] }: MeetingsTabProp
       if (!response.ok) throw new Error("Erro ao atualizar")
 
       toast({ title: "Status atualizado" })
+      if (onMeetingChange) {
+        onMeetingChange((prev) =>
+          prev.map((m) => (m.id === meetingId ? { ...m, status: newStatus } : m))
+        )
+      }
       router.refresh()
     } catch {
       toast({ variant: "destructive", title: "Erro ao atualizar status" })

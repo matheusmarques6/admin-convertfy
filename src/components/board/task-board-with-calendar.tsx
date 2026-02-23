@@ -72,11 +72,16 @@ export function TaskBoardWithCalendar({
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingTask, setEditingTask] = useState<TaskWithRelations | null>(null)
   const [localTasks, setLocalTasks] = useState<TaskWithRelations[]>(tasks)
+  const [localMeetings, setLocalMeetings] = useState<MeetingWithRelations[]>(meetings)
 
   // Sync server props → local state (for router.refresh() or initial load changes)
   useEffect(() => {
     setLocalTasks(tasks)
   }, [tasks])
+
+  useEffect(() => {
+    setLocalMeetings(meetings)
+  }, [meetings])
 
   const handleTaskClick = useCallback((task: TaskWithRelations) => {
     setEditingTask(task)
@@ -115,7 +120,7 @@ export function TaskBoardWithCalendar({
   // Count upcoming items
   const today = new Date()
   const upcomingTasks = localTasks.filter(t => t.due_date && new Date(t.due_date) >= today).length
-  const upcomingMeetings = meetings.filter(m => m.status === "scheduled" && new Date(m.scheduled_at) >= today).length
+  const upcomingMeetings = localMeetings.filter(m => m.status === "scheduled" && new Date(m.scheduled_at) >= today).length
 
   const getSubtitle = () => {
     switch (viewMode) {
@@ -177,7 +182,8 @@ export function TaskBoardWithCalendar({
         )}
         {viewMode === "meetings" && (
           <MeetingsTab
-            meetings={meetings}
+            meetings={localMeetings}
+            onMeetingChange={setLocalMeetings}
             clients={clients}
             members={members.map(m => ({
               id: m.id,
@@ -192,7 +198,7 @@ export function TaskBoardWithCalendar({
         {viewMode === "calendar" && (
           <BoardCalendarView
             tasks={localTasks}
-            meetings={meetings}
+            meetings={localMeetings}
             onTaskClick={handleTaskClick}
           />
         )}
