@@ -94,9 +94,9 @@ async function getLists(apiKey: string) {
     created: string
   }> = []
 
-  // Per Klaviyo API docs: use additional-fields to get profile_count
-  // https://developers.klaviyo.com/en/reference/get_lists
-  let nextPage: string | null = "/lists/?page[size]=100&additional-fields[list]=profile_count"
+  // Klaviyo API revision 2024-10-15 rejects page[size] for lists (400 error)
+  // Use default pagination and follow links.next instead
+  let nextPage: string | null = "/lists/?additional-fields[list]=profile_count"
 
   log.info("[Klaviyo] Fetching lists...")
 
@@ -179,7 +179,8 @@ async function getFlows(apiKey: string) {
     created: string
   }> = []
 
-  let nextPage: string | null = "/flows?page[size]=100"
+  // page[size] works for flows (unlike lists/segments which reject it)
+  let nextPage: string | null = "/flows/?page[size]=50"
 
   while (nextPage) {
     const response: FlowsResponse | null = await klaviyoRequest<FlowsResponse>(apiKey, nextPage)
@@ -262,9 +263,9 @@ async function getSegments(apiKey: string) {
     created: string
   }> = []
 
-  // Per Klaviyo API docs: use additional-fields to get profile_count
-  // https://developers.klaviyo.com/en/reference/get_segments
-  let nextPage: string | null = "/segments/?page[size]=100&additional-fields[segment]=profile_count"
+  // Klaviyo API revision 2024-10-15 rejects page[size] for segments (400 error)
+  // Use default pagination and follow links.next instead
+  let nextPage: string | null = "/segments/?additional-fields[segment]=profile_count"
 
   log.info("[Klaviyo] Fetching segments...")
 
@@ -401,8 +402,9 @@ async function getCampaigns(apiKey: string) {
   }> = []
 
   // Fetch email and SMS campaigns separately (channel filter is required by Klaviyo API)
+  // page[size] works for campaigns (unlike lists/segments which reject it)
   for (const channel of ['email', 'sms']) {
-    let nextPage: string | null = `/campaigns?filter=equals(messages.channel,'${channel}')`
+    let nextPage: string | null = `/campaigns/?filter=equals(messages.channel,'${channel}')&page[size]=50`
 
     while (nextPage) {
       const response: CampaignsResponse | null = await klaviyoRequest<CampaignsResponse>(apiKey, nextPage)
@@ -985,67 +987,6 @@ export async function GET(request: NextRequest) {
       }, { headers: corsHeaders(request.headers.get("origin")) })
     }
 
-    // === RAW DIAGNOSTIC: Test each endpoint directly to capture HTTP status ===
-    const rawDiag: Record<string, unknown> = {}
-    const diagHeaders = {
-      "Authorization": `Klaviyo-API-Key ${apiKey}`,
-      "Accept": "application/json",
-      "Content-Type": "application/json",
-      "revision": KLAVIYO_REVISION,
-    }
-
-    // Test /lists/ directly
-    try {
-      const r = await fetch(`${KLAVIYO_API_URL}/lists/?page[size]=5`, { headers: diagHeaders })
-      const t = await r.text()
-      rawDiag.lists = { status: r.status, bodyPreview: t.substring(0, 300) }
-    } catch (e) { rawDiag.lists = { error: String(e) } }
-
-    await sleep(500)
-
-    // Test /flows/ directly
-    try {
-      const r = await fetch(`${KLAVIYO_API_URL}/flows/?page[size]=5`, { headers: diagHeaders })
-      const t = await r.text()
-      rawDiag.flows = { status: r.status, bodyPreview: t.substring(0, 300) }
-    } catch (e) { rawDiag.flows = { error: String(e) } }
-
-    await sleep(500)
-
-    // Test /segments/ directly
-    try {
-      const r = await fetch(`${KLAVIYO_API_URL}/segments/?page[size]=5`, { headers: diagHeaders })
-      const t = await r.text()
-      rawDiag.segments = { status: r.status, bodyPreview: t.substring(0, 300) }
-    } catch (e) { rawDiag.segments = { error: String(e) } }
-
-    await sleep(500)
-
-    // Test flow-values-reports directly
-    try {
-      const r = await fetch(`${KLAVIYO_API_URL}/flow-values-reports/`, {
-        method: "POST",
-        headers: diagHeaders,
-        body: JSON.stringify({
-          data: {
-            type: "flow-values-report",
-            attributes: {
-              timeframe: { start: `${startDateStr}T00:00:00+00:00`, end: `${endDateStr}T23:59:59+00:00` },
-              conversion_metric_id: metricId,
-              statistics: ["delivered", "conversion_value"]
-            }
-          }
-        })
-      })
-      const t = await r.text()
-      rawDiag.flowReport = { status: r.status, bodyPreview: t.substring(0, 500) }
-    } catch (e) { rawDiag.flowReport = { error: String(e) } }
-
-    await sleep(500)
-
-    log.info(`[Klaviyo] RAW DIAGNOSTIC: ${JSON.stringify(rawDiag)}`)
-    // === END RAW DIAGNOSTIC ===
-
     // Fetch all data SEQUENTIALLY to avoid rate limiting
     await sleep(500)
     const listMetrics = await getLists(apiKey)
@@ -1306,8 +1247,6 @@ export async function GET(request: NextRequest) {
         placedOrderMetricId: metricId,
       },
 
-      // Temporary diagnostic: raw API responses to debug zero-data issue
-      _rawDiagnostic: rawDiag,
     }
 
     return NextResponse.json(reportData, { headers: corsHeaders(request.headers.get("origin")) })
