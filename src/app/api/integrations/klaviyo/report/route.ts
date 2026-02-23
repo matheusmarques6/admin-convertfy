@@ -94,9 +94,9 @@ async function getLists(apiKey: string) {
     created: string
   }> = []
 
-  // Klaviyo API revision 2024-10-15 rejects page[size] for lists (400 error)
-  // Use default pagination and follow links.next instead
-  let nextPage: string | null = "/lists/?additional-fields[list]=profile_count"
+  // Klaviyo API revision 2024-10-15 rejects page[size] and additional-fields for lists
+  // Use simplest URL possible and fetch profile_count individually via fallback below
+  let nextPage: string | null = "/lists/"
 
   log.info("[Klaviyo] Fetching lists...")
 
@@ -263,9 +263,9 @@ async function getSegments(apiKey: string) {
     created: string
   }> = []
 
-  // Klaviyo API revision 2024-10-15 rejects page[size] for segments (400 error)
-  // Use default pagination and follow links.next instead
-  let nextPage: string | null = "/segments/?additional-fields[segment]=profile_count"
+  // Klaviyo API revision 2024-10-15 rejects page[size] and additional-fields for segments
+  // Use simplest URL possible and fetch profile_count individually via fallback below
+  let nextPage: string | null = "/segments/"
 
   log.info("[Klaviyo] Fetching segments...")
 
@@ -402,9 +402,9 @@ async function getCampaigns(apiKey: string) {
   }> = []
 
   // Fetch email and SMS campaigns separately (channel filter is required by Klaviyo API)
-  // page[size] works for campaigns (unlike lists/segments which reject it)
+  // Do NOT use page[size] - Klaviyo rejects it for campaigns too
   for (const channel of ['email', 'sms']) {
-    let nextPage: string | null = `/campaigns/?filter=equals(messages.channel,'${channel}')&page[size]=50`
+    let nextPage: string | null = `/campaigns/?filter=equals(messages.channel,'${channel}')`
 
     while (nextPage) {
       const response: CampaignsResponse | null = await klaviyoRequest<CampaignsResponse>(apiKey, nextPage)
