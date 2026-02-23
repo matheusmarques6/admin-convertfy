@@ -460,15 +460,14 @@ async function getFlowValuesReport(
 ) {
   log.info(`[Klaviyo] Getting flow values report: ${startDate} to ${endDate} (timezone: ${timezoneOffset})`)
 
-  // Valid statistics per Klaviyo Reporting API
-  // Note: bounces, unsubscribes, spam_complaints are NOT valid for flow-values-reports
+  // Valid statistics per Klaviyo Reporting API (revision 2024-10-15)
+  // Note: opened_unique, clicked_unique are NOT valid in this revision
   const statistics = [
     "average_order_value",
     "bounce_rate",
     "click_rate",
     "click_to_open_rate",
     "clicked",
-    "clicked_unique",
     "conversion_rate",
     "conversion_uniques",
     "conversion_value",
@@ -477,7 +476,6 @@ async function getFlowValuesReport(
     "delivery_rate",
     "open_rate",
     "opened",
-    "opened_unique",
     "recipients",
     "revenue_per_recipient",
     "unsubscribe_rate"
@@ -514,9 +512,7 @@ async function getFlowValuesReport(
           statistics: {
             delivered?: number
             opened?: number
-            opened_unique?: number
             clicked?: number
-            clicked_unique?: number
             conversion_value?: number
             conversions?: number
             conversion_uniques?: number
@@ -572,8 +568,8 @@ async function getFlowValuesReport(
     totalRevenue += stats.conversion_value || 0
     totalConversions += stats.conversions || 0
     totalDelivered += stats.delivered || 0
-    totalOpens += stats.opened_unique || 0
-    totalClicks += stats.clicked_unique || 0
+    totalOpens += stats.opened || 0
+    totalClicks += stats.clicked || 0
 
     if (stats.bounce_rate !== undefined) {
       sumBounceRate += stats.bounce_rate
@@ -592,8 +588,8 @@ async function getFlowValuesReport(
       revenue: existing.revenue + (stats.conversion_value || 0),
       conversions: existing.conversions + (stats.conversions || 0),
       delivered: existing.delivered + (stats.delivered || 0),
-      opens: existing.opens + (stats.opened_unique || 0),
-      clicks: existing.clicks + (stats.clicked_unique || 0),
+      opens: existing.opens + (stats.opened || 0),
+      clicks: existing.clicks + (stats.clicked || 0),
       openRate: stats.open_rate || existing.openRate,
       clickRate: stats.click_rate || existing.clickRate,
       bounceRate: stats.bounce_rate || existing.bounceRate,
@@ -639,14 +635,13 @@ async function getCampaignValuesReport(
 ) {
   log.info(`[Klaviyo] Getting campaign values report: ${startDate} to ${endDate} (timezone: ${timezoneOffset})`)
 
-  // Use same statistics as flows for consistency
+  // Same statistics as flows (revision 2024-10-15 rejects opened_unique/clicked_unique)
   const statistics = [
     "average_order_value",
     "bounce_rate",
     "click_rate",
     "click_to_open_rate",
     "clicked",
-    "clicked_unique",
     "conversion_rate",
     "conversion_uniques",
     "conversion_value",
@@ -655,7 +650,6 @@ async function getCampaignValuesReport(
     "delivery_rate",
     "open_rate",
     "opened",
-    "opened_unique",
     "recipients",
     "revenue_per_recipient",
     "unsubscribe_rate"
@@ -690,9 +684,7 @@ async function getCampaignValuesReport(
           statistics: {
             delivered?: number
             opened?: number
-            opened_unique?: number
             clicked?: number
-            clicked_unique?: number
             conversion_value?: number
             conversions?: number
             conversion_uniques?: number
@@ -750,8 +742,8 @@ async function getCampaignValuesReport(
     totalRevenue += stats.conversion_value || 0
     totalConversions += stats.conversions || 0
     totalDelivered += stats.delivered || 0
-    totalOpens += stats.opened_unique || 0
-    totalClicks += stats.clicked_unique || 0
+    totalOpens += stats.opened || 0
+    totalClicks += stats.clicked || 0
 
     if (stats.bounce_rate !== undefined) {
       sumBounceRate += stats.bounce_rate
@@ -770,8 +762,8 @@ async function getCampaignValuesReport(
       revenue: existing.revenue + (stats.conversion_value || 0),
       conversions: existing.conversions + (stats.conversions || 0),
       delivered: existing.delivered + (stats.delivered || 0),
-      opens: existing.opens + (stats.opened_unique || 0),
-      clicks: existing.clicks + (stats.clicked_unique || 0),
+      opens: existing.opens + (stats.opened || 0),
+      clicks: existing.clicks + (stats.clicked || 0),
       openRate: stats.open_rate || existing.openRate,
       clickRate: stats.click_rate || existing.clickRate,
       bounceRate: stats.bounce_rate || existing.bounceRate,
