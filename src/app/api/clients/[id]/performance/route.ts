@@ -258,8 +258,8 @@ async function fetchKlaviyoPerformance(
           type: "campaign-values-report",
           attributes: {
             statistics: [
-              "recipients", "delivered", "click_rate",
-              "conversion_rate", "conversion_value", "revenue_per_recipient",
+              "recipients", "delivered", "opens_unique", "click_rate",
+              "click_to_open_rate", "conversion_rate", "conversion_value", "revenue_per_recipient",
             ],
             timeframe: { start: startISO, end: endISO },
             ...(placedOrderMetric ? { conversion_metric_id: placedOrderMetric } : {}),
@@ -275,8 +275,8 @@ async function fetchKlaviyoPerformance(
           type: "flow-values-report",
           attributes: {
             statistics: [
-              "recipients", "delivered", "click_rate",
-              "conversion_rate", "conversion_value", "revenue_per_recipient",
+              "recipients", "delivered", "opens_unique", "click_rate",
+              "click_to_open_rate", "conversion_rate", "conversion_value", "revenue_per_recipient",
             ],
             timeframe: { start: startISO, end: endISO },
             ...(placedOrderMetric ? { conversion_metric_id: placedOrderMetric } : {}),
@@ -311,14 +311,17 @@ async function fetchKlaviyoPerformance(
     const recip = Number(stats.recipients) || 0
     campaignRevenue += rev
     totalCampaignRecipients += recip
-    if (stats.open_rate) { campaignOpenRateSum += Number(stats.open_rate); campaignCount++ }
+    const delivered = Number(stats.delivered) || 0
+    const opensUnique = Number(stats.opens_unique) || 0
+    const openRate = delivered > 0 ? (opensUnique / delivered) * 100 : 0
+    if (openRate > 0) { campaignOpenRateSum += openRate; campaignCount++ }
     if (stats.click_rate) { campaignClickRateSum += Number(stats.click_rate); campaignCount++ }
 
     recentCampaigns.push({
       name: r.groupings?.campaign_name || r.groupings?.["campaign_name"] || "Campaign",
       sendTime: r.groupings?.send_time || "",
       recipients: recip,
-      openRate: Number(stats.open_rate) || 0,
+      openRate: Math.round(openRate * 100) / 100,
       clickRate: Number(stats.click_rate) || 0,
       revenue: rev,
     })
@@ -333,6 +336,9 @@ async function fetchKlaviyoPerformance(
     const stats = r.statistics || {}
     const rev = Number(stats.conversion_value) || 0
     const recip = Number(stats.recipients) || 0
+    const flowDelivered = Number(stats.delivered) || 0
+    const flowOpensUnique = Number(stats.opens_unique) || 0
+    const flowOpenRate = flowDelivered > 0 ? (flowOpensUnique / flowDelivered) * 100 : 0
     flowRevenue += rev
     totalFlowRecipients += recip
 
@@ -340,7 +346,7 @@ async function fetchKlaviyoPerformance(
       name: r.groupings?.flow_name || r.groupings?.["flow_name"] || "Flow",
       status: "live",
       revenue: rev,
-      openRate: Number(stats.open_rate) || 0,
+      openRate: Math.round(flowOpenRate * 100) / 100,
       clickRate: Number(stats.click_rate) || 0,
     })
   }

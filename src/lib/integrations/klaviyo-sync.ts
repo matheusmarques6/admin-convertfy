@@ -606,16 +606,20 @@ export class KlaviyoSyncService {
           const campaignId = idMap.get(klaviyoCampaignId)
           if (!campaignId) continue
 
+          const deliveredVal = stats.delivered || 0
+          const opensUniqueVal = stats.opens_unique || 0
+          const computedOpenRate = deliveredVal > 0 ? (opensUniqueVal / deliveredVal) * 100 : 0
+
           const metricsData = {
             campaign_id: campaignId,
             recipients: stats.recipients || 0,
-            delivered: stats.delivered || 0,
+            delivered: deliveredVal,
             delivery_rate: stats.delivery_rate || 0,
-            opened: stats.opened || 0,
-            opened_unique: stats.opened_unique || 0,
-            open_rate: stats.open_rate || 0,
-            clicked: stats.clicked || 0,
-            clicked_unique: stats.clicked_unique || 0,
+            opened: stats.opens || 0,
+            opened_unique: opensUniqueVal,
+            open_rate: Math.round(computedOpenRate * 100) / 100,
+            clicked: stats.clicks || 0,
+            clicked_unique: stats.clicks_unique || 0,
             click_rate: stats.click_rate || 0,
             click_to_open_rate: stats.click_to_open_rate || 0,
             conversions: stats.conversions || 0,
@@ -625,7 +629,7 @@ export class KlaviyoSyncService {
             average_order_value: stats.average_order_value || 0,
             bounced: stats.bounced || 0,
             bounce_rate: stats.bounce_rate || 0,
-            unsubscribed: stats.unsubscribed || 0,
+            unsubscribed: stats.unsubscribes || 0,
             unsubscribe_rate: stats.unsubscribe_rate || 0,
             spam_complaints: stats.spam_complaints || 0,
             spam_rate: stats.spam_complaint_rate || 0,
