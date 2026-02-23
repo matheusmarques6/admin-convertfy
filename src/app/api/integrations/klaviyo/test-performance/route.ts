@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { createAdminClient } from "@/lib/supabase/server"
 import { getStoreCredentials } from "@/lib/services/credentials.service"
 import {
   KLAVIYO_API_URL,
@@ -30,20 +31,97 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const storeId = request.nextUrl.searchParams.get("store_id")
-  if (!storeId) {
-    return NextResponse.json({ error: "store_id required" }, { status: 400 })
+  const storeIdParam = request.nextUrl.searchParams.get("store_id")
+  const clientIdParam = request.nextUrl.searchParams.get("client_id")
+  if (!storeIdParam && !clientIdParam) {
+    return NextResponse.json({ error: "store_id or client_id required" }, { status: 400 })
   }
 
   const steps: Array<{ step: string; status: string; detail?: unknown; elapsed?: number }> = []
   const totalStart = Date.now()
 
   try {
+    const adminClient = createAdminClient()
+
+    // If client_id provided, find the stores for this client
+    let storeId = storeIdParam
+    if (!storeId && clientIdParam) {
+      const { data: stores, error: storesErr } = await adminClient
+        .from("client_stores")
+        .select("id, store_name, klaviyo_api_key, klaviyo_private_key")
+        .eq("client_id", clientIdParam)
+        .eq("is_active", true)
+
+      steps.push({
+        step: "findClientStores",
+        status: stores && stores.length > 0 ? "OK" : "NONE",
+        detail: {
+          clientId: clientIdParam,
+          error: storesErr?.message,
+          stores: (stores || []).map(s => ({
+            id: s.id,
+            name: s.store_name,
+            hasKlaviyoKey: !!(s.klaviyo_private_key || s.klaviyo_api_key),
+          })),
+        },
+      })
+
+      // Use first store with Klaviyo key
+      const klaviyoStore = stores?.find(s => s.klaviyo_private_key || s.klaviyo_api_key)
+      storeId = klaviyoStore?.id || stores?.[0]?.id || null
+    }
+
+    // Also try: maybe the provided ID is actually a client_id
+    if (storeIdParam) {
+      const { data: directStore } = await adminClient
+        .from("client_stores")
+        .select("id, store_name")
+        .eq("id", storeIdParam)
+        .single()
+
+      if (!directStore) {
+        // Maybe it's a client_id, not a store_id
+        const { data: clientStores } = await adminClient
+          .from("client_stores")
+          .select("id, store_name, klaviyo_api_key, klaviyo_private_key")
+          .eq("client_id", storeIdParam)
+          .eq("is_active", true)
+
+        steps.push({
+          step: "idResolution",
+          status: "RESOLVED_AS_CLIENT",
+          detail: {
+            providedId: storeIdParam,
+            isStore: false,
+            isClient: !!(clientStores && clientStores.length > 0),
+            stores: (clientStores || []).map(s => ({
+              id: s.id,
+              name: s.store_name,
+              hasKlaviyoKey: !!(s.klaviyo_private_key || s.klaviyo_api_key),
+            })),
+          },
+        })
+
+        const klaviyoStore = clientStores?.find(s => s.klaviyo_private_key || s.klaviyo_api_key)
+        storeId = klaviyoStore?.id || null
+      } else {
+        steps.push({
+          step: "idResolution",
+          status: "IS_STORE",
+          detail: { providedId: storeIdParam, storeName: directStore.store_name },
+        })
+      }
+    }
+
+    if (!storeId) {
+      return NextResponse.json({ success: false, error: "No store found", steps })
+    }
+
     // Step 1: Get credentials
     let t = Date.now()
     const creds = await getStoreCredentials(storeId)
     const apiKey = creds.klaviyo_private_key || creds.klaviyo_api_key
-    steps.push({ step: "getCredentials", status: apiKey ? "OK" : "NO_KEY", elapsed: Date.now() - t })
+    steps.push({ step: "getCredentials", status: apiKey ? "OK" : "NO_KEY", detail: { storeId, storeName: creds.store_name }, elapsed: Date.now() - t })
 
     if (!apiKey) {
       return NextResponse.json({ steps, error: "No API key found" })
