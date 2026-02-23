@@ -8,9 +8,9 @@ import { KLAVIYO_API_URL, KLAVIYO_REVISION } from "@/lib/integrations/klaviyo/cl
 /**
  * GET /api/integrations/klaviyo/debug?store_id=XXX
  *
- * Diagnostic endpoint that tests EVERY URL variation the report needs.
- * Tests each Klaviyo endpoint with different parameter combinations
- * to identify exactly which parameters are accepted/rejected.
+ * Tests which statistics the Klaviyo Reporting API accepts for
+ * flow-values-reports in revision 2024-10-15.
+ * Tests each statistic individually to find which ones are valid.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -22,195 +22,153 @@ export async function GET(request: NextRequest) {
       throw new AppError("store_id é obrigatório", 400)
     }
 
-    // Get API key
     const creds = await getStoreCredentials(storeId)
     const apiKey = creds.klaviyo_private_key || creds.klaviyo_api_key
     if (!apiKey) {
       return NextResponse.json({ error: "No API key" }, { status: 400, headers: corsHeaders(request.headers.get("origin")) })
     }
 
-    const headers = {
+    const postHeaders = {
       "Authorization": `Klaviyo-API-Key ${apiKey}`,
       "Accept": "application/json",
+      "Content-Type": "application/json",
       "revision": KLAVIYO_REVISION,
     }
 
-    // Helper: test a GET endpoint and return status + item count + preview
-    async function testGet(label: string, path: string) {
-      try {
-        const url = `${KLAVIYO_API_URL}${path}`
-        const res = await fetch(url, { headers })
-        const text = await res.text()
-        let itemCount = 0
-        let firstItem = null
-        let error = null
-
-        try {
-          const json = JSON.parse(text)
-          if (Array.isArray(json.data)) {
-            itemCount = json.data.length
-            firstItem = json.data[0] ? {
-              id: json.data[0].id,
-              type: json.data[0].type,
-              name: json.data[0].attributes?.name || json.data[0].attributes?.status || null,
-            } : null
-          }
-          if (json.errors) {
-            error = json.errors[0]?.detail || json.errors[0]?.title || "Unknown error"
-          }
-        } catch {
-          // not JSON
-        }
-
-        return {
-          label,
-          path,
-          status: res.status,
-          itemCount,
-          firstItem,
-          error,
-          bodyPreview: text.substring(0, 200),
-        }
-      } catch (e) {
-        return { label, path, status: 0, error: String(e) }
-      }
-    }
-
-    // Helper: test a POST endpoint
-    async function testPost(label: string, path: string, body: object) {
-      try {
-        const url = `${KLAVIYO_API_URL}${path}`
-        const res = await fetch(url, {
-          method: "POST",
-          headers: { ...headers, "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        })
-        const text = await res.text()
-        let resultCount = 0
-        let totalRevenue = 0
-        let totalDelivered = 0
-
-        try {
-          const json = JSON.parse(text)
-          const results = json?.data?.attributes?.results || []
-          resultCount = results.length
-          for (const r of results) {
-            totalRevenue += r.statistics?.conversion_value || 0
-            totalDelivered += r.statistics?.delivered || 0
-          }
-        } catch {
-          // not JSON
-        }
-
-        return {
-          label,
-          path,
-          status: res.status,
-          resultCount,
-          totalRevenue,
-          totalDelivered,
-          bodyPreview: text.substring(0, 300),
-        }
-      } catch (e) {
-        return { label, path, status: 0, error: String(e) }
-      }
-    }
-
-    // Small delay helper
     const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
-    // ============================================
-    // TEST ALL URL VARIATIONS
-    // ============================================
-    const results: Record<string, unknown> = {}
-
-    // --- LISTS ---
-    results.lists_simple = await testGet("Lists (simple)", "/lists/")
-    await sleep(500)
-    results.lists_additional_fields = await testGet("Lists (additional-fields)", "/lists/?additional-fields[list]=profile_count")
-    await sleep(500)
-    results.lists_page_size = await testGet("Lists (page[size]=10)", "/lists/?page[size]=10")
-    await sleep(500)
-
-    // --- SEGMENTS ---
-    results.segments_simple = await testGet("Segments (simple)", "/segments/")
-    await sleep(500)
-    results.segments_additional_fields = await testGet("Segments (additional-fields)", "/segments/?additional-fields[segment]=profile_count")
-    await sleep(500)
-
-    // --- FLOWS ---
-    results.flows_simple = await testGet("Flows (simple)", "/flows/")
-    await sleep(500)
-    results.flows_page_size = await testGet("Flows (page[size]=50)", "/flows/?page[size]=50")
-    await sleep(500)
-
-    // --- CAMPAIGNS ---
-    results.campaigns_email = await testGet("Campaigns email (no slash)", "/campaigns?filter=equals(messages.channel,'email')")
-    await sleep(500)
-    results.campaigns_email_slash = await testGet("Campaigns email (slash)", "/campaigns/?filter=equals(messages.channel,'email')")
-    await sleep(500)
-
-    // --- METRICS ---
-    results.metrics_simple = await testGet("Metrics (simple)", "/metrics/")
-    await sleep(500)
-
-    // --- PROFILES ---
-    results.profiles_page1 = await testGet("Profiles (page[size]=1)", "/profiles/?page[size]=1")
-    await sleep(500)
-
-    // --- FLOW VALUES REPORT ---
     const now = new Date()
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
     const startStr = thirtyDaysAgo.toISOString().split("T")[0]
     const endStr = now.toISOString().split("T")[0]
 
-    results.flow_report = await testPost("Flow Values Report", "/flow-values-reports/", {
-      data: {
-        type: "flow-values-report",
-        attributes: {
-          statistics: ["delivered", "conversion_value", "opened_unique", "clicked_unique"],
-          timeframe: {
-            start: `${startStr}T00:00:00-03:00`,
-            end: `${endStr}T23:59:59-03:00`,
-          },
-          conversion_metric_id: "RuR2Vf",
-        },
-      },
-    })
-    await sleep(1500)
+    // ALL statistics from our report endpoint + extras to test
+    const allStats = [
+      "average_order_value",
+      "bounce_rate",
+      "click_rate",
+      "click_to_open_rate",
+      "clicked",
+      "clicked_unique",
+      "conversion_rate",
+      "conversion_uniques",
+      "conversion_value",
+      "conversions",
+      "delivered",
+      "delivered_unique",
+      "delivery_rate",
+      "open_rate",
+      "opened",
+      "opened_unique",
+      "recipients",
+      "revenue_per_recipient",
+      "unsubscribe_rate",
+      "unsubscribed",
+      "bounced",
+    ]
 
-    // --- CAMPAIGN VALUES REPORT ---
-    results.campaign_report = await testPost("Campaign Values Report", "/campaign-values-reports/", {
-      data: {
-        type: "campaign-values-report",
-        attributes: {
-          statistics: ["delivered", "conversion_value", "opened_unique", "clicked_unique"],
-          timeframe: {
-            start: `${startStr}T00:00:00-03:00`,
-            end: `${endStr}T23:59:59-03:00`,
-          },
-          conversion_metric_id: "RuR2Vf",
-        },
-      },
-    })
+    // Test each statistic individually against flow-values-reports
+    const statResults: Record<string, string> = {}
 
-    // ============================================
-    // SUMMARY
-    // ============================================
-    const summary: Record<string, string> = {}
-    for (const [key, val] of Object.entries(results)) {
-      const v = val as { status: number; label: string; itemCount?: number; resultCount?: number; error?: string }
-      const count = v.itemCount ?? v.resultCount ?? "?"
-      summary[key] = `${v.status} ${v.status === 200 ? "OK" : "FAIL"} (${count} items)${v.error ? ` - ${v.error}` : ""}`
+    for (const stat of allStats) {
+      const body = {
+        data: {
+          type: "flow-values-report",
+          attributes: {
+            statistics: [stat],
+            timeframe: {
+              start: `${startStr}T00:00:00-03:00`,
+              end: `${endStr}T23:59:59-03:00`,
+            },
+            conversion_metric_id: "RuR2Vf",
+          },
+        },
+      }
+
+      try {
+        const res = await fetch(`${KLAVIYO_API_URL}/flow-values-reports/`, {
+          method: "POST",
+          headers: postHeaders,
+          body: JSON.stringify(body),
+        })
+
+        if (res.status === 200) {
+          const json = await res.json()
+          const results = json?.data?.attributes?.results || []
+          statResults[stat] = `OK (${results.length} results)`
+        } else {
+          const json = await res.json()
+          const detail = json?.errors?.[0]?.detail || `HTTP ${res.status}`
+          statResults[stat] = `FAIL: ${detail}`
+        }
+      } catch (e) {
+        statResults[stat] = `ERROR: ${String(e)}`
+      }
+
+      await sleep(1200) // Reporting API: 1 req/s
+    }
+
+    // Separate into valid and invalid
+    const validStats = Object.entries(statResults)
+      .filter(([, v]) => v.startsWith("OK"))
+      .map(([k]) => k)
+    const invalidStats = Object.entries(statResults)
+      .filter(([, v]) => !v.startsWith("OK"))
+      .map(([k, v]) => ({ stat: k, error: v }))
+
+    // Test the full valid set together
+    let fullTestResult = "NOT_TESTED"
+    if (validStats.length > 0) {
+      await sleep(1500)
+      const body = {
+        data: {
+          type: "flow-values-report",
+          attributes: {
+            statistics: validStats,
+            timeframe: {
+              start: `${startStr}T00:00:00-03:00`,
+              end: `${endStr}T23:59:59-03:00`,
+            },
+            conversion_metric_id: "RuR2Vf",
+          },
+        },
+      }
+      try {
+        const res = await fetch(`${KLAVIYO_API_URL}/flow-values-reports/`, {
+          method: "POST",
+          headers: postHeaders,
+          body: JSON.stringify(body),
+        })
+        if (res.status === 200) {
+          const json = await res.json()
+          const results = json?.data?.attributes?.results || []
+          let totalRev = 0
+          let totalDel = 0
+          for (const r of results) {
+            totalRev += r.statistics?.conversion_value || 0
+            totalDel += r.statistics?.delivered || 0
+          }
+          fullTestResult = `OK - ${results.length} results, revenue=${totalRev.toFixed(2)}, delivered=${totalDel}`
+        } else {
+          const json = await res.json()
+          fullTestResult = `FAIL: ${json?.errors?.[0]?.detail || res.status}`
+        }
+      } catch (e) {
+        fullTestResult = `ERROR: ${String(e)}`
+      }
     }
 
     return NextResponse.json({
       timestamp: new Date().toISOString(),
-      storeId,
-      storeName: creds.store_name,
       revision: KLAVIYO_REVISION,
-      summary,
-      details: results,
+      storeName: creds.store_name,
+      totalTested: allStats.length,
+      validCount: validStats.length,
+      invalidCount: invalidStats.length,
+      validStats,
+      invalidStats,
+      fullValidSetTest: fullTestResult,
+      individualResults: statResults,
     }, { headers: corsHeaders(request.headers.get("origin")) })
 
   } catch (error) {
