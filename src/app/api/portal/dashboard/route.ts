@@ -217,6 +217,14 @@ export async function GET(request: NextRequest) {
           .single()
 
         if (data && new Date(data.expires_at) > new Date()) {
+          // Skip cache if Klaviyo data has zero revenue (likely stale from API fix)
+          if (cacheType === "klaviyo") {
+            const cachedRevenue = (data.data as Record<string, unknown>)?.revenue as Record<string, number> | undefined
+            if (cachedRevenue && cachedRevenue.totalRevenue === 0) {
+              log.info(`[Cache SKIP] Zero-revenue klaviyo cache for store ${storeId}`)
+              return null
+            }
+          }
           log.debug(`[Cache HIT] ${cacheType} for store ${storeId}`)
           return data.data
         }

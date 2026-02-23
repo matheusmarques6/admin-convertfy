@@ -98,10 +98,16 @@ export async function GET(
     }
 
     // Check cache first (using clientId as storeId key)
+    // Skip cache if data has zero revenue (likely stale from API fix)
     if (!forceRefresh) {
       const cached = await getCache(adminClient, clientId, "client_performance", period)
       if (cached) {
-        return successResponse(request, { ...cached.data, fromCache: true, cachedAt: cached.cachedAt })
+        const cachedTotals = (cached.data as Record<string, unknown>).totals as Record<string, number> | undefined
+        const hasData = cachedTotals && (cachedTotals.klaviyoRevenue > 0 || cachedTotals.shopifyRevenue > 0)
+        if (hasData) {
+          return successResponse(request, { ...cached.data, fromCache: true, cachedAt: cached.cachedAt })
+        }
+        log.info("[ClientPerformance] Skipping zero-data cache, fetching fresh data")
       }
     }
 
