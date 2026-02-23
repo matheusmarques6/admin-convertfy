@@ -2,8 +2,8 @@
 
 import {
   TrendingUp,
-  DollarSign,
   Mail,
+  Percent,
   Zap,
   ShoppingCart,
   RefreshCw,
@@ -209,27 +209,26 @@ export function ClientPerformanceKPIs() {
               )}
             </GlowCard>
 
-            {/* Faturamento */}
+            {/* % Recuperação Email */}
             <GlowCard color="warning" intensity="intense" surfaceClassName="p-6">
               <div className="flex items-center justify-between pb-2">
-                <span className="text-sm font-medium text-muted-foreground">Faturamento</span>
-                <DollarSign className="h-4 w-4 text-warning" />
+                <span className="text-sm font-medium text-muted-foreground">Recuperação Email</span>
+                <Percent className="h-4 w-4 text-warning" />
               </div>
-              <p className="text-2xl font-bold text-success">
-                {formatCurrency(data.billing.totalPaid)}
-              </p>
-              <div className="flex gap-2 mt-1">
-                {data.billing.totalPending > 0 && (
-                  <span className="text-xs text-warning">
-                    Pendente: {formatCurrency(data.billing.totalPending)}
-                  </span>
-                )}
-                {data.billing.totalOverdue > 0 && (
-                  <span className="text-xs text-destructive">
-                    Vencido: {formatCurrency(data.billing.totalOverdue)}
-                  </span>
-                )}
-              </div>
+              {(() => {
+                const totalRev = data.totals.klaviyoRevenue + data.totals.shopifyRevenue
+                const pct = totalRev > 0 ? (data.totals.klaviyoRevenue / totalRev) * 100 : 0
+                return (
+                  <>
+                    <p className="text-2xl font-bold">
+                      {pct.toFixed(1)}%
+                    </p>
+                    <span className="text-xs text-muted-foreground">
+                      {formatCurrency(data.totals.klaviyoRevenue)} de {formatCurrency(totalRev)}
+                    </span>
+                  </>
+                )
+              })()}
             </GlowCard>
           </div>
 
