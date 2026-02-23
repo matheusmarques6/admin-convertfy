@@ -61,6 +61,37 @@ export async function GET(request: NextRequest) {
     const metricId = await findPlacedOrderMetric(apiKey)
     steps.push({ step: "findPlacedOrderMetric", status: metricId ? "OK" : "NOT_FOUND", detail: { metricId }, elapsed: Date.now() - t })
 
+    // Step 3b: Raw metrics list to debug why findPlacedOrderMetric fails
+    if (!metricId) {
+      await sleep(MIN_REQUEST_INTERVAL)
+      t = Date.now()
+      const rawMetricsRes = await fetch(`${KLAVIYO_API_URL}/metrics/?page[size]=50`, {
+        headers: {
+          "Authorization": `Klaviyo-API-Key ${apiKey}`,
+          "Accept": "application/json",
+          "Content-Type": "application/json",
+          "revision": KLAVIYO_REVISION,
+        },
+      })
+      const rawMetricsText = await rawMetricsRes.text()
+      let metricNames: string[] = []
+      try {
+        const parsed = JSON.parse(rawMetricsText)
+        metricNames = (parsed.data || []).map((m: { id: string; attributes: { name: string } }) => `${m.id}: ${m.attributes.name}`)
+      } catch { /* ignore */ }
+      steps.push({
+        step: "rawMetricsList",
+        status: rawMetricsRes.status === 200 ? "OK" : `HTTP_${rawMetricsRes.status}`,
+        detail: {
+          httpStatus: rawMetricsRes.status,
+          count: metricNames.length,
+          metrics: metricNames,
+          bodyPreview: rawMetricsRes.status !== 200 ? rawMetricsText.substring(0, 500) : undefined,
+        },
+        elapsed: Date.now() - t,
+      })
+    }
+
     // Step 4: Date range
     const { startDate, endDate } = parseDateRange("30d")
     const startDateStr = formatDateStr(startDate)
