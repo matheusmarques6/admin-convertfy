@@ -55,7 +55,6 @@ interface StorePerformance {
       openRate: number
       clickRate: number
     }>
-    _debugMetricAgg?: unknown
   } | null
   shopify: {
     totalRevenue: number
@@ -342,17 +341,24 @@ async function fetchKlaviyoPerformance(
   }
 
   // Parse store-wide revenue from metric-aggregates
-  log.info("[MetricAgg] Raw response:", JSON.stringify(metricAgg ?? "null").slice(0, 500))
+  // Response has daily arrays: measurements.sum_value = [day1, day2, ...], measurements.count = [day1, day2, ...]
   const aggData = metricAgg?.data?.attributes?.data || []
   let storeRevenue = 0
   let storeOrders = 0
   for (const row of aggData) {
     const measurements = row.measurements || {}
-    // measurements.sum_value/count may be arrays [total] or numbers
-    const val = Array.isArray(measurements.sum_value) ? measurements.sum_value[0] : measurements.sum_value
-    const cnt = Array.isArray(measurements.count) ? measurements.count[0] : measurements.count
-    storeRevenue += Number(val) || 0
-    storeOrders += Number(cnt) || 0
+    const vals = measurements.sum_value
+    const cnts = measurements.count
+    if (Array.isArray(vals)) {
+      for (const v of vals) storeRevenue += Number(v) || 0
+    } else {
+      storeRevenue += Number(vals) || 0
+    }
+    if (Array.isArray(cnts)) {
+      for (const c of cnts) storeOrders += Number(c) || 0
+    } else {
+      storeOrders += Number(cnts) || 0
+    }
   }
 
   // Parse campaign results - aggregate by campaign_id (API returns per-message rows)
@@ -490,8 +496,6 @@ async function fetchKlaviyoPerformance(
     avgClickRate,
     recentCampaigns: topCampaigns,
     topFlows: topFlows.slice(0, 5),
-    // TEMP DEBUG - remove after verifying metric-aggregates
-    _debugMetricAgg: metricAgg?.data?.attributes || null,
   }
 }
 
