@@ -55,6 +55,7 @@ interface StorePerformance {
       openRate: number
       clickRate: number
     }>
+    _debugMetricAgg?: unknown
   } | null
   shopify: {
     totalRevenue: number
@@ -340,13 +341,18 @@ async function fetchKlaviyoPerformance(
   }
 
   // Parse store-wide revenue from metric-aggregates
+  // DEBUG: log raw response to diagnose structure
+  log.info("[MetricAgg] Raw response:", JSON.stringify(metricAgg?.data?.attributes).slice(0, 500))
   const aggData = metricAgg?.data?.attributes?.data || []
   let storeRevenue = 0
   let storeOrders = 0
   for (const row of aggData) {
     const measurements = row.measurements || {}
-    storeRevenue += Number(measurements.value) || 0
-    storeOrders += Number(measurements.count) || 0
+    // measurements.value may be an array [total] or a number
+    const val = Array.isArray(measurements.value) ? measurements.value[0] : measurements.value
+    const cnt = Array.isArray(measurements.count) ? measurements.count[0] : measurements.count
+    storeRevenue += Number(val) || 0
+    storeOrders += Number(cnt) || 0
   }
 
   // Parse campaign results - aggregate by campaign_id (API returns per-message rows)
@@ -484,6 +490,8 @@ async function fetchKlaviyoPerformance(
     avgClickRate,
     recentCampaigns: topCampaigns,
     topFlows: topFlows.slice(0, 5),
+    // TEMP DEBUG - remove after verifying metric-aggregates
+    _debugMetricAgg: metricAgg?.data?.attributes || null,
   }
 }
 
@@ -630,9 +638,9 @@ interface KlaviyoFlowReport {
 
 interface KlaviyoMetricAggregate {
   data?: {
-    attributes?: {
+    attributes?: Record<string, unknown> & {
       data?: Array<{
-        measurements?: Record<string, number>
+        measurements?: Record<string, number | number[]>
       }>
     }
   }
