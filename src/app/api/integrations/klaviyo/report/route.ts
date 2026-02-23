@@ -461,24 +461,25 @@ async function getFlowValuesReport(
   log.info(`[Klaviyo] Getting flow values report: ${startDate} to ${endDate} (timezone: ${timezoneOffset})`)
 
   // Valid statistics per Klaviyo Reporting API (revision 2024-10-15)
-  // Note: opened_unique, clicked_unique are NOT valid in this revision
+  // IMPORTANT: API uses "opens"/"clicks" (NOT "opened"/"clicked")
   const statistics = [
     "average_order_value",
     "bounce_rate",
+    "bounced",
     "click_rate",
     "click_to_open_rate",
-    "clicked",
+    "clicks",
     "conversion_rate",
     "conversion_uniques",
     "conversion_value",
     "conversions",
     "delivered",
     "delivery_rate",
-    "open_rate",
-    "opened",
+    "opens",
     "recipients",
     "revenue_per_recipient",
-    "unsubscribe_rate"
+    "unsubscribe_rate",
+    "unsubscribes"
   ]
 
   // Timeframe format per docs: ISO 8601 with timezone
@@ -511,17 +512,18 @@ async function getFlowValuesReport(
           }
           statistics: {
             delivered?: number
-            opened?: number
-            clicked?: number
+            opens?: number
+            clicks?: number
+            bounced?: number
             conversion_value?: number
             conversions?: number
             conversion_uniques?: number
             recipients?: number
             delivery_rate?: number
             bounce_rate?: number
-            open_rate?: number
             click_rate?: number
             unsubscribe_rate?: number
+            unsubscribes?: number
             click_to_open_rate?: number
             average_order_value?: number
             revenue_per_recipient?: number
@@ -568,8 +570,8 @@ async function getFlowValuesReport(
     totalRevenue += stats.conversion_value || 0
     totalConversions += stats.conversions || 0
     totalDelivered += stats.delivered || 0
-    totalOpens += stats.opened || 0
-    totalClicks += stats.clicked || 0
+    totalOpens += stats.opens || 0
+    totalClicks += stats.clicks || 0
 
     if (stats.bounce_rate !== undefined) {
       sumBounceRate += stats.bounce_rate
@@ -588,9 +590,9 @@ async function getFlowValuesReport(
       revenue: existing.revenue + (stats.conversion_value || 0),
       conversions: existing.conversions + (stats.conversions || 0),
       delivered: existing.delivered + (stats.delivered || 0),
-      opens: existing.opens + (stats.opened || 0),
-      clicks: existing.clicks + (stats.clicked || 0),
-      openRate: stats.open_rate || existing.openRate,
+      opens: existing.opens + (stats.opens || 0),
+      clicks: existing.clicks + (stats.clicks || 0),
+      openRate: stats.click_to_open_rate || existing.openRate,
       clickRate: stats.click_rate || existing.clickRate,
       bounceRate: stats.bounce_rate || existing.bounceRate,
       unsubscribeRate: stats.unsubscribe_rate || existing.unsubscribeRate
@@ -635,24 +637,26 @@ async function getCampaignValuesReport(
 ) {
   log.info(`[Klaviyo] Getting campaign values report: ${startDate} to ${endDate} (timezone: ${timezoneOffset})`)
 
-  // Same statistics as flows (revision 2024-10-15 rejects opened_unique/clicked_unique)
+  // Valid statistics per Klaviyo Reporting API (revision 2024-10-15)
+  // IMPORTANT: API uses "opens"/"clicks" (NOT "opened"/"clicked")
   const statistics = [
     "average_order_value",
     "bounce_rate",
+    "bounced",
     "click_rate",
     "click_to_open_rate",
-    "clicked",
+    "clicks",
     "conversion_rate",
     "conversion_uniques",
     "conversion_value",
     "conversions",
     "delivered",
     "delivery_rate",
-    "open_rate",
-    "opened",
+    "opens",
     "recipients",
     "revenue_per_recipient",
-    "unsubscribe_rate"
+    "unsubscribe_rate",
+    "unsubscribes"
   ]
 
   // Query ALL campaigns at once (no filter) - same approach as flows
@@ -683,17 +687,18 @@ async function getCampaignValuesReport(
           }
           statistics: {
             delivered?: number
-            opened?: number
-            clicked?: number
+            opens?: number
+            clicks?: number
+            bounced?: number
             conversion_value?: number
             conversions?: number
             conversion_uniques?: number
             recipients?: number
             delivery_rate?: number
             bounce_rate?: number
-            open_rate?: number
             click_rate?: number
             unsubscribe_rate?: number
+            unsubscribes?: number
             click_to_open_rate?: number
             average_order_value?: number
             revenue_per_recipient?: number
@@ -742,8 +747,8 @@ async function getCampaignValuesReport(
     totalRevenue += stats.conversion_value || 0
     totalConversions += stats.conversions || 0
     totalDelivered += stats.delivered || 0
-    totalOpens += stats.opened || 0
-    totalClicks += stats.clicked || 0
+    totalOpens += stats.opens || 0
+    totalClicks += stats.clicks || 0
 
     if (stats.bounce_rate !== undefined) {
       sumBounceRate += stats.bounce_rate
@@ -762,9 +767,9 @@ async function getCampaignValuesReport(
       revenue: existing.revenue + (stats.conversion_value || 0),
       conversions: existing.conversions + (stats.conversions || 0),
       delivered: existing.delivered + (stats.delivered || 0),
-      opens: existing.opens + (stats.opened || 0),
-      clicks: existing.clicks + (stats.clicked || 0),
-      openRate: stats.open_rate || existing.openRate,
+      opens: existing.opens + (stats.opens || 0),
+      clicks: existing.clicks + (stats.clicks || 0),
+      openRate: stats.click_to_open_rate || existing.openRate,
       clickRate: stats.click_rate || existing.clickRate,
       bounceRate: stats.bounce_rate || existing.bounceRate,
       unsubscribeRate: stats.unsubscribe_rate || existing.unsubscribeRate

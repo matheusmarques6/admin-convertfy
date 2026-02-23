@@ -42,29 +42,28 @@ export async function GET(request: NextRequest) {
     const startStr = thirtyDaysAgo.toISOString().split("T")[0]
     const endStr = now.toISOString().split("T")[0]
 
-    // ALL statistics from our report endpoint + extras to test
+    // Valid statistics per Klaviyo Reporting API docs (revision 2024-10-15)
+    // API uses "opens"/"clicks" (NOT "opened"/"clicked")
     const allStats = [
       "average_order_value",
       "bounce_rate",
+      "bounced",
       "click_rate",
       "click_to_open_rate",
-      "clicked",
-      "clicked_unique",
+      "clicks",
+      "clicks_unique",
       "conversion_rate",
       "conversion_uniques",
       "conversion_value",
       "conversions",
       "delivered",
-      "delivered_unique",
       "delivery_rate",
-      "open_rate",
-      "opened",
-      "opened_unique",
+      "opens",
+      "opens_unique",
       "recipients",
       "revenue_per_recipient",
       "unsubscribe_rate",
-      "unsubscribed",
-      "bounced",
+      "unsubscribes",
     ]
 
     // Test each statistic individually against flow-values-reports
