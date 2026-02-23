@@ -29,43 +29,29 @@ export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
 }
 
-// Get total profiles count using profiles endpoint
-// Counts ALL profiles for accurate count
-async function getTotalProfilesFromAPI(apiKey: string): Promise<number> {
-  log.info("[Klaviyo] Fetching total profiles count (full count)...")
+// Get total profiles count using a single API call with page[size]=1
+// The /profiles/ endpoint returns a total count header or we use the first page cursor logic
+// Much more efficient than paginating ALL profiles
+async function getTotalProfilesEstimate(apiKey: string): Promise<number> {
+  log.info("[Klaviyo] Estimating total profiles (lightweight)...")
 
-  let totalCount = 0
-  let nextPage: string | null = "/profiles/?page[size]=100"
-  let pagesChecked = 0
-  const maxPages = 1000 // Up to 100,000 profiles
+  // Fetch just 1 profile to check if there are profiles at all
+  // The real count comes from list/segment profile_count fields
+  const response = await klaviyoRequest<{
+    data: Array<{ id: string }>
+    links?: { next?: string }
+  }>(apiKey, "/profiles/?page[size]=1")
 
-  type ProfilePage = { data: Array<{ id: string }>; links?: { next?: string } } | null
-
-  while (nextPage && pagesChecked < maxPages) {
-    const page: ProfilePage = await klaviyoRequest<{
-      data: Array<{ id: string }>
-      links?: { next?: string }
-    }>(apiKey, nextPage)
-
-    if (!page?.data) break
-
-    totalCount += page.data.length
-    pagesChecked++
-
-    // Log progress every 50 pages
-    if (pagesChecked % 50 === 0) {
-      log.info(`[Klaviyo] Profiles counted: ${totalCount} (page ${pagesChecked})`)
-    }
-
-    const nextLink: string | undefined = page.links?.next
-    if (!nextLink) break
-    nextPage = nextLink.replace(KLAVIYO_API_URL, "")
-
-    await sleep(30) // Fast rate limit
+  if (!response?.data) {
+    log.info("[Klaviyo] No profiles found")
+    return 0
   }
 
-  log.info(`[Klaviyo] Total profiles: ${totalCount} (${pagesChecked} pages)`)
-  return totalCount
+  // If there's a next page, we know there are more than 1 profile
+  // Return -1 to signal "has profiles but count unknown" - callers will use list/segment counts
+  const hasMore = !!response.links?.next
+  log.info(`[Klaviyo] Profiles exist: ${response.data.length > 0}, hasMore: ${hasMore}`)
+  return hasMore ? -1 : response.data.length
 }
 
 // Types for paginated responses
@@ -230,120 +216,40 @@ type SegmentsResponse = {
   links?: { next?: string }
 }
 
-// Search for engaged segment specifically using Klaviyo API filters
-// This is more reliable than fetching all segments and searching locally
-// https://developers.klaviyo.com/en/reference/get_segments
-async function findEngagedSegment(apiKey: string): Promise<{
+// Search for engaged segment from already-fetched segments list
+// Uses profile_count attribute instead of counting profiles manually (saves hundreds of API calls)
+function findEngagedSegmentFromList(segments: Array<{
   id: string
   name: string
   profileCount: number
-} | null> {
-  log.info("[Klaviyo] ========== SEARCHING FOR ENGAGED SEGMENT ==========")
+}>): { id: string; name: string; profileCount: number } | null {
+  log.info("[Klaviyo] Searching for engaged segment in fetched segments...")
 
-  // Try multiple filter patterns to find the engaged segment
-  const filterPatterns = [
-    'contains(name,"Engajados")',
-    'contains(name,"engajados")',
-    'contains(name,"Engaged")',
-    'contains(name,"engaged")',
-    'contains(name,"90d")',
-    'contains(name,"90D")',
-  ]
+  const engagedSegment = segments.find(s => {
+    const name = s.name.toLowerCase()
+    const hasEngaged = name.includes("engajados") || name.includes("engaged")
+    const has90 = name.includes("90")
+    return hasEngaged && has90
+  })
 
-  for (const filter of filterPatterns) {
-    log.info(`[Klaviyo] Trying filter: ${filter}`)
-
-    const encodedFilter = encodeURIComponent(filter)
-    const response = await klaviyoRequest<{
-      data: Array<{
-        id: string
-        attributes: { name: string; profile_count?: number }
-      }>
-    }>(apiKey, `/segments/?filter=${encodedFilter}&additional-fields[segment]=profile_count`)
-
-    if (response?.data && response.data.length > 0) {
-      log.info(`[Klaviyo] Filter "${filter}" returned ${response.data.length} segments:`)
-      response.data.forEach(s => {
-        log.info(`[Klaviyo] -> "${s.attributes.name}" (ID: ${s.id}) profile_count: ${s.attributes.profile_count}`)
-      })
-
-      // Look for segment with both "engajados/engaged" AND "90" in name
-      const engagedSegment = response.data.find(s => {
-        const name = s.attributes.name.toLowerCase()
-        const hasEngajados = name.includes("engajados") || name.includes("engaged")
-        const has90 = name.includes("90")
-        return hasEngajados && has90
-      })
-
-      if (engagedSegment) {
-        log.info(`[Klaviyo] ✓ Found engaged segment: "${engagedSegment.attributes.name}" (ID: ${engagedSegment.id})`)
-
-        // Now count profiles directly - don't rely on profile_count attribute
-        const profileCount = await countSegmentProfiles(apiKey, engagedSegment.id)
-
-        return {
-          id: engagedSegment.id,
-          name: engagedSegment.attributes.name,
-          profileCount
-        }
-      }
-    }
-
-    await sleep(200) // Rate limit between filter attempts
+  if (engagedSegment) {
+    log.info(`[Klaviyo] Found engaged segment: "${engagedSegment.name}" (${engagedSegment.id}) - ${engagedSegment.profileCount} profiles`)
+    return engagedSegment
   }
 
-  log.info("[Klaviyo] ✗ No engaged segment found via filters")
+  // Fallback: any segment with "engaged" or "engajados" in the name
+  const anyEngaged = segments.find(s => {
+    const name = s.name.toLowerCase()
+    return name.includes("engajados") || name.includes("engaged")
+  })
+
+  if (anyEngaged) {
+    log.info(`[Klaviyo] Found fallback engaged segment: "${anyEngaged.name}" (${anyEngaged.id}) - ${anyEngaged.profileCount} profiles`)
+    return anyEngaged
+  }
+
+  log.info("[Klaviyo] No engaged segment found")
   return null
-}
-
-// Count profiles in a segment by paginating through all profiles
-// This is the most reliable method as profile_count attribute can be stale/unavailable
-async function countSegmentProfiles(apiKey: string, segmentId: string): Promise<number> {
-  log.info(`[Klaviyo] Counting profiles for segment ${segmentId}...`)
-
-  type ProfilesResponse = {
-    data: Array<{ id: string }>
-    links?: { next?: string }
-  }
-
-  let totalProfiles = 0
-  let nextPage: string | null = `/segments/${segmentId}/profiles/?page[size]=100`
-  let pageCount = 0
-  const maxPages = 500 // Up to 50,000 profiles
-
-  while (nextPage && pageCount < maxPages) {
-    const response: ProfilesResponse | null = await klaviyoRequest<ProfilesResponse>(apiKey, nextPage)
-
-    if (!response) {
-      log.info(`[Klaviyo] API request failed at page ${pageCount}`)
-      break
-    }
-
-    if (!response.data || response.data.length === 0) {
-      log.info(`[Klaviyo] No data at page ${pageCount}, stopping`)
-      break
-    }
-
-    totalProfiles += response.data.length
-    pageCount++
-
-    // Log progress every 20 pages
-    if (pageCount % 20 === 0) {
-      log.info(`[Klaviyo] Profile count progress: ${totalProfiles} (page ${pageCount})`)
-    }
-
-    const nextUrl: string | undefined = response.links?.next
-    if (!nextUrl) {
-      log.info(`[Klaviyo] No next page link at page ${pageCount}`)
-      break
-    }
-
-    nextPage = nextUrl.replace(KLAVIYO_API_URL, "")
-    await sleep(30) // Fast pagination
-  }
-
-  log.info(`[Klaviyo] ✓ Total profiles counted: ${totalProfiles} (${pageCount} pages)`)
-  return totalProfiles
 }
 
 async function getSegments(apiKey: string) {
@@ -402,9 +308,8 @@ async function getSegments(apiKey: string) {
   })
   log.info(`[Klaviyo] ==================================`)
 
-  // Use dedicated function to find and count engaged segment
-  // This uses API filters for more reliable search
-  const engagedResult = await findEngagedSegment(apiKey)
+  // Search for engaged segment from already-fetched data (no extra API calls)
+  const engagedResult = findEngagedSegmentFromList(allSegments)
 
   // Find a segment that represents total active profiles
   // Look for "Newsletter", "All Subscribers", "Master List", etc.
@@ -477,6 +382,12 @@ async function getSegments(apiKey: string) {
   }
 }
 
+// Helper: check if a campaign counts as "sent"
+// Klaviyo API status may be "sent", "Sent", or campaign may have a sendTime even with different status
+function isSentCampaign(c: { status: string; sendTime: string | null }): boolean {
+  return c.status.toLowerCase() === "sent" || c.sendTime !== null
+}
+
 // Get ALL campaigns with pagination
 // Klaviyo requires a channel filter (messages.channel) and does NOT support page[size]
 async function getCampaigns(apiKey: string) {
@@ -521,8 +432,18 @@ async function getCampaigns(apiKey: string) {
     }
   }
 
-  const sentCount = allCampaigns.filter(c => c.status === 'sent').length
-  log.info(`[Klaviyo] Fetched ${allCampaigns.length} total campaigns (${sentCount} sent)`)
+  // Log all unique statuses for debugging
+  const statusCounts = allCampaigns.reduce((acc, c) => {
+    acc[c.status] = (acc[c.status] || 0) + 1
+    return acc
+  }, {} as Record<string, number>)
+  log.info(`[Klaviyo] Campaign statuses: ${JSON.stringify(statusCounts)}`)
+
+  // Accept both "sent" and "Sent" (Klaviyo API may vary)
+  const sentCount = allCampaigns.filter(c =>
+    c.status.toLowerCase() === 'sent' || c.sendTime !== null
+  ).length
+  log.info(`[Klaviyo] Fetched ${allCampaigns.length} total campaigns (${sentCount} sent/with send_time)`)
   return allCampaigns
 }
 
@@ -986,27 +907,26 @@ export async function GET(request: NextRequest) {
 
     if (!metricId) {
       // Return basic data without revenue
-      // Stagger parallel calls to avoid Klaviyo rate limiting (3 req/s burst)
-      await sleep(350)
-      const [listMetrics, segmentMetrics] = await Promise.all([
-        getLists(apiKey),
-        getSegments(apiKey),
-      ])
-      await sleep(350)
-      const [allFlows, allCampaigns] = await Promise.all([
-        getFlows(apiKey),
-        getCampaigns(apiKey)
-      ])
+      // Fetch data SEQUENTIALLY to avoid rate limiting
+      await sleep(500)
+      const listMetrics = await getLists(apiKey)
+      await sleep(500)
+      const segmentMetrics = await getSegments(apiKey)
+      await sleep(500)
+      const allFlows = await getFlows(apiKey)
+      await sleep(500)
+      const allCampaigns = await getCampaigns(apiKey)
 
-      // Calculate total subscribers - use largest list or segment profile count
-      // (summing can double-count profiles in multiple lists)
+      // Calculate total subscribers from list/segment counts
       const largestListCount = listMetrics.lists.length > 0 ? listMetrics.lists[0].profileCount : 0
       let errorCaseTotalSubscribers = largestListCount || segmentMetrics.totalActiveProfiles || listMetrics.totalSubscribers
 
-      // If still 0, use profiles API directly
+      // Lightweight check if still 0 (1 API call)
       if (errorCaseTotalSubscribers === 0) {
-        log.info("[Klaviyo] All counts are 0, fetching from profiles API...")
-        errorCaseTotalSubscribers = await getTotalProfilesFromAPI(apiKey)
+        log.info("[Klaviyo] All counts are 0, doing lightweight profile check...")
+        await sleep(500)
+        const estimate = await getTotalProfilesEstimate(apiKey)
+        if (estimate > 0) errorCaseTotalSubscribers = estimate
       }
 
       log.info(`[Klaviyo] Error case totalSubscribers: ${errorCaseTotalSubscribers} (largest list: ${largestListCount}, segment: ${segmentMetrics.totalActiveProfiles})`)
@@ -1038,7 +958,7 @@ export async function GET(request: NextRequest) {
           totalFlows: allFlows.length,
           liveFlows: allFlows.filter(f => f.status === "live").length,
           totalCampaigns: allCampaigns.length,
-          sentCampaigns: allCampaigns.filter(c => c.status === "sent").length,
+          sentCampaigns: allCampaigns.filter(c => isSentCampaign(c)).length,
           campaignsInPeriod: 0, // No period filter for error case
           totalTemplates: 0,
         },
@@ -1060,41 +980,47 @@ export async function GET(request: NextRequest) {
         lists: listMetrics.lists, // ALL lists
         segments: segmentMetrics.segments, // ALL segments
         flows: allFlows, // ALL flows
-        campaigns: allCampaigns.filter(c => c.status === "sent"), // ALL sent campaigns
+        campaigns: allCampaigns.filter(c => isSentCampaign(c)), // ALL sent campaigns
         integrations: { hasEcommerce: false }
       }, { headers: corsHeaders(request.headers.get("origin")) })
     }
 
-    // Get all data - stagger to avoid Klaviyo rate limiting (3 req/s burst)
-    await sleep(350)
-    const [listMetrics, segmentMetrics] = await Promise.all([
-      getLists(apiKey),
-      getSegments(apiKey),
-    ])
-    await sleep(350)
-    const [allFlows, allCampaigns] = await Promise.all([
-      getFlows(apiKey),
-      getCampaigns(apiKey)
-    ])
+    // Fetch all data SEQUENTIALLY to avoid rate limiting
+    // Klaviyo burst limit: 3 req/s, steady limit: 75 req/min
+    // Running in parallel causes rate limit exhaustion → null responses → all zeros
+    await sleep(500)
+    const listMetrics = await getLists(apiKey)
+    log.info(`[Klaviyo] Lists done: ${listMetrics.totalLists} lists`)
 
-    // Calculate total subscribers - always get accurate count from profiles API
-    // List/segment profile_count can be capped or outdated
+    await sleep(500)
+    const segmentMetrics = await getSegments(apiKey)
+    log.info(`[Klaviyo] Segments done: ${segmentMetrics.totalSegments} segments`)
+
+    await sleep(500)
+    const allFlows = await getFlows(apiKey)
+    log.info(`[Klaviyo] Flows done: ${allFlows.length} flows`)
+
+    await sleep(500)
+    const allCampaigns = await getCampaigns(apiKey)
+    log.info(`[Klaviyo] Campaigns done: ${allCampaigns.length} campaigns`)
+
+    // Calculate total subscribers from list/segment profile counts
+    // NO MORE paginating all profiles (was ~426 API calls for 42k profiles!)
     const largestListCount = listMetrics.lists.length > 0 ? listMetrics.lists[0].profileCount : 0
     const segmentCount = segmentMetrics.totalActiveProfiles || 0
+    let totalSubscribers = largestListCount || segmentCount || listMetrics.totalSubscribers
 
-    log.info(`[Klaviyo] List counts: largest=${largestListCount}, segment=${segmentCount}, sum=${listMetrics.totalSubscribers}`)
-
-    // Always fetch from profiles API for accurate count
-    log.info("[Klaviyo] Fetching accurate profile count from API...")
-    let totalSubscribers = await getTotalProfilesFromAPI(apiKey)
-
-    // If API count failed, fall back to list/segment count
+    // If still 0, do a lightweight check (1 API call instead of ~426)
     if (totalSubscribers === 0) {
-      totalSubscribers = largestListCount || segmentCount || listMetrics.totalSubscribers
-      log.info(`[Klaviyo] API returned 0, using fallback: ${totalSubscribers}`)
+      log.info("[Klaviyo] All counts 0, doing lightweight profile check...")
+      await sleep(500)
+      const estimate = await getTotalProfilesEstimate(apiKey)
+      if (estimate > 0) {
+        totalSubscribers = estimate
+      }
     }
 
-    log.info(`[Klaviyo] totalSubscribers: ${totalSubscribers}`)
+    log.info(`[Klaviyo] totalSubscribers: ${totalSubscribers} (largestList=${largestListCount}, segment=${segmentCount})`)
 
     // Filter campaigns by send_time in period
     const inicio = new Date(startDateStr)
@@ -1105,7 +1031,7 @@ export async function GET(request: NextRequest) {
     log.info(`[Klaviyo] Filtering for period: ${inicio.toISOString()} to ${fim.toISOString()}`)
 
     // Log all campaigns with send times for debugging
-    const sentCampaigns = allCampaigns.filter(c => c.status === "sent")
+    const sentCampaigns = allCampaigns.filter(c => isSentCampaign(c))
     log.info(`[Klaviyo] Sent campaigns: ${sentCampaigns.length}`)
     sentCampaigns.forEach(c => {
       log.info(`[Klaviyo] Campaign: ${c.name} | sendTime: ${c.sendTime} | createdAt: ${c.createdAt} | status: ${c.status}`)
@@ -1118,12 +1044,15 @@ export async function GET(request: NextRequest) {
     const timezoneOffset = getTimezoneOffset(accountInfo.timezone)
     log.info(`[Klaviyo] Using timezone offset: ${timezoneOffset} (from ${accountInfo.timezone})`)
 
-    // Get reporting data - query ALL flows and campaigns at once (no filtering)
-    // This matches Klaviyo dashboard behavior for the selected period
-    const [flowReport, campaignReport] = await Promise.all([
-      getFlowValuesReport(apiKey, metricId, startDateStr, endDateStr, timezoneOffset),
-      getCampaignValuesReport(apiKey, metricId, startDateStr, endDateStr, timezoneOffset)
-    ])
+    // Get reporting data SEQUENTIALLY to avoid rate limiting
+    // Reporting endpoints have stricter limits (1 req/s)
+    await sleep(1500)
+    const flowReport = await getFlowValuesReport(apiKey, metricId, startDateStr, endDateStr, timezoneOffset)
+    log.info(`[Klaviyo] Flow report done: revenue=${flowReport.totalRevenue}, delivered=${flowReport.totalDelivered}`)
+
+    await sleep(1500)
+    const campaignReport = await getCampaignValuesReport(apiKey, metricId, startDateStr, endDateStr, timezoneOffset)
+    log.info(`[Klaviyo] Campaign report done: revenue=${campaignReport.totalRevenue}, delivered=${campaignReport.totalDelivered}`)
 
     // Merge flow data with names
     const flowsWithNames = flowReport.flows.map(fr => {
@@ -1225,7 +1154,7 @@ export async function GET(request: NextRequest) {
         totalFlows: allFlows.length,
         liveFlows: allFlows.filter(f => f.status === "live").length,
         totalCampaigns: allCampaigns.length,
-        sentCampaigns: allCampaigns.filter(c => c.status === "sent").length,
+        sentCampaigns: allCampaigns.filter(c => isSentCampaign(c)).length,
         campaignsInPeriod: campaignsInPeriodCount,
         totalTemplates: 0, // Templates not fetched currently
       },
@@ -1288,9 +1217,9 @@ export async function GET(request: NextRequest) {
       // Campaigns with counts and details for frontend (structure expected by UI)
       campaigns: {
         total: allCampaigns.length,
-        sent: allCampaigns.filter(c => c.status === "sent").length,
-        scheduled: allCampaigns.filter(c => c.status === "scheduled").length,
-        drafts: allCampaigns.filter(c => c.status === "draft").length,
+        sent: allCampaigns.filter(c => isSentCampaign(c)).length,
+        scheduled: allCampaigns.filter(c => c.status.toLowerCase() === "scheduled").length,
+        drafts: allCampaigns.filter(c => c.status.toLowerCase() === "draft").length,
         // Recent campaigns with performance data (sorted by revenue, includes all with data)
         recentCampaigns: campaignsWithNames.map(c => ({
           id: c.campaignId,
