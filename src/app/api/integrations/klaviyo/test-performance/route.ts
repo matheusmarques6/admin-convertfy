@@ -71,45 +71,69 @@ export async function GET(request: NextRequest) {
       storeId = klaviyoStore?.id || stores?.[0]?.id || null
     }
 
-    // Also try: maybe the provided ID is actually a client_id
+    // Try to resolve the ID from multiple tables
     if (storeIdParam) {
+      // 1. Try as store_id
       const { data: directStore } = await adminClient
         .from("client_stores")
         .select("id, store_name")
         .eq("id", storeIdParam)
         .single()
 
-      if (!directStore) {
-        // Maybe it's a client_id, not a store_id
-        const { data: clientStores } = await adminClient
-          .from("client_stores")
-          .select("id, store_name, klaviyo_api_key, klaviyo_private_key")
-          .eq("client_id", storeIdParam)
-          .eq("is_active", true)
-
-        steps.push({
-          step: "idResolution",
-          status: "RESOLVED_AS_CLIENT",
-          detail: {
-            providedId: storeIdParam,
-            isStore: false,
-            isClient: !!(clientStores && clientStores.length > 0),
-            stores: (clientStores || []).map(s => ({
-              id: s.id,
-              name: s.store_name,
-              hasKlaviyoKey: !!(s.klaviyo_private_key || s.klaviyo_api_key),
-            })),
-          },
-        })
-
-        const klaviyoStore = clientStores?.find(s => s.klaviyo_private_key || s.klaviyo_api_key)
-        storeId = klaviyoStore?.id || null
-      } else {
+      if (directStore) {
+        storeId = directStore.id
         steps.push({
           step: "idResolution",
           status: "IS_STORE",
           detail: { providedId: storeIdParam, storeName: directStore.store_name },
         })
+      } else {
+        // 2. Try as client_id in client_stores
+        const { data: clientStores } = await adminClient
+          .from("client_stores")
+          .select("id, store_name, klaviyo_api_key, klaviyo_private_key")
+          .eq("client_id", storeIdParam)
+
+        // 3. Try as client id in clients table
+        const { data: clientRecord } = await adminClient
+          .from("clients")
+          .select("id, name")
+          .eq("id", storeIdParam)
+          .single()
+
+        // 4. Search by name "Karm" to find the right store
+        const { data: allKlaviyoStores } = await adminClient
+          .from("client_stores")
+          .select("id, store_name, client_id, klaviyo_api_key, klaviyo_private_key")
+          .not("klaviyo_private_key", "is", null)
+          .limit(20)
+
+        steps.push({
+          step: "idResolution",
+          status: "SEARCHING",
+          detail: {
+            providedId: storeIdParam,
+            isStore: false,
+            isClient: !!clientRecord,
+            clientRecord: clientRecord ? { id: clientRecord.id, name: clientRecord.name } : null,
+            clientStoresCount: clientStores?.length || 0,
+            clientStores: (clientStores || []).map(s => ({
+              id: s.id,
+              name: s.store_name,
+              hasKlaviyoKey: !!(s.klaviyo_private_key || s.klaviyo_api_key),
+            })),
+            allKlaviyoStores: (allKlaviyoStores || []).map(s => ({
+              id: s.id,
+              name: s.store_name,
+              clientId: s.client_id,
+              hasKey: !!(s.klaviyo_private_key || s.klaviyo_api_key),
+            })),
+          },
+        })
+
+        // Use first client store with key, or first Klaviyo store
+        const fromClient = clientStores?.find(s => s.klaviyo_private_key || s.klaviyo_api_key)
+        storeId = fromClient?.id || allKlaviyoStores?.[0]?.id || null
       }
     }
 
