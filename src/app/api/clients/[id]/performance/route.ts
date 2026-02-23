@@ -252,7 +252,7 @@ async function fetchKlaviyoPerformance(
           type: "campaign-values-report",
           attributes: {
             statistics: [
-              "recipients", "delivered", "open_rate", "click_rate",
+              "recipients", "delivered", "click_rate",
               "conversion_rate", "conversion_value", "revenue_per_recipient",
             ],
             timeframe: { start: startISO, end: endISO },
@@ -269,7 +269,7 @@ async function fetchKlaviyoPerformance(
           type: "flow-values-report",
           attributes: {
             statistics: [
-              "recipients", "delivered", "open_rate", "click_rate",
+              "recipients", "delivered", "click_rate",
               "conversion_rate", "conversion_value", "revenue_per_recipient",
             ],
             timeframe: { start: startISO, end: endISO },

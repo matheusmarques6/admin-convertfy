@@ -254,15 +254,16 @@ class KlaviyoMetricsClient {
       data: {
         type: "campaign-values-report",
         attributes: {
+          // Valid statistics per Klaviyo Reporting API (revision 2024-10-15)
+          // IMPORTANT: API uses "opens"/"clicks"/"unsubscribes" (NOT "opened"/"clicked"/"unsubscribed")
           statistics: [
             "recipients",
             "delivered",
             "delivery_rate",
-            "opened",
-            "opened_unique",
-            "open_rate",
-            "clicked",
-            "clicked_unique",
+            "opens",
+            "opens_unique",
+            "clicks",
+            "clicks_unique",
             "click_rate",
             "click_to_open_rate",
             "conversion_rate",
@@ -270,13 +271,10 @@ class KlaviyoMetricsClient {
             "conversion_value",
             "conversions",
             "bounced",
-            "bounced_unique",
             "bounce_rate",
-            "unsubscribed",
-            "unsubscribed_unique",
+            "unsubscribes",
             "unsubscribe_rate",
             "spam_complaints",
-            "spam_complaints_unique",
             "spam_complaint_rate",
             "average_order_value",
             "revenue_per_recipient",
