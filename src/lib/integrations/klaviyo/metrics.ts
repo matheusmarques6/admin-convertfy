@@ -27,10 +27,10 @@ export async function findPlacedOrderMetric(apiKey: string): Promise<string | nu
   log.info("Fetching metrics with pagination...")
 
   const allMetrics: KlaviyoMetric[] = []
-  // page[size] works for metrics (unlike lists/segments which reject it)
-  let nextPage: string | null = "/metrics/?page[size]=50"
+  // Do NOT use page[size] - Klaviyo rejects it for metrics resource
+  let nextPage: string | null = "/metrics/"
   let pageCount = 0
-  const maxPages = 20 // Up to 2,000 metrics
+  const maxPages = 20
 
   while (nextPage && pageCount < maxPages) {
     type MetricsPage = { data: KlaviyoMetric[]; links?: { next?: string } }

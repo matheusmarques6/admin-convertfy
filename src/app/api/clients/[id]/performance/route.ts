@@ -247,8 +247,26 @@ async function fetchKlaviyoPerformance(
   const startISO = `${startDate}T00:00:00${tzOffset}`
   const endISO = `${endDate}T23:59:59${tzOffset}`
 
-  // Find Placed Order metric for revenue
+  // Find Placed Order metric for revenue (required by Klaviyo Reporting API)
   const placedOrderMetric = await findPlacedOrderMetric(apiKey)
+
+  if (!placedOrderMetric) {
+    log.warn("No Placed Order metric found - cannot fetch conversion/revenue data")
+    // Return empty data rather than making API calls that will 400
+    return {
+      totalRevenue: 0,
+      campaignRevenue: 0,
+      flowRevenue: 0,
+      totalCampaigns: 0,
+      sentCampaigns: 0,
+      totalFlows: 0,
+      liveFlows: 0,
+      avgOpenRate: 0,
+      avgClickRate: 0,
+      recentCampaigns: [],
+      topFlows: [],
+    }
+  }
 
   const reportStats = [
     "recipients", "delivered", "opens_unique", "click_rate",
@@ -266,7 +284,7 @@ async function fetchKlaviyoPerformance(
         attributes: {
           statistics: reportStats,
           timeframe: { start: startISO, end: endISO },
-          ...(placedOrderMetric ? { conversion_metric_id: placedOrderMetric } : {}),
+          conversion_metric_id: placedOrderMetric,
         },
       },
     },
@@ -283,7 +301,7 @@ async function fetchKlaviyoPerformance(
         attributes: {
           statistics: reportStats,
           timeframe: { start: startISO, end: endISO },
-          ...(placedOrderMetric ? { conversion_metric_id: placedOrderMetric } : {}),
+          conversion_metric_id: placedOrderMetric,
         },
       },
     },
