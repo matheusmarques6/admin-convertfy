@@ -10,6 +10,8 @@ import {
   getAccountInfo,
   findPlacedOrderMetric,
   getTimezoneOffset,
+  sleep,
+  MIN_REQUEST_INTERVAL,
 } from "@/lib/integrations/klaviyo"
 import { getShopifyReportForStore } from "@/lib/integrations/shopify/report"
 import { decryptStoreCredentials } from "@/lib/crypto"
@@ -248,43 +250,44 @@ async function fetchKlaviyoPerformance(
   // Find Placed Order metric for revenue
   const placedOrderMetric = await findPlacedOrderMetric(apiKey)
 
-  // Fetch campaign and flow reports in parallel
-  const [campaignReport, flowReport] = await Promise.all([
-    klaviyoRequest<KlaviyoCampaignReport>(apiKey, "/campaign-values-reports/", {
-      method: "POST",
-      logTag: "CampaignReport",
-      body: {
-        data: {
-          type: "campaign-values-report",
-          attributes: {
-            statistics: [
-              "recipients", "delivered", "opens_unique", "click_rate",
-              "click_to_open_rate", "conversion_rate", "conversion_value", "revenue_per_recipient",
-            ],
-            timeframe: { start: startISO, end: endISO },
-            ...(placedOrderMetric ? { conversion_metric_id: placedOrderMetric } : {}),
-          },
+  const reportStats = [
+    "recipients", "delivered", "opens_unique", "click_rate",
+    "click_to_open_rate", "conversion_rate", "conversion_value", "revenue_per_recipient",
+  ]
+
+  // Fetch campaign report (sequential to avoid rate limiting)
+  await sleep(MIN_REQUEST_INTERVAL)
+  const campaignReport = await klaviyoRequest<KlaviyoCampaignReport>(apiKey, "/campaign-values-reports/", {
+    method: "POST",
+    logTag: "PerfCampaignReport",
+    body: {
+      data: {
+        type: "campaign-values-report",
+        attributes: {
+          statistics: reportStats,
+          timeframe: { start: startISO, end: endISO },
+          ...(placedOrderMetric ? { conversion_metric_id: placedOrderMetric } : {}),
         },
       },
-    }),
-    klaviyoRequest<KlaviyoFlowReport>(apiKey, "/flow-values-reports/", {
-      method: "POST",
-      logTag: "FlowReport",
-      body: {
-        data: {
-          type: "flow-values-report",
-          attributes: {
-            statistics: [
-              "recipients", "delivered", "opens_unique", "click_rate",
-              "click_to_open_rate", "conversion_rate", "conversion_value", "revenue_per_recipient",
-            ],
-            timeframe: { start: startISO, end: endISO },
-            ...(placedOrderMetric ? { conversion_metric_id: placedOrderMetric } : {}),
-          },
+    },
+  })
+
+  // Fetch flow report
+  await sleep(MIN_REQUEST_INTERVAL)
+  const flowReport = await klaviyoRequest<KlaviyoFlowReport>(apiKey, "/flow-values-reports/", {
+    method: "POST",
+    logTag: "PerfFlowReport",
+    body: {
+      data: {
+        type: "flow-values-report",
+        attributes: {
+          statistics: reportStats,
+          timeframe: { start: startISO, end: endISO },
+          ...(placedOrderMetric ? { conversion_metric_id: placedOrderMetric } : {}),
         },
       },
-    }),
-  ])
+    },
+  })
 
   // If both API calls failed (returned null), throw so the error surfaces in storeErrors
   if (!campaignReport && !flowReport) {
