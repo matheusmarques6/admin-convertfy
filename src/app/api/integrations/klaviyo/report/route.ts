@@ -985,9 +985,68 @@ export async function GET(request: NextRequest) {
       }, { headers: corsHeaders(request.headers.get("origin")) })
     }
 
+    // === RAW DIAGNOSTIC: Test each endpoint directly to capture HTTP status ===
+    const rawDiag: Record<string, unknown> = {}
+    const diagHeaders = {
+      "Authorization": `Klaviyo-API-Key ${apiKey}`,
+      "Accept": "application/json",
+      "Content-Type": "application/json",
+      "revision": KLAVIYO_REVISION,
+    }
+
+    // Test /lists/ directly
+    try {
+      const r = await fetch(`${KLAVIYO_API_URL}/lists/?page[size]=5`, { headers: diagHeaders })
+      const t = await r.text()
+      rawDiag.lists = { status: r.status, bodyPreview: t.substring(0, 300) }
+    } catch (e) { rawDiag.lists = { error: String(e) } }
+
+    await sleep(500)
+
+    // Test /flows/ directly
+    try {
+      const r = await fetch(`${KLAVIYO_API_URL}/flows/?page[size]=5`, { headers: diagHeaders })
+      const t = await r.text()
+      rawDiag.flows = { status: r.status, bodyPreview: t.substring(0, 300) }
+    } catch (e) { rawDiag.flows = { error: String(e) } }
+
+    await sleep(500)
+
+    // Test /segments/ directly
+    try {
+      const r = await fetch(`${KLAVIYO_API_URL}/segments/?page[size]=5`, { headers: diagHeaders })
+      const t = await r.text()
+      rawDiag.segments = { status: r.status, bodyPreview: t.substring(0, 300) }
+    } catch (e) { rawDiag.segments = { error: String(e) } }
+
+    await sleep(500)
+
+    // Test flow-values-reports directly
+    try {
+      const r = await fetch(`${KLAVIYO_API_URL}/flow-values-reports/`, {
+        method: "POST",
+        headers: diagHeaders,
+        body: JSON.stringify({
+          data: {
+            type: "flow-values-report",
+            attributes: {
+              timeframe: { start: `${startDateStr}T00:00:00+00:00`, end: `${endDateStr}T23:59:59+00:00` },
+              conversion_metric_id: metricId,
+              statistics: ["delivered", "conversion_value"]
+            }
+          }
+        })
+      })
+      const t = await r.text()
+      rawDiag.flowReport = { status: r.status, bodyPreview: t.substring(0, 500) }
+    } catch (e) { rawDiag.flowReport = { error: String(e) } }
+
+    await sleep(500)
+
+    log.info(`[Klaviyo] RAW DIAGNOSTIC: ${JSON.stringify(rawDiag)}`)
+    // === END RAW DIAGNOSTIC ===
+
     // Fetch all data SEQUENTIALLY to avoid rate limiting
-    // Klaviyo burst limit: 3 req/s, steady limit: 75 req/min
-    // Running in parallel causes rate limit exhaustion → null responses → all zeros
     await sleep(500)
     const listMetrics = await getLists(apiKey)
     log.info(`[Klaviyo] Lists done: ${listMetrics.totalLists} lists`)
@@ -1246,6 +1305,9 @@ export async function GET(request: NextRequest) {
         hasEcommerce: true,
         placedOrderMetricId: metricId,
       },
+
+      // Temporary diagnostic: raw API responses to debug zero-data issue
+      _rawDiagnostic: rawDiag,
     }
 
     return NextResponse.json(reportData, { headers: corsHeaders(request.headers.get("origin")) })
