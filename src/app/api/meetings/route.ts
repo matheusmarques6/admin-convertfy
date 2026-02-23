@@ -167,6 +167,7 @@ export async function POST(request: NextRequest) {
     const supabase = await createClient()
     const adminClient = createAdminClient()
     const user = await requireAuth(supabase)
+    const orgId = await resolveOrgId(supabase, user.id)
 
     const body = await request.json()
 
@@ -181,6 +182,7 @@ export async function POST(request: NextRequest) {
         client_id: body.client_id || null,
         user_id: user.id,
         created_by: user.id,
+        org_id: orgId,
         scheduled_at: body.scheduled_at,
         duration_minutes: body.duration_minutes || 30,
         status: "scheduled",
