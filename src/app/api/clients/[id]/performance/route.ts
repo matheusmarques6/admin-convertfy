@@ -28,9 +28,12 @@ interface StorePerformance {
   hasKlaviyo: boolean
   hasShopify: boolean
   klaviyo: {
-    totalRevenue: number
+    storeRevenue: number
+    storeOrders: number
+    attributedRevenue: number
     campaignRevenue: number
     flowRevenue: number
+    recoveryRate: number
     totalCampaigns: number
     sentCampaigns: number
     totalFlows: number
@@ -253,11 +256,13 @@ async function fetchKlaviyoPerformance(
 
   if (!placedOrderMetric) {
     log.warn("No Placed Order metric found - cannot fetch conversion/revenue data")
-    // Return empty data rather than making API calls that will 400
     return {
-      totalRevenue: 0,
+      storeRevenue: 0,
+      storeOrders: 0,
+      attributedRevenue: 0,
       campaignRevenue: 0,
       flowRevenue: 0,
+      recoveryRate: 0,
       totalCampaigns: 0,
       sentCampaigns: 0,
       totalFlows: 0,
@@ -308,9 +313,40 @@ async function fetchKlaviyoPerformance(
     },
   })
 
-  // If both API calls failed (returned null), throw so the error surfaces in storeErrors
-  if (!campaignReport && !flowReport) {
+  // Fetch total store revenue via metric-aggregates (all Placed Orders, not just email-attributed)
+  await sleep(MIN_REQUEST_INTERVAL)
+  const metricAgg = await klaviyoRequest<KlaviyoMetricAggregate>(apiKey, "/metric-aggregates/", {
+    method: "POST",
+    logTag: "PerfMetricAgg",
+    body: {
+      data: {
+        type: "metric-aggregate",
+        attributes: {
+          metric_id: placedOrderMetric,
+          measurements: ["value", "count"],
+          filter: [
+            `greater-or-equal(datetime,${startISO})`,
+            `less-than(datetime,${endISO})`,
+          ],
+          timezone: timezone,
+        },
+      },
+    },
+  })
+
+  // If all three API calls failed, throw so the error surfaces in storeErrors
+  if (!campaignReport && !flowReport && !metricAgg) {
     throw new Error("Falha ao conectar com a API do Klaviyo. Verifique as credenciais.")
+  }
+
+  // Parse store-wide revenue from metric-aggregates
+  const aggData = metricAgg?.data?.attributes?.data || []
+  let storeRevenue = 0
+  let storeOrders = 0
+  for (const row of aggData) {
+    const measurements = row.measurements || {}
+    storeRevenue += Number(measurements.value) || 0
+    storeOrders += Number(measurements.count) || 0
   }
 
   // Parse campaign results - aggregate by campaign_id (API returns per-message rows)
@@ -430,10 +466,16 @@ async function fetchKlaviyoPerformance(
   const avgOpenRate = campaignCount > 0 ? campaignOpenRateSum / campaignCount : 0
   const avgClickRate = campaignCount > 0 ? campaignClickRateSum / campaignCount : 0
 
+  const attributedRevenue = campaignRevenue + flowRevenue
+  const recoveryRate = storeRevenue > 0 ? (attributedRevenue / storeRevenue) * 100 : 0
+
   return {
-    totalRevenue: campaignRevenue + flowRevenue,
+    storeRevenue,
+    storeOrders,
+    attributedRevenue,
     campaignRevenue,
     flowRevenue,
+    recoveryRate,
     totalCampaigns: campaignResults.length,
     sentCampaigns: campaignResults.length,
     totalFlows: flowResults.length,
@@ -489,7 +531,9 @@ async function fetchBillingData(
 }
 
 function aggregateTotals(stores: StorePerformance[]) {
-  let klaviyoRevenue = 0
+  let storeRevenue = 0
+  let storeOrders = 0
+  let attributedRevenue = 0
   let campaignRevenue = 0
   let flowRevenue = 0
   let totalCampaigns = 0
@@ -503,7 +547,9 @@ function aggregateTotals(stores: StorePerformance[]) {
 
   for (const store of stores) {
     if (store.klaviyo) {
-      klaviyoRevenue += store.klaviyo.totalRevenue
+      storeRevenue += store.klaviyo.storeRevenue
+      storeOrders += store.klaviyo.storeOrders
+      attributedRevenue += store.klaviyo.attributedRevenue
       campaignRevenue += store.klaviyo.campaignRevenue
       flowRevenue += store.klaviyo.flowRevenue
       totalCampaigns += store.klaviyo.sentCampaigns
@@ -521,10 +567,16 @@ function aggregateTotals(stores: StorePerformance[]) {
     }
   }
 
+  const recoveryRate = storeRevenue > 0 ? (attributedRevenue / storeRevenue) * 100 : 0
+
   return {
-    klaviyoRevenue,
+    storeRevenue,
+    storeOrders,
+    attributedRevenue,
+    klaviyoRevenue: attributedRevenue, // backwards compat
     campaignRevenue,
     flowRevenue,
+    recoveryRate,
     shopifyRevenue,
     shopifyOrders,
     shopifyCustomers,
@@ -537,9 +589,13 @@ function aggregateTotals(stores: StorePerformance[]) {
 
 function emptyTotals() {
   return {
+    storeRevenue: 0,
+    storeOrders: 0,
+    attributedRevenue: 0,
     klaviyoRevenue: 0,
     campaignRevenue: 0,
     flowRevenue: 0,
+    recoveryRate: 0,
     shopifyRevenue: 0,
     shopifyOrders: 0,
     shopifyCustomers: 0,
@@ -568,6 +624,16 @@ interface KlaviyoFlowReport {
   data?: {
     attributes?: {
       results?: KlaviyoReportResult[]
+    }
+  }
+}
+
+interface KlaviyoMetricAggregate {
+  data?: {
+    attributes?: {
+      data?: Array<{
+        measurements?: Record<string, number>
+      }>
     }
   }
 }

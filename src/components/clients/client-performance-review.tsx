@@ -148,36 +148,33 @@ export function ClientPerformanceKPIs() {
       {data && !loading && !error && (
         <>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            {/* Revenue Klaviyo */}
+            {/* Receita Total (Loja) - via Klaviyo metric-aggregates */}
+            <GlowCard color="info" intensity="intense" surfaceClassName="p-6">
+              <div className="flex items-center justify-between pb-2">
+                <span className="text-sm font-medium text-muted-foreground">Receita Total</span>
+                <ShoppingCart className="h-4 w-4 text-info" />
+              </div>
+              <p className="text-2xl font-bold">{formatCurrency(data.totals.storeRevenue ?? 0)}</p>
+              <div className="flex gap-2 mt-1">
+                <span className="text-xs text-muted-foreground">
+                  {(data.totals.storeOrders ?? 0).toLocaleString("pt-BR")} pedidos
+                </span>
+              </div>
+            </GlowCard>
+
+            {/* Revenue Atribuído (Email) */}
             <GlowCard color="success" intensity="intense" surfaceClassName="p-6">
               <div className="flex items-center justify-between pb-2">
-                <span className="text-sm font-medium text-muted-foreground">Revenue Klaviyo</span>
+                <span className="text-sm font-medium text-muted-foreground">Revenue Email</span>
                 <TrendingUp className="h-4 w-4 text-success" />
               </div>
-              <p className="text-2xl font-bold">{formatCurrency(data.totals.klaviyoRevenue)}</p>
+              <p className="text-2xl font-bold">{formatCurrency(data.totals.attributedRevenue ?? data.totals.klaviyoRevenue)}</p>
               <div className="flex gap-2 mt-1">
                 <span className="text-xs text-muted-foreground">
                   Campanhas: {formatCurrency(data.totals.campaignRevenue)}
                 </span>
                 <span className="text-xs text-muted-foreground">
                   Flows: {formatCurrency(data.totals.flowRevenue)}
-                </span>
-              </div>
-            </GlowCard>
-
-            {/* Revenue Shopify */}
-            <GlowCard color="info" intensity="intense" surfaceClassName="p-6">
-              <div className="flex items-center justify-between pb-2">
-                <span className="text-sm font-medium text-muted-foreground">Revenue Shopify</span>
-                <ShoppingCart className="h-4 w-4 text-info" />
-              </div>
-              <p className="text-2xl font-bold">{formatCurrency(data.totals.shopifyRevenue)}</p>
-              <div className="flex gap-2 mt-1">
-                <span className="text-xs text-muted-foreground">
-                  {data.totals.shopifyOrders} pedidos
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {data.totals.shopifyCustomers} clientes
                 </span>
               </div>
             </GlowCard>
@@ -215,20 +212,12 @@ export function ClientPerformanceKPIs() {
                 <span className="text-sm font-medium text-muted-foreground">Recuperação Email</span>
                 <Percent className="h-4 w-4 text-warning" />
               </div>
-              {(() => {
-                const totalRev = data.totals.klaviyoRevenue + data.totals.shopifyRevenue
-                const pct = totalRev > 0 ? (data.totals.klaviyoRevenue / totalRev) * 100 : 0
-                return (
-                  <>
-                    <p className="text-2xl font-bold">
-                      {pct.toFixed(1)}%
-                    </p>
-                    <span className="text-xs text-muted-foreground">
-                      {formatCurrency(data.totals.klaviyoRevenue)} de {formatCurrency(totalRev)}
-                    </span>
-                  </>
-                )
-              })()}
+              <p className="text-2xl font-bold">
+                {(data.totals.recoveryRate ?? 0).toFixed(1)}%
+              </p>
+              <span className="text-xs text-muted-foreground">
+                {formatCurrency(data.totals.attributedRevenue ?? data.totals.klaviyoRevenue)} de {formatCurrency(data.totals.storeRevenue ?? 0)}
+              </span>
             </GlowCard>
           </div>
 

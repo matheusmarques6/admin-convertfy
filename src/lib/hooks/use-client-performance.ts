@@ -4,9 +4,13 @@ import { useState, useMemo, createContext, useContext, useCallback } from "react
 import { useClientPerformanceAPI } from "@/lib/hooks/use-api-data"
 
 interface PerformanceTotals {
+  storeRevenue: number
+  storeOrders: number
+  attributedRevenue: number
   klaviyoRevenue: number
   campaignRevenue: number
   flowRevenue: number
+  recoveryRate: number
   shopifyRevenue: number
   shopifyOrders: number
   shopifyCustomers: number
@@ -51,9 +55,12 @@ interface StorePerformance {
   hasKlaviyo: boolean
   hasShopify: boolean
   klaviyo: {
-    totalRevenue: number
+    storeRevenue: number
+    storeOrders: number
+    attributedRevenue: number
     campaignRevenue: number
     flowRevenue: number
+    recoveryRate: number
     totalCampaigns: number
     sentCampaigns: number
     totalFlows: number
