@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
         type: "metric-aggregate",
         attributes: {
           metric_id: metricId,
-          measurements: ["value", "count"],
+          measurements: ["sum", "count"],
           filter: [
             `greater-or-equal(datetime,${startStr}T00:00:00)`,
             `less-than(datetime,${endStr}T23:59:59)`,
@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
         type: "metric-aggregate",
         attributes: {
           metric_id: metricId,
-          measurements: ["value", "count"],
+          measurements: ["sum", "count"],
           filter: [
             `greater-or-equal(datetime,${startStr}T00:00:00)`,
             `less-than(datetime,${endStr}T23:59:59)`,
@@ -104,7 +104,7 @@ export async function GET(request: NextRequest) {
         type: "metric-aggregate",
         attributes: {
           metric_id: metricId,
-          measurements: ["value", "count"],
+          measurements: ["sum", "count"],
           filter: [
             `greater-or-equal(datetime,${startStr}T00:00:00-03:00)`,
             `less-than(datetime,${endStr}T23:59:59-03:00)`,
