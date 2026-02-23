@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
-import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
-import { corsHeaders } from "@/lib/cors"
-import { getStoreCredentials } from "@/lib/services/credentials.service"
+import { createAdminClient } from "@/lib/supabase/server"
+import { errorResponse } from "@/lib/api/errors"
 import { KLAVIYO_API_URL, KLAVIYO_REVISION } from "@/lib/integrations/klaviyo/client"
 import { findPlacedOrderMetric } from "@/lib/integrations/klaviyo/metrics"
+import { decryptStoreCredentials } from "@/lib/crypto"
 
 /**
  * GET /api/integrations/klaviyo/debug-agg?store_id=XXX
@@ -14,16 +13,26 @@ import { findPlacedOrderMetric } from "@/lib/integrations/klaviyo/metrics"
  */
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    await requireAuth(supabase)
-
     const storeId = request.nextUrl.searchParams.get("store_id")
-    if (!storeId) throw new AppError("store_id required", 400)
+    if (!storeId) {
+      return NextResponse.json({ error: "store_id required" }, { status: 400 })
+    }
 
-    const creds = await getStoreCredentials(storeId)
-    const apiKey = creds.klaviyo_private_key || creds.klaviyo_api_key
+    const adminClient = createAdminClient()
+    const { data: rawStore, error: storeErr } = await adminClient
+      .from("client_stores")
+      .select("id, store_name, klaviyo_api_key, klaviyo_private_key")
+      .eq("id", storeId)
+      .single()
+
+    if (storeErr || !rawStore) {
+      return NextResponse.json({ error: "Store not found", storeId, dbError: storeErr?.message }, { status: 404 })
+    }
+
+    const store = decryptStoreCredentials(rawStore)
+    const apiKey = store.klaviyo_private_key || store.klaviyo_api_key
     if (!apiKey) {
-      return NextResponse.json({ error: "No API key" }, { status: 400, headers: corsHeaders(request.headers.get("origin")) })
+      return NextResponse.json({ error: "No API key", storeName: rawStore.store_name }, { status: 400 })
     }
 
     const headers = {
@@ -128,7 +137,7 @@ export async function GET(request: NextRequest) {
         status: res3.status,
         body: text3.slice(0, 800),
       },
-    }, { headers: corsHeaders(request.headers.get("origin")) })
+    })
   } catch (error) {
     return errorResponse(request, error, "KlaviyoDebugAgg")
   }
