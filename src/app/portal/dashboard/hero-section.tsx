@@ -7,16 +7,22 @@ interface HeroSectionProps {
 }
 
 export function HeroSection({ klaviyo }: HeroSectionProps) {
-  // totalRevenue = flow + campaign attributed revenue (matches Klaviyo dashboard "Resumo do desempenho comercial")
+  // storeRevenue = total store revenue (all Placed Order events from Klaviyo metric-aggregates)
+  // totalRevenue = flow + campaign attributed revenue only
+  const storeRevenue = klaviyo?.storeRevenue || 0
   const totalRevenue = klaviyo?.totalRevenue || 0
   const flowRevenue = klaviyo?.flowRevenue || 0
   const campaignRevenue = klaviyo?.campaignRevenue || 0
   const smsRevenue = klaviyo?.smsRevenue || 0
   const estimatedProfit = totalRevenue * 0.30
 
-  const flowPercent = totalRevenue > 0 ? (flowRevenue / totalRevenue) * 100 : 0
-  const campaignPercent = totalRevenue > 0 ? (campaignRevenue / totalRevenue) * 100 : 0
-  const smsPercent = totalRevenue > 0 ? (smsRevenue / totalRevenue) * 100 : 0
+  // Attribution: % of total store revenue attributed to Klaviyo (flows + campaigns)
+  const attributionPercent = storeRevenue > 0 ? (totalRevenue / storeRevenue) * 100 : 0
+
+  // Channel percentages relative to total store revenue
+  const flowPercent = storeRevenue > 0 ? (flowRevenue / storeRevenue) * 100 : 0
+  const campaignPercent = storeRevenue > 0 ? (campaignRevenue / storeRevenue) * 100 : 0
+  const smsPercent = storeRevenue > 0 ? (smsRevenue / storeRevenue) * 100 : 0
 
   return (
     <div className="rounded-xl bg-gradient-to-r from-primary/80 via-primary/40 to-card border border-primary/20 p-6 relative overflow-hidden gradient-accent-border">
@@ -24,20 +30,20 @@ export function HeroSection({ klaviyo }: HeroSectionProps) {
       <div className="absolute -bottom-16 -left-16 w-40 h-40 bg-primary/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: "1s" }} />
       <div className="relative flex items-start justify-between mb-6">
         <div>
-          <p className="text-sm text-info/70 mb-1">Receita Total</p>
+          <p className="text-sm text-info/70 mb-1">Receita Total da Loja</p>
           <div className="flex items-center gap-3 mb-2">
-            <h2 className="text-4xl font-bold text-foreground">{formatCurrency(totalRevenue)}</h2>
-            {totalRevenue > 0 && (
-              <VariationBadge value={totalRevenue * 0.08} type="currency" />
+            <h2 className="text-4xl font-bold text-foreground">{formatCurrency(storeRevenue)}</h2>
+            {storeRevenue > 0 && (
+              <VariationBadge value={storeRevenue * 0.08} type="currency" />
             )}
           </div>
           <p className="text-sm text-muted-foreground">
-            Flows: {formatCurrency(flowRevenue)} · Campanhas: {formatCurrency(campaignRevenue)}
+            Klaviyo: {formatCurrency(totalRevenue)} · Flows: {formatCurrency(flowRevenue)} · Campanhas: {formatCurrency(campaignRevenue)}
           </p>
         </div>
         <div className="text-right">
-          <p className="text-xs text-muted-foreground mb-1">Atribuição</p>
-          <p className="text-3xl font-bold text-info">{flowPercent + campaignPercent > 0 ? "100" : "0"}%</p>
+          <p className="text-xs text-muted-foreground mb-1">Atribuição Klaviyo</p>
+          <p className="text-3xl font-bold text-info">{attributionPercent.toFixed(1)}%</p>
           <p className="text-xs text-muted-foreground">do faturamento</p>
         </div>
       </div>
