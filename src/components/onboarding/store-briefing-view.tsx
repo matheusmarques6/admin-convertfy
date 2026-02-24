@@ -10,10 +10,18 @@ import {
   ExternalLink,
   Clock,
   Hash,
+  Pencil,
+  RotateCcw,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   Collapsible,
   CollapsibleContent,
@@ -187,6 +195,85 @@ export function StoreBriefingView({
         )
       },
     },
+    {
+      key: "resumo_performance",
+      title: "Resumo de Performance",
+      render: (d) => {
+        const v = d as Record<string, unknown>
+        if (!v || Object.keys(v).length === 0) {
+          return <p className="text-muted-foreground text-sm">Dados de performance não disponíveis. Regenere o briefing para atualizar.</p>
+        }
+        if (v.status === "sem_dados" || v.status === "erro") {
+          return <p className="text-muted-foreground text-sm">{(v.mensagem as string) || "Sem dados disponíveis"}</p>
+        }
+        const klaviyo = v.klaviyo as { receita_total?: number; receita_campanhas?: number; receita_flows?: number } | undefined
+        return (
+          <div className="space-y-2 text-sm">
+            {v.periodo && <InfoRow label="Período" value={`Últimos ${v.periodo === "30d" ? "30 dias" : String(v.periodo)}`} />}
+            {klaviyo && (
+              <div className="space-y-1">
+                <p className="font-medium text-xs text-muted-foreground uppercase tracking-wide">Klaviyo</p>
+                <InfoRow label="Receita Total" value={`R$ ${(klaviyo.receita_total || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`} />
+                <InfoRow label="Receita Campanhas" value={`R$ ${(klaviyo.receita_campanhas || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`} />
+                <InfoRow label="Receita Flows" value={`R$ ${(klaviyo.receita_flows || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`} />
+              </div>
+            )}
+          </div>
+        )
+      },
+    },
+    {
+      key: "analise_anuncios",
+      title: "Análise de Anúncios",
+      render: (d) => {
+        const v = d as Record<string, unknown>
+        if (!v || Object.keys(v).length === 0) {
+          return <p className="text-muted-foreground text-sm">Dados de anúncios não disponíveis. Regenere o briefing para atualizar.</p>
+        }
+        if (v.status === "sem_dados" || v.status === "erro") {
+          return <p className="text-muted-foreground text-sm">{(v.mensagem as string) || "Sem dados disponíveis"}</p>
+        }
+        const metaAds = v.meta_ads as Record<string, unknown> | undefined
+        const googleAds = v.google_ads as Record<string, unknown> | undefined
+        return (
+          <div className="space-y-3 text-sm">
+            {v.periodo && <InfoRow label="Período" value={`Últimos ${v.periodo === "30d" ? "30 dias" : String(v.periodo)}`} />}
+            {metaAds && metaAds.status === "conectado" && (
+              <div className="space-y-1">
+                <p className="font-medium text-xs text-muted-foreground uppercase tracking-wide">Meta Ads</p>
+                <InfoRow label="Gasto" value={`R$ ${(Number(metaAds.gasto_total) || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`} />
+                <InfoRow label="Receita" value={`R$ ${(Number(metaAds.receita_total) || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`} />
+                <InfoRow label="ROAS" value={`${(Number(metaAds.roas) || 0).toFixed(2)}x`} />
+                <InfoRow label="Impressões" value={String((Number(metaAds.impressoes) || 0).toLocaleString("pt-BR"))} />
+                <InfoRow label="Cliques" value={String((Number(metaAds.cliques) || 0).toLocaleString("pt-BR"))} />
+                <InfoRow label="Conversões" value={String(Number(metaAds.conversoes) || 0)} />
+                <InfoRow label="CTR" value={`${(Number(metaAds.ctr) || 0).toFixed(2)}%`} />
+                <InfoRow label="CPC" value={`R$ ${(Number(metaAds.cpc) || 0).toFixed(2)}`} />
+              </div>
+            )}
+            {metaAds && metaAds.status === "nao_conectado" && (
+              <p className="text-muted-foreground text-xs">Meta Ads: não conectado</p>
+            )}
+            {googleAds && googleAds.status === "conectado" && (
+              <div className="space-y-1">
+                <p className="font-medium text-xs text-muted-foreground uppercase tracking-wide">Google Ads</p>
+                <InfoRow label="Gasto" value={`R$ ${(Number(googleAds.gasto_total) || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`} />
+                <InfoRow label="Receita" value={`R$ ${(Number(googleAds.receita_total) || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`} />
+                <InfoRow label="ROAS" value={`${(Number(googleAds.roas) || 0).toFixed(2)}x`} />
+                <InfoRow label="Impressões" value={String((Number(googleAds.impressoes) || 0).toLocaleString("pt-BR"))} />
+                <InfoRow label="Cliques" value={String((Number(googleAds.cliques) || 0).toLocaleString("pt-BR"))} />
+                <InfoRow label="Conversões" value={String(Number(googleAds.conversoes) || 0)} />
+                <InfoRow label="CTR" value={`${(Number(googleAds.ctr) || 0).toFixed(2)}%`} />
+                <InfoRow label="CPC" value={`R$ ${(Number(googleAds.cpc) || 0).toFixed(2)}`} />
+              </div>
+            )}
+            {googleAds && googleAds.status === "nao_conectado" && (
+              <p className="text-muted-foreground text-xs">Google Ads: não conectado</p>
+            )}
+          </div>
+        )
+      },
+    },
   ]
 
   return (
@@ -201,25 +288,31 @@ export function StoreBriefingView({
               <Clock className="h-3 w-3 ml-2" />
               <span>{new Date(briefing.generated_at).toLocaleDateString("pt-BR")}</span>
             </div>
-            <div className="flex gap-1">
-              {onEditForm && (
-                <Button variant="outline" size="sm" onClick={onEditForm}>
-                  Editar Dados
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" disabled={regenerating}>
+                  {regenerating ? (
+                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4 mr-1" />
+                  )}
+                  Refazer
+                  <ChevronDown className="h-3 w-3 ml-1" />
                 </Button>
-              )}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleRegenerate}
-                disabled={regenerating}
-              >
-                {regenerating ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="h-4 w-4" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {onEditForm && (
+                  <DropdownMenuItem onClick={onEditForm}>
+                    <Pencil className="h-4 w-4 mr-2" />
+                    Mudar dados do formulário
+                  </DropdownMenuItem>
                 )}
-              </Button>
-            </div>
+                <DropdownMenuItem onClick={handleRegenerate} disabled={regenerating}>
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                  Continuar e refazer
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </CardHeader>

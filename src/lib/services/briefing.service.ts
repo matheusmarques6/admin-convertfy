@@ -1,5 +1,12 @@
 import { createAdminClient } from "@/lib/supabase/server"
+import { getStoreCredentials } from "@/lib/services/credentials.service"
+import { getKlaviyoRevenueForStore } from "@/lib/integrations/klaviyo/report-summary"
+import { createMetaAdsService } from "@/lib/integrations/meta-ads"
+import { createGoogleAdsService } from "@/lib/integrations/google-ads"
+import { logger } from "@/lib/logger"
 import type { BriefingData } from "@/types/onboarding"
+
+const log = logger.child("BriefingService")
 
 function deriveCampaignFocus(sensitivity: string | null, niche: string | null, audience: string | null) {
   const nicheText = niche ? ` no nicho de ${niche}` : ""
@@ -45,6 +52,111 @@ function deriveBrandProfile(sensitivity: string | null, niche: string | null) {
   }
 }
 
+async function fetchPerformanceSummary(storeId: string): Promise<Record<string, unknown>> {
+  try {
+    // Check if Klaviyo is connected before calling the API
+    const credentials = await getStoreCredentials(storeId)
+    const hasKlaviyoKey = !!(credentials.klaviyo_private_key || credentials.klaviyo_api_key)
+
+    if (!hasKlaviyoKey) {
+      return { status: "sem_dados", mensagem: "Nenhuma integração de performance conectada." }
+    }
+
+    const klaviyo = await getKlaviyoRevenueForStore(storeId, "30d")
+
+    return {
+      periodo: "30d",
+      gerado_em: new Date().toISOString(),
+      klaviyo: {
+        receita_total: klaviyo.totalRevenue,
+        receita_campanhas: klaviyo.campaignRevenue,
+        receita_flows: klaviyo.flowRevenue,
+      },
+    }
+  } catch (err) {
+    log.error("Error fetching performance summary for briefing", err)
+    return { status: "erro", mensagem: "Erro ao buscar dados de performance." }
+  }
+}
+
+async function fetchAdAnalysis(storeId: string): Promise<Record<string, unknown>> {
+  try {
+    const credentials = await getStoreCredentials(storeId)
+    const result: Record<string, unknown> = {
+      periodo: "30d",
+      gerado_em: new Date().toISOString(),
+    }
+
+    const now = new Date()
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+    const startDate = thirtyDaysAgo.toISOString().split("T")[0]
+    const endDate = now.toISOString().split("T")[0]
+
+    // Meta Ads
+    if (credentials.meta_access_token && credentials.meta_ad_account_id) {
+      try {
+        const meta = createMetaAdsService({
+          access_token: credentials.meta_access_token,
+          ad_account_id: credentials.meta_ad_account_id,
+        })
+        const metrics = await meta.getDashboardMetrics({ since: startDate, until: endDate })
+        result.meta_ads = {
+          status: "conectado",
+          gasto_total: metrics.totalSpend,
+          receita_total: metrics.totalRevenue,
+          roas: metrics.roas,
+          impressoes: metrics.impressions,
+          cliques: metrics.clicks,
+          conversoes: metrics.conversions,
+          ctr: metrics.ctr,
+          cpc: metrics.cpc,
+        }
+      } catch (err) {
+        log.error("Error fetching Meta Ads for briefing", err)
+        result.meta_ads = { status: "erro", mensagem: "Erro ao buscar dados do Meta Ads." }
+      }
+    } else {
+      result.meta_ads = { status: "nao_conectado" }
+    }
+
+    // Google Ads
+    if (credentials.google_ads_credentials?.access_token && credentials.google_ads_credentials?.customer_id) {
+      try {
+        const gads = createGoogleAdsService(credentials.google_ads_credentials)
+        const metrics = await gads.getDashboardMetrics({ startDate, endDate })
+        result.google_ads = {
+          status: "conectado",
+          gasto_total: metrics.totalSpend,
+          receita_total: metrics.totalConversionsValue,
+          roas: metrics.roas,
+          impressoes: metrics.impressions,
+          cliques: metrics.clicks,
+          conversoes: metrics.totalConversions,
+          ctr: metrics.ctr,
+          cpc: metrics.cpc,
+        }
+      } catch (err) {
+        log.error("Error fetching Google Ads for briefing", err)
+        result.google_ads = { status: "erro", mensagem: "Erro ao buscar dados do Google Ads." }
+      }
+    } else {
+      result.google_ads = { status: "nao_conectado" }
+    }
+
+    // If nothing is connected
+    const metaStatus = (result.meta_ads as Record<string, unknown>)?.status
+    const gadsStatus = (result.google_ads as Record<string, unknown>)?.status
+    if (metaStatus === "nao_conectado" && gadsStatus === "nao_conectado") {
+      return { status: "sem_dados", mensagem: "Nenhuma plataforma de anúncios conectada." }
+    }
+
+    return result
+  } catch (err) {
+    log.error("Error fetching ad analysis for briefing", err)
+    return { status: "erro", mensagem: "Erro ao buscar dados de anúncios." }
+  }
+}
+
 function deriveAudienceProfile(audience: string | null, sensitivity: string | null) {
   const sensitivityLabel = sensitivity === "price" ? "sensível a preço" : sensitivity === "quality" ? "orientado a qualidade" : "equilibrado"
 
@@ -74,7 +186,13 @@ export async function generateBriefing(storeId: string): Promise<{ briefingId: s
     .eq("store_id", storeId)
     .single()
 
-  // 3. Build briefing data
+  // 3. Fetch performance data in parallel (non-blocking — errors return fallback objects)
+  const [performanceData, adAnalysisData] = await Promise.all([
+    fetchPerformanceSummary(storeId),
+    fetchAdAnalysis(storeId),
+  ])
+
+  // 4. Build briefing data
   const briefingData: BriefingData = {
     dados_loja: {
       nome: store.store_name,
@@ -108,19 +226,19 @@ export async function generateBriefing(storeId: string): Promise<{ briefingId: s
       notas: onboardingData?.additional_notes || null,
       conceito_frete: store.free_shipping_type || null,
     },
-    resumo_performance: {},
+    resumo_performance: performanceData,
     perfil_marca: deriveBrandProfile(onboardingData?.price_sensitivity || null, store.niche || null),
-    analise_anuncios: {},
+    analise_anuncios: adAnalysisData,
   }
 
-  // 4. Archive previous briefing
+  // 5. Archive previous briefing
   await adminClient
     .from("store_briefings")
     .update({ status: "archived" })
     .eq("store_id", storeId)
     .eq("status", "current")
 
-  // 5. Get next version number
+  // 6. Get next version number
   const { data: lastBriefing } = await adminClient
     .from("store_briefings")
     .select("version")
@@ -131,7 +249,7 @@ export async function generateBriefing(storeId: string): Promise<{ briefingId: s
 
   const nextVersion = (lastBriefing?.version || 0) + 1
 
-  // 6. Insert new briefing
+  // 7. Insert new briefing
   const { data: newBriefing, error: insertError } = await adminClient
     .from("store_briefings")
     .insert({

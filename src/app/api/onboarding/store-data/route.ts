@@ -81,7 +81,7 @@ export async function GET(request: NextRequest) {
  * POST /api/onboarding/store-data
  * Save form data. Accepts store_id (update existing) or client_id (create new store if needed).
  * Splits fields between client_stores and store_onboarding_data.
- * Auto-generates briefing when is_complete=true.
+ * Auto-generates briefing when is_complete=true or when a briefing already exists (auto-regenerate on edit).
  */
 export async function POST(request: NextRequest) {
   try {
@@ -216,13 +216,42 @@ export async function POST(request: NextRequest) {
       throw new AppError("Erro ao salvar dados do formulário", 500)
     }
 
-    // Auto-generate briefing when form is complete
+    // Auto-generate briefing:
+    // 1. When form is marked complete (is_complete=true)
+    // 2. When form data is saved and a briefing already exists (auto-regenerate on edit)
     let briefing = null
+    let shouldRegenerateBriefing = false
+
     if (body.is_complete) {
-      try {
-        briefing = await generateBriefing(storeId!)
-      } catch (err) {
-        log.error("Error generating briefing", err)
+      shouldRegenerateBriefing = true
+    } else if (storeId) {
+      // Check if a briefing already exists for this store — if so, regenerate on any save
+      const { data: existingBriefing } = await adminClient
+        .from("store_briefings")
+        .select("id")
+        .eq("store_id", storeId)
+        .eq("status", "current")
+        .limit(1)
+        .maybeSingle()
+
+      if (existingBriefing) {
+        shouldRegenerateBriefing = true
+      }
+    }
+
+    if (shouldRegenerateBriefing) {
+      if (body.is_complete) {
+        // Blocking: wait for briefing on form completion
+        try {
+          briefing = await generateBriefing(storeId!)
+        } catch (err) {
+          log.error("Error generating briefing", err)
+        }
+      } else {
+        // Fire-and-forget: don't block save response on edits
+        generateBriefing(storeId!)
+          .then((result) => log.info(`Briefing auto-regenerated for store ${storeId}, v${result.version}`))
+          .catch((err) => log.error("Error auto-regenerating briefing", err))
       }
     }
 
@@ -230,7 +259,11 @@ export async function POST(request: NextRequest) {
       store_id: storeId,
       onboarding_data: onboardingData,
       briefing,
-      message: body.is_complete ? "Formulário concluído e briefing gerado" : "Rascunho salvo",
+      message: body.is_complete
+        ? "Formulário concluído e briefing gerado"
+        : shouldRegenerateBriefing
+          ? "Dados salvos e briefing sendo atualizado"
+          : "Rascunho salvo",
     })
   } catch (error) {
     return errorResponse(request, error, "OnboardingStoreData")
