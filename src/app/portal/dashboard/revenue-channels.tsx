@@ -9,9 +9,7 @@ interface RevenueChannelsProps {
 }
 
 export function RevenueChannels({ klaviyo }: RevenueChannelsProps) {
-  const storeRevenue = klaviyo?.storeRevenue || 0
   const totalKlaviyoRevenue = klaviyo?.totalRevenue || 0
-  const attributionPercent = klaviyo?.recoveryRate || (storeRevenue > 0 ? (totalKlaviyoRevenue / storeRevenue) * 100 : 0)
 
   const flowRevenue = klaviyo?.flowRevenue || 0
   const campaignRevenue = klaviyo?.campaignRevenue || 0
@@ -58,9 +56,8 @@ export function RevenueChannels({ klaviyo }: RevenueChannelsProps) {
       </div>
 
       <div className="flex items-center justify-between mb-4 p-3 rounded-lg bg-muted/50">
-        <span className="text-sm text-muted-foreground">Total Atribuído</span>
+        <span className="text-sm text-muted-foreground">Receita Total</span>
         <div className="text-right">
-          <span className="text-lg font-bold text-info mr-2">{attributionPercent.toFixed(1)}%</span>
           <span className="text-sm text-foreground/80">{formatCurrency(totalKlaviyoRevenue)}</span>
         </div>
       </div>
