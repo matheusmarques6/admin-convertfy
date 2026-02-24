@@ -204,13 +204,13 @@ export default function PortalDashboardPage() {
         {/* Dashboard Sections */}
         <AnimatedContainer className="space-y-6">
           <AnimatedItem>
-            <HeroSection klaviyo={klaviyo} shopify={shopify} />
+            <HeroSection klaviyo={klaviyo} />
           </AnimatedItem>
 
           <AnimatedItem>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              <MetricCard title="Pedidos" value={formatNumber(shopify?.totalOrders || 0)} subtitle="+12% vs anterior" icon={ShoppingCart} />
-              <MetricCard title="Ticket Médio" value={formatCurrency(shopify?.averageOrderValue || 0)} subtitle="+5.2% vs anterior" icon={Receipt} />
+              <MetricCard title="Pedidos" value={formatNumber(klaviyo?.storeOrders || 0)} subtitle="no período" icon={ShoppingCart} />
+              <MetricCard title="Ticket Médio" value={formatCurrency(klaviyo?.storeOrders ? (klaviyo?.storeRevenue || 0) / klaviyo.storeOrders : 0)} subtitle="receita / pedidos" icon={Receipt} />
               <MetricCard title="Campanhas" value={klaviyo?.campaignsCount || 0} subtitle="enviadas" icon={Send} />
               <MetricCard title="Flows Ativos" value={klaviyo?.activeFlows || 0} subtitle={`de ${klaviyo?.flowsCount || 0} total`} icon={Zap} highlight />
               <MetricCard title="Engajamento" value={formatPercent(klaviyo?.engagementRate || 0)} subtitle="dos leads" icon={Users} />
@@ -224,7 +224,7 @@ export default function PortalDashboardPage() {
           <AnimatedItem>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <EmailPerformance klaviyo={klaviyo} />
-              <RevenueChannels klaviyo={klaviyo} shopify={shopify} />
+              <RevenueChannels klaviyo={klaviyo} />
             </div>
           </AnimatedItem>
 

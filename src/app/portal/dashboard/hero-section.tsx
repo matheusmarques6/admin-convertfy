@@ -1,16 +1,15 @@
 import { formatCurrency, formatCurrencyCompact } from "@/lib/utils/format"
 import { VariationBadge } from "./components"
-import type { KlaviyoData, ShopifyData } from "./types"
+import type { KlaviyoData } from "./types"
 
 interface HeroSectionProps {
   klaviyo?: KlaviyoData
-  shopify?: ShopifyData
 }
 
-export function HeroSection({ klaviyo, shopify }: HeroSectionProps) {
-  const totalShopifyRevenue = shopify?.totalRevenue || 0
+export function HeroSection({ klaviyo }: HeroSectionProps) {
+  const storeRevenue = klaviyo?.storeRevenue || 0
   const totalKlaviyoRevenue = klaviyo?.totalRevenue || 0
-  const attributionPercent = totalShopifyRevenue > 0 ? (totalKlaviyoRevenue / totalShopifyRevenue) * 100 : 0
+  const attributionPercent = klaviyo?.recoveryRate || (storeRevenue > 0 ? (totalKlaviyoRevenue / storeRevenue) * 100 : 0)
   const estimatedProfit = totalKlaviyoRevenue * 0.30
 
   const flowRevenue = klaviyo?.flowRevenue || 0
@@ -35,7 +34,7 @@ export function HeroSection({ klaviyo, shopify }: HeroSectionProps) {
             )}
           </div>
           <p className="text-sm text-muted-foreground">
-            vs Receita Total: {formatCurrency(totalShopifyRevenue)}
+            vs Receita Total: {formatCurrency(storeRevenue)}
           </p>
         </div>
         <div className="text-right">

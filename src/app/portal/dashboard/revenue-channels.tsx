@@ -2,17 +2,16 @@ import { Zap, Send, MessageSquare, BarChart3 } from "lucide-react"
 import { GlowCard } from "@/components/ui/glow-card"
 import { formatCurrency } from "@/lib/utils/format"
 import { ChannelCard, SimpleLineChart } from "./components"
-import type { KlaviyoData, ShopifyData } from "./types"
+import type { KlaviyoData } from "./types"
 
 interface RevenueChannelsProps {
   klaviyo?: KlaviyoData
-  shopify?: ShopifyData
 }
 
-export function RevenueChannels({ klaviyo, shopify }: RevenueChannelsProps) {
-  const totalShopifyRevenue = shopify?.totalRevenue || 0
+export function RevenueChannels({ klaviyo }: RevenueChannelsProps) {
+  const storeRevenue = klaviyo?.storeRevenue || 0
   const totalKlaviyoRevenue = klaviyo?.totalRevenue || 0
-  const attributionPercent = totalShopifyRevenue > 0 ? (totalKlaviyoRevenue / totalShopifyRevenue) * 100 : 0
+  const attributionPercent = klaviyo?.recoveryRate || (storeRevenue > 0 ? (totalKlaviyoRevenue / storeRevenue) * 100 : 0)
 
   const flowRevenue = klaviyo?.flowRevenue || 0
   const campaignRevenue = klaviyo?.campaignRevenue || 0

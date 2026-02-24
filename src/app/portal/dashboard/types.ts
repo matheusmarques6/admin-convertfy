@@ -6,6 +6,9 @@ export interface StoreOption {
 }
 
 export interface KlaviyoData {
+  storeRevenue: number
+  storeOrders: number
+  recoveryRate: number
   totalLeads: number
   engagedLeads: number
   engagementRate: number
