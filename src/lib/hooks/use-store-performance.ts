@@ -137,8 +137,9 @@ export function useStorePerformance(storeId: string, klaviyoConnected: boolean):
       flowRevenue: rv.flowRevenue ?? fs.totalRevenue ?? 0,
       totalRevenue: rv.klaviyoAttributedRevenue ?? rv.totalRevenue ?? ((cs.totalRevenue ?? 0) + (fs.totalRevenue ?? 0)),
       recoveryRate: rv.recoveryRate ?? 0,
-      totalCampaigns: overview.sentCampaigns ?? overview.campaignsInPeriod ?? cs.sentCampaigns ?? cs.totalCampaigns ?? 0,
-      totalFlows: overview.liveFlows ?? fs.liveFlows ?? fs.totalFlows ?? 0,
+      // Use campaigns/flows endpoint counts (period-filtered), NOT report overview (which counts ALL-TIME)
+      totalCampaigns: cs.sentCampaigns ?? cs.totalCampaigns ?? overview.campaignsInPeriod ?? 0,
+      totalFlows: fs.liveFlows ?? fs.totalFlows ?? overview.liveFlows ?? 0,
       avgOpenRate: cs.avgOpenRate ?? 0,
       avgClickRate: cs.avgClickRate ?? 0,
     }

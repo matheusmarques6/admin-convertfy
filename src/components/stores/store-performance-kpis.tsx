@@ -166,10 +166,10 @@ export function StorePerformanceKPIs() {
             {(totals.avgOpenRate > 0 || totals.avgClickRate > 0) && (
               <div className="flex gap-3 mt-2 pt-2 border-t border-border/50">
                 <span className="text-xs text-muted-foreground">
-                  Open: <span className="font-medium text-foreground">{totals.avgOpenRate.toFixed(1)}%</span>
+                  Open: <span className="font-medium text-foreground">{totals.avgOpenRate.toFixed(2)}%</span>
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  Click: <span className="font-medium text-foreground">{totals.avgClickRate.toFixed(1)}%</span>
+                  Click: <span className="font-medium text-foreground">{totals.avgClickRate.toFixed(2)}%</span>
                 </span>
               </div>
             )}

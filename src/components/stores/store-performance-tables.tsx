@@ -118,10 +118,10 @@ export function StorePerformanceTables() {
                         )}
                       </TableCell>
                       <TableCell className="text-right">
-                        {(c.openRate || 0).toFixed(1)}%
+                        {(c.openRate || 0).toFixed(2)}%
                       </TableCell>
                       <TableCell className="text-right">
-                        {(c.clickRate || 0).toFixed(1)}%
+                        {(c.clickRate || 0).toFixed(2)}%
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="font-medium">{formatCurrency(c.revenue)}</div>
@@ -172,7 +172,7 @@ export function StorePerformanceTables() {
                         {(delivered).toLocaleString("pt-BR")}
                       </TableCell>
                       <TableCell className="text-right">
-                        {(f.openRate || 0).toFixed(1)}%
+                        {(f.openRate || 0).toFixed(2)}%
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="font-medium">{formatCurrency(f.revenue)}</div>

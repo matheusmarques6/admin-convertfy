@@ -500,8 +500,8 @@ function CampaignsTab({
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <MetricCard label="Campanhas Enviadas" value={data.summary.sentCampaigns || data.summary.totalCampaigns || 0} />
           <MetricCard label="Total Receita" value={`R$ ${(data.summary.totalRevenue || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`} />
-          <MetricCard label="Taxa de Abertura" value={`${(data.summary.avgOpenRate || 0).toFixed(1)}%`} />
-          <MetricCard label="Taxa de Clique" value={`${(data.summary.avgClickRate || 0).toFixed(1)}%`} />
+          <MetricCard label="Taxa de Abertura" value={`${(data.summary.avgOpenRate || 0).toFixed(2)}%`} />
+          <MetricCard label="Taxa de Clique" value={`${(data.summary.avgClickRate || 0).toFixed(2)}%`} />
         </div>
       )}
 
@@ -530,8 +530,8 @@ function CampaignsTab({
                         </Badge>
                       </td>
                       <td className="py-2 text-right">{(c.recipients || 0).toLocaleString()}</td>
-                      <td className="py-2 text-right">{(c.openRate || 0).toFixed(1)}%</td>
-                      <td className="py-2 text-right">{(c.clickRate || 0).toFixed(1)}%</td>
+                      <td className="py-2 text-right">{(c.openRate || 0).toFixed(2)}%</td>
+                      <td className="py-2 text-right">{(c.clickRate || 0).toFixed(2)}%</td>
                       <td className="py-2 text-right">R$ {(c.revenue || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</td>
                     </tr>
                   ))}
@@ -612,8 +612,8 @@ function FlowsTab({
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <MetricCard label="Flows Ativos" value={data.summary.liveFlows || data.summary.totalFlows || 0} />
           <MetricCard label="Total Receita" value={`R$ ${(data.summary.totalRevenue || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`} />
-          <MetricCard label="Taxa de Abertura" value={`${(data.summary.avgOpenRate || 0).toFixed(1)}%`} />
-          <MetricCard label="Taxa de Clique" value={`${(data.summary.avgClickRate || 0).toFixed(1)}%`} />
+          <MetricCard label="Taxa de Abertura" value={`${(data.summary.avgOpenRate || 0).toFixed(2)}%`} />
+          <MetricCard label="Taxa de Clique" value={`${(data.summary.avgClickRate || 0).toFixed(2)}%`} />
         </div>
       )}
 
@@ -643,7 +643,7 @@ function FlowsTab({
                       </td>
                       <td className="py-2 pr-4 text-muted-foreground">{f.triggerType || "-"}</td>
                       <td className="py-2 text-right">{(f.recipients || 0).toLocaleString()}</td>
-                      <td className="py-2 text-right">{(f.openRate || 0).toFixed(1)}%</td>
+                      <td className="py-2 text-right">{(f.openRate || 0).toFixed(2)}%</td>
                       <td className="py-2 text-right">R$ {(f.revenue || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</td>
                     </tr>
                   ))}

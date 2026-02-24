@@ -222,12 +222,16 @@ async function getCampaignMetrics(
       spamComplaintRate: 0
     }
 
+    const newDelivered = existing.delivered + (stats.delivered || 0)
+    const newOpened = existing.opened + (stats.opens_unique || 0)
+    const calculatedOpenRate = newDelivered > 0 ? (newOpened / newDelivered) * 100 : 0
+
     campaignMetrics.set(campaignId, {
       recipients: existing.recipients + (stats.recipients || 0),
-      delivered: existing.delivered + (stats.delivered || 0),
+      delivered: newDelivered,
       deliveryRate: stats.delivery_rate || existing.deliveryRate,
-      opened: existing.opened + (stats.opens_unique || 0),
-      openRate: stats.click_to_open_rate || existing.openRate,
+      opened: newOpened,
+      openRate: calculatedOpenRate,
       clicked: existing.clicked + (stats.clicks_unique || 0),
       clickRate: stats.click_rate || existing.clickRate,
       clickToOpenRate: stats.click_to_open_rate || existing.clickToOpenRate,
@@ -342,7 +346,8 @@ export async function GET(request: NextRequest) {
           createdAt: campaign.createdAt,
           channel: campaign.channel,
           subject: campaign.subject,
-          ...metrics
+          ...metrics,
+          revenue: metrics.conversionValue,
         }
       })
 

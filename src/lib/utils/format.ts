@@ -26,7 +26,7 @@ export function formatNumber(value: number): string {
 }
 
 export function formatPercent(value: number): string {
-  return `${(value || 0).toFixed(1)}%`
+  return `${(value || 0).toFixed(2)}%`
 }
 
 export function formatDateRange(start: string, end: string): string {
