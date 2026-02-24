@@ -68,9 +68,9 @@ interface StoreData {
   store_url: string
   platform: string
   is_active: boolean
-  total_revenue_30d: number
   klaviyo_revenue_30d: number
-  result_percentage: number
+  campaign_revenue_30d: number
+  flow_revenue_30d: number
   revenue_status: 'loaded' | 'no_integration' | 'error'
   feedback_frequency: 'monthly' | '30_days'
   last_feedback_date: string | null
@@ -143,14 +143,6 @@ const getStatusBadge = (status: StoreData['feedback_status'], daysUntil: number 
         icon: Calendar,
       }
   }
-}
-
-// Get result percentage color
-const getResultColor = (percentage: number): string => {
-  if (percentage >= 20) return 'text-success'
-  if (percentage >= 10) return 'text-warning'
-  if (percentage > 0) return 'text-warning'
-  return 'text-muted-foreground'
 }
 
 export function StoreControlPanel() {
@@ -259,9 +251,9 @@ export function StoreControlPanel() {
           duration_minutes: feedbackForm.duration_minutes ? parseInt(feedbackForm.duration_minutes) : null,
           notes: feedbackForm.notes,
           action_items: feedbackForm.action_items,
-          result_percentage: selectedStore.result_percentage,
           klaviyo_revenue: selectedStore.klaviyo_revenue_30d,
-          total_revenue: selectedStore.total_revenue_30d,
+          campaign_revenue: selectedStore.campaign_revenue_30d,
+          flow_revenue: selectedStore.flow_revenue_30d,
         }),
       })
 
@@ -575,8 +567,8 @@ export function StoreControlPanel() {
             <thead>
               <tr className="bg-card/50 border-b border-border">
                 <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3">Loja / Cliente</th>
-                <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Resultado 30d</th>
-                <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Faturamento</th>
+                <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Receita Klaviyo 30d</th>
+                <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Campanhas / Flows</th>
                 <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Próximo Feedback</th>
                 <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Última Call</th>
                 <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Responsável</th>
@@ -631,10 +623,10 @@ export function StoreControlPanel() {
                         </div>
                       </td>
 
-                      {/* Result % */}
+                      {/* Klaviyo Revenue Total */}
                       <td className="px-4 py-4 text-center">
                         {store.revenue_status === 'no_integration' ? (
-                          <span className="text-sm text-muted-foreground">Sem integração</span>
+                          <span className="text-sm text-muted-foreground">Sem Klaviyo</span>
                         ) : store.revenue_status === 'error' ? (
                           <div className="flex flex-col items-center gap-1">
                             <AlertTriangle className="w-4 h-4 text-warning" />
@@ -642,27 +634,26 @@ export function StoreControlPanel() {
                           </div>
                         ) : (
                           <div className="flex flex-col items-center">
-                            <span className={`text-2xl font-bold ${getResultColor(store.result_percentage)}`}>
-                              {store.result_percentage.toFixed(1)}%
+                            <span className={`text-lg font-bold ${store.klaviyo_revenue_30d > 0 ? 'text-success' : 'text-muted-foreground'}`}>
+                              {formatCurrency(store.klaviyo_revenue_30d)}
                             </span>
-                            <span className="text-xs text-muted-foreground">da receita</span>
                           </div>
                         )}
                       </td>
 
-                      {/* Revenue */}
+                      {/* Campaign / Flow Breakdown */}
                       <td className="px-4 py-4 text-center">
                         {store.revenue_status === 'no_integration' ? (
                           <span className="text-sm text-muted-foreground">-</span>
                         ) : store.revenue_status === 'error' ? (
                           <span className="text-sm text-muted-foreground">-</span>
                         ) : (
-                          <div className="flex flex-col items-center">
-                            <span className="text-sm font-medium text-success">
-                              {formatCurrency(store.klaviyo_revenue_30d)}
+                          <div className="flex flex-col items-center gap-0.5">
+                            <span className="text-xs text-muted-foreground">
+                              Camp: {formatCurrency(store.campaign_revenue_30d)}
                             </span>
                             <span className="text-xs text-muted-foreground">
-                              de {formatCurrency(store.total_revenue_30d)}
+                              Flows: {formatCurrency(store.flow_revenue_30d)}
                             </span>
                           </div>
                         )}
@@ -802,14 +793,14 @@ export function StoreControlPanel() {
               {/* Result Summary */}
               <div className="rounded-lg bg-card border border-border p-4">
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Resultado atual (30d)</span>
-                  <span className={`text-xl font-bold ${getResultColor(selectedStore.result_percentage)}`}>
-                    {selectedStore.result_percentage.toFixed(1)}%
+                  <span className="text-sm text-muted-foreground">Receita Klaviyo (30d)</span>
+                  <span className={`text-xl font-bold ${selectedStore.klaviyo_revenue_30d > 0 ? 'text-success' : 'text-muted-foreground'}`}>
+                    {formatCurrency(selectedStore.klaviyo_revenue_30d)}
                   </span>
                 </div>
                 <div className="flex justify-between items-center mt-2 text-xs text-muted-foreground">
-                  <span>Receita Klaviyo: {formatCurrency(selectedStore.klaviyo_revenue_30d)}</span>
-                  <span>Total: {formatCurrency(selectedStore.total_revenue_30d)}</span>
+                  <span>Campanhas: {formatCurrency(selectedStore.campaign_revenue_30d)}</span>
+                  <span>Flows: {formatCurrency(selectedStore.flow_revenue_30d)}</span>
                 </div>
               </div>
 

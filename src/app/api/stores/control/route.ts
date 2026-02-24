@@ -1,10 +1,23 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
-import { getShopifyReportForStore } from "@/lib/integrations/shopify/report"
 import { getKlaviyoRevenueForStore } from "@/lib/integrations/klaviyo/report-summary"
 
 const log = logger.child("StoresControl")
+
+// Cache: keyed by request URL, TTL 10 minutes
+const storesCache = new Map<string, {
+  data: { stores: StoreWithResults[]; summary: Record<string, number> }
+  timestamp: number
+}>()
+const CACHE_TTL = 10 * 60 * 1000
+
+interface KlaviyoStoreRevenue {
+  storeId: string
+  totalRevenue: number
+  campaignRevenue: number
+  flowRevenue: number
+}
 
 interface StoreWithResults {
   id: string
@@ -16,10 +29,10 @@ interface StoreWithResults {
   store_url: string
   platform: string
   is_active: boolean
-  // Results
-  total_revenue_30d: number
+  // Results (Klaviyo only — same approach as /api/dashboard/total-revenue)
   klaviyo_revenue_30d: number
-  result_percentage: number
+  campaign_revenue_30d: number
+  flow_revenue_30d: number
   revenue_status: 'loaded' | 'no_integration' | 'error'
   // Feedback control
   feedback_frequency: 'monthly' | '30_days'
@@ -42,6 +55,14 @@ export async function GET(request: Request) {
     const supabase = await createClient()
     const { searchParams } = new URL(request.url)
     const activeOnly = searchParams.get('active_only') !== 'false'
+    const skipCache = searchParams.get('fresh') === 'true'
+
+    // Check cache (10 min TTL)
+    const cacheKey = `stores-control:${activeOnly}`
+    const cached = storesCache.get(cacheKey)
+    if (!skipCache && cached && (Date.now() - cached.timestamp) < CACHE_TTL) {
+      return NextResponse.json({ success: true, ...cached.data })
+    }
 
     // Fetch all stores with client info and feedback data
     let query = supabase
@@ -101,150 +122,144 @@ export async function GET(request: Request) {
       }
     }
 
-    // Process each store to calculate result percentage and feedback status
-    const storesWithResults: StoreWithResults[] = await Promise.all(
-      (stores || []).map(async (store) => {
-        // Handle the relationship data (can be object or null)
-        const clientData = store.clients as unknown as { id: string; name: string; company: string; status: string } | null
-        const profileData = store.profiles as unknown as { name: string } | null
-        const client = clientData || { id: '', name: null, company: '', status: '' }
-        const profile = profileData
+    // Fetch Klaviyo revenue in chunks of 5 (same approach as /api/dashboard/total-revenue)
+    // This avoids rate limiting on the Klaviyo API
+    const klaviyoStores = (stores || []).filter((s) => !!s.klaviyo_private_key)
+    const revenueMap = new Map<string, KlaviyoStoreRevenue>()
 
-        // Calculate feedback status
-        let feedbackStatus: 'on_track' | 'due_soon' | 'overdue' | 'never' = 'never'
-        let daysUntilFeedback: number | null = null
-
-        if (store.next_feedback_date) {
-          const nextDate = new Date(store.next_feedback_date)
-          const today = new Date()
-          today.setHours(0, 0, 0, 0)
-          nextDate.setHours(0, 0, 0, 0)
-
-          const diffTime = nextDate.getTime() - today.getTime()
-          daysUntilFeedback = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-
-          if (daysUntilFeedback < 0) {
-            feedbackStatus = 'overdue'
-          } else if (daysUntilFeedback <= 7) {
-            feedbackStatus = 'due_soon'
-          } else {
-            feedbackStatus = 'on_track'
-          }
-        } else if (store.last_feedback_date) {
-          // Has had feedback before but no next date set
-          feedbackStatus = 'overdue'
-        }
-
-        // Fetch revenue data (simplified - in production you'd cache this)
-        let totalRevenue = 0
-        let klaviyoRevenue = 0
-        let revenueStatus: 'loaded' | 'no_integration' | 'error' = 'no_integration'
-
-        // Check if integrations are configured
-        const hasShopify = !!store.shopify_access_token
-        const hasKlaviyo = !!store.klaviyo_private_key
-
-        // Fetch revenue data via direct module calls (no HTTP self-fetch)
-        if (hasShopify || hasKlaviyo) {
-          let hadError = false
-          const [shopifyResult, klaviyoResult] = await Promise.all([
-            hasShopify
-              ? getShopifyReportForStore(store.id, '30d').catch((err) => {
-                  log.error(`Error fetching Shopify for store ${store.id}:`, err)
-                  hadError = true
-                  return null
-                })
-              : Promise.resolve(null),
-            hasKlaviyo
-              ? getKlaviyoRevenueForStore(store.id, '30d').catch((err) => {
-                  log.error(`Error fetching Klaviyo for store ${store.id}:`, err)
-                  hadError = true
-                  return null
-                })
-              : Promise.resolve(null),
-          ])
-
-          if (shopifyResult?.connected && shopifyResult.summary) {
-            totalRevenue = shopifyResult.summary.totalRevenue || 0
-          }
-
-          if (klaviyoResult) {
-            klaviyoRevenue = klaviyoResult.totalRevenue || 0
-            // If we don't have Shopify, use Klaviyo's total as fallback
-            if (!hasShopify && klaviyoResult.totalRevenue > 0) {
-              totalRevenue = klaviyoResult.totalRevenue
+    const CHUNK_SIZE = 5
+    for (let i = 0; i < klaviyoStores.length; i += CHUNK_SIZE) {
+      const chunk = klaviyoStores.slice(i, i + CHUNK_SIZE)
+      const chunkResults = await Promise.all(
+        chunk.map(async (store) => {
+          try {
+            const revenue = await getKlaviyoRevenueForStore(store.id, '30d')
+            return {
+              storeId: store.id,
+              totalRevenue: revenue.totalRevenue,
+              campaignRevenue: revenue.campaignRevenue,
+              flowRevenue: revenue.flowRevenue,
             }
+          } catch (err) {
+            log.warn(`Failed to fetch Klaviyo revenue for store ${store.id}:`, err)
+            return { storeId: store.id, totalRevenue: -1, campaignRevenue: 0, flowRevenue: 0 }
           }
+        })
+      )
+      for (const result of chunkResults) {
+        revenueMap.set(result.storeId, result)
+      }
+    }
 
-          // Determine revenue status
-          if (shopifyResult || klaviyoResult) {
-            revenueStatus = 'loaded'
-          } else if (hadError) {
-            revenueStatus = 'error'
-          }
+    // Process each store with pre-fetched revenue data
+    const storesWithResults: StoreWithResults[] = (stores || []).map((store) => {
+      // Handle the relationship data (can be object or null)
+      const clientData = store.clients as unknown as { id: string; name: string; company: string; status: string } | null
+      const profileData = store.profiles as unknown as { name: string } | null
+      const client = clientData || { id: '', name: null, company: '', status: '' }
+      const profile = profileData
+
+      // Calculate feedback status
+      let feedbackStatus: 'on_track' | 'due_soon' | 'overdue' | 'never' = 'never'
+      let daysUntilFeedback: number | null = null
+
+      if (store.next_feedback_date) {
+        const nextDate = new Date(store.next_feedback_date)
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+        nextDate.setHours(0, 0, 0, 0)
+
+        const diffTime = nextDate.getTime() - today.getTime()
+        daysUntilFeedback = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+
+        if (daysUntilFeedback < 0) {
+          feedbackStatus = 'overdue'
+        } else if (daysUntilFeedback <= 7) {
+          feedbackStatus = 'due_soon'
+        } else {
+          feedbackStatus = 'on_track'
         }
+      } else if (store.last_feedback_date) {
+        feedbackStatus = 'overdue'
+      }
 
-        // Calculate result percentage
-        const resultPercentage = totalRevenue > 0 ? (klaviyoRevenue / totalRevenue) * 100 : 0
+      // Revenue from pre-fetched Klaviyo data
+      const hasShopify = !!store.shopify_access_token
+      const hasKlaviyo = !!store.klaviyo_private_key
+      const revenueData = revenueMap.get(store.id)
 
-        // Determine last call date (max of feedback and meeting)
-        const feedbackDate = store.last_feedback_date ? new Date(store.last_feedback_date) : null
-        const meetingDate = store.client_id && lastMeetingByClient.has(store.client_id)
-          ? new Date(lastMeetingByClient.get(store.client_id)!)
-          : null
+      let revenueStatus: 'loaded' | 'no_integration' | 'error' = 'no_integration'
+      let klaviyoRevenue = 0
+      let campaignRevenue = 0
+      let flowRevenue = 0
 
-        let lastCallDate: string | null = null
-        let lastCallSource: 'feedback' | 'meeting' | null = null
+      if (hasKlaviyo && revenueData) {
+        if (revenueData.totalRevenue === -1) {
+          revenueStatus = 'error'
+        } else {
+          revenueStatus = 'loaded'
+          klaviyoRevenue = revenueData.totalRevenue
+          campaignRevenue = revenueData.campaignRevenue
+          flowRevenue = revenueData.flowRevenue
+        }
+      }
 
-        if (feedbackDate && meetingDate) {
-          if (feedbackDate >= meetingDate) {
-            lastCallDate = store.last_feedback_date
-            lastCallSource = 'feedback'
-          } else {
-            lastCallDate = store.client_id ? lastMeetingByClient.get(store.client_id)! : null
-            lastCallSource = 'meeting'
-          }
-        } else if (feedbackDate) {
+      // Determine last call date (max of feedback and meeting)
+      const feedbackDate = store.last_feedback_date ? new Date(store.last_feedback_date) : null
+      const meetingDate = store.client_id && lastMeetingByClient.has(store.client_id)
+        ? new Date(lastMeetingByClient.get(store.client_id)!)
+        : null
+
+      let lastCallDate: string | null = null
+      let lastCallSource: 'feedback' | 'meeting' | null = null
+
+      if (feedbackDate && meetingDate) {
+        if (feedbackDate >= meetingDate) {
           lastCallDate = store.last_feedback_date
           lastCallSource = 'feedback'
-        } else if (meetingDate) {
+        } else {
           lastCallDate = store.client_id ? lastMeetingByClient.get(store.client_id)! : null
           lastCallSource = 'meeting'
         }
+      } else if (feedbackDate) {
+        lastCallDate = store.last_feedback_date
+        lastCallSource = 'feedback'
+      } else if (meetingDate) {
+        lastCallDate = store.client_id ? lastMeetingByClient.get(store.client_id)! : null
+        lastCallSource = 'meeting'
+      }
 
-        // Recalculate feedback_status using last_call_date if no next_feedback_date
-        if (!store.next_feedback_date && lastCallDate && feedbackStatus === 'never') {
-          feedbackStatus = 'overdue'
-        }
+      if (!store.next_feedback_date && lastCallDate && feedbackStatus === 'never') {
+        feedbackStatus = 'overdue'
+      }
 
-        return {
-          id: store.id,
-          client_id: store.client_id,
-          org_id: store.org_id,
-          client_name: client.name,
-          client_company: client.company || '',
-          store_name: store.store_name,
-          store_url: store.store_url,
-          platform: store.platform,
-          is_active: store.is_active,
-          total_revenue_30d: totalRevenue,
-          klaviyo_revenue_30d: klaviyoRevenue,
-          result_percentage: Math.round(resultPercentage * 10) / 10,
-          revenue_status: revenueStatus,
-          feedback_frequency: store.feedback_frequency || 'monthly',
-          last_feedback_date: store.last_feedback_date,
-          next_feedback_date: store.next_feedback_date,
-          last_feedback_by: store.last_feedback_by,
-          last_feedback_by_name: profile?.name || null,
-          feedback_status: feedbackStatus,
-          days_until_feedback: daysUntilFeedback,
-          last_call_date: lastCallDate,
-          last_call_source: lastCallSource,
-          has_shopify: hasShopify,
-          has_klaviyo: hasKlaviyo,
-        }
-      })
-    )
+      return {
+        id: store.id,
+        client_id: store.client_id,
+        org_id: store.org_id,
+        client_name: client.name,
+        client_company: client.company || '',
+        store_name: store.store_name,
+        store_url: store.store_url,
+        platform: store.platform,
+        is_active: store.is_active,
+        klaviyo_revenue_30d: klaviyoRevenue,
+        campaign_revenue_30d: campaignRevenue,
+        flow_revenue_30d: flowRevenue,
+        revenue_status: revenueStatus,
+        feedback_frequency: store.feedback_frequency || 'monthly',
+        last_feedback_date: store.last_feedback_date,
+        next_feedback_date: store.next_feedback_date,
+        last_feedback_by: store.last_feedback_by,
+        last_feedback_by_name: profile?.name || null,
+        feedback_status: feedbackStatus,
+        days_until_feedback: daysUntilFeedback,
+        last_call_date: lastCallDate,
+        last_call_source: lastCallSource,
+        has_shopify: hasShopify,
+        has_klaviyo: hasKlaviyo,
+      }
+    })
 
     // Sort by feedback status priority (overdue first, then due_soon, then never, then on_track)
     const statusPriority = { overdue: 0, due_soon: 1, never: 2, on_track: 3 }
@@ -258,8 +273,7 @@ export async function GET(request: Request) {
       return 0
     })
 
-    return NextResponse.json({
-      success: true,
+    const responseData = {
       stores: storesWithResults,
       summary: {
         total: storesWithResults.length,
@@ -268,7 +282,12 @@ export async function GET(request: Request) {
         on_track: storesWithResults.filter(s => s.feedback_status === 'on_track').length,
         never: storesWithResults.filter(s => s.feedback_status === 'never').length,
       }
-    })
+    }
+
+    // Cache result for 10 minutes
+    storesCache.set(cacheKey, { data: responseData, timestamp: Date.now() })
+
+    return NextResponse.json({ success: true, ...responseData })
   } catch (error) {
     log.error('Error in stores control API:', error)
     return NextResponse.json(
