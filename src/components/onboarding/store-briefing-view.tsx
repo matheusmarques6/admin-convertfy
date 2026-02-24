@@ -209,7 +209,7 @@ export function StoreBriefingView({
         const klaviyo = v.klaviyo as { receita_total?: number; receita_campanhas?: number; receita_flows?: number } | undefined
         return (
           <div className="space-y-2 text-sm">
-            {v.periodo && <InfoRow label="Período" value={`Últimos ${v.periodo === "30d" ? "30 dias" : String(v.periodo)}`} />}
+            {v.periodo ? <InfoRow label="Período" value={`Últimos ${v.periodo === "30d" ? "30 dias" : String(v.periodo)}`} /> : null}
             {klaviyo && (
               <div className="space-y-1">
                 <p className="font-medium text-xs text-muted-foreground uppercase tracking-wide">Klaviyo</p>
@@ -237,7 +237,7 @@ export function StoreBriefingView({
         const googleAds = v.google_ads as Record<string, unknown> | undefined
         return (
           <div className="space-y-3 text-sm">
-            {v.periodo && <InfoRow label="Período" value={`Últimos ${v.periodo === "30d" ? "30 dias" : String(v.periodo)}`} />}
+            {v.periodo ? <InfoRow label="Período" value={`Últimos ${v.periodo === "30d" ? "30 dias" : String(v.periodo)}`} /> : null}
             {metaAds && metaAds.status === "conectado" && (
               <div className="space-y-1">
                 <p className="font-medium text-xs text-muted-foreground uppercase tracking-wide">Meta Ads</p>
