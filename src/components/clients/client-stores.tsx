@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import {
   Store,
   Plus,
@@ -8,6 +9,7 @@ import {
   Edit,
   Key,
   ExternalLink,
+  Eye,
   Loader2,
   Check,
   X,
@@ -126,6 +128,7 @@ async function markOnboardingStepCompleted(
 }
 
 export function ClientStores({ clientId, clientName }: ClientStoresProps) {
+  const router = useRouter()
   const [stores, setStores] = useState<ClientStore[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -682,6 +685,15 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
 
                 {/* Actions */}
                 <div className="flex gap-2">
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => router.push(`/stores/${store.id}`)}
+                  >
+                    <Eye className="mr-2 h-4 w-4" />
+                    Ir para Loja
+                  </Button>
                   <Button
                     variant="outline"
                     size="sm"
