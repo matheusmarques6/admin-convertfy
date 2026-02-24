@@ -247,47 +247,49 @@ export async function fetchKlaviyoPerformance(
     })
   }
 
-  // ── Fetch campaign names (by ID filter for efficiency) ──
+  // ── Fetch campaign names (paginate all, then fallback to individual) ──
   const campNames = new Map<string, { name: string; sendTime: string }>()
   if (campAgg.size > 0) {
-    const campIds = Array.from(campAgg.keys())
-    // Fetch in batches of 50 to avoid URL length limits
-    for (let i = 0; i < campIds.length; i += 50) {
-      const batch = campIds.slice(i, i + 50)
-      const filterValue = batch.map(id => `"${id}"`).join(",")
-      await sleep(MIN_REQUEST_INTERVAL)
-      let page: string | null = `/campaigns/?filter=any(id,[${filterValue}])&page[size]=100`
-      while (page) {
-        const resp: NameListResp | null = await klaviyoRequest<NameListResp>(apiKey, page)
-        if (!resp?.data) break
-        for (const c of resp.data) {
-          campNames.set(c.id, { name: c.attributes.name, sendTime: c.attributes.send_time || "" })
+    await sleep(MIN_REQUEST_INTERVAL)
+    let page: string | null = "/campaigns/?page[size]=100"
+    while (page) {
+      const resp: NameListResp | null = await klaviyoRequest<NameListResp>(apiKey, page)
+      if (!resp?.data) break
+      for (const c of resp.data) {
+        campNames.set(c.id, { name: c.attributes.name, sendTime: c.attributes.send_time || "" })
+      }
+      page = resp.links?.next ? resp.links.next.replace(KLAVIYO_API_URL, "") : null
+      if (page) await sleep(500)
+    }
+    // Fallback: fetch individual campaigns not found in the list
+    const missingIds = Array.from(campAgg.keys()).filter(id => !campNames.has(id))
+    if (missingIds.length > 0) {
+      log.info(`[Klaviyo] ${missingIds.length} campaigns not found in list, fetching individually`)
+      for (const id of missingIds.slice(0, 20)) {
+        await sleep(MIN_REQUEST_INTERVAL)
+        type SingleResp = { data: { id: string; attributes: { name: string; send_time?: string | null } } }
+        const resp = await klaviyoRequest<SingleResp>(apiKey, `/campaigns/${id}/`)
+        if (resp?.data) {
+          campNames.set(resp.data.id, { name: resp.data.attributes.name, sendTime: resp.data.attributes.send_time || "" })
         }
-        page = resp.links?.next ? resp.links.next.replace(KLAVIYO_API_URL, "") : null
-        if (page) await sleep(500)
       }
     }
     log.info(`[Klaviyo] Campaign names fetched: ${campNames.size}/${campAgg.size}`)
   }
 
-  // ── Fetch flow names (by ID filter for efficiency) ──
+  // ── Fetch flow names (paginate all) ──
   const flowNames = new Map<string, { name: string; status: string }>()
   if (flowAgg.size > 0) {
-    const flowIds = Array.from(flowAgg.keys())
-    for (let i = 0; i < flowIds.length; i += 50) {
-      const batch = flowIds.slice(i, i + 50)
-      const filterValue = batch.map(id => `"${id}"`).join(",")
-      await sleep(MIN_REQUEST_INTERVAL)
-      let page: string | null = `/flows/?filter=any(id,[${filterValue}])&page[size]=100`
-      while (page) {
-        const resp: NameListResp | null = await klaviyoRequest<NameListResp>(apiKey, page)
-        if (!resp?.data) break
-        for (const f of resp.data) {
-          flowNames.set(f.id, { name: f.attributes.name, status: f.attributes.status || "unknown" })
-        }
-        page = resp.links?.next ? resp.links.next.replace(KLAVIYO_API_URL, "") : null
-        if (page) await sleep(500)
+    await sleep(MIN_REQUEST_INTERVAL)
+    let page: string | null = "/flows/?page[size]=100"
+    while (page) {
+      const resp: NameListResp | null = await klaviyoRequest<NameListResp>(apiKey, page)
+      if (!resp?.data) break
+      for (const f of resp.data) {
+        flowNames.set(f.id, { name: f.attributes.name, status: f.attributes.status || "unknown" })
       }
+      page = resp.links?.next ? resp.links.next.replace(KLAVIYO_API_URL, "") : null
+      if (page) await sleep(500)
     }
     log.info(`[Klaviyo] Flow names fetched: ${flowNames.size}/${flowAgg.size}`)
   }
