@@ -217,11 +217,11 @@ export async function GET(request: NextRequest) {
           .single()
 
         if (data && new Date(data.expires_at) > new Date()) {
-          // Skip cache if Klaviyo data has zero revenue (likely stale from API fix)
+          // Skip cache if Klaviyo data is stale (missing storeRevenue or zero revenue)
           if (cacheType === "klaviyo") {
             const cachedRevenue = (data.data as Record<string, unknown>)?.revenue as Record<string, number> | undefined
-            if (cachedRevenue && cachedRevenue.totalRevenue === 0) {
-              log.info(`[Cache SKIP] Zero-revenue klaviyo cache for store ${storeId}`)
+            if (cachedRevenue && (cachedRevenue.totalRevenue === 0 || cachedRevenue.storeRevenue === undefined)) {
+              log.info(`[Cache SKIP] Stale klaviyo cache for store ${storeId} (missing storeRevenue or zero revenue)`)
               return null
             }
           }
