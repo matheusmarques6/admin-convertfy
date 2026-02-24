@@ -34,7 +34,6 @@ async function getStore(id: string) {
       country,
       language,
       created_at,
-      updated_at,
       client_id,
       org_id,
       clients (
