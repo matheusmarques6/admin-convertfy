@@ -7,13 +7,13 @@ interface HeroSectionProps {
 }
 
 export function HeroSection({ klaviyo }: HeroSectionProps) {
-  // totalRevenue = flow + campaign attributed revenue (matches Klaviyo dashboard)
+  // totalRevenue = flow + campaign attributed revenue (matches Klaviyo dashboard "Resumo do desempenho comercial")
   const totalRevenue = klaviyo?.totalRevenue || 0
-  const estimatedProfit = totalRevenue * 0.30
-
   const flowRevenue = klaviyo?.flowRevenue || 0
   const campaignRevenue = klaviyo?.campaignRevenue || 0
   const smsRevenue = klaviyo?.smsRevenue || 0
+  const estimatedProfit = totalRevenue * 0.30
+
   const flowPercent = totalRevenue > 0 ? (flowRevenue / totalRevenue) * 100 : 0
   const campaignPercent = totalRevenue > 0 ? (campaignRevenue / totalRevenue) * 100 : 0
   const smsPercent = totalRevenue > 0 ? (smsRevenue / totalRevenue) * 100 : 0
@@ -36,9 +36,9 @@ export function HeroSection({ klaviyo }: HeroSectionProps) {
           </p>
         </div>
         <div className="text-right">
-          <p className="text-xs text-muted-foreground mb-1">Pedidos</p>
-          <p className="text-3xl font-bold text-info">{klaviyo?.storeOrders || 0}</p>
-          <p className="text-xs text-muted-foreground">no período</p>
+          <p className="text-xs text-muted-foreground mb-1">Atribuição</p>
+          <p className="text-3xl font-bold text-info">{flowPercent + campaignPercent > 0 ? "100" : "0"}%</p>
+          <p className="text-xs text-muted-foreground">do faturamento</p>
         </div>
       </div>
 
