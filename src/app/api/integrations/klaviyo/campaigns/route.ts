@@ -224,7 +224,9 @@ async function getCampaignMetrics(
 
     const newDelivered = existing.delivered + (stats.delivered || 0)
     const newOpened = existing.opened + (stats.opens_unique || 0)
+    const newClicked = existing.clicked + (stats.clicks_unique || 0)
     const calculatedOpenRate = newDelivered > 0 ? (newOpened / newDelivered) * 100 : 0
+    const calculatedClickRate = newDelivered > 0 ? (newClicked / newDelivered) * 100 : 0
 
     campaignMetrics.set(campaignId, {
       recipients: existing.recipients + (stats.recipients || 0),
@@ -232,8 +234,8 @@ async function getCampaignMetrics(
       deliveryRate: stats.delivery_rate || existing.deliveryRate,
       opened: newOpened,
       openRate: calculatedOpenRate,
-      clicked: existing.clicked + (stats.clicks_unique || 0),
-      clickRate: stats.click_rate || existing.clickRate,
+      clicked: newClicked,
+      clickRate: calculatedClickRate,
       clickToOpenRate: stats.click_to_open_rate || existing.clickToOpenRate,
       conversions: existing.conversions + (stats.conversions || 0),
       conversionRate: stats.conversion_rate || existing.conversionRate,
