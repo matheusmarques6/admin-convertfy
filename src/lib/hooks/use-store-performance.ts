@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo, createContext, useContext, useCallback } from "react"
-import { useKlaviyoCampaigns, useKlaviyoFlows } from "@/lib/hooks/use-api-data"
+import { useKlaviyoCampaigns, useKlaviyoFlows, useKlaviyoReport } from "@/lib/hooks/use-api-data"
 import type { CustomDateRange } from "@/lib/hooks/use-api-data"
 
 export const PERIODS = [
@@ -13,9 +13,12 @@ export const PERIODS = [
 ]
 
 export interface StorePerformanceTotals {
+  storeRevenue: number
+  storeOrders: number
   campaignRevenue: number
   flowRevenue: number
   totalRevenue: number
+  recoveryRate: number
   totalCampaigns: number
   totalFlows: number
   avgOpenRate: number
@@ -94,8 +97,18 @@ export function useStorePerformance(storeId: string, klaviyoConnected: boolean):
     mutate: mutateFlows,
   } = useKlaviyoFlows(effectiveStoreId, period, customDates)
 
+  const {
+    data: reportRaw,
+    isLoading: reportLoading,
+    isValidating: reportValidating,
+    error: reportError,
+    mutate: mutateReport,
+  } = useKlaviyoReport(effectiveStoreId, period, customDates)
+
   const campaignsData = campaignsRaw as { summary: Record<string, number>; campaigns: CampaignItem[] } | undefined
   const flowsData = flowsRaw as { summary: Record<string, number>; flows: FlowItem[] } | undefined
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const reportData = reportRaw as { revenue?: Record<string, number> } | undefined
 
   const campaigns = useMemo(() => {
     return campaignsData?.campaigns ?? []
@@ -110,32 +123,44 @@ export function useStorePerformance(storeId: string, klaviyoConnected: boolean):
 
     const cs = campaignsData?.summary ?? {}
     const fs = flowsData?.summary ?? {}
+    const rv = reportData?.revenue ?? {}
 
     const campaignRevenue = cs.totalRevenue ?? 0
     const flowRevenue = fs.totalRevenue ?? 0
+    const emailRevenue = campaignRevenue + flowRevenue
+    const storeRevenue = rv.storeRevenue ?? 0
+    const storeOrders = rv.storeOrders ?? 0
+    const recoveryRate = storeRevenue > 0 ? (emailRevenue / storeRevenue) * 100 : 0
 
     return {
+      storeRevenue,
+      storeOrders,
       campaignRevenue,
       flowRevenue,
-      totalRevenue: campaignRevenue + flowRevenue,
+      totalRevenue: emailRevenue,
+      recoveryRate,
       totalCampaigns: cs.sentCampaigns ?? cs.totalCampaigns ?? 0,
       totalFlows: fs.liveFlows ?? fs.totalFlows ?? 0,
       avgOpenRate: cs.avgOpenRate ?? 0,
       avgClickRate: cs.avgClickRate ?? 0,
     }
-  }, [campaignsData, flowsData])
+  }, [campaignsData, flowsData, reportData])
 
-  const loading = campaignsLoading || flowsLoading
-  const isValidating = campaignsValidating || flowsValidating
-  const error = (campaignsError || flowsError)
-    ? ((campaignsError instanceof Error ? campaignsError.message : "") +
-       (flowsError instanceof Error ? ` ${flowsError.message}` : "")).trim() || "Erro ao carregar dados"
+  const loading = campaignsLoading || flowsLoading || reportLoading
+  const isValidating = campaignsValidating || flowsValidating || reportValidating
+  const anyError = campaignsError || flowsError || reportError
+  const error = anyError
+    ? [campaignsError, flowsError, reportError]
+        .filter((e): e is Error => e instanceof Error)
+        .map(e => e.message)
+        .join(" ").trim() || "Erro ao carregar dados"
     : null
 
   const refresh = useCallback(() => {
     mutateCampaigns()
     mutateFlows()
-  }, [mutateCampaigns, mutateFlows])
+    mutateReport()
+  }, [mutateCampaigns, mutateFlows, mutateReport])
 
   return {
     totals,

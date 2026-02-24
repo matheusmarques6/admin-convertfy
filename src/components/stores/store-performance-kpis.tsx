@@ -6,7 +6,7 @@ import {
   TrendingUp,
   Mail,
   Percent,
-  DollarSign,
+  ShoppingCart,
   RefreshCw,
   AlertCircle,
 } from "lucide-react"
@@ -117,36 +117,34 @@ export function StorePerformanceKPIs() {
       {/* KPI Cards */}
       {totals && !loading && !error && (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {/* Receita Email Total */}
+          {/* Receita Total (Loja) */}
           <GlowCard color="info" intensity="intense" surfaceClassName="p-6">
             <div className="flex items-center justify-between pb-2">
-              <span className="text-sm font-medium text-muted-foreground">Receita Email</span>
-              <DollarSign className="h-4 w-4 text-info" />
+              <span className="text-sm font-medium text-muted-foreground">Receita Total</span>
+              <ShoppingCart className="h-4 w-4 text-info" />
             </div>
-            <p className="text-2xl font-bold">{formatCurrency(totals.totalRevenue)}</p>
+            <p className="text-2xl font-bold">{formatCurrency(totals.storeRevenue)}</p>
             <div className="flex gap-2 mt-1">
               <span className="text-xs text-muted-foreground">
-                Campanhas + Flows
+                {totals.storeOrders.toLocaleString("pt-BR")} pedidos
               </span>
             </div>
           </GlowCard>
 
-          {/* Revenue por Canal */}
+          {/* Revenue Email (Atribuído) */}
           <GlowCard color="success" intensity="intense" surfaceClassName="p-6">
             <div className="flex items-center justify-between pb-2">
-              <span className="text-sm font-medium text-muted-foreground">Receita Flows</span>
+              <span className="text-sm font-medium text-muted-foreground">Revenue Email</span>
               <TrendingUp className="h-4 w-4 text-success" />
             </div>
-            <p className="text-2xl font-bold">{formatCurrency(totals.flowRevenue)}</p>
+            <p className="text-2xl font-bold">{formatCurrency(totals.totalRevenue)}</p>
             <div className="flex gap-2 mt-1">
               <span className="text-xs text-muted-foreground">
                 Campanhas: {formatCurrency(totals.campaignRevenue)}
               </span>
-              {totals.totalRevenue > 0 && (
-                <span className="text-xs text-muted-foreground">
-                  ({((totals.flowRevenue / totals.totalRevenue) * 100).toFixed(0)}% do total)
-                </span>
-              )}
+              <span className="text-xs text-muted-foreground">
+                Flows: {formatCurrency(totals.flowRevenue)}
+              </span>
             </div>
           </GlowCard>
 
@@ -177,17 +175,17 @@ export function StorePerformanceKPIs() {
             )}
           </GlowCard>
 
-          {/* Taxa de Conversão (Campanhas) */}
+          {/* Recuperação Email % */}
           <GlowCard color="warning" intensity="intense" surfaceClassName="p-6">
             <div className="flex items-center justify-between pb-2">
-              <span className="text-sm font-medium text-muted-foreground">Engajamento</span>
+              <span className="text-sm font-medium text-muted-foreground">Recuperação Email</span>
               <Percent className="h-4 w-4 text-warning" />
             </div>
             <p className="text-2xl font-bold">
-              {totals.avgOpenRate.toFixed(1)}%
+              {totals.recoveryRate.toFixed(2)}%
             </p>
             <span className="text-xs text-muted-foreground">
-              Taxa de abertura média
+              {formatCurrency(totals.totalRevenue)} de {formatCurrency(totals.storeRevenue)}
             </span>
           </GlowCard>
         </div>
