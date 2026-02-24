@@ -12,7 +12,14 @@ import { StoreLinkActions } from "@/components/stores/store-link-actions"
 export const dynamic = "force-dynamic"
 
 async function getStore(id: string) {
-  const adminClient = createAdminClient()
+  let adminClient
+  try {
+    adminClient = createAdminClient()
+  } catch (err) {
+    // SERVICE_ROLE_KEY missing — this is a server configuration error, not a data issue
+    console.error("[StoreDetail] CRITICAL: createAdminClient() failed. Check SUPABASE_SERVICE_ROLE_KEY env var.", err)
+    throw new Error("Erro de configuração do servidor. Verifique as variáveis de ambiente.")
+  }
 
   // Use admin client to bypass RLS — admin/agent users may not have RLS access to client_stores
   const { data: store, error } = await adminClient
@@ -38,7 +45,12 @@ async function getStore(id: string) {
     .eq("id", id)
     .single()
 
-  if (error || !store) {
+  if (error) {
+    console.error("[StoreDetail] Error fetching store:", { message: error.message, code: error.code, details: error.details, hint: error.hint })
+    return null
+  }
+
+  if (!store) {
     return null
   }
 
@@ -50,11 +62,11 @@ async function getStore(id: string) {
     integrationStatus = Object.fromEntries(
       Object.entries(status).filter(([, v]) => v !== undefined)
     ) as Record<string, { connected: boolean; connected_at?: string }>
-  } catch {
-    // If store not found in service, leave empty
+  } catch (err) {
+    console.error("[StoreDetail] Error fetching integration status (non-critical):", err)
   }
 
-  // Fetch extra onboarding data
+  // Fetch extra onboarding data — Supabase queries return {data, error}, they don't throw
   const { data: onboardingData } = await adminClient
     .from("store_onboarding_data")
     .select("is_complete, filled_at")
