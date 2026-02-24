@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import {
   Store,
   BarChart3,
@@ -25,6 +25,7 @@ import { KlaviyoPerformanceReport } from "@/components/clients/klaviyo-performan
 import { useKlaviyoCampaigns, useKlaviyoFlows } from "@/lib/hooks/use-api-data"
 import { StoreBriefingTab } from "@/components/stores/store-briefing-tab"
 import { StoreFormTab } from "@/components/stores/store-form-tab"
+import { StoreAlertsTab } from "@/components/stores/store-alerts-tab"
 
 interface StoreDetailTabsProps {
   storeId: string
@@ -87,6 +88,23 @@ export function StoreDetailTabs({
   hasBriefing,
 }: StoreDetailTabsProps) {
   const [period, setPeriod] = useState<Period>("30d")
+  const [activeAlertsCount, setActiveAlertsCount] = useState(0)
+
+  // Fetch active alerts count
+  useEffect(() => {
+    async function fetchAlertCount() {
+      try {
+        const res = await fetch(`/api/stores/alerts/summary?store_id=${storeId}`)
+        const data = await res.json()
+        if (data.success) {
+          setActiveAlertsCount(data.summary.total_active)
+        }
+      } catch {
+        // Silently fail — badge just won't show
+      }
+    }
+    fetchAlertCount()
+  }, [storeId])
 
   const klaviyoConnected = integrationStatus.klaviyo?.connected || false
 
@@ -130,6 +148,15 @@ export function StoreDetailTabs({
         <TabsTrigger value="briefing">
           <BookOpen className="h-4 w-4 mr-2" />
           Briefing
+        </TabsTrigger>
+        <TabsTrigger value="alerts" className="relative">
+          <AlertTriangle className="h-4 w-4 mr-2" />
+          Alertas
+          {activeAlertsCount > 0 && (
+            <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground px-1">
+              {activeAlertsCount}
+            </span>
+          )}
         </TabsTrigger>
         <TabsTrigger value="settings">
           <Settings className="h-4 w-4 mr-2" />
@@ -336,6 +363,11 @@ export function StoreDetailTabs({
       {/* Briefing */}
       <TabsContent value="briefing">
         <StoreBriefingTab storeId={storeId} clientId={clientId} />
+      </TabsContent>
+
+      {/* Alerts */}
+      <TabsContent value="alerts">
+        <StoreAlertsTab storeId={storeId} storeName={storeName} />
       </TabsContent>
 
       {/* Settings */}

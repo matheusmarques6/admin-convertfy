@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/sync-reports",
       "schedule": "0 */2 * * *"
+    },
+    {
+      "path": "/api/cron/store-alerts-check",
+      "schedule": "0 8 * * 1"
     }
   ]
 }
