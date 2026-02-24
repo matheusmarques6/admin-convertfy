@@ -31,6 +31,7 @@ interface CampaignData {
   name: string
   sendTime: string
   recipients: number
+  delivered: number
   openRate: number
   clickRate: number
   revenue: number
@@ -39,6 +40,7 @@ interface CampaignData {
 interface FlowData {
   name: string
   status: string
+  delivered: number
   revenue: number
   openRate: number
   clickRate: number

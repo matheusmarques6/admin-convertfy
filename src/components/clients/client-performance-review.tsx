@@ -218,10 +218,10 @@ export function ClientPerformanceKPIs() {
               {(data.totals.avgOpenRate > 0 || data.totals.avgClickRate > 0) && (
                 <div className="flex gap-3 mt-2 pt-2 border-t border-border/50">
                   <span className="text-xs text-muted-foreground">
-                    Open: <span className="font-medium text-foreground">{(data.totals.avgOpenRate * 100).toFixed(1)}%</span>
+                    Open: <span className="font-medium text-foreground">{data.totals.avgOpenRate.toFixed(2)}%</span>
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    Click: <span className="font-medium text-foreground">{(data.totals.avgClickRate * 100).toFixed(1)}%</span>
+                    Click: <span className="font-medium text-foreground">{(data.totals.avgClickRate * 100).toFixed(2)}%</span>
                   </span>
                 </div>
               )}
@@ -234,7 +234,7 @@ export function ClientPerformanceKPIs() {
                 <Percent className="h-4 w-4 text-warning" />
               </div>
               <p className="text-2xl font-bold">
-                {(data.totals.recoveryRate ?? 0).toFixed(1)}%
+                {(data.totals.recoveryRate ?? 0).toFixed(2)}%
               </p>
               <span className="text-xs text-muted-foreground">
                 {formatCurrency(data.totals.attributedRevenue ?? data.totals.klaviyoRevenue)} de {formatCurrency(data.totals.storeRevenue ?? 0)}
@@ -376,7 +376,7 @@ export function ClientPerformanceTables() {
       {allCampaigns.length > 0 && (
         <GlowCard color="primary" intensity="subtle">
           <CardHeader>
-            <CardTitle className="text-base">Campanhas Recentes</CardTitle>
+            <CardTitle className="text-base">Mensagens recentes de campanha</CardTitle>
           </CardHeader>
           <CardContent>
             <Table>
@@ -384,39 +384,48 @@ export function ClientPerformanceTables() {
                 <TableRow>
                   <TableHead>Campanha</TableHead>
                   {data.stores.length > 1 && <TableHead>Loja</TableHead>}
-                  <TableHead className="text-right">Enviados</TableHead>
-                  <TableHead className="text-right">Open Rate</TableHead>
-                  <TableHead className="text-right">Click Rate</TableHead>
-                  <TableHead className="text-right">Revenue</TableHead>
+                  <TableHead className="text-right">Taxa de abertura</TableHead>
+                  <TableHead className="text-right">Taxa de cliques</TableHead>
+                  <TableHead className="text-right">Pedido Realizado</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {allCampaigns.slice(0, 10).map((campaign, i) => (
-                  <TableRow key={i}>
-                    <TableCell className="font-medium max-w-[200px] truncate">
-                      {campaign.name}
-                    </TableCell>
-                    {data.stores.length > 1 && (
-                      <TableCell>
-                        <Badge variant="outline" className="text-xs">
-                          {campaign.storeName}
-                        </Badge>
+                {allCampaigns.slice(0, 10).map((campaign, i) => {
+                  const delivered = campaign.delivered || campaign.recipients || 0
+                  const revenuePerRecipient = delivered > 0 ? campaign.revenue / delivered : 0
+                  const sentDate = campaign.sendTime ? formatSendDate(campaign.sendTime) : ""
+                  return (
+                    <TableRow key={i}>
+                      <TableCell className="max-w-[280px]">
+                        <div className="font-medium truncate" title={campaign.name}>
+                          {campaign.name}
+                        </div>
+                        {sentDate && (
+                          <div className="text-xs text-muted-foreground">Enviada em: {sentDate}</div>
+                        )}
                       </TableCell>
-                    )}
-                    <TableCell className="text-right">
-                      {campaign.recipients.toLocaleString("pt-BR")}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {(campaign.openRate * 100).toFixed(1)}%
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {(campaign.clickRate * 100).toFixed(1)}%
-                    </TableCell>
-                    <TableCell className="text-right font-medium">
-                      {formatCurrency(campaign.revenue)}
-                    </TableCell>
-                  </TableRow>
-                ))}
+                      {data.stores.length > 1 && (
+                        <TableCell>
+                          <Badge variant="outline" className="text-xs">
+                            {campaign.storeName}
+                          </Badge>
+                        </TableCell>
+                      )}
+                      <TableCell className="text-right">
+                        {campaign.openRate.toFixed(2)}%
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {(campaign.clickRate * 100).toFixed(2)}%
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="font-medium">{formatCurrency(campaign.revenue)}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {formatCurrency(revenuePerRecipient)} / destinatário
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
               </TableBody>
             </Table>
           </CardContent>
@@ -427,43 +436,55 @@ export function ClientPerformanceTables() {
       {allFlows.length > 0 && (
         <GlowCard color="primary" intensity="subtle">
           <CardHeader>
-            <CardTitle className="text-base">Top Flows por Revenue</CardTitle>
+            <CardTitle className="text-base">Fluxos com melhor desempenho</CardTitle>
           </CardHeader>
           <CardContent>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Flow</TableHead>
+                  <TableHead>Fluxo</TableHead>
                   {data.stores.length > 1 && <TableHead>Loja</TableHead>}
-                  <TableHead className="text-right">Open Rate</TableHead>
-                  <TableHead className="text-right">Click Rate</TableHead>
-                  <TableHead className="text-right">Revenue</TableHead>
+                  <TableHead className="text-right">Entregas</TableHead>
+                  <TableHead className="text-right">Abertura</TableHead>
+                  <TableHead className="text-right">Cliques</TableHead>
+                  <TableHead className="text-right">Pedido Realizado</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {allFlows.slice(0, 10).map((flow, i) => (
-                  <TableRow key={i}>
-                    <TableCell className="font-medium max-w-[200px] truncate">
-                      {flow.name}
-                    </TableCell>
-                    {data.stores.length > 1 && (
-                      <TableCell>
-                        <Badge variant="outline" className="text-xs">
-                          {flow.storeName}
-                        </Badge>
+                {allFlows.slice(0, 10).map((flow, i) => {
+                  const revenuePerRecipient = flow.delivered > 0 ? flow.revenue / flow.delivered : 0
+                  return (
+                    <TableRow key={i}>
+                      <TableCell className="max-w-[280px]">
+                        <div className="font-medium truncate" title={flow.name}>
+                          {flow.name}
+                        </div>
                       </TableCell>
-                    )}
-                    <TableCell className="text-right">
-                      {(flow.openRate * 100).toFixed(1)}%
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {(flow.clickRate * 100).toFixed(1)}%
-                    </TableCell>
-                    <TableCell className="text-right font-medium">
-                      {formatCurrency(flow.revenue)}
-                    </TableCell>
-                  </TableRow>
-                ))}
+                      {data.stores.length > 1 && (
+                        <TableCell>
+                          <Badge variant="outline" className="text-xs">
+                            {flow.storeName}
+                          </Badge>
+                        </TableCell>
+                      )}
+                      <TableCell className="text-right">
+                        {(flow.delivered || 0).toLocaleString("pt-BR")}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {flow.openRate.toFixed(2)}%
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {(flow.clickRate * 100).toFixed(2)}%
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="font-medium">{formatCurrency(flow.revenue)}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {formatCurrency(revenuePerRecipient)} / destinatário
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
               </TableBody>
             </Table>
           </CardContent>
@@ -482,4 +503,20 @@ export function ClientPerformanceReview({ clientId }: { clientId: string }) {
       <ClientPerformanceTables />
     </ClientPerformanceProvider>
   )
+}
+
+function formatSendDate(dateStr: string): string {
+  try {
+    const date = new Date(dateStr)
+    if (isNaN(date.getTime())) return ""
+    return date.toLocaleDateString("pt-BR", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+  } catch {
+    return ""
+  }
 }

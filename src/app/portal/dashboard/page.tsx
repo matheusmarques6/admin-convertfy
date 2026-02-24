@@ -218,7 +218,7 @@ export default function PortalDashboardPage() {
           </AnimatedItem>
 
           <AnimatedItem>
-            <ThreeColumns klaviyo={klaviyo} totalKlaviyoRevenue={totalKlaviyoRevenue} />
+            <ThreeColumns klaviyo={klaviyo} />
           </AnimatedItem>
 
           <AnimatedItem>
