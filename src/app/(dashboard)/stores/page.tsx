@@ -1,6 +1,6 @@
 import { Metadata } from "next"
 import { Store, TrendingUp, Phone } from "lucide-react"
-import { StoreControlPanel } from "@/components/stores/store-control-panel"
+import { StoresPageTabs } from "@/components/stores/stores-page-tabs"
 import { PagePermissionWrapper } from "@/components/page-permission-wrapper"
 
 export const metadata: Metadata = {
@@ -36,8 +36,8 @@ export default function StoresControlPage() {
         </div>
       </div>
 
-      {/* Store Control Panel */}
-      <StoreControlPanel />
+      {/* Stores Tabs: Lojas + Alertas */}
+      <StoresPageTabs />
     </div>
     </PagePermissionWrapper>
   )
