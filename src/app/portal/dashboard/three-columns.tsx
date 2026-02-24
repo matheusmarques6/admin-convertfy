@@ -1,5 +1,4 @@
-import { Zap, ChevronDown, BarChart3, Award, Flame } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { Zap, Send, BarChart3, Award, Flame } from "lucide-react"
 import { GlowCard } from "@/components/ui/glow-card"
 import { formatCurrencyCompact } from "@/lib/utils/format"
 import { FlowListItem, PerformanceRow } from "./components"
@@ -17,7 +16,7 @@ export function ThreeColumns({ klaviyo, totalKlaviyoRevenue }: ThreeColumnsProps
   const campaignPercent = totalKlaviyoRevenue > 0 ? (campaignRevenue / totalKlaviyoRevenue) * 100 : 0
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       {/* Top Flows */}
       <GlowCard color="success" intensity="moderate" surfaceClassName="p-5">
         <div className="flex items-center justify-between mb-4">
@@ -25,9 +24,7 @@ export function ThreeColumns({ klaviyo, totalKlaviyoRevenue }: ThreeColumnsProps
             <Zap className="h-4 w-4 text-primary" />
             Top Flows
           </h3>
-          <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground h-8 px-2">
-            Filtros <ChevronDown className="h-3 w-3 ml-1" />
-          </Button>
+          <span className="text-xs text-muted-foreground">Por receita no período</span>
         </div>
 
         <div className="space-y-1">
@@ -54,11 +51,45 @@ export function ThreeColumns({ klaviyo, totalKlaviyoRevenue }: ThreeColumnsProps
         </div>
       </GlowCard>
 
-      {/* Distribution Chart */}
+      {/* Top Campaigns */}
       <GlowCard color="info" intensity="moderate" surfaceClassName="p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
-            <BarChart3 className="h-4 w-4 text-info" />
+            <Send className="h-4 w-4 text-info" />
+            Top Campanhas
+          </h3>
+          <span className="text-xs text-muted-foreground">Por receita no período</span>
+        </div>
+
+        <div className="space-y-1">
+          {klaviyo?.recentCampaigns && klaviyo.recentCampaigns.length > 0 ? (
+            klaviyo.recentCampaigns.slice(0, 5).map((campaign, index) => {
+              const percent = totalKlaviyoRevenue > 0 ? (campaign.revenue / totalKlaviyoRevenue) * 100 : 0
+              const colors = ["bg-blue-500", "bg-cyan-500", "bg-indigo-500", "bg-violet-500", "bg-sky-500"]
+              return (
+                <FlowListItem
+                  key={campaign.id}
+                  name={campaign.name}
+                  value={campaign.revenue}
+                  percent={percent}
+                  color={colors[index % colors.length]}
+                />
+              )
+            })
+          ) : (
+            <div className="text-center py-8">
+              <Send className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
+              <p className="text-sm text-muted-foreground">Nenhuma campanha com receita</p>
+            </div>
+          )}
+        </div>
+      </GlowCard>
+
+      {/* Distribution Chart */}
+      <GlowCard color="primary" intensity="moderate" surfaceClassName="p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
+            <BarChart3 className="h-4 w-4 text-primary" />
             Distribuição
           </h3>
         </div>
@@ -90,10 +121,10 @@ export function ThreeColumns({ klaviyo, totalKlaviyoRevenue }: ThreeColumnsProps
       </GlowCard>
 
       {/* Performance Table */}
-      <GlowCard color="primary" intensity="moderate" surfaceClassName="p-5">
+      <GlowCard color="warning" intensity="moderate" surfaceClassName="p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
-            <Award className="h-4 w-4 text-primary" />
+            <Award className="h-4 w-4 text-amber-400" />
             Performance
           </h3>
           <div className="flex gap-1">
