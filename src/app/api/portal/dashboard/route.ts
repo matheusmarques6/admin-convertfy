@@ -324,11 +324,18 @@ export async function GET(request: NextRequest) {
 
     // Helper to map Klaviyo data to dashboard format
     const mapKlaviyoData = (klaviyoData: Record<string, unknown>) => {
-      const totalKlaviyoRevenue = (klaviyoData.revenue as Record<string, number>)?.totalRevenue || 0
-      const flowRevenue = (klaviyoData.revenue as Record<string, number>)?.flowRevenue || 0
-      const campaignRevenue = (klaviyoData.revenue as Record<string, number>)?.campaignRevenue || 0
+      const revenueData = klaviyoData.revenue as Record<string, number> | undefined
+      const storeRevenue = revenueData?.storeRevenue || 0
+      const storeOrders = revenueData?.storeOrders || 0
+      const totalKlaviyoRevenue = revenueData?.totalRevenue || 0
+      const flowRevenue = revenueData?.flowRevenue || 0
+      const campaignRevenue = revenueData?.campaignRevenue || 0
+      const recoveryRate = revenueData?.recoveryRate || 0
 
       return {
+        storeRevenue,
+        storeOrders,
+        recoveryRate,
         totalLeads: (klaviyoData.overview as Record<string, number>)?.totalSubscribers || 0,
         engagedLeads: (klaviyoData.engagement as Record<string, number>)?.engagedProfiles || 0,
         engagementRate: parseFloat(String((klaviyoData.engagement as Record<string, unknown>)?.engagementRate || "0")),
@@ -490,6 +497,9 @@ export async function GET(request: NextRequest) {
           const totalClicked = klaviyoDataList.reduce((sum, k) => sum + (k.clicked || 0), 0)
 
           response.klaviyo = {
+            storeRevenue: klaviyoDataList.reduce((sum, k) => sum + (k.storeRevenue || 0), 0),
+            storeOrders: klaviyoDataList.reduce((sum, k) => sum + (k.storeOrders || 0), 0),
+            recoveryRate: 0, // Recalculated below
             totalLeads: klaviyoDataList.reduce((sum, k) => sum + (k.totalLeads || 0), 0),
             engagedLeads: klaviyoDataList.reduce((sum, k) => sum + (k.engagedLeads || 0), 0),
             engagementRate: klaviyoDataList.length > 0
@@ -527,11 +537,16 @@ export async function GET(request: NextRequest) {
 
           // Recalculate percentages
           const totalKlaviyoRevenue = (response.klaviyo as Record<string, unknown>).totalRevenue as number
+          const aggStoreRevenue = (response.klaviyo as Record<string, unknown>).storeRevenue as number
           if (totalKlaviyoRevenue > 0) {
             (response.klaviyo as Record<string, unknown>).campaignRevenuePercent =
               (((response.klaviyo as Record<string, unknown>).campaignRevenue as number) / totalKlaviyoRevenue) * 100;
             (response.klaviyo as Record<string, unknown>).flowRevenuePercent =
               (((response.klaviyo as Record<string, unknown>).flowRevenue as number) / totalKlaviyoRevenue) * 100
+          }
+          if (aggStoreRevenue > 0) {
+            (response.klaviyo as Record<string, unknown>).recoveryRate =
+              (totalKlaviyoRevenue / aggStoreRevenue) * 100
           }
         }
 

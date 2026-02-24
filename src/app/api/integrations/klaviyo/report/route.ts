@@ -1051,6 +1051,59 @@ export async function GET(request: NextRequest) {
     const campaignReport = await getCampaignValuesReport(apiKey, metricId, startDateStr, endDateStr, timezoneOffset)
     log.info(`[Klaviyo] Campaign report done: revenue=${campaignReport.totalRevenue}, delivered=${campaignReport.totalDelivered}`)
 
+    // Fetch store-wide revenue via metric-aggregates (ALL Placed Orders, not just email-attributed)
+    await sleep(1500)
+    let storeRevenue = 0
+    let storeOrders = 0
+    try {
+      const metricAggResponse = await klaviyoRequest<{
+        data?: {
+          attributes?: {
+            data?: Array<{
+              measurements?: Record<string, number | number[]>
+            }>
+          }
+        }
+      }>(apiKey, "/metric-aggregates/", {
+        method: "POST",
+        logTag: "ReportMetricAgg",
+        body: {
+          data: {
+            type: "metric-aggregate",
+            attributes: {
+              metric_id: metricId,
+              measurements: ["sum_value", "count"],
+              filter: [
+                `greater-or-equal(datetime,${startDateStr}T00:00:00)`,
+                `less-than(datetime,${endDateStr}T23:59:59)`,
+              ],
+              timezone: accountInfo.timezone || "America/Sao_Paulo",
+            },
+          },
+        },
+      })
+
+      const aggData = metricAggResponse?.data?.attributes?.data || []
+      for (const row of aggData) {
+        const measurements = row.measurements || {}
+        const vals = measurements.sum_value
+        const cnts = measurements.count
+        if (Array.isArray(vals)) {
+          for (const v of vals) storeRevenue += Number(v) || 0
+        } else {
+          storeRevenue += Number(vals) || 0
+        }
+        if (Array.isArray(cnts)) {
+          for (const c of cnts) storeOrders += Number(c) || 0
+        } else {
+          storeOrders += Number(cnts) || 0
+        }
+      }
+      log.info(`[Klaviyo] Metric aggregates: storeRevenue=${storeRevenue.toFixed(2)}, storeOrders=${storeOrders}`)
+    } catch (e) {
+      log.error("[Klaviyo] Metric aggregates failed (non-fatal):", e)
+    }
+
     // Merge flow data with names
     const flowsWithNames = flowReport.flows.map(fr => {
       const flowInfo = allFlows.find(f => f.id === fr.flowId)
@@ -1124,6 +1177,8 @@ export async function GET(request: NextRequest) {
       },
 
       revenue: {
+        storeRevenue,
+        storeOrders,
         totalRevenue: totalKlaviyoRevenue,
         klaviyoAttributedRevenue: totalKlaviyoRevenue,
         campaignRevenue: campaignReport.totalRevenue,
@@ -1131,6 +1186,7 @@ export async function GET(request: NextRequest) {
         totalOrders: totalConversions,
         klaviyoAttributedOrders: totalConversions,
         averageOrderValue: totalConversions > 0 ? totalKlaviyoRevenue / totalConversions : 0,
+        recoveryRate: storeRevenue > 0 ? (totalKlaviyoRevenue / storeRevenue) * 100 : 0,
       },
 
       emailPerformance: {
