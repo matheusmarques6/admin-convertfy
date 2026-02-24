@@ -107,8 +107,10 @@ export function useStorePerformance(storeId: string, klaviyoConnected: boolean):
 
   const campaignsData = campaignsRaw as { summary: Record<string, number>; campaigns: CampaignItem[] } | undefined
   const flowsData = flowsRaw as { summary: Record<string, number>; flows: FlowItem[] } | undefined
+
+  // Klaviyo report returns pre-calculated revenue & recovery data from the backend
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const reportData = reportRaw as { revenue?: Record<string, number> } | undefined
+  const reportData = reportRaw as any
 
   const campaigns = useMemo(() => {
     return campaignsData?.campaigns ?? []
@@ -119,28 +121,24 @@ export function useStorePerformance(storeId: string, klaviyoConnected: boolean):
   }, [flowsData])
 
   const totals = useMemo<StorePerformanceTotals | null>(() => {
-    if (!campaignsData && !flowsData) return null
+    // Use report as primary source for revenue KPIs (backend calculates from Klaviyo metric-aggregates)
+    // Fall back to campaigns/flows summaries for counts and rates
+    if (!reportData && !campaignsData && !flowsData) return null
 
+    const rv = reportData?.revenue ?? {}
     const cs = campaignsData?.summary ?? {}
     const fs = flowsData?.summary ?? {}
-    const rv = reportData?.revenue ?? {}
-
-    const campaignRevenue = cs.totalRevenue ?? 0
-    const flowRevenue = fs.totalRevenue ?? 0
-    const emailRevenue = campaignRevenue + flowRevenue
-    const storeRevenue = rv.storeRevenue ?? 0
-    const storeOrders = rv.storeOrders ?? 0
-    const recoveryRate = storeRevenue > 0 ? (emailRevenue / storeRevenue) * 100 : 0
+    const overview = reportData?.overview ?? {}
 
     return {
-      storeRevenue,
-      storeOrders,
-      campaignRevenue,
-      flowRevenue,
-      totalRevenue: emailRevenue,
-      recoveryRate,
-      totalCampaigns: cs.sentCampaigns ?? cs.totalCampaigns ?? 0,
-      totalFlows: fs.liveFlows ?? fs.totalFlows ?? 0,
+      storeRevenue: rv.storeRevenue ?? 0,
+      storeOrders: rv.storeOrders ?? 0,
+      campaignRevenue: rv.campaignRevenue ?? cs.totalRevenue ?? 0,
+      flowRevenue: rv.flowRevenue ?? fs.totalRevenue ?? 0,
+      totalRevenue: rv.klaviyoAttributedRevenue ?? rv.totalRevenue ?? ((cs.totalRevenue ?? 0) + (fs.totalRevenue ?? 0)),
+      recoveryRate: rv.recoveryRate ?? 0,
+      totalCampaigns: overview.sentCampaigns ?? overview.campaignsInPeriod ?? cs.sentCampaigns ?? cs.totalCampaigns ?? 0,
+      totalFlows: overview.liveFlows ?? fs.liveFlows ?? fs.totalFlows ?? 0,
       avgOpenRate: cs.avgOpenRate ?? 0,
       avgClickRate: cs.avgClickRate ?? 0,
     }
