@@ -3,6 +3,11 @@ import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
+import { decryptStoreCredentials } from "@/lib/crypto"
+import {
+  fetchKlaviyoPerformance,
+  type KlaviyoPerformanceData,
+} from "@/lib/services/klaviyo-performance.service"
 
 const log = logger.child("PortalDashboard")
 
@@ -19,10 +24,6 @@ const CACHE_TTL: Record<string, number> = {
   "90d": 60,  // 1 hour for quarterly data
   "12m": 120, // 2 hours for yearly data
 }
-
-
-
-
 
 // GET - Get portal dashboard data
 export async function GET(request: NextRequest) {
@@ -83,8 +84,9 @@ export async function GET(request: NextRequest) {
     // Fetch all base data in parallel using admin client to bypass RLS
     const [
       clientData,
-      storesData,
+      rawStoresData,
       invoicesData,
+      chargesData,
       meetingsData,
       upcomingCampaignsData,
     ] = await Promise.all([
@@ -95,7 +97,7 @@ export async function GET(request: NextRequest) {
         .eq("id", clientId)
         .single(),
 
-      // Stores with credentials
+      // Stores with credentials (will be decrypted)
       adminClient
         .from("client_stores")
         .select("id, store_name, platform, store_url, is_active, klaviyo_private_key, klaviyo_api_key, shopify_access_token, shopify_store_domain")
@@ -110,6 +112,13 @@ export async function GET(request: NextRequest) {
         .eq("client_id", clientId)
         .order("due_date", { ascending: false })
         .limit(20),
+
+      // Client charges (same as performance route)
+      adminClient
+        .from("client_charges")
+        .select("value, status")
+        .eq("client_id", clientId)
+        .limit(200),
 
       // Meetings: upcoming scheduled + recent completed (with notes)
       adminClient
@@ -132,19 +141,27 @@ export async function GET(request: NextRequest) {
     ])
 
     const client = clientData.data
-    const stores = storesData.data || []
+    const rawStores = rawStoresData.data || []
+    const stores = rawStores.map(s => decryptStoreCredentials(s))
     const invoices = invoicesData.data || []
+    const charges = chargesData.data || []
     const meetings = meetingsData.data || []
     const upcomingCampaigns = upcomingCampaignsData.data || []
 
-    // Calculate invoice stats
+    // Calculate invoice + charges stats (same as performance route)
     const pendingInvoices = invoices.filter((i) => i.status === "pending")
     const overdueInvoices = invoices.filter((i) => i.status === "overdue")
     const paidInvoices = invoices.filter((i) => i.status === "paid")
 
-    const totalPending = pendingInvoices.reduce((sum, i) => sum + (i.amount || 0), 0)
-    const totalOverdue = overdueInvoices.reduce((sum, i) => sum + (i.amount || 0), 0)
-    const totalPaid = paidInvoices.reduce((sum, i) => sum + (i.amount || 0), 0)
+    const totalPending =
+      pendingInvoices.reduce((sum, i) => sum + (i.amount || 0), 0) +
+      charges.filter(c => c.status === "pending").reduce((s, c) => s + Number(c.value), 0)
+    const totalOverdue =
+      overdueInvoices.reduce((sum, i) => sum + (i.amount || 0), 0) +
+      charges.filter(c => c.status === "overdue").reduce((s, c) => s + Number(c.value), 0)
+    const totalPaid =
+      paidInvoices.reduce((sum, i) => sum + (i.amount || 0), 0) +
+      charges.filter(c => c.status === "paid").reduce((s, c) => s + Number(c.value), 0)
 
     // Prepare the base response
     const response: Record<string, unknown> = {
@@ -205,7 +222,8 @@ export async function GET(request: NextRequest) {
       lastUpdated: new Date().toISOString(),
     }
 
-    // Helper to get cached data
+    // ─── Helper: Cache ─────────────────────────────────────────────────────────
+
     const getCachedData = async (storeId: string, cacheType: string) => {
       try {
         const { data } = await adminClient
@@ -217,16 +235,17 @@ export async function GET(request: NextRequest) {
           .single()
 
         if (data && new Date(data.expires_at) > new Date()) {
-          // Skip cache if Klaviyo data is stale (missing storeRevenue or zero revenue)
-          if (cacheType === "klaviyo") {
-            const cachedRevenue = (data.data as Record<string, unknown>)?.revenue as Record<string, number> | undefined
-            if (cachedRevenue && (cachedRevenue.totalRevenue === 0 || cachedRevenue.storeRevenue === undefined)) {
-              log.info(`[Cache SKIP] Stale klaviyo cache for store ${storeId} (missing storeRevenue or zero revenue)`)
+          const cached = data.data as Record<string, unknown>
+          // Skip stale cache (zero revenue)
+          if (cacheType === "klaviyo_perf") {
+            const perf = cached as unknown as KlaviyoPerformanceData
+            if (perf.storeRevenue === 0 && perf.attributedRevenue === 0) {
+              log.info(`[Cache SKIP] Stale klaviyo_perf cache for store ${storeId}`)
               return null
             }
           }
           log.debug(`[Cache HIT] ${cacheType} for store ${storeId}`)
-          return data.data
+          return cached
         }
         log.debug(`[Cache MISS] ${cacheType} for store ${storeId}`)
         return null
@@ -235,8 +254,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Helper to save data to cache
-    const saveToCache = async (storeId: string, cacheType: string, data: Record<string, unknown>) => {
+    const saveToCache = async (cacheStoreId: string, cacheType: string, data: Record<string, unknown>) => {
       try {
         const ttlMinutes = CACHE_TTL[period] || 30
         const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000).toISOString()
@@ -244,7 +262,7 @@ export async function GET(request: NextRequest) {
         await adminClient
           .from("dashboard_cache")
           .upsert({
-            store_id: storeId,
+            store_id: cacheStoreId,
             cache_type: cacheType,
             period,
             data,
@@ -252,50 +270,43 @@ export async function GET(request: NextRequest) {
           }, {
             onConflict: "store_id,cache_type,period"
           })
-        log.debug(`[Cache SAVE] ${cacheType} for store ${storeId}, TTL: ${ttlMinutes}min`)
+        log.debug(`[Cache SAVE] ${cacheType} for store ${cacheStoreId}, TTL: ${ttlMinutes}min`)
       } catch (error) {
-        log.error(`[Cache ERROR] Failed to save ${cacheType} for store ${storeId}:`, error)
+        log.error(`[Cache ERROR] Failed to save ${cacheType} for store ${cacheStoreId}:`, error)
       }
     }
 
-    // Helper function to fetch store data with caching
-    const fetchStoreData = async (store: typeof stores[0], baseUrl: string, cookieHeader: string) => {
-      const storeData: {
-        klaviyo: Record<string, unknown> | null
-        shopify: Record<string, unknown> | null
-      } = { klaviyo: null, shopify: null }
+    // ─── Helper: Fetch store data (Klaviyo via shared service, Shopify via HTTP) ─
 
-      // Fetch Klaviyo data if configured
-      const hasKlaviyo = !!(store.klaviyo_private_key || store.klaviyo_api_key)
-      if (hasKlaviyo) {
-        // Try cache first
-        const cachedKlaviyo = await getCachedData(store.id, "klaviyo")
-        if (cachedKlaviyo) {
-          storeData.klaviyo = cachedKlaviyo as Record<string, unknown>
+    const baseUrl = request.nextUrl.origin
+    const cookieHeader = request.headers.get("cookie") || ""
+
+    const fetchStoreData = async (store: typeof stores[0]) => {
+      const storeData: {
+        klaviyoPerf: KlaviyoPerformanceData | null
+        shopify: Record<string, unknown> | null
+      } = { klaviyoPerf: null, shopify: null }
+
+      // Klaviyo: use shared service directly (same logic as client performance)
+      const apiKey = store.klaviyo_private_key || store.klaviyo_api_key
+      if (apiKey) {
+        const cached = await getCachedData(store.id, "klaviyo_perf")
+        if (cached) {
+          storeData.klaviyoPerf = cached as unknown as KlaviyoPerformanceData
         } else {
           try {
-            const klaviyoResponse = await fetch(
-              `${baseUrl}/api/integrations/klaviyo/report?store_id=${store.id}&period=${period}`,
-              { headers: { Cookie: cookieHeader } }
-            )
-            if (klaviyoResponse.ok) {
-              const data = await klaviyoResponse.json()
-              if (data.success && data.connected) {
-                storeData.klaviyo = data
-                // Save to cache in background
-                saveToCache(store.id, "klaviyo", data)
-              }
-            }
+            const perf = await fetchKlaviyoPerformance(apiKey, startDateStr, endDateStr)
+            storeData.klaviyoPerf = perf
+            saveToCache(store.id, "klaviyo_perf", perf as unknown as Record<string, unknown>)
           } catch (error) {
-            log.error(`[Portal Dashboard] Klaviyo fetch error for store ${store.id}:`, error)
+            log.error(`[Portal] Klaviyo fetch error for store ${store.id}:`, error)
           }
         }
       }
 
-      // Fetch Shopify data if configured
+      // Shopify: keep HTTP call (portal needs detailed data: topProducts, coupons, UTM, etc.)
       const hasShopify = !!(store.shopify_access_token && store.shopify_store_domain)
       if (hasShopify) {
-        // Try cache first
         const cachedShopify = await getCachedData(store.id, "shopify")
         if (cachedShopify) {
           storeData.shopify = cachedShopify as Record<string, unknown>
@@ -309,12 +320,11 @@ export async function GET(request: NextRequest) {
               const data = await shopifyResponse.json()
               if (data.success && data.connected) {
                 storeData.shopify = data
-                // Save to cache in background
                 saveToCache(store.id, "shopify", data)
               }
             }
           } catch (error) {
-            log.error(`[Portal Dashboard] Shopify fetch error for store ${store.id}:`, error)
+            log.error(`[Portal] Shopify fetch error for store ${store.id}:`, error)
           }
         }
       }
@@ -322,70 +332,65 @@ export async function GET(request: NextRequest) {
       return storeData
     }
 
-    // Helper to map Klaviyo data to dashboard format
-    const mapKlaviyoData = (klaviyoData: Record<string, unknown>) => {
-      const revenueData = klaviyoData.revenue as Record<string, number> | undefined
-      const storeRevenue = revenueData?.storeRevenue || 0
-      const storeOrders = revenueData?.storeOrders || 0
-      const totalKlaviyoRevenue = revenueData?.totalRevenue || 0
-      const flowRevenue = revenueData?.flowRevenue || 0
-      const campaignRevenue = revenueData?.campaignRevenue || 0
-      const recoveryRate = revenueData?.recoveryRate || 0
+    // ─── Helper: Map KlaviyoPerformanceData → Portal KlaviyoData format ─────────
 
+    const mapPerfToPortalKlaviyo = (perf: KlaviyoPerformanceData) => {
+      const totalRevenue = perf.attributedRevenue
       return {
-        storeRevenue,
-        storeOrders,
-        recoveryRate,
-        totalLeads: (klaviyoData.overview as Record<string, number>)?.totalSubscribers || 0,
-        engagedLeads: (klaviyoData.engagement as Record<string, number>)?.engagedProfiles || 0,
-        engagementRate: parseFloat(String((klaviyoData.engagement as Record<string, unknown>)?.engagementRate || "0")),
-        totalRevenue: totalKlaviyoRevenue,
-        campaignRevenue,
-        flowRevenue,
+        storeRevenue: perf.storeRevenue,
+        storeOrders: perf.storeOrders,
+        recoveryRate: perf.recoveryRate,
+        totalLeads: 0,
+        engagedLeads: 0,
+        engagementRate: 0,
+        totalRevenue,
+        campaignRevenue: perf.campaignRevenue,
+        flowRevenue: perf.flowRevenue,
         smsRevenue: 0,
-        emailsSent: (klaviyoData.emailPerformance as Record<string, number>)?.delivered || 0,
-        delivered: (klaviyoData.emailPerformance as Record<string, number>)?.delivered || 0,
-        opened: Math.round(((klaviyoData.emailPerformance as Record<string, number>)?.openRate || 0) * ((klaviyoData.emailPerformance as Record<string, number>)?.delivered || 0) / 100),
-        clicked: Math.round(((klaviyoData.emailPerformance as Record<string, number>)?.clickRate || 0) * ((klaviyoData.emailPerformance as Record<string, number>)?.delivered || 0) / 100),
-        openRate: (klaviyoData.emailPerformance as Record<string, number>)?.openRate || 0,
-        clickRate: (klaviyoData.emailPerformance as Record<string, number>)?.clickRate || 0,
-        clickToOpenRate: (klaviyoData.emailPerformance as Record<string, number>)?.clickToOpenRate || 0,
-        conversionRate: (klaviyoData.emailPerformance as Record<string, number>)?.clickToOpenRate || 0,
-        unsubscribeRate: (klaviyoData.emailPerformance as Record<string, number>)?.unsubscribeRate || 0,
-        bounceRate: (klaviyoData.emailPerformance as Record<string, number>)?.bounceRate || 0,
-        bounces: Math.round(((klaviyoData.emailPerformance as Record<string, number>)?.bounceRate || 0) * ((klaviyoData.emailPerformance as Record<string, number>)?.delivered || 0) / 100),
-        campaignsCount: (klaviyoData.overview as Record<string, number>)?.campaignsInPeriod || (klaviyoData.campaigns as Record<string, number>)?.sent || 0,
-        campaignDelivered: (klaviyoData.campaignPerformance as Record<string, number>)?.totalDelivered || 0,
-        campaignRevenuePercent: totalKlaviyoRevenue > 0 ? (campaignRevenue / totalKlaviyoRevenue) * 100 : 0,
-        flowsCount: (klaviyoData.overview as Record<string, number>)?.totalFlows || 0,
-        activeFlows: (klaviyoData.overview as Record<string, number>)?.liveFlows || 0,
-        flowDelivered: (klaviyoData.flowPerformance as Record<string, number>)?.totalDelivered || 0,
-        flowRevenuePercent: totalKlaviyoRevenue > 0 ? (flowRevenue / totalKlaviyoRevenue) * 100 : 0,
-        recentCampaigns: ((klaviyoData.campaignPerformance as Record<string, unknown>)?.campaigns as Array<Record<string, unknown>> || []).slice(0, 10).map((c) => ({
+        emailsSent: perf.totalDelivered,
+        delivered: perf.totalDelivered,
+        opened: perf.totalOpens,
+        clicked: perf.totalClicks,
+        openRate: perf.avgOpenRate,
+        clickRate: perf.avgClickRate,
+        clickToOpenRate: perf.totalOpens > 0 ? (perf.totalClicks / perf.totalOpens) * 100 : 0,
+        conversionRate: 0,
+        unsubscribeRate: perf.unsubscribeRate,
+        bounceRate: perf.bounceRate,
+        bounces: Math.round(perf.totalDelivered * perf.bounceRate / 100),
+        campaignsCount: perf.sentCampaigns,
+        campaignDelivered: perf.recentCampaigns.reduce((s, c) => s + c.delivered, 0),
+        campaignRevenuePercent: totalRevenue > 0 ? (perf.campaignRevenue / totalRevenue) * 100 : 0,
+        flowsCount: perf.totalFlows,
+        activeFlows: perf.liveFlows,
+        flowDelivered: perf.topFlows.reduce((s, f) => s + f.delivered, 0),
+        flowRevenuePercent: totalRevenue > 0 ? (perf.flowRevenue / totalRevenue) * 100 : 0,
+        recentCampaigns: perf.recentCampaigns.map(c => ({
           id: c.campaignId,
           name: c.name,
           status: "sent",
           sentAt: c.sendTime || new Date().toISOString(),
-          recipients: c.delivered || 0,
-          delivered: c.delivered || 0,
-          opened: c.opens || 0,
-          clicked: c.clicks || 0,
-          revenue: c.revenue || 0,
-          openRate: c.openRate || 0,
-          clickRate: c.clickRate || 0,
+          recipients: c.recipients,
+          delivered: c.delivered,
+          opened: c.delivered > 0 ? Math.round(c.openRate * c.delivered / 100) : 0,
+          clicked: Math.round(c.clickRate * c.delivered),
+          revenue: c.revenue,
+          openRate: c.openRate,
+          clickRate: c.clickRate,
         })),
-        topFlows: ((klaviyoData.flowPerformance as Record<string, unknown>)?.flows as Array<Record<string, unknown>> || []).slice(0, 10).map((f) => ({
+        topFlows: perf.topFlows.map(f => ({
           id: f.flowId,
           name: f.name,
-          revenue: f.revenue || 0,
-          delivered: f.delivered || 0,
-          openRate: f.openRate || 0,
-          clickRate: f.clickRate || 0,
+          revenue: f.revenue,
+          delivered: f.delivered,
+          openRate: f.openRate,
+          clickRate: f.clickRate,
         })),
       }
     }
 
-    // Helper to map Shopify data to dashboard format
+    // ─── Helper: Map Shopify data to dashboard format ───────────────────────────
+
     const mapShopifyData = (shopifyData: Record<string, unknown>) => {
       const orders = shopifyData.orders as Record<string, unknown> || {}
       const customers = shopifyData.customers as Record<string, unknown> || {}
@@ -406,7 +411,6 @@ export async function GET(request: NextRequest) {
           quantity: (p.quantitySold as number) || 0,
           revenue: (p.revenue as number) || 0,
         })),
-        // Top customers by revenue
         topCustomers: topCustomers.slice(0, 10).map((c) => ({
           email: (c.email as string) || "",
           name: (c.name as string) || "",
@@ -415,14 +419,12 @@ export async function GET(request: NextRequest) {
           averageOrderValue: (c.averageOrderValue as number) || 0,
           lastOrderDate: (c.lastOrderDate as string) || "",
         })),
-        // Coupon data
         coupons: {
           totalOrdersWithCoupon: (coupons.totalOrdersWithCoupon as number) || 0,
           couponUsageRate: (coupons.couponUsageRate as number) || 0,
           topCoupons: (coupons.topCoupons as Array<Record<string, unknown>>) || [],
           totalDiscount: (coupons.totalDiscount as number) || 0,
         },
-        // UTM data
         utmConversions: {
           totalOrdersWithUtm: (utmConversions.totalOrdersWithUtm as number) || 0,
           utmTrackingRate: (utmConversions.utmTrackingRate as number) || 0,
@@ -433,10 +435,8 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const baseUrl = request.nextUrl.origin
-    const cookieHeader = request.headers.get("cookie") || ""
+    // ─── Fetch data for stores ──────────────────────────────────────────────────
 
-    // Fetch data for stores
     if (storeId && storeId !== "all") {
       // Single store selected
       const selectedStore = stores.find((s) => s.id === storeId)
@@ -448,10 +448,10 @@ export async function GET(request: NextRequest) {
           platform: selectedStore.platform,
         }
 
-        const storeData = await fetchStoreData(selectedStore, baseUrl, cookieHeader)
+        const storeData = await fetchStoreData(selectedStore)
 
-        if (storeData.klaviyo) {
-          response.klaviyo = mapKlaviyoData(storeData.klaviyo)
+        if (storeData.klaviyoPerf) {
+          response.klaviyo = mapPerfToPortalKlaviyo(storeData.klaviyoPerf)
         }
 
         if (storeData.shopify) {
@@ -467,23 +467,22 @@ export async function GET(request: NextRequest) {
       if (storesWithIntegrations.length > 0) {
         // Fetch data from all stores in parallel
         const allStoreData = await Promise.all(
-          storesWithIntegrations.map((store) => fetchStoreData(store, baseUrl, cookieHeader))
+          storesWithIntegrations.map((store) => fetchStoreData(store))
         )
 
-        // Aggregate Klaviyo data
-        const klaviyoDataList = allStoreData.filter((d) => d.klaviyo).map((d) => mapKlaviyoData(d.klaviyo!))
+        // Aggregate Klaviyo data (from shared service)
+        const klaviyoDataList = allStoreData.filter((d) => d.klaviyoPerf).map((d) => mapPerfToPortalKlaviyo(d.klaviyoPerf!))
         if (klaviyoDataList.length > 0) {
-          // Aggregate all flows from all stores
+          // Aggregate flows from all stores
           const allFlows: Array<Record<string, unknown>> = []
           klaviyoDataList.forEach((k) => {
             if (k.topFlows) allFlows.push(...(k.topFlows as Array<Record<string, unknown>>))
           })
-          // Sort by revenue and take top 10
           const topFlowsAggregated = allFlows
             .sort((a, b) => ((b.revenue as number) || 0) - ((a.revenue as number) || 0))
             .slice(0, 10)
 
-          // Aggregate all campaigns
+          // Aggregate campaigns from all stores
           const allCampaigns: Array<Record<string, unknown>> = []
           klaviyoDataList.forEach((k) => {
             if (k.recentCampaigns) allCampaigns.push(...(k.recentCampaigns as Array<Record<string, unknown>>))
@@ -500,15 +499,13 @@ export async function GET(request: NextRequest) {
             storeRevenue: klaviyoDataList.reduce((sum, k) => sum + (k.storeRevenue || 0), 0),
             storeOrders: klaviyoDataList.reduce((sum, k) => sum + (k.storeOrders || 0), 0),
             recoveryRate: 0, // Recalculated below
-            totalLeads: klaviyoDataList.reduce((sum, k) => sum + (k.totalLeads || 0), 0),
-            engagedLeads: klaviyoDataList.reduce((sum, k) => sum + (k.engagedLeads || 0), 0),
-            engagementRate: klaviyoDataList.length > 0
-              ? klaviyoDataList.reduce((sum, k) => sum + (k.engagementRate || 0), 0) / klaviyoDataList.length
-              : 0,
+            totalLeads: 0,
+            engagedLeads: 0,
+            engagementRate: 0,
             totalRevenue: klaviyoDataList.reduce((sum, k) => sum + (k.totalRevenue || 0), 0),
             campaignRevenue: klaviyoDataList.reduce((sum, k) => sum + (k.campaignRevenue || 0), 0),
             flowRevenue: klaviyoDataList.reduce((sum, k) => sum + (k.flowRevenue || 0), 0),
-            smsRevenue: klaviyoDataList.reduce((sum, k) => sum + (k.smsRevenue || 0), 0),
+            smsRevenue: 0,
             emailsSent: totalDelivered,
             delivered: totalDelivered,
             opened: totalOpened,
@@ -550,7 +547,7 @@ export async function GET(request: NextRequest) {
           }
         }
 
-        // Aggregate Shopify data
+        // Aggregate Shopify data (unchanged)
         const shopifyDataList = allStoreData.filter((d) => d.shopify).map((d) => mapShopifyData(d.shopify!))
         if (shopifyDataList.length > 0) {
           // Aggregate all products
@@ -624,7 +621,7 @@ export async function GET(request: NextRequest) {
           }>()
           shopifyDataList.forEach((s) => {
             (s.topCustomers || []).forEach((c) => {
-              if (!c.email) return // Skip customers without email
+              if (!c.email) return
               const email = c.email.toLowerCase()
               const existing = customerMap.get(email)
               if (existing) {

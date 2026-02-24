@@ -3,19 +3,14 @@ import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { getCache, setCache } from "@/lib/cache"
-import {
-  parseDateRange,
-  formatDateStr,
-  klaviyoRequest,
-  getAccountInfo,
-  findPlacedOrderMetric,
-  getTimezoneOffset,
-  sleep,
-  MIN_REQUEST_INTERVAL,
-  KLAVIYO_API_URL,
-} from "@/lib/integrations/klaviyo"
+import { parseDateRange, formatDateStr } from "@/lib/integrations/klaviyo"
 import { getShopifyReportForStore } from "@/lib/integrations/shopify/report"
 import { decryptStoreCredentials } from "@/lib/crypto"
+import {
+  fetchKlaviyoPerformance,
+  emptyPerformanceData,
+  type KlaviyoPerformanceData,
+} from "@/lib/services/klaviyo-performance.service"
 
 const log = logger.child("ClientPerformance")
 
@@ -27,35 +22,7 @@ interface StorePerformance {
   storeName: string
   hasKlaviyo: boolean
   hasShopify: boolean
-  klaviyo: {
-    storeRevenue: number
-    storeOrders: number
-    attributedRevenue: number
-    campaignRevenue: number
-    flowRevenue: number
-    recoveryRate: number
-    totalCampaigns: number
-    sentCampaigns: number
-    totalFlows: number
-    liveFlows: number
-    avgOpenRate: number
-    avgClickRate: number
-    recentCampaigns: Array<{
-      name: string
-      sendTime: string
-      recipients: number
-      openRate: number
-      clickRate: number
-      revenue: number
-    }>
-    topFlows: Array<{
-      name: string
-      status: string
-      revenue: number
-      openRate: number
-      clickRate: number
-    }>
-  } | null
+  klaviyo: KlaviyoPerformanceData | null
   shopify: {
     totalRevenue: number
     totalOrders: number
@@ -79,7 +46,7 @@ export async function GET(
   try {
     const supabase = await createClient()
     const adminClient = createAdminClient()
-    await requireAuth(supabase)
+    const user = await requireAuth(supabase)
 
     const { id: clientId } = await params
     const { searchParams } = new URL(request.url)
@@ -94,7 +61,7 @@ export async function GET(
       throw new AppError(`Período inválido: ${period}. Use: ${validPeriods.join(", ")}`, 400)
     }
 
-    // Verify user has access to this client (RLS enforced)
+    // Verify user has access to this client (RLS or portal user)
     const { data: client, error: clientError } = await supabase
       .from("clients")
       .select("id")
@@ -102,11 +69,21 @@ export async function GET(
       .single()
 
     if (clientError || !client) {
-      throw new AppError("Cliente não encontrado ou acesso negado", 404)
+      // Fallback: check if user is a portal user for this client
+      const { data: portalUser } = await adminClient
+        .from("client_portal_users")
+        .select("client_id")
+        .eq("auth_user_id", user.id)
+        .eq("client_id", clientId)
+        .eq("is_active", true)
+        .single()
+
+      if (!portalUser) {
+        throw new AppError("Cliente não encontrado ou acesso negado", 404)
+      }
     }
 
-    // Check cache first (using clientId as storeId key)
-    // Skip cache if data has zero revenue (likely stale from API fix)
+    // Check cache first
     if (!forceRefresh) {
       const cacheperiod = period === "custom" && customStartDate ? `${period}:${customStartDate}:${customEndDate}` : period
       const cached = await getCache(adminClient, clientId, "client_performance", cacheperiod)
@@ -148,11 +125,11 @@ export async function GET(
       const hasKlaviyo = !!(store.klaviyo_private_key || store.klaviyo_api_key)
       const hasShopify = !!(store.shopify_store_domain && store.shopify_access_token)
 
-      let klaviyoData: StorePerformance["klaviyo"] = null
+      let klaviyoData: KlaviyoPerformanceData | null = null
       let shopifyData: StorePerformance["shopify"] = null
       const errors: StorePerformance["errors"] = []
 
-      // Fetch Klaviyo data
+      // Fetch Klaviyo data via shared service
       if (hasKlaviyo) {
         try {
           const apiKey = store.klaviyo_private_key || store.klaviyo_api_key
@@ -180,7 +157,7 @@ export async function GET(
         }
       }
 
-      // Fetch Shopify data via direct module call (no HTTP self-fetch)
+      // Fetch Shopify data via direct module call
       if (hasShopify) {
         try {
           const report = await getShopifyReportForStore(store.id, period, customStartDate, customEndDate)
@@ -242,268 +219,6 @@ export async function GET(
   }
 }
 
-async function fetchKlaviyoPerformance(
-  apiKey: string,
-  startDate: string,
-  endDate: string
-): Promise<StorePerformance["klaviyo"]> {
-  // Get account info for timezone
-  const accountInfo = await getAccountInfo(apiKey)
-  const timezone = accountInfo?.timezone || "America/Sao_Paulo"
-  const tzOffset = getTimezoneOffset(timezone)
-
-  const startISO = `${startDate}T00:00:00${tzOffset}`
-  const endISO = `${endDate}T23:59:59${tzOffset}`
-
-  // Find Placed Order metric for revenue (required by Klaviyo Reporting API)
-  const placedOrderMetric = await findPlacedOrderMetric(apiKey)
-
-  if (!placedOrderMetric) {
-    log.warn("No Placed Order metric found - cannot fetch conversion/revenue data")
-    return {
-      storeRevenue: 0,
-      storeOrders: 0,
-      attributedRevenue: 0,
-      campaignRevenue: 0,
-      flowRevenue: 0,
-      recoveryRate: 0,
-      totalCampaigns: 0,
-      sentCampaigns: 0,
-      totalFlows: 0,
-      liveFlows: 0,
-      avgOpenRate: 0,
-      avgClickRate: 0,
-      recentCampaigns: [],
-      topFlows: [],
-    }
-  }
-
-  const reportStats = [
-    "recipients", "delivered", "opens_unique", "click_rate",
-    "click_to_open_rate", "conversion_rate", "conversion_value", "revenue_per_recipient",
-  ]
-
-  // Fetch campaign report (sequential to avoid rate limiting)
-  await sleep(MIN_REQUEST_INTERVAL)
-  const campaignReport = await klaviyoRequest<KlaviyoCampaignReport>(apiKey, "/campaign-values-reports/", {
-    method: "POST",
-    logTag: "PerfCampaignReport",
-    body: {
-      data: {
-        type: "campaign-values-report",
-        attributes: {
-          statistics: reportStats,
-          timeframe: { start: startISO, end: endISO },
-          conversion_metric_id: placedOrderMetric,
-        },
-      },
-    },
-  })
-
-  // Fetch flow report
-  await sleep(MIN_REQUEST_INTERVAL)
-  const flowReport = await klaviyoRequest<KlaviyoFlowReport>(apiKey, "/flow-values-reports/", {
-    method: "POST",
-    logTag: "PerfFlowReport",
-    body: {
-      data: {
-        type: "flow-values-report",
-        attributes: {
-          statistics: reportStats,
-          timeframe: { start: startISO, end: endISO },
-          conversion_metric_id: placedOrderMetric,
-        },
-      },
-    },
-  })
-
-  // Fetch total store revenue via metric-aggregates (all Placed Orders, not just email-attributed)
-  await sleep(MIN_REQUEST_INTERVAL)
-  const metricAgg = await klaviyoRequest<KlaviyoMetricAggregate>(apiKey, "/metric-aggregates/", {
-    method: "POST",
-    logTag: "PerfMetricAgg",
-    body: {
-      data: {
-        type: "metric-aggregate",
-        attributes: {
-          metric_id: placedOrderMetric,
-          measurements: ["sum_value", "count"],
-          filter: [
-            `greater-or-equal(datetime,${startISO})`,
-            `less-than(datetime,${endISO})`,
-          ],
-          timezone: timezone,
-        },
-      },
-    },
-  })
-
-  // If campaign+flow both failed, throw so the error surfaces in storeErrors
-  // metric-aggregates failure is non-fatal (storeRevenue will be 0)
-  if (!campaignReport && !flowReport) {
-    throw new Error("Falha ao conectar com a API do Klaviyo. Verifique as credenciais.")
-  }
-
-  // Parse store-wide revenue from metric-aggregates
-  // Response has daily arrays: measurements.sum_value = [day1, day2, ...], measurements.count = [day1, day2, ...]
-  const aggData = metricAgg?.data?.attributes?.data || []
-  let storeRevenue = 0
-  let storeOrders = 0
-  for (const row of aggData) {
-    const measurements = row.measurements || {}
-    const vals = measurements.sum_value
-    const cnts = measurements.count
-    if (Array.isArray(vals)) {
-      for (const v of vals) storeRevenue += Number(v) || 0
-    } else {
-      storeRevenue += Number(vals) || 0
-    }
-    if (Array.isArray(cnts)) {
-      for (const c of cnts) storeOrders += Number(c) || 0
-    } else {
-      storeOrders += Number(cnts) || 0
-    }
-  }
-
-  // Parse campaign results - aggregate by campaign_id (API returns per-message rows)
-  const campaignResults = campaignReport?.data?.attributes?.results || []
-  const flowResults = flowReport?.data?.attributes?.results || []
-
-  // Aggregate campaign metrics by campaign_id
-  const campAgg = new Map<string, { recipients: number; delivered: number; opensUnique: number; clickRate: number; conversionValue: number }>()
-  for (const r of campaignResults) {
-    const cid = r.groupings?.campaign_id
-    if (!cid) continue
-    const stats = r.statistics || {}
-    const ex = campAgg.get(cid) || { recipients: 0, delivered: 0, opensUnique: 0, clickRate: 0, conversionValue: 0 }
-    campAgg.set(cid, {
-      recipients: ex.recipients + (Number(stats.recipients) || 0),
-      delivered: ex.delivered + (Number(stats.delivered) || 0),
-      opensUnique: ex.opensUnique + (Number(stats.opens_unique) || 0),
-      clickRate: Number(stats.click_rate) || ex.clickRate,
-      conversionValue: ex.conversionValue + (Number(stats.conversion_value) || 0),
-    })
-  }
-
-  // Aggregate flow metrics by flow_id
-  const flowAgg = new Map<string, { recipients: number; delivered: number; opensUnique: number; clickRate: number; conversionValue: number }>()
-  for (const r of flowResults) {
-    const fid = r.groupings?.flow_id
-    if (!fid) continue
-    const stats = r.statistics || {}
-    const ex = flowAgg.get(fid) || { recipients: 0, delivered: 0, opensUnique: 0, clickRate: 0, conversionValue: 0 }
-    flowAgg.set(fid, {
-      recipients: ex.recipients + (Number(stats.recipients) || 0),
-      delivered: ex.delivered + (Number(stats.delivered) || 0),
-      opensUnique: ex.opensUnique + (Number(stats.opens_unique) || 0),
-      clickRate: Number(stats.click_rate) || ex.clickRate,
-      conversionValue: ex.conversionValue + (Number(stats.conversion_value) || 0),
-    })
-  }
-
-  // Fetch campaign names from Klaviyo API
-  type NameListResp = { data: Array<{ id: string; attributes: { name: string; status?: string; send_time?: string | null } }>; links?: { next?: string } }
-  const campNames = new Map<string, { name: string; sendTime: string }>()
-  if (campAgg.size > 0) {
-    await sleep(MIN_REQUEST_INTERVAL)
-    let campPage: string | null = "/campaigns/"
-    while (campPage) {
-      const resp: NameListResp | null = await klaviyoRequest<NameListResp>(apiKey, campPage)
-      if (!resp?.data) break
-      for (const c of resp.data) {
-        campNames.set(c.id, { name: c.attributes.name, sendTime: c.attributes.send_time || "" })
-      }
-      campPage = resp.links?.next ? resp.links.next.replace(KLAVIYO_API_URL, "") : null
-      if (campPage) await sleep(500)
-    }
-  }
-
-  // Fetch flow names from Klaviyo API
-  const flowNames = new Map<string, { name: string; status: string }>()
-  if (flowAgg.size > 0) {
-    await sleep(MIN_REQUEST_INTERVAL)
-    let flowPage: string | null = "/flows/"
-    while (flowPage) {
-      const resp: NameListResp | null = await klaviyoRequest<NameListResp>(apiKey, flowPage)
-      if (!resp?.data) break
-      for (const f of resp.data) {
-        flowNames.set(f.id, { name: f.attributes.name, status: f.attributes.status || "unknown" })
-      }
-      flowPage = resp.links?.next ? resp.links.next.replace(KLAVIYO_API_URL, "") : null
-      if (flowPage) await sleep(500)
-    }
-  }
-
-  // Build campaign list with names
-  let campaignRevenue = 0
-  let campaignOpenRateSum = 0
-  let campaignClickRateSum = 0
-  let campaignCount = 0
-  const recentCampaigns: NonNullable<StorePerformance["klaviyo"]>["recentCampaigns"] = []
-
-  for (const [cid, m] of campAgg) {
-    campaignRevenue += m.conversionValue
-    const openRate = m.delivered > 0 ? (m.opensUnique / m.delivered) * 100 : 0
-    if (openRate > 0) { campaignOpenRateSum += openRate }
-    if (m.clickRate > 0) { campaignClickRateSum += m.clickRate }
-    if (openRate > 0 || m.clickRate > 0) { campaignCount++ }
-    const info = campNames.get(cid)
-    recentCampaigns.push({
-      name: info?.name || `Campaign ${cid.slice(0, 6)}`,
-      sendTime: info?.sendTime || "",
-      recipients: m.recipients,
-      openRate: Math.round(openRate * 100) / 100,
-      clickRate: m.clickRate,
-      revenue: m.conversionValue,
-    })
-  }
-
-  recentCampaigns.sort((a, b) => b.revenue - a.revenue)
-  const topCampaigns = recentCampaigns.slice(0, 5)
-
-  // Build flow list with names
-  let flowRevenue = 0
-  const topFlows: NonNullable<StorePerformance["klaviyo"]>["topFlows"] = []
-
-  for (const [fid, m] of flowAgg) {
-    flowRevenue += m.conversionValue
-    const openRate = m.delivered > 0 ? (m.opensUnique / m.delivered) * 100 : 0
-    const info = flowNames.get(fid)
-    topFlows.push({
-      name: info?.name || `Flow ${fid.slice(0, 6)}`,
-      status: info?.status || "live",
-      revenue: m.conversionValue,
-      openRate: Math.round(openRate * 100) / 100,
-      clickRate: m.clickRate,
-    })
-  }
-
-  topFlows.sort((a, b) => b.revenue - a.revenue)
-
-  const avgOpenRate = campaignCount > 0 ? campaignOpenRateSum / campaignCount : 0
-  const avgClickRate = campaignCount > 0 ? campaignClickRateSum / campaignCount : 0
-
-  const attributedRevenue = campaignRevenue + flowRevenue
-  const recoveryRate = storeRevenue > 0 ? (attributedRevenue / storeRevenue) * 100 : 0
-
-  return {
-    storeRevenue,
-    storeOrders,
-    attributedRevenue,
-    campaignRevenue,
-    flowRevenue,
-    recoveryRate,
-    totalCampaigns: campaignResults.length,
-    sentCampaigns: campaignResults.length,
-    totalFlows: flowResults.length,
-    liveFlows: flowResults.length,
-    avgOpenRate,
-    avgClickRate,
-    recentCampaigns: topCampaigns,
-    topFlows: topFlows.slice(0, 5),
-  }
-}
-
 async function fetchBillingData(
   adminClient: ReturnType<typeof createAdminClient>,
   clientId: string,
@@ -513,7 +228,6 @@ async function fetchBillingData(
   const startStr = startDate.toISOString().split("T")[0]
   const endStr = endDate.toISOString().split("T")[0]
 
-  // Fetch invoices and local charges in parallel
   const [invoicesRes, chargesRes] = await Promise.all([
     adminClient
       .from("invoices")
@@ -620,37 +334,5 @@ function emptyTotals() {
     totalFlows: 0,
     avgOpenRate: 0,
     avgClickRate: 0,
-  }
-}
-
-// Klaviyo report response types
-interface KlaviyoReportResult {
-  groupings?: Record<string, string>
-  statistics?: Record<string, number | string>
-}
-
-interface KlaviyoCampaignReport {
-  data?: {
-    attributes?: {
-      results?: KlaviyoReportResult[]
-    }
-  }
-}
-
-interface KlaviyoFlowReport {
-  data?: {
-    attributes?: {
-      results?: KlaviyoReportResult[]
-    }
-  }
-}
-
-interface KlaviyoMetricAggregate {
-  data?: {
-    attributes?: Record<string, unknown> & {
-      data?: Array<{
-        measurements?: Record<string, number | number[]>
-      }>
-    }
   }
 }
