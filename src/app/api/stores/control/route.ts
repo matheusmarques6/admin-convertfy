@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 import { getKlaviyoRevenueForStore } from "@/lib/integrations/klaviyo/report-summary"
+import { getShopifyReportForStore } from "@/lib/integrations/shopify/report"
 
 const log = logger.child("StoresControl")
 
@@ -29,10 +30,12 @@ interface StoreWithResults {
   store_url: string
   platform: string
   is_active: boolean
-  // Results (Klaviyo only — same approach as /api/dashboard/total-revenue)
+  // Revenue data
+  total_revenue_30d: number
   klaviyo_revenue_30d: number
   campaign_revenue_30d: number
   flow_revenue_30d: number
+  recovery_rate: number | null
   revenue_status: 'loaded' | 'no_integration' | 'error'
   // Feedback control
   feedback_frequency: 'monthly' | '30_days'
@@ -151,6 +154,31 @@ export async function GET(request: Request) {
       }
     }
 
+    // Fetch Shopify revenue in chunks of 5 (for recovery rate calculation)
+    const shopifyStores = (stores || []).filter((s) => !!s.shopify_access_token)
+    const shopifyRevenueMap = new Map<string, number>()
+
+    for (let i = 0; i < shopifyStores.length; i += CHUNK_SIZE) {
+      const chunk = shopifyStores.slice(i, i + CHUNK_SIZE)
+      const chunkResults = await Promise.all(
+        chunk.map(async (store) => {
+          try {
+            const report = await getShopifyReportForStore(store.id, '30d')
+            return {
+              storeId: store.id,
+              totalRevenue: report.summary?.totalRevenue ?? 0,
+            }
+          } catch (err) {
+            log.warn(`Failed to fetch Shopify revenue for store ${store.id}:`, err)
+            return { storeId: store.id, totalRevenue: -1 }
+          }
+        })
+      )
+      for (const result of chunkResults) {
+        shopifyRevenueMap.set(result.storeId, result.totalRevenue)
+      }
+    }
+
     // Process each store with pre-fetched revenue data
     const storesWithResults: StoreWithResults[] = (stores || []).map((store) => {
       // Handle the relationship data (can be object or null)
@@ -183,25 +211,39 @@ export async function GET(request: Request) {
         feedbackStatus = 'overdue'
       }
 
-      // Revenue from pre-fetched Klaviyo data
+      // Revenue from pre-fetched Klaviyo + Shopify data
       const hasShopify = !!store.shopify_access_token
       const hasKlaviyo = !!store.klaviyo_private_key
-      const revenueData = revenueMap.get(store.id)
+      const klaviyoData = revenueMap.get(store.id)
+      const shopifyRevenue = shopifyRevenueMap.get(store.id) ?? 0
 
       let revenueStatus: 'loaded' | 'no_integration' | 'error' = 'no_integration'
+      let totalRevenue = 0
       let klaviyoRevenue = 0
       let campaignRevenue = 0
       let flowRevenue = 0
+      let recoveryRate: number | null = null
 
-      if (hasKlaviyo && revenueData) {
-        if (revenueData.totalRevenue === -1) {
+      if (hasShopify && shopifyRevenue > 0) {
+        totalRevenue = shopifyRevenue
+      }
+
+      if (hasKlaviyo && klaviyoData) {
+        if (klaviyoData.totalRevenue === -1) {
           revenueStatus = 'error'
         } else {
           revenueStatus = 'loaded'
-          klaviyoRevenue = revenueData.totalRevenue
-          campaignRevenue = revenueData.campaignRevenue
-          flowRevenue = revenueData.flowRevenue
+          klaviyoRevenue = klaviyoData.totalRevenue
+          campaignRevenue = klaviyoData.campaignRevenue
+          flowRevenue = klaviyoData.flowRevenue
         }
+      } else if (hasShopify && shopifyRevenue >= 0) {
+        revenueStatus = shopifyRevenue === -1 ? 'error' : 'loaded'
+      }
+
+      // Recovery rate: how much email (Klaviyo) recovered relative to total store revenue (Shopify)
+      if (totalRevenue > 0 && klaviyoRevenue > 0) {
+        recoveryRate = (klaviyoRevenue / totalRevenue) * 100
       }
 
       // Determine last call date (max of feedback and meeting)
@@ -243,9 +285,11 @@ export async function GET(request: Request) {
         store_url: store.store_url,
         platform: store.platform,
         is_active: store.is_active,
+        total_revenue_30d: totalRevenue,
         klaviyo_revenue_30d: klaviyoRevenue,
         campaign_revenue_30d: campaignRevenue,
         flow_revenue_30d: flowRevenue,
+        recovery_rate: recoveryRate,
         revenue_status: revenueStatus,
         feedback_frequency: store.feedback_frequency || 'monthly',
         last_feedback_date: store.last_feedback_date,

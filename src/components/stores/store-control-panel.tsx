@@ -68,9 +68,11 @@ interface StoreData {
   store_url: string
   platform: string
   is_active: boolean
+  total_revenue_30d: number
   klaviyo_revenue_30d: number
   campaign_revenue_30d: number
   flow_revenue_30d: number
+  recovery_rate: number | null
   revenue_status: 'loaded' | 'no_integration' | 'error'
   feedback_frequency: 'monthly' | '30_days'
   last_feedback_date: string | null
@@ -251,9 +253,11 @@ export function StoreControlPanel() {
           duration_minutes: feedbackForm.duration_minutes ? parseInt(feedbackForm.duration_minutes) : null,
           notes: feedbackForm.notes,
           action_items: feedbackForm.action_items,
+          total_revenue: selectedStore.total_revenue_30d,
           klaviyo_revenue: selectedStore.klaviyo_revenue_30d,
           campaign_revenue: selectedStore.campaign_revenue_30d,
           flow_revenue: selectedStore.flow_revenue_30d,
+          recovery_rate: selectedStore.recovery_rate,
         }),
       })
 
@@ -569,7 +573,7 @@ export function StoreControlPanel() {
                 <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3">Loja / Cliente</th>
                 <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Receita Klaviyo 30d</th>
                 <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Campanhas / Flows</th>
-                <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">% Camp / Flows</th>
+                <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">% Recuperação</th>
                 <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Próximo Feedback</th>
                 <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Última Call</th>
                 <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Responsável</th>
@@ -660,21 +664,18 @@ export function StoreControlPanel() {
                         )}
                       </td>
 
-                      {/* Campaign / Flow Percentage */}
+                      {/* Recovery Rate (Klaviyo / Shopify) */}
                       <td className="px-4 py-4 text-center">
-                        {store.revenue_status === 'no_integration' || store.revenue_status === 'error' ? (
-                          <span className="text-sm text-muted-foreground">-</span>
-                        ) : store.klaviyo_revenue_30d > 0 ? (
-                          <div className="flex flex-col items-center gap-0.5">
-                            <span className="text-xs font-medium text-primary">
-                              {((store.campaign_revenue_30d / store.klaviyo_revenue_30d) * 100).toFixed(0)}% Camp
-                            </span>
-                            <span className="text-xs font-medium text-violet-500">
-                              {((store.flow_revenue_30d / store.klaviyo_revenue_30d) * 100).toFixed(0)}% Flows
-                            </span>
-                          </div>
+                        {store.recovery_rate !== null ? (
+                          <span className={`text-lg font-bold ${
+                            store.recovery_rate >= 10 ? 'text-success' :
+                            store.recovery_rate >= 5 ? 'text-warning' :
+                            'text-destructive'
+                          }`}>
+                            {store.recovery_rate.toFixed(1)}%
+                          </span>
                         ) : (
-                          <span className="text-xs text-muted-foreground">0%</span>
+                          <span className="text-sm text-muted-foreground">-</span>
                         )}
                       </td>
 
@@ -810,14 +811,34 @@ export function StoreControlPanel() {
           {selectedStore && (
             <div className="space-y-4">
               {/* Result Summary */}
-              <div className="rounded-lg bg-card border border-border p-4">
+              <div className="rounded-lg bg-card border border-border p-4 space-y-2">
+                {selectedStore.total_revenue_30d > 0 && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Faturamento Total (30d)</span>
+                    <span className="text-lg font-bold text-foreground">
+                      {formatCurrency(selectedStore.total_revenue_30d)}
+                    </span>
+                  </div>
+                )}
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-muted-foreground">Receita Klaviyo (30d)</span>
-                  <span className={`text-xl font-bold ${selectedStore.klaviyo_revenue_30d > 0 ? 'text-success' : 'text-muted-foreground'}`}>
+                  <span className={`text-lg font-bold ${selectedStore.klaviyo_revenue_30d > 0 ? 'text-success' : 'text-muted-foreground'}`}>
                     {formatCurrency(selectedStore.klaviyo_revenue_30d)}
                   </span>
                 </div>
-                <div className="flex justify-between items-center mt-2 text-xs text-muted-foreground">
+                {selectedStore.recovery_rate !== null && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Taxa de Recuperação</span>
+                    <span className={`text-lg font-bold ${
+                      selectedStore.recovery_rate >= 10 ? 'text-success' :
+                      selectedStore.recovery_rate >= 5 ? 'text-warning' :
+                      'text-destructive'
+                    }`}>
+                      {selectedStore.recovery_rate.toFixed(1)}%
+                    </span>
+                  </div>
+                )}
+                <div className="flex justify-between items-center text-xs text-muted-foreground pt-1 border-t border-border">
                   <span>Campanhas: {formatCurrency(selectedStore.campaign_revenue_30d)}</span>
                   <span>Flows: {formatCurrency(selectedStore.flow_revenue_30d)}</span>
                 </div>
