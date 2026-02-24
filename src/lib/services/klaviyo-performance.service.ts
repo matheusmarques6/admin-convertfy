@@ -247,8 +247,11 @@ export async function fetchKlaviyoPerformance(
     })
   }
 
-  // ── Fetch campaign names (paginate all, then fallback to individual) ──
+  // ── Fetch campaign & flow names ──
+  // Step 1: Paginate both lists (1-2 pages each with size=100)
   const campNames = new Map<string, { name: string; sendTime: string }>()
+  const flowNames = new Map<string, { name: string; status: string }>()
+
   if (campAgg.size > 0) {
     await sleep(MIN_REQUEST_INTERVAL)
     let page: string | null = "/campaigns/?page[size]=100"
@@ -261,24 +264,9 @@ export async function fetchKlaviyoPerformance(
       page = resp.links?.next ? resp.links.next.replace(KLAVIYO_API_URL, "") : null
       if (page) await sleep(500)
     }
-    // Fallback: fetch individual campaigns not found in the list
-    const missingIds = Array.from(campAgg.keys()).filter(id => !campNames.has(id))
-    if (missingIds.length > 0) {
-      log.info(`[Klaviyo] ${missingIds.length} campaigns not found in list, fetching individually`)
-      for (const id of missingIds.slice(0, 20)) {
-        await sleep(MIN_REQUEST_INTERVAL)
-        type SingleResp = { data: { id: string; attributes: { name: string; send_time?: string | null } } }
-        const resp = await klaviyoRequest<SingleResp>(apiKey, `/campaigns/${id}/`)
-        if (resp?.data) {
-          campNames.set(resp.data.id, { name: resp.data.attributes.name, sendTime: resp.data.attributes.send_time || "" })
-        }
-      }
-    }
-    log.info(`[Klaviyo] Campaign names fetched: ${campNames.size}/${campAgg.size}`)
+    log.info(`[Klaviyo] Campaign names from list: ${campNames.size}/${campAgg.size}`)
   }
 
-  // ── Fetch flow names (paginate all) ──
-  const flowNames = new Map<string, { name: string; status: string }>()
   if (flowAgg.size > 0) {
     await sleep(MIN_REQUEST_INTERVAL)
     let page: string | null = "/flows/?page[size]=100"
@@ -291,8 +279,37 @@ export async function fetchKlaviyoPerformance(
       page = resp.links?.next ? resp.links.next.replace(KLAVIYO_API_URL, "") : null
       if (page) await sleep(500)
     }
-    log.info(`[Klaviyo] Flow names fetched: ${flowNames.size}/${flowAgg.size}`)
+    log.info(`[Klaviyo] Flow names from list: ${flowNames.size}/${flowAgg.size}`)
   }
+
+  // Step 2: Individual fallback for any missing names (campaigns + flows)
+  type SingleCampResp = { data: { id: string; attributes: { name: string; send_time?: string | null } } }
+  type SingleFlowResp = { data: { id: string; attributes: { name: string; status?: string } } }
+
+  const missingCamps = Array.from(campAgg.keys()).filter(id => !campNames.has(id))
+  const missingFlows = Array.from(flowAgg.keys()).filter(id => !flowNames.has(id))
+
+  if (missingCamps.length > 0 || missingFlows.length > 0) {
+    log.info(`[Klaviyo] Missing names - campaigns: ${missingCamps.length}, flows: ${missingFlows.length}. Fetching individually.`)
+  }
+
+  for (const id of missingCamps.slice(0, 15)) {
+    await sleep(MIN_REQUEST_INTERVAL)
+    const resp = await klaviyoRequest<SingleCampResp>(apiKey, `/campaigns/${id}/`)
+    if (resp?.data) {
+      campNames.set(resp.data.id, { name: resp.data.attributes.name, sendTime: resp.data.attributes.send_time || "" })
+    }
+  }
+
+  for (const id of missingFlows.slice(0, 15)) {
+    await sleep(MIN_REQUEST_INTERVAL)
+    const resp = await klaviyoRequest<SingleFlowResp>(apiKey, `/flows/${id}/`)
+    if (resp?.data) {
+      flowNames.set(resp.data.id, { name: resp.data.attributes.name, status: resp.data.attributes.status || "unknown" })
+    }
+  }
+
+  log.info(`[Klaviyo] Final names - campaigns: ${campNames.size}/${campAgg.size}, flows: ${flowNames.size}/${flowAgg.size}`)
 
   // ── Build campaign list ──
   let campaignRevenue = 0

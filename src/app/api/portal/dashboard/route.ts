@@ -236,11 +236,18 @@ export async function GET(request: NextRequest) {
 
         if (data && new Date(data.expires_at) > new Date()) {
           const cached = data.data as Record<string, unknown>
-          // Skip stale cache (zero revenue)
+          // Skip stale cache (zero revenue or missing names)
           if (cacheType === "klaviyo_perf") {
             const perf = cached as unknown as KlaviyoPerformanceData
             if (perf.storeRevenue === 0 && perf.attributedRevenue === 0) {
-              log.info(`[Cache SKIP] Stale klaviyo_perf cache for store ${storeId}`)
+              log.info(`[Cache SKIP] Stale klaviyo_perf cache for store ${storeId} - zero revenue`)
+              return null
+            }
+            // Skip cache with generic fallback names (data was fetched before name fix)
+            const hasGenericNames = perf.recentCampaigns?.some(c => c.name.startsWith("Campaign ")) ||
+              perf.topFlows?.some(f => f.name.startsWith("Flow "))
+            if (hasGenericNames) {
+              log.info(`[Cache SKIP] Stale klaviyo_perf cache for store ${storeId} - generic names`)
               return null
             }
           }
