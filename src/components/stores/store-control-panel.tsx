@@ -569,6 +569,7 @@ export function StoreControlPanel() {
                 <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3">Loja / Cliente</th>
                 <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Receita Klaviyo 30d</th>
                 <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Campanhas / Flows</th>
+                <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">% Camp / Flows</th>
                 <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Próximo Feedback</th>
                 <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Última Call</th>
                 <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Responsável</th>
@@ -578,7 +579,7 @@ export function StoreControlPanel() {
             <tbody>
               {filteredStores.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-16">
+                  <td colSpan={8} className="text-center py-16">
                     <div className="flex flex-col items-center gap-3">
                       <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
                         <Store className="w-6 h-6 text-muted-foreground" />
@@ -656,6 +657,24 @@ export function StoreControlPanel() {
                               Flows: {formatCurrency(store.flow_revenue_30d)}
                             </span>
                           </div>
+                        )}
+                      </td>
+
+                      {/* Campaign / Flow Percentage */}
+                      <td className="px-4 py-4 text-center">
+                        {store.revenue_status === 'no_integration' || store.revenue_status === 'error' ? (
+                          <span className="text-sm text-muted-foreground">-</span>
+                        ) : store.klaviyo_revenue_30d > 0 ? (
+                          <div className="flex flex-col items-center gap-0.5">
+                            <span className="text-xs font-medium text-primary">
+                              {((store.campaign_revenue_30d / store.klaviyo_revenue_30d) * 100).toFixed(0)}% Camp
+                            </span>
+                            <span className="text-xs font-medium text-violet-500">
+                              {((store.flow_revenue_30d / store.klaviyo_revenue_30d) * 100).toFixed(0)}% Flows
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">0%</span>
                         )}
                       </td>
 
