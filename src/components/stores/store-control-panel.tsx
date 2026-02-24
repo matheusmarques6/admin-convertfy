@@ -20,6 +20,9 @@ import {
   Settings,
   Pencil,
   Video,
+  Plus,
+  Link2,
+  Unlink,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -50,11 +53,16 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/lib/hooks/use-toast"
+import { QuickStoreForm } from "@/components/stores/quick-store-form"
+import { StoreLinkBadge } from "@/components/stores/store-link-badge"
+import { StoreLinkModal } from "@/components/stores/store-link-modal"
+import { StoreUnlinkDialog } from "@/components/stores/store-unlink-dialog"
 
 interface StoreData {
   id: string
-  client_id: string
-  client_name: string
+  client_id: string | null
+  org_id: string | null
+  client_name: string | null
   client_company: string
   store_name: string
   store_url: string
@@ -153,12 +161,16 @@ export function StoreControlPanel() {
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [filterStatus, setFilterStatus] = useState<string>('all')
+  const [filterLink, setFilterLink] = useState<'all' | 'avulsas' | 'vinculadas'>('all')
   const [users, setUsers] = useState<User[]>([])
 
   // Dialog states
   const [selectedStore, setSelectedStore] = useState<StoreData | null>(null)
   const [isRegisterDialogOpen, setIsRegisterDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+  const [isQuickStoreDialogOpen, setIsQuickStoreDialogOpen] = useState(false)
+  const [isLinkModalOpen, setIsLinkModalOpen] = useState(false)
+  const [isUnlinkDialogOpen, setIsUnlinkDialogOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Form states
@@ -348,12 +360,17 @@ export function StoreControlPanel() {
   const filteredStores = stores.filter(store => {
     const matchesSearch =
       store.store_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      store.client_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (store.client_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
       store.client_company.toLowerCase().includes(searchQuery.toLowerCase())
 
     const matchesFilter = filterStatus === 'all' || store.feedback_status === filterStatus
 
-    return matchesSearch && matchesFilter
+    const matchesLink =
+      filterLink === 'all' ||
+      (filterLink === 'avulsas' && store.client_id === null) ||
+      (filterLink === 'vinculadas' && store.client_id !== null)
+
+    return matchesSearch && matchesFilter && matchesLink
   })
 
   // Loading state - skeleton table for better perceived performance
@@ -523,6 +540,32 @@ export function StoreControlPanel() {
         <Button variant="outline" onClick={fetchStores} className="border-border">
           <RefreshCw className="w-4 h-4" />
         </Button>
+
+        <Button onClick={() => setIsQuickStoreDialogOpen(true)}>
+          <Plus className="w-4 h-4 mr-2" />
+          Cadastro Rápido
+        </Button>
+      </div>
+
+      {/* Link Filter Tabs: Todas / Avulsas / Vinculadas */}
+      <div className="flex gap-2">
+        {([
+          { key: 'all' as const, label: 'Todas', count: stores.length },
+          { key: 'avulsas' as const, label: 'Avulsas', count: stores.filter(s => s.client_id === null).length },
+          { key: 'vinculadas' as const, label: 'Vinculadas', count: stores.filter(s => s.client_id !== null).length },
+        ]).map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setFilterLink(tab.key)}
+            className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+              filterLink === tab.key
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted/50 text-muted-foreground hover:bg-muted'
+            }`}
+          >
+            {tab.label} ({tab.count})
+          </button>
+        ))}
       </div>
 
       {/* Stores List */}
@@ -574,9 +617,10 @@ export function StoreControlPanel() {
                           </div>
                           <div>
                             <p className="font-medium text-foreground">{store.store_name}</p>
-                            <p className="text-sm text-muted-foreground">{store.client_name}</p>
+                            <p className="text-sm text-muted-foreground">{store.client_name || 'Sem cliente'}</p>
                           </div>
                           <div className="flex gap-1 ml-2">
+                            <StoreLinkBadge clientId={store.client_id} clientName={store.client_name} />
                             {store.has_shopify && (
                               <Badge variant="outline" className="text-[10px] border-success/30 text-success">Shopify</Badge>
                             )}
@@ -693,11 +737,36 @@ export function StoreControlPanel() {
                                 <Settings className="w-4 h-4 mr-2" />
                                 Configurar Loja
                               </DropdownMenuItem>
+                              {store.client_id && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem onClick={() => router.push(`/clients/${store.client_id}`)}>
+                                    <ExternalLink className="w-4 h-4 mr-2" />
+                                    Ver Cliente
+                                  </DropdownMenuItem>
+                                </>
+                              )}
                               <DropdownMenuSeparator />
-                              <DropdownMenuItem onClick={() => router.push(`/clients/${store.client_id}`)}>
-                                <ExternalLink className="w-4 h-4 mr-2" />
-                                Ver Cliente
-                              </DropdownMenuItem>
+                              {!store.client_id ? (
+                                <DropdownMenuItem onClick={() => {
+                                  setSelectedStore(store)
+                                  setIsLinkModalOpen(true)
+                                }}>
+                                  <Link2 className="w-4 h-4 mr-2" />
+                                  Vincular a Cliente
+                                </DropdownMenuItem>
+                              ) : (
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setSelectedStore(store)
+                                    setIsUnlinkDialogOpen(true)
+                                  }}
+                                  className="text-destructive focus:text-destructive"
+                                >
+                                  <Unlink className="w-4 h-4 mr-2" />
+                                  Desvincular
+                                </DropdownMenuItem>
+                              )}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </div>
@@ -722,7 +791,7 @@ export function StoreControlPanel() {
             <DialogDescription>
               {selectedStore && (
                 <span>
-                  Registrando feedback para <strong>{selectedStore.store_name}</strong> ({selectedStore.client_name})
+                  Registrando feedback para <strong>{selectedStore.store_name}</strong> ({selectedStore.client_name || 'Avulsa'})
                 </span>
               )}
             </DialogDescription>
@@ -865,7 +934,7 @@ export function StoreControlPanel() {
                   </div>
                   <div>
                     <p className="font-medium text-foreground">{selectedStore.store_name}</p>
-                    <p className="text-sm text-muted-foreground">{selectedStore.client_name}</p>
+                    <p className="text-sm text-muted-foreground">{selectedStore.client_name || 'Avulsa'}</p>
                   </div>
                 </div>
               </div>
@@ -918,15 +987,17 @@ export function StoreControlPanel() {
               <div className="pt-2 border-t border-border">
                 <p className="text-xs text-muted-foreground mb-2">Ações rápidas</p>
                 <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1 border-border"
-                    onClick={() => router.push(`/clients/${selectedStore.client_id}?tab=stores`)}
-                  >
-                    <Pencil className="w-3 h-3 mr-1" />
-                    Editar no Cliente
-                  </Button>
+                  {selectedStore.client_id && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="flex-1 border-border"
+                      onClick={() => router.push(`/clients/${selectedStore.client_id}?tab=stores`)}
+                    >
+                      <Pencil className="w-3 h-3 mr-1" />
+                      Editar no Cliente
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     size="sm"
@@ -961,6 +1032,49 @@ export function StoreControlPanel() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Quick Store Registration Dialog */}
+      <Dialog open={isQuickStoreDialogOpen} onOpenChange={setIsQuickStoreDialogOpen}>
+        <DialogContent className="sm:max-w-[450px]">
+          <QuickStoreForm
+            onSuccess={() => {
+              setIsQuickStoreDialogOpen(false)
+              fetchStores()
+            }}
+            onCancel={() => setIsQuickStoreDialogOpen(false)}
+          />
+        </DialogContent>
+      </Dialog>
+
+      {/* Store Link Modal */}
+      {selectedStore && (
+        <StoreLinkModal
+          storeId={selectedStore.id}
+          storeName={selectedStore.store_name}
+          orgId={selectedStore.org_id || ""}
+          isOpen={isLinkModalOpen}
+          onClose={() => {
+            setIsLinkModalOpen(false)
+            setSelectedStore(null)
+          }}
+          onSuccess={fetchStores}
+        />
+      )}
+
+      {/* Store Unlink Dialog */}
+      {selectedStore && (
+        <StoreUnlinkDialog
+          storeId={selectedStore.id}
+          storeName={selectedStore.store_name}
+          clientName={selectedStore.client_name || ""}
+          isOpen={isUnlinkDialogOpen}
+          onClose={() => {
+            setIsUnlinkDialogOpen(false)
+            setSelectedStore(null)
+          }}
+          onSuccess={fetchStores}
+        />
+      )}
     </div>
   )
 }

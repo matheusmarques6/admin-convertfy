@@ -8,8 +8,9 @@ const log = logger.child("StoresControl")
 
 interface StoreWithResults {
   id: string
-  client_id: string
-  client_name: string
+  client_id: string | null
+  org_id: string | null
+  client_name: string | null
   client_company: string
   store_name: string
   store_url: string
@@ -48,6 +49,7 @@ export async function GET(request: Request) {
       .select(`
         id,
         client_id,
+        org_id,
         store_name,
         store_url,
         platform,
@@ -59,7 +61,7 @@ export async function GET(request: Request) {
         next_feedback_date,
         last_feedback_by,
         feedback_notes,
-        clients!inner (
+        clients (
           id,
           name,
           company,
@@ -105,7 +107,7 @@ export async function GET(request: Request) {
         // Handle the relationship data (can be object or null)
         const clientData = store.clients as unknown as { id: string; name: string; company: string; status: string } | null
         const profileData = store.profiles as unknown as { name: string } | null
-        const client = clientData || { id: '', name: 'N/A', company: '', status: '' }
+        const client = clientData || { id: '', name: null, company: '', status: '' }
         const profile = profileData
 
         // Calculate feedback status
@@ -187,7 +189,7 @@ export async function GET(request: Request) {
 
         // Determine last call date (max of feedback and meeting)
         const feedbackDate = store.last_feedback_date ? new Date(store.last_feedback_date) : null
-        const meetingDate = lastMeetingByClient.has(store.client_id)
+        const meetingDate = store.client_id && lastMeetingByClient.has(store.client_id)
           ? new Date(lastMeetingByClient.get(store.client_id)!)
           : null
 
@@ -199,14 +201,14 @@ export async function GET(request: Request) {
             lastCallDate = store.last_feedback_date
             lastCallSource = 'feedback'
           } else {
-            lastCallDate = lastMeetingByClient.get(store.client_id)!
+            lastCallDate = store.client_id ? lastMeetingByClient.get(store.client_id)! : null
             lastCallSource = 'meeting'
           }
         } else if (feedbackDate) {
           lastCallDate = store.last_feedback_date
           lastCallSource = 'feedback'
         } else if (meetingDate) {
-          lastCallDate = lastMeetingByClient.get(store.client_id)!
+          lastCallDate = store.client_id ? lastMeetingByClient.get(store.client_id)! : null
           lastCallSource = 'meeting'
         }
 
@@ -218,6 +220,7 @@ export async function GET(request: Request) {
         return {
           id: store.id,
           client_id: store.client_id,
+          org_id: store.org_id,
           client_name: client.name,
           client_company: client.company || '',
           store_name: store.store_name,

@@ -43,7 +43,7 @@ export interface Client {
 
 export interface ClientStore {
   id: string
-  client_id: string
+  client_id: string | null
   org_id?: string
   platform: "shopify" | "nuvemshop" | "woocommerce" | "other"
   store_name: string
@@ -834,6 +834,40 @@ export interface AgentStoreAccessFormData {
   notes?: string
 }
 
+// Board Config per Agent
+export type BoardCalendarViewMode = "daily" | "weekly" | "monthly"
+
+export interface BoardConfig {
+  id: string
+  org_member_id: string
+  org_id: string
+  show_onboarding_tasks: boolean
+  show_meeting_tasks: boolean
+  show_campaign_tasks: boolean
+  show_feedback_tasks: boolean
+  show_report_tasks: boolean
+  show_contract_tasks: boolean
+  show_manual_tasks: boolean
+  calendar_view_mode: BoardCalendarViewMode
+  show_personal_events: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface BoardConfigFormData {
+  org_member_id: string
+  org_id: string
+  show_onboarding_tasks: boolean
+  show_meeting_tasks: boolean
+  show_campaign_tasks: boolean
+  show_feedback_tasks: boolean
+  show_report_tasks: boolean
+  show_contract_tasks: boolean
+  show_manual_tasks: boolean
+  calendar_view_mode: BoardCalendarViewMode
+  show_personal_events: boolean
+}
+
 // ===========================================
 // Onboarding Types
 // ===========================================
@@ -923,6 +957,7 @@ export interface ClientOnboardingStep {
 export type TaskType = "onboarding" | "campaign" | "request" | "general" | "meeting" | "deadline"
 export type TaskStatus = "pending" | "in_progress" | "blocked" | "review" | "completed" | "cancelled"
 export type TaskPriority = "low" | "medium" | "high" | "urgent"
+export type TaskSourceType = "manual" | "auto_onboarding" | "auto_meeting" | "auto_campaign" | "auto_feedback" | "auto_report" | "auto_contract"
 
 export interface Task {
   id: string
@@ -936,6 +971,8 @@ export interface Task {
   client_id?: string
   store_id?: string
   campaign_batch_id?: string
+  source_type?: TaskSourceType
+  source_id?: string
   due_date?: string
   started_at?: string
   completed_at?: string

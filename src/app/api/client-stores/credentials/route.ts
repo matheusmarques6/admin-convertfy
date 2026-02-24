@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { encrypt, encryptCredentialsJson } from "@/lib/crypto"
 import { logger } from "@/lib/logger"
@@ -54,12 +54,34 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { client_id, ga4_credentials, ...fields } = body
 
-    if (!client_id) {
-      throw new AppError("client_id is required", 400)
-    }
-
     const storeData = processFields(fields)
-    storeData.client_id = client_id
+
+    // Para lojas avulsas, buscar org_member do usuario autenticado
+    let orgMember: { id: string; org_id: string } | null = null
+
+    if (client_id) {
+      // Fluxo existente: loja vinculada a cliente
+      storeData.client_id = client_id
+    } else {
+      // Fluxo novo: loja avulsa (sem cliente)
+      // org_id sera preenchido pelo trigger set_store_org_id() no banco
+      // Mas tambem buscamos aqui para garantir consistencia na API
+      const adminClient = createAdminClient()
+      const { data: { user } } = await supabase.auth.getUser()
+
+      const { data: member } = await adminClient
+        .from("org_members")
+        .select("id, org_id")
+        .eq("profile_id", user!.id)
+        .single()
+
+      if (!member) {
+        throw new AppError("Usuário não pertence a nenhuma organização", 400)
+      }
+
+      orgMember = member
+      storeData.org_id = member.org_id
+    }
 
     // Handle ga4_credentials (encrypt as JSON string)
     if (ga4_credentials) {
@@ -74,7 +96,23 @@ export async function POST(request: NextRequest) {
 
     if (error) throw error
 
-    log.info("Store created", { store_id: data.id, client_id })
+    // (GAP-G4) Se loja avulsa, auto-criar agent_store_access para o criador
+    if (!client_id && orgMember) {
+      const adminClient = createAdminClient()
+      const { data: { user } } = await supabase.auth.getUser()
+
+      await adminClient
+        .from("agent_store_access")
+        .insert({
+          org_member_id: orgMember.id,
+          store_id: data.id,
+          can_view: true,
+          can_edit: true,
+          assigned_by: user!.id,
+        })
+    }
+
+    log.info("Store created", { store_id: data.id, client_id: client_id || null, standalone: !client_id })
     return successResponse(request, { success: true, store: data })
   } catch (error) {
     return errorResponse(request, error, "ClientStoresCredentials")

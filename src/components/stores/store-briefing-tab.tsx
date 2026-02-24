@@ -14,7 +14,7 @@ import type { StoreBriefing } from "@/types/onboarding"
 
 interface StoreBriefingTabProps {
   storeId: string
-  clientId: string
+  clientId: string | null
 }
 
 export function StoreBriefingTab({ storeId, clientId }: StoreBriefingTabProps) {
@@ -84,7 +84,7 @@ export function StoreBriefingTab({ storeId, clientId }: StoreBriefingTabProps) {
           ) : (
             <StoreOnboardingForm
               storeId={storeId}
-              clientId={clientId}
+              clientId={clientId || ''}
               initialData={formInitialData as Record<string, unknown> | undefined}
               onComplete={() => {
                 setFormDialogOpen(false)

@@ -11,7 +11,7 @@ export type AlertStatus = 'active' | 'acknowledged' | 'resolved';
 export interface StoreAlert {
   id: string;
   store_id: string;
-  client_id: string;
+  client_id: string | null;
   type: AlertType;
   severity: AlertSeverity;
   title: string;
@@ -24,12 +24,12 @@ export interface StoreAlert {
   updated_at: string;
   // Joined fields
   store_name?: string;
-  client_name?: string;
+  client_name?: string | null;
 }
 
 export interface CreateAlertData {
   store_id: string;
-  client_id: string;
+  client_id: string | null;
   type: AlertType;
   severity: AlertSeverity;
   title: string;
@@ -141,8 +141,8 @@ class StoreAlertService {
       .from('store_alerts')
       .select(`
         *,
-        client_stores!inner(store_name),
-        clients!inner(name)
+        client_stores(store_name),
+        clients(name)
       `)
       .order('created_at', { ascending: false })
       .limit(filters.limit || 50);
@@ -166,7 +166,7 @@ class StoreAlertService {
       return {
         ...row,
         store_name: storeData?.store_name || 'N/A',
-        client_name: clientData?.name || 'N/A',
+        client_name: clientData?.name || null,
         client_stores: undefined,
         clients: undefined,
       } as StoreAlert;

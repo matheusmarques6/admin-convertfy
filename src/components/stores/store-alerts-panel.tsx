@@ -32,7 +32,7 @@ import { useToast } from "@/lib/hooks/use-toast"
 interface StoreAlert {
   id: string
   store_id: string
-  client_id: string
+  client_id: string | null
   type: "low_revenue" | "klaviyo_account_error" | "campaign_failure" | "low_recovery_rate"
   severity: "critical" | "warning" | "info"
   title: string
@@ -373,7 +373,7 @@ export function StoreAlertsPanel() {
                           <Store className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                           <div>
                             <p className="text-sm font-medium">{alert.store_name || "N/A"}</p>
-                            <p className="text-xs text-muted-foreground">{alert.client_name || "N/A"}</p>
+                            <p className="text-xs text-muted-foreground">{alert.client_name || "Avulsa"}</p>
                           </div>
                         </div>
                       </td>

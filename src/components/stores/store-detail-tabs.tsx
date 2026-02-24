@@ -39,7 +39,7 @@ interface StoreDetailTabsProps {
   country?: string | null
   language?: string | null
   integrationStatus: Record<string, { connected: boolean; connected_at?: string; hasReportingAccess?: boolean }>
-  clientId: string
+  clientId: string | null
   onboardingFormComplete?: boolean
   onboardingStatus?: string | null
   onboardingProgress?: number

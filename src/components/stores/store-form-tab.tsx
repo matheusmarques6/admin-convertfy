@@ -10,7 +10,7 @@ import { toast } from "@/lib/hooks/use-toast"
 
 interface StoreFormTabProps {
   storeId: string
-  clientId: string
+  clientId: string | null
 }
 
 export function StoreFormTab({ storeId, clientId }: StoreFormTabProps) {
@@ -78,7 +78,7 @@ export function StoreFormTab({ storeId, clientId }: StoreFormTabProps) {
       {/* Formulário editável */}
       <StoreOnboardingForm
         storeId={storeId}
-        clientId={clientId}
+        clientId={clientId || ''}
         initialData={initialData as Record<string, unknown> | undefined}
         onComplete={fetchData}
       />

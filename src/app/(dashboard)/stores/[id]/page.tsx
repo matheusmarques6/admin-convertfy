@@ -1,11 +1,13 @@
 import { notFound } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
-import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/server"
 import { getStoreIntegrationStatus } from "@/lib/services/credentials.service"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { StoreDetailTabs } from "@/components/stores/store-detail-tabs"
+import { StoreLinkBadge } from "@/components/stores/store-link-badge"
+import { StoreLinkActions } from "@/components/stores/store-link-actions"
 
 export const dynamic = "force-dynamic"
 
@@ -27,6 +29,7 @@ async function getStore(id: string) {
       created_at,
       updated_at,
       client_id,
+      org_id,
       clients (
         id,
         name
@@ -99,6 +102,8 @@ export default async function StoreDetailPage({
 
   const integrationStatus = store.integrationStatus
   const connectedCount = Object.values(integrationStatus).filter(s => s?.connected).length
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const clientName = (store.clients as any)?.name || null
 
   return (
     <div className="space-y-6">
@@ -123,7 +128,7 @@ export default async function StoreDetailPage({
             <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
               {store.store_url && <span>{store.store_url}</span>}
               {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-              {(store.clients as any)?.name && (
+              {store.client_id && (store.clients as any)?.name ? (
                 <Link
                   href={`/clients/${store.client_id}`}
                   className="text-primary hover:underline"
@@ -131,11 +136,24 @@ export default async function StoreDetailPage({
                   {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                   Cliente: {(store.clients as any).name}
                 </Link>
+              ) : (
+                <span>Loja Avulsa — Sem cliente vinculado</span>
               )}
+              <StoreLinkBadge
+                clientId={store.client_id}
+                clientName={clientName}
+              />
               <span>{connectedCount} integração(ões) conectada(s)</span>
             </div>
           </div>
         </div>
+        <StoreLinkActions
+          storeId={store.id}
+          storeName={store.store_name}
+          orgId={store.org_id || ""}
+          clientId={store.client_id}
+          clientName={clientName}
+        />
       </div>
 
       {/* Tabs */}

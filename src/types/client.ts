@@ -30,7 +30,7 @@ export interface Client {
 
 export interface ClientStore {
   id: string
-  client_id: string
+  client_id: string | null
   org_id?: string
   platform: "shopify" | "nuvemshop" | "woocommerce" | "other"
   store_name: string

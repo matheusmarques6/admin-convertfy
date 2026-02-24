@@ -67,7 +67,7 @@ export interface IntegrationStatus {
  * Get decrypted credentials for a store.
  * Uses admin client to bypass RLS.
  */
-export async function getStoreCredentials(storeId: string): Promise<StoreCredentials & { store_name: string; client_id: string }> {
+export async function getStoreCredentials(storeId: string): Promise<StoreCredentials & { store_name: string; client_id: string | null }> {
   const adminClient = createAdminClient()
 
   const { data: store, error } = await adminClient
@@ -84,7 +84,7 @@ export async function getStoreCredentials(storeId: string): Promise<StoreCredent
   const decrypted = decryptStoreCredentials(store)
 
   // Decrypt JSON fields separately
-  const result: StoreCredentials & { store_name: string; client_id: string } = {
+  const result: StoreCredentials & { store_name: string; client_id: string | null } = {
     ...decrypted,
     store_name: store.store_name,
     client_id: store.client_id,

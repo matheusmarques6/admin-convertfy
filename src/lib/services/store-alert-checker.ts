@@ -33,7 +33,7 @@ export interface CheckResult {
 
 interface StoreForCheck {
   id: string;
-  client_id: string;
+  client_id: string | null;
   store_name: string;
   is_active: boolean;
   alert_revenue_threshold: number;
