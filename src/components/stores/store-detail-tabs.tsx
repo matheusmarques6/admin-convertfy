@@ -27,7 +27,10 @@ import { useKlaviyoCampaigns, useKlaviyoFlows } from "@/lib/hooks/use-api-data"
 import { StoreBriefingTab } from "@/components/stores/store-briefing-tab"
 import { StoreFormTab } from "@/components/stores/store-form-tab"
 import { StoreAlertsTab } from "@/components/stores/store-alerts-tab"
+import { StorePerformanceKPIs } from "@/components/stores/store-performance-kpis"
+import { StorePerformanceTables } from "@/components/stores/store-performance-tables"
 import { DateRangePicker } from "@/components/ui/date-range-picker"
+import { useStorePerformance, StorePerformanceContext } from "@/lib/hooks/use-store-performance"
 import type { CustomDateRange } from "@/lib/hooks/use-api-data"
 
 interface StoreDetailTabsProps {
@@ -148,6 +151,9 @@ export function StoreDetailTabs({
     mutate: mutateFlows,
   } = useKlaviyoFlows(klaviyoConnected ? storeId : null, period, customDates)
 
+  // Store performance hook for overview tab (independent period state)
+  const storePerformance = useStorePerformance(storeId, klaviyoConnected)
+
   return (
     <Tabs defaultValue="overview" className="space-y-6">
       <TabsList>
@@ -192,164 +198,175 @@ export function StoreDetailTabs({
 
       {/* Overview */}
       <TabsContent value="overview">
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {/* Store Info */}
-          <GlowCard color="primary" intensity="subtle">
-            <CardHeader>
-              <CardTitle className="text-base">Informações da Loja</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Nome</span>
-                <span className="font-medium">{storeName}</span>
-              </div>
-              {storeUrl && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">URL</span>
-                  <span className="font-medium">{storeUrl}</span>
-                </div>
-              )}
-              {platform && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Plataforma</span>
-                  <Badge variant="outline">{platform}</Badge>
-                </div>
-              )}
-              {niche && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Nicho</span>
-                  <span className="font-medium">{niche}</span>
-                </div>
-              )}
-              {country && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">País</span>
-                  <span className="font-medium">{country}</span>
-                </div>
-              )}
-              {language && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Idioma</span>
-                  <span className="font-medium">{language}</span>
-                </div>
-              )}
-            </CardContent>
-          </GlowCard>
+        <StorePerformanceContext.Provider value={storePerformance}>
+          <div className="space-y-6">
+            {/* Performance KPIs with period selector */}
+            {klaviyoConnected && <StorePerformanceKPIs />}
 
-          {/* Onboarding Status */}
-          {onboardingStatus && (
-            <GlowCard color="primary" intensity="subtle">
-              <CardHeader>
-                <CardTitle className="text-base">Status do Onboarding</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3 text-sm">
-                <div className="flex justify-between items-center">
-                  <span className="text-muted-foreground">Fase</span>
-                  <Badge variant="secondary">
-                    {onboardingStatus === "in_progress" ? "Em Andamento" :
-                     onboardingStatus === "not_started" ? "Não Iniciado" :
-                     onboardingStatus === "paused" ? "Pausado" :
-                     onboardingStatus === "completed" ? "Concluído" : onboardingStatus}
-                  </Badge>
-                </div>
-                <div>
-                  <div className="flex justify-between text-xs mb-1">
-                    <span className="text-muted-foreground">Progresso</span>
-                    <span className="font-medium">{onboardingProgress || 0}%</span>
+            {/* Info cards grid */}
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {/* Store Info */}
+              <GlowCard color="primary" intensity="subtle">
+                <CardHeader>
+                  <CardTitle className="text-base">Informações da Loja</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Nome</span>
+                    <span className="font-medium">{storeName}</span>
                   </div>
-                  <Progress value={onboardingProgress || 0} className="h-1.5" />
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-muted-foreground">Formulário</span>
-                  {onboardingFormComplete ? (
-                    <Badge variant="success" className="text-[10px]">
-                      <CheckCircle2 className="h-3 w-3 mr-1" />
-                      Preenchido
-                    </Badge>
-                  ) : (
-                    <Badge variant="warning" className="text-[10px]">
-                      <AlertTriangle className="h-3 w-3 mr-1" />
-                      Pendente
-                    </Badge>
-                  )}
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-muted-foreground">Briefing</span>
-                  {hasBriefing ? (
-                    <Badge variant="success" className="text-[10px]">
-                      <CheckCircle2 className="h-3 w-3 mr-1" />
-                      Gerado
-                    </Badge>
-                  ) : (
-                    <Badge variant="secondary" className="text-[10px]">
-                      <FileText className="h-3 w-3 mr-1" />
-                      Não gerado
-                    </Badge>
-                  )}
-                </div>
-              </CardContent>
-            </GlowCard>
-          )}
-
-          {/* Integration Status */}
-          <GlowCard color="primary" intensity="subtle" className="md:col-span-2">
-            <CardHeader>
-              <CardTitle className="text-base">Status das Integrações</CardTitle>
-              <CardDescription>Serviços conectados a esta loja</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {[
-                  { key: "shopify", label: "Shopify" },
-                  { key: "klaviyo", label: "Klaviyo" },
-                  { key: "ga4", label: "Google Analytics" },
-                  { key: "meta", label: "Meta Ads" },
-                  { key: "google_ads", label: "Google Ads" },
-                  { key: "google_calendar", label: "Google Calendar" },
-                ].map(({ key, label }) => {
-                  const status = integrationStatus[key]
-                  const connected = status?.connected || false
-                  const hasReporting = key === "klaviyo" && connected
-                    ? status?.hasReportingAccess
-                    : undefined
-                  return (
-                    <div
-                      key={key}
-                      className="flex items-center gap-3 p-3 rounded-lg border"
-                    >
-                      {connected ? (
-                        <CheckCircle2 className="h-5 w-5 text-success" />
-                      ) : (
-                        <XCircle className="h-5 w-5 text-muted-foreground/40" />
-                      )}
-                      <div>
-                        <p className="text-sm font-medium">{label}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {connected
-                            ? status?.connected_at
-                              ? `Conectado em ${new Date(status.connected_at).toLocaleDateString("pt-BR")}`
-                              : "Conectado"
-                            : "Não conectado"}
-                        </p>
-                        {key === "klaviyo" && connected && hasReporting === false && (
-                          <p className="text-xs text-yellow-500 flex items-center gap-1 mt-0.5">
-                            <AlertTriangle className="h-3 w-3" />
-                            Sem acesso a relatórios
-                          </p>
-                        )}
-                        {key === "klaviyo" && connected && hasReporting === true && (
-                          <p className="text-xs text-success mt-0.5">
-                            Relatórios ativos
-                          </p>
-                        )}
-                      </div>
+                  {storeUrl && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">URL</span>
+                      <span className="font-medium">{storeUrl}</span>
                     </div>
-                  )
-                })}
-              </div>
-            </CardContent>
-          </GlowCard>
-        </div>
+                  )}
+                  {platform && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Plataforma</span>
+                      <Badge variant="outline">{platform}</Badge>
+                    </div>
+                  )}
+                  {niche && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Nicho</span>
+                      <span className="font-medium">{niche}</span>
+                    </div>
+                  )}
+                  {country && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">País</span>
+                      <span className="font-medium">{country}</span>
+                    </div>
+                  )}
+                  {language && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Idioma</span>
+                      <span className="font-medium">{language}</span>
+                    </div>
+                  )}
+                </CardContent>
+              </GlowCard>
+
+              {/* Onboarding Status */}
+              {onboardingStatus && (
+                <GlowCard color="primary" intensity="subtle">
+                  <CardHeader>
+                    <CardTitle className="text-base">Status do Onboarding</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3 text-sm">
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground">Fase</span>
+                      <Badge variant="secondary">
+                        {onboardingStatus === "in_progress" ? "Em Andamento" :
+                         onboardingStatus === "not_started" ? "Não Iniciado" :
+                         onboardingStatus === "paused" ? "Pausado" :
+                         onboardingStatus === "completed" ? "Concluído" : onboardingStatus}
+                      </Badge>
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className="text-muted-foreground">Progresso</span>
+                        <span className="font-medium">{onboardingProgress || 0}%</span>
+                      </div>
+                      <Progress value={onboardingProgress || 0} className="h-1.5" />
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground">Formulário</span>
+                      {onboardingFormComplete ? (
+                        <Badge variant="success" className="text-[10px]">
+                          <CheckCircle2 className="h-3 w-3 mr-1" />
+                          Preenchido
+                        </Badge>
+                      ) : (
+                        <Badge variant="warning" className="text-[10px]">
+                          <AlertTriangle className="h-3 w-3 mr-1" />
+                          Pendente
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground">Briefing</span>
+                      {hasBriefing ? (
+                        <Badge variant="success" className="text-[10px]">
+                          <CheckCircle2 className="h-3 w-3 mr-1" />
+                          Gerado
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary" className="text-[10px]">
+                          <FileText className="h-3 w-3 mr-1" />
+                          Não gerado
+                        </Badge>
+                      )}
+                    </div>
+                  </CardContent>
+                </GlowCard>
+              )}
+
+              {/* Integration Status */}
+              <GlowCard color="primary" intensity="subtle" className="md:col-span-2">
+                <CardHeader>
+                  <CardTitle className="text-base">Status das Integrações</CardTitle>
+                  <CardDescription>Serviços conectados a esta loja</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {[
+                      { key: "shopify", label: "Shopify" },
+                      { key: "klaviyo", label: "Klaviyo" },
+                      { key: "ga4", label: "Google Analytics" },
+                      { key: "meta", label: "Meta Ads" },
+                      { key: "google_ads", label: "Google Ads" },
+                      { key: "google_calendar", label: "Google Calendar" },
+                    ].map(({ key, label }) => {
+                      const status = integrationStatus[key]
+                      const connected = status?.connected || false
+                      const hasReporting = key === "klaviyo" && connected
+                        ? status?.hasReportingAccess
+                        : undefined
+                      return (
+                        <div
+                          key={key}
+                          className="flex items-center gap-3 p-3 rounded-lg border"
+                        >
+                          {connected ? (
+                            <CheckCircle2 className="h-5 w-5 text-success" />
+                          ) : (
+                            <XCircle className="h-5 w-5 text-muted-foreground/40" />
+                          )}
+                          <div>
+                            <p className="text-sm font-medium">{label}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {connected
+                                ? status?.connected_at
+                                  ? `Conectado em ${new Date(status.connected_at).toLocaleDateString("pt-BR")}`
+                                  : "Conectado"
+                                : "Não conectado"}
+                            </p>
+                            {key === "klaviyo" && connected && hasReporting === false && (
+                              <p className="text-xs text-yellow-500 flex items-center gap-1 mt-0.5">
+                                <AlertTriangle className="h-3 w-3" />
+                                Sem acesso a relatórios
+                              </p>
+                            )}
+                            {key === "klaviyo" && connected && hasReporting === true && (
+                              <p className="text-xs text-success mt-0.5">
+                                Relatórios ativos
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </CardContent>
+              </GlowCard>
+            </div>
+
+            {/* Performance Tables (campaigns + flows) */}
+            {klaviyoConnected && <StorePerformanceTables />}
+          </div>
+        </StorePerformanceContext.Provider>
       </TabsContent>
 
       {/* Campaigns */}
