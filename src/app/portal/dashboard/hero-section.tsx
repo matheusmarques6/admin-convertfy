@@ -43,7 +43,7 @@ export function HeroSection({ klaviyo }: HeroSectionProps) {
         </div>
         <div className="text-right">
           <p className="text-xs text-muted-foreground mb-1">Atribuição Klaviyo</p>
-          <p className="text-3xl font-bold text-info">{attributionPercent.toFixed(1)}%</p>
+          <p className="text-3xl font-bold text-info">{attributionPercent.toFixed(2)}%</p>
           <p className="text-xs text-muted-foreground">do faturamento</p>
         </div>
       </div>
