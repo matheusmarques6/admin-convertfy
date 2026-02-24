@@ -1017,7 +1017,9 @@ export function calculateDateRange(params: DateRangeParams): { start: string; en
  */
 export async function getShopifyReportForStore(
   storeId: string,
-  period: string
+  period: string,
+  customStartDate?: string | null,
+  customEndDate?: string | null
 ): Promise<ShopifyReportData> {
   try {
     const storeData = await getStoreCredentials(storeId)
@@ -1028,7 +1030,7 @@ export async function getShopifyReportForStore(
     }
 
     const storeDomain = normalizeShopifyDomain(shopify_store_domain)
-    const dateRange = calculateDateRange({ period })
+    const dateRange = calculateDateRange({ period, customStartDate: customStartDate || undefined, customEndDate: customEndDate || undefined })
 
     const [ordersSummary, customersSummary] = await Promise.all([
       getOrdersSummary(storeDomain, accessToken, dateRange),

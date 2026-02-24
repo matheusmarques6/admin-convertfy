@@ -42,6 +42,10 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
+import { Calendar as CalendarWidget } from "@/components/ui/calendar"
+import { format } from "date-fns"
+import { ptBR } from "date-fns/locale"
+import type { DateRange } from "react-day-picker"
 import { createClient } from "@/lib/supabase/client"
 import { toast } from "@/lib/hooks/use-toast"
 import { KlaviyoPerformanceReport } from "./klaviyo-performance-report"
@@ -104,6 +108,7 @@ export function ClientReports({ clientId }: ClientReportsProps) {
   const [reportType, setReportType] = useState<string>("klaviyo")
   const [customStartDate, setCustomStartDate] = useState<string>("")
   const [customEndDate, setCustomEndDate] = useState<string>("")
+  const [customRange, setCustomRange] = useState<DateRange | undefined>()
 
   const reportRef = useRef<HTMLDivElement>(null)
 
@@ -705,30 +710,24 @@ export function ClientReports({ clientId }: ClientReportsProps) {
                 <Label className="text-sm font-medium flex items-center gap-2">
                   <Calendar className="h-4 w-4" />
                   Período Personalizado
+                  {customRange?.from && customRange?.to && (
+                    <span className="text-xs text-muted-foreground font-normal ml-2">
+                      {format(customRange.from, "dd/MM/yy", { locale: ptBR })} — {format(customRange.to, "dd/MM/yy", { locale: ptBR })}
+                    </span>
+                  )}
                 </Label>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">Data Início</Label>
-                    <input
-                      type="date"
-                      value={customStartDate}
-                      onChange={(e) => setCustomStartDate(e.target.value)}
-                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                      max={customEndDate || new Date().toISOString().split('T')[0]}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">Data Fim</Label>
-                    <input
-                      type="date"
-                      value={customEndDate}
-                      onChange={(e) => setCustomEndDate(e.target.value)}
-                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                      min={customStartDate}
-                      max={new Date().toISOString().split('T')[0]}
-                    />
-                  </div>
-                </div>
+                <CalendarWidget
+                  mode="range"
+                  selected={customRange}
+                  onSelect={(range) => {
+                    setCustomRange(range)
+                    if (range?.from) setCustomStartDate(format(range.from, "yyyy-MM-dd"))
+                    if (range?.to) setCustomEndDate(format(range.to, "yyyy-MM-dd"))
+                  }}
+                  numberOfMonths={2}
+                  locale={ptBR}
+                  disabled={{ after: new Date() }}
+                />
               </div>
             )}
           </div>

@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
+import { format } from "date-fns"
 import {
   Loader2,
   RefreshCw,
@@ -25,6 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { DateRangePicker } from "@/components/ui/date-range-picker"
 import { Campaign } from "@/types"
 
 interface StoreItem {
@@ -57,12 +59,24 @@ export function CampaignsListView() {
   const [filterChannel, setFilterChannel] = useState("all")
   const [filterStatus, setFilterStatus] = useState("all")
   const [filterPeriod, setFilterPeriod] = useState("90d")
+  const [customStart, setCustomStart] = useState<Date | undefined>()
+  const [customEnd, setCustomEnd] = useState<Date | undefined>()
+  const customStartRef = useRef(customStart)
+  const customEndRef = useRef(customEnd)
+  customStartRef.current = customStart
+  customEndRef.current = customEnd
 
   // Sort
   const [sortField, setSortField] = useState<SortField>("scheduled_date")
   const [sortDir, setSortDir] = useState<SortDir>("desc")
 
-  const getDateRange = useCallback((period: string) => {
+  const getDateRange = useCallback((period: string, cStart?: Date, cEnd?: Date) => {
+    if (period === "custom" && cStart && cEnd) {
+      return {
+        start_date: format(cStart, "yyyy-MM-dd"),
+        end_date: format(cEnd, "yyyy-MM-dd"),
+      }
+    }
     const end = new Date()
     const start = new Date()
     switch (period) {
@@ -83,7 +97,7 @@ export function CampaignsListView() {
     else setLoading(true)
 
     try {
-      const { start_date, end_date } = getDateRange(filterPeriod)
+      const { start_date, end_date } = getDateRange(filterPeriod, customStartRef.current, customEndRef.current)
       let url = `/api/campaigns?start_date=${start_date}&end_date=${end_date}`
       if (filterStore !== "all") url += `&store_id=${filterStore}`
       if (filterChannel !== "all") url += `&channel=${filterChannel}`
@@ -279,7 +293,11 @@ export function CampaignsListView() {
           </SelectContent>
         </Select>
 
-        <Select value={filterPeriod} onValueChange={setFilterPeriod}>
+        <Select value={filterPeriod} onValueChange={(v) => {
+          setFilterPeriod(v)
+          setCustomStart(undefined)
+          setCustomEnd(undefined)
+        }}>
           <SelectTrigger className="w-[120px] h-9">
             <SelectValue placeholder="Período" />
           </SelectTrigger>
@@ -291,6 +309,15 @@ export function CampaignsListView() {
             <SelectItem value="all">Tudo</SelectItem>
           </SelectContent>
         </Select>
+        <DateRangePicker
+          startDate={customStart}
+          endDate={customEnd}
+          onApply={(start, end) => {
+            setCustomStart(start)
+            setCustomEnd(end)
+            setFilterPeriod("custom")
+          }}
+        />
 
         <Button variant="outline" size="sm" onClick={() => fetchData(true)} disabled={refreshing}>
           <RefreshCw className={`h-4 w-4 mr-1 ${refreshing ? "animate-spin" : ""}`} />

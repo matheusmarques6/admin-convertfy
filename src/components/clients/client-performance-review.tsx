@@ -1,5 +1,7 @@
 "use client"
 
+import { useState } from "react"
+import { format } from "date-fns"
 import {
   TrendingUp,
   Mail,
@@ -23,6 +25,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { DateRangePicker } from "@/components/ui/date-range-picker"
 import { SkeletonShimmer, SkeletonMetric } from "@/components/ui/skeleton"
 import { formatCurrency } from "@/lib/utils"
 import {
@@ -88,8 +91,21 @@ function TableSkeleton() {
 // ─── KPIs: Header + KPI Cards + Error Badges (compact, goes on TOP) ─────────
 
 export function ClientPerformanceKPIs() {
-  const { data, loading, isValidating, error, period, setPeriod, refresh } =
+  const { data, loading, isValidating, error, period, setPeriod, setCustomDates, refresh } =
     useClientPerformanceContext()
+
+  const [customStart, setCustomStart] = useState<Date | undefined>()
+  const [customEnd, setCustomEnd] = useState<Date | undefined>()
+
+  const handleCustomDateApply = (start: Date, end: Date) => {
+    setCustomStart(start)
+    setCustomEnd(end)
+    setCustomDates({
+      startDate: format(start, "yyyy-MM-dd"),
+      endDate: format(end, "yyyy-MM-dd"),
+    })
+    setPeriod("custom")
+  }
 
   return (
     <div className="space-y-4">
@@ -117,6 +133,11 @@ export function ClientPerformanceKPIs() {
               </button>
             ))}
           </div>
+          <DateRangePicker
+            startDate={customStart}
+            endDate={customEnd}
+            onApply={handleCustomDateApply}
+          />
           <Button
             variant="ghost"
             size="icon"

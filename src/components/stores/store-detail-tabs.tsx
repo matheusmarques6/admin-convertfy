@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { format } from "date-fns"
 import {
   Store,
   BarChart3,
@@ -26,6 +27,8 @@ import { useKlaviyoCampaigns, useKlaviyoFlows } from "@/lib/hooks/use-api-data"
 import { StoreBriefingTab } from "@/components/stores/store-briefing-tab"
 import { StoreFormTab } from "@/components/stores/store-form-tab"
 import { StoreAlertsTab } from "@/components/stores/store-alerts-tab"
+import { DateRangePicker } from "@/components/ui/date-range-picker"
+import type { CustomDateRange } from "@/lib/hooks/use-api-data"
 
 interface StoreDetailTabsProps {
   storeId: string
@@ -70,7 +73,7 @@ interface FlowData {
   revenue: number
 }
 
-type Period = "7d" | "30d" | "90d" | "all"
+type Period = "7d" | "30d" | "90d" | "all" | "custom"
 
 export function StoreDetailTabs({
   storeId,
@@ -87,8 +90,31 @@ export function StoreDetailTabs({
   onboardingProgress,
   hasBriefing,
 }: StoreDetailTabsProps) {
-  const [period, setPeriod] = useState<Period>("30d")
+  const [period, setPeriodRaw] = useState<Period>("30d")
+  const [customDates, setCustomDates] = useState<CustomDateRange | undefined>()
+  const [customStart, setCustomStart] = useState<Date | undefined>()
+  const [customEnd, setCustomEnd] = useState<Date | undefined>()
   const [activeAlertsCount, setActiveAlertsCount] = useState(0)
+
+  const setPeriod = (p: Period) => {
+    setPeriodRaw(p)
+    if (p !== "custom") {
+      setCustomDates(undefined)
+      setCustomStart(undefined)
+      setCustomEnd(undefined)
+    }
+  }
+
+  const handleCustomDateApply = (start: Date, end: Date) => {
+    setCustomStart(start)
+    setCustomEnd(end)
+    const dates: CustomDateRange = {
+      startDate: format(start, "yyyy-MM-dd"),
+      endDate: format(end, "yyyy-MM-dd"),
+    }
+    setCustomDates(dates)
+    setPeriodRaw("custom")
+  }
 
   // Fetch active alerts count
   useEffect(() => {
@@ -113,14 +139,14 @@ export function StoreDetailTabs({
     isLoading: campaignsInitialLoading,
     isValidating: campaignsLoading,
     mutate: mutateCampaigns,
-  } = useKlaviyoCampaigns(klaviyoConnected ? storeId : null, period)
+  } = useKlaviyoCampaigns(klaviyoConnected ? storeId : null, period, customDates)
 
   const {
     data: flowsData,
     isLoading: flowsInitialLoading,
     isValidating: flowsLoading,
     mutate: mutateFlows,
-  } = useKlaviyoFlows(klaviyoConnected ? storeId : null, period)
+  } = useKlaviyoFlows(klaviyoConnected ? storeId : null, period, customDates)
 
   return (
     <Tabs defaultValue="overview" className="space-y-6">
@@ -335,6 +361,9 @@ export function StoreDetailTabs({
           period={period}
           setPeriod={setPeriod}
           onRefresh={() => mutateCampaigns()}
+          customStart={customStart}
+          customEnd={customEnd}
+          onCustomDateApply={handleCustomDateApply}
         />
       </TabsContent>
 
@@ -347,6 +376,9 @@ export function StoreDetailTabs({
           period={period}
           setPeriod={setPeriod}
           onRefresh={() => mutateFlows()}
+          customStart={customStart}
+          customEnd={customEnd}
+          onCustomDateApply={handleCustomDateApply}
         />
       </TabsContent>
 
@@ -398,6 +430,9 @@ function CampaignsTab({
   period,
   setPeriod,
   onRefresh,
+  customStart,
+  customEnd,
+  onCustomDateApply,
 }: {
   data: { summary: Record<string, number>; campaigns: CampaignData[] } | undefined
   loading: boolean
@@ -405,6 +440,9 @@ function CampaignsTab({
   period: Period
   setPeriod: (p: Period) => void
   onRefresh: () => void
+  customStart?: Date
+  customEnd?: Date
+  onCustomDateApply: (start: Date, end: Date) => void
 }) {
   if (loading && !data) {
     return (
@@ -429,6 +467,11 @@ function CampaignsTab({
             <option value="90d">90 dias</option>
             <option value="all">Tudo</option>
           </select>
+          <DateRangePicker
+            startDate={customStart}
+            endDate={customEnd}
+            onApply={onCustomDateApply}
+          />
           <Button variant="outline" size="sm" onClick={onRefresh} disabled={refreshing}>
             <RefreshCw className={`h-4 w-4 mr-1 ${refreshing ? "animate-spin" : ""}`} />
             Atualizar
@@ -499,6 +542,9 @@ function FlowsTab({
   period,
   setPeriod,
   onRefresh,
+  customStart,
+  customEnd,
+  onCustomDateApply,
 }: {
   data: { summary: Record<string, number>; flows: FlowData[] } | undefined
   loading: boolean
@@ -506,6 +552,9 @@ function FlowsTab({
   period: Period
   setPeriod: (p: Period) => void
   onRefresh: () => void
+  customStart?: Date
+  customEnd?: Date
+  onCustomDateApply: (start: Date, end: Date) => void
 }) {
   if (loading && !data) {
     return (
@@ -530,6 +579,11 @@ function FlowsTab({
             <option value="90d">90 dias</option>
             <option value="all">Tudo</option>
           </select>
+          <DateRangePicker
+            startDate={customStart}
+            endDate={customEnd}
+            onApply={onCustomDateApply}
+          />
           <Button variant="outline" size="sm" onClick={onRefresh} disabled={refreshing}>
             <RefreshCw className={`h-4 w-4 mr-1 ${refreshing ? "animate-spin" : ""}`} />
             Atualizar

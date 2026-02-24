@@ -61,12 +61,14 @@ async function processChunk(
   stores: StoreInput[],
   period: string,
   clientNameMap: Map<string, string>,
+  customStartDate?: string | null,
+  customEndDate?: string | null,
 ): Promise<StoreRevenue[]> {
   return Promise.all(
     stores.map(async (store) => {
       const clientName = clientNameMap.get(store.client_id) || "Cliente"
       try {
-        const revenue = await getKlaviyoRevenueForStore(store.id, period)
+        const revenue = await getKlaviyoRevenueForStore(store.id, period, customStartDate, customEndDate)
         return {
           storeId: store.id,
           storeName: store.store_name || "Loja sem nome",
@@ -96,9 +98,11 @@ export async function GET(request: NextRequest) {
     const user = await requireAuth(supabase)
 
     const period = request.nextUrl.searchParams.get("period") || "30d"
+    const customStartDate = request.nextUrl.searchParams.get("start_date")
+    const customEndDate = request.nextUrl.searchParams.get("end_date")
 
     // Cache key includes user ID to prevent cross-tenant data leakage
-    const cacheKey = `${user.id}:${period}`
+    const cacheKey = `${user.id}:${period}${customStartDate ? `:${customStartDate}:${customEndDate}` : ""}`
     const cached = revenueCache.get(cacheKey)
     if (cached && (Date.now() - cached.timestamp) < CACHE_TTL) {
       return successResponse(request, cached.data)
@@ -163,7 +167,7 @@ export async function GET(request: NextRequest) {
     const allResults: StoreRevenue[] = []
     for (let i = 0; i < stores.length; i += CHUNK_SIZE) {
       const chunk = stores.slice(i, i + CHUNK_SIZE)
-      const chunkResults = await processChunk(chunk as StoreInput[], period, clientNameMap)
+      const chunkResults = await processChunk(chunk as StoreInput[], period, clientNameMap, customStartDate, customEndDate)
       allResults.push(...chunkResults)
     }
 

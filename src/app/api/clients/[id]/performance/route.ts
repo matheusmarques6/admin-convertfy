@@ -84,10 +84,12 @@ export async function GET(
     const { id: clientId } = await params
     const { searchParams } = new URL(request.url)
     const period = searchParams.get("period") || "30d"
+    const customStartDate = searchParams.get("start_date")
+    const customEndDate = searchParams.get("end_date")
     const forceRefresh = searchParams.get("force_refresh") === "true"
 
     // Validate period
-    const validPeriods = ["today", "yesterday", "7d", "15d", "30d"]
+    const validPeriods = ["today", "yesterday", "7d", "15d", "30d", "custom"]
     if (!validPeriods.includes(period)) {
       throw new AppError(`Período inválido: ${period}. Use: ${validPeriods.join(", ")}`, 400)
     }
@@ -106,7 +108,8 @@ export async function GET(
     // Check cache first (using clientId as storeId key)
     // Skip cache if data has zero revenue (likely stale from API fix)
     if (!forceRefresh) {
-      const cached = await getCache(adminClient, clientId, "client_performance", period)
+      const cacheperiod = period === "custom" && customStartDate ? `${period}:${customStartDate}:${customEndDate}` : period
+      const cached = await getCache(adminClient, clientId, "client_performance", cacheperiod)
       if (cached) {
         const cachedTotals = (cached.data as Record<string, unknown>).totals as Record<string, number> | undefined
         const hasData = cachedTotals && (cachedTotals.klaviyoRevenue > 0 || cachedTotals.shopifyRevenue > 0)
@@ -136,7 +139,7 @@ export async function GET(
     }
 
     // Calculate date range
-    const { startDate, endDate } = parseDateRange(period)
+    const { startDate, endDate } = parseDateRange(period, customStartDate, customEndDate)
     const startDateStr = formatDateStr(startDate)
     const endDateStr = formatDateStr(endDate)
 
@@ -180,7 +183,7 @@ export async function GET(
       // Fetch Shopify data via direct module call (no HTTP self-fetch)
       if (hasShopify) {
         try {
-          const report = await getShopifyReportForStore(store.id, period)
+          const report = await getShopifyReportForStore(store.id, period, customStartDate, customEndDate)
           if (report.connected && report.summary) {
             shopifyData = {
               totalRevenue: report.summary.totalRevenue || 0,
@@ -229,7 +232,8 @@ export async function GET(
     }
 
     // Save to cache (fire-and-forget)
-    setCache(adminClient, clientId, "client_performance", period, responseData as unknown as Record<string, unknown>).catch(() => {})
+    const cachePeriodKey = period === "custom" && customStartDate ? `${period}:${customStartDate}:${customEndDate}` : period
+    setCache(adminClient, clientId, "client_performance", cachePeriodKey, responseData as unknown as Record<string, unknown>).catch(() => {})
 
     return successResponse(request, responseData)
   } catch (error) {
@@ -440,8 +444,9 @@ async function fetchKlaviyoPerformance(
   for (const [cid, m] of campAgg) {
     campaignRevenue += m.conversionValue
     const openRate = m.delivered > 0 ? (m.opensUnique / m.delivered) * 100 : 0
-    if (openRate > 0) { campaignOpenRateSum += openRate; campaignCount++ }
-    if (m.clickRate > 0) { campaignClickRateSum += m.clickRate; campaignCount++ }
+    if (openRate > 0) { campaignOpenRateSum += openRate }
+    if (m.clickRate > 0) { campaignClickRateSum += m.clickRate }
+    if (openRate > 0 || m.clickRate > 0) { campaignCount++ }
     const info = campNames.get(cid)
     recentCampaigns.push({
       name: info?.name || `Campaign ${cid.slice(0, 6)}`,

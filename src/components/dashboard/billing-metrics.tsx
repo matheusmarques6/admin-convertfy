@@ -25,13 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+import { DateRangePicker } from "@/components/ui/date-range-picker"
 import { formatCurrency } from "@/lib/utils"
 import { cn } from "@/lib/utils"
 import { GlowCard } from "@/components/ui/glow-card"
@@ -82,7 +76,9 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    loadData()
+    if (period !== "custom") {
+      loadData()
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [period])
 
@@ -112,11 +108,7 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
     }
   }
 
-  function handleCustomPeriod() {
-    if (customStart && customEnd) {
-      loadData({ start: customStart, end: customEnd })
-    }
-  }
+
 
   // Show loading state first
   if (isLoading && !data) {
@@ -200,39 +192,18 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
             </SelectContent>
           </Select>
 
-          {period === "custom" && (
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="sm">
-                  <Calendar className="h-4 w-4 mr-2" />
-                  Definir período
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-80">
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Data Início</Label>
-                    <Input
-                      type="date"
-                      value={customStart}
-                      onChange={(e) => setCustomStart(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Data Fim</Label>
-                    <Input
-                      type="date"
-                      value={customEnd}
-                      onChange={(e) => setCustomEnd(e.target.value)}
-                    />
-                  </div>
-                  <Button onClick={handleCustomPeriod} className="w-full">
-                    Aplicar
-                  </Button>
-                </div>
-              </PopoverContent>
-            </Popover>
-          )}
+          <DateRangePicker
+            startDate={customStart ? new Date(customStart + "T12:00:00") : undefined}
+            endDate={customEnd ? new Date(customEnd + "T12:00:00") : undefined}
+            onApply={(start, end) => {
+              const startStr = start.toISOString().split("T")[0]
+              const endStr = end.toISOString().split("T")[0]
+              setCustomStart(startStr)
+              setCustomEnd(endStr)
+              setPeriod("custom")
+              loadData({ start: startStr, end: endStr })
+            }}
+          />
 
           <Button variant="ghost" size="icon" onClick={() => loadData()} disabled={isLoading}>
             <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} />

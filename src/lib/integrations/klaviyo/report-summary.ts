@@ -38,7 +38,9 @@ interface KlaviyoValuesReport {
  */
 export async function getKlaviyoRevenueForStore(
   storeId: string,
-  period: string
+  period: string,
+  customStartDate?: string | null,
+  customEndDate?: string | null
 ): Promise<KlaviyoRevenueSummary> {
   try {
     const storeData = await getStoreCredentials(storeId)
@@ -49,7 +51,7 @@ export async function getKlaviyoRevenueForStore(
     }
 
     // Calculate date range
-    const { startDate, endDate } = parseDateRange(period)
+    const { startDate, endDate } = parseDateRange(period, customStartDate, customEndDate)
     const startDateStr = formatDateStr(startDate)
     const endDateStr = formatDateStr(endDate)
 

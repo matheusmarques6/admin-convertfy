@@ -1,7 +1,9 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
+import { format } from "date-fns"
 import { useKlaviyoReport, useShopifyReport } from "@/lib/hooks/use-api-data"
+import type { CustomDateRange } from "@/lib/hooks/use-api-data"
 import {
   Users,
   Mail,
@@ -29,6 +31,7 @@ import {
   AlertTriangle,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { DateRangePicker } from "@/components/ui/date-range-picker"
 
 // ============ INTERFACES ============
 interface KlaviyoReportData {
@@ -190,7 +193,7 @@ interface KlaviyoPerformanceReportProps {
   savedReportData?: KlaviyoReportData | null
 }
 
-type DateRange = "7d" | "30d" | "90d" | "all"
+type DateRange = "7d" | "30d" | "90d" | "all" | "custom"
 
 // ============ FORMATTERS ============
 const formatCurrency = (value: number | undefined | null): string => {
@@ -284,7 +287,21 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
   const [dateRange, setDateRange] = useState<DateRange>(
     (savedReportData?.period as DateRange) || "30d"
   )
+  const [customDates, setCustomDates] = useState<CustomDateRange | undefined>()
+  const [customStart, setCustomStart] = useState<Date | undefined>()
+  const [customEnd, setCustomEnd] = useState<Date | undefined>()
   const reportRef = useRef<HTMLDivElement>(null)
+
+  const handleCustomDateApply = (start: Date, end: Date) => {
+    setCustomStart(start)
+    setCustomEnd(end)
+    const dates: CustomDateRange = {
+      startDate: format(start, "yyyy-MM-dd"),
+      endDate: format(end, "yyyy-MM-dd"),
+    }
+    setCustomDates(dates)
+    setDateRange("custom")
+  }
 
   // SWR hooks for data fetching
   const {
@@ -293,12 +310,12 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
     isLoading: klaviyoLoading,
     isValidating: klaviyoValidating,
     mutate: mutateKlaviyo,
-  } = useKlaviyoReport(storeId, dateRange)
+  } = useKlaviyoReport(storeId, dateRange, customDates)
 
   const {
     data: shopifyRaw,
     mutate: mutateShopify,
-  } = useShopifyReport(storeId, dateRange)
+  } = useShopifyReport(storeId, dateRange, customDates)
 
   // Derive typed data from SWR responses
   const reportData: KlaviyoReportData | null =
@@ -321,12 +338,21 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
   }, [savedReportData])
 
   const openFullscreenReport = () => {
-    window.open(`/report?store_id=${storeId}&period=${dateRange}`, '_blank')
+    let url = `/report?store_id=${storeId}&period=${dateRange}`
+    if (dateRange === "custom" && customDates) {
+      url += `&start_date=${customDates.startDate}&end_date=${customDates.endDate}`
+    }
+    window.open(url, '_blank')
   }
 
   const handleDateRangeChange = (newRange: DateRange) => {
     if (newRange !== dateRange && !savedReportData) {
       setDateRange(newRange)
+      if (newRange !== "custom") {
+        setCustomDates(undefined)
+        setCustomStart(undefined)
+        setCustomEnd(undefined)
+      }
     }
   }
 
@@ -868,6 +894,7 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
         </div>
         <div className="flex items-center gap-3">
           {!savedReportData && (
+            <>
             <div className="flex items-center rounded-xl bg-card border border-border p-1">
               {(["7d", "30d", "90d", "all"] as DateRange[]).map(range => (
                 <button key={range} onClick={() => handleDateRangeChange(range)}
@@ -876,6 +903,12 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
                 </button>
               ))}
             </div>
+            <DateRangePicker
+              startDate={customStart}
+              endDate={customEnd}
+              onApply={handleCustomDateApply}
+            />
+            </>
           )}
           <Button variant="outline" size="icon" onClick={() => { mutateKlaviyo(); mutateShopify() }} disabled={klaviyoValidating} className="bg-card border-border h-9 w-9 hover:bg-muted">
             <RefreshCw className={`w-4 h-4 ${klaviyoValidating ? "animate-spin" : ""}`} />

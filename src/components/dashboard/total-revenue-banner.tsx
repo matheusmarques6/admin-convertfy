@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import Link from "next/link"
+import { format } from "date-fns"
 import { TrendingUp, RefreshCw, Megaphone, Workflow, Store } from "lucide-react"
 import { CardDescription, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -14,6 +15,7 @@ import {
 } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { GlowCard } from "@/components/ui/glow-card"
+import { DateRangePicker } from "@/components/ui/date-range-picker"
 import { formatCurrency, cn } from "@/lib/utils"
 
 interface StoreRevenue {
@@ -67,13 +69,19 @@ function useCountUp(target: number, duration = 1200): number {
 
 export function TotalRevenueBanner() {
   const [period, setPeriod] = useState("30d")
+  const [customStart, setCustomStart] = useState<Date | undefined>()
+  const [customEnd, setCustomEnd] = useState<Date | undefined>()
   const [data, setData] = useState<TotalRevenueData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
-  const loadData = useCallback(async (p: string) => {
+  const loadData = useCallback(async (p: string, startDate?: Date, endDate?: Date) => {
     setIsLoading(true)
     try {
-      const response = await fetch(`/api/dashboard/total-revenue?period=${p}`)
+      let url = `/api/dashboard/total-revenue?period=${p}`
+      if (p === "custom" && startDate && endDate) {
+        url += `&start_date=${format(startDate, "yyyy-MM-dd")}&end_date=${format(endDate, "yyyy-MM-dd")}`
+      }
+      const response = await fetch(url)
       if (response.ok) {
         const result = await response.json()
         setData(result)
@@ -86,8 +94,17 @@ export function TotalRevenueBanner() {
   }, [])
 
   useEffect(() => {
-    loadData(period)
+    if (period !== "custom") {
+      loadData(period)
+    }
   }, [period, loadData])
+
+  const handleCustomDateApply = (start: Date, end: Date) => {
+    setCustomStart(start)
+    setCustomEnd(end)
+    setPeriod("custom")
+    loadData("custom", start, end)
+  }
 
   const animatedTotal = useCountUp(data?.totalRevenue || 0)
   const animatedCampaign = useCountUp(data?.campaignRevenue || 0)
@@ -150,7 +167,11 @@ export function TotalRevenueBanner() {
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <Select value={period} onValueChange={setPeriod}>
+            <Select value={period} onValueChange={(v) => {
+              setPeriod(v)
+              setCustomStart(undefined)
+              setCustomEnd(undefined)
+            }}>
               <SelectTrigger className="w-28 h-9">
                 <SelectValue />
               </SelectTrigger>
@@ -161,11 +182,16 @@ export function TotalRevenueBanner() {
                 <SelectItem value="90d">90 dias</SelectItem>
               </SelectContent>
             </Select>
+            <DateRangePicker
+              startDate={customStart}
+              endDate={customEnd}
+              onApply={handleCustomDateApply}
+            />
             <Button
               variant="ghost"
               size="icon"
               className="h-9 w-9"
-              onClick={() => loadData(period)}
+              onClick={() => loadData(period, customStart, customEnd)}
               disabled={isLoading}
             >
               <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} />

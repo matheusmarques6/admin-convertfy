@@ -1,5 +1,17 @@
 import useSWR, { SWRConfiguration } from "swr"
 
+export interface CustomDateRange {
+  startDate: string // YYYY-MM-DD
+  endDate: string   // YYYY-MM-DD
+}
+
+function buildPeriodParams(period: string, customDates?: CustomDateRange): string {
+  if (period === "custom" && customDates) {
+    return `period=custom&start_date=${customDates.startDate}&end_date=${customDates.endDate}`
+  }
+  return `period=${period}`
+}
+
 // ---------------------------------------------------------------------------
 // Generic fetcher – throws on non-ok responses so SWR treats them as errors.
 // ---------------------------------------------------------------------------
@@ -40,40 +52,40 @@ const ASAAS_OPTIONS: SWRConfiguration = {
 // ---------------------------------------------------------------------------
 // Hook: Klaviyo Report
 // ---------------------------------------------------------------------------
-export function useKlaviyoReport(storeId: string | null, period: string) {
-  const key = storeId ? `/api/integrations/klaviyo/report?store_id=${storeId}&period=${period}` : null
+export function useKlaviyoReport(storeId: string | null, period: string, customDates?: CustomDateRange) {
+  const key = storeId ? `/api/integrations/klaviyo/report?store_id=${storeId}&${buildPeriodParams(period, customDates)}` : null
   return useSWR(key, apiFetcher, REPORT_OPTIONS)
 }
 
 // ---------------------------------------------------------------------------
 // Hook: Shopify Report
 // ---------------------------------------------------------------------------
-export function useShopifyReport(storeId: string | null, period: string) {
-  const key = storeId ? `/api/integrations/shopify/report?store_id=${storeId}&period=${period}` : null
+export function useShopifyReport(storeId: string | null, period: string, customDates?: CustomDateRange) {
+  const key = storeId ? `/api/integrations/shopify/report?store_id=${storeId}&${buildPeriodParams(period, customDates)}` : null
   return useSWR(key, apiFetcher, REPORT_OPTIONS)
 }
 
 // ---------------------------------------------------------------------------
 // Hook: GA4 Report
 // ---------------------------------------------------------------------------
-export function useGA4Report(storeId: string | null, period: string) {
-  const key = storeId ? `/api/integrations/google-analytics/report?store_id=${storeId}&period=${period}` : null
+export function useGA4Report(storeId: string | null, period: string, customDates?: CustomDateRange) {
+  const key = storeId ? `/api/integrations/google-analytics/report?store_id=${storeId}&${buildPeriodParams(period, customDates)}` : null
   return useSWR(key, apiFetcher, REPORT_OPTIONS)
 }
 
 // ---------------------------------------------------------------------------
 // Hook: Klaviyo Campaigns
 // ---------------------------------------------------------------------------
-export function useKlaviyoCampaigns(storeId: string | null, period: string) {
-  const key = storeId ? `/api/integrations/klaviyo/campaigns?store_id=${storeId}&period=${period}` : null
+export function useKlaviyoCampaigns(storeId: string | null, period: string, customDates?: CustomDateRange) {
+  const key = storeId ? `/api/integrations/klaviyo/campaigns?store_id=${storeId}&${buildPeriodParams(period, customDates)}` : null
   return useSWR(key, apiFetcher, REPORT_OPTIONS)
 }
 
 // ---------------------------------------------------------------------------
 // Hook: Klaviyo Flows
 // ---------------------------------------------------------------------------
-export function useKlaviyoFlows(storeId: string | null, period: string) {
-  const key = storeId ? `/api/integrations/klaviyo/flows?store_id=${storeId}&period=${period}` : null
+export function useKlaviyoFlows(storeId: string | null, period: string, customDates?: CustomDateRange) {
+  const key = storeId ? `/api/integrations/klaviyo/flows?store_id=${storeId}&${buildPeriodParams(period, customDates)}` : null
   return useSWR(key, apiFetcher, REPORT_OPTIONS)
 }
 
@@ -132,7 +144,7 @@ export function useWiseReconciled() {
 // ---------------------------------------------------------------------------
 // Hook: Client Performance (aggregated Klaviyo + Shopify + Billing)
 // ---------------------------------------------------------------------------
-export function useClientPerformanceAPI(clientId: string | null, period: string) {
-  const key = clientId ? `/api/clients/${clientId}/performance?period=${period}` : null
+export function useClientPerformanceAPI(clientId: string | null, period: string, customDates?: CustomDateRange) {
+  const key = clientId ? `/api/clients/${clientId}/performance?${buildPeriodParams(period, customDates)}` : null
   return useSWR(key, apiFetcher, REPORT_OPTIONS)
 }

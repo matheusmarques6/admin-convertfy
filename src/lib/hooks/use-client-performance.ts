@@ -2,6 +2,7 @@
 
 import { useState, useMemo, createContext, useContext, useCallback } from "react"
 import { useClientPerformanceAPI } from "@/lib/hooks/use-api-data"
+import type { CustomDateRange } from "@/lib/hooks/use-api-data"
 
 interface PerformanceTotals {
   storeRevenue: number
@@ -96,6 +97,8 @@ export interface ClientPerformanceState {
   error: string | null
   period: string
   setPeriod: (period: string) => void
+  customDates?: CustomDateRange
+  setCustomDates: (dates: CustomDateRange | undefined) => void
   refresh: () => void
   allCampaigns: (CampaignData & { storeName: string })[]
   allFlows: (FlowData & { storeName: string })[]
@@ -112,10 +115,18 @@ export const PERIODS = [
 ]
 
 export function useClientPerformance(clientId: string): ClientPerformanceState {
-  const [period, setPeriod] = useState("30d")
+  const [period, setPeriodRaw] = useState("30d")
+  const [customDates, setCustomDates] = useState<CustomDateRange | undefined>()
+
+  const setPeriod = useCallback((p: string) => {
+    setPeriodRaw(p)
+    if (p !== "custom") {
+      setCustomDates(undefined)
+    }
+  }, [])
 
   const { data: rawData, error: swrError, isLoading, isValidating, mutate } =
-    useClientPerformanceAPI(clientId, period)
+    useClientPerformanceAPI(clientId, period, customDates)
 
   // Unwrap API response (successResponse wraps in { data })
   const data = useMemo<PerformanceResponse | null>(() => {
@@ -170,6 +181,8 @@ export function useClientPerformance(clientId: string): ClientPerformanceState {
     error,
     period,
     setPeriod,
+    customDates,
+    setCustomDates,
     refresh,
     allCampaigns,
     allFlows,
