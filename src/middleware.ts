@@ -34,5 +34,6 @@ export const config = {
     "/register",
     "/change-password",
     "/portal/:path*",
+    "/public/:path*",
   ],
 }

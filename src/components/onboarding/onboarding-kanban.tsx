@@ -15,13 +15,14 @@ import {
   Building2,
   Loader2,
   RefreshCw,
-  PlayCircle,
-  PauseCircle,
-  Circle,
   Store,
   Calendar,
   AlertCircle,
   FileText,
+  Clock,
+  Sparkles,
+  Palette,
+  Code2,
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -63,9 +64,11 @@ interface OnboardingWithRelations {
   store_id?: string
   template_id?: string
   status: OnboardingStatus
+  current_phase?: string
   progress_percent: number
   assigned_to?: string
   started_at?: string
+  submitted_at?: string
   target_completion_date?: string
   completed_at?: string
   notes?: string
@@ -135,12 +138,17 @@ interface StageConfig {
   icon: React.ReactNode
 }
 
+// New phase-based stages
 const STAGES: StageConfig[] = [
-  { id: "not_started", name: "Não Iniciado", color: "#94A3B8", icon: <Circle className="h-4 w-4" /> },
-  { id: "in_progress", name: "Em Andamento", color: "#3B82F6", icon: <PlayCircle className="h-4 w-4" /> },
-  { id: "paused", name: "Pausado", color: "#F59E0B", icon: <PauseCircle className="h-4 w-4" /> },
+  { id: "pending_approval", name: "Aguardando Aprovação", color: "#F97316", icon: <Clock className="h-4 w-4" /> },
+  { id: "generating_copies", name: "Gerando Copies", color: "#8B5CF6", icon: <Sparkles className="h-4 w-4" /> },
+  { id: "design", name: "Design", color: "#EC4899", icon: <Palette className="h-4 w-4" /> },
+  { id: "implementation", name: "Implementação", color: "#3B82F6", icon: <Code2 className="h-4 w-4" /> },
   { id: "completed", name: "Concluído", color: "#22C55E", icon: <CheckCircle2 className="h-4 w-4" /> },
 ]
+
+// Legacy stages for backward compatibility
+const LEGACY_STAGES: OnboardingStatus[] = ["not_started", "in_progress", "paused"]
 
 const STEP_CATEGORIES: Record<string, { label: string; color: string }> = {
   preparacao: { label: "Preparação", color: "#6366F1" },
@@ -441,8 +449,15 @@ export function OnboardingKanban() {
     }
   }
 
-  function getOnboardingsForStage(status: OnboardingStatus) {
-    return onboardings.filter((o) => o.status === status)
+  function getOnboardingsForStage(stageId: OnboardingStatus) {
+    return onboardings.filter((o) => {
+      const phase = o.current_phase || o.status
+      // Map legacy statuses to the first phase column
+      if (stageId === "pending_approval" && LEGACY_STAGES.includes(phase as OnboardingStatus)) {
+        return true
+      }
+      return phase === stageId
+    })
   }
 
   function formatDate(dateString: string | undefined) {
@@ -521,7 +536,7 @@ export function OnboardingKanban() {
                         {stageOnboardings.length}
                       </Badge>
                     </div>
-                    {stage.id === "not_started" && (
+                    {stage.id === "pending_approval" && (
                       <Button
                         variant="ghost"
                         size="icon"

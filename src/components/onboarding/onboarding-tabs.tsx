@@ -11,6 +11,7 @@ import {
   Link as LinkIcon,
   CheckCircle2,
   AlertCircle,
+  ShieldCheck,
 } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent } from "@/components/ui/card"
@@ -35,6 +36,7 @@ import { toast } from "@/lib/hooks/use-toast"
 import { OnboardingKanban } from "./onboarding-kanban"
 import { StoreOnboardingForm } from "./store-onboarding-form"
 import { StoreBriefingView } from "./store-briefing-view"
+import { OnboardingApprovals } from "./onboarding-approvals"
 import type { StoreBriefing } from "@/types/onboarding"
 
 interface ClientItem {
@@ -257,6 +259,10 @@ export function OnboardingTabs() {
             <BookOpen className="h-4 w-4 mr-2" />
             Briefings
           </TabsTrigger>
+          <TabsTrigger value="approvals">
+            <ShieldCheck className="h-4 w-4 mr-2" />
+            Aprovações
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="kanban">
@@ -406,6 +412,10 @@ export function OnboardingTabs() {
               ))}
             </div>
           )}
+        </TabsContent>
+
+        <TabsContent value="approvals">
+          <OnboardingApprovals />
         </TabsContent>
       </Tabs>
 

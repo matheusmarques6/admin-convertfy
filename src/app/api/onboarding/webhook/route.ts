@@ -93,7 +93,10 @@ export async function POST(request: NextRequest) {
       // Update generated_copies field
       const { error } = await adminClient
         .from("client_onboardings")
-        .update({ generated_copies: body.data })
+        .update({
+          generated_copies: body.data,
+          copies_completed_at: new Date().toISOString(),
+        })
         .eq("id", body.onboarding_id)
 
       if (error) {
@@ -101,9 +104,24 @@ export async function POST(request: NextRequest) {
         throw new AppError("Erro ao salvar copies", 500)
       }
 
+      // Transition to design phase automatically
+      const { onboardingPhaseService } = await import("@/lib/services/onboarding-phase.service")
+      const transitionResult = await onboardingPhaseService.transition({
+        onboardingId: body.onboarding_id,
+        toPhase: "design",
+        triggeredBy: "n8n_webhook",
+        metadata: { copies_count: Array.isArray(body.data) ? body.data.length : 1 },
+      })
+
+      if (!transitionResult.success) {
+        log.warn(`[Webhook] Phase transition failed: ${transitionResult.error}`, {
+          onboardingId: body.onboarding_id,
+        })
+      }
+
       return successResponse(request, {
         success: true,
-        message: "Copies geradas e salvas com sucesso",
+        message: "Copies salvas e transição para design realizada",
       })
     }
 

@@ -2,7 +2,28 @@ import type { Client, ClientStore } from "./client"
 import type { OrgMember } from "./organization"
 
 // Onboarding Types
-export type OnboardingStatus = "not_started" | "in_progress" | "paused" | "completed" | "cancelled"
+export type OnboardingStatus =
+  | "not_started"
+  | "pending_approval"
+  | "generating_copies"
+  | "design"
+  | "implementation"
+  | "in_progress"
+  | "paused"
+  | "completed"
+  | "cancelled"
+
+// Phases used in the new onboarding flow
+export type OnboardingPhase =
+  | "pending_approval"
+  | "generating_copies"
+  | "design"
+  | "implementation"
+  | "completed"
+
+export type ApprovalAction = "approved" | "rejected" | "revision_requested"
+
+export type PhaseTransitionTrigger = "coo_approval" | "n8n_webhook" | "manual" | "auto" | "form_submission"
 export type OnboardingStepStatus = "pending" | "in_progress" | "blocked" | "completed" | "skipped"
 
 export interface OnboardingTemplate {
@@ -48,6 +69,14 @@ export interface ClientOnboarding {
   notes?: string
   store_analysis?: Record<string, unknown>
   generated_copies?: Record<string, unknown>
+  current_phase?: string
+  submitted_at?: string
+  approved_at?: string
+  approved_by?: string
+  copies_completed_at?: string
+  design_completed_at?: string
+  implementation_started_at?: string
+  client_notified_at?: string
   created_at: string
   updated_at: string
   // Joined data
@@ -55,6 +84,31 @@ export interface ClientOnboarding {
   store?: ClientStore
   assignee?: OrgMember
   steps?: ClientOnboardingStep[]
+}
+
+// ===== Onboarding Approval =====
+
+export interface OnboardingApproval {
+  id: string
+  onboarding_id: string
+  approved_by: string
+  action: ApprovalAction
+  comments?: string
+  form_snapshot?: Record<string, unknown>
+  created_at: string
+}
+
+// ===== Onboarding Phase Transition =====
+
+export interface OnboardingPhaseTransition {
+  id: string
+  onboarding_id: string
+  from_phase: string
+  to_phase: string
+  triggered_by: PhaseTransitionTrigger
+  triggered_by_user?: string
+  metadata?: Record<string, unknown>
+  created_at: string
 }
 
 export interface ClientOnboardingStep {

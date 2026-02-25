@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { cn } from "@/lib/utils"
+import { OnboardingTimeline } from "@/components/portal/onboarding-timeline"
 
 interface OnboardingStep {
   id: string
@@ -41,9 +42,16 @@ interface CategoryGroup {
   completed: number
 }
 
+interface PhaseTimelineItem {
+  id: string
+  label: string
+  completedAt?: string | null
+}
+
 interface OnboardingData {
   id: string
   status: string
+  current_phase?: string
   progress_percent: number
   started_at: string | null
   target_completion_date: string | null
@@ -80,6 +88,7 @@ export default function PortalOnboardingPage() {
   const [loading, setLoading] = useState(true)
   const [onboarding, setOnboarding] = useState<OnboardingData | null>(null)
   const [grouped, setGrouped] = useState<CategoryGroup[]>([])
+  const [phaseTimeline, setPhaseTimeline] = useState<PhaseTimelineItem[]>([])
 
   useEffect(() => {
     async function loadOnboarding() {
@@ -90,6 +99,7 @@ export default function PortalOnboardingPage() {
         const data = await response.json()
         setOnboarding(data.onboarding || null)
         setGrouped(data.grouped || [])
+        setPhaseTimeline(data.phase_timeline || [])
       } catch (error) {
         console.error("Error loading onboarding:", error)
       } finally {
@@ -176,6 +186,14 @@ export default function PortalOnboardingPage() {
           )}
         </CardContent>
       </GlowCard>
+
+      {/* Phase Timeline */}
+      {phaseTimeline.length > 0 && (
+        <OnboardingTimeline
+          currentPhase={onboarding.current_phase || onboarding.status}
+          phases={phaseTimeline}
+        />
+      )}
 
       {/* Steps by Category */}
       <div className="space-y-4">

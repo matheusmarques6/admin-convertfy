@@ -100,7 +100,7 @@ export async function POST(request: NextRequest) {
       .from("client_onboardings")
       .select("id")
       .eq("client_id", body.client_id)
-      .in("status", ["not_started", "in_progress", "paused"])
+      .in("status", ["not_started", "pending_approval", "generating_copies", "design", "implementation", "in_progress", "paused"])
       .maybeSingle()
 
     if (existing) {

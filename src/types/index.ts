@@ -872,7 +872,7 @@ export interface BoardConfigFormData {
 // Onboarding Types
 // ===========================================
 
-export type OnboardingStatus = "not_started" | "in_progress" | "paused" | "completed" | "cancelled"
+export type OnboardingStatus = "not_started" | "pending_approval" | "generating_copies" | "design" | "implementation" | "in_progress" | "paused" | "completed" | "cancelled"
 export type OnboardingStepStatus = "pending" | "in_progress" | "blocked" | "completed" | "skipped"
 
 export interface OnboardingTemplate {

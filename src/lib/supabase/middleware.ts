@@ -39,6 +39,12 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
+  // Public routes - skip auth entirely
+  const isPublicPath = request.nextUrl.pathname.startsWith("/public")
+  if (isPublicPath) {
+    return response
+  }
+
   // Protected routes check (admin)
   const protectedPaths = ["/dashboard", "/clients", "/pipeline", "/automations", "/settings", "/reports", "/tools", "/team", "/financial", "/meetings", "/stores", "/onboarding", "/notifications", "/campaigns"]
   const isProtectedPath = protectedPaths.some(path => request.nextUrl.pathname.startsWith(path))

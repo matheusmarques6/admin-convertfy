@@ -1,0 +1,172 @@
+import { NextRequest } from "next/server"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { handleCorsPreFlight } from "@/lib/cors"
+import { onboardingPhaseService } from "@/lib/services/onboarding-phase.service"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("OnboardingApproval")
+
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPreFlight(request)
+}
+
+// POST - Approve, reject, or request revision for an onboarding
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params
+    const supabase = await createClient()
+    const user = await requireAuth(supabase)
+
+    const body = await request.json()
+
+    if (!body.action || !["approved", "rejected", "revision_requested"].includes(body.action)) {
+      throw new AppError("action deve ser: approved, rejected ou revision_requested", 400)
+    }
+
+    const adminClient = createAdminClient()
+
+    // Check permission: user must have onboarding_approve feature
+    const { data: orgMember } = await adminClient
+      .from("org_members")
+      .select("id, role, profile_id")
+      .eq("profile_id", user.id)
+      .eq("is_active", true)
+      .single()
+
+    if (!orgMember) {
+      throw new AppError("Membro da organização não encontrado", 403)
+    }
+
+    // Check for onboarding_approve feature
+    const { data: feature } = await adminClient
+      .from("org_member_features")
+      .select("id")
+      .eq("org_member_id", orgMember.id)
+      .eq("feature_key", "onboarding_approve")
+      .eq("enabled", true)
+      .maybeSingle()
+
+    // Allow owners/managers even without explicit feature
+    const hasPermission = !!feature || ["owner", "manager"].includes(orgMember.role)
+
+    if (!hasPermission) {
+      throw new AppError("Você não tem permissão para aprovar onboardings", 403)
+    }
+
+    // Verify onboarding is in pending_approval
+    const { data: onboarding } = await adminClient
+      .from("client_onboardings")
+      .select("id, current_phase, status, client_id, store_id")
+      .eq("id", id)
+      .single()
+
+    if (!onboarding) {
+      throw new AppError("Onboarding não encontrado", 404)
+    }
+
+    if (onboarding.current_phase !== "pending_approval" && onboarding.status !== "pending_approval") {
+      throw new AppError(
+        `Onboarding não está aguardando aprovação (fase atual: ${onboarding.current_phase || onboarding.status})`,
+        400
+      )
+    }
+
+    // Get form data snapshot for audit
+    const { data: formData } = await adminClient
+      .from("store_onboarding_data")
+      .select("*")
+      .eq("store_id", onboarding.store_id)
+      .maybeSingle()
+
+    // Log the approval action
+    await adminClient.from("onboarding_approvals").insert({
+      onboarding_id: id,
+      approved_by: orgMember.id,
+      action: body.action,
+      comments: body.comments || null,
+      form_snapshot: formData || null,
+    })
+
+    if (body.action === "approved") {
+      // Transition to generating_copies
+      const result = await onboardingPhaseService.transition({
+        onboardingId: id,
+        toPhase: "generating_copies",
+        triggeredBy: "coo_approval",
+        triggeredByUserId: orgMember.id,
+        metadata: { comments: body.comments },
+      })
+
+      if (!result.success) {
+        throw new AppError(result.error || "Erro ao aprovar onboarding", 500)
+      }
+
+      log.info(`Onboarding ${id} approved`, { approvedBy: orgMember.id })
+
+      return successResponse(request, {
+        onboarding: result.onboarding,
+        message: "Onboarding aprovado! Geração de copies iniciada.",
+      })
+    }
+
+    if (body.action === "rejected" || body.action === "revision_requested") {
+      // Keep in pending_approval but log the rejection
+      // The client will be notified to make adjustments
+      const { data: updatedOnboarding } = await adminClient
+        .from("client_onboardings")
+        .update({
+          notes: body.comments ? `Revisão solicitada: ${body.comments}` : "Revisão solicitada",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id)
+        .select()
+        .single()
+
+      // Notify client about rejection
+      const { data: client } = await adminClient
+        .from("clients")
+        .select("email, name")
+        .eq("id", onboarding.client_id)
+        .single()
+
+      if (client) {
+        const { notificationService } = await import("@/lib/services/notification.service")
+        const { data: portalUser } = await adminClient
+          .from("client_portal_users")
+          .select("auth_user_id")
+          .eq("client_id", onboarding.client_id)
+          .eq("is_active", true)
+          .limit(1)
+          .single()
+
+        if (portalUser?.auth_user_id) {
+          await notificationService.create({
+            user_id: portalUser.auth_user_id,
+            title: body.action === "rejected" ? "Cadastro precisa de ajustes" : "Revisão solicitada",
+            body: body.comments || "Por favor, revise seu cadastro e faça os ajustes necessários.",
+            type: "warning",
+            link: "/portal/onboarding",
+          })
+        }
+      }
+
+      const actionLabel = body.action === "rejected" ? "rejeitado" : "revisão solicitada"
+      log.info(`Onboarding ${id} ${actionLabel}`, { by: orgMember.id })
+
+      return successResponse(request, {
+        onboarding: updatedOnboarding,
+        message: body.action === "rejected"
+          ? "Onboarding rejeitado. Cliente será notificado."
+          : "Revisão solicitada. Cliente será notificado.",
+      })
+    }
+
+    throw new AppError("Ação não reconhecida", 400)
+  } catch (error) {
+    return errorResponse(request, error, "OnboardingApproval")
+  }
+}

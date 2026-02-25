@@ -48,14 +48,20 @@ export async function GET(request: NextRequest) {
       .select(`
         id,
         status,
+        current_phase,
         progress_percent,
         started_at,
+        submitted_at,
+        approved_at,
+        copies_completed_at,
+        design_completed_at,
+        implementation_started_at,
         target_completion_date,
         completed_at,
         notes
       `)
       .eq("client_id", clientId)
-      .in("status", ["not_started", "in_progress", "paused", "completed"])
+      .in("status", ["not_started", "pending_approval", "generating_copies", "design", "implementation", "in_progress", "paused", "completed"])
       .order("created_at", { ascending: false })
       .limit(1)
       .single()
@@ -119,11 +125,22 @@ export async function GET(request: NextRequest) {
       (s) => s.status === "completed" || s.status === "skipped"
     ).length
 
+    // Build phase timeline
+    const currentPhase = onboarding.current_phase || onboarding.status
+    const phaseTimeline = [
+      { id: "pending_approval", label: "Cadastro", completedAt: onboarding.submitted_at },
+      { id: "generating_copies", label: "Aprovado", completedAt: onboarding.approved_at },
+      { id: "design", label: "Design", completedAt: onboarding.copies_completed_at },
+      { id: "implementation", label: "Implementação", completedAt: onboarding.design_completed_at },
+      { id: "completed", label: "Concluído", completedAt: onboarding.completed_at },
+    ]
+
     return NextResponse.json(
       {
         onboarding: {
           id: onboarding.id,
           status: onboarding.status,
+          current_phase: currentPhase,
           progress_percent: onboarding.progress_percent,
           started_at: onboarding.started_at,
           target_completion_date: onboarding.target_completion_date,
@@ -131,6 +148,7 @@ export async function GET(request: NextRequest) {
           total_steps: totalSteps,
           completed_steps: completedSteps,
         },
+        phase_timeline: phaseTimeline,
         grouped,
       },
       { headers: corsHeaders(request.headers.get("origin")) }
