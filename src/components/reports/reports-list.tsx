@@ -206,7 +206,12 @@ export function ReportsList({
   const [storeFilter, setStoreFilter] = useState<string>(initialStoreId || "all")
   const [typeFilter, setTypeFilter] = useState<string>("all")
   const [statusFilter, setStatusFilter] = useState<string>("all")
-  const [monthFilter, setMonthFilter] = useState<string>("all")
+  // Default to current month
+  const currentMonth = useMemo(() => {
+    const now = new Date()
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+  }, [])
+  const [monthFilter, setMonthFilter] = useState<string>(currentMonth)
   const [showFilters, setShowFilters] = useState(!!initialStoreId)
 
   // Delete dialog
@@ -358,7 +363,7 @@ export function ReportsList({
     }
   }
 
-  const hasActiveFilters = searchTerm || clientFilter !== "all" || storeFilter !== "all" || typeFilter !== "all" || statusFilter !== "all" || monthFilter !== "all"
+  const hasActiveFilters = searchTerm || clientFilter !== "all" || storeFilter !== "all" || typeFilter !== "all" || statusFilter !== "all"
 
   function clearFilters() {
     setSearchTerm("")
@@ -366,7 +371,7 @@ export function ReportsList({
     setStoreFilter("all")
     setTypeFilter("all")
     setStatusFilter("all")
-    setMonthFilter("all")
+    setMonthFilter(currentMonth)
   }
 
   return (
@@ -379,12 +384,28 @@ export function ReportsList({
             Gerencie os relatórios mensais dos clientes
           </p>
         </div>
-        <Button asChild>
-          <Link href="/reports/new">
-            <Plus className="mr-2 h-4 w-4" />
-            Novo Relatório
-          </Link>
-        </Button>
+        <div className="flex items-center gap-3">
+          <Select value={monthFilter} onValueChange={setMonthFilter}>
+            <SelectTrigger className="w-[180px]">
+              <Calendar className="h-4 w-4 mr-2 text-muted-foreground" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os meses</SelectItem>
+              {availableMonths.map(month => (
+                <SelectItem key={month} value={month}>
+                  {formatMonth(month)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button asChild>
+            <Link href="/reports/new">
+              <Plus className="mr-2 h-4 w-4" />
+              Novo Relatório
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -573,23 +594,6 @@ export function ReportsList({
                   </Select>
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-muted-foreground">Mês</label>
-                  <Select value={monthFilter} onValueChange={setMonthFilter}>
-                    <SelectTrigger className="w-[180px]">
-                      <SelectValue placeholder="Todos os meses" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todos os meses</SelectItem>
-                      {availableMonths.map(month => (
-                        <SelectItem key={month} value={month}>
-                          {formatMonth(month)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
                 {hasActiveFilters && (
                   <div className="flex items-end">
                     <Button variant="ghost" size="sm" onClick={clearFilters}>
@@ -603,35 +607,6 @@ export function ReportsList({
           </div>
         </CardContent>
       </Card>
-
-      {/* Month Navigation Bar */}
-      {availableMonths.length > 1 && (
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
-          <Button
-            variant={monthFilter === "all" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setMonthFilter("all")}
-            className="shrink-0"
-          >
-            <Calendar className="mr-1.5 h-3.5 w-3.5" />
-            Todos
-          </Button>
-          {availableMonths.map(month => (
-            <Button
-              key={month}
-              variant={monthFilter === month ? "default" : "outline"}
-              size="sm"
-              onClick={() => setMonthFilter(month)}
-              className="shrink-0"
-            >
-              {formatMonth(month)}
-              <Badge variant="secondary" className="ml-1.5 h-5 min-w-[20px] px-1.5 text-[10px]">
-                {groupedReports[month]?.length || reports.filter(r => getReportMonth(r) === month).length}
-              </Badge>
-            </Button>
-          ))}
-        </div>
-      )}
 
       {/* Results info */}
       {hasActiveFilters && (
@@ -648,22 +623,34 @@ export function ReportsList({
               <FileText className="h-8 w-8 text-muted-foreground" />
             </div>
             <h3 className="text-lg font-medium">
-              {hasActiveFilters ? "Nenhum relatório encontrado com esses filtros" : "Nenhum relatório encontrado"}
+              {monthFilter !== "all"
+                ? `Nenhum relatório em ${formatMonth(monthFilter)}`
+                : hasActiveFilters
+                  ? "Nenhum relatório encontrado com esses filtros"
+                  : "Nenhum relatório encontrado"
+              }
             </h3>
             <p className="text-muted-foreground mt-1">
-              {hasActiveFilters
-                ? "Tente ajustar os filtros de busca"
-                : "Crie seu primeiro relatório"
+              {monthFilter !== "all"
+                ? "Selecione outro mês ou veja todos os relatórios"
+                : hasActiveFilters
+                  ? "Tente ajustar os filtros de busca"
+                  : "Crie seu primeiro relatório"
               }
             </p>
-            {!hasActiveFilters && (
-              <Button className="mt-4" asChild>
+            <div className="flex gap-2 mt-4">
+              {monthFilter !== "all" && (
+                <Button variant="outline" onClick={() => setMonthFilter("all")}>
+                  Ver todos os meses
+                </Button>
+              )}
+              <Button asChild>
                 <Link href="/reports/new">
                   <Plus className="mr-2 h-4 w-4" />
                   Criar Relatório
                 </Link>
               </Button>
-            )}
+            </div>
           </CardContent>
         </Card>
       ) : (

@@ -78,7 +78,7 @@ const navigation: NavItem[] = [
   { name: "Automações", href: "/automations", icon: Zap, group: "marketing", requiredFeatures: ["campaign_control"] },
   { name: "Board", href: "/board", icon: ClipboardList, group: "operacional", requiredFeatures: ["request_control", "request_execute"] },
   { name: "Reuniões", href: "/meetings", icon: Calendar, group: "operacional", requiredFeatures: ["calendar_control"] },
-  { name: "Equipe", href: "/team", icon: Users2, group: "operacional", requiredFeatures: ["team_control", "team_view"] },
+
   { name: "Financeiro", href: "/financial", icon: DollarSign, group: "operacional", requiredFeatures: ["view_financial"] },
   { name: "Relatórios", href: "/reports", icon: BarChart3, group: "operacional", requiredFeatures: ["view_reports"] },
   { name: "Ferramentas", href: "/tools", icon: Wrench, group: "ferramentas" },
