@@ -12,8 +12,7 @@ import {
   sleep,
   klaviyoRequest,
   getCurrencySymbol,
-  parseDateRange,
-  formatDateStr,
+  parseDateRangeInTimezone,
   getAccountInfo,
   getTimezoneOffset,
   findPlacedOrderMetric,
@@ -849,14 +848,7 @@ export async function GET(request: NextRequest) {
     log.info("[Klaviyo] Store:", store.store_name)
     log.info("[Klaviyo] Period:", period)
 
-    // Calculate date range based on period
-    const { startDate, endDate } = parseDateRange(period, customStartDate, customEndDate)
-    const startDateStr = formatDateStr(startDate)
-    const endDateStr = formatDateStr(endDate)
-
-    log.info(`[Klaviyo] Date range: ${startDateStr} to ${endDateStr}`)
-
-    // Get account info (also validates connection - no need for separate testApiConnection)
+    // Get account info first (need timezone for correct date range calculation)
     const accountInfo = await getAccountInfo(apiKey)
     if (!accountInfo.orgName) {
       return NextResponse.json({
@@ -866,6 +858,12 @@ export async function GET(request: NextRequest) {
       }, { status: 401, headers: corsHeaders(request.headers.get("origin")) })
     }
     log.info("[Klaviyo] Account currency:", accountInfo.currency)
+
+    // Calculate date range in account timezone (avoids UTC shift on Vercel servers)
+    const accountTimezone = accountInfo.timezone || "America/Sao_Paulo"
+    const { startDateStr, endDateStr } = parseDateRangeInTimezone(period, accountTimezone, customStartDate, customEndDate)
+
+    log.info(`[Klaviyo] Date range: ${startDateStr} to ${endDateStr} (timezone: ${accountTimezone})`)
 
     // Small delay to avoid rate limiting before next call
     await sleep(500)

@@ -47,8 +47,9 @@ export async function GET(request: NextRequest) {
 
     const now = new Date()
     const start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-    const startStr = start.toISOString().split("T")[0]
-    const endStr = now.toISOString().split("T")[0]
+    const pad = (n: number) => String(n).padStart(2, "0")
+    const startStr = `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}`
+    const endStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
 
     // Fetch full response with sum_value + count
     const body = {

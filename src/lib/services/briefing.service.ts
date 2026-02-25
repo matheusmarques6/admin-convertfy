@@ -89,8 +89,9 @@ async function fetchAdAnalysis(storeId: string): Promise<Record<string, unknown>
 
     const now = new Date()
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-    const startDate = thirtyDaysAgo.toISOString().split("T")[0]
-    const endDate = now.toISOString().split("T")[0]
+    const pad = (n: number) => String(n).padStart(2, "0")
+    const startDate = `${thirtyDaysAgo.getFullYear()}-${pad(thirtyDaysAgo.getMonth() + 1)}-${pad(thirtyDaysAgo.getDate())}`
+    const endDate = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
 
     // Meta Ads
     if (credentials.meta_access_token && credentials.meta_ad_account_id) {

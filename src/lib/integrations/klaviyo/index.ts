@@ -12,6 +12,7 @@ export {
   klaviyoRequest,
   getCurrencySymbol,
   parseDateRange,
+  parseDateRangeInTimezone,
   formatDateStr,
 } from "./client"
 

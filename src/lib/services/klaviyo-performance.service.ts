@@ -12,6 +12,7 @@ import {
   getAccountInfo,
   findPlacedOrderMetric,
   getTimezoneOffset,
+  parseDateRangeInTimezone,
   sleep,
   MIN_REQUEST_INTERVAL,
   KLAVIYO_API_URL,
@@ -101,17 +102,40 @@ type NameListResp = {
 
 // ─── Main Function ───────────────────────────────────────────────────────────
 
+/**
+ * Fetch Klaviyo performance data.
+ *
+ * Accepts EITHER:
+ * - period string (e.g. "30d") — dates are calculated in the account's timezone
+ * - explicit startDate/endDate strings (YYYY-MM-DD) — used as-is
+ */
 export async function fetchKlaviyoPerformance(
   apiKey: string,
-  startDate: string,
-  endDate: string
+  startDateOrPeriod: string,
+  endDate?: string,
+  customStartDate?: string | null,
+  customEndDate?: string | null,
 ): Promise<KlaviyoPerformanceData> {
   const accountInfo = await getAccountInfo(apiKey)
   const timezone = accountInfo?.timezone || "America/Sao_Paulo"
   const tzOffset = getTimezoneOffset(timezone)
 
+  let startDate: string
+  let finalEndDate: string
+
+  // If endDate is provided, treat as explicit date strings (legacy callers)
+  // If not, treat first arg as period and compute dates in account timezone
+  if (endDate) {
+    startDate = startDateOrPeriod
+    finalEndDate = endDate
+  } else {
+    const range = parseDateRangeInTimezone(startDateOrPeriod, timezone, customStartDate, customEndDate)
+    startDate = range.startDateStr
+    finalEndDate = range.endDateStr
+  }
+
   const startISO = `${startDate}T00:00:00${tzOffset}`
-  const endISO = `${endDate}T23:59:59${tzOffset}`
+  const endISO = `${finalEndDate}T23:59:59${tzOffset}`
 
   const placedOrderMetric = await findPlacedOrderMetric(apiKey)
   if (!placedOrderMetric) {

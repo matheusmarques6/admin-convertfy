@@ -180,6 +180,78 @@ export function parseDateRange(
 }
 
 /**
+ * Compute "now" in a given IANA timezone and return YYYY-MM-DD strings.
+ *
+ * On Vercel (UTC), new Date() gives UTC time. If the Klaviyo account is in
+ * America/Sao_Paulo (UTC-3), "today" at 22h SP = tomorrow 01h UTC.
+ * This function ensures the date range matches what the Klaviyo dashboard shows.
+ */
+export function parseDateRangeInTimezone(
+  period: string,
+  timezone: string,
+  customStartDate?: string | null,
+  customEndDate?: string | null
+): { startDateStr: string; endDateStr: string } {
+  if (period === "custom" && customStartDate && customEndDate) {
+    return { startDateStr: customStartDate, endDateStr: customEndDate }
+  }
+
+  // Get current date components in the target timezone
+  const now = new Date()
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  })
+  // en-CA format is YYYY-MM-DD
+  const todayStr = formatter.format(now)
+
+  // Parse the "today" in target timezone to do arithmetic
+  const [y, m, d] = todayStr.split("-").map(Number)
+  const todayLocal = new Date(y, m - 1, d)
+
+  let startLocal: Date
+
+  switch (period) {
+    case "today":
+    case "1d":
+      startLocal = new Date(todayLocal)
+      break
+    case "yesterday":
+      startLocal = new Date(todayLocal)
+      startLocal.setDate(startLocal.getDate() - 1)
+      return { startDateStr: formatDateStr(startLocal), endDateStr: formatDateStr(startLocal) }
+    case "7d":
+      startLocal = new Date(todayLocal)
+      startLocal.setDate(startLocal.getDate() - 7)
+      break
+    case "15d":
+      startLocal = new Date(todayLocal)
+      startLocal.setDate(startLocal.getDate() - 15)
+      break
+    case "30d":
+      startLocal = new Date(todayLocal)
+      startLocal.setDate(startLocal.getDate() - 30)
+      break
+    case "90d":
+      startLocal = new Date(todayLocal)
+      startLocal.setDate(startLocal.getDate() - 90)
+      break
+    case "12m":
+    case "all":
+      startLocal = new Date(todayLocal)
+      startLocal.setFullYear(startLocal.getFullYear() - 1)
+      break
+    default:
+      startLocal = new Date(todayLocal)
+      startLocal.setDate(startLocal.getDate() - 30)
+  }
+
+  return { startDateStr: formatDateStr(startLocal), endDateStr: todayStr }
+}
+
+/**
  * Format Date to YYYY-MM-DD string.
  * Uses local date components (not UTC) to avoid timezone shift on servers running in UTC.
  */

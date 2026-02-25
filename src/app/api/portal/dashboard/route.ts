@@ -78,8 +78,10 @@ export async function GET(request: NextRequest) {
         startDate.setDate(now.getDate() - 30)
     }
 
-    const startDateStr = startDate.toISOString().split("T")[0]
-    const endDateStr = now.toISOString().split("T")[0]
+    // Use local date components to avoid UTC shift on Vercel servers
+    const pad = (n: number) => String(n).padStart(2, "0")
+    const startDateStr = `${startDate.getFullYear()}-${pad(startDate.getMonth() + 1)}-${pad(startDate.getDate())}`
+    const endDateStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
 
     // Fetch all base data in parallel using admin client to bypass RLS
     const [
@@ -302,7 +304,7 @@ export async function GET(request: NextRequest) {
           storeData.klaviyoPerf = cached as unknown as KlaviyoPerformanceData
         } else {
           try {
-            const perf = await fetchKlaviyoPerformance(apiKey, startDateStr, endDateStr)
+            const perf = await fetchKlaviyoPerformance(apiKey, period)
             storeData.klaviyoPerf = perf
             saveToCache(store.id, "klaviyo_perf", perf as unknown as Record<string, unknown>)
           } catch (error) {

@@ -134,7 +134,7 @@ export async function GET(
         try {
           const apiKey = store.klaviyo_private_key || store.klaviyo_api_key
           if (apiKey) {
-            klaviyoData = await fetchKlaviyoPerformance(apiKey, startDateStr, endDateStr)
+            klaviyoData = await fetchKlaviyoPerformance(apiKey, period, undefined, customStartDate, customEndDate)
           }
         } catch (err) {
           const rawMsg = err instanceof Error ? err.message : String(err)

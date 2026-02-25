@@ -39,8 +39,9 @@ export async function GET(request: NextRequest) {
 
     const now = new Date()
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-    const startStr = thirtyDaysAgo.toISOString().split("T")[0]
-    const endStr = now.toISOString().split("T")[0]
+    const pad = (n: number) => String(n).padStart(2, "0")
+    const startStr = `${thirtyDaysAgo.getFullYear()}-${pad(thirtyDaysAgo.getMonth() + 1)}-${pad(thirtyDaysAgo.getDate())}`
+    const endStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
 
     // Valid statistics per Klaviyo Reporting API docs (revision 2024-10-15)
     // API uses "opens"/"clicks" (NOT "opened"/"clicked")
