@@ -14,7 +14,6 @@ import {
   Clock,
   Filter,
   Store,
-  ExternalLink,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -195,7 +194,6 @@ export function StoreAlertsPanel() {
   })
 
   const activeCount = alerts.filter((a) => a.status === "active").length
-  const acknowledgedCount = alerts.filter((a) => a.status === "acknowledged").length
 
   if (isLoading) {
     return (

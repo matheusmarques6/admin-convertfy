@@ -4,7 +4,6 @@ import { generateTempPassword } from "@/lib/utils/generate-password"
 import {
   errorResponse,
   successResponse,
-  requireAuth,
   requireRole,
   parseAndValidate,
   NotFoundError,

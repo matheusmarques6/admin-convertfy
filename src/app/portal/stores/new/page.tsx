@@ -21,7 +21,7 @@ import {
   Upload,
   X,
   FileText,
-  Image,
+  ImageIcon,
   ArrowLeft,
   RefreshCw,
 } from "lucide-react"
@@ -488,7 +488,7 @@ export default function PortalNewStorePage() {
                 <Label>Logo da marca</Label>
                 {uploadedFiles.logo ? (
                   <div className="flex items-center gap-3 rounded-lg border dark:border-slate-700/40 p-3 bg-emerald-50 dark:bg-emerald-500/10">
-                    <Image className="h-5 w-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <ImageIcon className="h-5 w-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
                     <span className="text-sm text-emerald-700 dark:text-emerald-400 flex-1 truncate">{uploadedFiles.logo.fileName}</span>
                     <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => removeFile("logo")}>
                       <X className="h-4 w-4" />

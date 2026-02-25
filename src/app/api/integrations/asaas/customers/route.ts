@@ -8,7 +8,7 @@ import { logger } from "@/lib/logger"
 const log = logger.child("IntegrationsAsaasCustomers")
 
 // POST - Import customers from Asaas
-export async function POST(_request: NextRequest) {
+export async function POST() {
   try {
     const supabase = await createClient()
 

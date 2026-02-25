@@ -8,7 +8,6 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import {
   encrypt,
-  decrypt,
   decryptStoreCredentials,
   encryptCredentialsJson,
   decryptCredentialsJson,

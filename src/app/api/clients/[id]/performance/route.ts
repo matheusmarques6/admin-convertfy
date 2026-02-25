@@ -8,7 +8,6 @@ import { getShopifyReportForStore } from "@/lib/integrations/shopify/report"
 import { decryptStoreCredentials } from "@/lib/crypto"
 import {
   fetchKlaviyoPerformance,
-  emptyPerformanceData,
   type KlaviyoPerformanceData,
 } from "@/lib/services/klaviyo-performance.service"
 

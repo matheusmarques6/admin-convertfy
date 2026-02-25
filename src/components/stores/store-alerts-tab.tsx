@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react"
 import {
-  AlertTriangle,
   CheckCircle2,
   RefreshCw,
   Loader2,
@@ -109,7 +108,7 @@ function timeAgo(dateStr: string): string {
   return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })
 }
 
-export function StoreAlertsTab({ storeId, storeName }: StoreAlertsTabProps) {
+export function StoreAlertsTab({ storeId }: StoreAlertsTabProps) {
   const { toast } = useToast()
   const [alerts, setAlerts] = useState<StoreAlert[]>([])
   const [isLoading, setIsLoading] = useState(true)

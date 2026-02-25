@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
-import { cleanExpiredCache, setCache } from "@/lib/cache"
+import { cleanExpiredCache } from "@/lib/cache"
 import { logger } from "@/lib/logger"
 import { getStoreCredentials } from "@/lib/services/credentials.service"
 import {

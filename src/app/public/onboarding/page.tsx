@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Checkbox } from "@/components/ui/checkbox"
 import { useToast } from "@/lib/hooks/use-toast"
-import { Check, ChevronLeft, ChevronRight, Loader2, Store, User, Palette, Send, Upload, X, FileText, Image } from "lucide-react"
+import { Check, ChevronLeft, ChevronRight, Loader2, Store, User, Palette, Send, Upload, X, FileText, ImageIcon } from "lucide-react"
 
 const STEPS = [
   { id: 1, title: "Dados Pessoais", icon: User },
@@ -492,7 +492,7 @@ export default function PublicOnboardingPage() {
                 <Label>Logo da marca</Label>
                 {uploadedFiles.logo ? (
                   <div className="flex items-center gap-3 rounded-lg border p-3 bg-green-50">
-                    <Image className="h-5 w-5 text-green-600 shrink-0" />
+                    <ImageIcon className="h-5 w-5 text-green-600 shrink-0" />
                     <span className="text-sm text-green-700 flex-1 truncate">{uploadedFiles.logo.fileName}</span>
                     <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => removeFile("logo")}>
                       <X className="h-4 w-4" />

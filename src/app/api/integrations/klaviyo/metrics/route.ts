@@ -2,11 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { getStoreCredentials } from "@/lib/services/credentials.service"
-import { logger } from "@/lib/logger"
-
-const log = logger.child("KlaviyoMetrics")
 import { klaviyoRequest } from "@/lib/integrations/klaviyo"
-import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { handleCorsPreFlight } from "@/lib/cors"
 
 // Handle OPTIONS preflight requests
 export async function OPTIONS(request: NextRequest) {

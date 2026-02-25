@@ -61,7 +61,7 @@ export default function OnboardingWizardPage() {
   const [currentStep, setCurrentStep] = useState(0)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [data, setData] = useState<WizardData | null>(null)
+  const [, setData] = useState<WizardData | null>(null)
   const [storeId, setStoreId] = useState<string>("")
 
   // Form state

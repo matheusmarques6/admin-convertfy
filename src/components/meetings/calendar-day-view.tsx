@@ -9,7 +9,7 @@ import {
   eachHourOfInterval,
 } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { Video, ExternalLink, CheckCircle, XCircle, AlertCircle, Users } from "lucide-react"
+import { Video, ExternalLink, CheckCircle, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"

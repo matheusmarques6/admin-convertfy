@@ -2,10 +2,6 @@ import { NextRequest, NextResponse } from "next/server"
 import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
-import { logger } from "@/lib/logger"
-
-const log = logger.child("MePermissions")
-
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
 }

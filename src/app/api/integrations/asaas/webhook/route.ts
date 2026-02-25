@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+// errors module used in other webhook handlers
 import { createClient } from "@supabase/supabase-js"
 import { timingSafeEqual } from "crypto"
 import { mapAsaasStatusToInternal } from "@/lib/integrations/asaas"

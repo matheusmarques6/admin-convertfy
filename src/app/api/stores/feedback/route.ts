@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 

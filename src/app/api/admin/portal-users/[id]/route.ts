@@ -21,7 +21,7 @@ export async function GET(
 ) {
   try {
     const supabase = await createClient()
-    const user = await requireAuth(supabase)
+    await requireAuth(supabase)
 
     const { id } = await params
 

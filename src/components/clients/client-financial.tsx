@@ -190,7 +190,8 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
   const subscriptionsData = subscriptionsRaw as Record<string, unknown> | undefined
 
   const payments: Payment[] = (paymentsData?.payments as Payment[]) || []
-  const subscriptions: Subscription[] = (subscriptionsData?.subscriptions as Subscription[]) || []
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- subscriptionsData is the stable SWR ref; derived array is only used in computedSummary
+  const subscriptions: Subscription[] = useMemo(() => (subscriptionsData?.subscriptions as Subscription[]) || [], [subscriptionsData])
   const summary: PaymentSummary | null = (paymentsData?.summary as PaymentSummary) || null
   const isLoading = paymentsLoading
 

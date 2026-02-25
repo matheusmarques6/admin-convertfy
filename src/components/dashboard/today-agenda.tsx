@@ -2,7 +2,6 @@
 
 import Link from "next/link"
 import { format, isToday, parseISO } from "date-fns"
-import { ptBR } from "date-fns/locale"
 import { Video, ExternalLink, Calendar, ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { CardContent, CardHeader, CardTitle } from "@/components/ui/card"

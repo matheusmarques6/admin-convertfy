@@ -26,7 +26,6 @@ export function MetricCard({
   subtitle,
   icon: Icon,
   highlight = false,
-  glowColor,
 }: {
   title: string
   value: string | number
@@ -87,7 +86,6 @@ export function ChannelCard({
   percent,
   value,
   icon: Icon,
-  color,
   active = false,
 }: {
   title: string

@@ -3,7 +3,6 @@
 import { ErrorState } from "@/components/ui/error-state"
 
 export default function AutomationError({
-  error,
   reset,
 }: {
   error: Error & { digest?: string }

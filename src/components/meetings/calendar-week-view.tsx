@@ -14,10 +14,9 @@ import {
 } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { Video, ExternalLink } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
+// Badge not currently used
 import { cn } from "@/lib/utils"
 import type { Meeting, MeetingStatus } from "@/types"
-import { MEETING_STATUS_CONFIG } from "@/lib/constants/board"
 
 interface MeetingWithRelations extends Omit<Meeting, "client" | "user"> {
   client?: { id: string; name: string; company?: string }
@@ -160,7 +159,6 @@ export function CalendarWeekView({
                 {/* Meeting blocks */}
                 {dayMeetings.map((meeting) => {
                   const { top, height } = getMeetingPosition(meeting)
-                  const config = MEETING_STATUS_CONFIG[meeting.status]
                   const colorClass = statusColors[meeting.status]
 
                   if (top < 0 || top > (HOUR_END - HOUR_START + 1) * SLOT_HEIGHT) return null

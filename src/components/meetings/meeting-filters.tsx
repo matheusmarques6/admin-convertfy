@@ -5,7 +5,6 @@ import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { Filter, X, CalendarIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import {
   Select,
   SelectContent,
@@ -19,7 +18,6 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
-import { cn } from "@/lib/utils"
 import type { MeetingStatus } from "@/types"
 import { MEETING_STATUS_CONFIG } from "@/lib/constants/board"
 

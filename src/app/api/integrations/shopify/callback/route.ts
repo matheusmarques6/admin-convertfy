@@ -96,15 +96,6 @@ export async function GET(request: NextRequest) {
 
     const tokenData = await tokenResponse.json()
 
-    // Get shop info
-    const shopInfoResponse = await fetch(`https://${shop}/admin/api/2024-01/shop.json`, {
-      headers: { "X-Shopify-Access-Token": tokenData.access_token },
-    })
-
-    const shopInfo = shopInfoResponse.ok
-      ? (await shopInfoResponse.json()).shop
-      : { name: shop }
-
     // Save credentials to client_stores (unified credential storage)
     await updateStoreCredentials(
       stateData.store_id,

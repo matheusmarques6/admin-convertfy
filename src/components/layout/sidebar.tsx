@@ -7,7 +7,6 @@ import { useTheme } from "next-themes"
 import {
   LayoutDashboard,
   Users,
-  Users2,
   Kanban,
   ClipboardList,
   Zap,
