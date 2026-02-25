@@ -12,15 +12,12 @@ import {
   AlertCircle,
   CheckCircle,
 } from "lucide-react"
-import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Separator } from "@/components/ui/separator"
 
 interface UserProfile {
   id: string
@@ -46,7 +43,6 @@ export default function PortalSettingsPage() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
 
-  // Password change state
   const [currentPassword, setCurrentPassword] = useState("")
   const [newPassword, setNewPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
@@ -164,95 +160,90 @@ export default function PortalSettingsPage() {
     return (
       <div className="space-y-6">
         <div>
-          <Skeleton className="h-8 w-48 mb-2" />
-          <Skeleton className="h-4 w-64" />
+          <Skeleton className="h-7 w-48 bg-slate-200 mb-2" />
+          <Skeleton className="h-4 w-64 bg-slate-100" />
         </div>
         <div className="grid gap-6 md:grid-cols-2">
-          <Skeleton className="h-64" />
-          <Skeleton className="h-64" />
+          <Skeleton className="h-64 bg-white rounded-xl border border-slate-100" />
+          <Skeleton className="h-64 bg-white rounded-xl border border-slate-100" />
         </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-[1200px] mx-auto space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold">Configurações</h1>
-        <p className="text-muted-foreground">
-          Gerencie suas informações e preferências
-        </p>
+        <h1 className="text-2xl font-bold text-slate-800">Configurações</h1>
+        <p className="text-slate-500 text-sm mt-1">Gerencie suas informações e preferências</p>
       </div>
 
       {/* Alerts */}
       {error && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
+        <Alert variant="destructive" className="bg-red-50 border-red-200">
+          <AlertCircle className="h-4 w-4 text-red-500" />
+          <AlertDescription className="text-red-700 text-[13px]">{error}</AlertDescription>
         </Alert>
       )}
 
       {success && (
-        <Alert className="border-success/20 bg-success/10 text-success">
-          <CheckCircle className="h-4 w-4" />
-          <AlertDescription>{success}</AlertDescription>
+        <Alert className="border-emerald-200 bg-emerald-50">
+          <CheckCircle className="h-4 w-4 text-emerald-600" />
+          <AlertDescription className="text-emerald-700 text-[13px]">{success}</AlertDescription>
         </Alert>
       )}
 
       <div className="grid gap-6 md:grid-cols-2">
         {/* Profile */}
-        <GlowCard color="primary" intensity="subtle">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <User className="h-5 w-5" />
+        <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-100">
+            <h3 className="text-[15px] font-semibold text-slate-800 flex items-center gap-2">
+              <User className="h-4 w-4 text-[#5327F2]" />
               Perfil
-            </CardTitle>
-            <CardDescription>
-              Suas informações pessoais
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">Suas informações pessoais</p>
+          </div>
+          <div className="p-6 space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="name">Nome</Label>
+              <Label htmlFor="name" className="text-[13px] text-slate-700 font-medium">Nome</Label>
               <Input
                 id="name"
                 value={profile?.name || ""}
                 onChange={(e) => setProfile(prev => prev ? { ...prev, name: e.target.value } : null)}
+                className="h-10 bg-slate-50 border-slate-200 text-slate-800"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email" className="text-[13px] text-slate-700 font-medium">Email</Label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                 <Input
                   id="email"
                   value={profile?.email || ""}
                   disabled
-                  className="pl-10 bg-muted"
+                  className="pl-10 h-10 bg-slate-100 border-slate-200 text-slate-500"
                 />
               </div>
-              <p className="text-xs text-muted-foreground">
-                O email não pode ser alterado
-              </p>
+              <p className="text-xs text-slate-400">O email não pode ser alterado</p>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="phone">Telefone</Label>
+              <Label htmlFor="phone" className="text-[13px] text-slate-700 font-medium">Telefone</Label>
               <div className="relative">
-                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                 <Input
                   id="phone"
                   value={profile?.phone || ""}
                   onChange={(e) => setProfile(prev => prev ? { ...prev, phone: e.target.value } : null)}
                   placeholder="(11) 99999-9999"
-                  className="pl-10"
+                  className="pl-10 h-10 bg-slate-50 border-slate-200 text-slate-800"
                 />
               </div>
             </div>
 
-            <Button onClick={handleSaveProfile} disabled={saving}>
+            <Button onClick={handleSaveProfile} disabled={saving} className="bg-[#5327F2] hover:bg-[#4520D4] text-white shadow-sm">
               {saving ? (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               ) : (
@@ -260,35 +251,34 @@ export default function PortalSettingsPage() {
               )}
               Salvar Perfil
             </Button>
-          </CardContent>
-        </GlowCard>
+          </div>
+        </div>
 
         {/* Change Password */}
-        <GlowCard color="primary" intensity="subtle">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Lock className="h-5 w-5" />
+        <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-100">
+            <h3 className="text-[15px] font-semibold text-slate-800 flex items-center gap-2">
+              <Lock className="h-4 w-4 text-amber-600" />
               Alterar Senha
-            </CardTitle>
-            <CardDescription>
-              Mantenha sua conta segura
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">Mantenha sua conta segura</p>
+          </div>
+          <div className="p-6">
             <form onSubmit={handleChangePassword} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="currentPassword">Senha Atual</Label>
+                <Label htmlFor="currentPassword" className="text-[13px] text-slate-700 font-medium">Senha Atual</Label>
                 <Input
                   id="currentPassword"
                   type="password"
                   value={currentPassword}
                   onChange={(e) => setCurrentPassword(e.target.value)}
                   required
+                  className="h-10 bg-slate-50 border-slate-200 text-slate-800"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="newPassword">Nova Senha</Label>
+                <Label htmlFor="newPassword" className="text-[13px] text-slate-700 font-medium">Nova Senha</Label>
                 <Input
                   id="newPassword"
                   type="password"
@@ -296,24 +286,24 @@ export default function PortalSettingsPage() {
                   onChange={(e) => setNewPassword(e.target.value)}
                   required
                   minLength={8}
+                  className="h-10 bg-slate-50 border-slate-200 text-slate-800"
                 />
-                <p className="text-xs text-muted-foreground">
-                  Mínimo de 8 caracteres
-                </p>
+                <p className="text-xs text-slate-400">Mínimo de 8 caracteres</p>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="confirmPassword">Confirmar Nova Senha</Label>
+                <Label htmlFor="confirmPassword" className="text-[13px] text-slate-700 font-medium">Confirmar Nova Senha</Label>
                 <Input
                   id="confirmPassword"
                   type="password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
+                  className="h-10 bg-slate-50 border-slate-200 text-slate-800"
                 />
               </div>
 
-              <Button type="submit" disabled={changingPassword}>
+              <Button type="submit" disabled={changingPassword} variant="outline" className="border-slate-200 text-slate-700 hover:bg-slate-50">
                 {changingPassword ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 ) : (
@@ -322,129 +312,66 @@ export default function PortalSettingsPage() {
                 Alterar Senha
               </Button>
             </form>
-          </CardContent>
-        </GlowCard>
+          </div>
+        </div>
 
         {/* Notifications */}
-        <GlowCard color="primary" intensity="subtle" className="md:col-span-2">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Bell className="h-5 w-5" />
+        <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm overflow-hidden md:col-span-2">
+          <div className="px-6 py-4 border-b border-slate-100">
+            <h3 className="text-[15px] font-semibold text-slate-800 flex items-center gap-2">
+              <Bell className="h-4 w-4 text-[#05AFF2]" />
               Notificações por Email
-            </CardTitle>
-            <CardDescription>
-              Escolha quais notificações deseja receber
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-6">
-              <div>
-                <h4 className="font-medium mb-4">Relatórios</h4>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium text-sm">Relatório Semanal</p>
-                      <p className="text-xs text-muted-foreground">
-                        Resumo semanal de performance das suas lojas
-                      </p>
-                    </div>
-                    <Switch
-                      checked={notifications?.email_report_weekly || false}
-                      onCheckedChange={(checked) =>
-                        setNotifications(prev => prev ? { ...prev, email_report_weekly: checked } : null)
-                      }
-                    />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium text-sm">Relatório Mensal</p>
-                      <p className="text-xs text-muted-foreground">
-                        Relatório mensal completo com métricas detalhadas
-                      </p>
-                    </div>
-                    <Switch
-                      checked={notifications?.email_report_monthly || false}
-                      onCheckedChange={(checked) =>
-                        setNotifications(prev => prev ? { ...prev, email_report_monthly: checked } : null)
-                      }
-                    />
-                  </div>
-                </div>
-              </div>
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">Escolha quais notificações deseja receber</p>
+          </div>
+          <div className="p-6">
+            <div className="space-y-8">
+              <NotifSection title="Relatórios">
+                <NotifRow
+                  title="Relatório Semanal"
+                  description="Resumo semanal de performance das suas lojas"
+                  checked={notifications?.email_report_weekly || false}
+                  onChange={(checked) => setNotifications(prev => prev ? { ...prev, email_report_weekly: checked } : null)}
+                />
+                <NotifRow
+                  title="Relatório Mensal"
+                  description="Relatório mensal completo com métricas detalhadas"
+                  checked={notifications?.email_report_monthly || false}
+                  onChange={(checked) => setNotifications(prev => prev ? { ...prev, email_report_monthly: checked } : null)}
+                />
+              </NotifSection>
 
-              <Separator />
+              <NotifSection title="Financeiro">
+                <NotifRow
+                  title="Lembrete de Fatura"
+                  description="Aviso alguns dias antes do vencimento"
+                  checked={notifications?.email_invoice_reminder || false}
+                  onChange={(checked) => setNotifications(prev => prev ? { ...prev, email_invoice_reminder: checked } : null)}
+                />
+                <NotifRow
+                  title="Confirmação de Pagamento"
+                  description="Confirmação quando o pagamento for identificado"
+                  checked={notifications?.email_invoice_paid || false}
+                  onChange={(checked) => setNotifications(prev => prev ? { ...prev, email_invoice_paid: checked } : null)}
+                />
+              </NotifSection>
 
-              <div>
-                <h4 className="font-medium mb-4">Financeiro</h4>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium text-sm">Lembrete de Fatura</p>
-                      <p className="text-xs text-muted-foreground">
-                        Aviso alguns dias antes do vencimento
-                      </p>
-                    </div>
-                    <Switch
-                      checked={notifications?.email_invoice_reminder || false}
-                      onCheckedChange={(checked) =>
-                        setNotifications(prev => prev ? { ...prev, email_invoice_reminder: checked } : null)
-                      }
-                    />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium text-sm">Confirmação de Pagamento</p>
-                      <p className="text-xs text-muted-foreground">
-                        Confirmação quando o pagamento for identificado
-                      </p>
-                    </div>
-                    <Switch
-                      checked={notifications?.email_invoice_paid || false}
-                      onCheckedChange={(checked) =>
-                        setNotifications(prev => prev ? { ...prev, email_invoice_paid: checked } : null)
-                      }
-                    />
-                  </div>
-                </div>
-              </div>
+              <NotifSection title="Marketing">
+                <NotifRow
+                  title="Campanha Enviada"
+                  description="Notificação quando uma campanha for enviada"
+                  checked={notifications?.email_campaign_sent || false}
+                  onChange={(checked) => setNotifications(prev => prev ? { ...prev, email_campaign_sent: checked } : null)}
+                />
+                <NotifRow
+                  title="Alertas de Performance"
+                  description="Alertas sobre mudanças significativas nas métricas"
+                  checked={notifications?.email_performance_alerts || false}
+                  onChange={(checked) => setNotifications(prev => prev ? { ...prev, email_performance_alerts: checked } : null)}
+                />
+              </NotifSection>
 
-              <Separator />
-
-              <div>
-                <h4 className="font-medium mb-4">Marketing</h4>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium text-sm">Campanha Enviada</p>
-                      <p className="text-xs text-muted-foreground">
-                        Notificação quando uma campanha for enviada
-                      </p>
-                    </div>
-                    <Switch
-                      checked={notifications?.email_campaign_sent || false}
-                      onCheckedChange={(checked) =>
-                        setNotifications(prev => prev ? { ...prev, email_campaign_sent: checked } : null)
-                      }
-                    />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium text-sm">Alertas de Performance</p>
-                      <p className="text-xs text-muted-foreground">
-                        Alertas sobre mudanças significativas nas métricas
-                      </p>
-                    </div>
-                    <Switch
-                      checked={notifications?.email_performance_alerts || false}
-                      onCheckedChange={(checked) =>
-                        setNotifications(prev => prev ? { ...prev, email_performance_alerts: checked } : null)
-                      }
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <Button onClick={handleSaveNotifications} disabled={saving}>
+              <Button onClick={handleSaveNotifications} disabled={saving} className="bg-[#5327F2] hover:bg-[#4520D4] text-white shadow-sm">
                 {saving ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 ) : (
@@ -453,9 +380,40 @@ export default function PortalSettingsPage() {
                 Salvar Preferências
               </Button>
             </div>
-          </CardContent>
-        </GlowCard>
+          </div>
+        </div>
       </div>
+    </div>
+  )
+}
+
+function NotifSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <h4 className="text-[13px] font-semibold text-slate-800 mb-4 uppercase tracking-wide">{title}</h4>
+      <div className="space-y-4">{children}</div>
+    </div>
+  )
+}
+
+function NotifRow({
+  title,
+  description,
+  checked,
+  onChange,
+}: {
+  title: string
+  description: string
+  checked: boolean
+  onChange: (checked: boolean) => void
+}) {
+  return (
+    <div className="flex items-center justify-between py-1">
+      <div>
+        <p className="text-sm font-medium text-slate-700">{title}</p>
+        <p className="text-xs text-slate-400">{description}</p>
+      </div>
+      <Switch checked={checked} onCheckedChange={onChange} />
     </div>
   )
 }

@@ -1,12 +1,11 @@
 "use client"
 
 import { useState } from "react"
+import Image from "next/image"
 import { Eye, EyeOff, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { createClient } from "@/lib/supabase/client"
 
@@ -23,10 +22,8 @@ export default function PortalLoginPage() {
     setLoading(true)
 
     try {
-      // Use browser Supabase client for authentication
       const supabase = createClient()
 
-      // Sign in with Supabase
       const { data: authData, error: signInError } = await supabase.auth.signInWithPassword({
         email: email.toLowerCase(),
         password,
@@ -39,37 +36,30 @@ export default function PortalLoginPage() {
         return
       }
 
-      // Check if this is a portal user by calling the API
       const response = await fetch("/api/portal/auth/verify", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: authData.user.id }),
       })
 
       const data = await response.json()
 
       if (!response.ok) {
-        // Not a portal user, sign out
         await supabase.auth.signOut()
         setError(data.error || "Esta conta não tem acesso ao portal")
         setLoading(false)
         return
       }
 
-      // Check if password change is required
       if (data.mustChangePassword) {
         window.location.href = "/portal/change-password"
         return
       }
 
-      // Check if onboarding wizard is needed
       try {
         const wizardRes = await fetch("/api/portal/onboarding/wizard")
         const wizardData = await wizardRes.json()
         if (wizardRes.ok && wizardData.data && !wizardData.data.wizardComplete) {
-          // Check if at least one step is incomplete
           const steps = wizardData.steps
           if (steps && (!steps.personalInfo?.complete || !steps.storeData?.complete || !steps.klaviyoKeys?.complete)) {
             window.location.href = "/portal/onboarding/wizard"
@@ -80,7 +70,6 @@ export default function PortalLoginPage() {
         // If wizard check fails, proceed to dashboard
       }
 
-      // Redirect to dashboard
       window.location.href = "/portal/dashboard"
     } catch (err) {
       console.error("Login error:", err)
@@ -90,34 +79,56 @@ export default function PortalLoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted p-4">
-      <div className="w-full max-w-md">
-        {/* Logo */}
-        <div className="flex flex-col items-center mb-8">
-          <div className="w-16 h-16 rounded-2xl bg-primary flex items-center justify-center mb-4">
-            <span className="text-primary-foreground font-bold text-2xl">C</span>
-          </div>
-          <h1 className="text-2xl font-bold">Convertfy</h1>
-          <p className="text-muted-foreground">Portal do Cliente</p>
-        </div>
+    <div className="min-h-screen flex">
+      {/* Left Panel - Brand */}
+      <div className="hidden lg:flex lg:w-[480px] bg-[#0B0E14] flex-col items-center justify-center relative overflow-hidden">
+        <div className="absolute top-1/4 left-1/4 w-[400px] h-[400px] bg-[#5327F2]/20 rounded-full blur-[120px]" />
+        <div className="absolute bottom-1/4 right-1/4 w-[300px] h-[300px] bg-[#05AFF2]/15 rounded-full blur-[100px]" />
 
-        <GlowCard color="primary" intensity="subtle">
-          <CardHeader className="text-center">
-            <CardTitle>Bem-vindo de volta</CardTitle>
-            <CardDescription>
-              Entre com suas credenciais para acessar o portal
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="relative z-10 px-12 text-center">
+          <Image
+            src="/images/logo da convertfy com escrito branco.png"
+            alt="Convertfy"
+            width={220}
+            height={50}
+            className="mx-auto mb-8"
+            priority
+          />
+          <h2 className="text-2xl font-bold text-white mb-3">Portal do Cliente</h2>
+          <p className="text-slate-400 text-[15px] leading-relaxed max-w-sm">
+            Acompanhe suas métricas, campanhas e resultados de email marketing em tempo real.
+          </p>
+        </div>
+      </div>
+
+      {/* Right Panel - Login Form */}
+      <div className="flex-1 flex items-center justify-center bg-[#F8F9FB] px-6">
+        <div className="w-full max-w-[400px]">
+          {/* Mobile Logo */}
+          <div className="lg:hidden flex flex-col items-center mb-10">
+            <div className="w-14 h-14 rounded-2xl bg-[#5327F2] flex items-center justify-center mb-4 shadow-lg shadow-[#5327F2]/25">
+              <span className="text-white font-bold text-xl">C</span>
+            </div>
+            <h1 className="text-xl font-bold text-slate-800">Convertfy</h1>
+            <p className="text-slate-500 text-sm">Portal do Cliente</p>
+          </div>
+
+          {/* Form Card */}
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-8">
+            <div className="mb-6">
+              <h1 className="text-xl font-semibold text-slate-800 mb-1">Bem-vindo de volta</h1>
+              <p className="text-sm text-slate-500">Entre com suas credenciais para acessar o portal</p>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-5">
               {error && (
-                <Alert variant="destructive">
-                  <AlertDescription>{error}</AlertDescription>
+                <Alert variant="destructive" className="bg-red-50 border-red-200 text-red-700">
+                  <AlertDescription className="text-[13px]">{error}</AlertDescription>
                 </Alert>
               )}
 
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="email" className="text-[13px] font-medium text-slate-700">Email</Label>
                 <Input
                   id="email"
                   type="email"
@@ -127,11 +138,12 @@ export default function PortalLoginPage() {
                   required
                   disabled={loading}
                   autoComplete="email"
+                  className="h-11 bg-slate-50 border-slate-200 text-slate-800 placeholder:text-slate-400 focus:border-[#5327F2] focus:ring-[#5327F2]/20"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="password">Senha</Label>
+                <Label htmlFor="password" className="text-[13px] font-medium text-slate-700">Senha</Label>
                 <div className="relative">
                   <Input
                     id="password"
@@ -142,26 +154,26 @@ export default function PortalLoginPage() {
                     required
                     disabled={loading}
                     autoComplete="current-password"
-                    className="pr-10"
+                    className="h-11 bg-slate-50 border-slate-200 text-slate-800 placeholder:text-slate-400 focus:border-[#5327F2] focus:ring-[#5327F2]/20 pr-10"
                   />
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                    className="absolute right-0 top-0 h-full px-3 hover:bg-transparent text-slate-400 hover:text-slate-600"
                     onClick={() => setShowPassword(!showPassword)}
                     disabled={loading}
                   >
-                    {showPassword ? (
-                      <EyeOff className="h-4 w-4 text-muted-foreground" />
-                    ) : (
-                      <Eye className="h-4 w-4 text-muted-foreground" />
-                    )}
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </Button>
                 </div>
               </div>
 
-              <Button type="submit" className="w-full" disabled={loading}>
+              <Button
+                type="submit"
+                className="w-full h-11 bg-[#5327F2] hover:bg-[#4520D4] text-white font-medium shadow-lg shadow-[#5327F2]/20 transition-all duration-200"
+                disabled={loading}
+              >
                 {loading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -173,23 +185,20 @@ export default function PortalLoginPage() {
               </Button>
             </form>
 
-            <div className="mt-6 text-center text-sm text-muted-foreground">
-              <p>
+            <div className="mt-6 text-center">
+              <p className="text-[13px] text-slate-500">
                 Problemas para acessar?{" "}
-                <a
-                  href="mailto:suporte@convertfy.com.br"
-                  className="text-primary hover:underline"
-                >
+                <a href="mailto:suporte@convertfy.com.br" className="text-[#5327F2] hover:text-[#4520D4] font-medium">
                   Entre em contato
                 </a>
               </p>
             </div>
-          </CardContent>
-        </GlowCard>
+          </div>
 
-        <p className="mt-6 text-center text-xs text-muted-foreground">
-          &copy; {new Date().getFullYear()} Convertfy. Todos os direitos reservados.
-        </p>
+          <p className="mt-6 text-center text-xs text-slate-400">
+            &copy; {new Date().getFullYear()} Convertfy. Todos os direitos reservados.
+          </p>
+        </div>
       </div>
     </div>
   )

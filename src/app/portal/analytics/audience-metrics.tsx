@@ -1,5 +1,4 @@
 import { Users, UserPlus, RefreshCw, Mail, UserCheck, Repeat } from "lucide-react"
-import { GlowCard } from "@/components/ui/glow-card"
 import { formatNumber, formatPercent } from "@/lib/utils/format"
 import type { KlaviyoData, ShopifyData } from "../dashboard/types"
 
@@ -22,14 +21,14 @@ function StatBlock({
   colorClass?: string
 }) {
   return (
-    <div className="flex items-start gap-3 py-3 border-b border-border/50 last:border-0">
-      <div className="rounded-lg bg-muted/50 p-2 mt-0.5">
-        <Icon className="h-4 w-4 text-muted-foreground" />
+    <div className="flex items-start gap-3 py-3 border-b border-slate-200/50 last:border-0">
+      <div className="rounded-lg bg-slate-100/50 p-2 mt-0.5">
+        <Icon className="h-4 w-4 text-slate-500" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-xs text-muted-foreground">{label}</p>
-        <p className={`text-lg font-bold ${colorClass || "text-foreground"}`}>{value}</p>
-        {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
+        <p className="text-xs text-slate-500">{label}</p>
+        <p className={`text-lg font-bold ${colorClass || "text-slate-800"}`}>{value}</p>
+        {subtitle && <p className="text-xs text-slate-500">{subtitle}</p>}
       </div>
     </div>
   )
@@ -43,22 +42,22 @@ export function AudienceMetrics({ klaviyo, shopify }: AudienceMetricsProps) {
   const recurringRate = shopify?.recurringCustomerRate || 0
 
   const engageColor = engagementRate >= 30
-    ? "text-success"
+    ? "text-emerald-600"
     : engagementRate >= 15
-      ? "text-warning"
-      : "text-destructive"
+      ? "text-amber-600"
+      : "text-red-600"
 
   const recurringColor = recurringRate >= 30
-    ? "text-success"
+    ? "text-emerald-600"
     : recurringRate >= 15
-      ? "text-warning"
-      : "text-foreground"
+      ? "text-amber-600"
+      : "text-slate-800"
 
   return (
-    <GlowCard color="primary" intensity="subtle" surfaceClassName="p-5">
+    <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-sm">
       <div className="flex items-center gap-2 mb-2">
-        <Users className="h-4 w-4 text-muted-foreground" />
-        <h3 className="text-sm font-semibold text-foreground">Audiência & Clientes</h3>
+        <Users className="h-4 w-4 text-slate-500" />
+        <h3 className="text-sm font-semibold text-slate-800">Audiência & Clientes</h3>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6">
@@ -96,6 +95,6 @@ export function AudienceMetrics({ klaviyo, shopify }: AudienceMetricsProps) {
           colorClass={recurringColor}
         />
       </div>
-    </GlowCard>
+    </div>
   )
 }

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { useToast } from "@/lib/hooks/use-toast"
@@ -273,10 +273,10 @@ export default function PortalNewStorePage() {
   if (submitted) {
     return (
       <div className="space-y-6">
-        <Card className="max-w-md mx-auto text-center">
+        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm max-w-md mx-auto text-center">
           <CardHeader>
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
-              <Check className="h-8 w-8 text-green-600" />
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100">
+              <Check className="h-8 w-8 text-emerald-600" />
             </div>
             <CardTitle className="text-2xl">Loja Enviada!</CardTitle>
             <CardDescription className="text-base mt-2">
@@ -284,14 +284,14 @@ export default function PortalNewStorePage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Button onClick={() => router.push("/portal/onboarding")} className="w-full">
+            <Button onClick={() => router.push("/portal/onboarding")} className="w-full bg-[#5327F2] hover:bg-[#4520D4] text-white shadow-sm">
               Ver Onboarding
             </Button>
-            <Button variant="outline" onClick={() => router.push("/portal/stores")} className="w-full">
+            <Button variant="outline" onClick={() => router.push("/portal/stores")} className="w-full border-slate-200 text-slate-700 hover:bg-slate-50">
               Voltar para Lojas
             </Button>
           </CardContent>
-        </Card>
+        </div>
       </div>
     )
   }
@@ -304,14 +304,14 @@ export default function PortalNewStorePage() {
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div>
-          <h1 className="text-2xl font-bold">Nova Loja</h1>
-          <p className="text-muted-foreground">Cadastre uma nova loja ou substitua uma existente</p>
+          <h1 className="text-2xl font-bold text-slate-800">Nova Loja</h1>
+          <p className="text-slate-500">Cadastre uma nova loja ou substitua uma existente</p>
         </div>
       </div>
 
       {/* Mode Selection */}
       {existingStores.length > 0 && (
-        <Card>
+        <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm">
           <CardContent className="pt-6">
             <div className="flex gap-4">
               <Button
@@ -345,7 +345,7 @@ export default function PortalNewStorePage() {
               </div>
             )}
           </CardContent>
-        </Card>
+        </div>
       )}
 
       {/* Progress Steps */}
@@ -360,8 +360,8 @@ export default function PortalNewStorePage() {
               <button
                 onClick={() => { if (isCompleted) setCurrentStep(step.id) }}
                 className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors w-full justify-center
-                  ${isActive ? "bg-blue-600 text-white" : ""}
-                  ${isCompleted ? "bg-green-100 text-green-700 cursor-pointer hover:bg-green-200" : ""}
+                  ${isActive ? "bg-[#5327F2] text-white shadow-sm" : ""}
+                  ${isCompleted ? "bg-emerald-50 text-emerald-700 cursor-pointer hover:bg-emerald-100" : ""}
                   ${!isActive && !isCompleted ? "bg-slate-100 text-slate-400" : ""}
                 `}
               >
@@ -369,7 +369,7 @@ export default function PortalNewStorePage() {
                 <span className="hidden sm:inline">{step.title}</span>
               </button>
               {index < STEPS.length - 1 && (
-                <div className={`h-px w-4 mx-1 ${isCompleted ? "bg-green-300" : "bg-slate-200"}`} />
+                <div className={`h-px w-4 mx-1 ${isCompleted ? "bg-emerald-300" : "bg-slate-200"}`} />
               )}
             </div>
           )
@@ -377,7 +377,7 @@ export default function PortalNewStorePage() {
       </div>
 
       {/* Form */}
-      <Card>
+      <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm">
         <CardHeader>
           <CardTitle>{STEPS[currentStep - 1].title}</CardTitle>
         </CardHeader>
@@ -487,16 +487,16 @@ export default function PortalNewStorePage() {
               <div className="space-y-2">
                 <Label>Logo da marca</Label>
                 {uploadedFiles.logo ? (
-                  <div className="flex items-center gap-3 rounded-lg border p-3 bg-green-50">
-                    <Image className="h-5 w-5 text-green-600 shrink-0" />
-                    <span className="text-sm text-green-700 flex-1 truncate">{uploadedFiles.logo.fileName}</span>
+                  <div className="flex items-center gap-3 rounded-lg border p-3 bg-emerald-50">
+                    <Image className="h-5 w-5 text-emerald-600 shrink-0" />
+                    <span className="text-sm text-emerald-700 flex-1 truncate">{uploadedFiles.logo.fileName}</span>
                     <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => removeFile("logo")}>
                       <X className="h-4 w-4" />
                     </Button>
                   </div>
                 ) : (
-                  <div className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 transition-colors" onClick={() => logoInputRef.current?.click()}>
-                    {uploadingField === "logo" ? <Loader2 className="h-6 w-6 animate-spin text-blue-500" /> : <Upload className="h-6 w-6 text-slate-400" />}
+                  <div className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 cursor-pointer hover:border-[#5327F2]/40 hover:bg-[#5327F2]/5 transition-colors" onClick={() => logoInputRef.current?.click()}>
+                    {uploadingField === "logo" ? <Loader2 className="h-6 w-6 animate-spin text-[#5327F2]" /> : <Upload className="h-6 w-6 text-slate-400" />}
                     <span className="text-sm text-slate-500">Clique para enviar o logo</span>
                     <span className="text-xs text-slate-400">PNG, JPG, SVG, WebP (máx. 10MB)</span>
                   </div>
@@ -513,16 +513,16 @@ export default function PortalNewStorePage() {
               <div className="space-y-2">
                 <Label>Arquivo de referência visual</Label>
                 {uploadedFiles.design ? (
-                  <div className="flex items-center gap-3 rounded-lg border p-3 bg-green-50">
-                    <FileText className="h-5 w-5 text-green-600 shrink-0" />
-                    <span className="text-sm text-green-700 flex-1 truncate">{uploadedFiles.design.fileName}</span>
+                  <div className="flex items-center gap-3 rounded-lg border p-3 bg-emerald-50">
+                    <FileText className="h-5 w-5 text-emerald-600 shrink-0" />
+                    <span className="text-sm text-emerald-700 flex-1 truncate">{uploadedFiles.design.fileName}</span>
                     <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => removeFile("design")}>
                       <X className="h-4 w-4" />
                     </Button>
                   </div>
                 ) : (
-                  <div className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 transition-colors" onClick={() => designInputRef.current?.click()}>
-                    {uploadingField === "design" ? <Loader2 className="h-6 w-6 animate-spin text-blue-500" /> : <Upload className="h-6 w-6 text-slate-400" />}
+                  <div className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 cursor-pointer hover:border-[#5327F2]/40 hover:bg-[#5327F2]/5 transition-colors" onClick={() => designInputRef.current?.click()}>
+                    {uploadingField === "design" ? <Loader2 className="h-6 w-6 animate-spin text-[#5327F2]" /> : <Upload className="h-6 w-6 text-slate-400" />}
                     <span className="text-sm text-slate-500">Clique para enviar referência visual</span>
                     <span className="text-xs text-slate-400">PNG, JPG, SVG, WebP, PDF (máx. 10MB)</span>
                   </div>
@@ -534,16 +534,16 @@ export default function PortalNewStorePage() {
               <div className="space-y-2">
                 <Label>Manual da marca</Label>
                 {uploadedFiles.brand_manual ? (
-                  <div className="flex items-center gap-3 rounded-lg border p-3 bg-green-50">
-                    <FileText className="h-5 w-5 text-green-600 shrink-0" />
-                    <span className="text-sm text-green-700 flex-1 truncate">{uploadedFiles.brand_manual.fileName}</span>
+                  <div className="flex items-center gap-3 rounded-lg border p-3 bg-emerald-50">
+                    <FileText className="h-5 w-5 text-emerald-600 shrink-0" />
+                    <span className="text-sm text-emerald-700 flex-1 truncate">{uploadedFiles.brand_manual.fileName}</span>
                     <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => removeFile("brand_manual")}>
                       <X className="h-4 w-4" />
                     </Button>
                   </div>
                 ) : (
-                  <div className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 transition-colors" onClick={() => brandInputRef.current?.click()}>
-                    {uploadingField === "brand_manual" ? <Loader2 className="h-6 w-6 animate-spin text-blue-500" /> : <Upload className="h-6 w-6 text-slate-400" />}
+                  <div className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 cursor-pointer hover:border-[#5327F2]/40 hover:bg-[#5327F2]/5 transition-colors" onClick={() => brandInputRef.current?.click()}>
+                    {uploadingField === "brand_manual" ? <Loader2 className="h-6 w-6 animate-spin text-[#5327F2]" /> : <Upload className="h-6 w-6 text-slate-400" />}
                     <span className="text-sm text-slate-500">Clique para enviar o manual da marca</span>
                     <span className="text-xs text-slate-400">PDF, PNG, JPG (máx. 10MB)</span>
                   </div>
@@ -583,10 +583,10 @@ export default function PortalNewStorePage() {
                   <h3 className="font-semibold text-slate-900 mb-2">Identidade Visual</h3>
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     {formData.price_sensitivity && <><span className="text-slate-500">Foco:</span><span>{formData.price_sensitivity === "price" ? "Preço" : formData.price_sensitivity === "quality" ? "Qualidade" : "Equilibrado"}</span></>}
-                    {uploadedFiles.logo && <><span className="text-slate-500">Logo:</span><span className="text-green-600 truncate">{uploadedFiles.logo.fileName}</span></>}
+                    {uploadedFiles.logo && <><span className="text-slate-500">Logo:</span><span className="text-emerald-600 truncate">{uploadedFiles.logo.fileName}</span></>}
                     {formData.design_direction_text && <><span className="text-slate-500">Direção:</span><span className="truncate">{formData.design_direction_text}</span></>}
-                    {uploadedFiles.design && <><span className="text-slate-500">Referência:</span><span className="text-green-600 truncate">{uploadedFiles.design.fileName}</span></>}
-                    {uploadedFiles.brand_manual && <><span className="text-slate-500">Manual:</span><span className="text-green-600 truncate">{uploadedFiles.brand_manual.fileName}</span></>}
+                    {uploadedFiles.design && <><span className="text-slate-500">Referência:</span><span className="text-emerald-600 truncate">{uploadedFiles.design.fileName}</span></>}
+                    {uploadedFiles.brand_manual && <><span className="text-slate-500">Manual:</span><span className="text-emerald-600 truncate">{uploadedFiles.brand_manual.fileName}</span></>}
                   </div>
                 </div>
               )}
@@ -622,7 +622,7 @@ export default function PortalNewStorePage() {
             )}
           </div>
         </CardContent>
-      </Card>
+      </div>
     </div>
   )
 }

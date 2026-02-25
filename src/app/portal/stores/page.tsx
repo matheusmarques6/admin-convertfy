@@ -15,8 +15,7 @@ import {
   CheckCircle2,
   Settings,
 } from "lucide-react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
+import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -230,10 +229,10 @@ export default function PortalStoresPage() {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] text-center">
-        <AlertCircle className="h-12 w-12 text-destructive mb-4" />
-        <h2 className="text-xl font-semibold mb-2">Erro ao carregar</h2>
-        <p className="text-muted-foreground mb-4">{error}</p>
-        <Button onClick={fetchStores}>Tentar novamente</Button>
+        <AlertCircle className="h-12 w-12 text-red-600 mb-4" />
+        <h2 className="text-xl font-semibold text-slate-800 mb-2">Erro ao carregar</h2>
+        <p className="text-slate-500 mb-4">{error}</p>
+        <Button onClick={fetchStores} className="bg-[#5327F2] hover:bg-[#4520D4] text-white shadow-sm">Tentar novamente</Button>
       </div>
     )
   }
@@ -243,12 +242,12 @@ export default function PortalStoresPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Suas Lojas</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-2xl font-bold text-slate-800">Suas Lojas</h1>
+          <p className="text-slate-500">
             Acompanhe os resultados e configure as integrações de cada loja
           </p>
         </div>
-        <Button asChild>
+        <Button asChild className="bg-[#5327F2] hover:bg-[#4520D4] text-white shadow-sm">
           <Link href="/portal/stores/new">
             <Store className="h-4 w-4 mr-2" />
             Nova Loja
@@ -258,69 +257,75 @@ export default function PortalStoresPage() {
 
       {/* Stores Grid */}
       {stores.length === 0 ? (
-        <Card>
+        <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm">
           <CardContent className="flex flex-col items-center justify-center py-12">
-            <Store className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">Nenhuma loja configurada</h3>
-            <p className="text-muted-foreground text-center max-w-md">
+            <Store className="h-12 w-12 text-slate-400 mb-4" />
+            <h3 className="text-lg font-medium text-slate-800 mb-2">Nenhuma loja configurada</h3>
+            <p className="text-slate-500 text-center max-w-md">
               Suas lojas serão exibidas aqui assim que forem configuradas pela equipe Convertfy.
             </p>
           </CardContent>
-        </Card>
+        </div>
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {stores.map((store) => {
             const needsSetup = !store.hasKlaviyo || !store.shopify_access_token
             return (
-              <GlowCard key={store.id} color="primary" intensity="subtle">
+              <div key={store.id} className="bg-white rounded-xl border border-slate-200/80 shadow-sm">
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                        <Store className="h-6 w-6 text-primary" />
+                      <div className="w-12 h-12 rounded-lg bg-[#5327F2]/10 flex items-center justify-center">
+                        <Store className="h-6 w-6 text-[#5327F2]" />
                       </div>
                       <div>
-                        <CardTitle className="text-lg">{store.store_name}</CardTitle>
-                        <CardDescription className="capitalize">{store.platform}</CardDescription>
+                        <CardTitle className="text-lg text-slate-800">{store.store_name}</CardTitle>
+                        <CardDescription className="capitalize text-slate-500">{store.platform}</CardDescription>
                       </div>
                     </div>
-                    <Badge variant={store.is_active ? "default" : "secondary"}>
-                      {store.is_active ? "Ativa" : "Inativa"}
-                    </Badge>
+                    {store.is_active ? (
+                      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-emerald-50 text-emerald-700">
+                        Ativa
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-slate-100 text-slate-500">
+                        Inativa
+                      </span>
+                    )}
                   </div>
                 </CardHeader>
                 <CardContent>
                   {/* Integration Status */}
                   <div className="space-y-2 mb-4">
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Klaviyo</span>
+                      <span className="text-slate-500">Klaviyo</span>
                       {store.hasKlaviyo ? (
-                        <Badge variant="outline" className="bg-success/10 text-success border-success/20">
+                        <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium bg-emerald-50 text-emerald-700 border-emerald-200">
                           Conectado
-                        </Badge>
+                        </span>
                       ) : (
-                        <Badge variant="outline" className="bg-warning/10 text-warning border-warning/20">
+                        <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium bg-amber-50 text-amber-700 border-amber-200">
                           Não conectado
-                        </Badge>
+                        </span>
                       )}
                     </div>
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Shopify</span>
+                      <span className="text-slate-500">Shopify</span>
                       {store.shopify_access_token ? (
-                        <Badge variant="outline" className="bg-success/10 text-success border-success/20">
+                        <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium bg-emerald-50 text-emerald-700 border-emerald-200">
                           Conectado
-                        </Badge>
+                        </span>
                       ) : (
-                        <Badge variant="outline" className="bg-warning/10 text-warning border-warning/20">
+                        <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium bg-amber-50 text-amber-700 border-amber-200">
                           Não conectado
-                        </Badge>
+                        </span>
                       )}
                     </div>
                   </div>
 
                   {/* Actions */}
                   <div className="flex gap-2">
-                    <Button asChild className="flex-1">
+                    <Button asChild className="flex-1 bg-[#5327F2] hover:bg-[#4520D4] text-white shadow-sm">
                       <Link href={`/portal/stores/${store.id}`}>
                         Ver Relatório
                       </Link>
@@ -329,13 +334,14 @@ export default function PortalStoresPage() {
                       <Button
                         variant="outline"
                         onClick={() => openCredentialsDialog(store)}
+                        className="border-slate-200/80 text-slate-800 hover:bg-slate-50"
                       >
                         <Settings className="h-4 w-4 mr-1" />
                         Configurar
                       </Button>
                     )}
                     {!needsSetup && store.store_url && (
-                      <Button variant="outline" size="icon" asChild>
+                      <Button variant="outline" size="icon" asChild className="border-slate-200/80 text-slate-800 hover:bg-slate-50">
                         <a href={store.store_url} target="_blank" rel="noopener noreferrer">
                           <ExternalLink className="h-4 w-4" />
                         </a>
@@ -343,7 +349,7 @@ export default function PortalStoresPage() {
                     )}
                   </div>
                 </CardContent>
-              </GlowCard>
+              </div>
             )
           })}
         </div>
@@ -351,67 +357,67 @@ export default function PortalStoresPage() {
 
       {/* Quick Stats Legend */}
       {stores.length > 0 && (
-        <GlowCard color="primary" intensity="subtle">
+        <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm">
           <CardHeader>
-            <CardTitle className="text-base">Como ler seus relatórios</CardTitle>
+            <CardTitle className="text-[15px] font-semibold text-slate-800">Como ler seus relatórios</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid gap-4 md:grid-cols-4">
               <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-lg bg-info/10 flex items-center justify-center flex-shrink-0">
-                  <Users className="h-4 w-4 text-info" />
+                <div className="w-8 h-8 rounded-lg bg-[#05AFF2]/10 flex items-center justify-center flex-shrink-0">
+                  <Users className="h-4 w-4 text-[#05AFF2]" />
                 </div>
                 <div>
-                  <p className="font-medium text-sm">Total de Leads</p>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="font-medium text-sm text-slate-800">Total de Leads</p>
+                  <p className="text-xs text-slate-500">
                     Total de contatos cadastrados na sua base
                   </p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-lg bg-success/10 flex items-center justify-center flex-shrink-0">
-                  <TrendingUp className="h-4 w-4 text-success" />
+                <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center flex-shrink-0">
+                  <TrendingUp className="h-4 w-4 text-emerald-600" />
                 </div>
                 <div>
-                  <p className="font-medium text-sm">Leads Engajados</p>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="font-medium text-sm text-slate-800">Leads Engajados</p>
+                  <p className="text-xs text-slate-500">
                     Contatos que interagiram nos últimos 90 dias
                   </p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                  <DollarSign className="h-4 w-4 text-primary" />
+                <div className="w-8 h-8 rounded-lg bg-[#5327F2]/10 flex items-center justify-center flex-shrink-0">
+                  <DollarSign className="h-4 w-4 text-[#5327F2]" />
                 </div>
                 <div>
-                  <p className="font-medium text-sm">Receita Atribuída</p>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="font-medium text-sm text-slate-800">Receita Atribuída</p>
+                  <p className="text-xs text-slate-500">
                     Vendas geradas via email marketing
                   </p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-lg bg-warning/10 flex items-center justify-center flex-shrink-0">
-                  <Mail className="h-4 w-4 text-warning" />
+                <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0">
+                  <Mail className="h-4 w-4 text-amber-600" />
                 </div>
                 <div>
-                  <p className="font-medium text-sm">Campanhas</p>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="font-medium text-sm text-slate-800">Campanhas</p>
+                  <p className="text-xs text-slate-500">
                     Emails enviados e suas métricas
                   </p>
                 </div>
               </div>
             </div>
           </CardContent>
-        </GlowCard>
+        </div>
       )}
 
       {/* Credentials Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg bg-white border-slate-200/80">
           <DialogHeader>
-            <DialogTitle>Configurar Integrações</DialogTitle>
-            <DialogDescription>
+            <DialogTitle className="text-slate-800">Configurar Integrações</DialogTitle>
+            <DialogDescription className="text-slate-500">
               {selectedStore?.store_name} &mdash; Insira suas credenciais para conectar as integrações.
             </DialogDescription>
           </DialogHeader>
@@ -420,19 +426,20 @@ export default function PortalStoresPage() {
             {/* Klaviyo Section */}
             {selectedStore && !selectedStore.hasKlaviyo && (
               <div className="space-y-4">
-                <h4 className="font-medium flex items-center gap-2">
-                  <Key className="h-4 w-4 text-primary" />
+                <h4 className="font-medium flex items-center gap-2 text-slate-800">
+                  <Key className="h-4 w-4 text-[#5327F2]" />
                   Klaviyo
                 </h4>
                 <div className="space-y-2">
-                  <Label>Private API Key</Label>
+                  <Label className="text-[13px] font-medium text-slate-700">Private API Key</Label>
                   <Input
                     type="password"
                     placeholder="pk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                     value={credForm.klaviyo_private_key}
                     onChange={(e) => setCredForm({ ...credForm, klaviyo_private_key: e.target.value })}
+                    className="h-10 bg-slate-50 border-slate-200 text-slate-800"
                   />
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-slate-500">
                     Encontre em Klaviyo &rarr; Settings &rarr; API Keys &rarr; Create Private API Key
                   </p>
                 </div>
@@ -441,6 +448,7 @@ export default function PortalStoresPage() {
                   size="sm"
                   onClick={testKlaviyo}
                   disabled={testing === "klaviyo" || !credForm.klaviyo_private_key}
+                  className="border-slate-200/80 text-slate-800 hover:bg-slate-50"
                 >
                   {testing === "klaviyo" ? (
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -450,7 +458,7 @@ export default function PortalStoresPage() {
                   Testar Conexão
                 </Button>
                 {testResult?.type === "klaviyo" && (
-                  <div className={`flex items-center gap-2 text-sm ${testResult.success ? "text-success" : "text-destructive"}`}>
+                  <div className={`flex items-center gap-2 text-sm ${testResult.success ? "text-emerald-600" : "text-red-600"}`}>
                     {testResult.success ? (
                       <CheckCircle2 className="h-4 w-4" />
                     ) : (
@@ -465,30 +473,32 @@ export default function PortalStoresPage() {
             {/* Shopify Section */}
             {selectedStore && !selectedStore.shopify_access_token && (
               <div className="space-y-4">
-                <h4 className="font-medium flex items-center gap-2">
-                  <Store className="h-4 w-4 text-success" />
+                <h4 className="font-medium flex items-center gap-2 text-slate-800">
+                  <Store className="h-4 w-4 text-emerald-600" />
                   Shopify
                 </h4>
                 <div className="space-y-2">
-                  <Label>Domínio da Loja</Label>
+                  <Label className="text-[13px] font-medium text-slate-700">Domínio da Loja</Label>
                   <Input
                     placeholder="minhaloja.myshopify.com"
                     value={credForm.shopify_store_domain}
                     onChange={(e) => setCredForm({ ...credForm, shopify_store_domain: e.target.value })}
+                    className="h-10 bg-slate-50 border-slate-200 text-slate-800"
                   />
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-slate-500">
                     Domínio .myshopify.com da sua loja
                   </p>
                 </div>
                 <div className="space-y-2">
-                  <Label>Admin API Access Token</Label>
+                  <Label className="text-[13px] font-medium text-slate-700">Admin API Access Token</Label>
                   <Input
                     type="password"
                     placeholder="shpat_xxxxxxxxxxxxxxxx"
                     value={credForm.shopify_access_token}
                     onChange={(e) => setCredForm({ ...credForm, shopify_access_token: e.target.value })}
+                    className="h-10 bg-slate-50 border-slate-200 text-slate-800"
                   />
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-slate-500">
                     Settings &rarr; Apps &rarr; Develop apps &rarr; Create app &rarr; Admin API access token
                   </p>
                 </div>
@@ -497,6 +507,7 @@ export default function PortalStoresPage() {
                   size="sm"
                   onClick={testShopify}
                   disabled={testing === "shopify" || !credForm.shopify_store_domain || !credForm.shopify_access_token}
+                  className="border-slate-200/80 text-slate-800 hover:bg-slate-50"
                 >
                   {testing === "shopify" ? (
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -506,7 +517,7 @@ export default function PortalStoresPage() {
                   Testar Conexão
                 </Button>
                 {testResult?.type === "shopify" && (
-                  <div className={`flex items-center gap-2 text-sm ${testResult.success ? "text-success" : "text-destructive"}`}>
+                  <div className={`flex items-center gap-2 text-sm ${testResult.success ? "text-emerald-600" : "text-red-600"}`}>
                     {testResult.success ? (
                       <CheckCircle2 className="h-4 w-4" />
                     ) : (
@@ -520,7 +531,7 @@ export default function PortalStoresPage() {
 
             {/* All connected message */}
             {selectedStore?.hasKlaviyo && selectedStore?.shopify_access_token && (
-              <div className="flex items-center gap-3 py-4 text-success">
+              <div className="flex items-center gap-3 py-4 text-emerald-600">
                 <CheckCircle2 className="h-6 w-6" />
                 <p className="font-medium">Todas as integrações estão conectadas!</p>
               </div>
@@ -528,12 +539,13 @@ export default function PortalStoresPage() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+            <Button variant="outline" onClick={() => setDialogOpen(false)} className="border-slate-200/80 text-slate-800 hover:bg-slate-50">
               Cancelar
             </Button>
             <Button
               onClick={handleSaveCredentials}
               disabled={saving || (!credForm.klaviyo_private_key && !credForm.shopify_access_token)}
+              className="bg-[#5327F2] hover:bg-[#4520D4] text-white shadow-sm"
             >
               {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Salvar Credenciais

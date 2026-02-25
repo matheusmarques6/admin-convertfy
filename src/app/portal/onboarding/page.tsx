@@ -14,8 +14,7 @@ import {
   AlertCircle,
   PartyPopper,
 } from "lucide-react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
+import { CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
@@ -68,11 +67,11 @@ const categoryIcons: Record<string, React.ElementType> = {
 }
 
 const statusConfig: Record<string, { label: string; color: string }> = {
-  pending: { label: "Pendente", color: "text-muted-foreground" },
-  in_progress: { label: "Em andamento", color: "text-info" },
-  blocked: { label: "Bloqueado", color: "text-destructive" },
-  completed: { label: "Concluído", color: "text-success" },
-  skipped: { label: "Pulado", color: "text-muted-foreground" },
+  pending: { label: "Pendente", color: "text-slate-400" },
+  in_progress: { label: "Em andamento", color: "text-[#05AFF2]" },
+  blocked: { label: "Bloqueado", color: "text-red-600" },
+  completed: { label: "Concluído", color: "text-emerald-600" },
+  skipped: { label: "Pulado", color: "text-slate-400" },
 }
 
 function formatDate(dateStr: string | null) {
@@ -113,7 +112,7 @@ export default function PortalOnboardingPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
       </div>
     )
   }
@@ -121,16 +120,18 @@ export default function PortalOnboardingPage() {
   if (!onboarding) {
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold">Onboarding</h1>
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-            <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium">Nenhum onboarding ativo</h3>
-            <p className="text-sm text-muted-foreground mt-1">
+        <h1 className="text-2xl font-bold text-slate-800">Onboarding</h1>
+        <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm">
+          <div className="flex flex-col items-center justify-center py-16 text-center px-6">
+            <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center mb-4">
+              <AlertCircle className="h-7 w-7 text-slate-400" />
+            </div>
+            <h3 className="text-lg font-medium text-slate-800">Nenhum onboarding ativo</h3>
+            <p className="text-sm text-slate-500 mt-1">
               Entre em contato com a equipe Convertfy para iniciar seu onboarding.
             </p>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
     )
   }
@@ -139,53 +140,51 @@ export default function PortalOnboardingPage() {
   const progress = Math.round(onboarding.progress_percent || 0)
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-[1200px] mx-auto space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold">Onboarding</h1>
-        <p className="text-muted-foreground">
+        <h1 className="text-2xl font-bold text-slate-800">Onboarding</h1>
+        <p className="text-slate-500 text-sm mt-1">
           Acompanhe o progresso da configuração da sua conta
         </p>
       </div>
 
       {/* Progress Card */}
-      <GlowCard color="primary" intensity="subtle">
-        <CardContent className="pt-6">
-          {isCompleted ? (
-            <div className="flex items-center gap-4">
-              <div className="flex items-center justify-center h-14 w-14 rounded-full bg-success/20">
-                <PartyPopper className="h-7 w-7 text-success" />
-              </div>
+      <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm p-6">
+        {isCompleted ? (
+          <div className="flex items-center gap-4">
+            <div className="flex items-center justify-center h-14 w-14 rounded-full bg-emerald-50">
+              <PartyPopper className="h-7 w-7 text-emerald-600" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-emerald-600">
+                Onboarding concluído!
+              </h3>
+              <p className="text-sm text-slate-500">
+                Todas as etapas foram finalizadas.
+                {onboarding.completed_at && (
+                  <> Concluído em {formatDate(onboarding.completed_at)}.</>
+                )}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-semibold text-success">
-                  Onboarding concluído!
-                </h3>
-                <p className="text-sm text-muted-foreground">
-                  Todas as etapas foram finalizadas.
-                  {onboarding.completed_at && (
-                    <> Concluído em {formatDate(onboarding.completed_at)}.</>
+                <h3 className="text-lg font-semibold text-slate-800">{progress}% concluído</h3>
+                <p className="text-sm text-slate-500">
+                  {onboarding.completed_steps} de {onboarding.total_steps} etapas
+                  {onboarding.target_completion_date && (
+                    <> &middot; Previsão: {formatDate(onboarding.target_completion_date)}</>
                   )}
                 </p>
               </div>
             </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold">{progress}% concluído</h3>
-                  <p className="text-sm text-muted-foreground">
-                    {onboarding.completed_steps} de {onboarding.total_steps} etapas
-                    {onboarding.target_completion_date && (
-                      <> &middot; Previsão: {formatDate(onboarding.target_completion_date)}</>
-                    )}
-                  </p>
-                </div>
-              </div>
-              <Progress value={progress} className="h-3" />
-            </div>
-          )}
-        </CardContent>
-      </GlowCard>
+            <Progress value={progress} className="h-3" />
+          </div>
+        )}
+      </div>
 
       {/* Phase Timeline */}
       {phaseTimeline.length > 0 && (
@@ -202,20 +201,20 @@ export default function PortalOnboardingPage() {
           const allDone = group.completed === group.total
 
           return (
-            <GlowCard key={group.category} color="primary" intensity="subtle">
-              <CardHeader className="pb-3">
+            <div key={group.category} className="bg-white rounded-xl border border-slate-200/80 shadow-sm overflow-hidden">
+              <CardHeader className="pb-3 border-b border-slate-100">
                 <div className="flex items-center justify-between">
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <Icon className={cn("h-5 w-5", allDone ? "text-success" : "text-muted-foreground")} />
+                  <CardTitle className="flex items-center gap-2 text-[15px]">
+                    <Icon className={cn("h-5 w-5", allDone ? "text-emerald-600" : "text-slate-400")} />
                     {group.label}
                   </CardTitle>
-                  <Badge variant={allDone ? "default" : "secondary"} className="text-xs">
+                  <Badge variant={allDone ? "default" : "secondary"} className={cn("text-xs", allDone && "bg-emerald-50 text-emerald-700 border-emerald-200")}>
                     {group.completed}/{group.total}
                   </Badge>
                 </div>
               </CardHeader>
               <CardContent className="pt-0">
-                <div className="space-y-1">
+                <div className="divide-y divide-slate-100">
                   {group.steps.map((step) => {
                     const isDone = step.status === "completed" || step.status === "skipped"
                     const isIntegrationStep =
@@ -227,45 +226,42 @@ export default function PortalOnboardingPage() {
                         key={step.id}
                         className={cn(
                           "flex items-center gap-3 py-3 px-3 rounded-lg",
-                          isDone ? "opacity-70" : "bg-muted/30"
+                          isDone ? "opacity-70" : "bg-slate-50/50"
                         )}
                       >
-                        {/* Status icon */}
                         {isDone ? (
-                          <CheckCircle2 className="h-5 w-5 text-success shrink-0" />
+                          <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
                         ) : step.status === "in_progress" ? (
-                          <Clock className="h-5 w-5 text-info shrink-0" />
+                          <Clock className="h-5 w-5 text-[#05AFF2] shrink-0" />
                         ) : step.status === "blocked" ? (
-                          <AlertCircle className="h-5 w-5 text-destructive shrink-0" />
+                          <AlertCircle className="h-5 w-5 text-red-600 shrink-0" />
                         ) : (
-                          <Circle className="h-5 w-5 text-muted-foreground/40 shrink-0" />
+                          <Circle className="h-5 w-5 text-slate-300 shrink-0" />
                         )}
 
-                        {/* Step info */}
                         <div className="flex-1 min-w-0">
                           <p className={cn(
-                            "text-sm font-medium",
-                            isDone && "line-through text-muted-foreground"
+                            "text-sm font-medium text-slate-700",
+                            isDone && "line-through text-slate-400"
                           )}>
                             {step.name}
                           </p>
                           {step.description && !isDone && (
-                            <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                            <p className="text-xs text-slate-500 mt-0.5 truncate">
                               {step.description}
                             </p>
                           )}
                         </div>
 
-                        {/* Right side: date or action */}
                         {isDone && step.completed_at ? (
-                          <span className="text-xs text-muted-foreground shrink-0">
+                          <span className="text-xs text-slate-400 shrink-0">
                             {formatDate(step.completed_at)}
                           </span>
                         ) : isIntegrationStep && step.status === "pending" ? (
                           <Button
                             variant="outline"
                             size="sm"
-                            className="shrink-0"
+                            className="shrink-0 border-slate-200 text-slate-700"
                             onClick={() => router.push("/portal/stores")}
                           >
                             Configurar
@@ -283,7 +279,7 @@ export default function PortalOnboardingPage() {
                   })}
                 </div>
               </CardContent>
-            </GlowCard>
+            </div>
           )
         })}
       </div>

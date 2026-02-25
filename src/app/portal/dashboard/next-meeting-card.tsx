@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react"
 import { Video, Clock, ExternalLink, Calendar } from "lucide-react"
-import { GlowCard } from "@/components/ui/glow-card"
 import type { PortalMeeting } from "./types"
 
 interface NextMeetingCardProps {
@@ -26,13 +25,15 @@ export function NextMeetingCard({ meetings }: NextMeetingCardProps) {
 
   if (!nextMeeting) {
     return (
-      <GlowCard color="primary" intensity="subtle" surfaceClassName="p-4">
+      <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition-shadow duration-200">
         <div className="flex items-center gap-2 mb-3">
-          <Video className="h-4 w-4 text-muted-foreground" />
-          <span className="text-xs text-muted-foreground uppercase tracking-wide">Próxima Reunião</span>
+          <div className="flex items-center justify-center h-7 w-7 rounded-lg bg-purple-50">
+            <Video className="h-4 w-4 text-purple-600" />
+          </div>
+          <span className="text-[13px] text-slate-500 uppercase tracking-wide">Próxima Reunião</span>
         </div>
-        <p className="text-sm text-muted-foreground">Nenhuma reunião agendada</p>
-      </GlowCard>
+        <p className="text-sm text-slate-500">Nenhuma reunião agendada</p>
+      </div>
     )
   }
 
@@ -52,15 +53,17 @@ export function NextMeetingCard({ meetings }: NextMeetingCardProps) {
       : meetingDate.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
 
   return (
-    <GlowCard color={isWithin24h ? "info" : "primary"} intensity={isWithin24h ? "moderate" : "subtle"} surfaceClassName="p-4">
+    <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition-shadow duration-200">
       <div className="flex items-center gap-2 mb-3">
-        <Video className={`h-4 w-4 ${isWithin24h ? "text-info" : "text-muted-foreground"}`} />
-        <span className="text-xs text-muted-foreground uppercase tracking-wide">Próxima Reunião</span>
+        <div className={`flex items-center justify-center h-7 w-7 rounded-lg ${isWithin24h ? "bg-cyan-50" : "bg-purple-50"}`}>
+          <Video className={`h-4 w-4 ${isWithin24h ? "text-cyan-600" : "text-purple-600"}`} />
+        </div>
+        <span className="text-[13px] text-slate-500 uppercase tracking-wide">Próxima Reunião</span>
       </div>
 
-      <p className="text-sm font-semibold text-foreground mb-1">{nextMeeting.title}</p>
+      <p className="text-sm font-semibold text-slate-800 mb-1">{nextMeeting.title}</p>
 
-      <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-2">
+      <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-2">
         <Calendar className="h-3 w-3" />
         <span>{dateLabel}</span>
         <span>·</span>
@@ -70,8 +73,8 @@ export function NextMeetingCard({ meetings }: NextMeetingCardProps) {
       {/* Countdown when < 24h */}
       {isWithin24h && (
         <div className="flex items-center gap-1.5 mb-3">
-          <Clock className="h-3.5 w-3.5 text-info" />
-          <span className="text-sm font-medium text-info">
+          <Clock className="h-3.5 w-3.5 text-[#05AFF2]" />
+          <span className="text-sm font-medium text-[#05AFF2]">
             {diffHours > 0 ? `${diffHours}h ${diffMinutes}min` : `${diffMinutes}min`}
           </span>
         </div>
@@ -82,12 +85,12 @@ export function NextMeetingCard({ meetings }: NextMeetingCardProps) {
           href={nextMeeting.meetingUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-info/10 text-info hover:bg-info/20 transition-colors text-sm"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-50 text-[#05AFF2] hover:bg-cyan-100 transition-colors text-sm"
         >
           <ExternalLink className="h-3 w-3" />
           Entrar na reunião
         </a>
       )}
-    </GlowCard>
+    </div>
   )
 }

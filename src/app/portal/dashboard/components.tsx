@@ -1,17 +1,18 @@
 import { TrendingUp, TrendingDown } from "lucide-react"
 import { formatCurrency, formatNumber } from "@/lib/utils/format"
-import { GlowCard } from "@/components/ui/glow-card"
 import type { GlowColor } from "@/components/ui/glow-card"
 
 // Badge de variação (up/down)
 export function VariationBadge({ value, type = "percent" }: { value: number; type?: "percent" | "currency" }) {
   const isPositive = value >= 0
   const Icon = isPositive ? TrendingUp : TrendingDown
-  const bgColor = isPositive ? "bg-success/20" : "bg-destructive/20"
-  const textColor = isPositive ? "text-success" : "text-destructive"
 
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-sm font-medium ${bgColor} ${textColor}`}>
+    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold ${
+      isPositive
+        ? "bg-emerald-500/20 text-emerald-400"
+        : "bg-red-500/20 text-red-400"
+    }`}>
       <Icon className="h-3 w-3" />
       {type === "percent" ? `${isPositive ? "+" : ""}${value.toFixed(1)}%` : formatCurrency(Math.abs(value))}
     </span>
@@ -34,22 +35,23 @@ export function MetricCard({
   highlight?: boolean
   glowColor?: GlowColor
 }) {
-  const color = glowColor || (highlight ? "primary" : "info")
-  const intensity = highlight ? "intense" : "moderate"
-
   return (
-    <GlowCard color={color} intensity={intensity} surfaceClassName="p-4">
-      <div className="flex items-center gap-2 mb-2">
-        <Icon className={`h-4 w-4 ${highlight ? "text-info" : "text-muted-foreground"}`} />
-        <span className="text-xs text-muted-foreground uppercase tracking-wide">{title}</span>
+    <div className="bg-white rounded-xl border border-slate-200/80 p-4 shadow-sm hover:shadow-md transition-shadow duration-200">
+      <div className="flex items-center gap-2 mb-3">
+        <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
+          highlight ? "bg-[#5327F2]/10" : "bg-slate-100"
+        }`}>
+          <Icon className={`h-3.5 w-3.5 ${highlight ? "text-[#5327F2]" : "text-slate-500"}`} />
+        </div>
+        <span className="text-xs text-slate-500 font-medium uppercase tracking-wide">{title}</span>
       </div>
-      <p className={`text-2xl font-bold ${highlight ? "text-info" : "text-foreground"}`}>
+      <p className={`text-xl font-bold ${highlight ? "text-[#5327F2]" : "text-slate-800"}`}>
         {value}
       </p>
       {subtitle && (
-        <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
+        <p className="text-xs text-slate-400 mt-1">{subtitle}</p>
       )}
-    </GlowCard>
+    </div>
   )
 }
 
@@ -66,14 +68,14 @@ export function FlowListItem({
   color: string
 }) {
   return (
-    <div className="flex items-center gap-3 py-3 border-b border-border/50 last:border-0">
+    <div className="flex items-center gap-3 py-3 border-b border-slate-100 last:border-0">
       <div className={`w-2 h-2 rounded-full ${color}`} />
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-foreground truncate">{name}</p>
+        <p className="text-sm font-medium text-slate-700 truncate">{name}</p>
       </div>
       <div className="text-right">
-        <p className="text-sm font-bold text-foreground">{formatCurrency(value)}</p>
-        <p className="text-xs text-muted-foreground">{percent.toFixed(0)}%</p>
+        <p className="text-sm font-bold text-slate-800">{formatCurrency(value)}</p>
+        <p className="text-xs text-slate-400">{percent.toFixed(0)}%</p>
       </div>
     </div>
   )
@@ -98,17 +100,17 @@ export function ChannelCard({
   return (
     <div className={`rounded-xl p-4 border transition-all cursor-pointer ${
       active
-        ? `${color} border-current`
-        : "bg-card/50 border-border hover:border-border"
+        ? "bg-[#5327F2]/5 border-[#5327F2]/30 shadow-sm"
+        : "bg-white border-slate-200/80 hover:border-slate-300"
     }`}>
       <div className="flex items-center gap-2 mb-2">
-        <Icon className={`h-4 w-4 ${active ? "text-current" : "text-muted-foreground"}`} />
-        <span className="text-xs text-muted-foreground">{title}</span>
+        <Icon className={`h-4 w-4 ${active ? "text-[#5327F2]" : "text-slate-400"}`} />
+        <span className="text-xs text-slate-500">{title}</span>
       </div>
-      <p className={`text-2xl font-bold ${active ? "text-foreground" : "text-foreground/80"}`}>
+      <p className="text-2xl font-bold text-slate-800">
         {percent.toFixed(1)}%
       </p>
-      <p className="text-xs text-muted-foreground mt-1">{formatCurrency(value)}</p>
+      <p className="text-xs text-slate-400 mt-1">{formatCurrency(value)}</p>
     </div>
   )
 }
@@ -132,31 +134,31 @@ export function PerformanceRow({
   isTop?: boolean
 }) {
   return (
-    <div className={`flex items-center gap-4 py-3 px-2 rounded-lg ${isTop ? "bg-success/5" : ""}`}>
+    <div className={`flex items-center gap-4 py-3 px-3 rounded-lg ${isTop ? "bg-emerald-50/50" : ""}`}>
       <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-        rank <= 3 ? "bg-success/20 text-success" : "bg-muted text-muted-foreground"
+        rank <= 3 ? "bg-[#5327F2]/10 text-[#5327F2]" : "bg-slate-100 text-slate-400"
       }`}>
         {rank}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-foreground truncate">{name}</p>
+        <p className="text-sm font-medium text-slate-700 truncate">{name}</p>
       </div>
       <div className="grid grid-cols-4 gap-4 text-right">
         <div>
-          <p className="text-sm text-foreground/80">{formatNumber(delivered)}</p>
-          <p className="text-[10px] text-muted-foreground/70">Entregues</p>
+          <p className="text-sm text-slate-600">{formatNumber(delivered)}</p>
+          <p className="text-[10px] text-slate-400">Entregues</p>
         </div>
         <div>
-          <p className="text-sm text-foreground/80">{openRate.toFixed(1)}%</p>
-          <p className="text-[10px] text-muted-foreground/70">Abertura</p>
+          <p className="text-sm text-slate-600">{openRate.toFixed(1)}%</p>
+          <p className="text-[10px] text-slate-400">Abertura</p>
         </div>
         <div>
-          <p className="text-sm text-foreground/80">{clickRate.toFixed(1)}%</p>
-          <p className="text-[10px] text-muted-foreground/70">Clique</p>
+          <p className="text-sm text-slate-600">{clickRate.toFixed(1)}%</p>
+          <p className="text-[10px] text-slate-400">Clique</p>
         </div>
         <div>
-          <p className="text-sm font-bold text-success">{formatCurrency(revenue)}</p>
-          <p className="text-[10px] text-muted-foreground/70">Receita</p>
+          <p className="text-sm font-bold text-emerald-600">{formatCurrency(revenue)}</p>
+          <p className="text-[10px] text-slate-400">Receita</p>
         </div>
       </div>
     </div>
@@ -168,10 +170,10 @@ export function MiniBarChart({ value, max, color }: { value: number; max: number
   const percent = max > 0 ? (value / max) * 100 : 0
   return (
     <div className="flex items-center gap-2">
-      <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+      <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
         <div className={`h-full ${color} rounded-full transition-all`} style={{ width: `${percent}%` }} />
       </div>
-      <span className="text-xs text-muted-foreground w-12 text-right">{value.toFixed(1)}%</span>
+      <span className="text-xs text-slate-500 w-12 text-right">{value.toFixed(1)}%</span>
     </div>
   )
 }
@@ -190,7 +192,7 @@ export function SimpleLineChart({ data, color = "emerald" }: { data: number[]; c
     return `${x},${y}`
   }).join(" ")
 
-  const strokeColor = color === "emerald" ? "hsl(var(--info))" : "hsl(var(--primary))"
+  const strokeColor = color === "emerald" ? "#05AFF2" : "#5327F2"
 
   return (
     <div className="h-20 w-full">

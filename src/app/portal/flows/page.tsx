@@ -19,7 +19,6 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
-import { GlowCard } from "@/components/ui/glow-card"
 import { formatCurrency, formatNumber, formatDateRange } from "@/lib/utils/format"
 import { AnimatedContainer, AnimatedItem } from "@/components/ui/animated-container"
 import type { DashboardData } from "../dashboard/types"
@@ -61,35 +60,32 @@ export default function PortalFlowsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background p-6 space-y-6">
+      <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-foreground">Flows</h1>
+          <Skeleton className="h-7 w-24 bg-slate-200" />
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[1, 2, 3, 4].map(i => (
-            <div key={i} className="rounded-xl bg-card/50 border border-border p-4">
-              <Skeleton className="h-4 w-16 bg-muted mb-2" />
-              <Skeleton className="h-8 w-24 bg-muted" />
-            </div>
+            <Skeleton key={i} className="h-24 bg-white rounded-xl border border-slate-100" />
           ))}
         </div>
-        <div className="rounded-xl bg-card border border-border p-5">
-          {[1, 2, 3, 4, 5].map(i => (
-            <Skeleton key={i} className="h-12 w-full bg-muted/50 mb-2" />
-          ))}
-        </div>
+        <Skeleton className="h-80 bg-white rounded-xl border border-slate-100" />
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6">
-        <div className="rounded-xl bg-card border border-border p-8 text-center max-w-md">
-          <AlertCircle className="h-10 w-10 text-destructive mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-foreground mb-2">Erro ao carregar</h2>
-          <p className="text-muted-foreground mb-6">{error}</p>
-          <Button onClick={() => fetchData()}>Tentar novamente</Button>
+      <div className="flex flex-col items-center justify-center min-h-[60vh]">
+        <div className="bg-white rounded-2xl border border-slate-200 p-10 text-center max-w-md shadow-sm">
+          <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-4">
+            <AlertCircle className="h-7 w-7 text-red-500" />
+          </div>
+          <h2 className="text-lg font-semibold text-slate-800 mb-2">Erro ao carregar</h2>
+          <p className="text-slate-500 text-sm mb-6">{error}</p>
+          <Button onClick={() => fetchData()} className="bg-[#5327F2] hover:bg-[#4520D4] text-white">
+            Tentar novamente
+          </Button>
         </div>
       </div>
     )
@@ -106,147 +102,149 @@ export default function PortalFlowsPage() {
     ? flows.reduce((acc, f) => acc + f.openRate, 0) / flows.length
     : 0
 
-  // Best flow by revenue
   const bestFlow = flows.length > 0 ? flows[0] : null
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <div className="max-w-[1600px] mx-auto p-6 space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Flows</h1>
-            <div className="flex items-center gap-2">
-              {data.dateRange && (
-                <p className="text-sm text-muted-foreground">{formatDateRange(data.dateRange.start, data.dateRange.end)}</p>
-              )}
-              {refreshing && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-info text-xs">
-                  <RefreshCw className="h-3 w-3 animate-spin" />
-                  Atualizando...
-                </span>
-              )}
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <Select value={period} onValueChange={setPeriod}>
-              <SelectTrigger className="w-[140px] bg-card border-border text-foreground">
-                <CalendarDays className="h-4 w-4 mr-2 text-muted-foreground" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-card border-border">
-                <SelectItem value="7d">7 dias</SelectItem>
-                <SelectItem value="15d">15 dias</SelectItem>
-                <SelectItem value="30d">30 dias</SelectItem>
-                <SelectItem value="90d">90 dias</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => fetchData(true)}
-              disabled={refreshing}
-            >
-              <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-            </Button>
+    <div className="max-w-[1600px] mx-auto space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800">Flows</h1>
+          <div className="flex items-center gap-2 mt-1">
+            {data.dateRange && (
+              <p className="text-sm text-slate-500">{formatDateRange(data.dateRange.start, data.dateRange.end)}</p>
+            )}
+            {refreshing && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#5327F2]/10 text-[#5327F2] text-xs font-medium">
+                <RefreshCw className="h-3 w-3 animate-spin" />
+                Atualizando...
+              </span>
+            )}
           </div>
         </div>
-
-        <AnimatedContainer className="space-y-6">
-          {/* Summary Cards */}
-          <AnimatedItem>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <GlowCard color="info" intensity="subtle" surfaceClassName="p-4">
-                <div className="flex items-center gap-2 mb-1">
-                  <Zap className="h-4 w-4 text-purple-400" />
-                  <span className="text-xs text-muted-foreground">Flows Ativos</span>
-                </div>
-                <p className="text-2xl font-bold text-foreground">{activeFlows}</p>
-                <p className="text-xs text-muted-foreground">de {totalFlows} total</p>
-              </GlowCard>
-
-              <GlowCard color="success" intensity="subtle" surfaceClassName="p-4">
-                <div className="flex items-center gap-2 mb-1">
-                  <DollarSign className="h-4 w-4 text-success" />
-                  <span className="text-xs text-muted-foreground">Receita Total</span>
-                </div>
-                <p className="text-2xl font-bold text-success">{formatCurrency(totalFlowRevenue)}</p>
-                <p className="text-xs text-muted-foreground">no período</p>
-              </GlowCard>
-
-              <GlowCard color="primary" intensity="subtle" surfaceClassName="p-4">
-                <div className="flex items-center gap-2 mb-1">
-                  <TrendingUp className="h-4 w-4 text-info" />
-                  <span className="text-xs text-muted-foreground">Melhor Flow</span>
-                </div>
-                <p className="text-sm font-bold text-foreground truncate">{bestFlow?.name || "—"}</p>
-                <p className="text-xs text-success">{bestFlow ? formatCurrency(bestFlow.revenue) : "—"}</p>
-              </GlowCard>
-
-              <GlowCard color="primary" intensity="subtle" surfaceClassName="p-4">
-                <div className="flex items-center gap-2 mb-1">
-                  <Mail className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-xs text-muted-foreground">Taxa Média Abertura</span>
-                </div>
-                <p className="text-2xl font-bold text-foreground">{avgOpenRate.toFixed(1)}%</p>
-                <p className="text-xs text-muted-foreground">dos flows</p>
-              </GlowCard>
-            </div>
-          </AnimatedItem>
-
-          {/* Flows Table */}
-          <AnimatedItem>
-            <GlowCard color="primary" intensity="subtle" surfaceClassName="p-5">
-              <h3 className="text-sm font-semibold text-foreground mb-4">Todos os Flows</h3>
-
-              {flows.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-8 text-center">Nenhum flow encontrado no período</p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-border">
-                        <th className="text-left text-xs text-muted-foreground font-medium pb-3 pr-4">Nome</th>
-                        <th className="text-right text-xs text-muted-foreground font-medium pb-3 px-4">Entregas</th>
-                        <th className="text-right text-xs text-muted-foreground font-medium pb-3 px-4">Abertura</th>
-                        <th className="text-right text-xs text-muted-foreground font-medium pb-3 px-4">Cliques</th>
-                        <th className="text-right text-xs text-muted-foreground font-medium pb-3 px-4">Receita</th>
-                        <th className="text-right text-xs text-muted-foreground font-medium pb-3 pl-4">Rec/dest</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {flows.map((flow, index) => {
-                        const revenuePerRecipient = flow.delivered > 0 ? flow.revenue / flow.delivered : 0
-                        return (
-                          <tr key={flow.id} className={`border-b border-border/50 last:border-0 ${index === 0 ? "bg-success/5" : ""}`}>
-                            <td className="py-3 pr-4">
-                              <div className="flex items-center gap-2">
-                                {index < 3 && (
-                                  <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
-                                    index === 0 ? "bg-success/20 text-success" : "bg-muted text-muted-foreground"
-                                  }`}>
-                                    {index + 1}
-                                  </div>
-                                )}
-                                <span className="text-sm font-medium text-foreground truncate max-w-[200px]">{flow.name}</span>
-                              </div>
-                            </td>
-                            <td className="text-right text-sm text-foreground/80 py-3 px-4">{formatNumber(flow.delivered)}</td>
-                            <td className="text-right text-sm text-foreground/80 py-3 px-4">{flow.openRate.toFixed(1)}%</td>
-                            <td className="text-right text-sm text-foreground/80 py-3 px-4">{flow.clickRate.toFixed(1)}%</td>
-                            <td className="text-right text-sm font-bold text-success py-3 px-4">{formatCurrency(flow.revenue)}</td>
-                            <td className="text-right text-sm text-foreground/80 py-3 pl-4">{formatCurrency(revenuePerRecipient)}</td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </GlowCard>
-          </AnimatedItem>
-        </AnimatedContainer>
+        <div className="flex items-center gap-3">
+          <Select value={period} onValueChange={setPeriod}>
+            <SelectTrigger className="w-[140px] h-10 bg-white border-slate-200 text-slate-700 rounded-lg shadow-sm">
+              <CalendarDays className="h-4 w-4 mr-2 text-slate-400" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="bg-white border-slate-200 shadow-lg">
+              <SelectItem value="7d">7 dias</SelectItem>
+              <SelectItem value="15d">15 dias</SelectItem>
+              <SelectItem value="30d">30 dias</SelectItem>
+              <SelectItem value="90d">90 dias</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => fetchData(true)}
+            disabled={refreshing}
+            className="h-10 w-10 bg-white border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded-lg shadow-sm"
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+          </Button>
+        </div>
       </div>
+
+      <AnimatedContainer className="space-y-6">
+        {/* Summary Cards */}
+        <AnimatedItem>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <SummaryCard icon={Zap} iconBg="bg-purple-50" iconColor="text-purple-600" label="Flows Ativos" value={String(activeFlows)} subtitle={`de ${totalFlows} total`} />
+            <SummaryCard icon={DollarSign} iconBg="bg-emerald-50" iconColor="text-emerald-600" label="Receita Total" value={formatCurrency(totalFlowRevenue)} subtitle="no período" valueColor="text-emerald-600" />
+            <SummaryCard icon={TrendingUp} iconBg="bg-cyan-50" iconColor="text-cyan-600" label="Melhor Flow" value={bestFlow?.name || "—"} subtitle={bestFlow ? formatCurrency(bestFlow.revenue) : "—"} isSmallValue />
+            <SummaryCard icon={Mail} iconBg="bg-blue-50" iconColor="text-blue-600" label="Taxa Média Abertura" value={`${avgOpenRate.toFixed(1)}%`} subtitle="dos flows" />
+          </div>
+        </AnimatedItem>
+
+        {/* Flows Table */}
+        <AnimatedItem>
+          <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100">
+              <h3 className="text-[15px] font-semibold text-slate-800">Todos os Flows</h3>
+            </div>
+
+            {flows.length === 0 ? (
+              <p className="text-sm text-slate-500 py-12 text-center">Nenhum flow encontrado no período</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-slate-100 bg-slate-50/50">
+                      <th className="text-left text-xs text-slate-500 font-medium py-3 px-6">Nome</th>
+                      <th className="text-right text-xs text-slate-500 font-medium py-3 px-4">Entregas</th>
+                      <th className="text-right text-xs text-slate-500 font-medium py-3 px-4">Abertura</th>
+                      <th className="text-right text-xs text-slate-500 font-medium py-3 px-4">Cliques</th>
+                      <th className="text-right text-xs text-slate-500 font-medium py-3 px-4">Receita</th>
+                      <th className="text-right text-xs text-slate-500 font-medium py-3 px-6">Rec/dest</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {flows.map((flow, index) => {
+                      const revenuePerRecipient = flow.delivered > 0 ? flow.revenue / flow.delivered : 0
+                      return (
+                        <tr key={flow.id} className={`border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors ${index === 0 ? "bg-emerald-50/30" : ""}`}>
+                          <td className="py-3.5 px-6">
+                            <div className="flex items-center gap-2.5">
+                              {index < 3 && (
+                                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                                  index === 0 ? "bg-[#5327F2]/10 text-[#5327F2]" : "bg-slate-100 text-slate-400"
+                                }`}>
+                                  {index + 1}
+                                </div>
+                              )}
+                              <span className="text-sm font-medium text-slate-700 truncate max-w-[220px]">{flow.name}</span>
+                            </div>
+                          </td>
+                          <td className="text-right text-sm text-slate-600 py-3.5 px-4">{formatNumber(flow.delivered)}</td>
+                          <td className="text-right text-sm text-slate-600 py-3.5 px-4">{flow.openRate.toFixed(1)}%</td>
+                          <td className="text-right text-sm text-slate-600 py-3.5 px-4">{flow.clickRate.toFixed(1)}%</td>
+                          <td className="text-right text-sm font-semibold text-emerald-600 py-3.5 px-4">{formatCurrency(flow.revenue)}</td>
+                          <td className="text-right text-sm text-slate-600 py-3.5 px-6">{formatCurrency(revenuePerRecipient)}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </AnimatedItem>
+      </AnimatedContainer>
+    </div>
+  )
+}
+
+function SummaryCard({
+  icon: Icon,
+  iconBg,
+  iconColor,
+  label,
+  value,
+  subtitle,
+  valueColor = "text-slate-800",
+  isSmallValue = false,
+}: {
+  icon: React.ElementType
+  iconBg: string
+  iconColor: string
+  label: string
+  value: string
+  subtitle: string
+  valueColor?: string
+  isSmallValue?: boolean
+}) {
+  return (
+    <div className="bg-white rounded-xl border border-slate-200/80 p-4 shadow-sm hover:shadow-md transition-shadow duration-200">
+      <div className="flex items-center gap-2 mb-3">
+        <div className={`w-7 h-7 rounded-lg ${iconBg} flex items-center justify-center`}>
+          <Icon className={`h-3.5 w-3.5 ${iconColor}`} />
+        </div>
+        <span className="text-xs text-slate-500 font-medium">{label}</span>
+      </div>
+      <p className={`${isSmallValue ? "text-sm" : "text-xl"} font-bold ${valueColor} truncate`}>{value}</p>
+      <p className="text-xs text-slate-400 mt-0.5">{subtitle}</p>
     </div>
   )
 }

@@ -1,5 +1,4 @@
 import { Shield } from "lucide-react"
-import { GlowCard } from "@/components/ui/glow-card"
 
 interface ListHealthCardProps {
   bounceRate: number
@@ -7,30 +6,27 @@ interface ListHealthCardProps {
 }
 
 export function ListHealthCard({ bounceRate, unsubscribeRate }: ListHealthCardProps) {
-  // Score calculation: lower bounce + unsub = healthier
-  // Healthy: bounce < 2% and unsub < 0.5% → score > 80%
-  // Attention: bounce 2-5% or unsub 0.5-1% → score 50-80%
-  // Critical: bounce > 5% or unsub > 1% → score < 50%
-  const bounceScore = Math.max(0, 100 - (bounceRate * 20)) // 5% bounce = 0 score
-  const unsubScore = Math.max(0, 100 - (unsubscribeRate * 100)) // 1% unsub = 0 score
+  const bounceScore = Math.max(0, 100 - (bounceRate * 20))
+  const unsubScore = Math.max(0, 100 - (unsubscribeRate * 100))
   const score = Math.round((bounceScore * 0.5 + unsubScore * 0.5))
 
   const status = score > 80
-    ? { label: "Tudo certo", color: "text-success", ringColor: "stroke-success", bgColor: "bg-success/10", glowColor: "success" as const }
+    ? { label: "Tudo certo", color: "text-emerald-600", ringColor: "stroke-emerald-500", bgColor: "bg-emerald-50", iconBg: "bg-emerald-50", iconColor: "text-emerald-600" }
     : score > 50
-      ? { label: "Requer atenção", color: "text-warning", ringColor: "stroke-warning", bgColor: "bg-warning/10", glowColor: "warning" as const }
-      : { label: "Ação necessária", color: "text-destructive", ringColor: "stroke-destructive", bgColor: "bg-destructive/10", glowColor: "destructive" as const }
+      ? { label: "Requer atenção", color: "text-amber-600", ringColor: "stroke-amber-500", bgColor: "bg-amber-50", iconBg: "bg-amber-50", iconColor: "text-amber-600" }
+      : { label: "Ação necessária", color: "text-red-600", ringColor: "stroke-red-500", bgColor: "bg-red-50", iconBg: "bg-red-50", iconColor: "text-red-600" }
 
-  // SVG circle progress
   const radius = 36
   const circumference = 2 * Math.PI * radius
   const progress = (score / 100) * circumference
 
   return (
-    <GlowCard color={status.glowColor} intensity="subtle" surfaceClassName="p-4">
-      <div className="flex items-center gap-2 mb-3">
-        <Shield className="h-4 w-4 text-muted-foreground" />
-        <span className="text-xs text-muted-foreground uppercase tracking-wide">Saúde da Lista</span>
+    <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition-shadow duration-200">
+      <div className="flex items-center gap-2 mb-4">
+        <div className={`w-7 h-7 rounded-lg ${status.iconBg} flex items-center justify-center`}>
+          <Shield className={`h-3.5 w-3.5 ${status.iconColor}`} />
+        </div>
+        <span className="text-[13px] font-semibold text-slate-800">Saúde da Lista</span>
       </div>
 
       <div className="flex items-center gap-4">
@@ -40,7 +36,7 @@ export function ListHealthCard({ bounceRate, unsubscribeRate }: ListHealthCardPr
             <circle
               cx="40" cy="40" r={radius}
               fill="none"
-              className="stroke-muted"
+              className="stroke-slate-100"
               strokeWidth="6"
             />
             <circle
@@ -60,21 +56,21 @@ export function ListHealthCard({ bounceRate, unsubscribeRate }: ListHealthCardPr
         </div>
 
         <div className="flex-1">
-          <div className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${status.bgColor} ${status.color} mb-2`}>
+          <div className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${status.bgColor} ${status.color} mb-2`}>
             {status.label}
           </div>
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             <div className="flex justify-between text-xs">
-              <span className="text-muted-foreground">Bounce rate</span>
-              <span className="text-foreground">{bounceRate.toFixed(2)}%</span>
+              <span className="text-slate-500">Bounce rate</span>
+              <span className="text-slate-700 font-medium">{bounceRate.toFixed(2)}%</span>
             </div>
             <div className="flex justify-between text-xs">
-              <span className="text-muted-foreground">Unsub rate</span>
-              <span className="text-foreground">{unsubscribeRate.toFixed(2)}%</span>
+              <span className="text-slate-500">Unsub rate</span>
+              <span className="text-slate-700 font-medium">{unsubscribeRate.toFixed(2)}%</span>
             </div>
           </div>
         </div>
       </div>
-    </GlowCard>
+    </div>
   )
 }
