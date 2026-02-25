@@ -86,12 +86,6 @@ CREATE POLICY "all_onboarding_approvals" ON onboarding_approvals
 CREATE POLICY "all_onboarding_phase_transitions" ON onboarding_phase_transitions
   FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
--- 7. Feature de aprovação no catálogo
-INSERT INTO feature_catalog (key, name, description, category)
-VALUES (
-  'onboarding_approve',
-  'Aprovar Onboarding',
-  'Permite aprovar ou rejeitar formulários de onboarding submetidos por clientes',
-  'onboarding'
-)
-ON CONFLICT (key) DO NOTHING;
+-- 7. Feature onboarding_approve é atribuída via member_feature_flags
+-- Para dar permissão de aprovação a um membro:
+-- INSERT INTO member_feature_flags (org_member_id, feature_key) VALUES ('uuid-do-membro', 'onboarding_approve');
