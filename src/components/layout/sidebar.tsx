@@ -160,12 +160,19 @@ export function Sidebar({ user }: SidebarProps) {
             <Link
               href={item.href}
               className={cn(
-                "flex items-center justify-center h-9 w-full rounded-lg transition-colors duration-150",
+                "relative flex items-center justify-center h-9 w-full rounded-lg transition-colors duration-150",
                 isActive
-                  ? "bg-white/10 text-white"
+                  ? "text-primary"
                   : "text-slate-400 hover:bg-white/[0.06] hover:text-slate-200"
               )}
             >
+              {isActive && (
+                <motion.div
+                  layoutId="sidebar-active"
+                  className="absolute left-0 top-1.5 bottom-1.5 w-[2px] bg-primary rounded-r-full"
+                  transition={{ type: "spring", stiffness: 350, damping: 30 }}
+                />
+              )}
               <Icon className="h-[18px] w-[18px]" />
             </Link>
           </TooltipTrigger>
@@ -183,18 +190,18 @@ export function Sidebar({ user }: SidebarProps) {
         className={cn(
           "relative flex items-center gap-3 h-9 px-3 rounded-lg text-[13px] transition-colors duration-150",
           isActive
-            ? "bg-white/10 text-white font-medium"
+            ? "text-white font-medium"
             : "text-slate-400 hover:bg-white/[0.06] hover:text-slate-200"
         )}
       >
         {isActive && (
           <motion.div
             layoutId="sidebar-active"
-            className="absolute left-0 top-1 bottom-1 w-[3px] bg-primary rounded-r-full"
+            className="absolute left-0 top-1.5 bottom-1.5 w-[2px] bg-primary rounded-r-full"
             transition={{ type: "spring", stiffness: 350, damping: 30 }}
           />
         )}
-        <Icon className="h-[18px] w-[18px] flex-shrink-0" />
+        <Icon className={cn("h-[18px] w-[18px] flex-shrink-0", isActive && "text-primary")} />
         <span className="whitespace-nowrap overflow-hidden">{item.name}</span>
       </Link>
     )
