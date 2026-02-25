@@ -1,0 +1,164 @@
+"use client"
+
+import Link from "next/link"
+import { Store } from "lucide-react"
+import { CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { GlowCard } from "@/components/ui/glow-card"
+import { Badge } from "@/components/ui/badge"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Progress } from "@/components/ui/progress"
+import { cn } from "@/lib/utils"
+
+const PLATFORM_CONFIG: Record<string, { label: string; color: string }> = {
+  shopify: { label: "Shopify", color: "bg-green-500/10 text-green-600" },
+  nuvemshop: { label: "Nuvemshop", color: "bg-blue-500/10 text-blue-600" },
+  woocommerce: { label: "WooCommerce", color: "bg-purple-500/10 text-purple-600" },
+  other: { label: "Outra", color: "bg-gray-500/10 text-gray-600" },
+}
+
+const ONBOARDING_STATUS: Record<string, { label: string; color: string }> = {
+  not_started: { label: "Não Iniciado", color: "bg-gray-500/10 text-gray-500" },
+  in_progress: { label: "Em Progresso", color: "bg-blue-500/10 text-blue-500" },
+  paused: { label: "Pausado", color: "bg-yellow-500/10 text-yellow-500" },
+  completed: { label: "Concluído", color: "bg-green-500/10 text-green-500" },
+  cancelled: { label: "Cancelado", color: "bg-red-500/10 text-red-500" },
+}
+
+function timeAgo(dateStr: string): string {
+  const now = Date.now()
+  const date = new Date(dateStr).getTime()
+  const diff = now - date
+
+  const minutes = Math.floor(diff / 60000)
+  if (minutes < 1) return "agora"
+  if (minutes < 60) return `${minutes} min atrás`
+
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h atrás`
+
+  const days = Math.floor(hours / 24)
+  if (days < 30) return `${days}d atrás`
+
+  return new Date(dateStr).toLocaleDateString("pt-BR")
+}
+
+interface NewStoresProps {
+  stores: Array<{
+    id: string
+    store_name: string
+    store_url: string
+    platform: string
+    is_active: boolean
+    created_at: string
+    client: { id: string; name: string; status: string } | { id: string; name: string; status: string }[] | null
+    onboardings: Array<{
+      id: string
+      status: string
+      progress_percent: number
+      target_completion_date: string | null
+    }> | null
+  }>
+}
+
+export function NewStores({ stores }: NewStoresProps) {
+  return (
+    <GlowCard color="success" intensity="subtle">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Store className="h-4 w-4 text-success" />
+            <CardTitle className="text-base">Lojas para Implementação</CardTitle>
+          </div>
+          {stores.length > 0 && (
+            <Badge variant="secondary" className="rounded-full">
+              {stores.length}
+            </Badge>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent>
+        {stores.length > 0 ? (
+          <ScrollArea className="h-[300px] pr-4">
+            <div className="space-y-3">
+              {stores.map((store) => {
+                const client = Array.isArray(store.client) ? store.client[0] : store.client
+                const onboarding = store.onboardings?.[0]
+                const platform = PLATFORM_CONFIG[store.platform] || PLATFORM_CONFIG.other
+                const onboardingStatus = onboarding
+                  ? ONBOARDING_STATUS[onboarding.status] || ONBOARDING_STATUS.not_started
+                  : null
+                const hasNoOnboarding = !onboarding
+
+                return (
+                  <Link
+                    key={store.id}
+                    href={`/stores/${store.id}`}
+                    className={cn(
+                      "block p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors",
+                      hasNoOnboarding && "border border-warning/30"
+                    )}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="rounded-lg p-2 bg-success/10 shrink-0">
+                        <Store className="h-4 w-4 text-success" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium truncate">{store.store_name}</p>
+                          <Badge
+                            variant="secondary"
+                            className={cn("text-[10px] px-1.5 py-0 shrink-0", platform.color)}
+                          >
+                            {platform.label}
+                          </Badge>
+                        </div>
+                        {client && (
+                          <p className="text-xs text-muted-foreground truncate mt-0.5">
+                            {client.name}
+                          </p>
+                        )}
+
+                        {onboarding ? (
+                          <div className="mt-2 space-y-1">
+                            <div className="flex items-center justify-between">
+                              <Badge
+                                variant="secondary"
+                                className={cn("text-[10px] px-1.5 py-0", onboardingStatus?.color)}
+                              >
+                                {onboardingStatus?.label} {onboarding.progress_percent}%
+                              </Badge>
+                              {onboarding.target_completion_date && (
+                                <span className="text-[10px] text-muted-foreground">
+                                  Meta: {new Date(onboarding.target_completion_date).toLocaleDateString("pt-BR")}
+                                </span>
+                              )}
+                            </div>
+                            <Progress value={onboarding.progress_percent} className="h-1.5" />
+                          </div>
+                        ) : (
+                          <div className="mt-2">
+                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-yellow-500/10 text-yellow-600">
+                              Sem onboarding
+                            </Badge>
+                            <span className="text-[10px] text-muted-foreground ml-2">
+                              {timeAgo(store.created_at)}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </Link>
+                )
+              })}
+            </div>
+          </ScrollArea>
+        ) : (
+          <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+            <Store className="h-8 w-8 mb-2 opacity-50" />
+            <p className="text-sm">Nenhuma loja pendente de implementação</p>
+          </div>
+        )}
+      </CardContent>
+    </GlowCard>
+  )
+}

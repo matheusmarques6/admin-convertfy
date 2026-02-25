@@ -100,6 +100,8 @@ export async function GET(request: NextRequest) {
     const period = request.nextUrl.searchParams.get("period") || "30d"
     const customStartDate = request.nextUrl.searchParams.get("start_date")
     const customEndDate = request.nextUrl.searchParams.get("end_date")
+    const storeIdsParam = request.nextUrl.searchParams.get("store_ids")
+    const filterStoreIds = storeIdsParam ? storeIdsParam.split(",").filter(Boolean) : null
 
     // Cache key includes user ID to prevent cross-tenant data leakage
     const cacheKey = `${user.id}:${period}${customStartDate ? `:${customStartDate}:${customEndDate}` : ""}`
@@ -148,7 +150,13 @@ export async function GET(request: NextRequest) {
       throw storesError
     }
 
-    if (!stores || stores.length === 0) {
+    // Filtrar por store_ids se fornecido (dashboard operacional do agente)
+    let filteredStores = stores || []
+    if (filterStoreIds && filterStoreIds.length > 0) {
+      filteredStores = filteredStores.filter(s => filterStoreIds.includes(s.id))
+    }
+
+    if (filteredStores.length === 0) {
       const emptyResult: TotalRevenueResponse = {
         period,
         totalRevenue: 0,
@@ -165,8 +173,8 @@ export async function GET(request: NextRequest) {
     // Process stores in chunks of 5 to avoid rate limiting
     const CHUNK_SIZE = 5
     const allResults: StoreRevenue[] = []
-    for (let i = 0; i < stores.length; i += CHUNK_SIZE) {
-      const chunk = stores.slice(i, i + CHUNK_SIZE)
+    for (let i = 0; i < filteredStores.length; i += CHUNK_SIZE) {
+      const chunk = filteredStores.slice(i, i + CHUNK_SIZE)
       const chunkResults = await processChunk(chunk as StoreInput[], period, clientNameMap, customStartDate, customEndDate)
       allResults.push(...chunkResults)
     }
@@ -188,7 +196,7 @@ export async function GET(request: NextRequest) {
       totalRevenue,
       campaignRevenue,
       flowRevenue,
-      storesCount: stores.length,
+      storesCount: filteredStores.length,
       storesWithRevenue,
       topStores,
       cachedAt: new Date().toISOString(),

@@ -1,4 +1,5 @@
 import { Suspense } from "react"
+import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
 import { BillingMetrics } from "@/components/dashboard/billing-metrics"
 import { DashboardCharts } from "@/components/dashboard/charts"
@@ -245,6 +246,36 @@ function MetricsSkeleton() {
 }
 
 export default async function DashboardPage() {
+  // Redirect agentes (não-admin/não-owner) para dashboard operacional
+  const supabase2 = await createClient()
+  const { data: { user: authUser } } = await supabase2.auth.getUser()
+
+  if (!authUser) {
+    redirect("/login")
+  }
+
+  const { data: authProfile } = await supabase2
+    .from("profiles")
+    .select("role")
+    .eq("id", authUser.id)
+    .single()
+
+  const isAdmin = authProfile?.role === "admin"
+
+  if (!isAdmin) {
+    const { data: authOrgMember } = await supabase2
+      .from("org_members")
+      .select("role")
+      .eq("profile_id", authUser.id)
+      .eq("is_active", true)
+      .limit(1)
+      .single()
+
+    if (authOrgMember?.role !== "owner") {
+      redirect("/dashboard/operational")
+    }
+  }
+
   const data = await getDashboardData()
 
   return (

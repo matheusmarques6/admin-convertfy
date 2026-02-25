@@ -67,7 +67,11 @@ function useCountUp(target: number, duration = 1200): number {
   return value
 }
 
-export function TotalRevenueBanner() {
+interface TotalRevenueBannerProps {
+  storeIds?: string[]
+}
+
+export function TotalRevenueBanner({ storeIds }: TotalRevenueBannerProps = {}) {
   const [period, setPeriod] = useState("30d")
   const [customStart, setCustomStart] = useState<Date | undefined>()
   const [customEnd, setCustomEnd] = useState<Date | undefined>()
@@ -81,6 +85,9 @@ export function TotalRevenueBanner() {
       if (p === "custom" && startDate && endDate) {
         url += `&start_date=${format(startDate, "yyyy-MM-dd")}&end_date=${format(endDate, "yyyy-MM-dd")}`
       }
+      if (storeIds && storeIds.length > 0) {
+        url += `&store_ids=${storeIds.join(",")}`
+      }
       const response = await fetch(url)
       if (response.ok) {
         const result = await response.json()
@@ -91,7 +98,7 @@ export function TotalRevenueBanner() {
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [storeIds])
 
   useEffect(() => {
     if (period !== "custom") {
