@@ -56,12 +56,13 @@ interface PortalStore {
   platform: string
 }
 
-// PRD v2.1: 4 main navigation items
+// PRD v2.1: Main navigation items
 const navigation = [
   { name: "Dashboard", href: "/portal/dashboard", icon: LayoutDashboard },
   { name: "Análise", href: "/portal/analytics", icon: BarChart3 },
   { name: "Campanhas", href: "/portal/campaigns", icon: Send },
   { name: "Flows", href: "/portal/flows", icon: GitBranch },
+  { name: "Faturas", href: "/portal/invoices", icon: FileText },
 ]
 
 function getInitials(name: string): string {
@@ -218,10 +219,10 @@ export default function PortalLayout({
   // Show loading while checking auth
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[#F8F9FB] dark:bg-[#0B0E14]">
+      <div className="flex h-screen items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-3">
-          <div className="h-10 w-10 animate-spin rounded-full border-[3px] border-[#5327F2]/20 border-t-[#5327F2]" />
-          <span className="text-sm text-slate-400">Carregando...</span>
+          <div className="h-10 w-10 animate-spin rounded-full border-[3px] border-primary/20 border-t-primary" />
+          <span className="text-sm text-muted-foreground">Carregando...</span>
         </div>
       </div>
     )
@@ -231,8 +232,8 @@ export default function PortalLayout({
   if (!user) {
     router.push("/portal/login")
     return (
-      <div className="flex h-screen items-center justify-center bg-[#F8F9FB] dark:bg-[#0B0E14]">
-        <div className="h-10 w-10 animate-spin rounded-full border-[3px] border-[#5327F2]/20 border-t-[#5327F2]" />
+      <div className="flex h-screen items-center justify-center bg-background">
+        <div className="h-10 w-10 animate-spin rounded-full border-[3px] border-primary/20 border-t-primary" />
       </div>
     )
   }
@@ -260,8 +261,8 @@ export default function PortalLayout({
             className={cn(
               "flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition-all duration-200",
               isActive
-                ? "bg-[#5327F2] text-white shadow-lg shadow-[#5327F2]/25"
-                : "text-slate-400 hover:text-white hover:bg-white/[0.06]"
+                ? "bg-white/10 text-white"
+                : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.06]"
             )}
           >
             <item.icon className="h-[18px] w-[18px]" />
@@ -280,8 +281,8 @@ export default function PortalLayout({
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg hover:bg-white/[0.06] transition-all duration-200 text-left group">
-              <div className="w-8 h-8 rounded-lg bg-[#5327F2]/20 flex items-center justify-center flex-shrink-0">
-                <Store className="h-4 w-4 text-[#5327F2]" />
+              <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center flex-shrink-0">
+                <Store className="h-4 w-4 text-slate-300" />
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-[13px] font-medium text-white/90 truncate">{activeStore?.name || "Selecionar loja"}</p>
