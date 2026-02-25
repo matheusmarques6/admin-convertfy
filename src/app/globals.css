@@ -4,7 +4,7 @@
 
 @layer base {
   :root {
-    --background: 210 20% 98%;
+    --background: 220 14% 96%;
     --foreground: 222 47% 11%;
 
     --card: 0 0% 100%;
@@ -16,13 +16,13 @@
     --primary: 217 91% 53%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 210 40% 96%;
+    --secondary: 214 20% 94%;
     --secondary-foreground: 222 47% 11%;
 
-    --muted: 210 40% 96%;
+    --muted: 214 20% 94%;
     --muted-foreground: 215 16% 47%;
 
-    --accent: 210 40% 96%;
+    --accent: 214 20% 94%;
     --accent-foreground: 222 47% 11%;
 
     --destructive: 0 84% 60%;
@@ -40,8 +40,8 @@
     --mrr: 237 87% 55%;
     --mrr-foreground: 0 0% 100%;
 
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
+    --border: 220 13% 86%;
+    --input: 220 13% 86%;
     --ring: 217 91% 53%;
 
     --radius: 0.5rem;
@@ -123,6 +123,14 @@
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Light mode: subtle shadow on cards for depth */
+  :root .rounded-xl[class*="border"][class*="bg-card"] {
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.04), 0 1px 2px -1px rgb(0 0 0 / 0.04);
+  }
+  .dark .rounded-xl[class*="border"][class*="bg-card"] {
+    box-shadow: none;
   }
 }
 
