@@ -6,8 +6,6 @@ import {
   ClipboardList,
   Rocket,
 } from "lucide-react"
-import { GlowCard } from "@/components/ui/glow-card"
-import type { GlowColor } from "@/components/ui/glow-card"
 import { formatNumber } from "@/lib/utils"
 import { cn } from "@/lib/utils"
 
@@ -28,7 +26,6 @@ export function OperationalMetrics({ metrics }: OperationalMetricsProps) {
     icon: React.ElementType
     iconColor: string
     iconBg: string
-    glowColor: GlowColor
   }> = [
     {
       title: "Clientes Ativos",
@@ -36,23 +33,20 @@ export function OperationalMetrics({ metrics }: OperationalMetricsProps) {
       icon: Users,
       iconColor: "text-primary",
       iconBg: "bg-primary/10",
-      glowColor: "primary",
     },
     {
       title: "Lojas Ativas",
       value: formatNumber(metrics.activeStores),
       icon: Store,
-      iconColor: "text-success",
-      iconBg: "bg-success/10",
-      glowColor: "success",
+      iconColor: "text-emerald-500",
+      iconBg: "bg-emerald-500/10",
     },
     {
       title: "Tasks Pendentes",
       value: formatNumber(metrics.pendingTasks),
       icon: ClipboardList,
-      iconColor: "text-warning",
-      iconBg: "bg-warning/10",
-      glowColor: "warning",
+      iconColor: "text-amber-500",
+      iconBg: "bg-amber-500/10",
     },
     {
       title: "Onboardings Ativos",
@@ -60,27 +54,29 @@ export function OperationalMetrics({ metrics }: OperationalMetricsProps) {
       icon: Rocket,
       iconColor: "text-info",
       iconBg: "bg-info/10",
-      glowColor: "info",
     },
   ]
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+    <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
       {cards.map((card) => (
-        <GlowCard key={card.title} color={card.glowColor} intensity="intense" surfaceClassName="p-6">
-          <div className="flex flex-row items-center justify-between pb-2">
-            <span className="text-sm font-medium text-muted-foreground">
+        <div
+          key={card.title}
+          className="rounded-xl border border-border bg-card p-4"
+        >
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-medium text-muted-foreground">
               {card.title}
             </span>
-            <div className={cn("rounded-lg p-2", card.iconBg)}>
-              <card.icon className={cn("h-4 w-4", card.iconColor)} />
+            <div className={cn("rounded-full p-1.5", card.iconBg)}>
+              <card.icon className={cn("h-3 w-3", card.iconColor)} />
             </div>
           </div>
-          <div className="text-2xl font-bold">{card.value}</div>
+          <div className="text-xl font-semibold tracking-tight text-foreground">{card.value}</div>
           {card.subtitle && (
-            <p className="text-xs text-muted-foreground mt-1">{card.subtitle}</p>
+            <p className="text-[11px] text-muted-foreground mt-1">{card.subtitle}</p>
           )}
-        </GlowCard>
+        </div>
       ))}
     </div>
   )

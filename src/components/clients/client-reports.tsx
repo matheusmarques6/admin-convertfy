@@ -23,7 +23,6 @@ import {
   MousePointerClick,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -569,7 +568,7 @@ export function ClientReports({ clientId }: ClientReportsProps) {
             const { currency, locale } = getReportCurrency(report)
 
             return (
-              <GlowCard key={report.id} color="primary" intensity="subtle">
+              <Card key={report.id} className="rounded-xl border bg-card">
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between">
                     <CardTitle className="text-base flex items-center gap-2">
@@ -640,7 +639,7 @@ export function ClientReports({ clientId }: ClientReportsProps) {
                     </Button>
                   </div>
                 </CardContent>
-              </GlowCard>
+              </Card>
             )
           })}
         </div>
@@ -950,7 +949,7 @@ export function ClientReports({ clientId }: ClientReportsProps) {
                 </div>
 
                 {/* Summary */}
-                <Card className="bg-gradient-to-r from-card via-muted to-card text-foreground">
+                <Card className="rounded-xl border bg-card text-foreground">
                   <CardContent className="py-4">
                     <h4 className="font-medium mb-3">Resumo da Comparação</h4>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

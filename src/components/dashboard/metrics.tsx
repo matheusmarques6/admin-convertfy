@@ -9,9 +9,6 @@ import {
   Target,
   Clock,
 } from "lucide-react"
-import { Card, CardContent } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
-import type { GlowColor } from "@/components/ui/glow-card"
 import { formatCurrency, formatNumber } from "@/lib/utils"
 import { cn } from "@/lib/utils"
 
@@ -36,7 +33,6 @@ export function DashboardMetrics({ metrics }: DashboardMetricsProps) {
     icon: React.ElementType
     iconColor: string
     iconBg: string
-    glowColor: GlowColor
   }> = [
     {
       title: "Faturamento",
@@ -44,9 +40,8 @@ export function DashboardMetrics({ metrics }: DashboardMetricsProps) {
       change: "+12.5%",
       changeType: "positive" as const,
       icon: DollarSign,
-      iconColor: "text-success",
-      iconBg: "bg-success/10",
-      glowColor: "success",
+      iconColor: "text-emerald-500",
+      iconBg: "bg-emerald-500/10",
     },
     {
       title: "Clientes Ativos",
@@ -56,16 +51,14 @@ export function DashboardMetrics({ metrics }: DashboardMetricsProps) {
       icon: Users,
       iconColor: "text-primary",
       iconBg: "bg-primary/10",
-      glowColor: "primary",
     },
     {
       title: "Pipeline",
       value: formatCurrency(metrics.pipelineValue),
       subtitle: `${metrics.totalDeals} deals ativos`,
       icon: Target,
-      iconColor: "text-warning",
-      iconBg: "bg-warning/10",
-      glowColor: "warning",
+      iconColor: "text-amber-500",
+      iconBg: "bg-amber-500/10",
     },
     {
       title: "A Receber",
@@ -73,27 +66,29 @@ export function DashboardMetrics({ metrics }: DashboardMetricsProps) {
       icon: Clock,
       iconColor: "text-muted-foreground",
       iconBg: "bg-muted",
-      glowColor: "info",
     },
   ]
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+    <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
       {cards.map((card) => (
-        <GlowCard key={card.title} color={card.glowColor} intensity="intense" surfaceClassName="p-6">
-          <div className="flex flex-row items-center justify-between pb-2">
-            <span className="text-sm font-medium text-muted-foreground">
+        <div
+          key={card.title}
+          className="rounded-xl border border-border bg-card p-4"
+        >
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-medium text-muted-foreground">
               {card.title}
             </span>
-            <div className={cn("rounded-lg p-2", card.iconBg)}>
-              <card.icon className={cn("h-4 w-4", card.iconColor)} />
+            <div className={cn("rounded-full p-1.5", card.iconBg)}>
+              <card.icon className={cn("h-3 w-3", card.iconColor)} />
             </div>
           </div>
-          <div className="text-2xl font-bold">{card.value}</div>
+          <div className="text-xl font-semibold tracking-tight text-foreground">{card.value}</div>
           {card.change && (
             <p className={cn(
               "text-xs flex items-center gap-1 mt-1",
-              card.changeType === "positive" ? "text-success" : "text-destructive"
+              card.changeType === "positive" ? "text-emerald-500" : "text-red-500"
             )}>
               {card.changeType === "positive" ? (
                 <TrendingUp className="h-3 w-3" />
@@ -104,26 +99,24 @@ export function DashboardMetrics({ metrics }: DashboardMetricsProps) {
             </p>
           )}
           {card.subtitle && (
-            <p className="text-xs text-muted-foreground mt-1">{card.subtitle}</p>
+            <p className="text-[11px] text-muted-foreground mt-1">{card.subtitle}</p>
           )}
-        </GlowCard>
+        </div>
       ))}
 
       {/* Overdue Alert Card */}
       {metrics.overduePayments > 0 && (
-        <Card className="md:col-span-2 lg:col-span-4 border-destructive/50 bg-destructive/5">
-          <CardContent className="flex items-center gap-4 py-4">
-            <div className="rounded-lg p-2 bg-destructive/10">
-              <AlertCircle className="h-5 w-5 text-destructive" />
-            </div>
-            <div>
-              <p className="font-medium text-destructive">Pagamentos em Atraso</p>
-              <p className="text-sm text-muted-foreground">
-                Você tem {formatCurrency(metrics.overduePayments)} em pagamentos vencidos
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="col-span-2 lg:col-span-4 rounded-xl border border-destructive/30 bg-destructive/5 px-5 py-3 flex items-center gap-4">
+          <div className="rounded-lg p-2 bg-destructive/10">
+            <AlertCircle className="h-4 w-4 text-destructive" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-destructive">Pagamentos em Atraso</p>
+            <p className="text-xs text-muted-foreground">
+              Você tem {formatCurrency(metrics.overduePayments)} em pagamentos vencidos
+            </p>
+          </div>
+        </div>
       )}
     </div>
   )

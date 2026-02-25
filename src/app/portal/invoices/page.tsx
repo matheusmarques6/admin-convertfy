@@ -23,7 +23,6 @@ import {
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { GlowCard, type GlowColor } from "@/components/ui/glow-card"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -82,32 +81,32 @@ interface InvoicesResponse {
 const STATUS_CONFIG = {
   pending: {
     label: "Pendente",
-    color: "bg-amber-500/20 text-amber-400 border-amber-500/30",
-    dotColor: "bg-amber-400",
+    color: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20",
+    dotColor: "bg-amber-500",
     icon: Clock,
   },
   paid: {
     label: "Paga",
-    color: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
-    dotColor: "bg-emerald-400",
+    color: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20",
+    dotColor: "bg-emerald-500",
     icon: CheckCircle,
   },
   overdue: {
     label: "Vencida",
-    color: "bg-red-500/20 text-red-400 border-red-500/30",
-    dotColor: "bg-red-400",
+    color: "bg-red-50 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20",
+    dotColor: "bg-red-500",
     icon: AlertCircle,
   },
   cancelled: {
     label: "Cancelada",
-    color: "bg-muted/20 text-muted-foreground border-muted-foreground/30",
+    color: "bg-muted text-muted-foreground border-border",
     dotColor: "bg-muted-foreground",
     icon: AlertTriangle,
   },
   refunded: {
     label: "Reembolsada",
-    color: "bg-purple-500/20 text-purple-400 border-purple-500/30",
-    dotColor: "bg-purple-400",
+    color: "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-500/10 dark:text-purple-400 dark:border-purple-500/20",
+    dotColor: "bg-purple-500",
     icon: DollarSign,
   },
 }
@@ -170,9 +169,8 @@ function StatCard({
   value,
   subtitle,
   icon: Icon,
-  iconColor = "text-emerald-400",
-  iconBgColor = "bg-emerald-400/10",
-  glowColor,
+  iconColor = "text-emerald-600",
+  iconBgColor = "bg-emerald-50",
 }: {
   title: string
   value: string | number
@@ -180,14 +178,13 @@ function StatCard({
   icon: React.ElementType
   iconColor?: string
   iconBgColor?: string
-  glowColor?: GlowColor
 }) {
   const content = (
     <div className="flex items-center justify-between">
       <div>
-        <p className="text-sm text-muted-foreground mb-1">{title}</p>
+        <p className="text-[13px] font-medium text-muted-foreground mb-1">{title}</p>
         <p className="text-2xl font-bold text-foreground">{value}</p>
-        {subtitle && <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>}
+        {subtitle && <p className="text-xs text-muted-foreground/70 mt-1">{subtitle}</p>}
       </div>
       <div className={`rounded-xl p-3 ${iconBgColor}`}>
         <Icon className={`h-6 w-6 ${iconColor}`} />
@@ -195,16 +192,8 @@ function StatCard({
     </div>
   )
 
-  if (glowColor) {
-    return (
-      <GlowCard color={glowColor} intensity="intense" surfaceClassName="p-5">
-        {content}
-      </GlowCard>
-    )
-  }
-
   return (
-    <div className="rounded-xl bg-card border border-border p-5 card-hover">
+    <div className="bg-card rounded-xl border border-border shadow-sm p-5 hover:shadow-md transition-shadow">
       {content}
     </div>
   )
@@ -218,23 +207,26 @@ function BoletoCard({ invoice, onPayClick }: { invoice: Invoice; onPayClick: () 
 
   return (
     <div className={`
-      rounded-2xl border-2 overflow-hidden
+      rounded-2xl border overflow-hidden bg-card shadow-md
       ${isOverdue
-        ? "bg-gradient-to-br from-red-950/50 to-red-900/20 border-red-500/50"
-        : "bg-gradient-to-br from-emerald-950/50 to-card border-emerald-500/50"
+        ? "border-red-200 dark:border-red-500/20"
+        : "border-border"
       }
     `}>
       {/* Header */}
       <div className={`
-        px-6 py-4 flex items-center justify-between
-        ${isOverdue ? "bg-red-500/10" : "bg-emerald-500/10"}
+        px-6 py-4 flex items-center justify-between border-b
+        ${isOverdue
+          ? "bg-gradient-to-r from-red-50 to-transparent dark:from-red-500/10 border-red-100 dark:border-red-500/20"
+          : "bg-gradient-to-r from-muted to-transparent border-border"
+        }
       `}>
         <div className="flex items-center gap-3">
           <div className={`
             p-2 rounded-lg
-            ${isOverdue ? "bg-red-500/20" : "bg-emerald-500/20"}
+            ${isOverdue ? "bg-red-50 dark:bg-red-500/10" : "bg-emerald-50 dark:bg-emerald-500/10"}
           `}>
-            <Receipt className={`h-5 w-5 ${isOverdue ? "text-red-400" : "text-emerald-400"}`} />
+            <Receipt className={`h-5 w-5 ${isOverdue ? "text-red-600" : "text-emerald-600"}`} />
           </div>
           <div>
             <h3 className="font-semibold text-foreground">
@@ -253,7 +245,7 @@ function BoletoCard({ invoice, onPayClick }: { invoice: Invoice; onPayClick: () 
         {/* Amount */}
         <div className="text-center">
           <p className="text-sm text-muted-foreground mb-1">Valor a Pagar</p>
-          <p className={`text-5xl font-bold ${isOverdue ? "text-red-400" : "text-emerald-400"}`}>
+          <p className={`text-5xl font-bold ${isOverdue ? "text-red-600" : "text-emerald-600"}`}>
             {formatCurrency(invoice.amount)}
           </p>
         </div>
@@ -261,10 +253,10 @@ function BoletoCard({ invoice, onPayClick }: { invoice: Invoice; onPayClick: () 
         {/* Due Date Info */}
         <div className={`
           rounded-xl p-4 flex items-center justify-between
-          ${isOverdue ? "bg-red-500/10 border border-red-500/20" : "bg-muted/50 border border-border/50"}
+          ${isOverdue ? "bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20" : "bg-muted border border-border"}
         `}>
           <div className="flex items-center gap-3">
-            <Calendar className={`h-5 w-5 ${isOverdue ? "text-red-400" : "text-muted-foreground"}`} />
+            <Calendar className={`h-5 w-5 ${isOverdue ? "text-red-600" : "text-muted-foreground"}`} />
             <div>
               <p className="text-sm text-muted-foreground">Vencimento</p>
               <p className="font-semibold text-foreground">{formatDateLong(invoice.due_date)}</p>
@@ -273,8 +265,8 @@ function BoletoCard({ invoice, onPayClick }: { invoice: Invoice; onPayClick: () 
           <div className={`
             text-right px-3 py-1 rounded-lg
             ${dueInfo.urgent
-              ? (isOverdue ? "bg-red-500/20 text-red-400" : "bg-amber-500/20 text-amber-400")
-              : "bg-muted text-foreground/80"
+              ? (isOverdue ? "bg-red-50 dark:bg-red-500/10 text-red-600" : "bg-amber-50 dark:bg-amber-500/10 text-amber-600")
+              : "bg-muted text-muted-foreground"
             }
           `}>
             <p className="text-sm font-medium">{dueInfo.text}</p>
@@ -290,7 +282,7 @@ function BoletoCard({ invoice, onPayClick }: { invoice: Invoice; onPayClick: () 
               {invoice.pix_qr_code && (
                 <Button
                   onClick={onPayClick}
-                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-foreground h-14"
+                  className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm h-14"
                 >
                   <QrCode className="h-5 w-5 mr-2" />
                   Pagar com PIX
@@ -301,7 +293,7 @@ function BoletoCard({ invoice, onPayClick }: { invoice: Invoice; onPayClick: () 
               {invoice.bank_slip_url && (
                 <Button
                   variant="outline"
-                  className="flex-1 bg-muted border-border text-foreground hover:bg-muted/80 h-14"
+                  className="flex-1 bg-muted border-border text-foreground hover:bg-accent h-14"
                   asChild
                 >
                   <a href={invoice.bank_slip_url} target="_blank" rel="noopener noreferrer">
@@ -314,7 +306,7 @@ function BoletoCard({ invoice, onPayClick }: { invoice: Invoice; onPayClick: () 
               {/* Generic Invoice URL */}
               {invoice.invoice_url && !invoice.pix_qr_code && !invoice.bank_slip_url && (
                 <Button
-                  className="col-span-2 bg-emerald-600 hover:bg-emerald-700 text-foreground h-14"
+                  className="col-span-2 bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm h-14"
                   asChild
                 >
                   <a href={invoice.invoice_url} target="_blank" rel="noopener noreferrer">
@@ -345,7 +337,7 @@ function InvoiceRow({ invoice, onClick }: { invoice: Invoice; onClick: () => voi
   return (
     <div
       onClick={onClick}
-      className="flex items-center gap-4 p-4 rounded-xl bg-card/50 border border-border/50 hover:bg-muted/50 cursor-pointer transition-all group"
+      className="flex items-center gap-4 p-4 rounded-xl bg-card border border-border hover:bg-accent/50 cursor-pointer transition-all group shadow-sm"
     >
       {/* Status Icon */}
       <div className={`p-2 rounded-lg ${statusConfig.color.split(" ")[0]}`}>
@@ -371,7 +363,7 @@ function InvoiceRow({ invoice, onClick }: { invoice: Invoice; onClick: () => voi
       </div>
 
       {/* Arrow */}
-      <ArrowRight className="h-5 w-5 text-muted-foreground/70 group-hover:text-muted-foreground transition-colors" />
+      <ArrowRight className="h-5 w-5 text-muted-foreground group-hover:text-foreground transition-colors" />
     </div>
   )
 }
@@ -399,23 +391,23 @@ function PixModal({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="bg-card border-border text-foreground max-w-md">
+      <DialogContent className="bg-card border-border text-foreground max-w-md shadow-md">
         <DialogHeader>
-          <DialogTitle className="text-xl text-center">Pagar com PIX</DialogTitle>
+          <DialogTitle className="text-xl text-center text-foreground">Pagar com PIX</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-6 py-4">
           {/* Amount */}
           <div className="text-center">
             <p className="text-sm text-muted-foreground">Valor</p>
-            <p className="text-3xl font-bold text-emerald-400">
+            <p className="text-3xl font-bold text-primary">
               {formatCurrency(invoice.amount)}
             </p>
           </div>
 
           {/* QR Code */}
           <div className="flex justify-center">
-            <div className="bg-white p-4 rounded-xl">
+            <div className="bg-card p-4 rounded-xl border border-border">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={`data:image/png;base64,${invoice.pix_qr_code.encodedImage}`}
@@ -435,11 +427,11 @@ function PixModal({
           <Button
             onClick={copyPixCode}
             variant="outline"
-            className="w-full bg-muted border-border text-foreground hover:bg-muted/80"
+            className="w-full bg-muted border-border text-foreground hover:bg-accent"
           >
             {copied ? (
               <>
-                <Check className="h-4 w-4 mr-2 text-emerald-400" />
+                <Check className="h-4 w-4 mr-2 text-emerald-600" />
                 Código copiado!
               </>
             ) : (
@@ -451,7 +443,7 @@ function PixModal({
           </Button>
 
           {/* Expiration Notice */}
-          <p className="text-xs text-muted-foreground text-center">
+          <p className="text-xs text-muted-foreground/70 text-center">
             Este código PIX é válido por tempo limitado
           </p>
         </div>
@@ -537,18 +529,18 @@ export default function PortalInvoicesPage() {
   // ============================================
   if (loading && !stats) {
     return (
-      <div className="min-h-screen bg-background p-6 space-y-6">
+      <div className="min-h-screen p-6 space-y-6">
         <div className="flex items-center justify-between">
-          <Skeleton className="h-10 w-48 bg-card" />
-          <Skeleton className="h-10 w-32 bg-card" />
+          <Skeleton className="h-10 w-48 bg-muted" />
+          <Skeleton className="h-10 w-32 bg-muted" />
         </div>
-        <Skeleton className="h-64 rounded-2xl bg-card" />
-        <div className="grid gap-4 md:grid-cols-4">
+        <Skeleton className="h-64 rounded-2xl bg-muted" />
+        <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
           {[1, 2, 3, 4].map((i) => (
-            <Skeleton key={i} className="h-24 rounded-xl bg-card" />
+            <Skeleton key={i} className="h-24 rounded-xl bg-muted" />
           ))}
         </div>
-        <Skeleton className="h-96 rounded-xl bg-card" />
+        <Skeleton className="h-96 rounded-xl bg-muted" />
       </div>
     )
   }
@@ -558,14 +550,14 @@ export default function PortalInvoicesPage() {
   // ============================================
   if (error) {
     return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6">
-        <div className="rounded-2xl bg-card border border-border p-8 text-center max-w-md">
-          <div className="rounded-full bg-red-500/10 p-4 w-fit mx-auto mb-4">
-            <AlertCircle className="h-10 w-10 text-red-400" />
+      <div className="min-h-screen flex flex-col items-center justify-center p-6">
+        <div className="bg-card rounded-xl border border-border shadow-md p-8 text-center max-w-md">
+          <div className="rounded-full bg-red-50 dark:bg-red-500/10 p-4 w-fit mx-auto mb-4">
+            <AlertCircle className="h-10 w-10 text-red-600" />
           </div>
           <h2 className="text-xl font-semibold text-foreground mb-2">Erro ao carregar</h2>
           <p className="text-muted-foreground mb-6">{error}</p>
-          <Button onClick={fetchInvoices} className="bg-emerald-500 hover:bg-emerald-600">
+          <Button onClick={fetchInvoices} className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm">
             Tentar novamente
           </Button>
         </div>
@@ -577,26 +569,28 @@ export default function PortalInvoicesPage() {
   // RENDER: Main
   // ============================================
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen text-foreground">
       <div className="max-w-[1200px] mx-auto p-6 space-y-6">
 
         {/* ========== HEADER ========== */}
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Faturas</h1>
-            <p className="text-muted-foreground">
-              Acompanhe seus pagamentos e histórico financeiro
-            </p>
+        <div className="bg-card rounded-xl border border-border shadow-sm p-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">Faturas</h1>
+              <p className="text-muted-foreground">
+                Acompanhe seus pagamentos e histórico financeiro
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              onClick={fetchInvoices}
+              disabled={loading}
+              className="bg-muted border-border text-foreground hover:bg-accent"
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+              Atualizar
+            </Button>
           </div>
-          <Button
-            variant="outline"
-            onClick={fetchInvoices}
-            disabled={loading}
-            className="bg-card border-border text-foreground hover:bg-muted"
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-            Atualizar
-          </Button>
         </div>
 
         {/* ========== MAIN INVOICE CARD (BOLETO STYLE) ========== */}
@@ -609,9 +603,9 @@ export default function PortalInvoicesPage() {
 
         {/* ========== NO PENDING INVOICES MESSAGE ========== */}
         {!nextInvoice && stats && stats.pending === 0 && stats.overdue === 0 && (
-          <div className="rounded-2xl bg-gradient-to-br from-emerald-950/30 to-card border-2 border-emerald-500/30 p-8 text-center">
-            <div className="rounded-full bg-emerald-500/10 p-4 w-fit mx-auto mb-4">
-              <CheckCircle className="h-10 w-10 text-emerald-400" />
+          <div className="rounded-2xl bg-card border border-emerald-200 dark:border-emerald-500/20 shadow-sm p-8 text-center">
+            <div className="rounded-full bg-emerald-50 dark:bg-emerald-500/10 p-4 w-fit mx-auto mb-4">
+              <CheckCircle className="h-10 w-10 text-emerald-600" />
             </div>
             <h3 className="text-xl font-semibold text-foreground mb-2">
               Tudo em dia!
@@ -624,48 +618,44 @@ export default function PortalInvoicesPage() {
 
         {/* ========== STATS CARDS ========== */}
         {stats && (
-          <div className="grid gap-4 md:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
             <StatCard
               title="Total Pendente"
               value={formatCurrency(stats.totalPending)}
               subtitle={`${stats.pending} fatura${stats.pending !== 1 ? "s" : ""}`}
               icon={Clock}
-              iconColor="text-amber-400"
-              iconBgColor="bg-amber-400/10"
-              glowColor="warning"
+              iconColor="text-amber-600"
+              iconBgColor="bg-amber-50 dark:bg-amber-500/10"
             />
             <StatCard
               title="Em Atraso"
               value={formatCurrency(stats.totalOverdue)}
               subtitle={`${stats.overdue} fatura${stats.overdue !== 1 ? "s" : ""}`}
               icon={AlertCircle}
-              iconColor="text-red-400"
-              iconBgColor="bg-red-400/10"
-              glowColor="destructive"
+              iconColor="text-red-600"
+              iconBgColor="bg-red-50 dark:bg-red-500/10"
             />
             <StatCard
               title="Pagas"
               value={formatCurrency(stats.totalPaid)}
               subtitle={`${stats.paid} fatura${stats.paid !== 1 ? "s" : ""}`}
               icon={CheckCircle}
-              iconColor="text-emerald-400"
-              iconBgColor="bg-emerald-400/10"
-              glowColor="success"
+              iconColor="text-emerald-600"
+              iconBgColor="bg-emerald-50 dark:bg-emerald-500/10"
             />
             <StatCard
               title="Total de Faturas"
               value={stats.total}
               subtitle="histórico completo"
               icon={FileText}
-              iconColor="text-blue-400"
-              iconBgColor="bg-blue-400/10"
-              glowColor="info"
+              iconColor="text-info"
+              iconBgColor="bg-sky-50 dark:bg-sky-500/10"
             />
           </div>
         )}
 
         {/* ========== FILTERS ========== */}
-        <div className="rounded-xl bg-card border border-border p-4">
+        <div className="bg-card rounded-xl border border-border shadow-sm p-4">
           <div className="flex flex-col gap-4 md:flex-row md:items-center">
             <div className="flex-1">
               <div className="relative">
@@ -674,32 +664,22 @@ export default function PortalInvoicesPage() {
                   placeholder="Buscar por descrição ou valor..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="pl-10 bg-muted border-border text-foreground placeholder:text-muted-foreground"
+                  className="pl-10 h-10 bg-muted border-border text-foreground placeholder:text-muted-foreground"
                 />
               </div>
             </div>
             <div className="flex items-center gap-2">
               <Filter className="h-4 w-4 text-muted-foreground" />
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[160px] bg-muted border-border text-foreground">
+                <SelectTrigger className="w-[160px] h-10 bg-muted border-border text-foreground">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
-                <SelectContent className="bg-card border-border">
-                  <SelectItem value="all" className="text-foreground hover:bg-muted">
-                    Todos
-                  </SelectItem>
-                  <SelectItem value="pending" className="text-foreground hover:bg-muted">
-                    Pendentes
-                  </SelectItem>
-                  <SelectItem value="overdue" className="text-foreground hover:bg-muted">
-                    Vencidas
-                  </SelectItem>
-                  <SelectItem value="paid" className="text-foreground hover:bg-muted">
-                    Pagas
-                  </SelectItem>
-                  <SelectItem value="cancelled" className="text-foreground hover:bg-muted">
-                    Canceladas
-                  </SelectItem>
+                <SelectContent className="bg-popover border-border">
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="pending">Pendentes</SelectItem>
+                  <SelectItem value="overdue">Vencidas</SelectItem>
+                  <SelectItem value="paid">Pagas</SelectItem>
+                  <SelectItem value="cancelled">Canceladas</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -708,15 +688,15 @@ export default function PortalInvoicesPage() {
 
         {/* ========== INVOICE HISTORY ========== */}
         <div className="space-y-4">
-          <h2 className="text-lg font-semibold text-foreground">Histórico de Faturas</h2>
+          <h2 className="text-[15px] font-semibold text-foreground">Histórico de Faturas</h2>
 
           {historyInvoices.length === 0 ? (
-            <div className="rounded-xl bg-card border border-border p-12 text-center">
-              <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground/70" />
+            <div className="bg-card rounded-xl border border-border shadow-sm p-12 text-center">
+              <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
               <p className="text-lg font-medium text-muted-foreground mb-1">
                 Nenhuma fatura encontrada
               </p>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-muted-foreground/70">
                 {search || statusFilter !== "all"
                   ? "Tente ajustar os filtros"
                   : "Suas faturas aparecerão aqui"}
@@ -740,25 +720,25 @@ export default function PortalInvoicesPage() {
         </div>
 
         {/* ========== PAYMENT INFO ========== */}
-        <div className="rounded-xl bg-card border border-border p-6">
-          <h3 className="text-base font-semibold text-foreground mb-4">
+        <div className="bg-card rounded-xl border border-border shadow-sm p-6">
+          <h3 className="text-[15px] font-semibold text-foreground mb-4">
             Informações de Pagamento
           </h3>
           <ul className="space-y-3 text-sm text-muted-foreground">
             <li className="flex items-start gap-3">
-              <CheckCircle className="h-4 w-4 text-emerald-500 mt-0.5 flex-shrink-0" />
+              <CheckCircle className="h-4 w-4 text-emerald-600 mt-0.5 flex-shrink-0" />
               <span>
                 As faturas são geradas automaticamente todo mês com base no seu plano contratado.
               </span>
             </li>
             <li className="flex items-start gap-3">
-              <Clock className="h-4 w-4 text-amber-500 mt-0.5 flex-shrink-0" />
+              <Clock className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
               <span>
                 Você receberá um lembrete por email alguns dias antes do vencimento.
               </span>
             </li>
             <li className="flex items-start gap-3">
-              <AlertCircle className="h-4 w-4 text-red-500 mt-0.5 flex-shrink-0" />
+              <AlertCircle className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
               <span>
                 Em caso de atraso, entre em contato conosco para negociar as condições de pagamento.
               </span>
@@ -769,7 +749,7 @@ export default function PortalInvoicesPage() {
               Dúvidas sobre cobranças?{" "}
               <a
                 href="mailto:financeiro@convertfy.com.br"
-                className="text-emerald-400 hover:underline"
+                className="text-info hover:underline"
               >
                 Entre em contato
               </a>

@@ -5,46 +5,26 @@ import { Plus, UserPlus, Calendar, FileText, Zap } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 const linkActions = [
-  {
-    label: "Novo Cliente",
-    href: "/clients/new",
-    icon: UserPlus,
-    variant: "default" as const,
-    className: "bg-[#5327F2] hover:bg-[#5327F2]/90 text-white",
-  },
-  {
-    label: "Novo Deal",
-    href: "/pipeline?action=new",
-    icon: Plus,
-    variant: "outline" as const,
-  },
-  {
-    label: "Agendar Reunião",
-    href: "/meetings",
-    icon: Calendar,
-    variant: "outline" as const,
-  },
-  {
-    label: "Criar Relatório",
-    href: "/reports/new",
-    icon: FileText,
-    variant: "outline" as const,
-  },
-  {
-    label: "Nova Automação",
-    href: "/automations/new",
-    icon: Zap,
-    variant: "outline" as const,
-  },
+  { label: "Novo Cliente", href: "/clients/new", icon: UserPlus, primary: true },
+  { label: "Novo Deal", href: "/pipeline?action=new", icon: Plus },
+  { label: "Agendar Reunião", href: "/meetings", icon: Calendar },
+  { label: "Criar Relatório", href: "/reports/new", icon: FileText },
+  { label: "Nova Automação", href: "/automations/new", icon: Zap },
 ]
 
 export function QuickActions() {
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex items-center gap-2 flex-wrap">
       {linkActions.map((action) => (
-        <Button key={action.label} variant={action.variant} size="sm" className={"className" in action ? action.className : undefined} asChild>
+        <Button
+          key={action.label}
+          variant={action.primary ? "default" : "outline"}
+          size="sm"
+          className="h-8 px-3 text-xs font-medium rounded-lg"
+          asChild
+        >
           <Link href={action.href}>
-            <action.icon className="mr-2 h-4 w-4" />
+            <action.icon className="h-3.5 w-3.5 mr-1.5" />
             {action.label}
           </Link>
         </Button>

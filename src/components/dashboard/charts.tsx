@@ -25,7 +25,6 @@ import {
 import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { GlowCard } from "@/components/ui/glow-card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatCurrency, cn } from "@/lib/utils"
 
@@ -96,17 +95,17 @@ export function DashboardCharts({
   const hasRevenueData = displayRevenueData.some((d) => d.receita > 0)
 
   return (
-    <GlowCard color="primary" intensity="subtle" className="h-full" surfaceClassName="gradient-accent-border">
+    <div className="rounded-xl border border-border bg-card h-full">
       <CardHeader>
-        <CardTitle>Visão Geral</CardTitle>
-        <CardDescription>Acompanhe o desempenho da sua agência</CardDescription>
+        <CardTitle className="text-base font-semibold text-foreground">Visão Geral</CardTitle>
+        <CardDescription className="text-xs">Acompanhe o desempenho da sua agência</CardDescription>
       </CardHeader>
       <CardContent>
         <Tabs defaultValue="revenue" className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="revenue">Receita</TabsTrigger>
-            <TabsTrigger value="pipeline">Pipeline</TabsTrigger>
-            <TabsTrigger value="clients">Clientes</TabsTrigger>
+          <TabsList className="bg-muted/50 rounded-lg p-0.5">
+            <TabsTrigger value="revenue" className="rounded-md text-xs h-7 px-3">Receita</TabsTrigger>
+            <TabsTrigger value="pipeline" className="rounded-md text-xs h-7 px-3">Pipeline</TabsTrigger>
+            <TabsTrigger value="clients" className="rounded-md text-xs h-7 px-3">Clientes</TabsTrigger>
           </TabsList>
 
           {/* === RECEITA TAB (enhanced with Asaas data) === */}
@@ -175,7 +174,7 @@ export function DashboardCharts({
                       }}
                       formatter={(value: number) => [formatCurrency(value), "Receita"]}
                     />
-                    <Bar dataKey="receita" fill="#22C55E" radius={[4, 4, 0, 0]} name="Receita" isAnimationActive={true} animationDuration={800} />
+                    <Bar dataKey="receita" fill="hsl(var(--success))" radius={[4, 4, 0, 0]} name="Receita" isAnimationActive={true} animationDuration={800} />
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
@@ -185,37 +184,37 @@ export function DashboardCharts({
               )}
             </div>
 
-            {/* Bottom cards: Novos Deals + Próximos 7 dias */}
-            <div className="grid gap-3 grid-cols-2 pt-2">
-              <div className="rounded-lg border bg-muted/30 p-3">
+            {/* Bottom cards: Novos Deals + Proximos 7 dias */}
+            <div className="grid gap-4 grid-cols-2 pt-2">
+              <div className="rounded-lg border border-border bg-card p-3">
                 <div className="flex items-center gap-2 mb-2">
-                  <div className="rounded-md p-1.5 bg-[#5327F2]/10">
-                    <Target className="h-3.5 w-3.5 text-[#5327F2]" />
+                  <div className="rounded-md p-1.5 bg-primary/10">
+                    <Target className="h-3.5 w-3.5 text-primary" />
                   </div>
                   <span className="text-xs font-medium text-muted-foreground">Novos Deals</span>
                 </div>
-                <p className="text-lg font-bold">
+                <p className="text-lg font-bold text-foreground">
                   {financialData?.newDeals.count ?? 0}{" "}
                   <span className="text-xs font-normal text-muted-foreground">este mês</span>
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {formatCurrency(financialData?.newDeals.pipelineValue ?? 0)} em pipeline
                 </p>
-                <Button variant="ghost" size="sm" className="mt-1.5 -ml-2 h-7 text-xs text-[#5327F2]" asChild>
+                <Button variant="ghost" size="sm" className="mt-1.5 -ml-2 h-7 text-primary text-xs" asChild>
                   <Link href="/pipeline">
                     Ver Pipeline <ArrowRight className="ml-1 h-3 w-3" />
                   </Link>
                 </Button>
               </div>
 
-              <div className="rounded-lg border bg-muted/30 p-3">
+              <div className="rounded-lg border border-border bg-card p-3">
                 <div className="flex items-center gap-2 mb-2">
                   <div className="rounded-md p-1.5 bg-warning/10">
                     <Calendar className="h-3.5 w-3.5 text-warning" />
                   </div>
-                  <span className="text-xs font-medium text-muted-foreground">Próximos 7 dias</span>
+                  <span className="text-xs font-medium text-muted-foreground">Proximos 7 dias</span>
                 </div>
-                <p className="text-lg font-bold">
+                <p className="text-lg font-bold text-foreground">
                   {financialData?.upcoming7Days.count ?? 0}{" "}
                   <span className="text-xs font-normal text-muted-foreground">
                     {(financialData?.upcoming7Days.count ?? 0) === 1 ? "cobrança" : "cobranças"}
@@ -268,7 +267,7 @@ export function DashboardCharts({
                         "Valor",
                       ]}
                     />
-                    <Bar dataKey="value" fill="#5327F2" radius={[0, 4, 4, 0]} isAnimationActive={true} animationDuration={800} />
+                    <Bar dataKey="value" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} isAnimationActive={true} animationDuration={800} />
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
@@ -330,6 +329,6 @@ export function DashboardCharts({
           </TabsContent>
         </Tabs>
       </CardContent>
-    </GlowCard>
+    </div>
   )
 }

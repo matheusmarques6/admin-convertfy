@@ -127,7 +127,7 @@ export function MeetingCompletionDialog({
               </>
             ) : (
               <>
-                <CheckCircle className="h-5 w-5 text-success" />
+                <CheckCircle className="h-5 w-5 text-emerald-500" />
                 Concluir Reunião
               </>
             )}

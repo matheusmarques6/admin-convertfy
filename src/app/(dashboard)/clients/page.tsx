@@ -28,6 +28,12 @@ async function getClients() {
         id,
         name,
         avatar_url
+      ),
+      client_stores (
+        id,
+        store_name,
+        platform,
+        is_active
       )
     `)
     .order("created_at", { ascending: false })

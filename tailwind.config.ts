@@ -63,9 +63,8 @@ const config: Config = {
           foreground: "hsl(var(--info-foreground))",
         },
         convertfy: {
-          purple: "#5327F2",
-          "purple-deep": "#34268C",
-          blue: "#4B53F2",
+          blue: "#05AFF2",
+          "blue-deep": "#0284C7",
           cyan: "#05AFF2",
           dark: "#141C26",
         },

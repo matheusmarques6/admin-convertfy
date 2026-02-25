@@ -11,8 +11,7 @@ import {
   Plug,
   Mail,
 } from "lucide-react"
-import { CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
 const settingsGroups = [
   {
@@ -111,7 +110,7 @@ export default function SettingsPage() {
           <h2 className="text-lg font-semibold">{group.title}</h2>
           <div className="grid gap-4 md:grid-cols-2">
             {group.items.map((item) => (
-              <GlowCard key={item.href} color="primary" intensity="subtle">
+              <Card key={item.href} className="rounded-xl border bg-card hover:border-primary/30 transition-colors">
                 <Link href={item.href}>
                   <CardHeader className="pb-3">
                     <div className="flex items-center gap-3">
@@ -125,7 +124,7 @@ export default function SettingsPage() {
                     </div>
                   </CardHeader>
                 </Link>
-              </GlowCard>
+              </Card>
             ))}
           </div>
         </div>

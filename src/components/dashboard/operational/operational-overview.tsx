@@ -15,7 +15,6 @@ import {
   LucideIcon,
 } from "lucide-react"
 import { CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Progress } from "@/components/ui/progress"
@@ -101,18 +100,18 @@ interface OperationalOverviewProps {
 
 export function OperationalOverview({ activities, onboardings }: OperationalOverviewProps) {
   return (
-    <GlowCard color="info" intensity="subtle">
-      <CardHeader className="pb-3">
+    <div className="rounded-xl border border-border bg-card">
+      <CardHeader className="p-5 pb-3">
         <div className="flex items-center gap-2">
-          <Activity className="h-4 w-4 text-info" />
-          <CardTitle className="text-base">Overview Operacional</CardTitle>
+          <Activity className="h-4 w-4 text-muted-foreground" />
+          <CardTitle className="text-sm font-medium text-foreground">Overview Operacional</CardTitle>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="px-5 pb-5">
         <Tabs defaultValue="atividades">
-          <TabsList className="w-full">
-            <TabsTrigger value="atividades" className="flex-1">Atividades</TabsTrigger>
-            <TabsTrigger value="onboardings" className="flex-1">
+          <TabsList className="w-full bg-muted/50 rounded-lg p-0.5">
+            <TabsTrigger value="atividades" className="flex-1 rounded-md text-xs h-7">Atividades</TabsTrigger>
+            <TabsTrigger value="onboardings" className="flex-1 rounded-md text-xs h-7">
               Onboardings
               {onboardings.length > 0 && (
                 <Badge variant="secondary" className="ml-1.5 rounded-full text-[10px] px-1.5 py-0">
@@ -125,7 +124,7 @@ export function OperationalOverview({ activities, onboardings }: OperationalOver
           <TabsContent value="atividades">
             {activities.length > 0 ? (
               <ScrollArea className="h-[250px] pr-4">
-                <div className="space-y-3 pt-2">
+                <div className="space-y-2.5 pt-2">
                   {activities.map((activity) => {
                     const { icon: Icon, color, bg } = getActivityIcon(activity.type)
                     const profileName = Array.isArray(activity.profile)
@@ -133,14 +132,14 @@ export function OperationalOverview({ activities, onboardings }: OperationalOver
                       : activity.profile?.name
                     return (
                       <div key={activity.id} className="flex gap-3">
-                        <div className={cn("rounded-lg p-2 h-fit", bg)}>
-                          <Icon className={cn("h-4 w-4", color)} />
+                        <div className={cn("rounded-md p-1.5 h-fit", bg)}>
+                          <Icon className={cn("h-3.5 w-3.5", color)} />
                         </div>
-                        <div className="flex-1 space-y-1">
-                          <p className="text-sm leading-tight">{activity.description}</p>
+                        <div className="flex-1 space-y-0.5">
+                          <p className="text-sm leading-tight text-foreground">{activity.description}</p>
                           <div className="flex items-center gap-2 text-xs text-muted-foreground">
                             <span>{profileName || "Sistema"}</span>
-                            <span>•</span>
+                            <span>·</span>
                             <span>{timeAgo(activity.created_at)}</span>
                           </div>
                         </div>
@@ -160,7 +159,7 @@ export function OperationalOverview({ activities, onboardings }: OperationalOver
           <TabsContent value="onboardings">
             {onboardings.length > 0 ? (
               <ScrollArea className="h-[250px] pr-4">
-                <div className="space-y-3 pt-2">
+                <div className="space-y-2.5 pt-2">
                   {onboardings.map((onboarding) => {
                     const client = Array.isArray(onboarding.client) ? onboarding.client[0] : onboarding.client
                     const store = Array.isArray(onboarding.store) ? onboarding.store[0] : onboarding.store
@@ -171,23 +170,23 @@ export function OperationalOverview({ activities, onboardings }: OperationalOver
                     return (
                       <div
                         key={onboarding.id}
-                        className="p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+                        className="p-2.5 rounded-lg border border-border hover:bg-muted/30 transition-colors"
                       >
                         <div className="flex items-start gap-3">
-                          <div className="rounded-lg p-2 bg-info/10 shrink-0">
-                            <Rocket className="h-4 w-4 text-info" />
+                          <div className="rounded-md p-1.5 bg-info/10 shrink-0">
+                            <Rocket className="h-3.5 w-3.5 text-info" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate">
+                            <p className="text-sm font-medium truncate text-foreground">
                               {store?.store_name || "Loja"}
                             </p>
                             <p className="text-xs text-muted-foreground truncate">
                               {client?.name || "Cliente"}
                             </p>
-                            <div className="flex items-center gap-2 mt-2">
+                            <div className="flex items-center gap-2 mt-1.5">
                               <Badge
                                 variant="secondary"
-                                className={cn("text-[10px] px-1.5 py-0", status.color)}
+                                className={cn("text-[10px] h-5 px-2", status.color)}
                               >
                                 {status.label}
                               </Badge>
@@ -196,8 +195,8 @@ export function OperationalOverview({ activities, onboardings }: OperationalOver
                               </span>
                             </div>
                             <div className="mt-1.5 flex items-center gap-2">
-                              <Progress value={onboarding.progress_percent} className="h-1.5 flex-1" />
-                              <span className="text-xs font-medium">{onboarding.progress_percent}%</span>
+                              <Progress value={onboarding.progress_percent} className="h-1 flex-1" />
+                              <span className="text-xs font-medium text-foreground">{onboarding.progress_percent}%</span>
                             </div>
                             {onboarding.target_completion_date && (
                               <p className="text-[10px] text-muted-foreground mt-1">
@@ -220,6 +219,6 @@ export function OperationalOverview({ activities, onboardings }: OperationalOver
           </TabsContent>
         </Tabs>
       </CardContent>
-    </GlowCard>
+    </div>
   )
 }

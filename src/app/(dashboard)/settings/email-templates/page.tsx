@@ -1,8 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -118,7 +117,7 @@ export default function EmailTemplatesPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Lista */}
-        <GlowCard color="primary" intensity="subtle" className="lg:col-span-1">
+        <Card className="rounded-xl border bg-card lg:col-span-1">
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><Mail className="h-5 w-5" /> Templates</CardTitle>
             <CardDescription>{templates.length} template(s)</CardDescription>
@@ -149,10 +148,10 @@ export default function EmailTemplatesPage() {
               </div>
             )}
           </CardContent>
-        </GlowCard>
+        </Card>
 
         {/* Editor */}
-        <GlowCard color="primary" intensity="subtle" className="lg:col-span-2">
+        <Card className="rounded-xl border bg-card lg:col-span-2">
           <CardHeader>
             <CardTitle>{isNew ? "Novo Template" : editing ? `Editando: ${editing.name}` : "Editor"}</CardTitle>
             {(isNew || editing) && (
@@ -201,7 +200,7 @@ export default function EmailTemplatesPage() {
               </div>
             )}
           </CardContent>
-        </GlowCard>
+        </Card>
       </div>
     </div>
   )

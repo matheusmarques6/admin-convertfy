@@ -4,7 +4,6 @@ import { Sidebar } from "@/components/layout/sidebar"
 import { Header } from "@/components/layout/header"
 import { DashboardClientWrapper } from "@/components/layout/dashboard-client-wrapper"
 import { ErrorBoundary } from "@/components/error-boundary"
-import { AmbientBackground } from "@/components/ui/ambient-background"
 import { Permissions, StoreAccess } from "@/lib/hooks/use-permissions"
 
 async function getPermissions(userId: string): Promise<Permissions | null> {
@@ -186,8 +185,6 @@ export default async function DashboardLayout({
   return (
     <DashboardClientWrapper initialPermissions={permissions}>
       <div className="flex h-screen bg-background relative">
-        <AmbientBackground />
-
         {/* Sidebar - Hidden on mobile */}
         <div className="hidden md:block">
           <Sidebar user={userData} />
@@ -196,7 +193,7 @@ export default async function DashboardLayout({
         {/* Main Content */}
         <div className="flex-1 flex flex-col overflow-hidden">
           <Header user={userData} />
-          <main className="flex-1 overflow-auto p-6">
+          <main className="flex-1 overflow-auto px-5 py-5 md:px-6 md:py-5">
             <ErrorBoundary>
               {children}
             </ErrorBoundary>

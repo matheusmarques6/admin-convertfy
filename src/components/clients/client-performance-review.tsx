@@ -14,7 +14,6 @@ import {
   Settings,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -170,10 +169,10 @@ export function ClientPerformanceKPIs() {
         <>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             {/* Receita Total (Loja) - via Klaviyo metric-aggregates */}
-            <GlowCard color="info" intensity="intense" surfaceClassName="p-6">
+            <Card className="rounded-xl border bg-card p-6">
               <div className="flex items-center justify-between pb-2">
                 <span className="text-sm font-medium text-muted-foreground">Receita Total</span>
-                <ShoppingCart className="h-4 w-4 text-info" />
+                <ShoppingCart className="h-4 w-4 text-muted-foreground" />
               </div>
               <p className="text-2xl font-bold">{formatCurrency(data.totals.storeRevenue ?? 0)}</p>
               <div className="flex gap-2 mt-1">
@@ -181,10 +180,10 @@ export function ClientPerformanceKPIs() {
                   {(data.totals.storeOrders ?? 0).toLocaleString("pt-BR")} pedidos
                 </span>
               </div>
-            </GlowCard>
+            </Card>
 
             {/* Revenue Atribuído (Email) */}
-            <GlowCard color="success" intensity="intense" surfaceClassName="p-6">
+            <Card className="rounded-xl border bg-card p-6">
               <div className="flex items-center justify-between pb-2">
                 <span className="text-sm font-medium text-muted-foreground">Revenue Email</span>
                 <TrendingUp className="h-4 w-4 text-success" />
@@ -198,10 +197,10 @@ export function ClientPerformanceKPIs() {
                   Flows: {formatCurrency(data.totals.flowRevenue)}
                 </span>
               </div>
-            </GlowCard>
+            </Card>
 
             {/* Campanhas & Flows + Open/Click Rate inline */}
-            <GlowCard color="primary" intensity="intense" surfaceClassName="p-6">
+            <Card className="rounded-xl border bg-card p-6">
               <div className="flex items-center justify-between pb-2">
                 <span className="text-sm font-medium text-muted-foreground">Campanhas & Flows</span>
                 <Mail className="h-4 w-4 text-primary" />
@@ -225,10 +224,10 @@ export function ClientPerformanceKPIs() {
                   </span>
                 </div>
               )}
-            </GlowCard>
+            </Card>
 
             {/* % Recuperação Email */}
-            <GlowCard color="warning" intensity="intense" surfaceClassName="p-6">
+            <Card className="rounded-xl border bg-card p-6">
               <div className="flex items-center justify-between pb-2">
                 <span className="text-sm font-medium text-muted-foreground">Recuperação Email</span>
                 <Percent className="h-4 w-4 text-warning" />
@@ -239,7 +238,7 @@ export function ClientPerformanceKPIs() {
               <span className="text-xs text-muted-foreground">
                 {formatCurrency(data.totals.attributedRevenue ?? data.totals.klaviyoRevenue)} de {formatCurrency(data.totals.storeRevenue ?? 0)}
               </span>
-            </GlowCard>
+            </Card>
           </div>
 
           {/* Integration Error Badges */}
@@ -253,10 +252,10 @@ export function ClientPerformanceKPIs() {
 
                   const Icon = isWarning ? AlertTriangle : AlertCircle
                   const bgClass = isWarning
-                    ? "bg-yellow-500/10 border-yellow-500/20"
+                    ? "bg-warning/10 border-warning/20"
                     : "bg-destructive/10 border-destructive/20"
                   const textClass = isWarning
-                    ? "text-yellow-600 dark:text-yellow-400"
+                    ? "text-warning"
                     : "text-destructive"
 
                   return (
@@ -330,9 +329,9 @@ export function ClientPerformanceTables() {
     data.storeErrors.length === data.stores.length && !hasContent
   if (allStoresFailed) {
     return (
-      <Card className="border-yellow-500/30">
+      <Card className="border-warning/30">
         <CardContent className="flex flex-col items-center justify-center py-12">
-          <AlertTriangle className="h-10 w-10 text-yellow-500 mb-3" />
+          <AlertTriangle className="h-10 w-10 text-warning mb-3" />
           <p className="text-sm font-medium">Erro ao carregar dados de performance</p>
           <p className="text-xs text-muted-foreground mt-1 text-center max-w-sm">
             Todas as lojas retornaram erro ao buscar métricas. O teste de conexão na aba Lojas verifica apenas a autenticação,
@@ -374,7 +373,7 @@ export function ClientPerformanceTables() {
     <div className="space-y-6">
       {/* Recent Campaigns Table */}
       {allCampaigns.length > 0 && (
-        <GlowCard color="primary" intensity="subtle">
+        <Card className="rounded-xl border bg-card">
           <CardHeader>
             <CardTitle className="text-base">Mensagens recentes de campanha</CardTitle>
           </CardHeader>
@@ -429,12 +428,12 @@ export function ClientPerformanceTables() {
               </TableBody>
             </Table>
           </CardContent>
-        </GlowCard>
+        </Card>
       )}
 
       {/* Top Flows Table */}
       {allFlows.length > 0 && (
-        <GlowCard color="primary" intensity="subtle">
+        <Card className="rounded-xl border bg-card">
           <CardHeader>
             <CardTitle className="text-base">Fluxos com melhor desempenho</CardTitle>
           </CardHeader>
@@ -488,7 +487,7 @@ export function ClientPerformanceTables() {
               </TableBody>
             </Table>
           </CardContent>
-        </GlowCard>
+        </Card>
       )}
     </div>
   )

@@ -17,7 +17,6 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
 import { Badge } from "@/components/ui/badge"
 import {
   Select,
@@ -327,46 +326,46 @@ export function CampaignsListView() {
 
       {/* Summary KPI Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <GlowCard color="primary" intensity="moderate">
+        <Card className="rounded-xl border bg-card">
           <CardContent className="pt-4 pb-3">
             <p className="text-xs text-muted-foreground">Total Campanhas</p>
             <p className="text-xl font-bold mt-1">{summary.total}</p>
           </CardContent>
-        </GlowCard>
-        <GlowCard color="primary" intensity="moderate">
+        </Card>
+        <Card className="rounded-xl border bg-card">
           <CardContent className="pt-4 pb-3">
             <p className="text-xs text-muted-foreground">Enviadas</p>
             <p className="text-xl font-bold mt-1">{summary.sent}</p>
           </CardContent>
-        </GlowCard>
-        <GlowCard color="primary" intensity="moderate">
+        </Card>
+        <Card className="rounded-xl border bg-card">
           <CardContent className="pt-4 pb-3">
             <p className="text-xs text-muted-foreground">Total Receita</p>
             <p className="text-xl font-bold mt-1">R$ {summary.totalRevenue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</p>
           </CardContent>
-        </GlowCard>
-        <GlowCard color="primary" intensity="moderate">
+        </Card>
+        <Card className="rounded-xl border bg-card">
           <CardContent className="pt-4 pb-3">
             <p className="text-xs text-muted-foreground">Total Destinatários</p>
             <p className="text-xl font-bold mt-1">{summary.totalRecipients.toLocaleString()}</p>
           </CardContent>
-        </GlowCard>
-        <GlowCard color="primary" intensity="moderate">
+        </Card>
+        <Card className="rounded-xl border bg-card">
           <CardContent className="pt-4 pb-3">
             <p className="text-xs text-muted-foreground">Méd. Abertura</p>
             <p className="text-xl font-bold mt-1">{summary.avgOpenRate.toFixed(1)}%</p>
           </CardContent>
-        </GlowCard>
+        </Card>
       </div>
 
       {/* Store Performance: Top & Bottom */}
       {storePerformance.length > 1 && filterStore === "all" && (
         <div className="grid gap-4 lg:grid-cols-2">
           {/* Top Performing Stores */}
-          <GlowCard color="primary" intensity="subtle">
+          <Card className="rounded-xl border bg-card">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <TrendingUp className="h-4 w-4 text-emerald-500" />
+                <TrendingUp className="h-4 w-4 text-success" />
                 Lojas com Melhor Desempenho
               </CardTitle>
             </CardHeader>
@@ -387,21 +386,21 @@ export function CampaignsListView() {
                         {store.totalCampaigns} campanhas • {store.avgOpenRate.toFixed(1)}% abertura
                       </p>
                     </div>
-                    <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+                    <p className="text-sm font-semibold text-success">
                       R$ {store.totalRevenue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                     </p>
                   </div>
                 ))}
               </div>
             </CardContent>
-          </GlowCard>
+          </Card>
 
           {/* Bottom Performing Stores */}
           {bottomStores.length > 0 && (
-            <GlowCard color="primary" intensity="subtle">
+            <Card className="rounded-xl border bg-card">
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <TrendingDown className="h-4 w-4 text-orange-500" />
+                  <TrendingDown className="h-4 w-4 text-warning" />
                   Lojas com Menor Desempenho
                 </CardTitle>
               </CardHeader>
@@ -425,14 +424,14 @@ export function CampaignsListView() {
                   ))}
                 </div>
               </CardContent>
-            </GlowCard>
+            </Card>
           )}
         </div>
       )}
 
       {/* Best Campaign per Store */}
       {storePerformance.length > 0 && filterStore === "all" && (
-        <GlowCard color="primary" intensity="subtle">
+        <Card className="rounded-xl border bg-card">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <Trophy className="h-4 w-4 text-warning" />
@@ -478,14 +477,14 @@ export function CampaignsListView() {
               </table>
             </div>
           </CardContent>
-        </GlowCard>
+        </Card>
       )}
 
       {/* Campaigns Table */}
       <div>
         <h3 className="text-sm font-semibold mb-3 text-muted-foreground">Campanhas Recentes</h3>
         {sorted.length > 0 ? (
-          <GlowCard color="primary" intensity="subtle">
+          <Card className="rounded-xl border bg-card">
             <CardContent className="pt-6">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -570,7 +569,7 @@ export function CampaignsListView() {
                 </table>
               </div>
             </CardContent>
-          </GlowCard>
+          </Card>
         ) : (
           <Card>
             <CardContent className="py-10 text-center text-muted-foreground">

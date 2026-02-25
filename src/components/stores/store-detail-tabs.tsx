@@ -18,7 +18,6 @@ import {
 } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
@@ -206,7 +205,7 @@ export function StoreDetailTabs({
             {/* Info cards grid */}
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {/* Store Info */}
-              <GlowCard color="primary" intensity="subtle">
+              <Card className="rounded-xl">
                 <CardHeader>
                   <CardTitle className="text-base">Informações da Loja</CardTitle>
                 </CardHeader>
@@ -246,11 +245,11 @@ export function StoreDetailTabs({
                     </div>
                   )}
                 </CardContent>
-              </GlowCard>
+              </Card>
 
               {/* Onboarding Status */}
               {onboardingStatus && (
-                <GlowCard color="primary" intensity="subtle">
+                <Card className="rounded-xl">
                   <CardHeader>
                     <CardTitle className="text-base">Status do Onboarding</CardTitle>
                   </CardHeader>
@@ -300,11 +299,11 @@ export function StoreDetailTabs({
                       )}
                     </div>
                   </CardContent>
-                </GlowCard>
+                </Card>
               )}
 
               {/* Integration Status */}
-              <GlowCard color="primary" intensity="subtle" className="md:col-span-2">
+              <Card className="rounded-xl md:col-span-2">
                 <CardHeader>
                   <CardTitle className="text-base">Status das Integrações</CardTitle>
                   <CardDescription>Serviços conectados a esta loja</CardDescription>
@@ -344,7 +343,7 @@ export function StoreDetailTabs({
                                 : "Não conectado"}
                             </p>
                             {key === "klaviyo" && connected && hasReporting === false && (
-                              <p className="text-xs text-yellow-500 flex items-center gap-1 mt-0.5">
+                              <p className="text-xs text-warning flex items-center gap-1 mt-0.5">
                                 <AlertTriangle className="h-3 w-3" />
                                 Sem acesso a relatórios
                               </p>
@@ -360,7 +359,7 @@ export function StoreDetailTabs({
                     })}
                   </div>
                 </CardContent>
-              </GlowCard>
+              </Card>
             </div>
 
             {/* Performance Tables (campaigns + flows) */}
@@ -421,7 +420,7 @@ export function StoreDetailTabs({
 
       {/* Settings */}
       <TabsContent value="settings">
-        <GlowCard color="primary" intensity="subtle">
+        <Card className="rounded-xl">
           <CardHeader>
             <CardTitle>Configurações da Loja</CardTitle>
             <CardDescription>
@@ -433,7 +432,7 @@ export function StoreDetailTabs({
               As configurações de credenciais (Shopify, Klaviyo, etc.) podem ser gerenciadas na página do cliente.
             </p>
           </CardContent>
-        </GlowCard>
+        </Card>
       </TabsContent>
     </Tabs>
   )
@@ -506,7 +505,7 @@ function CampaignsTab({
       )}
 
       {data?.campaigns && data.campaigns.length > 0 ? (
-        <GlowCard color="primary" intensity="subtle">
+        <Card className="rounded-xl">
           <CardContent className="pt-6">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -539,7 +538,7 @@ function CampaignsTab({
               </table>
             </div>
           </CardContent>
-        </GlowCard>
+        </Card>
       ) : (
         <Card>
           <CardContent className="py-10 text-center text-muted-foreground">
@@ -618,7 +617,7 @@ function FlowsTab({
       )}
 
       {data?.flows && data.flows.length > 0 ? (
-        <GlowCard color="primary" intensity="subtle">
+        <Card className="rounded-xl">
           <CardContent className="pt-6">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -651,7 +650,7 @@ function FlowsTab({
               </table>
             </div>
           </CardContent>
-        </GlowCard>
+        </Card>
       ) : (
         <Card>
           <CardContent className="py-10 text-center text-muted-foreground">
@@ -666,11 +665,11 @@ function FlowsTab({
 // --- Metric Card ---
 function MetricCard({ label, value }: { label: string; value: string | number }) {
   return (
-    <GlowCard color="primary" intensity="moderate">
+    <Card className="rounded-xl">
       <CardContent className="pt-4 pb-3">
-        <p className="text-xs text-muted-foreground">{label}</p>
-        <p className="text-xl font-bold mt-1">{value}</p>
+        <p className="text-sm text-muted-foreground">{label}</p>
+        <p className="text-2xl font-bold mt-1">{value}</p>
       </CardContent>
-    </GlowCard>
+    </Card>
   )
 }

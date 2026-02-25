@@ -54,8 +54,8 @@ export function OnboardingTimeline({ currentPhase, phases }: OnboardingTimelineP
   const currentIndex = PHASE_ORDER.indexOf(currentPhase)
 
   return (
-    <div className="rounded-xl border bg-white p-6">
-      <h3 className="text-lg font-semibold text-slate-900 mb-6">Progresso do Onboarding</h3>
+    <div className="rounded-xl border border-slate-200/80 dark:border-slate-700/40 bg-white dark:bg-[#151922] p-6 shadow-sm dark:shadow-slate-900/20">
+      <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-6">Progresso do Onboarding</h3>
 
       {/* Desktop timeline */}
       <div className="hidden sm:flex items-center justify-between mb-4">
@@ -73,22 +73,22 @@ export function OnboardingTimeline({ currentPhase, phases }: OnboardingTimelineP
                   className={`flex h-10 w-10 items-center justify-center rounded-full border-2 transition-colors
                     ${isCompleted ? "bg-green-500 border-green-500 text-white" : ""}
                     ${isActive ? "bg-blue-500 border-blue-500 text-white animate-pulse" : ""}
-                    ${isFuture ? "bg-slate-100 border-slate-300 text-slate-400" : ""}
+                    ${isFuture ? "bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-400 dark:text-slate-500" : ""}
                   `}
                 >
                   {isCompleted ? <Check className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
                 </div>
                 <span
                   className={`mt-2 text-xs font-medium text-center
-                    ${isCompleted ? "text-green-700" : ""}
-                    ${isActive ? "text-blue-700" : ""}
-                    ${isFuture ? "text-slate-400" : ""}
+                    ${isCompleted ? "text-green-700 dark:text-green-400" : ""}
+                    ${isActive ? "text-blue-700 dark:text-blue-400" : ""}
+                    ${isFuture ? "text-slate-400 dark:text-slate-500" : ""}
                   `}
                 >
                   {phase.label}
                 </span>
                 {phase.completedAt && (
-                  <span className="text-[10px] text-slate-400 mt-0.5">
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
                     {formatDate(phase.completedAt)}
                   </span>
                 )}
@@ -96,7 +96,7 @@ export function OnboardingTimeline({ currentPhase, phases }: OnboardingTimelineP
               {index < displayPhases.length - 1 && (
                 <div
                   className={`h-0.5 w-full mx-2 mt-[-20px] ${
-                    phaseIndex < currentIndex ? "bg-green-400" : "bg-slate-200"
+                    phaseIndex < currentIndex ? "bg-green-400" : "bg-slate-200 dark:bg-slate-700"
                   }`}
                 />
               )}
@@ -120,17 +120,17 @@ export function OnboardingTimeline({ currentPhase, phases }: OnboardingTimelineP
                 className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2
                   ${isCompleted ? "bg-green-500 border-green-500 text-white" : ""}
                   ${isActive ? "bg-blue-500 border-blue-500 text-white" : ""}
-                  ${isFuture ? "bg-slate-100 border-slate-300 text-slate-400" : ""}
+                  ${isFuture ? "bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-400 dark:text-slate-500" : ""}
                 `}
               >
                 {isCompleted ? <Check className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
               </div>
               <div className="flex-1">
-                <span className={`text-sm font-medium ${isActive ? "text-blue-700" : isCompleted ? "text-green-700" : "text-slate-400"}`}>
+                <span className={`text-sm font-medium ${isActive ? "text-blue-700 dark:text-blue-400" : isCompleted ? "text-green-700 dark:text-green-400" : "text-slate-400 dark:text-slate-500"}`}>
                   {phase.label}
                 </span>
                 {phase.completedAt && (
-                  <span className="text-xs text-slate-400 ml-2">{formatDate(phase.completedAt)}</span>
+                  <span className="text-xs text-slate-400 dark:text-slate-500 ml-2">{formatDate(phase.completedAt)}</span>
                 )}
               </div>
             </div>
@@ -141,7 +141,7 @@ export function OnboardingTimeline({ currentPhase, phases }: OnboardingTimelineP
       {/* Current phase message */}
       {currentPhase && PHASE_MESSAGES[currentPhase] && (
         <div className={`mt-4 rounded-lg p-3 text-sm ${
-          currentPhase === "completed" ? "bg-green-50 text-green-700" : "bg-blue-50 text-blue-700"
+          currentPhase === "completed" ? "bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-400" : "bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400"
         }`}>
           {PHASE_MESSAGES[currentPhase]}
         </div>

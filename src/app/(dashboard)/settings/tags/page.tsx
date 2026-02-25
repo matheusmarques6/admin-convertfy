@@ -1,8 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -87,7 +86,7 @@ export default function TagsPage() {
         <p className="text-muted-foreground">Gerencie as tags do sistema</p>
       </div>
 
-      <GlowCard color="primary" intensity="subtle">
+      <Card className="rounded-xl border bg-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Tag className="h-5 w-5" />
@@ -127,9 +126,9 @@ export default function TagsPage() {
             </Button>
           </div>
         </CardContent>
-      </GlowCard>
+      </Card>
 
-      <GlowCard color="primary" intensity="subtle">
+      <Card className="rounded-xl border bg-card">
         <CardHeader>
           <CardTitle>Tags Existentes</CardTitle>
           <CardDescription>{tags.length} tag(s) cadastrada(s)</CardDescription>
@@ -154,7 +153,7 @@ export default function TagsPage() {
             </div>
           )}
         </CardContent>
-      </GlowCard>
+      </Card>
     </div>
   )
 }

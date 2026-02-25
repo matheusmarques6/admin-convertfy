@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { useToast } from "@/lib/hooks/use-toast"
@@ -273,10 +273,10 @@ export default function PortalNewStorePage() {
   if (submitted) {
     return (
       <div className="space-y-6">
-        <Card className="max-w-md mx-auto text-center">
+        <div className="bg-white dark:bg-[#151922] rounded-2xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 max-w-md mx-auto text-center">
           <CardHeader>
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
-              <Check className="h-8 w-8 text-green-600" />
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-500/10">
+              <Check className="h-8 w-8 text-emerald-600" />
             </div>
             <CardTitle className="text-2xl">Loja Enviada!</CardTitle>
             <CardDescription className="text-base mt-2">
@@ -284,14 +284,14 @@ export default function PortalNewStorePage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Button onClick={() => router.push("/portal/onboarding")} className="w-full">
+            <Button onClick={() => router.push("/portal/onboarding")} className="w-full bg-primary hover:bg-primary/85 text-white shadow-sm">
               Ver Onboarding
             </Button>
-            <Button variant="outline" onClick={() => router.push("/portal/stores")} className="w-full">
+            <Button variant="outline" onClick={() => router.push("/portal/stores")} className="w-full border-slate-200 dark:border-slate-700/40 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
               Voltar para Lojas
             </Button>
           </CardContent>
-        </Card>
+        </div>
       </div>
     )
   }
@@ -304,14 +304,14 @@ export default function PortalNewStorePage() {
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div>
-          <h1 className="text-2xl font-bold">Nova Loja</h1>
-          <p className="text-muted-foreground">Cadastre uma nova loja ou substitua uma existente</p>
+          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Nova Loja</h1>
+          <p className="text-slate-500 dark:text-slate-400">Cadastre uma nova loja ou substitua uma existente</p>
         </div>
       </div>
 
       {/* Mode Selection */}
       {existingStores.length > 0 && (
-        <Card>
+        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20">
           <CardContent className="pt-6">
             <div className="flex gap-4">
               <Button
@@ -345,7 +345,7 @@ export default function PortalNewStorePage() {
               </div>
             )}
           </CardContent>
-        </Card>
+        </div>
       )}
 
       {/* Progress Steps */}
@@ -360,16 +360,16 @@ export default function PortalNewStorePage() {
               <button
                 onClick={() => { if (isCompleted) setCurrentStep(step.id) }}
                 className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors w-full justify-center
-                  ${isActive ? "bg-blue-600 text-white" : ""}
-                  ${isCompleted ? "bg-green-100 text-green-700 cursor-pointer hover:bg-green-200" : ""}
-                  ${!isActive && !isCompleted ? "bg-slate-100 text-slate-400" : ""}
+                  ${isActive ? "bg-primary text-white shadow-sm" : ""}
+                  ${isCompleted ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 cursor-pointer hover:bg-emerald-100 dark:hover:bg-emerald-500/20" : ""}
+                  ${!isActive && !isCompleted ? "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500" : ""}
                 `}
               >
                 {isCompleted ? <Check className="h-4 w-4" /> : <StepIcon className="h-4 w-4" />}
                 <span className="hidden sm:inline">{step.title}</span>
               </button>
               {index < STEPS.length - 1 && (
-                <div className={`h-px w-4 mx-1 ${isCompleted ? "bg-green-300" : "bg-slate-200"}`} />
+                <div className={`h-px w-4 mx-1 ${isCompleted ? "bg-emerald-300" : "bg-slate-200 dark:bg-slate-700"}`} />
               )}
             </div>
           )
@@ -377,7 +377,7 @@ export default function PortalNewStorePage() {
       </div>
 
       {/* Form */}
-      <Card>
+      <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20">
         <CardHeader>
           <CardTitle>{STEPS[currentStep - 1].title}</CardTitle>
         </CardHeader>
@@ -487,18 +487,18 @@ export default function PortalNewStorePage() {
               <div className="space-y-2">
                 <Label>Logo da marca</Label>
                 {uploadedFiles.logo ? (
-                  <div className="flex items-center gap-3 rounded-lg border p-3 bg-green-50">
-                    <Image className="h-5 w-5 text-green-600 shrink-0" />
-                    <span className="text-sm text-green-700 flex-1 truncate">{uploadedFiles.logo.fileName}</span>
+                  <div className="flex items-center gap-3 rounded-lg border dark:border-slate-700/40 p-3 bg-emerald-50 dark:bg-emerald-500/10">
+                    <Image className="h-5 w-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <span className="text-sm text-emerald-700 dark:text-emerald-400 flex-1 truncate">{uploadedFiles.logo.fileName}</span>
                     <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => removeFile("logo")}>
                       <X className="h-4 w-4" />
                     </Button>
                   </div>
                 ) : (
-                  <div className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 transition-colors" onClick={() => logoInputRef.current?.click()}>
-                    {uploadingField === "logo" ? <Loader2 className="h-6 w-6 animate-spin text-blue-500" /> : <Upload className="h-6 w-6 text-slate-400" />}
-                    <span className="text-sm text-slate-500">Clique para enviar o logo</span>
-                    <span className="text-xs text-slate-400">PNG, JPG, SVG, WebP (máx. 10MB)</span>
+                  <div className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed dark:border-slate-700/40 p-6 cursor-pointer hover:border-primary/40 hover:bg-primary/5 dark:hover:bg-primary/10 transition-colors" onClick={() => logoInputRef.current?.click()}>
+                    {uploadingField === "logo" ? <Loader2 className="h-6 w-6 animate-spin text-primary" /> : <Upload className="h-6 w-6 text-slate-400 dark:text-slate-500" />}
+                    <span className="text-sm text-slate-500 dark:text-slate-400">Clique para enviar o logo</span>
+                    <span className="text-xs text-slate-400 dark:text-slate-500">PNG, JPG, SVG, WebP (máx. 10MB)</span>
                   </div>
                 )}
                 <input ref={logoInputRef} type="file" accept=".png,.jpg,.jpeg,.svg,.webp" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileUpload(f, "logo"); e.target.value = "" }} />
@@ -513,18 +513,18 @@ export default function PortalNewStorePage() {
               <div className="space-y-2">
                 <Label>Arquivo de referência visual</Label>
                 {uploadedFiles.design ? (
-                  <div className="flex items-center gap-3 rounded-lg border p-3 bg-green-50">
-                    <FileText className="h-5 w-5 text-green-600 shrink-0" />
-                    <span className="text-sm text-green-700 flex-1 truncate">{uploadedFiles.design.fileName}</span>
+                  <div className="flex items-center gap-3 rounded-lg border dark:border-slate-700/40 p-3 bg-emerald-50 dark:bg-emerald-500/10">
+                    <FileText className="h-5 w-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <span className="text-sm text-emerald-700 dark:text-emerald-400 flex-1 truncate">{uploadedFiles.design.fileName}</span>
                     <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => removeFile("design")}>
                       <X className="h-4 w-4" />
                     </Button>
                   </div>
                 ) : (
-                  <div className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 transition-colors" onClick={() => designInputRef.current?.click()}>
-                    {uploadingField === "design" ? <Loader2 className="h-6 w-6 animate-spin text-blue-500" /> : <Upload className="h-6 w-6 text-slate-400" />}
-                    <span className="text-sm text-slate-500">Clique para enviar referência visual</span>
-                    <span className="text-xs text-slate-400">PNG, JPG, SVG, WebP, PDF (máx. 10MB)</span>
+                  <div className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed dark:border-slate-700/40 p-6 cursor-pointer hover:border-primary/40 hover:bg-primary/5 dark:hover:bg-primary/10 transition-colors" onClick={() => designInputRef.current?.click()}>
+                    {uploadingField === "design" ? <Loader2 className="h-6 w-6 animate-spin text-primary" /> : <Upload className="h-6 w-6 text-slate-400 dark:text-slate-500" />}
+                    <span className="text-sm text-slate-500 dark:text-slate-400">Clique para enviar referência visual</span>
+                    <span className="text-xs text-slate-400 dark:text-slate-500">PNG, JPG, SVG, WebP, PDF (máx. 10MB)</span>
                   </div>
                 )}
                 <input ref={designInputRef} type="file" accept=".png,.jpg,.jpeg,.svg,.webp,.pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileUpload(f, "design"); e.target.value = "" }} />
@@ -534,18 +534,18 @@ export default function PortalNewStorePage() {
               <div className="space-y-2">
                 <Label>Manual da marca</Label>
                 {uploadedFiles.brand_manual ? (
-                  <div className="flex items-center gap-3 rounded-lg border p-3 bg-green-50">
-                    <FileText className="h-5 w-5 text-green-600 shrink-0" />
-                    <span className="text-sm text-green-700 flex-1 truncate">{uploadedFiles.brand_manual.fileName}</span>
+                  <div className="flex items-center gap-3 rounded-lg border dark:border-slate-700/40 p-3 bg-emerald-50 dark:bg-emerald-500/10">
+                    <FileText className="h-5 w-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <span className="text-sm text-emerald-700 dark:text-emerald-400 flex-1 truncate">{uploadedFiles.brand_manual.fileName}</span>
                     <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => removeFile("brand_manual")}>
                       <X className="h-4 w-4" />
                     </Button>
                   </div>
                 ) : (
-                  <div className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 transition-colors" onClick={() => brandInputRef.current?.click()}>
-                    {uploadingField === "brand_manual" ? <Loader2 className="h-6 w-6 animate-spin text-blue-500" /> : <Upload className="h-6 w-6 text-slate-400" />}
-                    <span className="text-sm text-slate-500">Clique para enviar o manual da marca</span>
-                    <span className="text-xs text-slate-400">PDF, PNG, JPG (máx. 10MB)</span>
+                  <div className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed dark:border-slate-700/40 p-6 cursor-pointer hover:border-primary/40 hover:bg-primary/5 dark:hover:bg-primary/10 transition-colors" onClick={() => brandInputRef.current?.click()}>
+                    {uploadingField === "brand_manual" ? <Loader2 className="h-6 w-6 animate-spin text-primary" /> : <Upload className="h-6 w-6 text-slate-400 dark:text-slate-500" />}
+                    <span className="text-sm text-slate-500 dark:text-slate-400">Clique para enviar o manual da marca</span>
+                    <span className="text-xs text-slate-400 dark:text-slate-500">PDF, PNG, JPG (máx. 10MB)</span>
                   </div>
                 )}
                 <input ref={brandInputRef} type="file" accept=".pdf,.png,.jpg,.jpeg" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileUpload(f, "brand_manual"); e.target.value = "" }} />
@@ -562,31 +562,31 @@ export default function PortalNewStorePage() {
           {currentStep === 3 && (
             <div className="space-y-6">
               {formMode === "replace" && (
-                <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-700">
+                <div className="rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 p-3 text-sm text-amber-700 dark:text-amber-400">
                   Substituindo: {existingStores.find(s => s.id === formData.replace_store_id)?.store_name}
                 </div>
               )}
               <div>
-                <h3 className="font-semibold text-slate-900 mb-2">Dados da Loja</h3>
+                <h3 className="font-semibold text-slate-900 dark:text-slate-50 mb-2">Dados da Loja</h3>
                 <div className="grid grid-cols-2 gap-2 text-sm">
-                  <span className="text-slate-500">Loja:</span><span>{formData.store_name}</span>
-                  <span className="text-slate-500">URL:</span><span className="truncate">{formData.store_url}</span>
-                  <span className="text-slate-500">Plataforma:</span><span>{PLATFORMS.find(p => p.value === formData.platform)?.label}</span>
-                  <span className="text-slate-500">País:</span><span>{COUNTRIES.find(c => c.value === formData.country)?.label}</span>
-                  <span className="text-slate-500">Idioma:</span><span>{LANGUAGES.find(l => l.value === formData.language)?.label}</span>
-                  {formData.niche && <><span className="text-slate-500">Nicho:</span><span>{formData.niche}</span></>}
-                  {formData.target_audience && <><span className="text-slate-500">Público-alvo:</span><span className="truncate">{formData.target_audience}</span></>}
+                  <span className="text-slate-500 dark:text-slate-400">Loja:</span><span>{formData.store_name}</span>
+                  <span className="text-slate-500 dark:text-slate-400">URL:</span><span className="truncate">{formData.store_url}</span>
+                  <span className="text-slate-500 dark:text-slate-400">Plataforma:</span><span>{PLATFORMS.find(p => p.value === formData.platform)?.label}</span>
+                  <span className="text-slate-500 dark:text-slate-400">País:</span><span>{COUNTRIES.find(c => c.value === formData.country)?.label}</span>
+                  <span className="text-slate-500 dark:text-slate-400">Idioma:</span><span>{LANGUAGES.find(l => l.value === formData.language)?.label}</span>
+                  {formData.niche && <><span className="text-slate-500 dark:text-slate-400">Nicho:</span><span>{formData.niche}</span></>}
+                  {formData.target_audience && <><span className="text-slate-500 dark:text-slate-400">Público-alvo:</span><span className="truncate">{formData.target_audience}</span></>}
                 </div>
               </div>
               {(formData.price_sensitivity || formData.design_direction_text || uploadedFiles.logo || uploadedFiles.design || uploadedFiles.brand_manual) && (
-                <div className="border-t pt-4">
-                  <h3 className="font-semibold text-slate-900 mb-2">Identidade Visual</h3>
+                <div className="border-t dark:border-slate-700/40 pt-4">
+                  <h3 className="font-semibold text-slate-900 dark:text-slate-50 mb-2">Identidade Visual</h3>
                   <div className="grid grid-cols-2 gap-2 text-sm">
-                    {formData.price_sensitivity && <><span className="text-slate-500">Foco:</span><span>{formData.price_sensitivity === "price" ? "Preço" : formData.price_sensitivity === "quality" ? "Qualidade" : "Equilibrado"}</span></>}
-                    {uploadedFiles.logo && <><span className="text-slate-500">Logo:</span><span className="text-green-600 truncate">{uploadedFiles.logo.fileName}</span></>}
-                    {formData.design_direction_text && <><span className="text-slate-500">Direção:</span><span className="truncate">{formData.design_direction_text}</span></>}
-                    {uploadedFiles.design && <><span className="text-slate-500">Referência:</span><span className="text-green-600 truncate">{uploadedFiles.design.fileName}</span></>}
-                    {uploadedFiles.brand_manual && <><span className="text-slate-500">Manual:</span><span className="text-green-600 truncate">{uploadedFiles.brand_manual.fileName}</span></>}
+                    {formData.price_sensitivity && <><span className="text-slate-500 dark:text-slate-400">Foco:</span><span>{formData.price_sensitivity === "price" ? "Preço" : formData.price_sensitivity === "quality" ? "Qualidade" : "Equilibrado"}</span></>}
+                    {uploadedFiles.logo && <><span className="text-slate-500 dark:text-slate-400">Logo:</span><span className="text-emerald-600 dark:text-emerald-400 truncate">{uploadedFiles.logo.fileName}</span></>}
+                    {formData.design_direction_text && <><span className="text-slate-500 dark:text-slate-400">Direção:</span><span className="truncate">{formData.design_direction_text}</span></>}
+                    {uploadedFiles.design && <><span className="text-slate-500 dark:text-slate-400">Referência:</span><span className="text-emerald-600 dark:text-emerald-400 truncate">{uploadedFiles.design.fileName}</span></>}
+                    {uploadedFiles.brand_manual && <><span className="text-slate-500 dark:text-slate-400">Manual:</span><span className="text-emerald-600 dark:text-emerald-400 truncate">{uploadedFiles.brand_manual.fileName}</span></>}
                   </div>
                 </div>
               )}
@@ -594,7 +594,7 @@ export default function PortalNewStorePage() {
           )}
 
           {/* Navigation */}
-          <div className="flex justify-between pt-6 border-t">
+          <div className="flex justify-between pt-6 border-t dark:border-slate-700/40">
             <Button variant="outline" onClick={prevStep} disabled={currentStep === 1}>
               <ChevronLeft className="h-4 w-4 mr-1" />
               Voltar
@@ -622,7 +622,7 @@ export default function PortalNewStorePage() {
             )}
           </div>
         </CardContent>
-      </Card>
+      </div>
     </div>
   )
 }

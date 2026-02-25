@@ -138,14 +138,14 @@ export function OnboardingApprovals() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-48">
-        <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     )
   }
 
   if (onboardings.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-48 text-slate-400">
+      <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">
         <Check className="h-12 w-12 mb-2" />
         <p className="text-lg font-medium">Nenhuma aprovação pendente</p>
         <p className="text-sm">Todos os formulários foram processados</p>
@@ -174,7 +174,7 @@ export function OnboardingApprovals() {
                   {onb.client?.name} {onb.client?.company ? `(${onb.client.company})` : ""}
                 </CardDescription>
               </div>
-              <div className="flex items-center gap-1 text-xs text-slate-400">
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
                 <Calendar className="h-3 w-3" />
                 {formatDate(onb.submitted_at)}
               </div>
@@ -183,21 +183,21 @@ export function OnboardingApprovals() {
           <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm mb-4">
               <div>
-                <span className="text-slate-500 text-xs">Email</span>
+                <span className="text-muted-foreground text-xs">Email</span>
                 <p className="truncate">{onb.client?.email}</p>
               </div>
               <div>
-                <span className="text-slate-500 text-xs">Plataforma</span>
+                <span className="text-muted-foreground text-xs">Plataforma</span>
                 <p>{platformLabel[onb.store?.platform || ""] || onb.store?.platform}</p>
               </div>
               <div>
-                <span className="text-slate-500 text-xs">Nicho</span>
+                <span className="text-muted-foreground text-xs">Nicho</span>
                 <p>{onb.store?.niche || "-"}</p>
               </div>
               <div>
-                <span className="text-slate-500 text-xs">Formulário</span>
+                <span className="text-muted-foreground text-xs">Formulário</span>
                 <p>{onb.store_onboarding_data?.is_complete ?
-                  <Badge variant="default" className="bg-green-100 text-green-700 text-xs">Completo</Badge> :
+                  <Badge variant="default" className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs">Completo</Badge> :
                   <Badge variant="secondary" className="text-xs">Parcial</Badge>
                 }</p>
               </div>
@@ -205,8 +205,8 @@ export function OnboardingApprovals() {
 
             {onb.store?.store_url && (
               <div className="text-sm mb-3">
-                <span className="text-slate-500 text-xs">URL: </span>
-                <a href={onb.store.store_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                <span className="text-muted-foreground text-xs">URL: </span>
+                <a href={onb.store.store_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
                   {onb.store.store_url}
                 </a>
               </div>
@@ -214,20 +214,20 @@ export function OnboardingApprovals() {
 
             {onb.store_onboarding_data?.design_direction_text && (
               <div className="text-sm mb-3">
-                <span className="text-slate-500 text-xs">Direção de design: </span>
+                <span className="text-muted-foreground text-xs">Direção de design: </span>
                 <span>{onb.store_onboarding_data.design_direction_text}</span>
               </div>
             )}
 
             {onb.notes && (
-              <div className="text-sm mb-3 p-2 rounded bg-yellow-50 text-yellow-800">
+              <div className="text-sm mb-3 p-2 rounded bg-amber-500/10 text-amber-700 dark:text-amber-400">
                 <FileText className="h-3 w-3 inline mr-1" />
                 {onb.notes}
               </div>
             )}
 
             <div className="flex gap-2 pt-2 border-t">
-              <Button size="sm" onClick={() => openAction(onb, "approved")} className="bg-green-600 hover:bg-green-700">
+              <Button size="sm" onClick={() => openAction(onb, "approved")} className="bg-emerald-600 hover:bg-emerald-700 text-white">
                 <Check className="h-4 w-4 mr-1" />
                 Aprovar
               </Button>
@@ -290,9 +290,9 @@ export function OnboardingApprovals() {
               disabled={processing || (actionDialog.action !== "approved" && !comments.trim())}
               className={
                 actionDialog.action === "approved"
-                  ? "bg-green-600 hover:bg-green-700"
+                  ? "bg-emerald-600 hover:bg-emerald-700 text-white"
                   : actionDialog.action === "rejected"
-                  ? "bg-red-600 hover:bg-red-700"
+                  ? "bg-destructive hover:bg-destructive/90 text-destructive-foreground"
                   : ""
               }
             >

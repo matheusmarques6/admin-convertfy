@@ -16,7 +16,6 @@ import {
   Calendar,
   Loader2,
 } from "lucide-react"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import {
   Select,
@@ -28,7 +27,6 @@ import {
 import { DateRangePicker } from "@/components/ui/date-range-picker"
 import { formatCurrency } from "@/lib/utils"
 import { cn } from "@/lib/utils"
-import { GlowCard } from "@/components/ui/glow-card"
 
 interface BillingData {
   connected: boolean
@@ -113,18 +111,18 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
   // Show loading state first
   if (isLoading && !data) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-4">
         <div className="flex items-center gap-2">
-          <div className="h-10 w-48 bg-muted animate-pulse rounded-md" />
-          <div className="h-10 w-10 bg-muted animate-pulse rounded-md" />
+          <div className="h-8 w-40 bg-muted animate-pulse rounded-md" />
+          <div className="h-8 w-8 bg-muted animate-pulse rounded-md" />
         </div>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {[...Array(4)].map((_, i) => (
-            <Card key={i}>
-              <CardContent className="h-32 flex items-center justify-center">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              </CardContent>
-            </Card>
+        <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="rounded-xl border bg-card">
+              <div className="h-28 flex items-center justify-center">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              </div>
+            </div>
           ))}
         </div>
       </div>
@@ -134,53 +132,53 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
   // Show error state
   if (error && (!data || !data.connected)) {
     return (
-      <Card className="border-destructive/50 bg-destructive/5">
-        <CardContent className="flex flex-col items-center justify-center py-12">
-          <AlertCircle className="h-12 w-12 text-destructive mb-4" />
-          <h3 className="text-lg font-medium">Erro no Resumo Financeiro</h3>
-          <p className="text-muted-foreground text-center mt-1 max-w-md">
+      <div className="rounded-xl border border-destructive/30 bg-destructive/5">
+        <div className="flex flex-col items-center justify-center py-12 px-6">
+          <AlertCircle className="h-10 w-10 text-destructive mb-3" />
+          <h3 className="text-base font-medium text-foreground">Erro no Resumo Financeiro</h3>
+          <p className="text-sm text-muted-foreground text-center mt-1 max-w-md">
             {error}
           </p>
           <div className="flex gap-2 mt-4">
-            <Button variant="outline" onClick={() => loadData()}>
-              <RefreshCw className="mr-2 h-4 w-4" />
+            <Button variant="outline" size="sm" onClick={() => loadData()}>
+              <RefreshCw className="mr-2 h-3.5 w-3.5" />
               Tentar Novamente
             </Button>
-            <Button variant="outline" asChild>
+            <Button variant="outline" size="sm" asChild>
               <Link href="/settings/integrations">Verificar Integração</Link>
             </Button>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     )
   }
 
   // Show connect message only after loading completes and we know it's not connected
   if (data && !data.connected) {
     return (
-      <Card className="border-dashed">
-        <CardContent className="flex flex-col items-center justify-center py-12">
-          <DollarSign className="h-12 w-12 text-muted-foreground mb-4" />
-          <h3 className="text-lg font-medium">Conecte a Asaas</h3>
-          <p className="text-muted-foreground text-center mt-1">
+      <div className="rounded-xl border border-dashed bg-card">
+        <div className="flex flex-col items-center justify-center py-12 px-6">
+          <DollarSign className="h-10 w-10 text-muted-foreground mb-3" />
+          <h3 className="text-base font-medium text-foreground">Conecte a Asaas</h3>
+          <p className="text-sm text-muted-foreground text-center mt-1">
             Configure a integração com Asaas para ver métricas de faturamento
           </p>
-          <Button variant="outline" className="mt-4" asChild>
+          <Button variant="outline" size="sm" className="mt-4" asChild>
             <Link href="/settings/integrations">Configurar Integração</Link>
           </Button>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     )
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Period Selector */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-2">
           <Select value={period} onValueChange={setPeriod}>
-            <SelectTrigger className="w-48">
-              <Calendar className="h-4 w-4 mr-2" />
+            <SelectTrigger className="h-8 w-40 text-xs">
+              <Calendar className="h-3.5 w-3.5 mr-1.5" />
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -205,13 +203,13 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
             }}
           />
 
-          <Button variant="ghost" size="icon" onClick={() => loadData()} disabled={isLoading}>
-            <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} />
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => loadData()} disabled={isLoading}>
+            <RefreshCw className={cn("h-3.5 w-3.5", isLoading && "animate-spin")} />
           </Button>
         </div>
 
         {data?.dateRange && (
-          <p className="text-sm text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             {new Date(data.dateRange.from).toLocaleDateString("pt-BR")} - {new Date(data.dateRange.to).toLocaleDateString("pt-BR")}
           </p>
         )}
@@ -224,170 +222,160 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
       ) : (
         <>
           {/* Main Metrics */}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-            <GlowCard color="success" intensity="intense" surfaceClassName="p-6">
-              <CardDescription className="flex items-center gap-2">
-                <TrendingUp className="h-4 w-4 text-success" />
-                Recebido
-              </CardDescription>
-              <CardTitle className="text-3xl text-success text-glow-success mt-2">
-                {formatCurrency(data?.summary.received || 0)}
-              </CardTitle>
-              <p className="text-sm text-muted-foreground mt-2">
-                {data?.counts.received || 0} cobranças pagas
-              </p>
-            </GlowCard>
-
-            <GlowCard color="warning" intensity="intense" surfaceClassName="p-6">
-              <CardDescription className="flex items-center gap-2">
-                <Clock className="h-4 w-4 text-warning" />
-                Pendente
-              </CardDescription>
-              <CardTitle className="text-3xl text-warning text-glow-warning mt-2">
-                {formatCurrency(data?.summary.pending || 0)}
-              </CardTitle>
-              <p className="text-sm text-muted-foreground mt-2">
-                {data?.counts.pending || 0} cobranças a receber
-              </p>
-            </GlowCard>
-
-            <GlowCard color="destructive" intensity="intense" surfaceClassName="p-6">
-              <CardDescription className="flex items-center gap-2">
-                <AlertCircle className="h-4 w-4 text-destructive" />
-                Vencido
-              </CardDescription>
-              <CardTitle className="text-3xl text-destructive text-glow-destructive mt-2">
-                {formatCurrency(data?.summary.overdue || 0)}
-              </CardTitle>
-              <p className="text-sm text-muted-foreground mt-2">
-                {data?.counts.overdue || 0} cobranças vencidas
-              </p>
-            </GlowCard>
-
-            <GlowCard color="primary" intensity="moderate" surfaceClassName="p-6">
-              <CardDescription className="flex items-center gap-2">
-                <DollarSign className="h-4 w-4" />
-                Total Período
-              </CardDescription>
-              <CardTitle className="text-3xl mt-2">
-                {formatCurrency((data?.summary.received || 0) + (data?.summary.pending || 0))}
-              </CardTitle>
-              <p className="text-sm text-muted-foreground mt-2">
-                {data?.counts.total || 0} cobranças no período
-              </p>
-            </GlowCard>
-
-            <GlowCard color="mrr" intensity="intense" surfaceClassName="p-6 gradient-accent-border">
-              <CardDescription className="flex items-center gap-2">
-                <Repeat className="h-4 w-4 text-primary" />
-                MRR
-              </CardDescription>
-              <CardTitle className="text-3xl text-primary text-glow-mrr mt-2">
-                {formatCurrency(data?.connected && data?.asaasMrr ? data.asaasMrr : mrr)}
-              </CardTitle>
-              <p className="text-sm text-muted-foreground mt-2">
-                Receita recorrente mensal
-              </p>
-            </GlowCard>
-          </div>
-
-          {/* Secondary Metrics */}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <GlowCard color="primary" intensity="subtle" surfaceClassName="p-6">
-              <CardDescription>Clientes Asaas</CardDescription>
-              <CardTitle className="text-2xl flex items-center gap-2 mt-2">
-                <Users className="h-5 w-5 text-primary" />
-                {data?.summary.totalClients || 0}
-              </CardTitle>
-            </GlowCard>
-
-            <GlowCard color="destructive" intensity="subtle" surfaceClassName="p-6">
-              <CardDescription className="flex items-center gap-2">
-                <Users className="h-4 w-4 text-destructive" />
-                Clientes Inadimplentes
-              </CardDescription>
-              <CardTitle className="text-2xl text-destructive mt-2">
-                {data?.inadimplentes?.totalClients || 0}
-              </CardTitle>
-              <p className="text-sm text-muted-foreground mt-1">
-                {data?.inadimplentes?.totalCharges || 0} cobranças · {formatCurrency(data?.inadimplentes?.totalValue || 0)}
-              </p>
-            </GlowCard>
-
-            <GlowCard color="mrr" intensity="subtle" surfaceClassName="p-6">
-              <CardDescription>Assinaturas Ativas</CardDescription>
-              <CardTitle className="text-2xl flex items-center gap-2 mt-2">
-                <Repeat className="h-5 w-5 text-primary" />
-                {data?.summary.activeSubscriptions || 0}
-              </CardTitle>
-            </GlowCard>
-
-            <GlowCard color="primary" intensity="subtle" surfaceClassName="p-6">
-              <CardDescription>Estornado</CardDescription>
-              <CardTitle className="text-2xl flex items-center gap-2 text-muted-foreground mt-2">
-                {formatCurrency(data?.summary.refunded || 0)}
-              </CardTitle>
-            </GlowCard>
-          </div>
-
-          {/* By Payment Type */}
-          <GlowCard color="primary" intensity="moderate">
-            <CardHeader>
-              <CardTitle className="text-base">Faturamento por Método</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-4 md:grid-cols-3">
-                <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-                  <div className="rounded-lg p-2 bg-success/10">
-                    <QrCode className="h-5 w-5 text-success" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">PIX</p>
-                    <p className="text-lg font-semibold">{formatCurrency(data?.byType.PIX || 0)}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-                  <div className="rounded-lg p-2 bg-primary/10">
-                    <FileText className="h-5 w-5 text-primary" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Boleto</p>
-                    <p className="text-lg font-semibold">{formatCurrency(data?.byType.BOLETO || 0)}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-                  <div className="rounded-lg p-2 bg-warning/10">
-                    <CreditCard className="h-5 w-5 text-warning" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Cartão</p>
-                    <p className="text-lg font-semibold">{formatCurrency(data?.byType.CREDIT_CARD || 0)}</p>
-                  </div>
+          <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
+            <div className="rounded-xl border border-emerald-200 dark:border-emerald-500/20 bg-gradient-to-br from-emerald-50 to-card dark:from-emerald-500/5 dark:to-card p-4">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-medium text-muted-foreground">Recebido</span>
+                <div className="rounded-full p-1.5 bg-emerald-500/10">
+                  <TrendingUp className="h-3 w-3 text-emerald-500" />
                 </div>
               </div>
-            </CardContent>
-          </GlowCard>
+              <p className="text-xl font-semibold tracking-tight text-foreground">
+                {formatCurrency(data?.summary.received || 0)}
+              </p>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                {data?.counts.received || 0} cobranças pagas
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-amber-200 dark:border-amber-500/20 bg-gradient-to-br from-amber-50 to-card dark:from-amber-500/5 dark:to-card p-4">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-medium text-muted-foreground">Pendente</span>
+                <div className="rounded-full p-1.5 bg-amber-500/10">
+                  <Clock className="h-3 w-3 text-amber-500" />
+                </div>
+              </div>
+              <p className="text-xl font-semibold tracking-tight text-foreground">
+                {formatCurrency(data?.summary.pending || 0)}
+              </p>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                {data?.counts.pending || 0} cobranças a receber
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-red-200 dark:border-red-500/20 bg-gradient-to-br from-red-50 to-card dark:from-red-500/5 dark:to-card p-4">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-medium text-muted-foreground">Vencido</span>
+                <div className="rounded-full p-1.5 bg-red-500/10">
+                  <AlertCircle className="h-3 w-3 text-red-500" />
+                </div>
+              </div>
+              <p className="text-xl font-semibold tracking-tight text-foreground">
+                {formatCurrency(data?.summary.overdue || 0)}
+              </p>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                {data?.counts.overdue || 0} cobranças vencidas
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-border bg-card p-4">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-medium text-muted-foreground">Total Período</span>
+                <div className="rounded-full p-1.5 bg-muted">
+                  <DollarSign className="h-3 w-3 text-foreground" />
+                </div>
+              </div>
+              <p className="text-xl font-semibold tracking-tight text-foreground">
+                {formatCurrency((data?.summary.received || 0) + (data?.summary.pending || 0))}
+              </p>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                {data?.counts.total || 0} cobranças no período
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-blue-200 dark:border-primary/20 bg-gradient-to-br from-blue-50 to-card dark:from-primary/5 dark:to-card p-4">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-medium text-muted-foreground">MRR</span>
+                <div className="rounded-full p-1.5 bg-primary/10">
+                  <Repeat className="h-3 w-3 text-primary" />
+                </div>
+              </div>
+              <p className="text-xl font-semibold tracking-tight text-foreground">
+                {formatCurrency(data?.connected && data?.asaasMrr ? data.asaasMrr : mrr)}
+              </p>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Receita recorrente mensal
+              </p>
+            </div>
+          </div>
+
+          {/* Secondary row: clients, inadimplentes, subscriptions, refunded + payment methods */}
+          <div className="rounded-xl border border-border bg-card">
+            <div className="grid grid-cols-2 lg:grid-cols-4 divide-x divide-border">
+              <div className="p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">Clientes Asaas</span>
+                </div>
+                <p className="text-lg font-semibold text-foreground">{data?.summary.totalClients || 0}</p>
+              </div>
+              <div className="p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <AlertCircle className="h-3.5 w-3.5 text-red-500" />
+                  <span className="text-xs text-muted-foreground">Inadimplentes</span>
+                </div>
+                <p className="text-lg font-semibold text-foreground">{data?.inadimplentes?.totalClients || 0}</p>
+                <p className="text-[11px] text-muted-foreground">
+                  {data?.inadimplentes?.totalCharges || 0} cobranças · {formatCurrency(data?.inadimplentes?.totalValue || 0)}
+                </p>
+              </div>
+              <div className="p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <Repeat className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">Assinaturas Ativas</span>
+                </div>
+                <p className="text-lg font-semibold text-foreground">{data?.summary.activeSubscriptions || 0}</p>
+              </div>
+              <div className="p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">Estornado</span>
+                </div>
+                <p className="text-lg font-semibold text-foreground">{formatCurrency(data?.summary.refunded || 0)}</p>
+              </div>
+            </div>
+
+            {/* Payment Methods */}
+            <div className="border-t border-border px-4 py-3">
+              <div className="flex items-center gap-6 flex-wrap">
+                <span className="text-xs font-medium text-muted-foreground">Por método:</span>
+                <div className="flex items-center gap-2">
+                  <QrCode className="h-3.5 w-3.5 text-emerald-500" />
+                  <span className="text-xs text-muted-foreground">PIX</span>
+                  <span className="text-sm font-medium text-foreground">{formatCurrency(data?.byType.PIX || 0)}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <FileText className="h-3.5 w-3.5 text-primary" />
+                  <span className="text-xs text-muted-foreground">Boleto</span>
+                  <span className="text-sm font-medium text-foreground">{formatCurrency(data?.byType.BOLETO || 0)}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CreditCard className="h-3.5 w-3.5 text-amber-500" />
+                  <span className="text-xs text-muted-foreground">Cartão</span>
+                  <span className="text-sm font-medium text-foreground">{formatCurrency(data?.byType.CREDIT_CARD || 0)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
 
           {/* Overdue Alert */}
           {(data?.summary.overdue || 0) > 0 && (
-            <Card className="border-destructive/50 bg-destructive/5">
-              <CardContent className="flex items-center gap-4 py-4">
-                <div className="rounded-lg p-3 bg-destructive/10">
-                  <AlertCircle className="h-6 w-6 text-destructive" />
+            <div className="rounded-xl border border-destructive/30 bg-destructive/5">
+              <div className="flex items-center gap-4 px-5 py-3">
+                <div className="rounded-lg p-2.5 bg-destructive/10">
+                  <AlertCircle className="h-5 w-5 text-destructive" />
                 </div>
                 <div className="flex-1">
-                  <p className="font-medium text-destructive">Atenção: Cobranças Vencidas</p>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-sm font-medium text-destructive">Atenção: Cobranças Vencidas</p>
+                  <p className="text-xs text-muted-foreground">
                     Você tem {data?.counts.overdue} cobranças vencidas totalizando {formatCurrency(data?.summary.overdue || 0)}
                   </p>
                 </div>
                 <Button variant="destructive" size="sm" asChild>
                   <Link href="/clients?filter=overdue">Ver Inadimplentes</Link>
                 </Button>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           )}
         </>
       )}

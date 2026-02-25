@@ -389,7 +389,7 @@ export function StoreControlPanel() {
         </div>
         {/* Table skeleton */}
         <div className="rounded-xl border border-border overflow-hidden">
-          <div className="bg-card/50 border-b border-border px-4 py-3 flex gap-8">
+          <div className="bg-muted/50 border-b border-border px-4 py-3 flex gap-8">
             {Array.from({ length: 6 }).map((_, i) => (
               <Skeleton key={i} className="h-3 w-24" />
             ))}
@@ -419,90 +419,80 @@ export function StoreControlPanel() {
     <div className="space-y-6">
       {/* Summary Cards - Clickable to filter */}
       {summary && (
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
           <button
             onClick={() => setFilterStatus('all')}
-            className={`rounded-xl bg-card/50 border p-4 text-left transition-all hover:bg-card/70 ${
-              filterStatus === 'all' ? 'border-border ring-1 ring-border' : 'border-border'
+            className={`rounded-xl border p-4 text-left transition-all hover:bg-muted/50 ${
+              filterStatus === 'all' ? 'border-primary/40 ring-1 ring-primary/40 bg-primary/5' : 'border-border bg-card'
             }`}
           >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
-                <Store className="w-5 h-5 text-muted-foreground" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-foreground">{summary.total}</p>
-                <p className="text-xs text-muted-foreground">Total de Lojas</p>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-medium text-muted-foreground">Total de Lojas</span>
+              <div className="rounded-full p-1.5 bg-muted">
+                <Store className="w-3 h-3 text-muted-foreground" />
               </div>
             </div>
+            <p className="text-xl font-semibold text-foreground">{summary.total}</p>
           </button>
 
           <button
             onClick={() => setFilterStatus('overdue')}
-            className={`rounded-xl bg-gradient-to-br from-destructive/10 to-destructive/5 border p-4 text-left transition-all hover:bg-destructive/15 ${
-              filterStatus === 'overdue' ? 'border-destructive ring-1 ring-destructive' : 'border-destructive/20'
+            className={`rounded-xl border p-4 text-left transition-all hover:bg-red-500/5 ${
+              filterStatus === 'overdue' ? 'border-red-500/40 ring-1 ring-red-500/40 bg-red-500/5' : 'border-border bg-card'
             }`}
           >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-destructive/10 flex items-center justify-center">
-                <AlertTriangle className="w-5 h-5 text-destructive" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-destructive">{summary.overdue}</p>
-                <p className="text-xs text-muted-foreground">Atrasadas</p>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-medium text-muted-foreground">Atrasadas</span>
+              <div className="rounded-full p-1.5 bg-red-500/10">
+                <AlertTriangle className="w-3 h-3 text-red-500" />
               </div>
             </div>
+            <p className="text-xl font-semibold text-foreground">{summary.overdue}</p>
           </button>
 
           <button
             onClick={() => setFilterStatus('due_soon')}
-            className={`rounded-xl bg-gradient-to-br from-warning/10 to-warning/5 border p-4 text-left transition-all hover:bg-warning/15 ${
-              filterStatus === 'due_soon' ? 'border-warning ring-1 ring-warning' : 'border-warning/20'
+            className={`rounded-xl border p-4 text-left transition-all hover:bg-amber-500/5 ${
+              filterStatus === 'due_soon' ? 'border-amber-500/40 ring-1 ring-amber-500/40 bg-amber-500/5' : 'border-border bg-card'
             }`}
           >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-warning/10 flex items-center justify-center">
-                <Clock className="w-5 h-5 text-warning" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-warning">{summary.due_soon}</p>
-                <p className="text-xs text-muted-foreground">Em breve</p>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-medium text-muted-foreground">Em breve</span>
+              <div className="rounded-full p-1.5 bg-amber-500/10">
+                <Clock className="w-3 h-3 text-amber-500" />
               </div>
             </div>
+            <p className="text-xl font-semibold text-foreground">{summary.due_soon}</p>
           </button>
 
           <button
             onClick={() => setFilterStatus('on_track')}
-            className={`rounded-xl bg-gradient-to-br from-success/10 to-success/5 border p-4 text-left transition-all hover:bg-success/15 ${
-              filterStatus === 'on_track' ? 'border-success ring-1 ring-success' : 'border-success/20'
+            className={`rounded-xl border p-4 text-left transition-all hover:bg-emerald-500/5 ${
+              filterStatus === 'on_track' ? 'border-emerald-500/40 ring-1 ring-emerald-500/40 bg-emerald-500/5' : 'border-border bg-card'
             }`}
           >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-success/10 flex items-center justify-center">
-                <CheckCircle className="w-5 h-5 text-success" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-success">{summary.on_track}</p>
-                <p className="text-xs text-muted-foreground">Em dia</p>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-medium text-muted-foreground">Em dia</span>
+              <div className="rounded-full p-1.5 bg-emerald-500/10">
+                <CheckCircle className="w-3 h-3 text-emerald-500" />
               </div>
             </div>
+            <p className="text-xl font-semibold text-foreground">{summary.on_track}</p>
           </button>
 
           <button
             onClick={() => setFilterStatus('never')}
-            className={`rounded-xl bg-muted/50 border p-4 text-left transition-all hover:bg-muted/70 ${
-              filterStatus === 'never' ? 'border-border ring-1 ring-border' : 'border-border'
+            className={`rounded-xl border p-4 text-left transition-all hover:bg-muted/50 ${
+              filterStatus === 'never' ? 'border-foreground/20 ring-1 ring-foreground/20 bg-muted/50' : 'border-border bg-card'
             }`}
           >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
-                <Calendar className="w-5 h-5 text-muted-foreground" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-muted-foreground">{summary.never}</p>
-                <p className="text-xs text-muted-foreground">Sem feedback</p>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-medium text-muted-foreground">Sem feedback</span>
+              <div className="rounded-full p-1.5 bg-muted">
+                <Calendar className="w-3 h-3 text-muted-foreground" />
               </div>
             </div>
+            <p className="text-xl font-semibold text-foreground">{summary.never}</p>
           </button>
         </div>
       )}
@@ -569,7 +559,7 @@ export function StoreControlPanel() {
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="bg-card/50 border-b border-border">
+              <tr className="bg-muted/50 border-b border-border">
                 <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3">Loja / Cliente</th>
                 <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Receita Klaviyo 30d</th>
                 <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Campanhas / Flows</th>
@@ -605,7 +595,7 @@ export function StoreControlPanel() {
                   const StatusIcon = statusBadge.icon
 
                   return (
-                    <tr key={store.id} className="border-b border-border/50 hover:bg-card/30 transition-colors">
+                    <tr key={store.id} className="border-b border-border/50 hover:bg-muted/50 transition-colors">
                       {/* Store / Client */}
                       <td className="px-4 py-4">
                         <div className="flex items-center gap-3">
@@ -696,7 +686,7 @@ export function StoreControlPanel() {
                           {store.last_call_source === 'meeting' ? (
                             <span title="Reunião"><Video className="w-3.5 h-3.5 text-primary" /></span>
                           ) : store.last_call_source === 'feedback' ? (
-                            <span title="Feedback"><Phone className="w-3.5 h-3.5 text-emerald-500" /></span>
+                            <span title="Feedback"><Phone className="w-3.5 h-3.5 text-success" /></span>
                           ) : null}
                           <span className="text-sm text-muted-foreground">
                             {formatDate(store.last_call_date)}
@@ -727,7 +717,7 @@ export function StoreControlPanel() {
                               setSelectedStore(store)
                               setIsRegisterDialogOpen(true)
                             }}
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white h-8 px-3"
+                            className="h-8 px-3"
                           >
                             <Phone className="w-3 h-3 mr-1" />
                             Registrar
@@ -796,7 +786,7 @@ export function StoreControlPanel() {
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Phone className="w-5 h-5 text-emerald-500" />
+              <Phone className="w-5 h-5 text-primary" />
               Registrar Call de Feedback
             </DialogTitle>
             <DialogDescription>
@@ -920,7 +910,7 @@ export function StoreControlPanel() {
             <Button
               onClick={handleRegisterFeedback}
               disabled={isSubmitting}
-              className="bg-emerald-600 hover:bg-emerald-700"
+              className=""
             >
               {isSubmitting ? (
                 <>

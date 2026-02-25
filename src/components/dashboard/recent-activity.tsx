@@ -13,7 +13,6 @@ import {
   LucideIcon,
 } from "lucide-react"
 import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 
@@ -84,15 +83,15 @@ export function RecentActivity({ activities = [] }: RecentActivityProps) {
   const hasActivities = activities.length > 0
 
   return (
-    <GlowCard color="primary" intensity="subtle">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base">Atividade Recente</CardTitle>
-        <CardDescription>Últimas ações no sistema</CardDescription>
+    <div className="rounded-xl border border-border bg-card">
+      <CardHeader className="p-5 pb-3">
+        <CardTitle className="text-sm font-medium text-foreground">Atividade Recente</CardTitle>
+        <CardDescription className="text-xs text-muted-foreground">Últimas ações no sistema</CardDescription>
       </CardHeader>
       <CardContent>
         <ScrollArea className="h-[300px] pr-4">
           {hasActivities ? (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {activities.map((activity) => {
                 const { icon: Icon, color, bg } = getActivityIcon(activity.type)
                 const profileName = Array.isArray(activity.profile)
@@ -100,14 +99,14 @@ export function RecentActivity({ activities = [] }: RecentActivityProps) {
                   : activity.profile?.name
                 return (
                   <div key={activity.id} className="flex gap-3">
-                    <div className={cn("rounded-lg p-2 h-fit", bg)}>
-                      <Icon className={cn("h-4 w-4", color)} />
+                    <div className={cn("rounded-md p-1.5 h-fit", bg)}>
+                      <Icon className={cn("h-3.5 w-3.5", color)} />
                     </div>
                     <div className="flex-1 space-y-1">
-                      <p className="text-sm leading-tight">{activity.description}</p>
+                      <p className="text-sm leading-tight text-foreground">{activity.description}</p>
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         <span>{profileName || "Sistema"}</span>
-                        <span>•</span>
+                        <span>·</span>
                         <span>{timeAgo(activity.created_at)}</span>
                       </div>
                     </div>
@@ -116,12 +115,12 @@ export function RecentActivity({ activities = [] }: RecentActivityProps) {
               })}
             </div>
           ) : (
-            <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+            <div className="flex items-center justify-center h-full text-sm text-muted-foreground text-center">
               Nenhuma atividade recente
             </div>
           )}
         </ScrollArea>
       </CardContent>
-    </GlowCard>
+    </div>
   )
 }

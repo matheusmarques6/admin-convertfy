@@ -27,7 +27,6 @@ import {
   Ban,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -758,38 +757,47 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
   return (
     <div className="space-y-6">
       {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <GlowCard color="success" intensity="intense" surfaceClassName="p-6">
-          <p className="text-sm text-muted-foreground mb-1">Total Recebido</p>
-          <p className="text-2xl font-bold text-success">
+      <div className="grid gap-3 md:grid-cols-4">
+        <Card className="rounded-xl border bg-card p-5">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-medium text-muted-foreground">Total Recebido</span>
+            <div className="rounded-full w-2 h-2 bg-emerald-500" />
+          </div>
+          <p className="text-xl font-semibold text-foreground">
             {formatCurrency(computedSummary.paidValue)}
           </p>
-          <p className="text-xs text-muted-foreground mt-2">
+          <p className="text-[11px] text-muted-foreground mt-1">
             {computedSummary.paidCount} cobranças pagas
           </p>
-        </GlowCard>
+        </Card>
 
-        <GlowCard color="warning" intensity="intense" surfaceClassName="p-6">
-          <p className="text-sm text-muted-foreground mb-1">Pendente</p>
-          <p className="text-2xl font-bold text-warning">
+        <Card className="rounded-xl border bg-card p-5">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-medium text-muted-foreground">Pendente</span>
+            <div className="rounded-full w-2 h-2 bg-amber-500" />
+          </div>
+          <p className="text-xl font-semibold text-foreground">
             {formatCurrency(computedSummary.pendingValue)}
           </p>
-          <p className="text-xs text-muted-foreground mt-2">
+          <p className="text-[11px] text-muted-foreground mt-1">
             {computedSummary.pendingCount} cobranças pendentes
           </p>
-        </GlowCard>
+        </Card>
 
-        <GlowCard color="destructive" intensity="intense" surfaceClassName="p-6">
-          <p className="text-sm text-muted-foreground mb-1">Vencido</p>
-          <p className="text-2xl font-bold text-destructive">
+        <Card className="rounded-xl border bg-card p-5">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-medium text-muted-foreground">Vencido</span>
+            <div className="rounded-full w-2 h-2 bg-red-500" />
+          </div>
+          <p className="text-xl font-semibold text-foreground">
             {formatCurrency(computedSummary.overdueValue)}
           </p>
-          <p className="text-xs text-muted-foreground mt-2">
+          <p className="text-[11px] text-muted-foreground mt-1">
             {computedSummary.overdueCount} cobranças vencidas
           </p>
-        </GlowCard>
+        </Card>
 
-        <GlowCard color="primary" intensity="intense" surfaceClassName="p-6">
+        <Card className="rounded-xl border bg-card p-6">
           <p className="text-sm text-muted-foreground mb-1">Assinaturas Ativas</p>
           <p className="text-2xl font-bold text-foreground">
             {computedSummary.activeSubsCount}
@@ -797,7 +805,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           <p className="text-xs text-muted-foreground mt-2">
             {formatCurrency(computedSummary.activeSubsValue)}/mês
           </p>
-        </GlowCard>
+        </Card>
       </div>
 
       {/* Actions Bar */}
@@ -986,7 +994,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
             <div className="grid gap-4 md:grid-cols-2">
               {/* Local Subscriptions */}
               {localSubscriptions.map(sub => (
-                <Card key={sub.id} className={sub.status === "active" ? "border-green-500/50" : ""}>
+                <Card key={sub.id} className={sub.status === "active" ? "border-success/50" : ""}>
                   <CardHeader className="pb-2">
                     <div className="flex items-center justify-between">
                       <CardTitle className="text-lg">{formatCurrency(sub.value)}</CardTitle>
@@ -1045,7 +1053,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
               ))}
               {/* Asaas Subscriptions */}
               {subscriptions.map(sub => (
-                <Card key={sub.id} className={sub.isActive ? "border-green-500/50" : ""}>
+                <Card key={sub.id} className={sub.isActive ? "border-success/50" : ""}>
                   <CardHeader className="pb-2">
                     <div className="flex items-center justify-between">
                       <CardTitle className="text-lg">{formatCurrency(sub.value)}</CardTitle>
@@ -1230,9 +1238,9 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           ) : (
             <>
               <div className="space-y-4 py-4">
-                <div className="rounded-lg border border-green-500/50 bg-green-500/10 p-4 text-center">
-                  <CheckCircle2 className="h-12 w-12 text-green-600 mx-auto mb-2" />
-                  <p className="font-medium text-green-600">Cobrança criada com sucesso!</p>
+                <div className="rounded-lg border border-success/50 bg-success/10 p-4 text-center">
+                  <CheckCircle2 className="h-12 w-12 text-success mx-auto mb-2" />
+                  <p className="font-medium text-success">Cobrança criada com sucesso!</p>
                 </div>
 
                 {createdPayment.pixQrCode && (

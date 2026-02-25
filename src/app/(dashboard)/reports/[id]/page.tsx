@@ -28,7 +28,6 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
 import { Badge } from "@/components/ui/badge"
 import {
   DropdownMenu,
@@ -115,7 +114,7 @@ function getStatusBadge(status: ReportStatus | undefined) {
     case "published":
       return <Badge variant="default"><CheckCircle className="mr-1 h-3 w-3" />Publicado</Badge>
     case "sent":
-      return <Badge variant="outline" className="bg-success/10 text-success border-success/30"><Send className="mr-1 h-3 w-3" />Enviado</Badge>
+      return <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/30"><Send className="mr-1 h-3 w-3" />Enviado</Badge>
     case "archived":
       return <Badge variant="outline"><Archive className="mr-1 h-3 w-3" />Arquivado</Badge>
     default:
@@ -383,7 +382,7 @@ export default function ReportPage() {
       {revenue && (
         <>
           <h2 className="text-lg font-semibold flex items-center gap-2">
-            <DollarSign className="h-5 w-5 text-success" />
+            <DollarSign className="h-5 w-5 text-emerald-500" />
             Métricas de Receita
           </h2>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -391,10 +390,10 @@ export default function ReportPage() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Faturamento Total</CardTitle>
-                  <TrendingUp className="h-4 w-4 text-success" />
+                  <TrendingUp className="h-4 w-4 text-emerald-500" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-success">
+                  <div className="text-2xl font-bold text-foreground">
                     {formatReportCurrency(revenue.totalRevenue)}
                   </div>
                 </CardContent>
@@ -419,7 +418,7 @@ export default function ReportPage() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Pedidos</CardTitle>
-                  <ShoppingCart className="h-4 w-4 text-info" />
+                  <ShoppingCart className="h-4 w-4 text-blue-500" />
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">{revenue.totalOrders}</div>
@@ -431,7 +430,7 @@ export default function ReportPage() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Ticket Médio</CardTitle>
-                  <DollarSign className="h-4 w-4 text-warning" />
+                  <DollarSign className="h-4 w-4 text-amber-500" />
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
@@ -448,7 +447,7 @@ export default function ReportPage() {
       {overview && (
         <>
           <h2 className="text-lg font-semibold flex items-center gap-2">
-            <Users className="h-5 w-5 text-info" />
+            <Users className="h-5 w-5 text-blue-500" />
             Visão Geral
           </h2>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -456,7 +455,7 @@ export default function ReportPage() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Total de Contatos</CardTitle>
-                  <Users className="h-4 w-4 text-info" />
+                  <Users className="h-4 w-4 text-blue-500" />
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
@@ -470,7 +469,7 @@ export default function ReportPage() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Engajados (90d)</CardTitle>
-                  <Zap className="h-4 w-4 text-warning" />
+                  <Zap className="h-4 w-4 text-amber-500" />
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
@@ -496,7 +495,7 @@ export default function ReportPage() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Campanhas</CardTitle>
-                  <Mail className="h-4 w-4 text-info" />
+                  <Mail className="h-4 w-4 text-blue-500" />
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">{overview.totalCampaigns}</div>
@@ -538,10 +537,10 @@ export default function ReportPage() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Taxa de Abertura</CardTitle>
-                  <MousePointer className="h-4 w-4 text-success" />
+                  <MousePointer className="h-4 w-4 text-emerald-500" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-success">
+                  <div className="text-2xl font-bold text-foreground">
                     {emailPerformance.openRate.toFixed(1)}%
                   </div>
                   {emailPerformance.opened !== undefined && (
@@ -557,10 +556,10 @@ export default function ReportPage() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Taxa de Clique</CardTitle>
-                  <MousePointer className="h-4 w-4 text-info" />
+                  <MousePointer className="h-4 w-4 text-blue-500" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-info">
+                  <div className="text-2xl font-bold text-blue-500">
                     {emailPerformance.clickRate.toFixed(1)}%
                   </div>
                   {emailPerformance.clicked !== undefined && (
@@ -579,7 +578,7 @@ export default function ReportPage() {
                   <TrendingUp className="h-4 w-4 text-destructive" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-destructive">
+                  <div className="text-2xl font-bold text-foreground">
                     {emailPerformance.bounceRate.toFixed(2)}%
                   </div>
                   {emailPerformance.bounced !== undefined && (
@@ -596,7 +595,7 @@ export default function ReportPage() {
 
       {/* Top Flows */}
       {reportData?.flows && reportData.flows.length > 0 && (
-        <GlowCard color="primary" intensity="subtle">
+        <Card className="rounded-xl border bg-card">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Zap className="h-5 w-5 text-primary" />
@@ -620,7 +619,7 @@ export default function ReportPage() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="font-bold text-success">
+                    <p className="font-bold text-emerald-500">
                       {formatReportCurrency(flow.revenue || 0)}
                     </p>
                   </div>
@@ -628,15 +627,15 @@ export default function ReportPage() {
               ))}
             </div>
           </CardContent>
-        </GlowCard>
+        </Card>
       )}
 
       {/* Top Campaigns */}
       {reportData?.campaigns && reportData.campaigns.length > 0 && (
-        <GlowCard color="primary" intensity="subtle">
+        <Card className="rounded-xl border bg-card">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Mail className="h-5 w-5 text-info" />
+              <Mail className="h-5 w-5 text-blue-500" />
               Top Campanhas
             </CardTitle>
             <CardDescription>Campanhas com maior receita no período</CardDescription>
@@ -657,7 +656,7 @@ export default function ReportPage() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="font-bold text-success">
+                    <p className="font-bold text-emerald-500">
                       {formatReportCurrency(campaign.revenue || 0)}
                     </p>
                   </div>
@@ -665,12 +664,12 @@ export default function ReportPage() {
               ))}
             </div>
           </CardContent>
-        </GlowCard>
+        </Card>
       )}
 
       {/* Notes */}
       {report.notes && (
-        <GlowCard color="primary" intensity="subtle">
+        <Card className="rounded-xl border bg-card">
           <CardHeader>
             <CardTitle>Observações</CardTitle>
             <CardDescription>Notas e insights sobre o período</CardDescription>
@@ -678,11 +677,11 @@ export default function ReportPage() {
           <CardContent>
             <p className="whitespace-pre-wrap">{report.notes}</p>
           </CardContent>
-        </GlowCard>
+        </Card>
       )}
 
       {/* Metadata */}
-      <GlowCard color="primary" intensity="subtle">
+      <Card className="rounded-xl border bg-card">
         <CardHeader>
           <CardTitle>Informações do Relatório</CardTitle>
         </CardHeader>
@@ -724,7 +723,7 @@ export default function ReportPage() {
             )}
           </dl>
         </CardContent>
-      </GlowCard>
+      </Card>
 
       {/* Delete Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

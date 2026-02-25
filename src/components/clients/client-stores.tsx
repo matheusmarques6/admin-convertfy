@@ -19,7 +19,6 @@ import {
   FileJson,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -524,7 +523,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
           {stores.map((store) => (
-            <GlowCard key={store.id} color="primary" intensity="subtle">
+            <Card key={store.id} className="rounded-xl border bg-card">
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
@@ -551,7 +550,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
                       href={store.store_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-blue-500 hover:underline truncate"
+                      className="text-primary hover:underline truncate"
                     >
                       {store.store_url}
                     </a>
@@ -563,7 +562,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
                   <div className="p-3 rounded-lg bg-muted/50 space-y-2">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <Store className="h-4 w-4 text-green-500" />
+                        <Store className="h-4 w-4 text-success" />
                         <span className="text-sm font-medium">Shopify</span>
                       </div>
                       {store.shopify_access_token ? (
@@ -610,7 +609,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
                 <div className="p-3 rounded-lg bg-muted/50 space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <Key className="h-4 w-4 text-purple-500" />
+                      <Key className="h-4 w-4 text-primary" />
                       <span className="text-sm font-medium">Klaviyo</span>
                     </div>
                     {(store.klaviyo_private_key || store.klaviyo_api_key) ? (
@@ -661,7 +660,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
                 <div className="p-3 rounded-lg bg-muted/50 space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <BarChart3 className="h-4 w-4 text-orange-500" />
+                      <BarChart3 className="h-4 w-4 text-warning" />
                       <span className="text-sm font-medium">Google Analytics</span>
                     </div>
                     {store.ga4_property_id ? (
@@ -713,7 +712,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
                   </Button>
                 </div>
               </CardContent>
-            </GlowCard>
+            </Card>
           ))}
         </div>
       )}
@@ -792,7 +791,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
             {form.platform === "Shopify" && (
               <div className="border-t pt-4 mt-4">
                 <h4 className="font-medium flex items-center gap-2 mb-4">
-                  <Store className="h-4 w-4 text-green-500" />
+                  <Store className="h-4 w-4 text-success" />
                   Integração Shopify
                 </h4>
 
@@ -828,7 +827,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
             {/* Klaviyo Integration */}
             <div className="border-t pt-4 mt-4">
               <h4 className="font-medium flex items-center gap-2 mb-4">
-                <Key className="h-4 w-4 text-purple-500" />
+                <Key className="h-4 w-4 text-primary" />
                 Integração Klaviyo
               </h4>
 
@@ -872,7 +871,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
             {/* Google Analytics Integration */}
             <div className="border-t pt-4 mt-4">
               <h4 className="font-medium flex items-center gap-2 mb-4">
-                <BarChart3 className="h-4 w-4 text-orange-500" />
+                <BarChart3 className="h-4 w-4 text-warning" />
                 Integração Google Analytics (GA4)
               </h4>
 

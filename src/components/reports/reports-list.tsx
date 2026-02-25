@@ -24,7 +24,6 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import {
@@ -167,7 +166,7 @@ function getStatusBadge(status: ReportStatus | undefined) {
     case "published":
       return <Badge variant="default" className="text-xs"><CheckCircle className="mr-1 h-3 w-3" />Publicado</Badge>
     case "sent":
-      return <Badge variant="outline" className="text-xs bg-success/10 text-success border-success/30"><Send className="mr-1 h-3 w-3" />Enviado</Badge>
+      return <Badge variant="outline" className="text-xs bg-emerald-500/10 text-emerald-500 border-emerald-500/30"><Send className="mr-1 h-3 w-3" />Enviado</Badge>
     case "archived":
       return <Badge variant="outline" className="text-xs"><Archive className="mr-1 h-3 w-3" />Arquivado</Badge>
     default:
@@ -180,9 +179,9 @@ function getReportTypeBadge(type: string) {
     case "klaviyo":
       return <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/30">Klaviyo</Badge>
     case "shopify":
-      return <Badge variant="outline" className="text-xs bg-success/10 text-success border-success/30">Shopify</Badge>
+      return <Badge variant="outline" className="text-xs bg-emerald-500/10 text-emerald-500 border-emerald-500/30">Shopify</Badge>
     case "combined":
-      return <Badge variant="outline" className="text-xs bg-info/10 text-info border-info/30">Combinado</Badge>
+      return <Badge variant="outline" className="text-xs bg-blue-500/10 text-blue-500 border-blue-500/30">Combinado</Badge>
     case "manual":
       return <Badge variant="outline" className="text-xs">Manual</Badge>
     default:
@@ -207,6 +206,7 @@ export function ReportsList({
   const [storeFilter, setStoreFilter] = useState<string>(initialStoreId || "all")
   const [typeFilter, setTypeFilter] = useState<string>("all")
   const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [monthFilter, setMonthFilter] = useState<string>("all")
   const [showFilters, setShowFilters] = useState(!!initialStoreId)
 
   // Delete dialog
@@ -274,6 +274,20 @@ export function ReportsList({
   }, [filteredReports])
 
   const sortedMonths = Object.keys(groupedReports).sort((a, b) => b.localeCompare(a))
+
+  // All available months for the month filter (from all reports, not filtered)
+  const availableMonths = useMemo(() => {
+    const monthSet = new Set<string>()
+    reports.forEach(report => {
+      monthSet.add(getReportMonth(report))
+    })
+    return Array.from(monthSet).sort((a, b) => b.localeCompare(a))
+  }, [reports])
+
+  // Filter months by selected month
+  const displayedMonths = monthFilter === "all"
+    ? sortedMonths
+    : sortedMonths.filter(m => m === monthFilter)
 
   // Delete report
   async function handleDelete() {
@@ -344,7 +358,7 @@ export function ReportsList({
     }
   }
 
-  const hasActiveFilters = searchTerm || clientFilter !== "all" || storeFilter !== "all" || typeFilter !== "all" || statusFilter !== "all"
+  const hasActiveFilters = searchTerm || clientFilter !== "all" || storeFilter !== "all" || typeFilter !== "all" || statusFilter !== "all" || monthFilter !== "all"
 
   function clearFilters() {
     setSearchTerm("")
@@ -352,6 +366,7 @@ export function ReportsList({
     setStoreFilter("all")
     setTypeFilter("all")
     setStatusFilter("all")
+    setMonthFilter("all")
   }
 
   return (
@@ -374,7 +389,7 @@ export function ReportsList({
 
       {/* Stats */}
       <div className="grid gap-4 md:grid-cols-3">
-        <GlowCard color="primary" intensity="intense">
+        <Card className="rounded-xl border bg-card">
           <CardContent className="flex items-center gap-4 pt-6">
             <div className="rounded-lg p-3 bg-primary/10">
               <FileText className="h-5 w-5 text-primary" />
@@ -384,37 +399,37 @@ export function ReportsList({
               <p className="text-2xl font-bold">{totalCount}</p>
             </div>
           </CardContent>
-        </GlowCard>
-        <GlowCard color="success" intensity="intense">
+        </Card>
+        <Card className="rounded-xl border bg-card">
           <CardContent className="flex items-center gap-4 pt-6">
-            <div className="rounded-lg p-3 bg-success/10">
-              <Calendar className="h-5 w-5 text-success" />
+            <div className="rounded-lg p-3 bg-emerald-500/10">
+              <Calendar className="h-5 w-5 text-emerald-500" />
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Este Mês</p>
               <p className="text-2xl font-bold">{thisMonthCount}</p>
             </div>
           </CardContent>
-        </GlowCard>
-        <GlowCard color="warning" intensity="intense">
+        </Card>
+        <Card className="rounded-xl border bg-card">
           <CardContent className="flex items-center gap-4 pt-6">
-            <div className="rounded-lg p-3 bg-warning/10">
-              <Clock className="h-5 w-5 text-warning" />
+            <div className="rounded-lg p-3 bg-amber-500/10">
+              <Clock className="h-5 w-5 text-amber-500" />
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Pendentes</p>
               <p className="text-2xl font-bold">{pendingCount}</p>
             </div>
           </CardContent>
-        </GlowCard>
+        </Card>
       </div>
 
       {/* Pending Reports Section */}
       {pendingStores.length > 0 && (
-        <GlowCard color="warning" intensity="moderate">
+        <Card className="rounded-xl border bg-card">
           <CardHeader>
             <div className="flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-warning" />
+              <AlertCircle className="h-5 w-5 text-amber-500" />
               <CardTitle className="text-base">Relatórios Pendentes</CardTitle>
             </div>
             <CardDescription>
@@ -440,7 +455,7 @@ export function ReportsList({
                         </Badge>
                       )}
                       {store.has_shopify && (
-                        <Badge variant="outline" className="text-xs bg-success/10 text-success border-success/30">
+                        <Badge variant="outline" className="text-xs bg-emerald-500/10 text-emerald-500 border-emerald-500/30">
                           Shopify
                         </Badge>
                       )}
@@ -458,11 +473,11 @@ export function ReportsList({
               ))}
             </div>
           </CardContent>
-        </GlowCard>
+        </Card>
       )}
 
       {/* Filters */}
-      <GlowCard color="primary" intensity="subtle">
+      <Card className="rounded-xl border bg-card">
         <CardContent className="pt-6">
           <div className="flex flex-col gap-4">
             <div className="flex items-center gap-4">
@@ -558,6 +573,23 @@ export function ReportsList({
                   </Select>
                 </div>
 
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">Mês</label>
+                  <Select value={monthFilter} onValueChange={setMonthFilter}>
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="Todos os meses" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos os meses</SelectItem>
+                      {availableMonths.map(month => (
+                        <SelectItem key={month} value={month}>
+                          {formatMonth(month)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 {hasActiveFilters && (
                   <div className="flex items-end">
                     <Button variant="ghost" size="sm" onClick={clearFilters}>
@@ -570,7 +602,36 @@ export function ReportsList({
             )}
           </div>
         </CardContent>
-      </GlowCard>
+      </Card>
+
+      {/* Month Navigation Bar */}
+      {availableMonths.length > 1 && (
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
+          <Button
+            variant={monthFilter === "all" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setMonthFilter("all")}
+            className="shrink-0"
+          >
+            <Calendar className="mr-1.5 h-3.5 w-3.5" />
+            Todos
+          </Button>
+          {availableMonths.map(month => (
+            <Button
+              key={month}
+              variant={monthFilter === month ? "default" : "outline"}
+              size="sm"
+              onClick={() => setMonthFilter(month)}
+              className="shrink-0"
+            >
+              {formatMonth(month)}
+              <Badge variant="secondary" className="ml-1.5 h-5 min-w-[20px] px-1.5 text-[10px]">
+                {groupedReports[month]?.length || reports.filter(r => getReportMonth(r) === month).length}
+              </Badge>
+            </Button>
+          ))}
+        </div>
+      )}
 
       {/* Results info */}
       {hasActiveFilters && (
@@ -580,7 +641,7 @@ export function ReportsList({
       )}
 
       {/* Reports by Month */}
-      {sortedMonths.length === 0 ? (
+      {displayedMonths.length === 0 ? (
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center justify-center py-12">
             <div className="rounded-full bg-muted p-4 mb-4">
@@ -606,8 +667,8 @@ export function ReportsList({
           </CardContent>
         </Card>
       ) : (
-        sortedMonths.map((month) => (
-          <GlowCard key={month} color="primary" intensity="subtle">
+        displayedMonths.map((month) => (
+          <Card key={month} className="rounded-xl border bg-card">
             <CardHeader>
               <CardTitle className="text-base">{formatMonth(month)}</CardTitle>
               <CardDescription>
@@ -720,7 +781,7 @@ export function ReportsList({
                           {revenue !== undefined && (
                             <div>
                               <p className="text-xs text-muted-foreground">Receita</p>
-                              <p className="font-medium text-success">
+                              <p className="font-medium text-foreground">
                                 {formatCurrency(revenue)}
                               </p>
                             </div>
@@ -753,7 +814,7 @@ export function ReportsList({
                 })}
               </div>
             </CardContent>
-          </GlowCard>
+          </Card>
         ))
       )}
 

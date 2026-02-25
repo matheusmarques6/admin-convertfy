@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import Link from "next/link"
 import { format } from "date-fns"
 import { TrendingUp, RefreshCw, Megaphone, Workflow, Store } from "lucide-react"
-import { CardDescription, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import {
   Select,
@@ -14,7 +13,6 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
-import { GlowCard } from "@/components/ui/glow-card"
 import { DateRangePicker } from "@/components/ui/date-range-picker"
 import { formatCurrency, cn } from "@/lib/utils"
 
@@ -120,7 +118,7 @@ export function TotalRevenueBanner({ storeIds }: TotalRevenueBannerProps = {}) {
   // Skeleton loading
   if (isLoading && !data) {
     return (
-      <GlowCard color="primary" intensity="moderate" surfaceClassName="p-6">
+      <div className="rounded-xl border border-border bg-card p-6">
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <Skeleton className="h-6 w-48" />
@@ -129,47 +127,51 @@ export function TotalRevenueBanner({ storeIds }: TotalRevenueBannerProps = {}) {
               <Skeleton className="h-9 w-9" />
             </div>
           </div>
-          <Skeleton className="h-12 w-64" />
+          <Skeleton className="h-14 w-72" />
           <div className="grid grid-cols-2 gap-4">
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-20 w-full rounded-xl" />
+            <Skeleton className="h-20 w-full rounded-xl" />
           </div>
-          <div className="space-y-2">
+          <div className="space-y-3">
             {[...Array(3)].map((_, i) => (
-              <Skeleton key={i} className="h-6 w-full" />
+              <Skeleton key={i} className="h-8 w-full rounded-lg" />
             ))}
           </div>
         </div>
-      </GlowCard>
+      </div>
     )
   }
 
   // Empty state
   if (data && data.storesCount === 0) {
     return (
-      <GlowCard color="primary" intensity="subtle" surfaceClassName="p-6">
-        <div className="flex flex-col items-center justify-center py-6">
-          <Store className="h-10 w-10 text-muted-foreground mb-3" />
-          <h3 className="text-base font-medium">Resultado Total</h3>
-          <p className="text-sm text-muted-foreground text-center mt-1">
+      <div className="rounded-xl border border-border bg-card p-6">
+        <div className="flex flex-col items-center justify-center py-8">
+          <div className="rounded-xl bg-muted p-3 mb-4">
+            <Store className="h-8 w-8 text-muted-foreground" />
+          </div>
+          <h3 className="text-base font-semibold text-foreground">Resultado Total</h3>
+          <p className="text-sm text-muted-foreground text-center mt-1.5 max-w-xs">
             Conecte lojas com Klaviyo para ver a receita gerada
           </p>
         </div>
-      </GlowCard>
+      </div>
     )
   }
 
   const maxRevenue = data?.topStores[0]?.totalRevenue || 1
 
   return (
-    <div className="relative overflow-hidden rounded-xl border bg-gradient-to-r from-[#5327F2]/5 via-transparent to-transparent dark:from-[#5327F2]/10">
-      <div className="p-6 space-y-5">
+    <div className="rounded-xl border border-primary/20 bg-gradient-to-br from-primary/5 via-card to-card">
+      <div className="p-6 space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <TrendingUp className="h-5 w-5 text-[#5327F2]" />
-            <h2 className="text-lg font-semibold">Resultado Total</h2>
-            <span className="text-xs text-muted-foreground">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="rounded-lg bg-primary/10 p-1.5">
+              <TrendingUp className="h-4 w-4 text-primary" />
+            </div>
+            <h2 className="text-base font-semibold text-foreground">Resultado Total</h2>
+            <span className="text-xs text-muted-foreground hidden sm:inline">
               Receita gerada via Klaviyo
             </span>
           </div>
@@ -179,7 +181,7 @@ export function TotalRevenueBanner({ storeIds }: TotalRevenueBannerProps = {}) {
               setCustomStart(undefined)
               setCustomEnd(undefined)
             }}>
-              <SelectTrigger className="w-28 h-9">
+              <SelectTrigger className="w-28 h-9 rounded-lg">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -197,7 +199,7 @@ export function TotalRevenueBanner({ storeIds }: TotalRevenueBannerProps = {}) {
             <Button
               variant="ghost"
               size="icon"
-              className="h-9 w-9"
+              className="h-9 w-9 rounded-lg"
               onClick={() => loadData(period, customStart, customEnd)}
               disabled={isLoading}
             >
@@ -208,41 +210,41 @@ export function TotalRevenueBanner({ storeIds }: TotalRevenueBannerProps = {}) {
 
         {/* Main number */}
         <div>
-          <CardTitle className="text-4xl font-bold text-[#5327F2]">
+          <p className="text-3xl md:text-4xl font-bold tracking-tight text-primary">
             {formatCurrency(animatedTotal)}
-          </CardTitle>
-          <CardDescription className="mt-1">
+          </p>
+          <p className="mt-1.5 text-sm text-muted-foreground">
             {data?.storesWithRevenue || 0} de {data?.storesCount || 0} lojas geraram receita
-          </CardDescription>
+          </p>
         </div>
 
         {/* Breakdown: campaigns vs flows */}
         <div className="grid grid-cols-2 gap-4">
-          <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-            <div className="rounded-lg p-2 bg-[#5327F2]/10">
-              <Megaphone className="h-4 w-4 text-[#5327F2]" />
+          <div className="flex items-center gap-3 p-4 rounded-xl border border-border bg-card">
+            <div className="rounded-xl p-2.5 bg-primary/10">
+              <Megaphone className="h-4 w-4 text-primary" />
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Campanhas</p>
-              <p className="text-lg font-semibold">{formatCurrency(animatedCampaign)}</p>
+              <p className="text-xs text-muted-foreground font-medium">Campanhas</p>
+              <p className="text-lg font-semibold tracking-tight text-foreground">{formatCurrency(animatedCampaign)}</p>
             </div>
           </div>
-          <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-            <div className="rounded-lg p-2 bg-[#7C5DFA]/10">
-              <Workflow className="h-4 w-4 text-[#7C5DFA]" />
+          <div className="flex items-center gap-3 p-4 rounded-xl border border-border bg-card">
+            <div className="rounded-xl p-2.5 bg-info/10">
+              <Workflow className="h-4 w-4 text-info" />
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Flows</p>
-              <p className="text-lg font-semibold">{formatCurrency(animatedFlow)}</p>
+              <p className="text-xs text-muted-foreground font-medium">Flows</p>
+              <p className="text-lg font-semibold tracking-tight text-foreground">{formatCurrency(animatedFlow)}</p>
             </div>
           </div>
         </div>
 
         {/* Top 5 stores */}
         {data?.topStores && data.topStores.length > 0 && (
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-muted-foreground">Top Lojas</p>
-            <div className="space-y-2">
+          <div className="space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Top Lojas</p>
+            <div className="space-y-2.5">
               {data.topStores.map((store) => {
                 const widthPercent = Math.max((store.totalRevenue / maxRevenue) * 100, 4)
                 return (
@@ -251,18 +253,18 @@ export function TotalRevenueBanner({ storeIds }: TotalRevenueBannerProps = {}) {
                     href={`/stores/${store.storeId}`}
                     className="block group"
                   >
-                    <div className="flex items-center justify-between text-sm mb-1">
-                      <span className="truncate max-w-[60%] group-hover:text-[#5327F2] transition-colors">
+                    <div className="flex items-center justify-between text-sm mb-1.5">
+                      <span className="truncate max-w-[60%] text-foreground group-hover:text-primary transition-colors">
                         {store.storeName}
-                        <span className="text-muted-foreground ml-1 text-xs">
+                        <span className="text-muted-foreground ml-1.5 text-xs">
                           ({store.clientName})
                         </span>
                       </span>
-                      <span className="font-medium">{formatCurrency(store.totalRevenue)}</span>
+                      <span className="font-medium tabular-nums text-foreground">{formatCurrency(store.totalRevenue)}</span>
                     </div>
                     <div className="h-2 rounded-full bg-muted overflow-hidden">
                       <div
-                        className="h-full rounded-full bg-gradient-to-r from-[#5327F2] to-[#7C5DFA] transition-all duration-500"
+                        className="h-full rounded-full bg-primary transition-all duration-500"
                         style={{ width: `${widthPercent}%` }}
                       />
                     </div>

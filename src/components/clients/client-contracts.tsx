@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react"
 import { Plus, FileText, Calendar, Loader2, Upload, X, Paperclip, ExternalLink } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -252,7 +251,7 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
     <div className="space-y-6">
       {/* Active Contract */}
       {activeContract ? (
-        <GlowCard color="success" intensity="moderate">
+        <Card className="rounded-xl border bg-card">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle className="text-base">Contrato Ativo</CardTitle>
@@ -272,7 +271,7 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
             <div className="grid gap-4 md:grid-cols-3">
               <div>
                 <p className="text-xs text-muted-foreground">Valor Mensal</p>
-                <p className="text-2xl font-bold text-success">
+                <p className="text-xl font-semibold text-foreground">
                   {formatCurrency(activeContract.monthly_value)}
                 </p>
               </div>
@@ -299,7 +298,7 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
             )}
             {renderDocumentButton(activeContract)}
           </CardContent>
-        </GlowCard>
+        </Card>
       ) : (
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center justify-center py-8">
@@ -319,7 +318,7 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
 
       {/* Contract History */}
       {pastContracts.length > 0 && (
-        <GlowCard color="primary" intensity="subtle">
+        <Card className="rounded-xl border bg-card">
           <CardHeader>
             <CardTitle className="text-base">Histórico de Contratos</CardTitle>
           </CardHeader>
@@ -370,7 +369,7 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
               )
             })}
           </CardContent>
-        </GlowCard>
+        </Card>
       )}
 
       {/* New Contract Dialog */}

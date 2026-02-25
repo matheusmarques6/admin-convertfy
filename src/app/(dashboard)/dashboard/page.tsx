@@ -9,17 +9,16 @@ import { QuickActions } from "@/components/dashboard/quick-actions"
 import { TotalRevenueBanner } from "@/components/dashboard/total-revenue-banner"
 import { TodayAgenda } from "@/components/dashboard/today-agenda"
 import { Skeleton } from "@/components/ui/skeleton"
-import { AnimatedContainer, AnimatedItem } from "@/components/ui/animated-container"
 import type { DashboardAlert } from "@/types"
 
 export const dynamic = "force-dynamic"
 
 const STATUS_COLORS: Record<string, string> = {
-  active: "#22C55E",
-  prospect: "#3B82F6",
-  onboarding: "#5327F2",
-  inactive: "#6B7280",
-  churned: "#EF4444",
+  active: "hsl(var(--success))",
+  prospect: "hsl(var(--info))",
+  onboarding: "hsl(var(--primary))",
+  inactive: "hsl(var(--muted-foreground))",
+  churned: "hsl(var(--destructive))",
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -109,7 +108,7 @@ async function getDashboardData() {
   const stageMap = new Map<string, { value: number; deals: number; order: number }>()
   deals?.forEach((d) => {
     const stage = Array.isArray(d.stage) ? d.stage[0] : d.stage
-    const name = stage?.name || "Sem estágio"
+    const name = stage?.name || "Sem estagio"
     const order = stage?.order ?? 999
     const current = stageMap.get(name) || { value: 0, deals: 0, order }
     stageMap.set(name, {
@@ -152,7 +151,6 @@ async function getDashboardData() {
     .order("end_date", { ascending: true })
     .limit(5)
 
-  // Get client names for expiring contracts
   const expiringClientIds = [...new Set(expiringContracts?.map((c) => c.client_id).filter(Boolean) || [])]
   const { data: expiringClients } = expiringClientIds.length > 0
     ? await supabase.from("clients").select("id, name").in("id", expiringClientIds)
@@ -176,7 +174,6 @@ async function getDashboardData() {
     .order("due_date", { ascending: true })
     .limit(5)
 
-  // Get client names for overdue charges
   const overdueClientIds = [...new Set(overdueCharges?.map((c) => c.client_id).filter(Boolean) || [])]
   const { data: overdueClients } = overdueClientIds.length > 0
     ? await supabase.from("clients").select("id, name").in("id", overdueClientIds)
@@ -231,22 +228,15 @@ async function getDashboardData() {
 
 function MetricsSkeleton() {
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-2">
-        <Skeleton className="h-10 w-48" />
-        <Skeleton className="h-10 w-10" />
-      </div>
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {[...Array(4)].map((_, i) => (
-          <Skeleton key={i} className="h-32" />
-        ))}
-      </div>
+    <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
+      {[...Array(5)].map((_, i) => (
+        <Skeleton key={i} className="h-24 rounded-xl" />
+      ))}
     </div>
   )
 }
 
 export default async function DashboardPage() {
-  // Redirect agentes (não-admin/não-owner) para dashboard operacional
   const supabase2 = await createClient()
   const { data: { user: authUser } } = await supabase2.auth.getUser()
 
@@ -279,41 +269,36 @@ export default async function DashboardPage() {
   const data = await getDashboardData()
 
   return (
-    <AnimatedContainer className="space-y-6">
-      {/* Total Revenue Banner */}
-      <AnimatedItem>
-        <TotalRevenueBanner />
-      </AnimatedItem>
-
+    <div className="space-y-6">
       {/* Quick Actions */}
-      <AnimatedItem>
-        <QuickActions />
-      </AnimatedItem>
+      <QuickActions />
 
-      {/* Billing Metrics with Period Selector */}
-      <AnimatedItem>
-        <Suspense fallback={<MetricsSkeleton />}>
-          <BillingMetrics mrr={data.mrr} />
-        </Suspense>
-      </AnimatedItem>
+      {/* Revenue Banner - Resultado Total Klaviyo (principal) */}
+      <TotalRevenueBanner />
 
-      {/* Charts and Activity */}
-      <AnimatedItem>
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-7">
-          <div className="col-span-full lg:col-span-4">
-            <DashboardCharts
-              revenueData={data.revenueData}
-              clientsData={data.clientsData}
-              pipelineData={data.pipelineData}
-            />
-          </div>
-          <div className="col-span-full lg:col-span-3 space-y-6">
-            <TodayAgenda meetings={data.upcomingMeetings} />
-            <DashboardAlerts meetings={data.upcomingMeetings} alerts={data.alerts} />
-            <RecentActivity activities={data.activities} />
-          </div>
+      {/* Financial KPIs */}
+      <Suspense fallback={<MetricsSkeleton />}>
+        <BillingMetrics mrr={data.mrr} />
+      </Suspense>
+
+      {/* Main Content: Charts + Sidebar */}
+      <div className="grid gap-6 lg:grid-cols-7">
+        {/* Charts */}
+        <div className="col-span-full lg:col-span-4">
+          <DashboardCharts
+            revenueData={data.revenueData}
+            clientsData={data.clientsData}
+            pipelineData={data.pipelineData}
+          />
         </div>
-      </AnimatedItem>
-    </AnimatedContainer>
+
+        {/* Right sidebar */}
+        <div className="col-span-full lg:col-span-3 space-y-6">
+          <TodayAgenda meetings={data.upcomingMeetings} />
+          <DashboardAlerts meetings={data.upcomingMeetings} alerts={data.alerts} />
+          <RecentActivity activities={data.activities} />
+        </div>
+      </div>
+    </div>
   )
 }

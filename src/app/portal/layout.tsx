@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import Link from "next/link"
+import Image from "next/image"
 import {
   LayoutDashboard,
   BarChart3,
@@ -17,6 +18,7 @@ import {
   ChevronUp,
   ChevronsUpDown,
   Plus,
+  X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -31,7 +33,7 @@ import {
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
-import { AmbientBackground } from "@/components/ui/ambient-background"
+import { PortalThemeToggle } from "@/components/portal/theme-toggle"
 
 interface PortalUser {
   id: string
@@ -54,12 +56,13 @@ interface PortalStore {
   platform: string
 }
 
-// PRD v2.1: 4 main navigation items
+// PRD v2.1: Main navigation items
 const navigation = [
   { name: "Dashboard", href: "/portal/dashboard", icon: LayoutDashboard },
   { name: "Análise", href: "/portal/analytics", icon: BarChart3 },
   { name: "Campanhas", href: "/portal/campaigns", icon: Send },
   { name: "Flows", href: "/portal/flows", icon: GitBranch },
+  { name: "Faturas", href: "/portal/invoices", icon: FileText },
 ]
 
 function getInitials(name: string): string {
@@ -216,8 +219,11 @@ export default function PortalLayout({
   // Show loading while checking auth
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+      <div className="flex h-screen items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-10 w-10 animate-spin rounded-full border-[3px] border-primary/20 border-t-primary" />
+          <span className="text-sm text-muted-foreground">Carregando...</span>
+        </div>
       </div>
     )
   }
@@ -226,15 +232,25 @@ export default function PortalLayout({
   if (!user) {
     router.push("/portal/login")
     return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+      <div className="flex h-screen items-center justify-center bg-background">
+        <div className="h-10 w-10 animate-spin rounded-full border-[3px] border-primary/20 border-t-primary" />
       </div>
     )
   }
 
+  // Get current page title
+  const getPageTitle = () => {
+    const navItem = navigation.find(item => pathname === item.href || pathname.startsWith(item.href + "/"))
+    if (navItem) return navItem.name
+    if (pathname.startsWith("/portal/settings")) return "Configurações"
+    if (pathname.startsWith("/portal/invoices")) return "Faturas"
+    if (pathname.startsWith("/portal/stores")) return "Lojas"
+    return "Portal"
+  }
+
   // Sidebar content shared between desktop and mobile
   const SidebarNav = ({ onLinkClick }: { onLinkClick?: () => void }) => (
-    <>
+    <div className="space-y-1">
       {navigation.map((item) => {
         const isActive = pathname === item.href || pathname.startsWith(item.href + "/")
         return (
@@ -243,45 +259,45 @@ export default function PortalLayout({
             href={item.href}
             onClick={onLinkClick}
             className={cn(
-              "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+              "flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition-all duration-200",
               isActive
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                ? "bg-white/10 text-white"
+                : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.06]"
             )}
           >
-            <item.icon className="h-5 w-5" />
+            <item.icon className="h-[18px] w-[18px]" />
             {item.name}
           </Link>
         )
       })}
-    </>
+    </div>
   )
 
   // Footer section shared between desktop and mobile
   const SidebarFooter = () => (
-    <div className="border-t p-3 space-y-2">
+    <div className="border-t border-white/[0.06] p-3 space-y-1">
       {/* Store Switcher */}
       {stores.length > 0 && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="flex items-center gap-3 w-full px-3 py-2 rounded-lg hover:bg-muted transition-colors text-left">
-              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                <Store className="h-4 w-4 text-primary" />
+            <button className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg hover:bg-white/[0.06] transition-all duration-200 text-left group">
+              <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center flex-shrink-0">
+                <Store className="h-4 w-4 text-slate-300" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{activeStore?.name || "Selecionar loja"}</p>
-                <p className="text-xs text-muted-foreground truncate">{activeStore?.platform || ""}</p>
+                <p className="text-[13px] font-medium text-white/90 truncate">{activeStore?.name || "Selecionar loja"}</p>
+                <p className="text-[11px] text-slate-500 truncate">{activeStore?.platform || ""}</p>
               </div>
-              <ChevronsUpDown className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+              <ChevronsUpDown className="h-3.5 w-3.5 text-slate-500 group-hover:text-slate-400 flex-shrink-0" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent side="top" align="start" className="w-[232px]">
-            <DropdownMenuLabel className="text-xs text-muted-foreground">Lojas</DropdownMenuLabel>
+            <DropdownMenuLabel className="text-xs text-slate-500">Lojas</DropdownMenuLabel>
             {stores.map((store) => (
               <DropdownMenuItem
                 key={store.id}
                 onClick={() => handleStoreChange(store)}
-                className={cn(activeStore?.id === store.id && "bg-muted")}
+                className={cn(activeStore?.id === store.id && "bg-slate-100")}
               >
                 <Store className="mr-2 h-4 w-4" />
                 <span className="truncate">{store.name}</span>
@@ -301,24 +317,24 @@ export default function PortalLayout({
       {/* Account Menu */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button className="flex items-center gap-3 w-full px-3 py-2 rounded-lg hover:bg-muted transition-colors text-left">
+          <button className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg hover:bg-white/[0.06] transition-all duration-200 text-left group">
             <Avatar className="h-8 w-8">
-              <AvatarFallback className="bg-primary/10 text-primary text-xs">
+              <AvatarFallback className="bg-gradient-to-br from-[#0284C7] to-[#05AFF2] text-white text-[11px] font-semibold">
                 {getInitials(user.name)}
               </AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{user.name}</p>
-              <p className="text-xs text-muted-foreground truncate">{user.clientName}</p>
+              <p className="text-[13px] font-medium text-white/90 truncate">{user.name}</p>
+              <p className="text-[11px] text-slate-500 truncate">{user.clientName}</p>
             </div>
-            <ChevronUp className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+            <ChevronUp className="h-3.5 w-3.5 text-slate-500 group-hover:text-slate-400 flex-shrink-0" />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent side="top" align="start" className="w-[232px]">
           <DropdownMenuLabel>
             <div>
               <p className="font-medium">{user.name}</p>
-              <p className="text-xs text-muted-foreground">{user.email}</p>
+              <p className="text-xs text-slate-500">{user.email}</p>
             </div>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
@@ -352,34 +368,32 @@ export default function PortalLayout({
 
   return (
     <div
-      className="min-h-screen bg-background relative"
+      className="portal-layout min-h-screen bg-[#F8F9FB] dark:bg-[#0B0E14]"
       style={branding.primary_color !== "#3b82f6" ? {
         "--portal-primary": branding.primary_color,
         "--portal-primary-foreground": "#ffffff",
       } as React.CSSProperties : undefined}
     >
-      <AmbientBackground />
-
       {/* Desktop Sidebar */}
-      <aside className="hidden lg:fixed lg:inset-y-0 lg:flex lg:w-64 lg:flex-col">
-        <div className="flex flex-col flex-grow border-r bg-card">
+      <aside className="hidden lg:fixed lg:inset-y-0 lg:flex lg:w-[260px] lg:flex-col z-40">
+        <div className="flex flex-col flex-grow bg-[#0B0E14] overflow-hidden">
           {/* Logo */}
-          <div className="flex h-16 items-center gap-2 px-6 border-b">
-            {branding.logo_url ? (
-              <img src={branding.logo_url} alt={branding.name} className="h-8 w-8 rounded-lg object-contain" />
-            ) : (
-              <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-                <span className="text-primary-foreground font-bold text-sm">{branding.name.charAt(0)}</span>
-              </div>
-            )}
-            <div>
-              <span className="font-semibold">{branding.name}</span>
-              <span className="text-xs text-muted-foreground block">Portal do Cliente</span>
-            </div>
+          <div className="flex h-[72px] items-center px-5">
+            <Link href="/portal/dashboard" className="flex items-center gap-3">
+              <Image
+                src="/images/logo da convertfy com escrito branco.png"
+                alt="Convertfy"
+                width={220}
+                height={56}
+                className="h-14 w-auto object-contain"
+                priority
+              />
+            </Link>
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 px-3 py-4 space-y-1">
+          <nav className="flex-1 px-3 pt-2">
+            <p className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-widest text-slate-600">Menu</p>
             <SidebarNav />
           </nav>
 
@@ -390,32 +404,29 @@ export default function PortalLayout({
 
       {/* Mobile Header */}
       <div className="lg:hidden">
-        <div className="fixed top-0 left-0 right-0 z-40 flex h-16 items-center gap-4 border-b bg-card px-4">
+        <div className="fixed top-0 left-0 right-0 z-40 flex h-14 items-center gap-3 border-b border-slate-200/80 dark:border-slate-700/40 bg-white/95 dark:bg-[#151922]/95 backdrop-blur-sm px-4">
           <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
             <SheetTrigger asChild>
-              <Button variant="ghost" size="icon">
+              <Button variant="ghost" size="icon" className="h-9 w-9 text-slate-600 dark:text-slate-300">
                 <Menu className="h-5 w-5" />
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="w-64 p-0">
+            <SheetContent side="left" className="w-[260px] p-0 bg-[#0B0E14] border-none">
               <div className="flex flex-col h-full">
                 {/* Logo */}
-                <div className="flex h-16 items-center gap-2 px-6 border-b">
-                  {branding.logo_url ? (
-                    <img src={branding.logo_url} alt={branding.name} className="h-8 w-8 rounded-lg object-contain" />
-                  ) : (
-                    <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-                      <span className="text-primary-foreground font-bold text-sm">{branding.name.charAt(0)}</span>
-                    </div>
-                  )}
-                  <div>
-                    <span className="font-semibold">{branding.name}</span>
-                    <span className="text-xs text-muted-foreground block">Portal do Cliente</span>
-                  </div>
+                <div className="flex h-[72px] items-center px-5">
+                  <Image
+                    src="/images/logo da convertfy com escrito branco.png"
+                    alt="Convertfy"
+                    width={220}
+                    height={56}
+                    className="h-14 w-auto object-contain"
+                  />
                 </div>
 
                 {/* Navigation */}
-                <nav className="flex-1 px-3 py-4 space-y-1">
+                <nav className="flex-1 px-3 pt-2">
+                  <p className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-widest text-slate-600">Menu</p>
                   <SidebarNav onLinkClick={() => setMobileMenuOpen(false)} />
                 </nav>
 
@@ -426,14 +437,16 @@ export default function PortalLayout({
           </Sheet>
 
           <div className="flex-1">
-            <span className="font-semibold">{branding.name}</span>
+            <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">{getPageTitle()}</span>
           </div>
+
+          <PortalThemeToggle className="h-9 w-9 text-slate-400 dark:text-slate-300 hover:text-slate-600 dark:hover:text-slate-100" />
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon">
+              <Button variant="ghost" size="icon" className="h-9 w-9">
                 <Avatar className="h-8 w-8">
-                  <AvatarFallback className="bg-primary/10 text-primary text-xs">
+                  <AvatarFallback className="bg-gradient-to-br from-[#0284C7] to-[#05AFF2] text-white text-[11px] font-semibold">
                     {getInitials(user.name)}
                   </AvatarFallback>
                 </Avatar>
@@ -443,7 +456,7 @@ export default function PortalLayout({
               <DropdownMenuLabel>
                 <div>
                   <p className="font-medium">{user.name}</p>
-                  <p className="text-xs text-muted-foreground">{user.email}</p>
+                  <p className="text-xs text-slate-500">{user.email}</p>
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
@@ -470,21 +483,28 @@ export default function PortalLayout({
       </div>
 
       {/* Main Content */}
-      <main className="lg:pl-64">
+      <main className="lg:pl-[260px]">
         {/* Desktop Header */}
-        <header className="hidden lg:flex sticky top-0 z-30 h-16 items-center justify-between border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60 px-6">
-          <div>
-            <h1 className="text-lg font-semibold">{user.clientName}</h1>
+        <header className="hidden lg:flex sticky top-0 z-30 h-14 items-center justify-between border-b border-slate-200/80 dark:border-slate-700/40 bg-white/80 dark:bg-[#151922]/80 backdrop-blur-md px-8">
+          <div className="flex items-center gap-3">
+            <h1 className="text-[15px] font-semibold text-slate-800 dark:text-slate-100">{user.clientName}</h1>
+            {activeStore && (
+              <>
+                <span className="text-slate-300 dark:text-slate-600">/</span>
+                <span className="text-[13px] text-slate-500 dark:text-slate-400">{activeStore.name}</span>
+              </>
+            )}
           </div>
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon">
-              <Bell className="h-5 w-5" />
+          <div className="flex items-center gap-2">
+            <PortalThemeToggle className="h-9 w-9 text-slate-400 dark:text-slate-300 hover:text-slate-600 dark:hover:text-slate-100" />
+            <Button variant="ghost" size="icon" className="h-9 w-9 text-slate-400 dark:text-slate-300 hover:text-slate-600 dark:hover:text-slate-100">
+              <Bell className="h-[18px] w-[18px]" />
             </Button>
           </div>
         </header>
 
         {/* Page Content */}
-        <div className="p-6 pt-20 lg:pt-6">{children}</div>
+        <div className="p-6 pt-20 lg:pt-6 lg:px-8">{children}</div>
       </main>
     </div>
   )

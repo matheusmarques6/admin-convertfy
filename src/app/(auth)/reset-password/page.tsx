@@ -12,7 +12,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
 import { toast } from "@/lib/hooks/use-toast"
 import { rateLimitService } from "@/lib/services"
 
@@ -246,16 +245,16 @@ function ResetPasswordContent() {
         {/* Logo */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center mb-4">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-convertfy-purple via-convertfy-blue to-convertfy-cyan flex items-center justify-center">
+            <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center">
               <span className="text-2xl font-bold text-white">C</span>
             </div>
           </div>
-          <h1 className="text-2xl font-bold gradient-text">Convertfy Admin</h1>
+          <h1 className="text-2xl font-bold text-foreground">Convertfy Admin</h1>
           <p className="text-muted-foreground mt-1">Sistema de Gestão para Agências</p>
         </div>
 
         {isExpired ? (
-          <GlowCard color="primary" intensity="subtle" className="border-border/50">
+          <Card className="rounded-xl border-border">
             <CardHeader className="space-y-1 text-center">
               <div className="flex justify-center mb-4">
                 <div className="rounded-full bg-warning/10 p-4">
@@ -277,9 +276,9 @@ function ResetPasswordContent() {
                 <Link href="/forgot-password">Solicitar Novo Link</Link>
               </Button>
             </CardFooter>
-          </GlowCard>
+          </Card>
         ) : isSuccess ? (
-          <GlowCard color="primary" intensity="subtle" className="border-border/50">
+          <Card className="rounded-xl border-border">
             <CardHeader className="space-y-1 text-center">
               <div className="flex justify-center mb-4">
                 <div className="rounded-full bg-success/10 p-4">
@@ -301,9 +300,9 @@ function ResetPasswordContent() {
                 <Link href="/login">Ir para Login</Link>
               </Button>
             </CardFooter>
-          </GlowCard>
+          </Card>
         ) : (
-          <GlowCard color="primary" intensity="subtle" className="border-border/50">
+          <Card className="rounded-xl border-border">
             <CardHeader className="space-y-1">
               <CardTitle className="text-2xl">Redefinir Senha</CardTitle>
               <CardDescription>
@@ -397,7 +396,7 @@ function ResetPasswordContent() {
                 </p>
               </CardFooter>
             </form>
-          </GlowCard>
+          </Card>
         )}
       </div>
     </div>
@@ -410,11 +409,11 @@ function ResetPasswordLoading() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center mb-4">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-convertfy-purple via-convertfy-blue to-convertfy-cyan flex items-center justify-center">
+            <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center">
               <span className="text-2xl font-bold text-white">C</span>
             </div>
           </div>
-          <h1 className="text-2xl font-bold gradient-text">Convertfy Admin</h1>
+          <h1 className="text-2xl font-bold text-foreground">Convertfy Admin</h1>
           <p className="text-muted-foreground mt-1">Sistema de Gestão para Agências</p>
         </div>
         <Card className="border-border/50">

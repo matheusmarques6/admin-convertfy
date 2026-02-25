@@ -1,6 +1,5 @@
 import { createClient } from "@/lib/supabase/server"
-import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft, User } from "lucide-react"
 import Link from "next/link"
@@ -20,7 +19,7 @@ export default async function ProfilePage() {
         <p className="text-muted-foreground">Gerencie suas informações pessoais</p>
       </div>
 
-      <GlowCard color="primary" intensity="subtle">
+      <Card className="rounded-xl border bg-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <User className="h-5 w-5" />
@@ -46,7 +45,7 @@ export default async function ProfilePage() {
             </p>
           </div>
         </CardContent>
-      </GlowCard>
+      </Card>
     </div>
   )
 }

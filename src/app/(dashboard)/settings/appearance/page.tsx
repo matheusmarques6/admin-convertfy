@@ -1,7 +1,6 @@
 "use client"
 
-import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft, Palette, Moon, Check, Info } from "lucide-react"
 import Link from "next/link"
@@ -19,7 +18,7 @@ export default function AppearancePage() {
         <p className="text-muted-foreground">Configurações visuais do sistema</p>
       </div>
 
-      <GlowCard color="primary" intensity="subtle">
+      <Card className="rounded-xl border bg-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Palette className="h-5 w-5" />
@@ -52,9 +51,9 @@ export default function AppearancePage() {
             </p>
           </div>
         </CardContent>
-      </GlowCard>
+      </Card>
 
-      <GlowCard color="primary" intensity="subtle">
+      <Card className="rounded-xl border bg-card">
         <CardHeader>
           <CardTitle>Identidade Visual</CardTitle>
           <CardDescription>Cores e logo do sistema</CardDescription>
@@ -76,25 +75,25 @@ export default function AppearancePage() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="space-y-2">
                 <div className="h-16 rounded-lg bg-primary flex items-center justify-center">
-                  <span className="text-xs text-primary-foreground font-mono">#5327F2</span>
+                  <span className="text-xs text-primary-foreground font-mono">Primary</span>
                 </div>
                 <p className="text-xs text-muted-foreground text-center">Primária</p>
               </div>
               <div className="space-y-2">
-                <div className="h-16 rounded-lg bg-[#4B53F2] flex items-center justify-center">
-                  <span className="text-xs text-white font-mono">#4B53F2</span>
+                <div className="h-16 rounded-lg bg-primary flex items-center justify-center">
+                  <span className="text-xs text-primary-foreground font-mono">Accent</span>
                 </div>
                 <p className="text-xs text-muted-foreground text-center">Accent</p>
               </div>
               <div className="space-y-2">
                 <div className="h-16 rounded-lg bg-background border flex items-center justify-center">
-                  <span className="text-xs text-foreground font-mono">#141C26</span>
+                  <span className="text-xs text-foreground font-mono">Background</span>
                 </div>
                 <p className="text-xs text-muted-foreground text-center">Background</p>
               </div>
               <div className="space-y-2">
                 <div className="h-16 rounded-lg bg-card border flex items-center justify-center">
-                  <span className="text-xs text-foreground font-mono">#0d0d0d</span>
+                  <span className="text-xs text-foreground font-mono">Card</span>
                 </div>
                 <p className="text-xs text-muted-foreground text-center">Card</p>
               </div>
@@ -120,14 +119,14 @@ export default function AppearancePage() {
                 </div>
               </div>
               <div className="space-y-2">
-                <div className="h-12 rounded-lg bg-info/10 border border-info/20 flex items-center justify-center">
-                  <span className="text-xs text-info font-medium">Info</span>
+                <div className="h-12 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center">
+                  <span className="text-xs text-primary font-medium">Info</span>
                 </div>
               </div>
             </div>
           </div>
         </CardContent>
-      </GlowCard>
+      </Card>
     </div>
   )
 }

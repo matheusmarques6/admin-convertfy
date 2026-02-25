@@ -115,7 +115,7 @@ export function ImportAsaasButton() {
           <Download className="mr-2 h-4 w-4" />
           Importar do Asaas
           {pendingCount > 0 && (
-            <span className="absolute -top-2 -right-2 h-5 min-w-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center px-1">
+            <span className="absolute -top-2 -right-2 h-5 min-w-5 rounded-full bg-destructive text-destructive-foreground text-xs flex items-center justify-center px-1">
               {pendingCount > 99 ? "99+" : pendingCount}
             </span>
           )}
@@ -141,8 +141,8 @@ export function ImportAsaasButton() {
           ) : stats ? (
             <div className="space-y-4">
               {!stats.connected ? (
-                <div className="rounded-lg border border-yellow-500/50 bg-yellow-500/10 p-4">
-                  <p className="text-sm text-yellow-600 dark:text-yellow-400">
+                <div className="rounded-lg border border-warning/50 bg-warning/10 p-4">
+                  <p className="text-sm text-warning">
                     A integração com o Asaas não está ativa. Configure a integração
                     em Configurações → Integrações primeiro.
                   </p>
@@ -172,7 +172,7 @@ export function ImportAsaasButton() {
                           {stats.syncedClients} de {stats.asaasCustomers} clientes
                         </p>
                       </div>
-                      <div className="text-2xl font-bold text-green-600">
+                      <div className="text-2xl font-bold text-foreground">
                         {stats.asaasCustomers > 0
                           ? Math.round((stats.syncedClients / stats.asaasCustomers) * 100)
                           : 0}%
@@ -187,8 +187,8 @@ export function ImportAsaasButton() {
                   </div>
 
                   {stats.asaasCustomers > stats.syncedClients && (
-                    <div className="rounded-lg border border-blue-500/50 bg-blue-500/10 p-4">
-                      <p className="text-sm text-blue-600 dark:text-blue-400">
+                    <div className="rounded-lg border border-primary/50 bg-primary/10 p-4">
+                      <p className="text-sm text-primary">
                         Existem {stats.asaasCustomers - stats.syncedClients} clientes
                         no Asaas que ainda não foram importados.
                       </p>

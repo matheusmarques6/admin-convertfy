@@ -108,7 +108,7 @@ export function MeetingCalendar({
 
   const statusColors: Record<MeetingStatus, string> = {
     scheduled: "bg-primary/10 text-primary",
-    completed: "bg-success/10 text-success",
+    completed: "bg-emerald-500/10 text-emerald-500",
     cancelled: "bg-muted text-muted-foreground",
     no_show: "bg-destructive/10 text-destructive",
   }

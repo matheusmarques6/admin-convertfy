@@ -18,7 +18,6 @@ import {
 import { Button } from "@/components/ui/button"
 import { PermissionGate } from "@/components/permission-gate"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
 import {
   Select,
   SelectContent,
@@ -37,9 +36,9 @@ import { CalendarGrid, channelConfig } from "./calendar-grid"
 
 const statusColors: Record<string, string> = {
   draft: "bg-muted-foreground",
-  pending_review: "bg-blue-500",
-  approved: "bg-emerald-500",
-  rejected: "bg-orange-500",
+  pending_review: "bg-info",
+  approved: "bg-success",
+  rejected: "bg-warning",
   scheduled: "bg-warning",
   sent: "bg-success",
   cancelled: "bg-destructive",
@@ -145,7 +144,7 @@ export default function CampaignsCalendarPage() {
       {viewMode === "calendar" && (<>
 
       {/* Filters and Navigation */}
-      <GlowCard color="primary" intensity="subtle">
+      <Card className="rounded-xl border bg-card">
         <CardContent className="p-4">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div className="flex items-center gap-2">
@@ -207,7 +206,7 @@ export default function CampaignsCalendarPage() {
             </div>
           </div>
         </CardContent>
-      </GlowCard>
+      </Card>
 
       {/* Legend */}
       <div className="flex flex-wrap items-center gap-4 text-sm">
@@ -232,7 +231,7 @@ export default function CampaignsCalendarPage() {
       </div>
 
       {/* Calendar */}
-      <GlowCard color="primary" intensity="subtle">
+      <Card>
         <CardContent className="p-0">
           {cal.loading ? (
             <div className="p-6">
@@ -249,7 +248,7 @@ export default function CampaignsCalendarPage() {
             />
           )}
         </CardContent>
-      </GlowCard>
+      </Card>
 
       </>)}
 

@@ -33,7 +33,6 @@ import {
 } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { GlowCard, type GlowColor } from "@/components/ui/glow-card"
 import {
   Dialog,
   DialogContent,
@@ -95,22 +94,22 @@ const CHANNEL_CONFIG = {
   email: {
     icon: Mail,
     color: "bg-blue-500",
-    lightColor: "bg-blue-500/20",
-    textColor: "text-blue-400",
+    lightColor: "bg-blue-50 dark:bg-blue-500/10",
+    textColor: "text-blue-600",
     label: "Email"
   },
   sms: {
     icon: MessageSquare,
     color: "bg-emerald-500",
-    lightColor: "bg-emerald-500/20",
-    textColor: "text-emerald-400",
+    lightColor: "bg-emerald-50 dark:bg-emerald-500/10",
+    textColor: "text-emerald-600",
     label: "SMS"
   },
   push: {
     icon: Send,
     color: "bg-purple-500",
-    lightColor: "bg-purple-500/20",
-    textColor: "text-purple-400",
+    lightColor: "bg-primary/10",
+    textColor: "text-primary",
     label: "Push"
   },
 }
@@ -118,38 +117,38 @@ const CHANNEL_CONFIG = {
 const STATUS_CONFIG: Record<string, { label: string; color: string; dotColor: string }> = {
   draft: {
     label: "Rascunho",
-    color: "bg-muted/20 text-muted-foreground border-muted-foreground/30",
-    dotColor: "bg-muted-foreground"
+    color: "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700/40",
+    dotColor: "bg-slate-400"
   },
   pending_review: {
     label: "Em Revisão",
-    color: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-    dotColor: "bg-blue-400"
+    color: "bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-500/20",
+    dotColor: "bg-blue-500"
   },
   approved: {
     label: "Aprovada",
-    color: "bg-teal-500/20 text-teal-400 border-teal-500/30",
-    dotColor: "bg-teal-400"
+    color: "bg-teal-50 dark:bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-200 dark:border-teal-500/20",
+    dotColor: "bg-teal-500"
   },
   rejected: {
     label: "Rejeitada",
-    color: "bg-orange-500/20 text-orange-400 border-orange-500/30",
-    dotColor: "bg-orange-400"
+    color: "bg-orange-50 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-500/20",
+    dotColor: "bg-orange-500"
   },
   scheduled: {
     label: "Agendada",
-    color: "bg-amber-500/20 text-amber-400 border-amber-500/30",
-    dotColor: "bg-amber-400"
+    color: "bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-500/20",
+    dotColor: "bg-blue-500"
   },
   sent: {
     label: "Enviada",
-    color: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
-    dotColor: "bg-emerald-400"
+    color: "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20",
+    dotColor: "bg-emerald-500"
   },
   cancelled: {
     label: "Cancelada",
-    color: "bg-red-500/20 text-red-400 border-red-500/30",
-    dotColor: "bg-red-400"
+    color: "bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 border-red-200 dark:border-red-500/20",
+    dotColor: "bg-red-500"
   },
 }
 
@@ -249,9 +248,8 @@ function StatCard({
   value,
   subtitle,
   icon: Icon,
-  iconColor = "text-emerald-400",
-  iconBgColor = "bg-emerald-400/10",
-  glowColor,
+  iconColor = "text-emerald-600",
+  iconBgColor = "bg-emerald-50 dark:bg-emerald-500/10",
 }: {
   title: string
   value: string | number
@@ -259,14 +257,13 @@ function StatCard({
   icon: React.ElementType
   iconColor?: string
   iconBgColor?: string
-  glowColor?: GlowColor
 }) {
   const content = (
     <div className="flex items-center justify-between">
       <div>
-        <p className="text-sm text-muted-foreground mb-1">{title}</p>
-        <p className="text-2xl font-bold text-foreground">{value}</p>
-        {subtitle && <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>}
+        <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">{title}</p>
+        <p className="text-2xl font-bold text-slate-800 dark:text-slate-100">{value}</p>
+        {subtitle && <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{subtitle}</p>}
       </div>
       <div className={`rounded-xl p-3 ${iconBgColor}`}>
         <Icon className={`h-6 w-6 ${iconColor}`} />
@@ -274,16 +271,8 @@ function StatCard({
     </div>
   )
 
-  if (glowColor) {
-    return (
-      <GlowCard color={glowColor} intensity="intense" surfaceClassName="p-5">
-        {content}
-      </GlowCard>
-    )
-  }
-
   return (
-    <div className="rounded-xl bg-card border border-border p-5 card-hover">
+    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 p-5 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow">
       {content}
     </div>
   )
@@ -312,7 +301,7 @@ function CampaignCard({
         }}
         className={`
           text-xs px-2 py-1 rounded-md flex items-center gap-1.5
-          text-foreground cursor-pointer hover:opacity-80 transition-all
+          text-white cursor-pointer hover:opacity-80 transition-all
           truncate
         `}
         style={{ backgroundColor: campaign.color || "#3b82f6" }}
@@ -327,19 +316,19 @@ function CampaignCard({
   return (
     <div
       onClick={onClick}
-      className="rounded-lg bg-muted/80 border border-border/50 p-3 cursor-pointer hover:bg-muted transition-all group"
+      className="rounded-lg bg-slate-50 dark:bg-[#1A1F2E] border border-slate-200/80 dark:border-slate-700/40 p-3 cursor-pointer hover:bg-white dark:hover:bg-[#151922] hover:shadow-sm dark:hover:shadow-slate-900/20 transition-all group"
     >
       <div className="flex items-start gap-3">
         <div
           className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
           style={{ backgroundColor: campaign.color || "#3b82f6" }}
         >
-          <ChannelIcon className="h-5 w-5 text-foreground" />
+          <ChannelIcon className="h-5 w-5 text-white" />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             {campaign.scheduledTime && (
-              <span className="text-xs text-muted-foreground font-medium">
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
                 {formatTime(campaign.scheduledTime)}
               </span>
             )}
@@ -347,16 +336,16 @@ function CampaignCard({
               {statusConfig.label}
             </Badge>
           </div>
-          <p className="font-medium text-foreground text-sm truncate group-hover:text-emerald-400 transition-colors">
+          <p className="font-medium text-slate-800 dark:text-slate-100 text-sm truncate group-hover:text-primary transition-colors">
             {campaign.name}
           </p>
           {campaign.segmentName && (
-            <p className="text-xs text-muted-foreground truncate mt-0.5">
+            <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
               {campaign.segmentName}
             </p>
           )}
           {campaign.recipients && (
-            <p className="text-xs text-muted-foreground mt-1">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
               <Users className="h-3 w-3 inline mr-1" />
               {formatNumber(campaign.recipients)} destinatários
             </p>
@@ -654,18 +643,18 @@ export default function PortalCampaignsPage() {
   // ============================================
   if (loading && campaigns.length === 0) {
     return (
-      <div className="min-h-screen bg-background p-6 space-y-6">
+      <div className="min-h-screen bg-slate-50/50 dark:bg-[#0B0E14] p-6 space-y-6">
         <div className="flex items-center justify-between">
-          <Skeleton className="h-10 w-64 bg-card" />
-          <Skeleton className="h-10 w-32 bg-card" />
+          <Skeleton className="h-10 w-64 bg-white dark:bg-[#151922]" />
+          <Skeleton className="h-10 w-32 bg-white dark:bg-[#151922]" />
         </div>
         <div className="grid gap-4 md:grid-cols-4">
           {[1, 2, 3, 4].map((i) => (
-            <Skeleton key={i} className="h-24 rounded-xl bg-card" />
+            <Skeleton key={i} className="h-24 rounded-xl bg-white dark:bg-[#151922]" />
           ))}
         </div>
-        <Skeleton className="h-12 rounded-xl bg-card" />
-        <Skeleton className="h-[500px] rounded-xl bg-card" />
+        <Skeleton className="h-12 rounded-xl bg-white dark:bg-[#151922]" />
+        <Skeleton className="h-[500px] rounded-xl bg-white dark:bg-[#151922]" />
       </div>
     )
   }
@@ -675,14 +664,14 @@ export default function PortalCampaignsPage() {
   // ============================================
   if (error) {
     return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6">
-        <div className="rounded-2xl bg-card border border-border p-8 text-center max-w-md">
-          <div className="rounded-full bg-red-500/10 p-4 w-fit mx-auto mb-4">
-            <AlertCircle className="h-10 w-10 text-red-400" />
+      <div className="min-h-screen bg-slate-50/50 dark:bg-[#0B0E14] flex flex-col items-center justify-center p-6">
+        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 p-8 text-center max-w-md">
+          <div className="rounded-full bg-red-50 dark:bg-red-500/10 p-4 w-fit mx-auto mb-4">
+            <AlertCircle className="h-10 w-10 text-red-600" />
           </div>
-          <h2 className="text-xl font-semibold text-foreground mb-2">Erro ao carregar</h2>
-          <p className="text-muted-foreground mb-6">{error}</p>
-          <Button onClick={fetchCampaigns} className="bg-emerald-500 hover:bg-emerald-600">
+          <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-100 mb-2">Erro ao carregar</h2>
+          <p className="text-slate-500 dark:text-slate-400 mb-6">{error}</p>
+          <Button onClick={fetchCampaigns} className="bg-primary hover:bg-primary/85 text-white shadow-sm dark:shadow-slate-900/20">
             Tentar novamente
           </Button>
         </div>
@@ -701,7 +690,7 @@ export default function PortalCampaignsPage() {
       days.push(
         <div
           key={`empty-${i}`}
-          className="min-h-[120px] bg-muted/30 border border-border/30"
+          className="min-h-[120px] bg-slate-50/50 dark:bg-slate-800/30 border border-slate-100 dark:border-slate-700/30"
         />
       )
     }
@@ -717,22 +706,22 @@ export default function PortalCampaignsPage() {
           key={day}
           onClick={() => handleDayClick(date)}
           className={`
-            min-h-[120px] border border-border/30 p-2 cursor-pointer transition-all
-            hover:bg-card/50
-            ${dayIsToday ? "bg-primary/10 border-primary/40" : "bg-background"}
+            min-h-[120px] border border-slate-100 dark:border-slate-700/30 p-2 cursor-pointer transition-all
+            hover:bg-slate-50 dark:hover:bg-white/[0.06]
+            ${dayIsToday ? "bg-primary/5 border-primary/30" : "bg-white dark:bg-[#151922]"}
           `}
         >
           <div className="flex items-center justify-between mb-2">
             <span
               className={`
                 text-sm font-medium w-7 h-7 flex items-center justify-center rounded-full
-                ${dayIsToday ? "bg-primary text-primary-foreground" : "text-muted-foreground"}
+                ${dayIsToday ? "bg-primary text-white" : "text-slate-500 dark:text-slate-400"}
               `}
             >
               {day}
             </span>
             {dayCampaigns.length > 3 && (
-              <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+              <span className="text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
                 +{dayCampaigns.length - 3}
               </span>
             )}
@@ -770,25 +759,25 @@ export default function PortalCampaignsPage() {
               className={`
                 min-h-[400px] rounded-xl border p-3
                 ${dayIsToday
-                  ? "bg-emerald-500/10 border-emerald-500/40"
-                  : "bg-background border-border/50"
+                  ? "bg-primary/5 border-primary/30"
+                  : "bg-white dark:bg-[#151922] border-slate-200/80 dark:border-slate-700/40"
                 }
               `}
             >
               {/* Day Header */}
-              <div className="text-center mb-3 pb-3 border-b border-border/50">
-                <p className="text-xs text-muted-foreground uppercase tracking-wide">
+              <div className="text-center mb-3 pb-3 border-b border-slate-200/80 dark:border-slate-700/40">
+                <p className="text-xs text-slate-400 dark:text-slate-500 uppercase tracking-wide">
                   {WEEK_DAYS[date.getDay()]}
                 </p>
                 <p
                   className={`
                     text-2xl font-bold mt-1
-                    ${dayIsToday ? "text-emerald-400" : "text-foreground"}
+                    ${dayIsToday ? "text-primary" : "text-slate-800 dark:text-slate-100"}
                   `}
                 >
                   {date.getDate()}
                 </p>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs text-slate-400 dark:text-slate-500">
                   {MONTH_NAMES[date.getMonth()].substring(0, 3)}
                 </p>
               </div>
@@ -796,7 +785,7 @@ export default function PortalCampaignsPage() {
               {/* Campaigns */}
               <div className="space-y-2">
                 {dayCampaigns.length === 0 ? (
-                  <p className="text-xs text-muted-foreground/70 text-center py-4">
+                  <p className="text-xs text-slate-400 dark:text-slate-500 text-center py-4">
                     Sem campanhas
                   </p>
                 ) : (
@@ -820,14 +809,14 @@ export default function PortalCampaignsPage() {
   // RENDER: Main
   // ============================================
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen bg-slate-50/50 dark:bg-[#0B0E14] text-slate-800 dark:text-slate-100">
       <div className="max-w-[1600px] mx-auto p-6 space-y-6">
 
         {/* ========== HEADER ========== */}
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Calendário de Campanhas</h1>
-            <p className="text-muted-foreground">
+            <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Calendário de Campanhas</h1>
+            <p className="text-slate-500 dark:text-slate-400">
               Acompanhe todas as campanhas de marketing programadas
             </p>
           </div>
@@ -835,7 +824,7 @@ export default function PortalCampaignsPage() {
             variant="outline"
             onClick={fetchCampaigns}
             disabled={loading}
-            className="bg-card border-border text-foreground hover:bg-muted"
+            className="bg-white dark:bg-[#151922] border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-white/[0.06] shadow-sm dark:shadow-slate-900/20"
           >
             <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
             Atualizar
@@ -850,55 +839,51 @@ export default function PortalCampaignsPage() {
               value={stats.scheduled}
               subtitle="campanhas futuras"
               icon={Calendar}
-              iconColor="text-amber-400"
-              iconBgColor="bg-amber-400/10"
-              glowColor="warning"
+              iconColor="text-amber-600"
+              iconBgColor="bg-amber-50 dark:bg-amber-500/10"
             />
             <StatCard
               title="Enviadas"
               value={stats.sent}
               subtitle="no período"
               icon={CheckCircle}
-              iconColor="text-emerald-400"
-              iconBgColor="bg-emerald-400/10"
-              glowColor="success"
+              iconColor="text-emerald-600"
+              iconBgColor="bg-emerald-50 dark:bg-emerald-500/10"
             />
             <StatCard
               title="Destinatários"
               value={formatNumber(stats.totalRecipients)}
               subtitle="emails enviados"
               icon={Users}
-              iconColor="text-blue-400"
-              iconBgColor="bg-blue-400/10"
-              glowColor="info"
+              iconColor="text-[#05AFF2]"
+              iconBgColor="bg-sky-50 dark:bg-sky-500/10"
             />
             <StatCard
               title="Receita"
               value={formatCurrency(stats.totalRevenue)}
               subtitle="atribuída às campanhas"
               icon={DollarSign}
-              iconColor="text-green-400"
-              iconBgColor="bg-green-400/10"
-              glowColor="success"
+              iconColor="text-emerald-600"
+              iconBgColor="bg-emerald-50 dark:bg-emerald-500/10"
             />
           </div>
         )}
 
         {/* ========== FILTERS & NAVIGATION ========== */}
-        <div className="rounded-xl bg-card border border-border p-4">
+        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 p-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
 
             {/* Left: View Toggle + Navigation */}
             <div className="flex items-center gap-3">
               {/* View Toggle */}
-              <div className="flex rounded-lg bg-muted p-1">
+              <div className="flex rounded-lg bg-slate-100 dark:bg-slate-800 p-1">
                 <button
                   onClick={() => setViewMode("month")}
                   className={`
                     flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all
                     ${viewMode === "month"
-                      ? "bg-emerald-500 text-foreground"
-                      : "text-muted-foreground hover:text-foreground"
+                      ? "bg-primary text-white shadow-sm dark:shadow-slate-900/20"
+                      : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
                     }
                   `}
                 >
@@ -910,8 +895,8 @@ export default function PortalCampaignsPage() {
                   className={`
                     flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all
                     ${viewMode === "week"
-                      ? "bg-emerald-500 text-foreground"
-                      : "text-muted-foreground hover:text-foreground"
+                      ? "bg-primary text-white shadow-sm dark:shadow-slate-900/20"
+                      : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
                     }
                   `}
                 >
@@ -926,12 +911,12 @@ export default function PortalCampaignsPage() {
                   variant="outline"
                   size="icon"
                   onClick={goToPrev}
-                  className="bg-muted border-border text-foreground hover:bg-muted/80"
+                  className="bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-700"
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
                 <div className="w-44 text-center">
-                  <h2 className="text-base font-semibold text-foreground">
+                  <h2 className="text-[15px] font-semibold text-slate-800 dark:text-slate-100">
                     {getNavigationTitle()}
                   </h2>
                 </div>
@@ -939,7 +924,7 @@ export default function PortalCampaignsPage() {
                   variant="outline"
                   size="icon"
                   onClick={goToNext}
-                  className="bg-muted border-border text-foreground hover:bg-muted/80"
+                  className="bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-700"
                 >
                   <ChevronRight className="h-4 w-4" />
                 </Button>
@@ -947,7 +932,7 @@ export default function PortalCampaignsPage() {
                   variant="ghost"
                   size="sm"
                   onClick={goToToday}
-                  className="text-muted-foreground hover:text-foreground hover:bg-muted"
+                  className="text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
                 >
                   Hoje
                 </Button>
@@ -958,19 +943,19 @@ export default function PortalCampaignsPage() {
             <div className="flex flex-wrap items-center gap-3">
               {/* Store Filter */}
               <Select value={selectedStore} onValueChange={setSelectedStore}>
-                <SelectTrigger className="w-[160px] bg-muted border-border text-foreground">
-                  <Store className="h-4 w-4 mr-2 text-muted-foreground" />
+                <SelectTrigger className="w-[160px] h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100">
+                  <Store className="h-4 w-4 mr-2 text-slate-400 dark:text-slate-500" />
                   <SelectValue placeholder="Loja" />
                 </SelectTrigger>
-                <SelectContent className="bg-card border-border">
-                  <SelectItem value="all" className="text-foreground hover:bg-muted">
+                <SelectContent className="bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40">
+                  <SelectItem value="all" className="text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
                     Todas as lojas
                   </SelectItem>
                   {stores.map((store) => (
                     <SelectItem
                       key={store.id}
                       value={store.id}
-                      className="text-foreground hover:bg-muted"
+                      className="text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-white/[0.06]"
                     >
                       {store.store_name}
                     </SelectItem>
@@ -980,23 +965,23 @@ export default function PortalCampaignsPage() {
 
               {/* Channel Filter */}
               <Select value={selectedChannel} onValueChange={setSelectedChannel}>
-                <SelectTrigger className="w-[140px] bg-muted border-border text-foreground">
-                  <Mail className="h-4 w-4 mr-2 text-muted-foreground" />
+                <SelectTrigger className="w-[140px] h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100">
+                  <Mail className="h-4 w-4 mr-2 text-slate-400 dark:text-slate-500" />
                   <SelectValue placeholder="Canal" />
                 </SelectTrigger>
-                <SelectContent className="bg-card border-border">
-                  <SelectItem value="all" className="text-foreground hover:bg-muted">
+                <SelectContent className="bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40">
+                  <SelectItem value="all" className="text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
                     Todos os canais
                   </SelectItem>
-                  <SelectItem value="email" className="text-foreground hover:bg-muted">
+                  <SelectItem value="email" className="text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
                     <div className="flex items-center gap-2">
-                      <Mail className="h-4 w-4 text-blue-400" />
+                      <Mail className="h-4 w-4 text-blue-500" />
                       Email
                     </div>
                   </SelectItem>
-                  <SelectItem value="sms" className="text-foreground hover:bg-muted">
+                  <SelectItem value="sms" className="text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
                     <div className="flex items-center gap-2">
-                      <MessageSquare className="h-4 w-4 text-emerald-400" />
+                      <MessageSquare className="h-4 w-4 text-emerald-500" />
                       SMS
                     </div>
                   </SelectItem>
@@ -1005,35 +990,35 @@ export default function PortalCampaignsPage() {
 
               {/* Status Filter */}
               <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-                <SelectTrigger className="w-[150px] bg-muted border-border text-foreground">
-                  <Filter className="h-4 w-4 mr-2 text-muted-foreground" />
+                <SelectTrigger className="w-[150px] h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100">
+                  <Filter className="h-4 w-4 mr-2 text-slate-400 dark:text-slate-500" />
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
-                <SelectContent className="bg-card border-border">
-                  <SelectItem value="all" className="text-foreground hover:bg-muted">
+                <SelectContent className="bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40">
+                  <SelectItem value="all" className="text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
                     Todos os status
                   </SelectItem>
-                  <SelectItem value="scheduled" className="text-foreground hover:bg-muted">
+                  <SelectItem value="scheduled" className="text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
                     <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-amber-400" />
+                      <div className="w-2 h-2 rounded-full bg-blue-500" />
                       Agendada
                     </div>
                   </SelectItem>
-                  <SelectItem value="sent" className="text-foreground hover:bg-muted">
+                  <SelectItem value="sent" className="text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
                     <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-emerald-400" />
+                      <div className="w-2 h-2 rounded-full bg-emerald-500" />
                       Enviada
                     </div>
                   </SelectItem>
-                  <SelectItem value="draft" className="text-foreground hover:bg-muted">
+                  <SelectItem value="draft" className="text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
                     <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-muted-foreground" />
+                      <div className="w-2 h-2 rounded-full bg-slate-400" />
                       Rascunho
                     </div>
                   </SelectItem>
-                  <SelectItem value="cancelled" className="text-foreground hover:bg-muted">
+                  <SelectItem value="cancelled" className="text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
                     <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-red-400" />
+                      <div className="w-2 h-2 rounded-full bg-red-500" />
                       Cancelada
                     </div>
                   </SelectItem>
@@ -1046,40 +1031,40 @@ export default function PortalCampaignsPage() {
         {/* ========== LEGEND ========== */}
         <div className="flex flex-wrap items-center gap-6 px-2">
           <div className="flex items-center gap-4">
-            <span className="text-xs text-muted-foreground uppercase tracking-wide">Canal:</span>
+            <span className="text-xs text-slate-400 dark:text-slate-500 uppercase tracking-wide">Canal:</span>
             <div className="flex items-center gap-1.5">
               <div className="w-3 h-3 rounded bg-blue-500" />
-              <span className="text-xs text-muted-foreground">Email</span>
+              <span className="text-xs text-slate-500 dark:text-slate-400">Email</span>
             </div>
             <div className="flex items-center gap-1.5">
               <div className="w-3 h-3 rounded bg-emerald-500" />
-              <span className="text-xs text-muted-foreground">SMS</span>
+              <span className="text-xs text-slate-500 dark:text-slate-400">SMS</span>
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <span className="text-xs text-muted-foreground uppercase tracking-wide">Status:</span>
+            <span className="text-xs text-slate-400 dark:text-slate-500 uppercase tracking-wide">Status:</span>
             {Object.entries(STATUS_CONFIG).map(([key, config]) => (
               <div key={key} className="flex items-center gap-1.5">
                 <div className={`w-2 h-2 rounded-full ${config.dotColor}`} />
-                <span className="text-xs text-muted-foreground">{config.label}</span>
+                <span className="text-xs text-slate-500 dark:text-slate-400">{config.label}</span>
               </div>
             ))}
           </div>
         </div>
 
         {/* ========== CALENDAR ========== */}
-        <div className="rounded-xl bg-card border border-border overflow-hidden">
+        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 overflow-hidden">
           {viewMode === "month" ? (
             <>
               {/* Week days header */}
-              <div className="grid grid-cols-7 bg-background">
+              <div className="grid grid-cols-7 bg-slate-50 dark:bg-[#1A1F2E]">
                 {WEEK_DAYS.map((day, index) => (
                   <div
                     key={day}
                     className={`
-                      py-3 text-center text-sm font-medium text-muted-foreground
-                      border-r border-border last:border-r-0
-                      ${index === 0 || index === 6 ? "text-muted-foreground" : ""}
+                      py-3 text-center text-sm font-medium text-slate-500 dark:text-slate-400
+                      border-r border-slate-100 dark:border-slate-700/30 last:border-r-0
+                      ${index === 0 || index === 6 ? "text-slate-400 dark:text-slate-500" : ""}
                     `}
                   >
                     {day}
@@ -1100,7 +1085,7 @@ export default function PortalCampaignsPage() {
 
         {/* ========== CAMPAIGN DETAIL MODAL ========== */}
         <Dialog open={!!selectedCampaign} onOpenChange={() => setSelectedCampaign(null)}>
-          <DialogContent className="bg-card border-border text-foreground max-w-lg">
+          <DialogContent className="bg-white dark:bg-[#151922] border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 max-w-lg">
             {selectedCampaign && (
               <>
                 <DialogHeader>
@@ -1111,14 +1096,14 @@ export default function PortalCampaignsPage() {
                     >
                       {(() => {
                         const ChannelIcon = CHANNEL_CONFIG[selectedCampaign.channel]?.icon || Mail
-                        return <ChannelIcon className="h-6 w-6 text-foreground" />
+                        return <ChannelIcon className="h-6 w-6 text-white" />
                       })()}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <DialogTitle className="text-xl text-foreground">
+                      <DialogTitle className="text-xl text-slate-800 dark:text-slate-100">
                         {selectedCampaign.name}
                       </DialogTitle>
-                      <p className="text-sm text-muted-foreground mt-1">
+                      <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
                         {selectedCampaign.storeNames && selectedCampaign.storeNames.length > 1
                           ? selectedCampaign.storeNames.join(", ")
                           : selectedCampaign.store?.store_name || "Loja"}{" "}
@@ -1139,93 +1124,93 @@ export default function PortalCampaignsPage() {
                       {CHANNEL_CONFIG[selectedCampaign.channel]?.label}
                     </Badge>
                     {selectedCampaign.source === "klaviyo" && (
-                      <Badge className="bg-green-500/20 text-green-400 border-green-500/30">Klaviyo</Badge>
+                      <Badge className="bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20">Klaviyo</Badge>
                     )}
                     {selectedCampaign.source === "batch" && (
-                      <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30">Lote</Badge>
+                      <Badge className="bg-primary/10 text-primary border-primary/20">Lote</Badge>
                     )}
                   </div>
 
                   {/* Subject Line */}
                   {selectedCampaign.subjectLine && (
-                    <div className="rounded-lg bg-muted p-4">
+                    <div className="rounded-lg bg-slate-50 dark:bg-[#1A1F2E] border border-slate-100 dark:border-slate-700/30 p-4">
                       <div className="flex items-center gap-2 mb-2">
-                        <FileText className="h-4 w-4 text-muted-foreground" />
-                        <p className="text-xs text-muted-foreground uppercase tracking-wide">Assunto</p>
+                        <FileText className="h-4 w-4 text-slate-400 dark:text-slate-500" />
+                        <p className="text-xs text-slate-400 dark:text-slate-500 uppercase tracking-wide">Assunto</p>
                       </div>
-                      <p className="text-sm text-foreground">{selectedCampaign.subjectLine}</p>
+                      <p className="text-sm text-slate-800 dark:text-slate-100">{selectedCampaign.subjectLine}</p>
                     </div>
                   )}
 
                   {/* Segment */}
                   {selectedCampaign.segmentName && (
-                    <div className="rounded-lg bg-muted p-4">
+                    <div className="rounded-lg bg-slate-50 dark:bg-[#1A1F2E] border border-slate-100 dark:border-slate-700/30 p-4">
                       <div className="flex items-center gap-2 mb-2">
-                        <Target className="h-4 w-4 text-muted-foreground" />
-                        <p className="text-xs text-muted-foreground uppercase tracking-wide">Segmento</p>
+                        <Target className="h-4 w-4 text-slate-400 dark:text-slate-500" />
+                        <p className="text-xs text-slate-400 dark:text-slate-500 uppercase tracking-wide">Segmento</p>
                       </div>
-                      <p className="text-sm text-foreground">{selectedCampaign.segmentName}</p>
+                      <p className="text-sm text-slate-800 dark:text-slate-100">{selectedCampaign.segmentName}</p>
                     </div>
                   )}
 
                   {/* Description */}
                   {selectedCampaign.description && (
                     <div>
-                      <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">Descrição</p>
-                      <p className="text-sm text-foreground/80">{selectedCampaign.description}</p>
+                      <p className="text-xs text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-2">Descrição</p>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">{selectedCampaign.description}</p>
                     </div>
                   )}
 
                   {/* Performance Metrics (only for sent campaigns) */}
                   {selectedCampaign.status === "sent" && (
-                    <div className="border-t border-border pt-5">
-                      <p className="text-xs text-muted-foreground uppercase tracking-wide mb-4">Performance</p>
+                    <div className="border-t border-slate-200/80 dark:border-slate-700/40 pt-5">
+                      <p className="text-xs text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-4">Performance</p>
                       <div className="grid grid-cols-2 gap-4">
-                        <div className="rounded-lg bg-muted p-3">
+                        <div className="rounded-lg bg-sky-50 dark:bg-sky-500/10 border border-sky-100 dark:border-sky-500/20 p-3">
                           <div className="flex items-center gap-2">
-                            <Users className="h-4 w-4 text-blue-400" />
-                            <span className="text-xs text-muted-foreground">Enviados</span>
+                            <Users className="h-4 w-4 text-[#05AFF2]" />
+                            <span className="text-xs text-slate-500 dark:text-slate-400">Enviados</span>
                           </div>
-                          <p className="text-lg font-bold text-foreground mt-1">
+                          <p className="text-lg font-bold text-slate-800 dark:text-slate-100 mt-1">
                             {formatNumber(selectedCampaign.recipients || 0)}
                           </p>
                         </div>
-                        <div className="rounded-lg bg-muted p-3">
+                        <div className="rounded-lg bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 p-3">
                           <div className="flex items-center gap-2">
-                            <Eye className="h-4 w-4 text-emerald-400" />
-                            <span className="text-xs text-muted-foreground">Abertura</span>
+                            <Eye className="h-4 w-4 text-emerald-600" />
+                            <span className="text-xs text-slate-500 dark:text-slate-400">Abertura</span>
                           </div>
-                          <p className="text-lg font-bold text-foreground mt-1">
+                          <p className="text-lg font-bold text-slate-800 dark:text-slate-100 mt-1">
                             {formatPercent(selectedCampaign.opened || 0, selectedCampaign.delivered || 0)}
                           </p>
                         </div>
-                        <div className="rounded-lg bg-muted p-3">
+                        <div className="rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-100 dark:border-amber-500/20 p-3">
                           <div className="flex items-center gap-2">
-                            <MousePointerClick className="h-4 w-4 text-amber-400" />
-                            <span className="text-xs text-muted-foreground">Cliques</span>
+                            <MousePointerClick className="h-4 w-4 text-amber-600" />
+                            <span className="text-xs text-slate-500 dark:text-slate-400">Cliques</span>
                           </div>
-                          <p className="text-lg font-bold text-foreground mt-1">
+                          <p className="text-lg font-bold text-slate-800 dark:text-slate-100 mt-1">
                             {formatPercent(selectedCampaign.clicked || 0, selectedCampaign.delivered || 0)}
                           </p>
                         </div>
-                        <div className="rounded-lg bg-muted p-3">
+                        <div className="rounded-lg bg-primary/5 border border-primary/10 p-3">
                           <div className="flex items-center gap-2">
-                            <TrendingUp className="h-4 w-4 text-purple-400" />
-                            <span className="text-xs text-muted-foreground">Conversões</span>
+                            <TrendingUp className="h-4 w-4 text-primary" />
+                            <span className="text-xs text-slate-500 dark:text-slate-400">Conversões</span>
                           </div>
-                          <p className="text-lg font-bold text-foreground mt-1">
+                          <p className="text-lg font-bold text-slate-800 dark:text-slate-100 mt-1">
                             {formatNumber(selectedCampaign.converted || 0)}
                           </p>
                         </div>
                       </div>
                       {(selectedCampaign.revenue || 0) > 0 && (
-                        <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-4 mt-4">
+                        <div className="rounded-lg bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 p-4 mt-4">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                              <DollarSign className="h-5 w-5 text-emerald-400" />
-                              <span className="text-sm text-muted-foreground">Receita Gerada</span>
+                              <DollarSign className="h-5 w-5 text-emerald-600" />
+                              <span className="text-sm text-slate-500 dark:text-slate-400">Receita Gerada</span>
                             </div>
-                            <p className="text-xl font-bold text-emerald-400">
+                            <p className="text-xl font-bold text-emerald-600">
                               {formatCurrency(selectedCampaign.revenue || 0)}
                             </p>
                           </div>
@@ -1244,9 +1229,9 @@ export default function PortalCampaignsPage() {
           open={!!selectedDayCampaigns && !selectedCampaign}
           onOpenChange={() => setSelectedDayCampaigns(null)}
         >
-          <DialogContent className="bg-card border-border text-foreground">
+          <DialogContent className="bg-white dark:bg-[#151922] border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-100">
             <DialogHeader>
-              <DialogTitle className="text-foreground">
+              <DialogTitle className="text-slate-800 dark:text-slate-100">
                 Campanhas em {selectedDayDate ? formatDate(selectedDayDate) : ""}
               </DialogTitle>
             </DialogHeader>
@@ -1261,17 +1246,17 @@ export default function PortalCampaignsPage() {
                       setSelectedDayCampaigns(null)
                       setSelectedCampaign(campaign)
                     }}
-                    className="flex items-center gap-4 p-4 rounded-xl bg-muted border border-border/50 cursor-pointer hover:bg-muted/80 transition-all"
+                    className="flex items-center gap-4 p-4 rounded-xl bg-slate-50 dark:bg-[#1A1F2E] border border-slate-200/80 dark:border-slate-700/40 cursor-pointer hover:bg-white dark:hover:bg-[#151922] hover:shadow-md dark:hover:shadow-slate-900/30 transition-all"
                   >
                     <div
                       className="w-12 h-12 rounded-xl flex items-center justify-center"
                       style={{ backgroundColor: campaign.color || "#3b82f6" }}
                     >
-                      <ChannelIcon className="h-6 w-6 text-foreground" />
+                      <ChannelIcon className="h-6 w-6 text-white" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-foreground truncate">{campaign.name}</p>
-                      <p className="text-sm text-muted-foreground">
+                      <p className="font-medium text-slate-800 dark:text-slate-100 truncate">{campaign.name}</p>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">
                         {campaign.scheduledTime ? formatTime(campaign.scheduledTime) : "Sem horário"} •{" "}
                         {campaign.store?.store_name || "Loja"}
                       </p>

@@ -1,5 +1,4 @@
 import { Shield, Users, MailOpen, MousePointerClick, UserMinus, Send } from "lucide-react"
-import { GlowCard } from "@/components/ui/glow-card"
 import { formatNumber } from "@/lib/utils/format"
 import type { KlaviyoData } from "../dashboard/types"
 
@@ -10,13 +9,13 @@ interface ListHealthMetricsProps {
 function getStatusColor(value: number, thresholds: { good: number; warn: number; inverse?: boolean }) {
   const { good, warn, inverse } = thresholds
   if (inverse) {
-    if (value <= good) return "text-success"
-    if (value <= warn) return "text-warning"
-    return "text-destructive"
+    if (value <= good) return "text-emerald-600"
+    if (value <= warn) return "text-amber-600"
+    return "text-red-600"
   }
-  if (value >= good) return "text-success"
-  if (value >= warn) return "text-warning"
-  return "text-destructive"
+  if (value >= good) return "text-emerald-600"
+  if (value >= warn) return "text-amber-600"
+  return "text-red-600"
 }
 
 function MetricRow({
@@ -31,10 +30,10 @@ function MetricRow({
   colorClass: string
 }) {
   return (
-    <div className="flex items-center justify-between py-2.5 border-b border-border/50 last:border-0">
+    <div className="flex items-center justify-between py-2.5 border-b border-slate-200/50 dark:border-slate-700/30 last:border-0">
       <div className="flex items-center gap-2.5">
-        <Icon className="h-4 w-4 text-muted-foreground" />
-        <span className="text-sm text-muted-foreground">{label}</span>
+        <Icon className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+        <span className="text-sm text-slate-500 dark:text-slate-400">{label}</span>
       </div>
       <span className={`text-sm font-bold ${colorClass}`}>{value}</span>
     </div>
@@ -63,20 +62,20 @@ export function ListHealthMetrics({ klaviyo }: ListHealthMetricsProps) {
   )
 
   const status = overallScore > 80
-    ? { label: "Saudável", color: "text-success", ringColor: "stroke-success", bgColor: "bg-success/10", glowColor: "success" as const }
+    ? { label: "Saudável", color: "text-emerald-600", ringColor: "stroke-emerald-600", bgColor: "bg-emerald-50 dark:bg-emerald-500/10" }
     : overallScore > 50
-      ? { label: "Requer atenção", color: "text-warning", ringColor: "stroke-warning", bgColor: "bg-warning/10", glowColor: "warning" as const }
-      : { label: "Ação necessária", color: "text-destructive", ringColor: "stroke-destructive", bgColor: "bg-destructive/10", glowColor: "destructive" as const }
+      ? { label: "Requer atenção", color: "text-amber-600", ringColor: "stroke-amber-600", bgColor: "bg-amber-50 dark:bg-amber-500/10" }
+      : { label: "Ação necessária", color: "text-red-600", ringColor: "stroke-red-600", bgColor: "bg-red-50 dark:bg-red-500/10" }
 
   const radius = 40
   const circumference = 2 * Math.PI * radius
   const progress = (overallScore / 100) * circumference
 
   return (
-    <GlowCard color={status.glowColor} intensity="subtle" surfaceClassName="p-5">
+    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20">
       <div className="flex items-center gap-2 mb-4">
-        <Shield className="h-4 w-4 text-muted-foreground" />
-        <h3 className="text-sm font-semibold text-foreground">Saúde da Lista</h3>
+        <Shield className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+        <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Saúde da Lista</h3>
       </div>
 
       <div className="flex gap-6">
@@ -87,7 +86,7 @@ export function ListHealthMetrics({ klaviyo }: ListHealthMetricsProps) {
               <circle
                 cx="44" cy="44" r={radius}
                 fill="none"
-                className="stroke-muted"
+                className="stroke-slate-100 dark:stroke-slate-700"
                 strokeWidth="6"
               />
               <circle
@@ -116,7 +115,7 @@ export function ListHealthMetrics({ klaviyo }: ListHealthMetricsProps) {
             icon={Users}
             label="Tamanho da Lista"
             value={formatNumber(totalLeads)}
-            colorClass="text-foreground"
+            colorClass="text-slate-800 dark:text-slate-100"
           />
           <MetricRow
             icon={MailOpen}
@@ -150,6 +149,6 @@ export function ListHealthMetrics({ klaviyo }: ListHealthMetricsProps) {
           />
         </div>
       </div>
-    </GlowCard>
+    </div>
   )
 }
