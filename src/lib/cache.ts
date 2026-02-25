@@ -3,6 +3,9 @@ import { logger } from "@/lib/logger"
 
 const log = logger.child("Cache")
 
+// Bump this version to invalidate all cached data when calculation logic changes
+export const CACHE_VERSION = 2
+
 // TTL in minutes per cache type and period
 const CACHE_TTL: Record<string, Record<string, number>> = {
   klaviyo: { "7d": 30, "15d": 45, "30d": 60, "90d": 120, all: 120 },
@@ -44,6 +47,12 @@ export async function getCache<T = Record<string, unknown>>(
       .single()
 
     if (cached?.data) {
+      // Check cache version - skip old entries when calculation logic changes
+      const cachedData = cached.data as Record<string, unknown>
+      if ((cachedData._cacheVersion as number) !== CACHE_VERSION) {
+        log.info(`[Cache SKIP] Outdated version for ${cacheType}/${period} store ${storeId}`)
+        return null
+      }
       log.debug(`[Cache HIT] ${cacheType}/${period} for store ${storeId}`)
       return {
         data: cached.data as T,
@@ -78,7 +87,7 @@ export async function setCache(
         store_id: storeId,
         cache_type: cacheType,
         period,
-        data,
+        data: { ...data, _cacheVersion: CACHE_VERSION },
         created_at: new Date().toISOString(),
         expires_at: expiresAt,
       },

@@ -8,6 +8,7 @@ import {
   fetchKlaviyoPerformance,
   type KlaviyoPerformanceData,
 } from "@/lib/services/klaviyo-performance.service"
+import { CACHE_VERSION } from "@/lib/cache"
 
 const log = logger.child("PortalDashboard")
 
@@ -24,6 +25,8 @@ const CACHE_TTL: Record<string, number> = {
   "90d": 60,  // 1 hour for quarterly data
   "12m": 120, // 2 hours for yearly data
 }
+
+// CACHE_VERSION imported from @/lib/cache
 
 // GET - Get portal dashboard data
 export async function GET(request: NextRequest) {
@@ -239,6 +242,11 @@ export async function GET(request: NextRequest) {
 
         if (data && new Date(data.expires_at) > new Date()) {
           const cached = data.data as Record<string, unknown>
+          // Check cache version - invalidate old entries when calculation changes
+          if ((cached._cacheVersion as number) !== CACHE_VERSION) {
+            log.info(`[Cache SKIP] Outdated cache version for ${cacheType} store ${storeId} (got ${cached._cacheVersion}, need ${CACHE_VERSION})`)
+            return null
+          }
           // Skip stale cache (zero revenue, impossible ratios, or missing names)
           if (cacheType === "klaviyo_perf") {
             const perf = cached as unknown as KlaviyoPerformanceData
@@ -280,7 +288,7 @@ export async function GET(request: NextRequest) {
             store_id: cacheStoreId,
             cache_type: cacheType,
             period,
-            data,
+            data: { ...data, _cacheVersion: CACHE_VERSION },
             expires_at: expiresAt,
           }, {
             onConflict: "store_id,cache_type,period"
