@@ -241,11 +241,19 @@ export default function PortalStoresPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold">Suas Lojas</h1>
-        <p className="text-muted-foreground">
-          Acompanhe os resultados e configure as integrações de cada loja
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Suas Lojas</h1>
+          <p className="text-muted-foreground">
+            Acompanhe os resultados e configure as integrações de cada loja
+          </p>
+        </div>
+        <Button asChild>
+          <Link href="/portal/stores/new">
+            <Store className="h-4 w-4 mr-2" />
+            Nova Loja
+          </Link>
+        </Button>
       </div>
 
       {/* Stores Grid */}
