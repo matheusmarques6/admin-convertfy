@@ -29,6 +29,7 @@ import { ConversionsSection } from "../dashboard/conversions-section"
 import { RankingsSection } from "../dashboard/rankings-section"
 import { FooterStats } from "../dashboard/footer-stats"
 import { ListHealthMetrics } from "./list-health-metrics"
+import { AudienceMetrics } from "./audience-metrics"
 import { AnimatedContainer, AnimatedItem } from "@/components/ui/animated-container"
 import type { DashboardData } from "../dashboard/types"
 
@@ -189,12 +190,17 @@ export default function PortalAnalyticsPage() {
             </div>
           </AnimatedItem>
 
-          {/* List Health Metrics & Email Performance */}
+          {/* Audience & Clients + List Health */}
           <AnimatedItem>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <AudienceMetrics klaviyo={klaviyo} shopify={shopify} />
               <ListHealthMetrics klaviyo={klaviyo} />
-              <EmailPerformance klaviyo={klaviyo} />
             </div>
+          </AnimatedItem>
+
+          {/* Email Performance */}
+          <AnimatedItem>
+            <EmailPerformance klaviyo={klaviyo} />
           </AnimatedItem>
 
           {/* Top Flows & Campaigns */}
