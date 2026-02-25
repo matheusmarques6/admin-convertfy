@@ -1056,6 +1056,11 @@ export async function GET(request: NextRequest) {
     let storeRevenue = 0
     let storeOrders = 0
     try {
+      // Use interval:"day" for accurate totals matching Klaviyo dashboard
+      const nextDayReport = new Date(`${endDateStr}T12:00:00`)
+      nextDayReport.setDate(nextDayReport.getDate() + 1)
+      const nextDayReportStr = `${nextDayReport.getFullYear()}-${String(nextDayReport.getMonth() + 1).padStart(2, "0")}-${String(nextDayReport.getDate()).padStart(2, "0")}`
+
       const metricAggResponse = await klaviyoRequest<{
         data?: {
           attributes?: {
@@ -1073,9 +1078,11 @@ export async function GET(request: NextRequest) {
             attributes: {
               metric_id: metricId,
               measurements: ["sum_value", "count"],
+              interval: "day",
+              page_size: 500,
               filter: [
                 `greater-or-equal(datetime,${startDateStr}T00:00:00)`,
-                `less-than(datetime,${endDateStr}T23:59:59)`,
+                `less-than(datetime,${nextDayReportStr}T00:00:00)`,
               ],
               timezone: accountInfo.timezone || "America/Sao_Paulo",
             },

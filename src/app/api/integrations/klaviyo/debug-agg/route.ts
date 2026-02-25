@@ -51,16 +51,21 @@ export async function GET(request: NextRequest) {
     const startStr = `${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}`
     const endStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
 
-    // Fetch full response with sum_value + count
+    // Use interval:"day" for accurate totals matching Klaviyo dashboard
+    const nextDay = new Date(now.getTime() + 24 * 60 * 60 * 1000)
+    const nextDayStr = `${nextDay.getFullYear()}-${pad(nextDay.getMonth() + 1)}-${pad(nextDay.getDate())}`
+
     const body = {
       data: {
         type: "metric-aggregate",
         attributes: {
           metric_id: metricId,
           measurements: ["sum_value", "count"],
+          interval: "day",
+          page_size: 500,
           filter: [
             `greater-or-equal(datetime,${startStr}T00:00:00)`,
-            `less-than(datetime,${endStr}T23:59:59)`,
+            `less-than(datetime,${nextDayStr}T00:00:00)`,
           ],
           timezone: "America/Sao_Paulo",
         },

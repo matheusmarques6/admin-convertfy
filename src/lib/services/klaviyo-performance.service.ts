@@ -188,7 +188,14 @@ export async function fetchKlaviyoPerformance(
   })
 
   // ── 3. Metric Aggregates (total store revenue) ──
-  // metric-aggregates uses timezone parameter separately; filter datetimes should NOT include offset
+  // Use interval:"day" to get daily breakdown — summing daily values matches the
+  // Klaviyo dashboard. Without interval, metric-aggregates returns ~4% lower values.
+  // See: https://community.klaviyo.com/developer-group-64/data-discrepancy-between-api-and-klaviyo-dashboard-8983
+  // Use next day T00:00:00 as end boundary to include ALL events on the last day.
+  const nextDay = new Date(`${finalEndDate}T12:00:00`)
+  nextDay.setDate(nextDay.getDate() + 1)
+  const nextDayStr = `${nextDay.getFullYear()}-${String(nextDay.getMonth() + 1).padStart(2, "0")}-${String(nextDay.getDate()).padStart(2, "0")}`
+
   await sleep(MIN_REQUEST_INTERVAL)
   const metricAgg = await klaviyoRequest<KlaviyoMetricAggregate>(apiKey, "/metric-aggregates/", {
     method: "POST",
@@ -199,9 +206,11 @@ export async function fetchKlaviyoPerformance(
         attributes: {
           metric_id: placedOrderMetric,
           measurements: ["sum_value", "count"],
+          interval: "day",
+          page_size: 500,
           filter: [
             `greater-or-equal(datetime,${startDate}T00:00:00)`,
-            `less-than(datetime,${finalEndDate}T23:59:59)`,
+            `less-than(datetime,${nextDayStr}T00:00:00)`,
           ],
           timezone,
         },
