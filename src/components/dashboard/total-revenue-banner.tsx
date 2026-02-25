@@ -162,16 +162,16 @@ export function TotalRevenueBanner({ storeIds }: TotalRevenueBannerProps = {}) {
   const maxRevenue = data?.topStores[0]?.totalRevenue || 1
 
   return (
-    <div className="rounded-xl border border-primary/30 bg-gradient-to-br from-primary/10 via-primary/5 to-card shadow-sm shadow-primary/5">
+    <div className="rounded-xl border border-white/10 bg-gradient-to-br from-[#0a1628] via-[#0f2035] to-[#0a2540] shadow-lg shadow-black/20">
       <div className="p-6 space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-2.5">
-            <div className="rounded-lg bg-primary/10 p-1.5">
-              <TrendingUp className="h-4 w-4 text-primary" />
+            <div className="rounded-lg bg-white/10 p-1.5">
+              <TrendingUp className="h-4 w-4 text-[#05AFF2]" />
             </div>
-            <h2 className="text-base font-semibold text-foreground">Resultado Total</h2>
-            <span className="text-xs text-muted-foreground hidden sm:inline">
+            <h2 className="text-base font-semibold text-white">Resultado Total</h2>
+            <span className="text-xs text-white/50 hidden sm:inline">
               Receita gerada via Klaviyo
             </span>
           </div>
@@ -181,7 +181,7 @@ export function TotalRevenueBanner({ storeIds }: TotalRevenueBannerProps = {}) {
               setCustomStart(undefined)
               setCustomEnd(undefined)
             }}>
-              <SelectTrigger className="w-28 h-9 rounded-lg">
+              <SelectTrigger className="w-28 h-9 rounded-lg border-white/15 bg-white/10 text-white hover:bg-white/15 [&>svg]:text-white/70">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -199,7 +199,7 @@ export function TotalRevenueBanner({ storeIds }: TotalRevenueBannerProps = {}) {
             <Button
               variant="ghost"
               size="icon"
-              className="h-9 w-9 rounded-lg"
+              className="h-9 w-9 rounded-lg text-white/70 hover:text-white hover:bg-white/10"
               onClick={() => loadData(period, customStart, customEnd)}
               disabled={isLoading}
             >
@@ -210,32 +210,32 @@ export function TotalRevenueBanner({ storeIds }: TotalRevenueBannerProps = {}) {
 
         {/* Main number */}
         <div>
-          <p className="text-3xl md:text-4xl font-bold tracking-tight text-primary">
+          <p className="text-3xl md:text-4xl font-bold tracking-tight text-[#05AFF2]">
             {formatCurrency(animatedTotal)}
           </p>
-          <p className="mt-1.5 text-sm text-muted-foreground">
+          <p className="mt-1.5 text-sm text-white/50">
             {data?.storesWithRevenue || 0} de {data?.storesCount || 0} lojas geraram receita
           </p>
         </div>
 
         {/* Breakdown: campaigns vs flows */}
         <div className="grid grid-cols-2 gap-4">
-          <div className="flex items-center gap-3 p-4 rounded-xl border border-border bg-card">
-            <div className="rounded-xl p-2.5 bg-primary/10">
-              <Megaphone className="h-4 w-4 text-primary" />
+          <div className="flex items-center gap-3 p-4 rounded-xl border border-white/10 bg-white/5">
+            <div className="rounded-xl p-2.5 bg-[#05AFF2]/15">
+              <Megaphone className="h-4 w-4 text-[#05AFF2]" />
             </div>
             <div>
-              <p className="text-xs text-muted-foreground font-medium">Campanhas</p>
-              <p className="text-lg font-semibold tracking-tight text-foreground">{formatCurrency(animatedCampaign)}</p>
+              <p className="text-xs text-white/50 font-medium">Campanhas</p>
+              <p className="text-lg font-semibold tracking-tight text-white">{formatCurrency(animatedCampaign)}</p>
             </div>
           </div>
-          <div className="flex items-center gap-3 p-4 rounded-xl border border-border bg-card">
-            <div className="rounded-xl p-2.5 bg-info/10">
-              <Workflow className="h-4 w-4 text-info" />
+          <div className="flex items-center gap-3 p-4 rounded-xl border border-white/10 bg-white/5">
+            <div className="rounded-xl p-2.5 bg-[#05AFF2]/15">
+              <Workflow className="h-4 w-4 text-[#05AFF2]" />
             </div>
             <div>
-              <p className="text-xs text-muted-foreground font-medium">Flows</p>
-              <p className="text-lg font-semibold tracking-tight text-foreground">{formatCurrency(animatedFlow)}</p>
+              <p className="text-xs text-white/50 font-medium">Flows</p>
+              <p className="text-lg font-semibold tracking-tight text-white">{formatCurrency(animatedFlow)}</p>
             </div>
           </div>
         </div>
@@ -243,7 +243,7 @@ export function TotalRevenueBanner({ storeIds }: TotalRevenueBannerProps = {}) {
         {/* Top 5 stores */}
         {data?.topStores && data.topStores.length > 0 && (
           <div className="space-y-3">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Top Lojas</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-white/40">Top Lojas</p>
             <div className="space-y-2.5">
               {data.topStores.map((store) => {
                 const widthPercent = Math.max((store.totalRevenue / maxRevenue) * 100, 4)
@@ -254,17 +254,17 @@ export function TotalRevenueBanner({ storeIds }: TotalRevenueBannerProps = {}) {
                     className="block group"
                   >
                     <div className="flex items-center justify-between text-sm mb-1.5">
-                      <span className="truncate max-w-[60%] text-foreground group-hover:text-primary transition-colors">
+                      <span className="truncate max-w-[60%] text-white/80 group-hover:text-[#05AFF2] transition-colors">
                         {store.storeName}
-                        <span className="text-muted-foreground ml-1.5 text-xs">
+                        <span className="text-white/40 ml-1.5 text-xs">
                           ({store.clientName})
                         </span>
                       </span>
-                      <span className="font-medium tabular-nums text-foreground">{formatCurrency(store.totalRevenue)}</span>
+                      <span className="font-medium tabular-nums text-white">{formatCurrency(store.totalRevenue)}</span>
                     </div>
-                    <div className="h-2 rounded-full bg-muted overflow-hidden">
+                    <div className="h-2 rounded-full bg-white/10 overflow-hidden">
                       <div
-                        className="h-full rounded-full bg-primary transition-all duration-500"
+                        className="h-full rounded-full bg-gradient-to-r from-[#0284C7] to-[#05AFF2] transition-all duration-500"
                         style={{ width: `${widthPercent}%` }}
                       />
                     </div>
