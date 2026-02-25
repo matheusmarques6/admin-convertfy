@@ -138,6 +138,7 @@ export function parseDateRange(
   } else {
     endDate.setHours(23, 59, 59, 999)
 
+    // "Last N days" includes today: subtract N-1 for exactly N calendar days
     switch (period) {
       case "today":
         startDate = new Date(now)
@@ -150,19 +151,19 @@ export function parseDateRange(
         break
       case "7d":
         startDate = new Date(now)
-        startDate.setDate(now.getDate() - 7)
+        startDate.setDate(now.getDate() - 6)
         break
       case "15d":
         startDate = new Date(now)
-        startDate.setDate(now.getDate() - 15)
+        startDate.setDate(now.getDate() - 14)
         break
       case "30d":
         startDate = new Date(now)
-        startDate.setDate(now.getDate() - 30)
+        startDate.setDate(now.getDate() - 29)
         break
       case "90d":
         startDate = new Date(now)
-        startDate.setDate(now.getDate() - 90)
+        startDate.setDate(now.getDate() - 89)
         break
       case "12m":
       case "all":
@@ -171,7 +172,7 @@ export function parseDateRange(
         break
       default:
         startDate = new Date(now)
-        startDate.setDate(now.getDate() - 30)
+        startDate.setDate(now.getDate() - 29)
     }
     startDate.setHours(0, 0, 0, 0)
   }
@@ -213,6 +214,8 @@ export function parseDateRangeInTimezone(
 
   let startLocal: Date
 
+  // "Last N days" includes today, so subtract N-1 to get exactly N calendar days.
+  // Example: "30d" on Feb 25 → start=Jan 27, end=Feb 25 = 30 days (matches Klaviyo dashboard)
   switch (period) {
     case "today":
     case "1d":
@@ -224,19 +227,19 @@ export function parseDateRangeInTimezone(
       return { startDateStr: formatDateStr(startLocal), endDateStr: formatDateStr(startLocal) }
     case "7d":
       startLocal = new Date(todayLocal)
-      startLocal.setDate(startLocal.getDate() - 7)
+      startLocal.setDate(startLocal.getDate() - 6)
       break
     case "15d":
       startLocal = new Date(todayLocal)
-      startLocal.setDate(startLocal.getDate() - 15)
+      startLocal.setDate(startLocal.getDate() - 14)
       break
     case "30d":
       startLocal = new Date(todayLocal)
-      startLocal.setDate(startLocal.getDate() - 30)
+      startLocal.setDate(startLocal.getDate() - 29)
       break
     case "90d":
       startLocal = new Date(todayLocal)
-      startLocal.setDate(startLocal.getDate() - 90)
+      startLocal.setDate(startLocal.getDate() - 89)
       break
     case "12m":
     case "all":
@@ -245,7 +248,7 @@ export function parseDateRangeInTimezone(
       break
     default:
       startLocal = new Date(todayLocal)
-      startLocal.setDate(startLocal.getDate() - 30)
+      startLocal.setDate(startLocal.getDate() - 29)
   }
 
   return { startDateStr: formatDateStr(startLocal), endDateStr: todayStr }
