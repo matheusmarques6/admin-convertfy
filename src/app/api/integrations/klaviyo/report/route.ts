@@ -1051,64 +1051,53 @@ export async function GET(request: NextRequest) {
     const campaignReport = await getCampaignValuesReport(apiKey, metricId, startDateStr, endDateStr, timezoneOffset)
     log.info(`[Klaviyo] Campaign report done: revenue=${campaignReport.totalRevenue}, delivered=${campaignReport.totalDelivered}`)
 
-    // Fetch store-wide revenue via metric-aggregates (ALL Placed Orders, not just email-attributed)
+    // Fetch store-wide revenue via Events API (ALL Placed Orders, not just email-attributed)
+    // Events API gives the EXACT value matching the Klaviyo dashboard.
+    // metric-aggregates is known to return ~4% lower values.
     await sleep(1500)
     let storeRevenue = 0
     let storeOrders = 0
     try {
-      // Use interval:"day" for accurate totals matching Klaviyo dashboard
+      const accountTz = accountInfo.timezone || "America/Sao_Paulo"
       const nextDayReport = new Date(`${endDateStr}T12:00:00`)
       nextDayReport.setDate(nextDayReport.getDate() + 1)
-      const nextDayReportStr = `${nextDayReport.getFullYear()}-${String(nextDayReport.getMonth() + 1).padStart(2, "0")}-${String(nextDayReport.getDate()).padStart(2, "0")}`
+      const pad2 = (n: number) => String(n).padStart(2, "0")
+      const nextDayReportStr = `${nextDayReport.getFullYear()}-${pad2(nextDayReport.getMonth() + 1)}-${pad2(nextDayReport.getDate())}`
 
-      const metricAggResponse = await klaviyoRequest<{
-        data?: {
+      type EventsPageResp = {
+        data?: Array<{
           attributes?: {
-            data?: Array<{
-              measurements?: Record<string, number | number[]>
-            }>
+            event_properties?: Record<string, unknown>
           }
-        }
-      }>(apiKey, "/metric-aggregates/", {
-        method: "POST",
-        logTag: "ReportMetricAgg",
-        body: {
-          data: {
-            type: "metric-aggregate",
-            attributes: {
-              metric_id: metricId,
-              measurements: ["sum_value", "count"],
-              interval: "day",
-              page_size: 500,
-              filter: [
-                `greater-or-equal(datetime,${startDateStr}T00:00:00)`,
-                `less-than(datetime,${nextDayReportStr}T00:00:00)`,
-              ],
-              timezone: accountInfo.timezone || "America/Sao_Paulo",
-            },
-          },
-        },
-      })
-
-      const aggData = metricAggResponse?.data?.attributes?.data || []
-      for (const row of aggData) {
-        const measurements = row.measurements || {}
-        const vals = measurements.sum_value
-        const cnts = measurements.count
-        if (Array.isArray(vals)) {
-          for (const v of vals) storeRevenue += Number(v) || 0
-        } else {
-          storeRevenue += Number(vals) || 0
-        }
-        if (Array.isArray(cnts)) {
-          for (const c of cnts) storeOrders += Number(c) || 0
-        } else {
-          storeOrders += Number(cnts) || 0
-        }
+        }>
+        links?: { next?: string }
       }
-      log.info(`[Klaviyo] Metric aggregates: storeRevenue=${storeRevenue.toFixed(2)}, storeOrders=${storeOrders}`)
+
+      let nextPage: string | null = `/events/?filter=equals(metric_id,"${metricId}"),greater-or-equal(datetime,${startDateStr}T00:00:00),less-than(datetime,${nextDayReportStr}T00:00:00)&page[size]=50&sort=-datetime`
+      let pageCount = 0
+      const maxPages = 100
+
+      while (nextPage && pageCount < maxPages) {
+        if (pageCount > 0) await sleep(350)
+        const eventsResp: EventsPageResp | null = await klaviyoRequest<EventsPageResp>(apiKey, nextPage, { logTag: "ReportEventsRevenue" })
+
+        if (!eventsResp?.data || eventsResp.data.length === 0) break
+
+        for (const ev of eventsResp.data) {
+          const val = Number(ev.attributes?.event_properties?.$value) || 0
+          storeRevenue += val
+          storeOrders++
+        }
+
+        pageCount++
+        const nextLink: string | undefined = eventsResp?.links?.next
+        if (!nextLink) break
+        nextPage = nextLink.includes("://") ? nextLink.replace(/^https?:\/\/[^/]+\/api/, "") : nextLink
+      }
+
+      log.info(`[Klaviyo] Events API: storeRevenue=${storeRevenue.toFixed(2)}, storeOrders=${storeOrders} (${pageCount} pages)`)
     } catch (e) {
-      log.error("[Klaviyo] Metric aggregates failed (non-fatal):", e)
+      log.error("[Klaviyo] Events API for store revenue failed (non-fatal):", e)
     }
 
     // Merge flow data with names, excluding archived flows
