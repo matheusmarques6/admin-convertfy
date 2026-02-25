@@ -840,7 +840,7 @@ export default function PortalCampaignsPage() {
               subtitle="campanhas futuras"
               icon={Calendar}
               iconColor="text-amber-600"
-              iconBgColor="bg-amber-50"
+              iconBgColor="bg-amber-50 dark:bg-amber-500/10"
             />
             <StatCard
               title="Enviadas"
@@ -848,7 +848,7 @@ export default function PortalCampaignsPage() {
               subtitle="no período"
               icon={CheckCircle}
               iconColor="text-emerald-600"
-              iconBgColor="bg-emerald-50"
+              iconBgColor="bg-emerald-50 dark:bg-emerald-500/10"
             />
             <StatCard
               title="Destinatários"
@@ -856,7 +856,7 @@ export default function PortalCampaignsPage() {
               subtitle="emails enviados"
               icon={Users}
               iconColor="text-[#05AFF2]"
-              iconBgColor="bg-sky-50"
+              iconBgColor="bg-sky-50 dark:bg-sky-500/10"
             />
             <StatCard
               title="Receita"
@@ -864,7 +864,7 @@ export default function PortalCampaignsPage() {
               subtitle="atribuída às campanhas"
               icon={DollarSign}
               iconColor="text-emerald-600"
-              iconBgColor="bg-emerald-50"
+              iconBgColor="bg-emerald-50 dark:bg-emerald-500/10"
             />
           </div>
         )}
@@ -882,7 +882,7 @@ export default function PortalCampaignsPage() {
                   className={`
                     flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all
                     ${viewMode === "month"
-                      ? "bg-[#5327F2] text-white shadow-sm"
+                      ? "bg-[#5327F2] text-white shadow-sm dark:shadow-slate-900/20"
                       : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
                     }
                   `}
@@ -895,7 +895,7 @@ export default function PortalCampaignsPage() {
                   className={`
                     flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all
                     ${viewMode === "week"
-                      ? "bg-[#5327F2] text-white shadow-sm"
+                      ? "bg-[#5327F2] text-white shadow-sm dark:shadow-slate-900/20"
                       : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
                     }
                   `}
@@ -1124,7 +1124,7 @@ export default function PortalCampaignsPage() {
                       {CHANNEL_CONFIG[selectedCampaign.channel]?.label}
                     </Badge>
                     {selectedCampaign.source === "klaviyo" && (
-                      <Badge className="bg-emerald-50 text-emerald-600 border-emerald-200">Klaviyo</Badge>
+                      <Badge className="bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20">Klaviyo</Badge>
                     )}
                     {selectedCampaign.source === "batch" && (
                       <Badge className="bg-[#5327F2]/10 text-[#5327F2] border-[#5327F2]/20">Lote</Badge>
@@ -1246,7 +1246,7 @@ export default function PortalCampaignsPage() {
                       setSelectedDayCampaigns(null)
                       setSelectedCampaign(campaign)
                     }}
-                    className="flex items-center gap-4 p-4 rounded-xl bg-slate-50 dark:bg-[#1A1F2E] border border-slate-200/80 dark:border-slate-700/40 cursor-pointer hover:bg-white dark:hover:bg-[#151922] hover:shadow-md transition-all"
+                    className="flex items-center gap-4 p-4 rounded-xl bg-slate-50 dark:bg-[#1A1F2E] border border-slate-200/80 dark:border-slate-700/40 cursor-pointer hover:bg-white dark:hover:bg-[#151922] hover:shadow-md dark:hover:shadow-slate-900/30 transition-all"
                   >
                     <div
                       className="w-12 h-12 rounded-xl flex items-center justify-center"
