@@ -11,8 +11,8 @@ interface LogoProps {
 
 const sizes = {
   sm: { height: 28, width: 120 },
-  md: { height: 36, width: 150 },
-  lg: { height: 44, width: 180 },
+  md: { height: 32, width: 135 },
+  lg: { height: 38, width: 160 },
   xl: { height: 56, width: 230 },
 }
 

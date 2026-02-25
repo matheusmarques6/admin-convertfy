@@ -26,6 +26,7 @@ import {
   Sun,
   Moon,
   LucideIcon,
+  Receipt,
 } from "lucide-react"
 import { motion, LayoutGroup } from "framer-motion"
 import { cn } from "@/lib/utils"
@@ -80,6 +81,7 @@ const navigation: NavItem[] = [
   { name: "Reuniões", href: "/meetings", icon: Calendar, group: "operacional", requiredFeatures: ["calendar_control"] },
   { name: "Equipe", href: "/team", icon: Users2, group: "operacional", requiredFeatures: ["team_control", "team_view"] },
   { name: "Financeiro", href: "/financial", icon: DollarSign, group: "operacional", requiredFeatures: ["view_financial"] },
+  { name: "Faturas", href: "/financial?tab=charges", icon: Receipt, group: "operacional", requiredFeatures: ["view_financial"] },
   { name: "Relatórios", href: "/reports", icon: BarChart3, group: "operacional", requiredFeatures: ["view_reports"] },
   { name: "Ferramentas", href: "/tools", icon: Wrench, group: "ferramentas" },
 ]
@@ -148,7 +150,9 @@ export function Sidebar({ user }: SidebarProps) {
   }
 
   function renderNavItem(item: NavItem) {
-    const isActive = pathname.startsWith(item.href)
+    const isActive = item.href.includes("?")
+      ? pathname === item.href.split("?")[0]
+      : pathname.startsWith(item.href)
     const Icon = item.icon
 
     if (sidebarCollapsed) {
@@ -158,10 +162,10 @@ export function Sidebar({ user }: SidebarProps) {
             <Link
               href={item.href}
               className={cn(
-                "flex items-center justify-center h-9 w-full rounded-lg transition-all duration-200",
+                "flex items-center justify-center h-9 w-full rounded-md transition-colors duration-150",
                 isActive
-                  ? "bg-[#5327F2]/15 text-white shadow-[inset_0_0_12px_rgba(83,39,242,0.1)]"
-                  : "text-white/45 hover:bg-white/[0.04] hover:text-white/75"
+                  ? "bg-white/10 text-white"
+                  : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
               )}
             >
               <Icon className="h-[18px] w-[18px]" />
@@ -179,21 +183,21 @@ export function Sidebar({ user }: SidebarProps) {
         key={item.name}
         href={item.href}
         className={cn(
-          "relative flex items-center gap-3 h-9 px-3 rounded-lg transition-all duration-200",
+          "relative flex items-center gap-3 h-9 px-3 rounded-md transition-colors duration-150",
           isActive
-            ? "bg-[#5327F2]/12 text-white font-medium shadow-[inset_0_0_12px_rgba(83,39,242,0.08)]"
-            : "text-white/45 hover:bg-white/[0.04] hover:text-white/75"
+            ? "bg-white/10 text-white font-medium"
+            : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
         )}
       >
         {isActive && (
           <motion.div
             layoutId="sidebar-active"
-            className="absolute left-0 top-1.5 bottom-1.5 w-[3px] bg-[#5327F2] rounded-full shadow-[0_0_8px_rgba(83,39,242,0.5)]"
+            className="absolute left-0 top-1.5 bottom-1.5 w-[2px] bg-[#5327F2] rounded-full"
             transition={{ type: "spring", stiffness: 300, damping: 30 }}
           />
         )}
         <Icon className="h-[18px] w-[18px] flex-shrink-0" />
-        <span className="text-[13px] font-medium whitespace-nowrap overflow-hidden transition-[opacity,width] duration-300">{item.name}</span>
+        <span className="text-sm whitespace-nowrap overflow-hidden">{item.name}</span>
       </Link>
     )
   }
@@ -202,17 +206,20 @@ export function Sidebar({ user }: SidebarProps) {
     <TooltipProvider delayDuration={0}>
       <aside
         className={cn(
-          "flex flex-col h-screen bg-[#080A12] border-r border-white/[0.06] transition-all duration-300",
-          sidebarCollapsed ? "w-[70px]" : "w-[260px]"
+          "flex flex-col h-screen bg-[#0C0E16] border-r border-white/[0.08] transition-all duration-300",
+          sidebarCollapsed ? "w-[70px]" : "w-[240px]"
         )}
       >
         {/* Logo */}
-        <div className="flex items-center h-16 px-4 border-b border-white/[0.06]">
+        <div className={cn(
+          "flex items-center h-14 border-b border-white/[0.08]",
+          sidebarCollapsed ? "justify-center px-2" : "px-5"
+        )}>
           <Link href="/dashboard" className="flex items-center">
             {sidebarCollapsed ? (
-              <LogoIcon className="w-9 h-9" />
+              <LogoIcon className="w-8 h-8" />
             ) : (
-              <Logo size="md" showText={true} />
+              <Logo size="lg" showText={true} />
             )}
           </Link>
         </div>
@@ -220,11 +227,11 @@ export function Sidebar({ user }: SidebarProps) {
         {/* Navigation */}
         <ScrollArea className="flex-1 py-3">
           <LayoutGroup>
-          <nav className="px-3 space-y-5">
+          <nav className="px-3 space-y-4">
             {groupedNavigation.map((group) => (
               <div key={group.key}>
                 {!sidebarCollapsed && (
-                  <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-white/25 whitespace-nowrap overflow-hidden transition-opacity duration-300">
+                  <p className="px-3 mb-1.5 text-[11px] font-medium uppercase tracking-wider text-slate-500">
                     {group.label}
                   </p>
                 )}
@@ -242,12 +249,12 @@ export function Sidebar({ user }: SidebarProps) {
 
         {/* Bottom Section */}
         <div className="mt-auto">
-          <div className="h-px bg-white/[0.06] mx-3" />
+          <div className="h-px bg-white/[0.08] mx-3" />
           <nav className="px-3 py-2">
             {filteredBottomNavigation.map(renderNavItem)}
           </nav>
 
-          <div className="h-px bg-white/[0.06] mx-3" />
+          <div className="h-px bg-white/[0.08] mx-3" />
 
           <div className="p-3">
             {/* Theme Toggle */}
@@ -255,7 +262,7 @@ export function Sidebar({ user }: SidebarProps) {
               <TooltipTrigger asChild>
                 <button
                   className={cn(
-                    "flex items-center justify-center h-8 rounded-lg text-white/30 hover:text-white/60 hover:bg-white/[0.04] transition-colors mb-2",
+                    "flex items-center justify-center h-8 rounded-md text-slate-500 hover:text-slate-300 hover:bg-white/5 transition-colors duration-150 mb-2",
                     sidebarCollapsed ? "w-full" : "w-8"
                   )}
                   onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -277,22 +284,22 @@ export function Sidebar({ user }: SidebarProps) {
               <DropdownMenuTrigger asChild>
                 <button
                   className={cn(
-                    "flex items-center w-full p-2 rounded-lg hover:bg-white/[0.04] transition-colors outline-none",
+                    "flex items-center w-full p-2 rounded-md hover:bg-white/5 transition-colors duration-150 outline-none",
                     sidebarCollapsed ? "justify-center" : "justify-start gap-3"
                   )}
                 >
-                  <Avatar className="h-8 w-8 ring-1 ring-white/10">
+                  <Avatar className="h-7 w-7">
                     <AvatarImage src={user?.avatar_url} />
-                    <AvatarFallback className="bg-[#5327F2]/20 text-white/80 text-xs font-medium">
+                    <AvatarFallback className="bg-slate-700 text-slate-300 text-xs font-medium">
                       {user?.name?.slice(0, 2).toUpperCase() || "U"}
                     </AvatarFallback>
                   </Avatar>
                   {!sidebarCollapsed && (
-                    <div className="text-left overflow-hidden transition-opacity duration-300">
-                      <p className="text-[13px] font-medium text-white/85 truncate max-w-[140px]">
+                    <div className="text-left overflow-hidden">
+                      <p className="text-sm font-medium text-slate-200 truncate max-w-[140px]">
                         {user?.name || "Usuário"}
                       </p>
-                      <p className="text-[11px] text-white/35 truncate max-w-[140px]">
+                      <p className="text-[11px] text-slate-500 truncate max-w-[140px]">
                         {user?.email}
                       </p>
                     </div>
@@ -332,7 +339,7 @@ export function Sidebar({ user }: SidebarProps) {
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
-                  className="flex items-center justify-center w-full h-7 rounded-md text-white/20 hover:text-white/45 hover:bg-white/[0.04] transition-colors"
+                  className="flex items-center justify-center w-full h-7 rounded-md text-slate-600 hover:text-slate-400 hover:bg-white/5 transition-colors duration-150"
                   onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
                 >
                   {sidebarCollapsed ? (
