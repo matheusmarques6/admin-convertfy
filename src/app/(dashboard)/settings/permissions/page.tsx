@@ -1,7 +1,6 @@
 // TODO [TECH-DEBT INC-18]: Permissions page shows static matrix only.
 // Implement actual permission management UI for org_member_features and store access.
-import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft, Key, ShieldCheck, ShieldAlert, Shield, Eye } from "lucide-react"
 import Link from "next/link"
@@ -62,7 +61,7 @@ export default function PermissionsPage() {
         <p className="text-muted-foreground">Visualize as permissões por cargo</p>
       </div>
 
-      <GlowCard color="primary" intensity="subtle">
+      <Card className="rounded-xl border bg-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Key className="h-5 w-5" />
@@ -107,7 +106,7 @@ export default function PermissionsPage() {
             </TableBody>
           </Table>
         </CardContent>
-      </GlowCard>
+      </Card>
     </div>
   )
 }

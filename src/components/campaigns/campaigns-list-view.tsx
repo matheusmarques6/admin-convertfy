@@ -365,7 +365,7 @@ export function CampaignsListView() {
           <Card className="rounded-xl border bg-card">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <TrendingUp className="h-4 w-4 text-emerald-500" />
+                <TrendingUp className="h-4 w-4 text-success" />
                 Lojas com Melhor Desempenho
               </CardTitle>
             </CardHeader>
@@ -386,7 +386,7 @@ export function CampaignsListView() {
                         {store.totalCampaigns} campanhas • {store.avgOpenRate.toFixed(1)}% abertura
                       </p>
                     </div>
-                    <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+                    <p className="text-sm font-semibold text-success">
                       R$ {store.totalRevenue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                     </p>
                   </div>
@@ -400,7 +400,7 @@ export function CampaignsListView() {
             <Card className="rounded-xl border bg-card">
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <TrendingDown className="h-4 w-4 text-orange-500" />
+                  <TrendingDown className="h-4 w-4 text-warning" />
                   Lojas com Menor Desempenho
                 </CardTitle>
               </CardHeader>
@@ -431,7 +431,7 @@ export function CampaignsListView() {
 
       {/* Best Campaign per Store */}
       {storePerformance.length > 0 && filterStore === "all" && (
-        <GlowCard color="primary" intensity="subtle">
+        <Card className="rounded-xl border bg-card">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <Trophy className="h-4 w-4 text-warning" />
@@ -477,7 +477,7 @@ export function CampaignsListView() {
               </table>
             </div>
           </CardContent>
-        </GlowCard>
+        </Card>
       )}
 
       {/* Campaigns Table */}

@@ -15,11 +15,11 @@ import type { DashboardAlert } from "@/types"
 export const dynamic = "force-dynamic"
 
 const STATUS_COLORS: Record<string, string> = {
-  active: "#22C55E",
-  prospect: "#3B82F6",
-  onboarding: "#5327F2",
-  inactive: "#6B7280",
-  churned: "#EF4444",
+  active: "hsl(var(--success))",
+  prospect: "hsl(var(--info))",
+  onboarding: "hsl(var(--primary))",
+  inactive: "hsl(var(--muted-foreground))",
+  churned: "hsl(var(--destructive))",
 }
 
 const STATUS_LABELS: Record<string, string> = {

@@ -36,9 +36,9 @@ import { CalendarGrid, channelConfig } from "./calendar-grid"
 
 const statusColors: Record<string, string> = {
   draft: "bg-muted-foreground",
-  pending_review: "bg-blue-500",
-  approved: "bg-emerald-500",
-  rejected: "bg-orange-500",
+  pending_review: "bg-info",
+  approved: "bg-success",
+  rejected: "bg-warning",
   scheduled: "bg-warning",
   sent: "bg-success",
   cancelled: "bg-destructive",
@@ -231,7 +231,7 @@ export default function CampaignsCalendarPage() {
       </div>
 
       {/* Calendar */}
-      <GlowCard color="primary" intensity="subtle">
+      <Card>
         <CardContent className="p-0">
           {cal.loading ? (
             <div className="p-6">

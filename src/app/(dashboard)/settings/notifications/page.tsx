@@ -1,8 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
@@ -96,7 +95,7 @@ export default function NotificationsPage() {
         <p className="text-muted-foreground">Configure suas preferências de notificação</p>
       </div>
 
-      <GlowCard color="primary" intensity="subtle">
+      <Card className="rounded-xl border bg-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Mail className="h-5 w-5" /> Notificações por Email</CardTitle>
           <CardDescription>Escolha quais eventos geram notificação por email</CardDescription>
@@ -112,9 +111,9 @@ export default function NotificationsPage() {
             )
           })}
         </CardContent>
-      </GlowCard>
+      </Card>
 
-      <GlowCard color="primary" intensity="subtle">
+      <Card className="rounded-xl border bg-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Smartphone className="h-5 w-5" /> Notificações Push</CardTitle>
           <CardDescription>Escolha quais eventos geram notificação push</CardDescription>
@@ -130,7 +129,7 @@ export default function NotificationsPage() {
             )
           })}
         </CardContent>
-      </GlowCard>
+      </Card>
     </div>
   )
 }

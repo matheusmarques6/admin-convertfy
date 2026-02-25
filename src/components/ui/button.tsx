@@ -17,7 +17,7 @@ const buttonVariants = cva(
         link: "text-primary underline-offset-4 hover:underline",
         success: "bg-success text-success-foreground hover:bg-success/90 shadow-sm",
         warning: "bg-warning text-warning-foreground hover:bg-warning/90 shadow-sm",
-        gradient: "bg-gradient-to-r from-convertfy-purple via-convertfy-blue to-convertfy-cyan text-white hover:opacity-90",
+        gradient: "bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm",
       },
       size: {
         xs: "h-7 rounded px-2 text-xs",

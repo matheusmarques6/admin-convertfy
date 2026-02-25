@@ -681,7 +681,7 @@ export default function ReportPage() {
       )}
 
       {/* Metadata */}
-      <GlowCard color="primary" intensity="subtle">
+      <Card className="rounded-xl border bg-card">
         <CardHeader>
           <CardTitle>Informações do Relatório</CardTitle>
         </CardHeader>
@@ -723,7 +723,7 @@ export default function ReportPage() {
             )}
           </dl>
         </CardContent>
-      </GlowCard>
+      </Card>
 
       {/* Delete Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

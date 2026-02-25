@@ -56,7 +56,7 @@ export function MeetingInviteActions({
 
   if (currentStatus === "accepted") {
     return (
-      <Badge variant="outline" className="text-success border-success/30 bg-success/10 dark:bg-success/20 text-xs">
+      <Badge variant="outline" className="text-emerald-500 border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-500/20 text-xs">
         <Check className="mr-1 h-3 w-3" />
         Aceito
       </Badge>
@@ -74,7 +74,7 @@ export function MeetingInviteActions({
 
   if (currentStatus === "tentative") {
     return (
-      <Badge variant="outline" className="text-warning border-warning/30 bg-warning/10 dark:bg-warning/20 text-xs">
+      <Badge variant="outline" className="text-amber-500 border-amber-500/30 bg-amber-500/10 dark:bg-amber-500/20 text-xs">
         <Clock className="mr-1 h-3 w-3" />
         Talvez
       </Badge>
@@ -92,7 +92,7 @@ export function MeetingInviteActions({
         disabled={isLoading}
         title="Aceitar"
       >
-        <Check className={compact ? "h-3.5 w-3.5 text-success" : "mr-1 h-3 w-3 text-success"} />
+        <Check className={compact ? "h-3.5 w-3.5 text-emerald-500" : "mr-1 h-3 w-3 text-emerald-500"} />
         {!compact && "Aceitar"}
       </Button>
       <Button

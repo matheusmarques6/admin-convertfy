@@ -215,7 +215,7 @@ export function Header({ user: userProp }: HeaderProps) {
             <Button variant="ghost" size="icon" className="relative h-8 w-8 text-muted-foreground hover:text-foreground">
               <Bell className="h-4 w-4" />
               {unreadCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-[#5327F2] flex items-center justify-center text-[10px] font-medium text-white">
+                <span className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-primary flex items-center justify-center text-[10px] font-medium text-white">
                   {unreadCount > 9 ? "9+" : unreadCount}
                 </span>
               )}
@@ -227,7 +227,7 @@ export function Header({ user: userProp }: HeaderProps) {
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-auto p-0 text-xs text-[#5327F2] hover:text-[#5327F2]/80"
+                className="h-auto p-0 text-xs text-primary hover:text-primary/80"
                 onClick={markAllAsRead}
                 disabled={unreadCount === 0}
               >
@@ -271,7 +271,7 @@ export function Header({ user: userProp }: HeaderProps) {
             )}
 
             <DropdownMenuSeparator />
-            <DropdownMenuItem asChild className="justify-center text-[#5327F2] cursor-pointer text-xs">
+            <DropdownMenuItem asChild className="justify-center text-primary cursor-pointer text-xs">
               <Link href="/notifications">
                 Ver todas as notificações
               </Link>

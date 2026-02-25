@@ -22,8 +22,7 @@ import {
   AlertTriangle,
   BarChart3,
 } from "lucide-react"
-import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -372,11 +371,9 @@ export default function IntegrationsPage() {
             const isConnected = status?.connected
 
             return (
-              <GlowCard
+              <Card
                 key={config.type}
-                color="primary"
-                intensity="subtle"
-                className={`relative overflow-hidden ${
+                className={`rounded-xl border bg-card relative overflow-hidden ${
                   isConnected ? "border-success/50" : ""
                 }`}
               >
@@ -413,7 +410,7 @@ export default function IntegrationsPage() {
                                 Relatórios OK
                               </Badge>
                             ) : (
-                              <Badge variant="outline" className="text-yellow-500 border-yellow-500">
+                              <Badge variant="outline" className="text-warning border-warning">
                                 <AlertTriangle className="h-3 w-3 mr-1" />
                                 Sem relatórios
                               </Badge>
@@ -504,7 +501,7 @@ export default function IntegrationsPage() {
                     </div>
                   </div>
                 </CardContent>
-              </GlowCard>
+              </Card>
             )
           })}
         </div>

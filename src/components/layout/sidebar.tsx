@@ -192,7 +192,7 @@ export function Sidebar({ user }: SidebarProps) {
         {isActive && (
           <motion.div
             layoutId="sidebar-active"
-            className="absolute left-0 top-1.5 bottom-1.5 w-[2px] bg-[#5327F2] rounded-full"
+            className="absolute left-0 top-1.5 bottom-1.5 w-[2px] bg-primary rounded-full"
             transition={{ type: "spring", stiffness: 300, damping: 30 }}
           />
         )}
