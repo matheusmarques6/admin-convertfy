@@ -28,7 +28,6 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
 import { Badge } from "@/components/ui/badge"
 import {
   DropdownMenu,
@@ -383,7 +382,7 @@ export default function ReportPage() {
       {revenue && (
         <>
           <h2 className="text-lg font-semibold flex items-center gap-2">
-            <DollarSign className="h-5 w-5 text-success" />
+            <DollarSign className="h-5 w-5 text-emerald-500" />
             Métricas de Receita
           </h2>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -391,7 +390,7 @@ export default function ReportPage() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Faturamento Total</CardTitle>
-                  <TrendingUp className="h-4 w-4 text-success" />
+                  <TrendingUp className="h-4 w-4 text-emerald-500" />
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-success">
@@ -596,7 +595,7 @@ export default function ReportPage() {
 
       {/* Top Flows */}
       {reportData?.flows && reportData.flows.length > 0 && (
-        <GlowCard color="primary" intensity="subtle">
+        <Card className="rounded-xl border bg-card">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Zap className="h-5 w-5 text-primary" />
@@ -628,12 +627,12 @@ export default function ReportPage() {
               ))}
             </div>
           </CardContent>
-        </GlowCard>
+        </Card>
       )}
 
       {/* Top Campaigns */}
       {reportData?.campaigns && reportData.campaigns.length > 0 && (
-        <GlowCard color="primary" intensity="subtle">
+        <Card className="rounded-xl border bg-card">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Mail className="h-5 w-5 text-info" />
@@ -665,12 +664,12 @@ export default function ReportPage() {
               ))}
             </div>
           </CardContent>
-        </GlowCard>
+        </Card>
       )}
 
       {/* Notes */}
       {report.notes && (
-        <GlowCard color="primary" intensity="subtle">
+        <Card className="rounded-xl border bg-card">
           <CardHeader>
             <CardTitle>Observações</CardTitle>
             <CardDescription>Notas e insights sobre o período</CardDescription>
@@ -678,7 +677,7 @@ export default function ReportPage() {
           <CardContent>
             <p className="whitespace-pre-wrap">{report.notes}</p>
           </CardContent>
-        </GlowCard>
+        </Card>
       )}
 
       {/* Metadata */}

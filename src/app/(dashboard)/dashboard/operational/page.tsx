@@ -28,7 +28,7 @@ async function getOperationalData() {
 
   if (!orgMember) redirect("/login")
 
-  // Se é admin/owner, redirecionar para dashboard admin
+  // Se e admin/owner, redirecionar para dashboard admin
   const { data: profile } = await supabase
     .from("profiles")
     .select("role")
@@ -76,7 +76,7 @@ async function getOperationalData() {
     }
   }
 
-  // 3. Extrair IDs únicos
+  // 3. Extrair IDs unicos
   const storeIds = storeAccess.map(a => {
     const store = Array.isArray(a.store) ? a.store[0] : a.store
     return store?.id
@@ -105,7 +105,7 @@ async function getOperationalData() {
     { data: lowHealthClients },
     { data: overdueCharges },
   ] = await Promise.all([
-    // Novos clientes (últimos 30 dias, do escopo do agente)
+    // Novos clientes (ultimos 30 dias, do escopo do agente)
     supabase
       .from("clients")
       .select("id, name, email, status, health_score, created_at, owner_id")
@@ -114,7 +114,7 @@ async function getOperationalData() {
       .order("created_at", { ascending: false })
       .limit(10),
 
-    // Novas lojas (em onboarding ou recém-criadas)
+    // Novas lojas (em onboarding ou recem-criadas)
     supabase
       .from("client_stores")
       .select(`
@@ -178,7 +178,7 @@ async function getOperationalData() {
       .order("health_score", { ascending: true })
       .limit(5),
 
-    // Cobranças vencidas
+    // Cobrancas vencidas
     supabase
       .from("client_charges")
       .select("id, description, value, due_date, client_id")
@@ -188,7 +188,7 @@ async function getOperationalData() {
       .limit(5),
   ])
 
-  // 5. Calcular métricas
+  // 5. Calcular metricas
   const activeClients = [...new Set(
     storeAccess
       .map(a => {
@@ -227,7 +227,7 @@ async function getOperationalData() {
       id: `overdue-${c.id}`,
       type: "payment_overdue",
       title: "Pagamento vencido",
-      description: `${clientNameMap.get(c.client_id) || "Cliente"} - ${c.description || "Cobrança"} vencida em ${new Date(c.due_date).toLocaleDateString("pt-BR")}`,
+      description: `${clientNameMap.get(c.client_id) || "Cliente"} - ${c.description || "Cobranca"} vencida em ${new Date(c.due_date).toLocaleDateString("pt-BR")}`,
       severity: "high",
     })
   })
@@ -247,7 +247,7 @@ async function getOperationalData() {
       id: `health-${c.id}`,
       type: "health_low",
       title: "Health score baixo",
-      description: `${c.name} está com score ${c.health_score}/100`,
+      description: `${c.name} esta com score ${c.health_score}/100`,
       severity: "low",
     })
   })
@@ -273,7 +273,7 @@ export default async function OperationalDashboardPage() {
   const data = await getOperationalData()
 
   return (
-    <AnimatedContainer className="space-y-5 max-w-[1600px]">
+    <AnimatedContainer className="space-y-6">
       {/* Resultado Total - filtrado pelas lojas do agente */}
       <AnimatedItem>
         <TotalRevenueBanner storeIds={data.storeIds} />
@@ -286,12 +286,12 @@ export default async function OperationalDashboardPage() {
 
       {/* Grid: Novos Clientes + Lojas | Alertas + Overview */}
       <AnimatedItem>
-        <div className="grid gap-5 lg:grid-cols-7">
-          <div className="col-span-full lg:col-span-4 space-y-5">
+        <div className="grid gap-6 lg:grid-cols-7">
+          <div className="col-span-full lg:col-span-4 space-y-6">
             <NewClients clients={data.newClients} />
             <NewStores stores={data.newStores} />
           </div>
-          <div className="col-span-full lg:col-span-3 space-y-5">
+          <div className="col-span-full lg:col-span-3 space-y-6">
             <OperationalAlerts alerts={data.alerts} />
             <OperationalOverview
               activities={data.recentActivities}
