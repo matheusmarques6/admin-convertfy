@@ -348,23 +348,23 @@ export default function EditClientPage({
 
       {/* Asaas Status */}
       {watch("asaas_customer_id") ? (
-        <Card className="border-emerald-500/50 bg-emerald-500/10">
+        <Card className="border-success/50 bg-success/10">
           <CardContent className="flex items-start gap-3 py-4">
-            <CheckCircle2 className="h-5 w-5 text-emerald-500 mt-0.5" />
+            <CheckCircle2 className="h-5 w-5 text-success mt-0.5" />
             <div>
-              <p className="font-medium text-emerald-600">Cliente vinculado ao Asaas</p>
+              <p className="font-medium text-success">Cliente vinculado ao Asaas</p>
               <p className="text-sm text-muted-foreground">
-                ID: <code className="bg-emerald-500/20 px-1 rounded">{watch("asaas_customer_id")}</code>
+                ID: <code className="bg-success/20 px-1 rounded">{watch("asaas_customer_id")}</code>
               </p>
             </div>
           </CardContent>
         </Card>
       ) : !hasRequiredAsaasFields() ? (
-        <Card className="border-amber-500/50 bg-amber-500/10">
+        <Card className="border-warning/50 bg-warning/10">
           <CardContent className="flex items-start gap-3 py-4">
-            <AlertCircle className="h-5 w-5 text-amber-500 mt-0.5" />
+            <AlertCircle className="h-5 w-5 text-warning mt-0.5" />
             <div>
-              <p className="font-medium text-amber-600">Campos obrigatórios para cobranças</p>
+              <p className="font-medium text-warning">Campos obrigatórios para cobranças</p>
               <p className="text-sm text-muted-foreground">
                 Para criar o cliente no Asaas automaticamente, preencha: <strong>Nome</strong>, <strong>CPF/CNPJ</strong> e <strong>Email ou Telefone</strong>
               </p>
@@ -372,11 +372,11 @@ export default function EditClientPage({
           </CardContent>
         </Card>
       ) : (
-        <Card className="border-blue-500/50 bg-blue-500/10">
+        <Card className="border-primary/50 bg-primary/10">
           <CardContent className="flex items-start gap-3 py-4">
-            <CheckCircle2 className="h-5 w-5 text-blue-500 mt-0.5" />
+            <CheckCircle2 className="h-5 w-5 text-primary mt-0.5" />
             <div>
-              <p className="font-medium text-blue-600">Pronto para criar no Asaas</p>
+              <p className="font-medium text-primary">Pronto para criar no Asaas</p>
               <p className="text-sm text-muted-foreground">
                 O cliente será criado automaticamente no Asaas ao salvar.
               </p>
@@ -653,7 +653,7 @@ export default function EditClientPage({
                 className={watch("asaas_customer_id") ? "bg-muted" : ""}
               />
               {watch("asaas_customer_id") ? (
-                <p className="text-xs text-emerald-600">
+                <p className="text-xs text-success">
                   Cliente vinculado ao Asaas. ID não pode ser alterado.
                 </p>
               ) : (

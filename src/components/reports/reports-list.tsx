@@ -24,7 +24,6 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import {
@@ -167,7 +166,7 @@ function getStatusBadge(status: ReportStatus | undefined) {
     case "published":
       return <Badge variant="default" className="text-xs"><CheckCircle className="mr-1 h-3 w-3" />Publicado</Badge>
     case "sent":
-      return <Badge variant="outline" className="text-xs bg-success/10 text-success border-success/30"><Send className="mr-1 h-3 w-3" />Enviado</Badge>
+      return <Badge variant="outline" className="text-xs bg-emerald-500/10 text-emerald-500 border-emerald-500/30"><Send className="mr-1 h-3 w-3" />Enviado</Badge>
     case "archived":
       return <Badge variant="outline" className="text-xs"><Archive className="mr-1 h-3 w-3" />Arquivado</Badge>
     default:
@@ -180,9 +179,9 @@ function getReportTypeBadge(type: string) {
     case "klaviyo":
       return <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/30">Klaviyo</Badge>
     case "shopify":
-      return <Badge variant="outline" className="text-xs bg-success/10 text-success border-success/30">Shopify</Badge>
+      return <Badge variant="outline" className="text-xs bg-emerald-500/10 text-emerald-500 border-emerald-500/30">Shopify</Badge>
     case "combined":
-      return <Badge variant="outline" className="text-xs bg-info/10 text-info border-info/30">Combinado</Badge>
+      return <Badge variant="outline" className="text-xs bg-blue-500/10 text-blue-500 border-blue-500/30">Combinado</Badge>
     case "manual":
       return <Badge variant="outline" className="text-xs">Manual</Badge>
     default:
@@ -374,7 +373,7 @@ export function ReportsList({
 
       {/* Stats */}
       <div className="grid gap-4 md:grid-cols-3">
-        <GlowCard color="primary" intensity="intense">
+        <Card className="rounded-xl border bg-card">
           <CardContent className="flex items-center gap-4 pt-6">
             <div className="rounded-lg p-3 bg-primary/10">
               <FileText className="h-5 w-5 text-primary" />
@@ -384,37 +383,37 @@ export function ReportsList({
               <p className="text-2xl font-bold">{totalCount}</p>
             </div>
           </CardContent>
-        </GlowCard>
-        <GlowCard color="success" intensity="intense">
+        </Card>
+        <Card className="rounded-xl border bg-card">
           <CardContent className="flex items-center gap-4 pt-6">
-            <div className="rounded-lg p-3 bg-success/10">
-              <Calendar className="h-5 w-5 text-success" />
+            <div className="rounded-lg p-3 bg-emerald-500/10">
+              <Calendar className="h-5 w-5 text-emerald-500" />
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Este Mês</p>
               <p className="text-2xl font-bold">{thisMonthCount}</p>
             </div>
           </CardContent>
-        </GlowCard>
-        <GlowCard color="warning" intensity="intense">
+        </Card>
+        <Card className="rounded-xl border bg-card">
           <CardContent className="flex items-center gap-4 pt-6">
-            <div className="rounded-lg p-3 bg-warning/10">
-              <Clock className="h-5 w-5 text-warning" />
+            <div className="rounded-lg p-3 bg-amber-500/10">
+              <Clock className="h-5 w-5 text-amber-500" />
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Pendentes</p>
               <p className="text-2xl font-bold">{pendingCount}</p>
             </div>
           </CardContent>
-        </GlowCard>
+        </Card>
       </div>
 
       {/* Pending Reports Section */}
       {pendingStores.length > 0 && (
-        <GlowCard color="warning" intensity="moderate">
+        <Card className="rounded-xl border bg-card">
           <CardHeader>
             <div className="flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-warning" />
+              <AlertCircle className="h-5 w-5 text-amber-500" />
               <CardTitle className="text-base">Relatórios Pendentes</CardTitle>
             </div>
             <CardDescription>
@@ -440,7 +439,7 @@ export function ReportsList({
                         </Badge>
                       )}
                       {store.has_shopify && (
-                        <Badge variant="outline" className="text-xs bg-success/10 text-success border-success/30">
+                        <Badge variant="outline" className="text-xs bg-emerald-500/10 text-emerald-500 border-emerald-500/30">
                           Shopify
                         </Badge>
                       )}
@@ -458,11 +457,11 @@ export function ReportsList({
               ))}
             </div>
           </CardContent>
-        </GlowCard>
+        </Card>
       )}
 
       {/* Filters */}
-      <GlowCard color="primary" intensity="subtle">
+      <Card className="rounded-xl border bg-card">
         <CardContent className="pt-6">
           <div className="flex flex-col gap-4">
             <div className="flex items-center gap-4">
@@ -570,7 +569,7 @@ export function ReportsList({
             )}
           </div>
         </CardContent>
-      </GlowCard>
+      </Card>
 
       {/* Results info */}
       {hasActiveFilters && (
@@ -607,7 +606,7 @@ export function ReportsList({
         </Card>
       ) : (
         sortedMonths.map((month) => (
-          <GlowCard key={month} color="primary" intensity="subtle">
+          <Card key={month} className="rounded-xl border bg-card">
             <CardHeader>
               <CardTitle className="text-base">{formatMonth(month)}</CardTitle>
               <CardDescription>
@@ -720,7 +719,7 @@ export function ReportsList({
                           {revenue !== undefined && (
                             <div>
                               <p className="text-xs text-muted-foreground">Receita</p>
-                              <p className="font-medium text-success">
+                              <p className="font-medium text-emerald-500">
                                 {formatCurrency(revenue)}
                               </p>
                             </div>
@@ -753,7 +752,7 @@ export function ReportsList({
                 })}
               </div>
             </CardContent>
-          </GlowCard>
+          </Card>
         ))
       )}
 

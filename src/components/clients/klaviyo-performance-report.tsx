@@ -266,8 +266,8 @@ const CircularProgress = ({
           />
           <defs>
             <linearGradient id="blueGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#3b82f6" />
-              <stop offset="100%" stopColor="#8b5cf6" />
+              <stop offset="0%" stopColor="hsl(var(--primary))" />
+              <stop offset="100%" stopColor="hsl(var(--primary))" />
             </linearGradient>
           </defs>
         </svg>
@@ -398,7 +398,7 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-6">
         <div className="relative">
           <div className="w-20 h-20 rounded-full border-4 border-border border-t-blue-500 animate-spin" />
-          <Sparkles className="w-8 h-8 text-blue-500 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+          <Sparkles className="w-8 h-8 text-primary absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
         </div>
         <div className="text-center">
           <h3 className="text-lg font-semibold text-foreground">Gerando Relatório</h3>
@@ -412,7 +412,7 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
   if (error || !reportData) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-6">
-        <XCircle className="w-16 h-16 text-red-500" />
+        <XCircle className="w-16 h-16 text-destructive" />
         <div className="text-center">
           <h3 className="text-lg font-semibold text-foreground">Erro ao Carregar</h3>
           <p className="text-sm text-muted-foreground">{error}</p>
@@ -463,15 +463,15 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
 
   // ============ REPORT CONTENT ============
   const ReportContent = () => (
-    <div ref={reportRef} className="bg-gradient-to-b from-card via-card to-card text-foreground min-h-screen">
+    <div ref={reportRef} className="bg-card text-foreground min-h-screen">
       {/* ===== HEADER / OVERVIEW ===== */}
-      <div className="bg-gradient-to-br from-card via-indigo-950/50 to-card border-b border-border/50">
+      <div className="bg-card border-b border-border/50">
         <div className="max-w-6xl mx-auto px-8 py-10">
           {/* Stars decoration */}
           <div className="flex items-center justify-center gap-1 mb-4">
-            <Star className="w-3 h-3 text-blue-400 fill-blue-400" />
-            <Star className="w-4 h-4 text-blue-400 fill-blue-400" />
-            <Star className="w-3 h-3 text-blue-400 fill-blue-400" />
+            <Star className="w-3 h-3 text-primary fill-primary" />
+            <Star className="w-4 h-4 text-primary fill-primary" />
+            <Star className="w-3 h-3 text-primary fill-primary" />
           </div>
 
           <div className="text-center mb-6">
@@ -483,7 +483,7 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
           {/* Period badge */}
           <div className="flex justify-center">
             <div className="inline-flex items-center gap-2 bg-muted/50 border border-border/50 rounded-full px-4 py-2">
-              <Calendar className="w-4 h-4 text-blue-400" />
+              <Calendar className="w-4 h-4 text-primary" />
               <span className="text-sm text-foreground/80">{getFormattedDateRange()}</span>
             </div>
           </div>
@@ -494,10 +494,10 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
       <div className="max-w-6xl mx-auto px-8 py-8 space-y-8">
 
         {/* ===== SECTION: CAMPANHAS E ENGAJAMENTO ===== */}
-        <div className="bg-gradient-to-br from-card/80 to-muted/40 rounded-2xl border border-border/50 overflow-hidden">
+        <div className="bg-card rounded-2xl border border-border/50 overflow-hidden">
           <div className="bg-muted/50 px-6 py-4 border-b border-border/50">
             <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider flex items-center gap-2">
-              <Send className="w-4 h-4 text-blue-400" />
+              <Send className="w-4 h-4 text-primary" />
               Campanhas e Engajamento
             </h2>
             <p className="text-xs text-muted-foreground mt-1">Visão geral do alcance e engajamento das suas campanhas</p>
@@ -506,7 +506,7 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
           <div className="p-6">
             {/* Top metrics row */}
             <div className="grid grid-cols-4 gap-4 mb-8">
-              <div className="bg-muted/30 rounded-xl p-4 border border-border/30 transition-all hover:border-blue-500/30 hover:bg-muted/50">
+              <div className="bg-muted/30 rounded-xl p-4 border border-border/30 transition-all hover:border-primary/30 hover:bg-muted/50">
                 <div className="flex items-center gap-2 mb-2">
                   <Mail className="w-4 h-4 text-muted-foreground" />
                   <span className="text-xs text-muted-foreground">Campanhas Enviadas</span>
@@ -514,23 +514,23 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
                 <p className="text-2xl font-bold text-foreground">{sentCampaigns}</p>
               </div>
 
-              <div className="bg-gradient-to-br from-blue-500/10 to-blue-600/5 rounded-xl p-4 border border-blue-500/20 transition-all hover:border-blue-400/40">
+              <div className="bg-primary/10 rounded-xl p-4 border border-primary/20 transition-all hover:border-primary/40">
                 <div className="flex items-center gap-2 mb-2">
-                  <TrendingUp className="w-4 h-4 text-blue-400" />
+                  <TrendingUp className="w-4 h-4 text-primary" />
                   <span className="text-xs text-muted-foreground">Taxa de Engajamento</span>
                 </div>
-                <p className="text-2xl font-bold text-blue-400">{formatPercent(engagementRate)}</p>
+                <p className="text-2xl font-bold text-primary">{formatPercent(engagementRate)}</p>
               </div>
 
-              <div className="bg-gradient-to-br from-violet-500/10 to-violet-600/5 rounded-xl p-4 border border-violet-500/20 transition-all hover:border-violet-400/40">
+              <div className="bg-primary/10 rounded-xl p-4 border border-primary/20 transition-all hover:border-primary/40">
                 <div className="flex items-center gap-2 mb-2">
-                  <Repeat className="w-4 h-4 text-violet-400" />
+                  <Repeat className="w-4 h-4 text-primary/80" />
                   <span className="text-xs text-muted-foreground">Taxa Recorrência</span>
                 </div>
-                <p className="text-2xl font-bold text-violet-400">{formatPercent(recurringRate)}</p>
+                <p className="text-2xl font-bold text-primary/80">{formatPercent(recurringRate)}</p>
               </div>
 
-              <div className="bg-muted/30 rounded-xl p-4 border border-border/30 transition-all hover:border-blue-500/30 hover:bg-muted/50">
+              <div className="bg-muted/30 rounded-xl p-4 border border-border/30 transition-all hover:border-primary/30 hover:bg-muted/50">
                 <div className="flex items-center gap-2 mb-2">
                   <UserCheck className="w-4 h-4 text-muted-foreground" />
                   <span className="text-xs text-muted-foreground">Novos Clientes</span>
@@ -554,10 +554,10 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
                 </div>
               </div>
 
-              <div className="bg-gradient-to-br from-blue-950/30 to-muted/20 rounded-xl p-5 border border-blue-500/20">
+              <div className="bg-muted/30 rounded-xl p-5 border border-primary/20">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-xs text-blue-400 uppercase tracking-wider mb-1">Leads Engajados 90d</p>
+                    <p className="text-xs text-primary uppercase tracking-wider mb-1">Leads Engajados 90d</p>
                     <p className="text-3xl font-bold text-foreground">{formatNumber(engagedLeads)}</p>
                     <p className="text-xs text-muted-foreground mt-1">{formatPercent(engagementRate)} de engajamento</p>
                   </div>
@@ -569,10 +569,10 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
         </div>
 
         {/* ===== SECTION: RESULTADOS FINANCEIROS ===== */}
-        <div className="bg-gradient-to-br from-card/80 to-muted/40 rounded-2xl border border-border/50 overflow-hidden">
+        <div className="bg-card rounded-2xl border border-border/50 overflow-hidden">
           <div className="bg-muted/50 px-6 py-4 border-b border-border/50">
             <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider flex items-center gap-2">
-              <DollarSign className="w-4 h-4 text-blue-400" />
+              <DollarSign className="w-4 h-4 text-primary" />
               Resultados Financeiros
             </h2>
             <p className="text-xs text-muted-foreground mt-1">Faturamento e atribuição de receita por canal</p>
@@ -581,7 +581,7 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
           <div className="p-6">
             {/* Main financial metrics */}
             <div className="grid grid-cols-4 gap-4 mb-6">
-              <div className="bg-muted/30 rounded-xl p-5 border border-border/30 text-center transition-all hover:border-blue-500/30">
+              <div className="bg-muted/30 rounded-xl p-5 border border-border/30 text-center transition-all hover:border-primary/30">
                 <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center mx-auto mb-3">
                   <DollarSign className="w-6 h-6 text-muted-foreground" />
                 </div>
@@ -589,7 +589,7 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
                 <p className="text-xs text-muted-foreground uppercase tracking-wider mt-1">Faturamento Total</p>
               </div>
 
-              <div className="bg-muted/30 rounded-xl p-5 border border-border/30 text-center transition-all hover:border-blue-500/30">
+              <div className="bg-muted/30 rounded-xl p-5 border border-border/30 text-center transition-all hover:border-primary/30">
                 <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center mx-auto mb-3">
                   <ShoppingCart className="w-6 h-6 text-muted-foreground" />
                 </div>
@@ -597,7 +597,7 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
                 <p className="text-xs text-muted-foreground uppercase tracking-wider mt-1">Ticket Médio</p>
               </div>
 
-              <div className="bg-muted/30 rounded-xl p-5 border border-border/30 text-center transition-all hover:border-blue-500/30">
+              <div className="bg-muted/30 rounded-xl p-5 border border-border/30 text-center transition-all hover:border-primary/30">
                 <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center mx-auto mb-3">
                   <Package className="w-6 h-6 text-muted-foreground" />
                 </div>
@@ -605,7 +605,7 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
                 <p className="text-xs text-muted-foreground uppercase tracking-wider mt-1">Total de Pedidos</p>
               </div>
 
-              <div className="bg-muted/30 rounded-xl p-5 border border-border/30 text-center transition-all hover:border-blue-500/30">
+              <div className="bg-muted/30 rounded-xl p-5 border border-border/30 text-center transition-all hover:border-primary/30">
                 <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center mx-auto mb-3">
                   <Users className="w-6 h-6 text-muted-foreground" />
                 </div>
@@ -615,9 +615,9 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
             </div>
 
             {/* Convertfy attribution */}
-            <div className="bg-gradient-to-r from-blue-950/40 via-indigo-950/30 to-violet-950/40 rounded-xl p-6 border border-blue-500/20">
+            <div className="bg-primary/10 rounded-xl p-6 border border-primary/20">
               <div className="flex items-center gap-2 mb-4">
-                <Sparkles className="w-5 h-5 text-blue-400" />
+                <Sparkles className="w-5 h-5 text-primary" />
                 <h3 className="text-sm font-semibold text-foreground">Receita Atribuída Convertfy</h3>
               </div>
 
@@ -627,7 +627,7 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
                   <p className="text-xs text-muted-foreground mt-1">Email + SMS</p>
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-blue-400">{formatPercent(convertfyPercent)}</p>
+                  <p className="text-2xl font-bold text-primary">{formatPercent(convertfyPercent)}</p>
                   <p className="text-xs text-muted-foreground mt-1">do Faturamento</p>
                 </div>
                 <div>
@@ -642,10 +642,10 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
 
             {/* Channel breakdown */}
             <div className="grid grid-cols-2 gap-4 mt-4">
-              <div className="bg-muted/20 rounded-xl p-4 border border-border/30 flex items-center justify-between transition-all hover:border-blue-500/30">
+              <div className="bg-muted/20 rounded-xl p-4 border border-border/30 flex items-center justify-between transition-all hover:border-primary/30">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
-                    <Mail className="w-5 h-5 text-blue-400" />
+                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <Mail className="w-5 h-5 text-primary" />
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Faturamento Email</p>
@@ -653,15 +653,15 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
                   </div>
                 </div>
                 <div className="text-right">
-                  <span className="text-lg font-semibold text-blue-400">{formatPercent(emailPercent)}</span>
+                  <span className="text-lg font-semibold text-primary">{formatPercent(emailPercent)}</span>
                   <p className="text-xs text-muted-foreground">do total</p>
                 </div>
               </div>
 
-              <div className="bg-muted/20 rounded-xl p-4 border border-border/30 flex items-center justify-between transition-all hover:border-violet-500/30">
+              <div className="bg-muted/20 rounded-xl p-4 border border-border/30 flex items-center justify-between transition-all hover:border-primary/30">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-violet-500/10 flex items-center justify-center">
-                    <MessageSquare className="w-5 h-5 text-violet-400" />
+                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <MessageSquare className="w-5 h-5 text-primary/80" />
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Faturamento SMS</p>
@@ -669,7 +669,7 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
                   </div>
                 </div>
                 <div className="text-right">
-                  <span className="text-lg font-semibold text-violet-400">{formatPercent(smsPercent)}</span>
+                  <span className="text-lg font-semibold text-primary/80">{formatPercent(smsPercent)}</span>
                   <p className="text-xs text-muted-foreground">do total</p>
                 </div>
               </div>
@@ -678,10 +678,10 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
         </div>
 
         {/* ===== SECTION: PERFORMANCE DE EMAIL ===== */}
-        <div className="bg-gradient-to-br from-card/80 to-muted/40 rounded-2xl border border-border/50 overflow-hidden">
+        <div className="bg-card rounded-2xl border border-border/50 overflow-hidden">
           <div className="bg-muted/50 px-6 py-4 border-b border-border/50">
             <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider flex items-center gap-2">
-              <Mail className="w-4 h-4 text-blue-400" />
+              <Mail className="w-4 h-4 text-primary" />
               Performance de Email
             </h2>
             <p className="text-xs text-muted-foreground mt-1">Métricas de entrega, abertura e cliques</p>
@@ -689,31 +689,31 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
 
           <div className="p-6">
             <div className="grid grid-cols-5 gap-4">
-              <div className="bg-muted/30 rounded-xl p-4 text-center border border-border/30 transition-all hover:border-blue-500/30 hover:scale-[1.02]">
+              <div className="bg-muted/30 rounded-xl p-4 text-center border border-border/30 transition-all hover:border-primary/30 hover:scale-[1.02]">
                 <Send className="w-5 h-5 text-muted-foreground mx-auto mb-2" />
                 <p className="text-xl font-bold text-foreground">{formatNumber(delivered)}</p>
                 <p className="text-xs text-muted-foreground mt-1">Entregues</p>
               </div>
 
-              <div className="bg-gradient-to-br from-blue-500/10 to-blue-600/5 rounded-xl p-4 text-center border border-blue-500/20 transition-all hover:border-blue-400/40 hover:scale-[1.02]">
-                <Eye className="w-5 h-5 text-blue-400 mx-auto mb-2" />
-                <p className="text-xl font-bold text-blue-400">{formatPercent(openRate)}</p>
+              <div className="bg-primary/10 rounded-xl p-4 text-center border border-primary/20 transition-all hover:border-primary/40 hover:scale-[1.02]">
+                <Eye className="w-5 h-5 text-primary mx-auto mb-2" />
+                <p className="text-xl font-bold text-primary">{formatPercent(openRate)}</p>
                 <p className="text-xs text-muted-foreground mt-1">Taxa Abertura</p>
               </div>
 
-              <div className="bg-gradient-to-br from-violet-500/10 to-violet-600/5 rounded-xl p-4 text-center border border-violet-500/20 transition-all hover:border-violet-400/40 hover:scale-[1.02]">
-                <MousePointer className="w-5 h-5 text-violet-400 mx-auto mb-2" />
-                <p className="text-xl font-bold text-violet-400">{formatPercent(clickRate)}</p>
+              <div className="bg-primary/10 rounded-xl p-4 text-center border border-primary/20 transition-all hover:border-primary/40 hover:scale-[1.02]">
+                <MousePointer className="w-5 h-5 text-primary/80 mx-auto mb-2" />
+                <p className="text-xl font-bold text-primary/80">{formatPercent(clickRate)}</p>
                 <p className="text-xs text-muted-foreground mt-1">Taxa Clique</p>
               </div>
 
-              <div className="bg-muted/30 rounded-xl p-4 text-center border border-border/30 transition-all hover:border-blue-500/30 hover:scale-[1.02]">
+              <div className="bg-muted/30 rounded-xl p-4 text-center border border-border/30 transition-all hover:border-primary/30 hover:scale-[1.02]">
                 <Target className="w-5 h-5 text-muted-foreground mx-auto mb-2" />
                 <p className="text-xl font-bold text-foreground">{formatPercent(ctor)}</p>
                 <p className="text-xs text-muted-foreground mt-1">CTOR</p>
               </div>
 
-              <div className="bg-muted/30 rounded-xl p-4 text-center border border-border/30 transition-all hover:border-blue-500/30 hover:scale-[1.02]">
+              <div className="bg-muted/30 rounded-xl p-4 text-center border border-border/30 transition-all hover:border-primary/30 hover:scale-[1.02]">
                 <XCircle className="w-5 h-5 text-muted-foreground mx-auto mb-2" />
                 <p className="text-xl font-bold text-foreground">{formatNumber(bounced)}</p>
                 <p className="text-xs text-muted-foreground mt-1">Bounces</p>
@@ -725,17 +725,17 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
         {/* ===== SECTION: AUTOMAÇÕES E CAMPANHAS ===== */}
         <div className="grid grid-cols-2 gap-6">
           {/* Automações */}
-          <div className="bg-gradient-to-br from-card/80 to-muted/40 rounded-2xl border border-border/50 overflow-hidden">
+          <div className="bg-card rounded-2xl border border-border/50 overflow-hidden">
             <div className="bg-muted/50 px-6 py-4 border-b border-border/50">
               <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider flex items-center gap-2">
-                <Zap className="w-4 h-4 text-blue-400" />
+                <Zap className="w-4 h-4 text-primary" />
                 Automações (Flows)
               </h2>
             </div>
             <div className="p-5 space-y-3">
               <div className="flex justify-between items-center py-2 border-b border-border/30">
                 <span className="text-sm text-muted-foreground">Flows Ativos</span>
-                <span className="text-sm font-bold text-blue-400">{liveFlows}</span>
+                <span className="text-sm font-bold text-primary">{liveFlows}</span>
               </div>
               <div className="flex justify-between items-center py-2 border-b border-border/30">
                 <span className="text-sm text-muted-foreground">Total de Flows</span>
@@ -747,23 +747,23 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
               </div>
               <div className="flex justify-between items-center py-2">
                 <span className="text-sm text-muted-foreground">% da Receita Convertfy</span>
-                <span className="text-sm font-bold text-violet-400">{convertfyRevenue > 0 ? formatPercent((flowRevenue / convertfyRevenue) * 100) : '0%'}</span>
+                <span className="text-sm font-bold text-primary/80">{convertfyRevenue > 0 ? formatPercent((flowRevenue / convertfyRevenue) * 100) : '0%'}</span>
               </div>
             </div>
           </div>
 
           {/* Campanhas */}
-          <div className="bg-gradient-to-br from-card/80 to-muted/40 rounded-2xl border border-border/50 overflow-hidden">
+          <div className="bg-card rounded-2xl border border-border/50 overflow-hidden">
             <div className="bg-muted/50 px-6 py-4 border-b border-border/50">
               <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider flex items-center gap-2">
-                <Send className="w-4 h-4 text-blue-400" />
+                <Send className="w-4 h-4 text-primary" />
                 Campanhas
               </h2>
             </div>
             <div className="p-5 space-y-3">
               <div className="flex justify-between items-center py-2 border-b border-border/30">
                 <span className="text-sm text-muted-foreground">Campanhas Enviadas</span>
-                <span className="text-sm font-bold text-blue-400">{sentCampaigns}</span>
+                <span className="text-sm font-bold text-primary">{sentCampaigns}</span>
               </div>
               <div className="flex justify-between items-center py-2 border-b border-border/30">
                 <span className="text-sm text-muted-foreground">Entregues</span>
@@ -775,7 +775,7 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
               </div>
               <div className="flex justify-between items-center py-2">
                 <span className="text-sm text-muted-foreground">% da Receita Convertfy</span>
-                <span className="text-sm font-bold text-violet-400">{convertfyRevenue > 0 ? formatPercent((campaignRevenue / convertfyRevenue) * 100) : '0%'}</span>
+                <span className="text-sm font-bold text-primary/80">{convertfyRevenue > 0 ? formatPercent((campaignRevenue / convertfyRevenue) * 100) : '0%'}</span>
               </div>
             </div>
           </div>
@@ -783,10 +783,10 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
 
         {/* ===== SECTION: TOP AUTOMAÇÕES ===== */}
         {reportData.flowPerformance?.flows && reportData.flowPerformance.flows.length > 0 && (
-          <div className="bg-gradient-to-br from-card/80 to-muted/40 rounded-2xl border border-border/50 overflow-hidden">
+          <div className="bg-card rounded-2xl border border-border/50 overflow-hidden">
             <div className="bg-muted/50 px-6 py-4 border-b border-border/50">
               <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider flex items-center gap-2">
-                <BarChart2 className="w-4 h-4 text-blue-400" />
+                <BarChart2 className="w-4 h-4 text-primary" />
                 Top Automações por Receita
               </h2>
             </div>
@@ -806,13 +806,13 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
                   {reportData.flowPerformance.flows.slice(0, 6).map((flow, i) => (
                     <tr key={flow.flowId} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
                       <td className="py-3 text-sm">
-                        <span className={`w-6 h-6 rounded-md flex items-center justify-center text-xs font-bold ${i < 3 ? 'bg-blue-500/20 text-blue-400' : 'bg-muted text-muted-foreground'}`}>{i + 1}</span>
+                        <span className={`w-6 h-6 rounded-md flex items-center justify-center text-xs font-bold ${i < 3 ? 'bg-primary/20 text-primary' : 'bg-muted text-muted-foreground'}`}>{i + 1}</span>
                       </td>
                       <td className="py-3 text-sm font-medium text-foreground">{flow.name}</td>
                       <td className="py-3 text-sm text-right text-muted-foreground">{formatNumber(flow.delivered)}</td>
                       <td className="py-3 text-sm text-right text-foreground/80">{formatPercent(flow.openRate)}</td>
                       <td className="py-3 text-sm text-right text-foreground/80">{formatPercent(flow.clickRate)}</td>
-                      <td className="py-3 text-sm text-right font-bold text-blue-400">{formatCurrency(flow.revenue)}</td>
+                      <td className="py-3 text-sm text-right font-bold text-primary">{formatCurrency(flow.revenue)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -823,18 +823,18 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
 
         {/* ===== SECTION: PRODUTOS MAIS VENDIDOS ===== */}
         {shopifyData?.bestSellingProducts && shopifyData.bestSellingProducts.length > 0 && (
-          <div className="bg-gradient-to-br from-card/80 to-muted/40 rounded-2xl border border-border/50 overflow-hidden">
+          <div className="bg-card rounded-2xl border border-border/50 overflow-hidden">
             <div className="bg-muted/50 px-6 py-4 border-b border-border/50">
               <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider flex items-center gap-2">
-                <Package className="w-4 h-4 text-blue-400" />
+                <Package className="w-4 h-4 text-primary" />
                 Top 5 Produtos Mais Vendidos
               </h2>
             </div>
             <div className="p-6">
               <div className="grid gap-3">
                 {shopifyData.bestSellingProducts.slice(0, 5).map((product, i) => (
-                  <div key={product.productId} className="flex items-center gap-4 bg-muted/20 rounded-xl p-4 border border-border/30 transition-all hover:border-blue-500/30 hover:bg-muted/40">
-                    <span className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold ${i < 3 ? 'bg-blue-500/20 text-blue-400' : 'bg-muted text-muted-foreground'}`}>{i + 1}</span>
+                  <div key={product.productId} className="flex items-center gap-4 bg-muted/20 rounded-xl p-4 border border-border/30 transition-all hover:border-primary/30 hover:bg-muted/40">
+                    <span className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold ${i < 3 ? 'bg-primary/20 text-primary' : 'bg-muted text-muted-foreground'}`}>{i + 1}</span>
                     <div className="flex-1">
                       <p className="text-sm font-medium text-foreground">{product.title}</p>
                       <p className="text-xs text-muted-foreground">{formatNumber(product.quantitySold)} unidades vendidas</p>
@@ -853,13 +853,13 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
         <div className="text-center py-8 border-t border-border/50">
           <div className="flex items-center justify-center gap-2 mb-3">
             <div className="flex items-center gap-1">
-              <Star className="w-3 h-3 text-blue-400 fill-blue-400" />
-              <Star className="w-4 h-4 text-blue-400 fill-blue-400" />
-              <Star className="w-3 h-3 text-blue-400 fill-blue-400" />
+              <Star className="w-3 h-3 text-primary fill-primary" />
+              <Star className="w-4 h-4 text-primary fill-primary" />
+              <Star className="w-3 h-3 text-primary fill-primary" />
             </div>
           </div>
           <p className="text-sm text-muted-foreground">
-            Relatório gerado por <span className="text-blue-400 font-semibold">Convertfy</span>
+            Relatório gerado por <span className="text-primary font-semibold">Convertfy</span>
           </p>
           <p className="text-xs text-muted-foreground/70 mt-1">
             {new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
@@ -877,10 +877,10 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
   return (
     <>
       {isAllDataZero && (
-        <div className="flex items-center gap-3 p-4 mb-4 rounded-xl border border-yellow-500/30 bg-yellow-500/5">
-          <AlertTriangle className="h-5 w-5 text-yellow-500 shrink-0" />
+        <div className="flex items-center gap-3 p-4 mb-4 rounded-xl border border-warning/30 bg-warning/5">
+          <AlertTriangle className="h-5 w-5 text-warning shrink-0" />
           <div>
-            <p className="text-sm font-medium text-yellow-500">Nenhum dado encontrado</p>
+            <p className="text-sm font-medium text-warning">Nenhum dado encontrado</p>
             <p className="text-xs text-muted-foreground">
               Verifique se a API Key do Klaviyo tem permissão para acessar relatórios (Reporting scope).
             </p>
@@ -898,7 +898,7 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
             <div className="flex items-center rounded-xl bg-card border border-border p-1">
               {(["7d", "30d", "90d", "all"] as DateRange[]).map(range => (
                 <button key={range} onClick={() => handleDateRangeChange(range)}
-                  className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-all ${dateRange === range ? 'bg-blue-600 text-white' : 'text-muted-foreground hover:text-foreground hover:bg-muted'}`}>
+                  className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-all ${dateRange === range ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted'}`}>
                   {range === "7d" ? "7D" : range === "30d" ? "30D" : range === "90d" ? "90D" : "1A"}
                 </button>
               ))}
@@ -916,7 +916,7 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
           <Button variant="outline" size="icon" onClick={openFullscreenReport} className="bg-card border-border h-9 w-9 hover:bg-muted" title="Abrir em nova página">
             <ExternalLink className="w-4 h-4" />
           </Button>
-          <Button onClick={handleExportPDF} disabled={isExporting} className="bg-blue-600 hover:bg-blue-700 h-9 px-4">
+          <Button onClick={handleExportPDF} disabled={isExporting} className="bg-primary hover:bg-primary/90 h-9 px-4">
             {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
             <span className="ml-2 hidden sm:inline">Exportar</span>
           </Button>

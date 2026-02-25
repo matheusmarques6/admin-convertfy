@@ -80,8 +80,8 @@ export default async function ClientPage({
               <div className="flex items-center gap-1 text-sm">
                 <span>{getHealthScoreEmoji(client.health_score)}</span>
                 <span className={`font-medium ${
-                  healthColor === "green" ? "text-emerald-500" :
-                  healthColor === "yellow" ? "text-amber-500" : "text-red-500"
+                  healthColor === "green" ? "text-success" :
+                  healthColor === "yellow" ? "text-warning" : "text-destructive"
                 }`}>
                   {client.health_score}%
                 </span>

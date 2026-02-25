@@ -12,7 +12,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
 import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
@@ -248,7 +247,7 @@ export default function NewClientPage() {
       {/* Form */}
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         {/* Required Fields for Asaas */}
-        <GlowCard color="primary" intensity="subtle" className="border-primary/50">
+        <Card className="rounded-xl border bg-card">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               Dados Obrigatórios
@@ -312,10 +311,10 @@ export default function NewClientPage() {
             </div>
             <p className="text-xs text-muted-foreground">* Pelo menos email ou telefone é obrigatório</p>
           </CardContent>
-        </GlowCard>
+        </Card>
 
         {/* Additional Info */}
-        <GlowCard color="primary" intensity="subtle">
+        <Card className="rounded-xl border bg-card">
           <CardHeader>
             <CardTitle>Informações Adicionais</CardTitle>
             <CardDescription>
@@ -369,10 +368,10 @@ export default function NewClientPage() {
               </Select>
             </div>
           </CardContent>
-        </GlowCard>
+        </Card>
 
         {/* Address */}
-        <GlowCard color="primary" intensity="subtle">
+        <Card className="rounded-xl border bg-card">
           <CardHeader>
             <CardTitle>Endereço</CardTitle>
             <CardDescription>
@@ -483,10 +482,10 @@ export default function NewClientPage() {
               </div>
             </div>
           </CardContent>
-        </GlowCard>
+        </Card>
 
         {/* Integration */}
-        <GlowCard color="primary" intensity="subtle">
+        <Card className="rounded-xl border bg-card">
           <CardHeader>
             <CardTitle>Integração Asaas</CardTitle>
             <CardDescription>
@@ -507,10 +506,10 @@ export default function NewClientPage() {
               </p>
             </div>
           </CardContent>
-        </GlowCard>
+        </Card>
 
         {/* Notes */}
-        <GlowCard color="primary" intensity="subtle">
+        <Card className="rounded-xl border bg-card">
           <CardHeader>
             <CardTitle>Observações</CardTitle>
             <CardDescription>
@@ -525,7 +524,7 @@ export default function NewClientPage() {
               rows={4}
             />
           </CardContent>
-        </GlowCard>
+        </Card>
 
         {/* Actions */}
         <div className="flex justify-end gap-4">

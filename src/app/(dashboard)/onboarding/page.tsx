@@ -16,8 +16,8 @@ export default function OnboardingPage() {
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-convertfy-purple to-convertfy-blue flex items-center justify-center">
-              <Rocket className="w-5 h-5 text-white" />
+            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+              <Rocket className="w-5 h-5 text-primary" />
             </div>
             <p className="text-muted-foreground text-sm">Gerencie o processo de implementação dos clientes</p>
           </div>
