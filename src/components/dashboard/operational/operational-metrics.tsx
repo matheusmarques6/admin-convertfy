@@ -56,9 +56,9 @@ export function OperationalMetrics({ metrics }: OperationalMetricsProps) {
       title: "Onboardings Ativos",
       value: formatNumber(metrics.activeOnboardings),
       icon: Rocket,
-      iconColor: "text-cyan-600 dark:text-cyan-400",
-      iconBg: "bg-cyan-500/10",
-      accentColor: "border-t-cyan-500",
+      iconColor: "text-info",
+      iconBg: "bg-info/10",
+      accentColor: "border-t-info",
     },
   ]
 

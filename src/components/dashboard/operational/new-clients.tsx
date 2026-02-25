@@ -32,13 +32,13 @@ function timeAgo(dateStr: string): string {
 
   const minutes = Math.floor(diff / 60000)
   if (minutes < 1) return "agora"
-  if (minutes < 60) return `${minutes} min atras`
+  if (minutes < 60) return `${minutes} min atrás`
 
   const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h atras`
+  if (hours < 24) return `${hours}h atrás`
 
   const days = Math.floor(hours / 24)
-  if (days < 30) return `${days}d atras`
+  if (days < 30) return `${days}d atrás`
 
   return new Date(dateStr).toLocaleDateString("pt-BR")
 }
@@ -119,7 +119,7 @@ export function NewClients({ clients }: NewClientsProps) {
         ) : (
           <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
             <Users className="h-8 w-8 mb-2 opacity-50" />
-            <p className="text-sm">Nenhum novo cliente nos ultimos 30 dias</p>
+            <p className="text-sm">Nenhum novo cliente nos últimos 30 dias</p>
           </div>
         )}
       </CardContent>

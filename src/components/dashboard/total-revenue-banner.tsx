@@ -230,8 +230,8 @@ export function TotalRevenueBanner({ storeIds }: TotalRevenueBannerProps = {}) {
             </div>
           </div>
           <div className="flex items-center gap-3 p-4 rounded-xl border border-border bg-card">
-            <div className="rounded-xl p-2.5 bg-cyan-500/10">
-              <Workflow className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
+            <div className="rounded-xl p-2.5 bg-info/10">
+              <Workflow className="h-4 w-4 text-info" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground font-medium">Flows</p>

@@ -368,7 +368,7 @@ export default function PortalLayout({
 
   return (
     <div
-      className="min-h-screen bg-[#F8F9FB] dark:bg-[#0B0E14]"
+      className="portal-layout min-h-screen bg-[#F8F9FB] dark:bg-[#0B0E14]"
       style={branding.primary_color !== "#3b82f6" ? {
         "--portal-primary": branding.primary_color,
         "--portal-primary-foreground": "#ffffff",

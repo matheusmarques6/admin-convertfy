@@ -38,7 +38,7 @@ export function TodayAgenda({ meetings }: TodayAgendaProps) {
           </div>
           <Button variant="ghost" size="sm" className="text-xs text-muted-foreground hover:text-primary h-7" asChild>
             <Link href="/meetings?view=calendar">
-              Ver calendario
+              Ver calendário
               <ArrowRight className="ml-1 h-3 w-3" />
             </Link>
           </Button>
@@ -48,7 +48,7 @@ export function TodayAgenda({ meetings }: TodayAgendaProps) {
         {todayMeetings.length === 0 ? (
           <div className="text-center py-6 text-muted-foreground text-sm">
             <Video className="h-8 w-8 mx-auto mb-1.5 opacity-20" />
-            <p>Nenhuma reuniao hoje</p>
+            <p>Nenhuma reunião hoje</p>
           </div>
         ) : (
           <div className="space-y-2">

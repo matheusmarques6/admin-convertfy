@@ -13,7 +13,7 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222 47% 11%;
 
-    --primary: 197 96% 48%;
+    --primary: 217 91% 53%;
     --primary-foreground: 0 0% 100%;
 
     --secondary: 210 40% 96%;
@@ -42,7 +42,7 @@
 
     --border: 214 32% 91%;
     --input: 214 32% 91%;
-    --ring: 197 96% 48%;
+    --ring: 217 91% 53%;
 
     --radius: 0.5rem;
 
@@ -50,7 +50,7 @@
     --success-h: 160; --success-s: 84%; --success-l: 39%;
     --warning-h: 38;  --warning-s: 92%; --warning-l: 50%;
     --destructive-h: 0; --destructive-s: 84%; --destructive-l: 60%;
-    --primary-h: 197; --primary-s: 96%; --primary-l: 48%;
+    --primary-h: 217; --primary-s: 91%; --primary-l: 53%;
     --info-h: 196;    --info-s: 97%;  --info-l: 49%;
     --mrr-h: 237;     --mrr-s: 87%;  --mrr-l: 55%;
   }
@@ -65,7 +65,7 @@
     --popover: 224 50% 8%;
     --popover-foreground: 210 20% 98%;
 
-    --primary: 197 96% 55%;
+    --primary: 217 91% 60%;
     --primary-foreground: 0 0% 100%;
 
     --secondary: 215 28% 17%;
@@ -94,10 +94,24 @@
 
     --border: 215 28% 17%;
     --input: 215 28% 17%;
-    --ring: 197 96% 55%;
+    --ring: 217 91% 60%;
 
     /* Dark mode overrides */
     --destructive-h: 0; --destructive-s: 62%; --destructive-l: 50%;
+    --primary-h: 217; --primary-s: 91%; --primary-l: 60%;
+  }
+
+  /* Portal override: keep brand cyan-blue for customer portal */
+  .portal-layout {
+    --primary: 197 96% 48%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 197 96% 48%;
+    --primary-h: 197; --primary-s: 96%; --primary-l: 48%;
+  }
+  .dark .portal-layout {
+    --primary: 197 96% 55%;
+    --primary-foreground: 0 0% 100%;
+    --ring: 197 96% 55%;
     --primary-h: 197; --primary-s: 96%; --primary-l: 55%;
   }
 }

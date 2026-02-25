@@ -79,7 +79,7 @@ export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps)
                   </div>
                   <Badge variant={getSeverityColor(alert.severity)} className="shrink-0 text-[10px] h-5 px-2">
                     {alert.severity === "high" ? "Urgente" :
-                     alert.severity === "medium" ? "Atencao" : "Baixo"}
+                     alert.severity === "medium" ? "Atenção" : "Baixo"}
                   </Badge>
                 </div>
               )
@@ -96,7 +96,7 @@ export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps)
           <>
             <div className="flex items-center gap-2 pt-3 mt-3 border-t border-border">
               <Calendar className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium text-foreground">Proximas Reunioes</span>
+              <span className="text-sm font-medium text-foreground">Próximas Reuniões</span>
             </div>
             <ScrollArea className="h-[150px]">
               <div className="space-y-2">

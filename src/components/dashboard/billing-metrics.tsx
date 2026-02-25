@@ -90,7 +90,7 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
       }
       const response = await fetch(url)
       if (!response.ok) {
-        setError("Nao foi possivel carregar os dados financeiros. Tente novamente.")
+        setError("Não foi possível carregar os dados financeiros. Tente novamente.")
         return
       }
       const result = await response.json()
@@ -100,7 +100,7 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
       setData(result)
     } catch (err) {
       console.error("Error loading billing:", err)
-      setError("Erro de conexao ao carregar dados financeiros.")
+      setError("Erro de conexão ao carregar dados financeiros.")
     } finally {
       setIsLoading(false)
     }
@@ -145,7 +145,7 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
               Tentar Novamente
             </Button>
             <Button variant="outline" size="sm" asChild>
-              <Link href="/settings/integrations">Verificar Integracao</Link>
+              <Link href="/settings/integrations">Verificar Integração</Link>
             </Button>
           </div>
         </div>
@@ -161,10 +161,10 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
           <DollarSign className="h-10 w-10 text-muted-foreground mb-3" />
           <h3 className="text-base font-medium text-foreground">Conecte a Asaas</h3>
           <p className="text-sm text-muted-foreground text-center mt-1">
-            Configure a integracao com Asaas para ver metricas de faturamento
+            Configure a integração com Asaas para ver métricas de faturamento
           </p>
           <Button variant="outline" size="sm" className="mt-4" asChild>
-            <Link href="/settings/integrations">Configurar Integracao</Link>
+            <Link href="/settings/integrations">Configurar Integração</Link>
           </Button>
         </div>
       </div>
@@ -183,8 +183,8 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="today">Hoje</SelectItem>
-              <SelectItem value="7days">Ultimos 7 dias</SelectItem>
-              <SelectItem value="month">Este mes</SelectItem>
+              <SelectItem value="7days">Últimos 7 dias</SelectItem>
+              <SelectItem value="month">Este mês</SelectItem>
               <SelectItem value="year">Este ano</SelectItem>
               <SelectItem value="custom">Personalizado</SelectItem>
             </SelectContent>
@@ -232,7 +232,7 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
                 {formatCurrency(data?.summary.received || 0)}
               </p>
               <p className="text-xs text-muted-foreground mt-1.5">
-                {data?.counts.received || 0} cobrancas pagas
+                {data?.counts.received || 0} cobranças pagas
               </p>
             </div>
 
@@ -245,7 +245,7 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
                 {formatCurrency(data?.summary.pending || 0)}
               </p>
               <p className="text-xs text-muted-foreground mt-1.5">
-                {data?.counts.pending || 0} cobrancas a receber
+                {data?.counts.pending || 0} cobranças a receber
               </p>
             </div>
 
@@ -258,20 +258,20 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
                 {formatCurrency(data?.summary.overdue || 0)}
               </p>
               <p className="text-xs text-muted-foreground mt-1.5">
-                {data?.counts.overdue || 0} cobrancas vencidas
+                {data?.counts.overdue || 0} cobranças vencidas
               </p>
             </div>
 
             <div className="rounded-xl border border-border bg-card p-5 border-t-2 border-t-foreground">
               <p className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium">
                 <DollarSign className="h-3.5 w-3.5" />
-                Total Periodo
+                Total Período
               </p>
               <p className="text-2xl font-bold text-foreground mt-2">
                 {formatCurrency((data?.summary.received || 0) + (data?.summary.pending || 0))}
               </p>
               <p className="text-xs text-muted-foreground mt-1.5">
-                {data?.counts.total || 0} cobrancas no periodo
+                {data?.counts.total || 0} cobranças no período
               </p>
             </div>
 
@@ -308,7 +308,7 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
                 {data?.inadimplentes?.totalClients || 0}
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                {data?.inadimplentes?.totalCharges || 0} cobrancas · {formatCurrency(data?.inadimplentes?.totalValue || 0)}
+                {data?.inadimplentes?.totalCharges || 0} cobranças ·{formatCurrency(data?.inadimplentes?.totalValue || 0)}
               </p>
             </div>
 
@@ -331,7 +331,7 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
           {/* By Payment Type */}
           <div className="rounded-xl border border-border bg-card">
             <div className="p-5 pb-3">
-              <h3 className="text-sm font-medium text-foreground">Faturamento por Metodo</h3>
+              <h3 className="text-sm font-medium text-foreground">Faturamento por Método</h3>
             </div>
             <div className="px-5 pb-5">
               <div className="grid gap-4 md:grid-cols-3">
@@ -360,7 +360,7 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
                     <CreditCard className="h-4 w-4 text-warning" />
                   </div>
                   <div>
-                    <p className="text-xs text-muted-foreground">Cartao</p>
+                    <p className="text-xs text-muted-foreground">Cartão</p>
                     <p className="text-base font-semibold text-foreground">{formatCurrency(data?.byType.CREDIT_CARD || 0)}</p>
                   </div>
                 </div>
@@ -376,9 +376,9 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
                   <AlertCircle className="h-5 w-5 text-destructive" />
                 </div>
                 <div className="flex-1">
-                  <p className="text-sm font-medium text-destructive">Atencao: Cobrancas Vencidas</p>
+                  <p className="text-sm font-medium text-destructive">Atenção: Cobranças Vencidas</p>
                   <p className="text-xs text-muted-foreground">
-                    Voce tem {data?.counts.overdue} cobrancas vencidas totalizando {formatCurrency(data?.summary.overdue || 0)}
+                    Você tem {data?.counts.overdue} cobranças vencidas totalizando {formatCurrency(data?.summary.overdue || 0)}
                   </p>
                 </div>
                 <Button variant="destructive" size="sm" asChild>

@@ -16,10 +16,10 @@ const PLATFORM_CONFIG: Record<string, { label: string; color: string }> = {
 }
 
 const ONBOARDING_STATUS: Record<string, { label: string; color: string }> = {
-  not_started: { label: "Nao Iniciado", color: "bg-gray-500/10 text-gray-500" },
+  not_started: { label: "Não Iniciado", color: "bg-gray-500/10 text-gray-500" },
   in_progress: { label: "Em Progresso", color: "bg-blue-500/10 text-blue-500" },
   paused: { label: "Pausado", color: "bg-yellow-500/10 text-yellow-500" },
-  completed: { label: "Concluido", color: "bg-green-500/10 text-green-500" },
+  completed: { label: "Concluído", color: "bg-green-500/10 text-green-500" },
   cancelled: { label: "Cancelado", color: "bg-red-500/10 text-red-500" },
 }
 
@@ -30,13 +30,13 @@ function timeAgo(dateStr: string): string {
 
   const minutes = Math.floor(diff / 60000)
   if (minutes < 1) return "agora"
-  if (minutes < 60) return `${minutes} min atras`
+  if (minutes < 60) return `${minutes} min atrás`
 
   const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h atras`
+  if (hours < 24) return `${hours}h atrás`
 
   const days = Math.floor(hours / 24)
-  if (days < 30) return `${days}d atras`
+  if (days < 30) return `${days}d atrás`
 
   return new Date(dateStr).toLocaleDateString("pt-BR")
 }
@@ -66,7 +66,7 @@ export function NewStores({ stores }: NewStoresProps) {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Store className="h-4 w-4 text-success" />
-            <CardTitle className="text-sm font-medium text-foreground">Lojas para Implementacao</CardTitle>
+            <CardTitle className="text-sm font-medium text-foreground">Lojas para Implementação</CardTitle>
           </div>
           {stores.length > 0 && (
             <Badge variant="secondary" className="rounded-full text-xs">

@@ -9,7 +9,6 @@ import { QuickActions } from "@/components/dashboard/quick-actions"
 import { TotalRevenueBanner } from "@/components/dashboard/total-revenue-banner"
 import { TodayAgenda } from "@/components/dashboard/today-agenda"
 import { Skeleton } from "@/components/ui/skeleton"
-import { AnimatedContainer, AnimatedItem } from "@/components/ui/animated-container"
 import type { DashboardAlert } from "@/types"
 
 export const dynamic = "force-dynamic"
@@ -152,7 +151,6 @@ async function getDashboardData() {
     .order("end_date", { ascending: true })
     .limit(5)
 
-  // Get client names for expiring contracts
   const expiringClientIds = [...new Set(expiringContracts?.map((c) => c.client_id).filter(Boolean) || [])]
   const { data: expiringClients } = expiringClientIds.length > 0
     ? await supabase.from("clients").select("id, name").in("id", expiringClientIds)
@@ -176,7 +174,6 @@ async function getDashboardData() {
     .order("due_date", { ascending: true })
     .limit(5)
 
-  // Get client names for overdue charges
   const overdueClientIds = [...new Set(overdueCharges?.map((c) => c.client_id).filter(Boolean) || [])]
   const { data: overdueClients } = overdueClientIds.length > 0
     ? await supabase.from("clients").select("id, name").in("id", overdueClientIds)
@@ -192,7 +189,7 @@ async function getDashboardData() {
       id: `overdue-${c.id}`,
       type: "payment_overdue",
       title: "Pagamento vencido",
-      description: `${clientName} - ${c.description || "Cobranca"} vencida em ${new Date(c.due_date).toLocaleDateString("pt-BR")}`,
+      description: `${clientName} - ${c.description || "Cobrança"} vencida em ${new Date(c.due_date).toLocaleDateString("pt-BR")}`,
       severity: "high",
     })
   })
@@ -213,7 +210,7 @@ async function getDashboardData() {
       id: `health-${c.id}`,
       type: "health_low",
       title: "Health score baixo",
-      description: `${c.name} esta com score ${c.health_score}/100`,
+      description: `${c.name} está com score ${c.health_score}/100`,
       severity: "low",
     })
   })
@@ -231,22 +228,15 @@ async function getDashboardData() {
 
 function MetricsSkeleton() {
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <Skeleton className="h-8 w-40 rounded-lg" />
-        <Skeleton className="h-8 w-8 rounded-lg" />
-      </div>
-      <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
-        {[...Array(5)].map((_, i) => (
-          <Skeleton key={i} className="h-28 rounded-xl" />
-        ))}
-      </div>
+    <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
+      {[...Array(5)].map((_, i) => (
+        <Skeleton key={i} className="h-24 rounded-xl" />
+      ))}
     </div>
   )
 }
 
 export default async function DashboardPage() {
-  // Redirect agentes (nao-admin/nao-owner) para dashboard operacional
   const supabase2 = await createClient()
   const { data: { user: authUser } } = await supabase2.auth.getUser()
 
@@ -279,41 +269,36 @@ export default async function DashboardPage() {
   const data = await getDashboardData()
 
   return (
-    <AnimatedContainer className="space-y-6">
+    <div className="space-y-6">
       {/* Quick Actions */}
-      <AnimatedItem>
-        <QuickActions />
-      </AnimatedItem>
+      <QuickActions />
 
-      {/* Total Revenue Banner */}
-      <AnimatedItem>
-        <TotalRevenueBanner />
-      </AnimatedItem>
+      {/* Financial KPIs */}
+      <Suspense fallback={<MetricsSkeleton />}>
+        <BillingMetrics mrr={data.mrr} />
+      </Suspense>
 
-      {/* Billing Metrics with Period Selector */}
-      <AnimatedItem>
-        <Suspense fallback={<MetricsSkeleton />}>
-          <BillingMetrics mrr={data.mrr} />
-        </Suspense>
-      </AnimatedItem>
+      {/* Revenue Banner */}
+      <TotalRevenueBanner />
 
-      {/* Charts and Activity */}
-      <AnimatedItem>
-        <div className="grid gap-6 lg:grid-cols-7">
-          <div className="col-span-full lg:col-span-4">
-            <DashboardCharts
-              revenueData={data.revenueData}
-              clientsData={data.clientsData}
-              pipelineData={data.pipelineData}
-            />
-          </div>
-          <div className="col-span-full lg:col-span-3 space-y-6">
-            <TodayAgenda meetings={data.upcomingMeetings} />
-            <DashboardAlerts meetings={data.upcomingMeetings} alerts={data.alerts} />
-            <RecentActivity activities={data.activities} />
-          </div>
+      {/* Main Content: Charts + Sidebar */}
+      <div className="grid gap-6 lg:grid-cols-7">
+        {/* Charts */}
+        <div className="col-span-full lg:col-span-4">
+          <DashboardCharts
+            revenueData={data.revenueData}
+            clientsData={data.clientsData}
+            pipelineData={data.pipelineData}
+          />
         </div>
-      </AnimatedItem>
-    </AnimatedContainer>
+
+        {/* Right sidebar */}
+        <div className="col-span-full lg:col-span-3 space-y-6">
+          <TodayAgenda meetings={data.upcomingMeetings} />
+          <DashboardAlerts meetings={data.upcomingMeetings} alerts={data.alerts} />
+          <RecentActivity activities={data.activities} />
+        </div>
+      </div>
+    </div>
   )
 }

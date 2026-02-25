@@ -97,8 +97,8 @@ export function DashboardCharts({
   return (
     <div className="rounded-xl border border-border bg-card h-full">
       <CardHeader>
-        <CardTitle className="text-base font-semibold text-foreground">Visao Geral</CardTitle>
-        <CardDescription className="text-xs">Acompanhe o desempenho da sua agencia</CardDescription>
+        <CardTitle className="text-base font-semibold text-foreground">Visão Geral</CardTitle>
+        <CardDescription className="text-xs">Acompanhe o desempenho da sua agência</CardDescription>
       </CardHeader>
       <CardContent>
         <Tabs defaultValue="revenue" className="space-y-4">
@@ -179,7 +179,7 @@ export function DashboardCharts({
                 </ResponsiveContainer>
               ) : (
                 <div className="flex items-center justify-center h-full text-muted-foreground">
-                  Nenhum dado de receita disponivel
+                  Nenhum dado de receita disponível
                 </div>
               )}
             </div>
@@ -195,7 +195,7 @@ export function DashboardCharts({
                 </div>
                 <p className="text-lg font-bold text-foreground">
                   {financialData?.newDeals.count ?? 0}{" "}
-                  <span className="text-xs font-normal text-muted-foreground">este mes</span>
+                  <span className="text-xs font-normal text-muted-foreground">este mês</span>
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {formatCurrency(financialData?.newDeals.pipelineValue ?? 0)} em pipeline
@@ -217,7 +217,7 @@ export function DashboardCharts({
                 <p className="text-lg font-bold text-foreground">
                   {financialData?.upcoming7Days.count ?? 0}{" "}
                   <span className="text-xs font-normal text-muted-foreground">
-                    {(financialData?.upcoming7Days.count ?? 0) === 1 ? "cobranca" : "cobrancas"}
+                    {(financialData?.upcoming7Days.count ?? 0) === 1 ? "cobrança" : "cobranças"}
                   </span>
                 </p>
                 <p className="text-xs text-muted-foreground">
@@ -230,7 +230,7 @@ export function DashboardCharts({
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-full bg-success" />
                 <span className="text-muted-foreground">
-                  {financialData?.asaasConnected ? "Receita Asaas (6 meses)" : "Receita (ultimos 6 meses)"}
+                  {financialData?.asaasConnected ? "Receita Asaas (6 meses)" : "Receita (últimos 6 meses)"}
                 </span>
               </div>
             </div>

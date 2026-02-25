@@ -46,7 +46,7 @@ export function OperationalAlerts({ alerts }: OperationalAlertsProps) {
         <div className="flex items-center justify-between">
           <div>
             <CardTitle className="text-sm font-medium text-foreground">Alertas Recentes</CardTitle>
-            <CardDescription>Itens que precisam da sua atencao</CardDescription>
+            <CardDescription>Itens que precisam da sua atenção</CardDescription>
           </div>
           {alerts.length > 0 && (
             <Badge variant={highCount > 0 ? "destructive" : "secondary"} className="bg-destructive/10 text-destructive border-0 text-xs rounded-full">
@@ -83,7 +83,7 @@ export function OperationalAlerts({ alerts }: OperationalAlertsProps) {
                     </div>
                     <Badge variant={getSeverityColor(alert.severity)} className="shrink-0 text-[10px] h-5 px-2">
                       {alert.severity === "high" ? "Urgente" :
-                       alert.severity === "medium" ? "Atencao" : "Baixo"}
+                       alert.severity === "medium" ? "Atenção" : "Baixo"}
                     </Badge>
                   </div>
                 )

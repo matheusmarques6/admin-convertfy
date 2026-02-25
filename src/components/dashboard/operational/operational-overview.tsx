@@ -60,19 +60,19 @@ function timeAgo(dateStr: string): string {
 
   const minutes = Math.floor(diff / 60000)
   if (minutes < 1) return "agora"
-  if (minutes < 60) return `${minutes} min atras`
+  if (minutes < 60) return `${minutes} min atrás`
 
   const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h atras`
+  if (hours < 24) return `${hours}h atrás`
 
   const days = Math.floor(hours / 24)
-  if (days < 30) return `${days}d atras`
+  if (days < 30) return `${days}d atrás`
 
   return new Date(dateStr).toLocaleDateString("pt-BR")
 }
 
 const ONBOARDING_STATUS: Record<string, { label: string; color: string }> = {
-  not_started: { label: "Nao Iniciado", color: "bg-gray-500/10 text-gray-500" },
+  not_started: { label: "Não Iniciado", color: "bg-gray-500/10 text-gray-500" },
   in_progress: { label: "Em Progresso", color: "bg-blue-500/10 text-blue-500" },
   paused: { label: "Pausado", color: "bg-yellow-500/10 text-yellow-500" },
 }
@@ -173,8 +173,8 @@ export function OperationalOverview({ activities, onboardings }: OperationalOver
                         className="p-2.5 rounded-lg border border-border hover:bg-muted/30 transition-colors"
                       >
                         <div className="flex items-start gap-3">
-                          <div className="rounded-md p-1.5 bg-cyan-500/10 shrink-0">
-                            <Rocket className="h-3.5 w-3.5 text-cyan-600 dark:text-cyan-400" />
+                          <div className="rounded-md p-1.5 bg-info/10 shrink-0">
+                            <Rocket className="h-3.5 w-3.5 text-info" />
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium truncate text-foreground">
@@ -191,7 +191,7 @@ export function OperationalOverview({ activities, onboardings }: OperationalOver
                                 {status.label}
                               </Badge>
                               <span className="text-[10px] text-muted-foreground">
-                                {completedSteps}/{totalSteps} concluidos
+                                {completedSteps}/{totalSteps} concluídos
                               </span>
                             </div>
                             <div className="mt-1.5 flex items-center gap-2">

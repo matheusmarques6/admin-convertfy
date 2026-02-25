@@ -68,13 +68,13 @@ function timeAgo(dateStr: string): string {
 
   const minutes = Math.floor(diff / 60000)
   if (minutes < 1) return "agora"
-  if (minutes < 60) return `${minutes} min atras`
+  if (minutes < 60) return `${minutes} min atrás`
 
   const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h atras`
+  if (hours < 24) return `${hours}h atrás`
 
   const days = Math.floor(hours / 24)
-  if (days < 30) return `${days}d atras`
+  if (days < 30) return `${days}d atrás`
 
   return new Date(dateStr).toLocaleDateString("pt-BR")
 }
@@ -86,7 +86,7 @@ export function RecentActivity({ activities = [] }: RecentActivityProps) {
     <div className="rounded-xl border border-border bg-card">
       <CardHeader className="p-5 pb-3">
         <CardTitle className="text-sm font-medium text-foreground">Atividade Recente</CardTitle>
-        <CardDescription className="text-xs text-muted-foreground">Ultimas acoes no sistema</CardDescription>
+        <CardDescription className="text-xs text-muted-foreground">Últimas ações no sistema</CardDescription>
       </CardHeader>
       <CardContent>
         <ScrollArea className="h-[300px] pr-4">

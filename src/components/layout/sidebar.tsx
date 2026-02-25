@@ -26,7 +26,6 @@ import {
   Sun,
   Moon,
   LucideIcon,
-  Receipt,
 } from "lucide-react"
 import { motion, LayoutGroup } from "framer-motion"
 import { cn } from "@/lib/utils"
@@ -62,10 +61,10 @@ interface NavItem {
 }
 
 const NAV_GROUPS = [
-  { key: "principal", label: "Principal" },
-  { key: "crm", label: "CRM & Vendas" },
+  { key: "principal", label: "" },
+  { key: "crm", label: "Gestão" },
   { key: "marketing", label: "Marketing" },
-  { key: "operacional", label: "Operacional" },
+  { key: "operacional", label: "Operações" },
   { key: "ferramentas", label: "Ferramentas" },
 ] as const
 
@@ -81,7 +80,6 @@ const navigation: NavItem[] = [
   { name: "Reuniões", href: "/meetings", icon: Calendar, group: "operacional", requiredFeatures: ["calendar_control"] },
   { name: "Equipe", href: "/team", icon: Users2, group: "operacional", requiredFeatures: ["team_control", "team_view"] },
   { name: "Financeiro", href: "/financial", icon: DollarSign, group: "operacional", requiredFeatures: ["view_financial"] },
-  { name: "Faturas", href: "/financial?tab=charges", icon: Receipt, group: "operacional", requiredFeatures: ["view_financial"] },
   { name: "Relatórios", href: "/reports", icon: BarChart3, group: "operacional", requiredFeatures: ["view_reports"] },
   { name: "Ferramentas", href: "/tools", icon: Wrench, group: "ferramentas" },
 ]
@@ -162,10 +160,10 @@ export function Sidebar({ user }: SidebarProps) {
             <Link
               href={item.href}
               className={cn(
-                "flex items-center justify-center h-9 w-full rounded-md transition-colors duration-150",
+                "flex items-center justify-center h-9 w-full rounded-lg transition-colors duration-150",
                 isActive
                   ? "bg-white/10 text-white"
-                  : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
+                  : "text-slate-400 hover:bg-white/[0.06] hover:text-slate-200"
               )}
             >
               <Icon className="h-[18px] w-[18px]" />
@@ -183,21 +181,21 @@ export function Sidebar({ user }: SidebarProps) {
         key={item.name}
         href={item.href}
         className={cn(
-          "relative flex items-center gap-3 h-9 px-3 rounded-md transition-colors duration-150",
+          "relative flex items-center gap-3 h-9 px-3 rounded-lg text-[13px] transition-colors duration-150",
           isActive
             ? "bg-white/10 text-white font-medium"
-            : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
+            : "text-slate-400 hover:bg-white/[0.06] hover:text-slate-200"
         )}
       >
         {isActive && (
           <motion.div
             layoutId="sidebar-active"
-            className="absolute left-0 top-1.5 bottom-1.5 w-[2px] bg-primary rounded-full"
-            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+            className="absolute left-0 top-1 bottom-1 w-[3px] bg-primary rounded-r-full"
+            transition={{ type: "spring", stiffness: 350, damping: 30 }}
           />
         )}
         <Icon className="h-[18px] w-[18px] flex-shrink-0" />
-        <span className="text-sm whitespace-nowrap overflow-hidden">{item.name}</span>
+        <span className="whitespace-nowrap overflow-hidden">{item.name}</span>
       </Link>
     )
   }
@@ -206,13 +204,13 @@ export function Sidebar({ user }: SidebarProps) {
     <TooltipProvider delayDuration={0}>
       <aside
         className={cn(
-          "flex flex-col h-screen bg-[#0C0E16] border-r border-white/[0.08] transition-all duration-300",
+          "flex flex-col h-screen bg-[#0C0E16] border-r border-white/[0.06] transition-all duration-300",
           sidebarCollapsed ? "w-[70px]" : "w-[240px]"
         )}
       >
         {/* Logo */}
         <div className={cn(
-          "flex items-center h-14 border-b border-white/[0.08]",
+          "flex items-center h-14 shrink-0",
           sidebarCollapsed ? "justify-center px-2" : "px-5"
         )}>
           <Link href="/dashboard" className="flex items-center">
@@ -225,18 +223,20 @@ export function Sidebar({ user }: SidebarProps) {
         </div>
 
         {/* Navigation */}
-        <ScrollArea className="flex-1 py-3">
+        <ScrollArea className="flex-1 py-2">
           <LayoutGroup>
-          <nav className="px-3 space-y-4">
-            {groupedNavigation.map((group) => (
+          <nav className={cn("space-y-5", sidebarCollapsed ? "px-2" : "px-3")}>
+            {groupedNavigation.map((group, idx) => (
               <div key={group.key}>
-                {!sidebarCollapsed && (
-                  <p className="px-3 mb-1.5 text-[11px] font-medium uppercase tracking-wider text-slate-500">
+                {/* Group label - only for non-first groups when expanded */}
+                {!sidebarCollapsed && group.label && (
+                  <p className="px-3 mb-1 text-[10px] font-semibold tracking-widest text-slate-600 uppercase">
                     {group.label}
                   </p>
                 )}
-                {sidebarCollapsed && group.key !== "principal" && (
-                  <div className="h-px bg-white/[0.06] mx-2 my-2" />
+                {/* Divider for collapsed mode */}
+                {sidebarCollapsed && idx > 0 && (
+                  <div className="h-px bg-white/[0.06] mx-1 mb-2" />
                 )}
                 <div className="space-y-0.5">
                   {group.items.map(renderNavItem)}
@@ -248,58 +248,39 @@ export function Sidebar({ user }: SidebarProps) {
         </ScrollArea>
 
         {/* Bottom Section */}
-        <div className="mt-auto">
-          <div className="h-px bg-white/[0.08] mx-3" />
-          <nav className="px-3 py-2">
+        <div className="mt-auto shrink-0">
+          <div className="h-px bg-white/[0.06] mx-3" />
+
+          {/* Settings */}
+          <nav className={cn("py-2", sidebarCollapsed ? "px-2" : "px-3")}>
             {filteredBottomNavigation.map(renderNavItem)}
           </nav>
 
-          <div className="h-px bg-white/[0.08] mx-3" />
+          <div className="h-px bg-white/[0.06] mx-3" />
 
-          <div className="p-3">
-            {/* Theme Toggle */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  className={cn(
-                    "flex items-center justify-center h-8 rounded-md text-slate-500 hover:text-slate-300 hover:bg-white/5 transition-colors duration-150 mb-2",
-                    sidebarCollapsed ? "w-full" : "w-8"
-                  )}
-                  onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-                >
-                  {theme === "dark" ? (
-                    <Sun className="h-4 w-4" />
-                  ) : (
-                    <Moon className="h-4 w-4" />
-                  )}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="right">
-                {theme === "dark" ? "Modo claro" : "Modo escuro"}
-              </TooltipContent>
-            </Tooltip>
-
+          {/* User & Controls */}
+          <div className="p-3 space-y-2">
             {/* User Dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
                   className={cn(
-                    "flex items-center w-full p-2 rounded-md hover:bg-white/5 transition-colors duration-150 outline-none",
-                    sidebarCollapsed ? "justify-center" : "justify-start gap-3"
+                    "flex items-center w-full rounded-lg hover:bg-white/[0.06] transition-colors duration-150 outline-none",
+                    sidebarCollapsed ? "justify-center p-2" : "gap-3 p-2"
                   )}
                 >
-                  <Avatar className="h-7 w-7">
+                  <Avatar className="h-8 w-8 shrink-0">
                     <AvatarImage src={user?.avatar_url} />
-                    <AvatarFallback className="bg-slate-700 text-slate-300 text-xs font-medium">
+                    <AvatarFallback className="bg-primary/20 text-primary text-xs font-medium">
                       {user?.name?.slice(0, 2).toUpperCase() || "U"}
                     </AvatarFallback>
                   </Avatar>
                   {!sidebarCollapsed && (
-                    <div className="text-left overflow-hidden">
-                      <p className="text-sm font-medium text-slate-200 truncate max-w-[140px]">
+                    <div className="text-left overflow-hidden flex-1">
+                      <p className="text-sm font-medium text-slate-200 truncate">
                         {user?.name || "Usuário"}
                       </p>
-                      <p className="text-[11px] text-slate-500 truncate max-w-[140px]">
+                      <p className="text-[11px] text-slate-500 truncate">
                         {user?.email}
                       </p>
                     </div>
@@ -332,27 +313,50 @@ export function Sidebar({ user }: SidebarProps) {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-          </div>
 
-          {/* Collapse Button */}
-          <div className="px-3 pb-3">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  className="flex items-center justify-center w-full h-7 rounded-md text-slate-600 hover:text-slate-400 hover:bg-white/5 transition-colors duration-150"
-                  onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                >
-                  {sidebarCollapsed ? (
-                    <ChevronRight className="h-4 w-4" />
-                  ) : (
-                    <ChevronLeft className="h-4 w-4" />
-                  )}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="right">
-                {sidebarCollapsed ? "Expandir" : "Recolher"}
-              </TooltipContent>
-            </Tooltip>
+            {/* Controls row */}
+            <div className={cn(
+              "flex items-center",
+              sidebarCollapsed ? "flex-col gap-1" : "gap-1"
+            )}>
+              {/* Theme Toggle */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    className="flex items-center justify-center h-8 w-8 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-white/[0.06] transition-colors duration-150"
+                    onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                  >
+                    {theme === "dark" ? (
+                      <Sun className="h-4 w-4" />
+                    ) : (
+                      <Moon className="h-4 w-4" />
+                    )}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  {theme === "dark" ? "Modo claro" : "Modo escuro"}
+                </TooltipContent>
+              </Tooltip>
+
+              {/* Collapse Toggle */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    className="flex items-center justify-center h-8 w-8 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-white/[0.06] transition-colors duration-150"
+                    onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                  >
+                    {sidebarCollapsed ? (
+                      <ChevronRight className="h-4 w-4" />
+                    ) : (
+                      <ChevronLeft className="h-4 w-4" />
+                    )}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  {sidebarCollapsed ? "Expandir" : "Recolher"}
+                </TooltipContent>
+              </Tooltip>
+            </div>
           </div>
         </div>
       </aside>
