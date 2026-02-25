@@ -95,7 +95,7 @@ interface KlaviyoMetricAggregate {
 }
 
 type NameListResp = {
-  data: Array<{ id: string; attributes: { name: string; status?: string; send_time?: string | null } }>
+  data: Array<{ id: string; attributes: { name: string; status?: string; send_time?: string | null; archived?: boolean } }>
   links?: { next?: string }
 }
 
@@ -267,6 +267,7 @@ export async function fetchKlaviyoPerformance(
     log.info(`[Klaviyo] Campaign names from list: ${campNames.size}/${campAgg.size}`)
   }
 
+  const archivedFlowIds = new Set<string>()
   if (flowAgg.size > 0) {
     await sleep(MIN_REQUEST_INTERVAL)
     let page: string | null = "/flows/?page[size]=100"
@@ -275,11 +276,12 @@ export async function fetchKlaviyoPerformance(
       if (!resp?.data) break
       for (const f of resp.data) {
         flowNames.set(f.id, { name: f.attributes.name, status: f.attributes.status || "unknown" })
+        if (f.attributes.archived) archivedFlowIds.add(f.id)
       }
       page = resp.links?.next ? resp.links.next.replace(KLAVIYO_API_URL, "") : null
       if (page) await sleep(500)
     }
-    log.info(`[Klaviyo] Flow names from list: ${flowNames.size}/${flowAgg.size}`)
+    log.info(`[Klaviyo] Flow names from list: ${flowNames.size}/${flowAgg.size}, archived excluded: ${archivedFlowIds.size}`)
   }
 
   // Step 2: Individual fallback for any missing names (campaigns + flows)
@@ -352,11 +354,12 @@ export async function fetchKlaviyoPerformance(
     })
   }
 
-  // ── Build flow list ──
+  // ── Build flow list (excluding archived flows) ──
   let flowRevenue = 0
   const topFlows: KlaviyoFlowItem[] = []
 
   for (const [fid, m] of flowAgg) {
+    if (archivedFlowIds.has(fid)) continue
     flowRevenue += m.conversionValue
     totalDelivered += m.delivered
     totalOpens += m.opensUnique
