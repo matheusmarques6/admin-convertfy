@@ -137,6 +137,10 @@ export async function fetchKlaviyoPerformance(
   const startISO = `${startDate}T00:00:00${tzOffset}`
   const endISO = `${finalEndDate}T23:59:59${tzOffset}`
 
+  log.info(`[KlaviyoPerf] Date range: ${startDate} to ${finalEndDate} (timezone: ${timezone}, offset: ${tzOffset})`)
+  log.info(`[KlaviyoPerf] Metric-agg filter: ${startDate}T00:00:00 to ${finalEndDate}T23:59:59 (tz param: ${timezone})`)
+  log.info(`[KlaviyoPerf] Report timeframe: ${startISO} to ${endISO}`)
+
   const placedOrderMetric = await findPlacedOrderMetric(apiKey)
   if (!placedOrderMetric) {
     log.warn("No Placed Order metric found - cannot fetch revenue data")
@@ -184,6 +188,7 @@ export async function fetchKlaviyoPerformance(
   })
 
   // ── 3. Metric Aggregates (total store revenue) ──
+  // metric-aggregates uses timezone parameter separately; filter datetimes should NOT include offset
   await sleep(MIN_REQUEST_INTERVAL)
   const metricAgg = await klaviyoRequest<KlaviyoMetricAggregate>(apiKey, "/metric-aggregates/", {
     method: "POST",
@@ -195,8 +200,8 @@ export async function fetchKlaviyoPerformance(
           metric_id: placedOrderMetric,
           measurements: ["sum_value", "count"],
           filter: [
-            `greater-or-equal(datetime,${startISO})`,
-            `less-than(datetime,${endISO})`,
+            `greater-or-equal(datetime,${startDate}T00:00:00)`,
+            `less-than(datetime,${finalEndDate}T23:59:59)`,
           ],
           timezone,
         },

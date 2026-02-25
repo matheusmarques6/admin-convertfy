@@ -50,6 +50,7 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams
     const period = searchParams.get("period") || "30d"
     const storeId = searchParams.get("store_id")
+    const forceRefresh = searchParams.get("force_refresh") === "true"
 
     // Calculate date range
     const now = new Date()
@@ -299,7 +300,7 @@ export async function GET(request: NextRequest) {
       // Klaviyo: use shared service directly (same logic as client performance)
       const apiKey = store.klaviyo_private_key || store.klaviyo_api_key
       if (apiKey) {
-        const cached = await getCachedData(store.id, "klaviyo_perf")
+        const cached = forceRefresh ? null : await getCachedData(store.id, "klaviyo_perf")
         if (cached) {
           storeData.klaviyoPerf = cached as unknown as KlaviyoPerformanceData
         } else {
