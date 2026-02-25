@@ -1051,53 +1051,61 @@ export async function GET(request: NextRequest) {
     const campaignReport = await getCampaignValuesReport(apiKey, metricId, startDateStr, endDateStr, timezoneOffset)
     log.info(`[Klaviyo] Campaign report done: revenue=${campaignReport.totalRevenue}, delivered=${campaignReport.totalDelivered}`)
 
-    // Fetch store-wide revenue via Events API (ALL Placed Orders, not just email-attributed)
-    // Events API gives the EXACT value matching the Klaviyo dashboard.
-    // metric-aggregates is known to return ~4% lower values.
+    // Fetch store-wide revenue via metric-aggregates (ALL Placed Orders)
+    // Uses same parameters as Klaviyo dashboard: interval=day, timezone, exclusive end date
     await sleep(1500)
     let storeRevenue = 0
     let storeOrders = 0
-    try {
+    {
       const accountTz = accountInfo.timezone || "America/Sao_Paulo"
       const nextDayReport = new Date(`${endDateStr}T12:00:00`)
       nextDayReport.setDate(nextDayReport.getDate() + 1)
       const pad2 = (n: number) => String(n).padStart(2, "0")
       const nextDayReportStr = `${nextDayReport.getFullYear()}-${pad2(nextDayReport.getMonth() + 1)}-${pad2(nextDayReport.getDate())}`
 
-      type EventsPageResp = {
-        data?: Array<{
-          attributes?: {
-            event_properties?: Record<string, unknown>
+      const metricAgg = await klaviyoRequest<{
+        data?: {
+          attributes?: Record<string, unknown> & {
+            data?: Array<{ measurements?: Record<string, number | number[]> }>
           }
-        }>
-        links?: { next?: string }
-      }
-
-      let nextPage: string | null = `/events/?filter=equals(metric_id,"${metricId}"),greater-or-equal(datetime,${startDateStr}T00:00:00),less-than(datetime,${nextDayReportStr}T00:00:00)&page[size]=50&sort=-datetime`
-      let pageCount = 0
-      const maxPages = 100
-
-      while (nextPage && pageCount < maxPages) {
-        if (pageCount > 0) await sleep(350)
-        const eventsResp: EventsPageResp | null = await klaviyoRequest<EventsPageResp>(apiKey, nextPage, { logTag: "ReportEventsRevenue" })
-
-        if (!eventsResp?.data || eventsResp.data.length === 0) break
-
-        for (const ev of eventsResp.data) {
-          const val = Number(ev.attributes?.event_properties?.$value) || 0
-          storeRevenue += val
-          storeOrders++
         }
+      }>(apiKey, "/metric-aggregates/", {
+        method: "POST",
+        logTag: "ReportMetricAgg",
+        body: {
+          data: {
+            type: "metric-aggregate",
+            attributes: {
+              metric_id: metricId,
+              measurements: ["sum_value", "count"],
+              interval: "day",
+              page_size: 500,
+              filter: [
+                `greater-or-equal(datetime,${startDateStr}T00:00:00)`,
+                `less-than(datetime,${nextDayReportStr}T00:00:00)`,
+              ],
+              timezone: accountTz,
+            },
+          },
+        },
+      })
 
-        pageCount++
-        const nextLink: string | undefined = eventsResp?.links?.next
-        if (!nextLink) break
-        nextPage = nextLink.includes("://") ? nextLink.replace(/^https?:\/\/[^/]+\/api/, "") : nextLink
+      const aggData = metricAgg?.data?.attributes?.data || []
+      for (const row of aggData) {
+        const m = row.measurements || {}
+        if (Array.isArray(m.sum_value)) {
+          for (const v of m.sum_value) storeRevenue += Number(v) || 0
+        } else {
+          storeRevenue += Number(m.sum_value) || 0
+        }
+        if (Array.isArray(m.count)) {
+          for (const c of m.count) storeOrders += Number(c) || 0
+        } else {
+          storeOrders += Number(m.count) || 0
+        }
       }
 
-      log.info(`[Klaviyo] Events API: storeRevenue=${storeRevenue.toFixed(2)}, storeOrders=${storeOrders} (${pageCount} pages)`)
-    } catch (e) {
-      log.error("[Klaviyo] Events API for store revenue failed (non-fatal):", e)
+      log.info(`[Klaviyo] metric-aggregates: storeRevenue=${storeRevenue.toFixed(2)}, storeOrders=${storeOrders}, tz=${accountTz}`)
     }
 
     // Merge flow data with names, excluding archived flows

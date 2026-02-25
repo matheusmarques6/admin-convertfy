@@ -187,59 +187,26 @@ export async function fetchKlaviyoPerformance(
     },
   })
 
-  // ── 3. Store revenue via Events API (Placed Order events) ──
-  // metric-aggregates is known to return ~4% lower values than the Klaviyo dashboard.
-  // Querying actual events and summing $value gives the EXACT dashboard number.
-  // See: https://community.klaviyo.com/developer-group-64/data-discrepancy-between-api-and-klaviyo-dashboard-8983
+  // ── 3. Store revenue via metric-aggregates (Placed Order) ──
+  // Uses the same parameters as the Klaviyo dashboard:
+  // - interval: "day" for daily bucketing
+  // - timezone: account timezone (e.g. America/Sao_Paulo)
+  // - exclusive end date: next day T00:00:00
+  // - page_size: 500 (max supported)
+  // Single API call — no pagination needed, no rate limit risk.
   let storeRevenue = 0
   let storeOrders = 0
 
-  try {
-    const startFilter = `${startDate}T00:00:00`
+  {
+    const pad2 = (n: number) => String(n).padStart(2, "0")
     const nextDay = new Date(`${finalEndDate}T12:00:00`)
     nextDay.setDate(nextDay.getDate() + 1)
-    const pad2 = (n: number) => String(n).padStart(2, "0")
-    const endFilter = `${nextDay.getFullYear()}-${pad2(nextDay.getMonth() + 1)}-${pad2(nextDay.getDate())}T00:00:00`
+    const nextDayStr = `${nextDay.getFullYear()}-${pad2(nextDay.getMonth() + 1)}-${pad2(nextDay.getDate())}`
 
-    type EventsPage = {
-      data?: Array<{
-        attributes?: {
-          event_properties?: Record<string, unknown>
-        }
-      }>
-      links?: { next?: string }
-    }
-
-    let nextPage: string | null = `/events/?filter=equals(metric_id,"${placedOrderMetric}"),greater-or-equal(datetime,${startFilter}),less-than(datetime,${endFilter})&page[size]=50&sort=-datetime`
-    let pageCount = 0
-    const maxPages = 100 // safety: max ~5000 orders
-
-    while (nextPage && pageCount < maxPages) {
-      await sleep(pageCount === 0 ? MIN_REQUEST_INTERVAL : 350)
-      const eventsResp: EventsPage | null = await klaviyoRequest<EventsPage>(apiKey, nextPage, { logTag: "PerfEventsRevenue" })
-
-      if (!eventsResp?.data || eventsResp.data.length === 0) break
-
-      for (const ev of eventsResp.data) {
-        const val = Number(ev.attributes?.event_properties?.$value) || 0
-        storeRevenue += val
-        storeOrders++
-      }
-
-      pageCount++
-      const nextLink: string | undefined = eventsResp?.links?.next
-      if (!nextLink) break
-      nextPage = nextLink.includes("://") ? nextLink.replace(/^https?:\/\/[^/]+\/api/, "") : nextLink
-    }
-
-    log.info(`[KlaviyoPerf] Events API: storeRevenue=${storeRevenue.toFixed(2)}, storeOrders=${storeOrders} (${pageCount} pages)`)
-  } catch (e) {
-    log.error("[KlaviyoPerf] Events API failed, falling back to metric-aggregates:", e)
-    // Fallback to metric-aggregates if events API fails
     await sleep(MIN_REQUEST_INTERVAL)
     const metricAgg = await klaviyoRequest<KlaviyoMetricAggregate>(apiKey, "/metric-aggregates/", {
       method: "POST",
-      logTag: "PerfMetricAggFallback",
+      logTag: "PerfMetricAgg",
       body: {
         data: {
           type: "metric-aggregate",
@@ -250,13 +217,14 @@ export async function fetchKlaviyoPerformance(
             page_size: 500,
             filter: [
               `greater-or-equal(datetime,${startDate}T00:00:00)`,
-              `less-than(datetime,${finalEndDate}T23:59:59)`,
+              `less-than(datetime,${nextDayStr}T00:00:00)`,
             ],
             timezone,
           },
         },
       },
     })
+
     const aggData = metricAgg?.data?.attributes?.data || []
     for (const row of aggData) {
       const m = row.measurements || {}
@@ -271,6 +239,8 @@ export async function fetchKlaviyoPerformance(
         storeOrders += Number(m.count) || 0
       }
     }
+
+    log.info(`[KlaviyoPerf] metric-aggregates: storeRevenue=${storeRevenue.toFixed(2)}, storeOrders=${storeOrders}, timezone=${timezone}`)
   }
 
   if (!campaignReport && !flowReport) {

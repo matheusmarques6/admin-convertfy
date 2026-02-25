@@ -239,11 +239,16 @@ export async function GET(request: NextRequest) {
 
         if (data && new Date(data.expires_at) > new Date()) {
           const cached = data.data as Record<string, unknown>
-          // Skip stale cache (zero revenue or missing names)
+          // Skip stale cache (zero revenue, impossible ratios, or missing names)
           if (cacheType === "klaviyo_perf") {
             const perf = cached as unknown as KlaviyoPerformanceData
-            if (perf.storeRevenue === 0 && perf.attributedRevenue === 0) {
-              log.info(`[Cache SKIP] Stale klaviyo_perf cache for store ${storeId} - zero revenue`)
+            if (perf.storeRevenue === 0 || perf.attributedRevenue === 0) {
+              log.info(`[Cache SKIP] Stale klaviyo_perf cache for store ${storeId} - zero revenue (store=${perf.storeRevenue}, attributed=${perf.attributedRevenue})`)
+              return null
+            }
+            // Impossible: attributed revenue > store revenue means storeRevenue is wrong
+            if (perf.attributedRevenue > perf.storeRevenue) {
+              log.info(`[Cache SKIP] Invalid klaviyo_perf cache for store ${storeId} - attributed(${perf.attributedRevenue}) > store(${perf.storeRevenue})`)
               return null
             }
             // Skip cache with generic fallback names (data was fetched before name fix)
