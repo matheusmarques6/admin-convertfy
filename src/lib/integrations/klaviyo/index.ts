@@ -31,3 +31,8 @@ export {
   getKlaviyoRevenueForStore,
   type KlaviyoRevenueSummary,
 } from "./report-summary"
+
+export {
+  enqueueKlaviyoRequest,
+  withConcurrencyLimit,
+} from "./rate-limiter"

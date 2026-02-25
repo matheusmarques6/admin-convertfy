@@ -13,8 +13,6 @@ import {
   findPlacedOrderMetric,
   getTimezoneOffset,
   parseDateRangeInTimezone,
-  sleep,
-  MIN_REQUEST_INTERVAL,
   KLAVIYO_API_URL,
 } from "@/lib/integrations/klaviyo"
 import { logger } from "@/lib/logger"
@@ -155,7 +153,9 @@ export async function fetchKlaviyoPerformance(
   ]
 
   // ── 1. Campaign Values Report ──
-  await sleep(MIN_REQUEST_INTERVAL)
+  // Note: sleep between requests is no longer needed here.
+  // The global rate limiter (rate-limiter.ts) serializes all Klaviyo
+  // requests per API key with proper intervals automatically.
   const campaignReport = await klaviyoRequest<KlaviyoReport>(apiKey, "/campaign-values-reports/", {
     method: "POST",
     logTag: "PerfCampaignReport",
@@ -172,7 +172,6 @@ export async function fetchKlaviyoPerformance(
   })
 
   // ── 2. Flow Values Report ──
-  await sleep(MIN_REQUEST_INTERVAL)
   const flowReport = await klaviyoRequest<KlaviyoReport>(apiKey, "/flow-values-reports/", {
     method: "POST",
     logTag: "PerfFlowReport",
@@ -204,7 +203,6 @@ export async function fetchKlaviyoPerformance(
     nextDay.setDate(nextDay.getDate() + 1)
     const nextDayStr = `${nextDay.getFullYear()}-${pad2(nextDay.getMonth() + 1)}-${pad2(nextDay.getDate())}`
 
-    await sleep(MIN_REQUEST_INTERVAL)
     const metricAgg = await klaviyoRequest<KlaviyoMetricAggregate>(apiKey, "/metric-aggregates/", {
       method: "POST",
       logTag: "PerfMetricAgg",
@@ -309,7 +307,6 @@ export async function fetchKlaviyoPerformance(
   const flowNames = new Map<string, { name: string; status: string }>()
 
   if (campAgg.size > 0) {
-    await sleep(MIN_REQUEST_INTERVAL)
     let page: string | null = "/campaigns/?page[size]=100"
     while (page) {
       const resp: NameListResp | null = await klaviyoRequest<NameListResp>(apiKey, page)
@@ -318,14 +315,12 @@ export async function fetchKlaviyoPerformance(
         campNames.set(c.id, { name: c.attributes.name, sendTime: c.attributes.send_time || "" })
       }
       page = resp.links?.next ? resp.links.next.replace(KLAVIYO_API_URL, "") : null
-      if (page) await sleep(500)
     }
     log.info(`[Klaviyo] Campaign names from list: ${campNames.size}/${campAgg.size}`)
   }
 
   const archivedFlowIds = new Set<string>()
   if (flowAgg.size > 0) {
-    await sleep(MIN_REQUEST_INTERVAL)
     let page: string | null = "/flows/?page[size]=100"
     while (page) {
       const resp: NameListResp | null = await klaviyoRequest<NameListResp>(apiKey, page)
@@ -335,7 +330,6 @@ export async function fetchKlaviyoPerformance(
         if (f.attributes.archived) archivedFlowIds.add(f.id)
       }
       page = resp.links?.next ? resp.links.next.replace(KLAVIYO_API_URL, "") : null
-      if (page) await sleep(500)
     }
     log.info(`[Klaviyo] Flow names from list: ${flowNames.size}/${flowAgg.size}, archived excluded: ${archivedFlowIds.size}`)
   }
@@ -352,7 +346,6 @@ export async function fetchKlaviyoPerformance(
   }
 
   for (const id of missingCamps.slice(0, 15)) {
-    await sleep(MIN_REQUEST_INTERVAL)
     const resp = await klaviyoRequest<SingleCampResp>(apiKey, `/campaigns/${id}/`)
     if (resp?.data) {
       campNames.set(resp.data.id, { name: resp.data.attributes.name, sendTime: resp.data.attributes.send_time || "" })
@@ -360,7 +353,6 @@ export async function fetchKlaviyoPerformance(
   }
 
   for (const id of missingFlows.slice(0, 15)) {
-    await sleep(MIN_REQUEST_INTERVAL)
     const resp = await klaviyoRequest<SingleFlowResp>(apiKey, `/flows/${id}/`)
     if (resp?.data) {
       flowNames.set(resp.data.id, { name: resp.data.attributes.name, status: resp.data.attributes.status || "unknown" })

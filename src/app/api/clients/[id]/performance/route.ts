@@ -2,8 +2,8 @@ import { NextRequest } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
-import { getCache, setCache } from "@/lib/cache"
-import { parseDateRange, formatDateStr } from "@/lib/integrations/klaviyo"
+import { getCache, setCache, getStaleCache } from "@/lib/cache"
+import { parseDateRange, formatDateStr, withConcurrencyLimit } from "@/lib/integrations/klaviyo"
 import { getShopifyReportForStore } from "@/lib/integrations/shopify/report"
 import { decryptStoreCredentials } from "@/lib/crypto"
 import {
@@ -120,8 +120,9 @@ export async function GET(
     const startDateStr = formatDateStr(startDate)
     const endDateStr = formatDateStr(endDate)
 
-    // Fetch performance data for each store in parallel
-    const storePromises = stores.map(async (store): Promise<StorePerformance> => {
+    // Fetch performance data for stores with limited concurrency (max 2 at a time)
+    // This prevents overwhelming the Klaviyo API with concurrent requests
+    const fetchStorePerformance = async (store: typeof stores[0]): Promise<StorePerformance> => {
       const hasKlaviyo = !!(store.klaviyo_private_key || store.klaviyo_api_key)
       const hasShopify = !!(store.shopify_store_domain && store.shopify_access_token)
 
@@ -135,25 +136,41 @@ export async function GET(
           const apiKey = store.klaviyo_private_key || store.klaviyo_api_key
           if (apiKey) {
             klaviyoData = await fetchKlaviyoPerformance(apiKey, period, undefined, customStartDate, customEndDate)
+
+            // If fetch returned empty data (rate limited / fail-fast), try stale cache
+            if (!klaviyoData || (klaviyoData.storeRevenue === 0 && klaviyoData.attributedRevenue === 0)) {
+              const stale = await getStaleCache<KlaviyoPerformanceData>(adminClient, store.id, "klaviyo_perf", period)
+              if (stale) {
+                log.info(`[ClientPerf] Using stale cache for store ${store.id} (fresh fetch returned empty)`)
+                klaviyoData = stale.data
+              }
+            }
           }
         } catch (err) {
-          const rawMsg = err instanceof Error ? err.message : String(err)
-          let message = rawMsg
-          let code: string | undefined
+          // On error, try stale cache as fallback before reporting error
+          const stale = await getStaleCache<KlaviyoPerformanceData>(adminClient, store.id, "klaviyo_perf", period)
+          if (stale) {
+            log.info(`[ClientPerf] Using stale cache for store ${store.id} after error`)
+            klaviyoData = stale.data
+          } else {
+            const rawMsg = err instanceof Error ? err.message : String(err)
+            let message = rawMsg
+            let code: string | undefined
 
-          if (rawMsg.includes("401") || rawMsg.includes("403") || rawMsg.toLowerCase().includes("unauthorized")) {
-            message = "API Key sem permissão para métricas. Verifique os scopes da chave Klaviyo."
-            code = "AUTH_ERROR"
-          } else if (rawMsg.includes("429")) {
-            message = "Limite de requisições Klaviyo excedido. Tente novamente em alguns minutos."
-            code = "RATE_LIMIT"
-          } else if (rawMsg.includes("Falha ao conectar")) {
-            message = "Falha ao conectar com a API do Klaviyo. Verifique as credenciais."
-            code = "CONNECTION_ERROR"
+            if (rawMsg.includes("401") || rawMsg.includes("403") || rawMsg.toLowerCase().includes("unauthorized")) {
+              message = "API Key sem permissão para métricas. Verifique os scopes da chave Klaviyo."
+              code = "AUTH_ERROR"
+            } else if (rawMsg.includes("429")) {
+              message = "Limite de requisições Klaviyo excedido. Tente novamente em alguns minutos."
+              code = "RATE_LIMIT"
+            } else if (rawMsg.includes("Falha ao conectar")) {
+              message = "Falha ao conectar com a API do Klaviyo. Verifique as credenciais."
+              code = "CONNECTION_ERROR"
+            }
+
+            log.warn("Failed to fetch Klaviyo data for store", { storeId: store.id, error: err })
+            errors.push({ integration: "klaviyo", message, code })
           }
-
-          log.warn("Failed to fetch Klaviyo data for store", { storeId: store.id, error: err })
-          errors.push({ integration: "klaviyo", message, code })
         }
       }
 
@@ -186,9 +203,9 @@ export async function GET(
         shopify: shopifyData,
         errors,
       }
-    })
+    }
 
-    const storeResults = await Promise.all(storePromises)
+    const storeResults = await withConcurrencyLimit(stores, 2, fetchStorePerformance)
 
     // Aggregate billing data
     const billing = await fetchBillingData(adminClient, clientId, startDate, endDate)

@@ -7,13 +7,28 @@ const log = logger.child("Cache")
 export const CACHE_VERSION = 4
 
 // TTL in minutes per cache type and period
+// Klaviyo TTLs are longer because:
+// 1. Reporting data doesn't change frequently (campaigns/flows processed in batches)
+// 2. Klaviyo has strict rate limits (~1 req/s for reports, 75 req/min general)
+// 3. With many stores, frequent cache misses cause 429 storms
 const CACHE_TTL: Record<string, Record<string, number>> = {
-  klaviyo: { "7d": 30, "15d": 45, "30d": 60, "90d": 120, all: 120 },
+  klaviyo: { "7d": 120, "15d": 180, "30d": 240, "90d": 360, all: 360 },
+  klaviyo_perf: { "1d": 60, "7d": 120, "15d": 180, "30d": 240, "90d": 360, "12m": 360 },
   shopify: { "7d": 15, "15d": 20, "30d": 30, "90d": 60, all: 60 },
   ga4: { "7d": 15, "15d": 20, "30d": 30, "90d": 60, all: 60 },
   asaas_payments: { "7d": 10, "15d": 15, "30d": 30, "90d": 60, all: 60 },
   asaas_billing: { "7d": 10, "15d": 15, "30d": 30, "90d": 60, all: 60 },
-  client_performance: { today: 15, yesterday: 30, "7d": 30, "15d": 45, "30d": 60 },
+  client_performance: { today: 30, yesterday: 60, "7d": 120, "15d": 180, "30d": 240 },
+}
+
+// How long (in minutes) expired cache entries are still usable as fallback
+// when a fresh fetch fails (e.g. rate limited). This prevents showing empty data
+// when Klaviyo rate limits us.
+const STALE_GRACE_MINUTES: Record<string, number> = {
+  klaviyo: 1440,         // 24 hours
+  klaviyo_perf: 1440,    // 24 hours
+  client_performance: 720, // 12 hours
+  shopify: 360,          // 6 hours
 }
 
 function getTTLMinutes(cacheType: string, period: string): number {
@@ -65,6 +80,49 @@ export async function getCache<T = Record<string, unknown>>(
   }
 
   log.debug(`[Cache MISS] ${cacheType}/${period} for store ${storeId}`)
+  return null
+}
+
+/**
+ * Get stale (expired) cached data as a fallback when a fresh fetch fails.
+ * Returns data that expired within the STALE_GRACE period (default 24h for Klaviyo).
+ * This prevents showing empty data when rate limited by external APIs.
+ */
+export async function getStaleCache<T = Record<string, unknown>>(
+  supabase: SupabaseClient,
+  storeId: string,
+  cacheType: string,
+  period: string
+): Promise<CacheResult<T> | null> {
+  try {
+    const graceMinutes = STALE_GRACE_MINUTES[cacheType] ?? 360
+    const staleThreshold = new Date(Date.now() - graceMinutes * 60 * 1000).toISOString()
+
+    const { data: cached } = await supabase
+      .from("dashboard_cache")
+      .select("data, created_at, expires_at")
+      .eq("store_id", storeId)
+      .eq("cache_type", cacheType)
+      .eq("period", period)
+      .gt("expires_at", staleThreshold) // Expired but within grace period
+      .single()
+
+    if (cached?.data) {
+      const cachedData = cached.data as Record<string, unknown>
+      if ((cachedData._cacheVersion as number) !== CACHE_VERSION) {
+        return null
+      }
+      log.info(`[Cache STALE] Using expired ${cacheType}/${period} for store ${storeId} (expired at ${cached.expires_at})`)
+      return {
+        data: cached.data as T,
+        cachedAt: cached.created_at,
+        fromCache: true,
+      }
+    }
+  } catch {
+    // No stale data available
+  }
+
   return null
 }
 

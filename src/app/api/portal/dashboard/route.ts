@@ -9,6 +9,7 @@ import {
   type KlaviyoPerformanceData,
 } from "@/lib/services/klaviyo-performance.service"
 import { CACHE_VERSION } from "@/lib/cache"
+import { withConcurrencyLimit } from "@/lib/integrations/klaviyo"
 
 const log = logger.child("PortalDashboard")
 
@@ -17,13 +18,14 @@ export async function OPTIONS(request: NextRequest) {
 }
 
 // Cache TTL in minutes based on period
+// Longer TTLs to reduce Klaviyo API pressure across many stores
 const CACHE_TTL: Record<string, number> = {
-  "1d": 5,    // 5 minutes for daily data
-  "7d": 15,   // 15 minutes for weekly data
-  "15d": 20,  // 20 minutes for bi-weekly data
-  "30d": 30,  // 30 minutes for monthly data
-  "90d": 60,  // 1 hour for quarterly data
-  "12m": 120, // 2 hours for yearly data
+  "1d": 60,    // 1 hour for daily data
+  "7d": 120,   // 2 hours for weekly data
+  "15d": 180,  // 3 hours for bi-weekly data
+  "30d": 240,  // 4 hours for monthly data
+  "90d": 360,  // 6 hours for quarterly data
+  "12m": 360,  // 6 hours for yearly data
 }
 
 // CACHE_VERSION imported from @/lib/cache
@@ -277,6 +279,30 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Stale cache fallback: returns expired data (up to 24h old) when fresh fetch fails
+    const getStaleData = async (storeIdToCheck: string, cacheType: string) => {
+      try {
+        const staleThreshold = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString() // 24 hours
+        const { data } = await adminClient
+          .from("dashboard_cache")
+          .select("data, expires_at")
+          .eq("store_id", storeIdToCheck)
+          .eq("cache_type", cacheType)
+          .eq("period", period)
+          .gt("expires_at", staleThreshold) // Expired but within grace period
+          .single()
+
+        if (data?.data) {
+          const cached = data.data as Record<string, unknown>
+          if ((cached._cacheVersion as number) !== CACHE_VERSION) return null
+          return cached
+        }
+        return null
+      } catch {
+        return null
+      }
+    }
+
     const saveToCache = async (cacheStoreId: string, cacheType: string, data: Record<string, unknown>) => {
       try {
         const ttlMinutes = CACHE_TTL[period] || 30
@@ -319,10 +345,30 @@ export async function GET(request: NextRequest) {
         } else {
           try {
             const perf = await fetchKlaviyoPerformance(apiKey, period)
-            storeData.klaviyoPerf = perf
-            saveToCache(store.id, "klaviyo_perf", perf as unknown as Record<string, unknown>)
+
+            // If fetch returned data with actual values, cache it
+            if (perf && (perf.storeRevenue > 0 || perf.attributedRevenue > 0)) {
+              storeData.klaviyoPerf = perf
+              saveToCache(store.id, "klaviyo_perf", perf as unknown as Record<string, unknown>)
+            } else {
+              // Rate limited or empty — try stale cache as fallback
+              const stale = await getStaleData(store.id, "klaviyo_perf")
+              if (stale) {
+                log.info(`[Portal] Using stale cache for store ${store.id} (fresh fetch returned empty)`)
+                storeData.klaviyoPerf = stale as unknown as KlaviyoPerformanceData
+              } else {
+                storeData.klaviyoPerf = perf // Use empty data if no stale available
+              }
+            }
           } catch (error) {
-            log.error(`[Portal] Klaviyo fetch error for store ${store.id}:`, error)
+            // On error, try stale cache before giving up
+            const stale = await getStaleData(store.id, "klaviyo_perf")
+            if (stale) {
+              log.info(`[Portal] Using stale cache for store ${store.id} after error`)
+              storeData.klaviyoPerf = stale as unknown as KlaviyoPerformanceData
+            } else {
+              log.error(`[Portal] Klaviyo fetch error for store ${store.id}:`, error)
+            }
           }
         }
       }
@@ -488,9 +534,10 @@ export async function GET(request: NextRequest) {
       )
 
       if (storesWithIntegrations.length > 0) {
-        // Fetch data from all stores in parallel
-        const allStoreData = await Promise.all(
-          storesWithIntegrations.map((store) => fetchStoreData(store))
+        // Fetch data from stores with limited concurrency (max 2 at a time)
+        // Prevents overwhelming Klaviyo API with concurrent requests
+        const allStoreData = await withConcurrencyLimit(
+          storesWithIntegrations, 2, (store) => fetchStoreData(store)
         )
 
         // Aggregate Klaviyo data (from shared service)

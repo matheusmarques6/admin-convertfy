@@ -6,6 +6,7 @@
  */
 
 import { logger } from "@/lib/logger"
+import { enqueueKlaviyoRequest } from "./rate-limiter"
 
 const log = logger.child("KlaviyoClient")
 
@@ -20,14 +21,21 @@ export const KLAVIYO_REVISION = "2024-10-15"
 // https://developers.klaviyo.com/en/docs/rate_limits_and_error_handling
 export const MIN_REQUEST_INTERVAL = 1000 // 1 second between reporting requests
 
+// Maximum time to wait on a 429 Retry-After header (10 seconds).
+// If Klaviyo says "wait 3723s" (62 minutes!), we fail fast and let
+// the cache/fallback layer handle it instead of blocking the serverless function.
+const MAX_RETRY_AFTER_MS = 10_000
+
 export const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
 /**
  * Klaviyo API request with retry logic for rate limiting and server errors.
  *
  * Features:
+ * - Global per-API-key queue to prevent concurrent request storms
  * - Exponential backoff on retry (1.5s, 3s, 6s)
- * - Handles 429 rate limiting with Retry-After header
+ * - Handles 429 rate limiting with capped Retry-After (max 10s)
+ * - Fails fast when rate limit wait is too long (prevents Vercel timeouts)
  * - Retries on 5xx server errors
  * - Configurable logging tag for debugging
  *
@@ -40,6 +48,22 @@ export async function klaviyoRequest<T>(
     method?: "GET" | "POST"
     body?: Record<string, unknown>
     /** Tag for log messages (e.g. "Report", "Flows"). Defaults to "Klaviyo". */
+    logTag?: string
+  }
+): Promise<T | null> {
+  // Route all requests through the global rate limiter queue
+  return enqueueKlaviyoRequest(apiKey, () =>
+    _klaviyoRequestInner<T>(apiKey, endpoint, options)
+  )
+}
+
+/** Inner implementation — called from the rate limiter queue. */
+async function _klaviyoRequestInner<T>(
+  apiKey: string,
+  endpoint: string,
+  options?: {
+    method?: "GET" | "POST"
+    body?: Record<string, unknown>
     logTag?: string
   }
 ): Promise<T | null> {
@@ -73,11 +97,18 @@ export async function klaviyoRequest<T>(
       // Handle rate limiting (429)
       if (response.status === 429) {
         const retryAfter = response.headers.get("retry-after")
-        const waitTime = retryAfter ? parseInt(retryAfter) * 1000 : 2000
-        log.warn(`[${logTag}] Rate limited. Waiting ${waitTime}ms`)
+        const rawWaitTime = retryAfter ? parseInt(retryAfter) * 1000 : 2000
+
+        // Fail fast if Klaviyo wants us to wait too long (prevents Vercel timeout)
+        if (rawWaitTime > MAX_RETRY_AFTER_MS) {
+          log.warn(`[${logTag}] Rate limited with Retry-After ${rawWaitTime}ms (>${MAX_RETRY_AFTER_MS}ms cap). Failing fast — use cached data.`)
+          return null
+        }
+
+        log.warn(`[${logTag}] Rate limited. Waiting ${rawWaitTime}ms`)
 
         if (attempt < maxRetries) {
-          await sleep(waitTime)
+          await sleep(rawWaitTime)
           continue
         }
         log.error(`[${logTag}] Max retries reached for rate limiting`)
