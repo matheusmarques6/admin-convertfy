@@ -12,8 +12,7 @@ import {
   Loader2,
   Copy,
 } from "lucide-react"
-import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -147,7 +146,7 @@ export default function ToolsPage() {
         <TabsContent value="ai" className="space-y-6">
           <div className="grid gap-6 md:grid-cols-2">
             {/* Email Subject Generator */}
-            <GlowCard color="primary" intensity="subtle">
+            <Card className="rounded-xl border bg-card">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Mail className="h-4 w-4 text-primary" />
@@ -202,10 +201,10 @@ export default function ToolsPage() {
                   </div>
                 )}
               </CardContent>
-            </GlowCard>
+            </Card>
 
             {/* Ad Copy Generator */}
-            <GlowCard color="primary" intensity="subtle">
+            <Card className="rounded-xl border bg-card">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Sparkles className="h-4 w-4 text-primary" />
@@ -272,7 +271,7 @@ export default function ToolsPage() {
                   </div>
                 )}
               </CardContent>
-            </GlowCard>
+            </Card>
           </div>
         </TabsContent>
 
@@ -280,7 +279,7 @@ export default function ToolsPage() {
         <TabsContent value="calculators" className="space-y-6">
           <div className="grid gap-6 md:grid-cols-2">
             {/* ROAS Calculator */}
-            <GlowCard color="primary" intensity="subtle">
+            <Card className="rounded-xl border bg-card">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Calculator className="h-4 w-4 text-primary" />
@@ -321,10 +320,10 @@ export default function ToolsPage() {
                   </div>
                 )}
               </CardContent>
-            </GlowCard>
+            </Card>
 
             {/* Benchmark Card */}
-            <GlowCard color="primary" intensity="subtle">
+            <Card className="rounded-xl border bg-card">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <BarChart3 className="h-4 w-4 text-primary" />
@@ -360,7 +359,7 @@ export default function ToolsPage() {
                   Gerar Comparativo
                 </Button>
               </CardContent>
-            </GlowCard>
+            </Card>
           </div>
         </TabsContent>
       </Tabs>

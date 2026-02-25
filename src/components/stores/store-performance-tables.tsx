@@ -2,7 +2,6 @@
 
 import { Zap } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
 import { Badge } from "@/components/ui/badge"
 import {
   Table,
@@ -88,7 +87,7 @@ export function StorePerformanceTables() {
     <div className="space-y-6">
       {/* Recent Campaigns Table */}
       {hasCampaigns && (
-        <GlowCard color="primary" intensity="subtle">
+        <Card className="rounded-xl">
           <CardHeader>
             <CardTitle className="text-base">Campanhas recentes</CardTitle>
           </CardHeader>
@@ -135,12 +134,12 @@ export function StorePerformanceTables() {
               </TableBody>
             </Table>
           </CardContent>
-        </GlowCard>
+        </Card>
       )}
 
       {/* Top Flows Table */}
       {hasFlows && (
-        <GlowCard color="primary" intensity="subtle">
+        <Card className="rounded-xl">
           <CardHeader>
             <CardTitle className="text-base">Flows com melhor desempenho</CardTitle>
           </CardHeader>
@@ -186,7 +185,7 @@ export function StorePerformanceTables() {
               </TableBody>
             </Table>
           </CardContent>
-        </GlowCard>
+        </Card>
       )}
     </div>
   )

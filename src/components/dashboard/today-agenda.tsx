@@ -29,16 +29,16 @@ export function TodayAgenda({ meetings }: TodayAgendaProps) {
   const now = new Date()
 
   return (
-    <div className="rounded-xl border bg-card">
+    <div className="rounded-xl border border-border bg-card">
       <CardHeader className="p-5 pb-3">
         <CardTitle className="text-sm font-medium flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Calendar className="h-4 w-4 text-[#5327F2]" />
-            Agenda de Hoje
+            <Calendar className="h-4 w-4 text-primary" />
+            <span className="text-foreground">Agenda de Hoje</span>
           </div>
-          <Button variant="ghost" size="sm" className="text-[11px] text-muted-foreground hover:text-[#5327F2] h-7" asChild>
+          <Button variant="ghost" size="sm" className="text-xs text-muted-foreground hover:text-primary h-7" asChild>
             <Link href="/meetings?view=calendar">
-              Ver calendário
+              Ver calendario
               <ArrowRight className="ml-1 h-3 w-3" />
             </Link>
           </Button>
@@ -48,7 +48,7 @@ export function TodayAgenda({ meetings }: TodayAgendaProps) {
         {todayMeetings.length === 0 ? (
           <div className="text-center py-6 text-muted-foreground text-sm">
             <Video className="h-8 w-8 mx-auto mb-1.5 opacity-20" />
-            <p>Nenhuma reunião hoje</p>
+            <p>Nenhuma reuniao hoje</p>
           </div>
         ) : (
           <div className="space-y-2">
@@ -62,14 +62,14 @@ export function TodayAgenda({ meetings }: TodayAgendaProps) {
                 <div
                   key={meeting.id}
                   className={cn(
-                    "flex items-center justify-between p-2.5 rounded-lg border border-border/50 hover:border-border transition-colors",
-                    isHappeningNow && "border-[#5327F2]/30 bg-[#5327F2]/5"
+                    "flex items-center justify-between p-2.5 rounded-lg border border-border hover:border-border/80 transition-colors",
+                    isHappeningNow && "border-primary/30 bg-primary/5"
                   )}
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <div className={cn(
                       "rounded-md p-1.5",
-                      isHappeningNow ? "bg-primary/20" : "bg-muted"
+                      isHappeningNow ? "bg-primary/10" : "bg-muted"
                     )}>
                       <Video className={cn(
                         "h-3.5 w-3.5",
@@ -78,13 +78,13 @@ export function TodayAgenda({ meetings }: TodayAgendaProps) {
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <p className="text-sm font-medium truncate">{meeting.title}</p>
+                        <p className="text-sm font-medium truncate text-foreground">{meeting.title}</p>
                         {isHappeningNow && (
-                          <Badge variant="default" className="bg-[#5327F2] text-white text-[10px] h-4">Agora</Badge>
+                          <Badge variant="default" className="bg-primary text-primary-foreground text-[10px] h-4">Agora</Badge>
                         )}
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        {format(meetingDate, "HH:mm")} • {meeting.duration_minutes}min
+                        {format(meetingDate, "HH:mm")} · {meeting.duration_minutes}min
                       </p>
                     </div>
                   </div>

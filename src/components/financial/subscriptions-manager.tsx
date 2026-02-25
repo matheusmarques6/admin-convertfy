@@ -14,7 +14,6 @@ import {
   User,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -241,21 +240,21 @@ export function SubscriptionsManager() {
     <div className="space-y-6">
       {/* Summary Cards */}
       <div className="grid gap-4 md:grid-cols-3">
-        <GlowCard color="success" intensity="intense">
+        <Card className="rounded-xl border bg-card">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <Repeat className="h-4 w-4 text-success" />
+              <Repeat className="h-4 w-4 text-emerald-500" />
               Assinaturas Ativas
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-success">
+            <div className="text-2xl font-bold text-emerald-500">
               {activeSubscriptions.length}
             </div>
           </CardContent>
-        </GlowCard>
+        </Card>
 
-        <GlowCard color="primary" intensity="intense">
+        <Card className="rounded-xl border bg-card">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
               <Calendar className="h-4 w-4 text-primary" />
@@ -268,25 +267,25 @@ export function SubscriptionsManager() {
             </div>
             <p className="text-xs text-muted-foreground">Receita Mensal Recorrente</p>
           </CardContent>
-        </GlowCard>
+        </Card>
 
-        <GlowCard color="primary" intensity="moderate">
+        <Card className="rounded-xl border bg-card">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <User className="h-4 w-4" />
+              <User className="h-4 w-4 text-muted-foreground" />
               Inativas
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
+            <div className="text-2xl font-bold text-foreground">
               {inactiveSubscriptions.length}
             </div>
           </CardContent>
-        </GlowCard>
+        </Card>
       </div>
 
       {/* Table */}
-      <GlowCard color="primary" intensity="subtle">
+      <Card className="rounded-xl border bg-card">
         <CardHeader>
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
@@ -396,7 +395,7 @@ export function SubscriptionsManager() {
             </TableBody>
           </Table>
         </CardContent>
-      </GlowCard>
+      </Card>
 
       {/* Cancel Dialog */}
       <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>

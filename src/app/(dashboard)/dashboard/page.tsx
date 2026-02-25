@@ -109,7 +109,7 @@ async function getDashboardData() {
   const stageMap = new Map<string, { value: number; deals: number; order: number }>()
   deals?.forEach((d) => {
     const stage = Array.isArray(d.stage) ? d.stage[0] : d.stage
-    const name = stage?.name || "Sem estágio"
+    const name = stage?.name || "Sem estagio"
     const order = stage?.order ?? 999
     const current = stageMap.get(name) || { value: 0, deals: 0, order }
     stageMap.set(name, {
@@ -192,7 +192,7 @@ async function getDashboardData() {
       id: `overdue-${c.id}`,
       type: "payment_overdue",
       title: "Pagamento vencido",
-      description: `${clientName} - ${c.description || "Cobrança"} vencida em ${new Date(c.due_date).toLocaleDateString("pt-BR")}`,
+      description: `${clientName} - ${c.description || "Cobranca"} vencida em ${new Date(c.due_date).toLocaleDateString("pt-BR")}`,
       severity: "high",
     })
   })
@@ -213,7 +213,7 @@ async function getDashboardData() {
       id: `health-${c.id}`,
       type: "health_low",
       title: "Health score baixo",
-      description: `${c.name} está com score ${c.health_score}/100`,
+      description: `${c.name} esta com score ${c.health_score}/100`,
       severity: "low",
     })
   })
@@ -236,7 +236,7 @@ function MetricsSkeleton() {
         <Skeleton className="h-8 w-40 rounded-lg" />
         <Skeleton className="h-8 w-8 rounded-lg" />
       </div>
-      <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
         {[...Array(5)].map((_, i) => (
           <Skeleton key={i} className="h-28 rounded-xl" />
         ))}
@@ -246,7 +246,7 @@ function MetricsSkeleton() {
 }
 
 export default async function DashboardPage() {
-  // Redirect agentes (não-admin/não-owner) para dashboard operacional
+  // Redirect agentes (nao-admin/nao-owner) para dashboard operacional
   const supabase2 = await createClient()
   const { data: { user: authUser } } = await supabase2.auth.getUser()
 
@@ -279,7 +279,7 @@ export default async function DashboardPage() {
   const data = await getDashboardData()
 
   return (
-    <AnimatedContainer className="space-y-5 max-w-[1600px]">
+    <AnimatedContainer className="space-y-6">
       {/* Quick Actions */}
       <AnimatedItem>
         <QuickActions />
@@ -299,7 +299,7 @@ export default async function DashboardPage() {
 
       {/* Charts and Activity */}
       <AnimatedItem>
-        <div className="grid gap-5 lg:grid-cols-7">
+        <div className="grid gap-6 lg:grid-cols-7">
           <div className="col-span-full lg:col-span-4">
             <DashboardCharts
               revenueData={data.revenueData}
@@ -307,7 +307,7 @@ export default async function DashboardPage() {
               pipelineData={data.pipelineData}
             />
           </div>
-          <div className="col-span-full lg:col-span-3 space-y-5">
+          <div className="col-span-full lg:col-span-3 space-y-6">
             <TodayAgenda meetings={data.upcomingMeetings} />
             <DashboardAlerts meetings={data.upcomingMeetings} alerts={data.alerts} />
             <RecentActivity activities={data.activities} />

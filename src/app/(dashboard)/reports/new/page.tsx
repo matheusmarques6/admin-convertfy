@@ -16,7 +16,6 @@ import {
   BarChart3,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -471,7 +470,7 @@ export default function NewReportPage() {
         <div className="grid gap-6 lg:grid-cols-3">
           {/* Main Form */}
           <div className="lg:col-span-2 space-y-6">
-            <GlowCard color="primary" intensity="subtle">
+            <Card className="rounded-xl border bg-card">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <FileText className="h-5 w-5" />
@@ -685,7 +684,7 @@ export default function NewReportPage() {
                   />
                 </div>
               </CardContent>
-            </GlowCard>
+            </Card>
 
             {/* Submit Button */}
             <div className="flex gap-3">
@@ -705,7 +704,7 @@ export default function NewReportPage() {
 
           {/* Preview Panel */}
           <div className="space-y-6">
-            <GlowCard color="primary" intensity="subtle">
+            <Card className="rounded-xl border bg-card">
               <CardHeader>
                 <CardTitle className="text-base">Resumo</CardTitle>
               </CardHeader>
@@ -772,10 +771,10 @@ export default function NewReportPage() {
                   </div>
                 )}
               </CardContent>
-            </GlowCard>
+            </Card>
 
             {/* Help Card */}
-            <GlowCard color="primary" intensity="subtle" className="bg-muted/50">
+            <Card className="rounded-xl border bg-muted/50">
               <CardContent className="pt-6">
                 <h4 className="font-medium mb-2">Dicas</h4>
                 <ul className="text-sm text-muted-foreground space-y-2">
@@ -793,7 +792,7 @@ export default function NewReportPage() {
                   </li>
                 </ul>
               </CardContent>
-            </GlowCard>
+            </Card>
           </div>
         </div>
       )}

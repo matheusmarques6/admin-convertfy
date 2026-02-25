@@ -4,7 +4,6 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import { Plus, Calendar, Video, CheckCircle, XCircle, Clock, Loader2, FileText } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { formatDateTime } from "@/lib/utils"
@@ -73,7 +72,7 @@ export function ClientMeetings({ clientId }: ClientMeetingsProps) {
       </div>
 
       {/* Upcoming Meetings */}
-      <GlowCard color="info" intensity="subtle">
+      <Card className="rounded-xl border bg-card">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <Calendar className="h-5 w-5 text-primary" />
@@ -123,11 +122,11 @@ export function ClientMeetings({ clientId }: ClientMeetingsProps) {
             </div>
           )}
         </CardContent>
-      </GlowCard>
+      </Card>
 
       {/* Past Meetings */}
       {pastMeetings.length > 0 && (
-        <GlowCard color="primary" intensity="subtle">
+        <Card className="rounded-xl border bg-card">
           <CardHeader>
             <CardTitle className="text-base">Histórico de Reuniões</CardTitle>
           </CardHeader>
@@ -144,9 +143,9 @@ export function ClientMeetings({ clientId }: ClientMeetingsProps) {
                       <div className="flex items-center gap-3">
                         <config.icon className={`h-4 w-4 ${
                           meeting.status === "completed"
-                            ? "text-emerald-500"
+                            ? "text-success"
                             : meeting.status === "no_show"
-                            ? "text-red-500"
+                            ? "text-destructive"
                             : "text-muted-foreground"
                         }`} />
                         <div>
@@ -174,7 +173,7 @@ export function ClientMeetings({ clientId }: ClientMeetingsProps) {
               })}
             </div>
           </CardContent>
-        </GlowCard>
+        </Card>
       )}
     </div>
   )

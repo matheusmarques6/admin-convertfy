@@ -10,8 +10,7 @@ import {
   RefreshCw,
   AlertCircle,
 } from "lucide-react"
-import { CardContent } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { DateRangePicker } from "@/components/ui/date-range-picker"
 import { SkeletonMetric } from "@/components/ui/skeleton"
@@ -103,7 +102,7 @@ export function StorePerformanceKPIs() {
 
       {/* Error */}
       {error && !loading && (
-        <GlowCard color="primary" intensity="subtle">
+        <Card className="rounded-xl border-destructive/20">
           <CardContent className="flex items-center gap-3 py-4">
             <AlertCircle className="h-5 w-5 text-destructive" />
             <p className="text-sm text-destructive">{error}</p>
@@ -111,83 +110,91 @@ export function StorePerformanceKPIs() {
               Tentar novamente
             </Button>
           </CardContent>
-        </GlowCard>
+        </Card>
       )}
 
       {/* KPI Cards */}
       {totals && !loading && !error && (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {/* Receita Total (Loja) */}
-          <GlowCard color="info" intensity="intense" surfaceClassName="p-6">
-            <div className="flex items-center justify-between pb-2">
-              <span className="text-sm font-medium text-muted-foreground">Receita Total</span>
-              <ShoppingCart className="h-4 w-4 text-info" />
-            </div>
-            <p className="text-2xl font-bold">{formatCurrency(totals.storeRevenue)}</p>
-            <div className="flex gap-2 mt-1">
-              <span className="text-xs text-muted-foreground">
-                {totals.storeOrders.toLocaleString("pt-BR")} pedidos
-              </span>
-            </div>
-          </GlowCard>
-
-          {/* Revenue Email (Atribuído) */}
-          <GlowCard color="success" intensity="intense" surfaceClassName="p-6">
-            <div className="flex items-center justify-between pb-2">
-              <span className="text-sm font-medium text-muted-foreground">Revenue Email</span>
-              <TrendingUp className="h-4 w-4 text-success" />
-            </div>
-            <p className="text-2xl font-bold">{formatCurrency(totals.totalRevenue)}</p>
-            <div className="flex gap-2 mt-1">
-              <span className="text-xs text-muted-foreground">
-                Campanhas: {formatCurrency(totals.campaignRevenue)}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                Flows: {formatCurrency(totals.flowRevenue)}
-              </span>
-            </div>
-          </GlowCard>
-
-          {/* Campanhas & Flows */}
-          <GlowCard color="primary" intensity="intense" surfaceClassName="p-6">
-            <div className="flex items-center justify-between pb-2">
-              <span className="text-sm font-medium text-muted-foreground">Campanhas & Flows</span>
-              <Mail className="h-4 w-4 text-primary" />
-            </div>
-            <p className="text-2xl font-bold">{totals.totalCampaigns + totals.totalFlows}</p>
-            <div className="flex gap-2 mt-1">
-              <span className="text-xs text-muted-foreground">
-                {totals.totalCampaigns} campanhas
-              </span>
-              <span className="text-xs text-muted-foreground">
-                {totals.totalFlows} flows
-              </span>
-            </div>
-            {(totals.avgOpenRate > 0 || totals.avgClickRate > 0) && (
-              <div className="flex gap-3 mt-2 pt-2 border-t border-border/50">
+          <Card className="rounded-xl">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between pb-2">
+                <span className="text-sm text-muted-foreground">Receita Total</span>
+                <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <p className="text-2xl font-bold">{formatCurrency(totals.storeRevenue)}</p>
+              <div className="flex gap-2 mt-1">
                 <span className="text-xs text-muted-foreground">
-                  Open: <span className="font-medium text-foreground">{totals.avgOpenRate.toFixed(2)}%</span>
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  Click: <span className="font-medium text-foreground">{totals.avgClickRate.toFixed(2)}%</span>
+                  {totals.storeOrders.toLocaleString("pt-BR")} pedidos
                 </span>
               </div>
-            )}
-          </GlowCard>
+            </CardContent>
+          </Card>
+
+          {/* Revenue Email (Atribuido) */}
+          <Card className="rounded-xl">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between pb-2">
+                <span className="text-sm text-muted-foreground">Revenue Email</span>
+                <TrendingUp className="h-4 w-4 text-success" />
+              </div>
+              <p className="text-2xl font-bold">{formatCurrency(totals.totalRevenue)}</p>
+              <div className="flex gap-2 mt-1">
+                <span className="text-xs text-muted-foreground">
+                  Campanhas: {formatCurrency(totals.campaignRevenue)}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  Flows: {formatCurrency(totals.flowRevenue)}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Campanhas & Flows */}
+          <Card className="rounded-xl">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between pb-2">
+                <span className="text-sm text-muted-foreground">Campanhas & Flows</span>
+                <Mail className="h-4 w-4 text-primary" />
+              </div>
+              <p className="text-2xl font-bold">{totals.totalCampaigns + totals.totalFlows}</p>
+              <div className="flex gap-2 mt-1">
+                <span className="text-xs text-muted-foreground">
+                  {totals.totalCampaigns} campanhas
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {totals.totalFlows} flows
+                </span>
+              </div>
+              {(totals.avgOpenRate > 0 || totals.avgClickRate > 0) && (
+                <div className="flex gap-3 mt-2 pt-2 border-t border-border">
+                  <span className="text-xs text-muted-foreground">
+                    Open: <span className="font-medium text-foreground">{totals.avgOpenRate.toFixed(2)}%</span>
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    Click: <span className="font-medium text-foreground">{totals.avgClickRate.toFixed(2)}%</span>
+                  </span>
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Recuperação Email % */}
-          <GlowCard color="warning" intensity="intense" surfaceClassName="p-6">
-            <div className="flex items-center justify-between pb-2">
-              <span className="text-sm font-medium text-muted-foreground">Recuperação Email</span>
-              <Percent className="h-4 w-4 text-warning" />
-            </div>
-            <p className="text-2xl font-bold">
-              {totals.recoveryRate.toFixed(2)}%
-            </p>
-            <span className="text-xs text-muted-foreground">
-              {formatCurrency(totals.totalRevenue)} de {formatCurrency(totals.storeRevenue)}
-            </span>
-          </GlowCard>
+          <Card className="rounded-xl">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between pb-2">
+                <span className="text-sm text-muted-foreground">Recuperação Email</span>
+                <Percent className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <p className="text-2xl font-bold">
+                {totals.recoveryRate.toFixed(2)}%
+              </p>
+              <span className="text-xs text-muted-foreground">
+                {formatCurrency(totals.totalRevenue)} de {formatCurrency(totals.storeRevenue)}
+              </span>
+            </CardContent>
+          </Card>
         </div>
       )}
     </div>

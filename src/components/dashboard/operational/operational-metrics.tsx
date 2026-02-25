@@ -6,8 +6,6 @@ import {
   ClipboardList,
   Rocket,
 } from "lucide-react"
-import { GlowCard } from "@/components/ui/glow-card"
-import type { GlowColor } from "@/components/ui/glow-card"
 import { formatNumber } from "@/lib/utils"
 import { cn } from "@/lib/utils"
 
@@ -28,7 +26,7 @@ export function OperationalMetrics({ metrics }: OperationalMetricsProps) {
     icon: React.ElementType
     iconColor: string
     iconBg: string
-    glowColor: GlowColor
+    accentColor: string
   }> = [
     {
       title: "Clientes Ativos",
@@ -36,7 +34,7 @@ export function OperationalMetrics({ metrics }: OperationalMetricsProps) {
       icon: Users,
       iconColor: "text-primary",
       iconBg: "bg-primary/10",
-      glowColor: "primary",
+      accentColor: "border-t-primary",
     },
     {
       title: "Lojas Ativas",
@@ -44,7 +42,7 @@ export function OperationalMetrics({ metrics }: OperationalMetricsProps) {
       icon: Store,
       iconColor: "text-success",
       iconBg: "bg-success/10",
-      glowColor: "success",
+      accentColor: "border-t-success",
     },
     {
       title: "Tasks Pendentes",
@@ -52,35 +50,41 @@ export function OperationalMetrics({ metrics }: OperationalMetricsProps) {
       icon: ClipboardList,
       iconColor: "text-warning",
       iconBg: "bg-warning/10",
-      glowColor: "warning",
+      accentColor: "border-t-warning",
     },
     {
       title: "Onboardings Ativos",
       value: formatNumber(metrics.activeOnboardings),
       icon: Rocket,
-      iconColor: "text-info",
-      iconBg: "bg-info/10",
-      glowColor: "info",
+      iconColor: "text-cyan-600 dark:text-cyan-400",
+      iconBg: "bg-cyan-500/10",
+      accentColor: "border-t-cyan-500",
     },
   ]
 
   return (
-    <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+    <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
       {cards.map((card) => (
-        <GlowCard key={card.title} color={card.glowColor} intensity="subtle" surfaceClassName="p-5">
+        <div
+          key={card.title}
+          className={cn(
+            "rounded-xl border border-border bg-card p-5 border-t-2 transition-shadow hover:shadow-sm",
+            card.accentColor
+          )}
+        >
           <div className="flex flex-row items-center justify-between pb-2">
-            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <span className="text-sm font-medium text-muted-foreground">
               {card.title}
             </span>
             <div className={cn("rounded-lg p-1.5", card.iconBg)}>
               <card.icon className={cn("h-3.5 w-3.5", card.iconColor)} />
             </div>
           </div>
-          <div className="text-2xl font-bold tracking-tight">{card.value}</div>
+          <div className="text-2xl font-bold tracking-tight text-foreground">{card.value}</div>
           {card.subtitle && (
             <p className="text-xs text-muted-foreground mt-1">{card.subtitle}</p>
           )}
-        </GlowCard>
+        </div>
       ))}
     </div>
   )

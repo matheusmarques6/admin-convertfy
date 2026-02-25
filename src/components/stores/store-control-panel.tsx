@@ -389,7 +389,7 @@ export function StoreControlPanel() {
         </div>
         {/* Table skeleton */}
         <div className="rounded-xl border border-border overflow-hidden">
-          <div className="bg-card/50 border-b border-border px-4 py-3 flex gap-8">
+          <div className="bg-muted/50 border-b border-border px-4 py-3 flex gap-8">
             {Array.from({ length: 6 }).map((_, i) => (
               <Skeleton key={i} className="h-3 w-24" />
             ))}
@@ -422,8 +422,8 @@ export function StoreControlPanel() {
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
           <button
             onClick={() => setFilterStatus('all')}
-            className={`rounded-xl bg-card/50 border p-4 text-left transition-all hover:bg-card/70 ${
-              filterStatus === 'all' ? 'border-border ring-1 ring-border' : 'border-border'
+            className={`rounded-xl border p-4 text-left transition-all hover:bg-muted/50 ${
+              filterStatus === 'all' ? 'border-foreground/20 ring-1 ring-foreground/20 bg-card' : 'border-border bg-card'
             }`}
           >
             <div className="flex items-center gap-3">
@@ -439,8 +439,8 @@ export function StoreControlPanel() {
 
           <button
             onClick={() => setFilterStatus('overdue')}
-            className={`rounded-xl bg-gradient-to-br from-destructive/10 to-destructive/5 border p-4 text-left transition-all hover:bg-destructive/15 ${
-              filterStatus === 'overdue' ? 'border-destructive ring-1 ring-destructive' : 'border-destructive/20'
+            className={`rounded-xl border p-4 text-left transition-all hover:bg-destructive/5 ${
+              filterStatus === 'overdue' ? 'border-destructive ring-1 ring-destructive bg-destructive/5' : 'border-border bg-card'
             }`}
           >
             <div className="flex items-center gap-3">
@@ -456,8 +456,8 @@ export function StoreControlPanel() {
 
           <button
             onClick={() => setFilterStatus('due_soon')}
-            className={`rounded-xl bg-gradient-to-br from-warning/10 to-warning/5 border p-4 text-left transition-all hover:bg-warning/15 ${
-              filterStatus === 'due_soon' ? 'border-warning ring-1 ring-warning' : 'border-warning/20'
+            className={`rounded-xl border p-4 text-left transition-all hover:bg-warning/5 ${
+              filterStatus === 'due_soon' ? 'border-warning ring-1 ring-warning bg-warning/5' : 'border-border bg-card'
             }`}
           >
             <div className="flex items-center gap-3">
@@ -473,8 +473,8 @@ export function StoreControlPanel() {
 
           <button
             onClick={() => setFilterStatus('on_track')}
-            className={`rounded-xl bg-gradient-to-br from-success/10 to-success/5 border p-4 text-left transition-all hover:bg-success/15 ${
-              filterStatus === 'on_track' ? 'border-success ring-1 ring-success' : 'border-success/20'
+            className={`rounded-xl border p-4 text-left transition-all hover:bg-success/5 ${
+              filterStatus === 'on_track' ? 'border-success ring-1 ring-success bg-success/5' : 'border-border bg-card'
             }`}
           >
             <div className="flex items-center gap-3">
@@ -490,8 +490,8 @@ export function StoreControlPanel() {
 
           <button
             onClick={() => setFilterStatus('never')}
-            className={`rounded-xl bg-muted/50 border p-4 text-left transition-all hover:bg-muted/70 ${
-              filterStatus === 'never' ? 'border-border ring-1 ring-border' : 'border-border'
+            className={`rounded-xl border p-4 text-left transition-all hover:bg-muted/50 ${
+              filterStatus === 'never' ? 'border-foreground/20 ring-1 ring-foreground/20 bg-card' : 'border-border bg-card'
             }`}
           >
             <div className="flex items-center gap-3">
@@ -569,7 +569,7 @@ export function StoreControlPanel() {
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="bg-card/50 border-b border-border">
+              <tr className="bg-muted/50 border-b border-border">
                 <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3">Loja / Cliente</th>
                 <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Receita Klaviyo 30d</th>
                 <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Campanhas / Flows</th>
@@ -605,7 +605,7 @@ export function StoreControlPanel() {
                   const StatusIcon = statusBadge.icon
 
                   return (
-                    <tr key={store.id} className="border-b border-border/50 hover:bg-card/30 transition-colors">
+                    <tr key={store.id} className="border-b border-border/50 hover:bg-muted/50 transition-colors">
                       {/* Store / Client */}
                       <td className="px-4 py-4">
                         <div className="flex items-center gap-3">
@@ -696,7 +696,7 @@ export function StoreControlPanel() {
                           {store.last_call_source === 'meeting' ? (
                             <span title="Reunião"><Video className="w-3.5 h-3.5 text-primary" /></span>
                           ) : store.last_call_source === 'feedback' ? (
-                            <span title="Feedback"><Phone className="w-3.5 h-3.5 text-emerald-500" /></span>
+                            <span title="Feedback"><Phone className="w-3.5 h-3.5 text-success" /></span>
                           ) : null}
                           <span className="text-sm text-muted-foreground">
                             {formatDate(store.last_call_date)}
@@ -727,7 +727,7 @@ export function StoreControlPanel() {
                               setSelectedStore(store)
                               setIsRegisterDialogOpen(true)
                             }}
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white h-8 px-3"
+                            className="h-8 px-3"
                           >
                             <Phone className="w-3 h-3 mr-1" />
                             Registrar
@@ -796,7 +796,7 @@ export function StoreControlPanel() {
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Phone className="w-5 h-5 text-emerald-500" />
+              <Phone className="w-5 h-5 text-primary" />
               Registrar Call de Feedback
             </DialogTitle>
             <DialogDescription>
@@ -920,7 +920,7 @@ export function StoreControlPanel() {
             <Button
               onClick={handleRegisterFeedback}
               disabled={isSubmitting}
-              className="bg-emerald-600 hover:bg-emerald-700"
+              className=""
             >
               {isSubmitting ? (
                 <>

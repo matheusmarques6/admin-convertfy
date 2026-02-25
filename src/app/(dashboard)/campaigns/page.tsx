@@ -18,7 +18,6 @@ import {
 import { Button } from "@/components/ui/button"
 import { PermissionGate } from "@/components/permission-gate"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
 import {
   Select,
   SelectContent,
@@ -145,7 +144,7 @@ export default function CampaignsCalendarPage() {
       {viewMode === "calendar" && (<>
 
       {/* Filters and Navigation */}
-      <GlowCard color="primary" intensity="subtle">
+      <Card className="rounded-xl border bg-card">
         <CardContent className="p-4">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div className="flex items-center gap-2">
@@ -207,7 +206,7 @@ export default function CampaignsCalendarPage() {
             </div>
           </div>
         </CardContent>
-      </GlowCard>
+      </Card>
 
       {/* Legend */}
       <div className="flex flex-wrap items-center gap-4 text-sm">
@@ -249,7 +248,7 @@ export default function CampaignsCalendarPage() {
             />
           )}
         </CardContent>
-      </GlowCard>
+      </Card>
 
       </>)}
 

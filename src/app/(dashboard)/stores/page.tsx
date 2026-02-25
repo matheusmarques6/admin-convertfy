@@ -15,22 +15,25 @@ export default function StoresControlPage() {
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-convertfy-purple to-convertfy-blue flex items-center justify-center">
-              <Store className="w-5 h-5 text-white" />
+          <div className="flex items-center gap-3 mb-1">
+            <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
+              <Store className="w-4 h-4 text-primary" />
             </div>
-            <p className="text-muted-foreground text-sm">Acompanhe resultados e gerencie calls de feedback</p>
+            <div>
+              <h1 className="text-xl font-semibold text-foreground">Controle de Lojas</h1>
+              <p className="text-muted-foreground text-sm">Acompanhe resultados e gerencie calls de feedback</p>
+            </div>
           </div>
         </div>
 
         {/* Legend */}
         <div className="flex items-center gap-4 text-sm">
           <div className="flex items-center gap-2">
-            <TrendingUp className="w-4 h-4 text-emerald-400" />
+            <TrendingUp className="w-4 h-4 text-success" />
             <span className="text-muted-foreground">Resultado = Receita Klaviyo / Faturamento Total</span>
           </div>
           <div className="flex items-center gap-2">
-            <Phone className="w-4 h-4 text-violet-400" />
+            <Phone className="w-4 h-4 text-primary" />
             <span className="text-muted-foreground">Calls de alinhamento mensais</span>
           </div>
         </div>

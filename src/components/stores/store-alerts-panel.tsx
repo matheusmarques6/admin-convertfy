@@ -19,7 +19,6 @@ import {
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
 import {
   Select,
   SelectContent,
@@ -84,7 +83,7 @@ const SEVERITY_CONFIG = {
   },
   info: {
     label: "Info",
-    className: "bg-blue-500/15 text-blue-500 border-blue-500/30",
+    className: "bg-primary/10 text-primary border-primary/30",
   },
 } as const
 
@@ -213,8 +212,8 @@ export function StoreAlertsPanel() {
         <div
           className={`rounded-xl border p-4 transition-all ${
             activeCount > 0
-              ? "bg-gradient-to-br from-destructive/10 to-destructive/5 border-destructive/20"
-              : "bg-card/50 border-border"
+              ? "bg-destructive/5 border-destructive/20"
+              : "bg-card border-border"
           }`}
         >
           <div className="flex items-center gap-3">
@@ -244,9 +243,9 @@ export function StoreAlertsPanel() {
                 setFilterType(type)
                 setFilterStatus("all")
               }}
-              className={`rounded-xl border p-4 text-left transition-all hover:bg-card/70 ${
+              className={`rounded-xl border p-4 text-left transition-all hover:bg-muted/50 ${
                 filterType === type ? "ring-1 ring-border" : ""
-              } ${count > 0 ? config.bgColor + " border-current/20" : "bg-card/50 border-border"}`}
+              } ${count > 0 ? config.bgColor + " border-border" : "bg-card border-border"}`}
             >
               <div className="flex items-center gap-3">
                 <div className={`w-10 h-10 rounded-lg ${config.bgColor} flex items-center justify-center`}>
@@ -336,7 +335,7 @@ export function StoreAlertsPanel() {
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="bg-card/50 border-b border-border">
+                <tr className="bg-muted/50 border-b border-border">
                   <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3">Alerta</th>
                   <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3">Loja / Cliente</th>
                   <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Severidade</th>
@@ -353,7 +352,7 @@ export function StoreAlertsPanel() {
                   const TypeIcon = typeConfig.icon
 
                   return (
-                    <tr key={alert.id} className="border-b border-border/50 hover:bg-card/30 transition-colors">
+                    <tr key={alert.id} className="border-b border-border/50 hover:bg-muted/50 transition-colors">
                       {/* Alert Info */}
                       <td className="px-4 py-4">
                         <div className="flex items-center gap-3">

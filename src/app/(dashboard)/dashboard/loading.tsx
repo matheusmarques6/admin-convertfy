@@ -1,8 +1,8 @@
-import { Skeleton, SkeletonMetric } from "@/components/ui/skeleton"
+import { Skeleton } from "@/components/ui/skeleton"
 
 export default function DashboardLoading() {
   return (
-    <div className="space-y-5 max-w-[1600px]">
+    <div className="space-y-6">
       {/* Quick Actions */}
       <div className="flex items-center gap-3">
         <Skeleton className="h-9 w-32 rounded-lg" />
@@ -11,7 +11,7 @@ export default function DashboardLoading() {
       </div>
 
       {/* Revenue Banner */}
-      <Skeleton className="h-64 w-full rounded-2xl" />
+      <Skeleton className="h-64 w-full rounded-xl" />
 
       {/* Billing Metrics Grid */}
       <div className="space-y-4">
@@ -19,7 +19,7 @@ export default function DashboardLoading() {
           <Skeleton className="h-8 w-40 rounded-lg" />
           <Skeleton className="h-8 w-8 rounded-lg" />
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
           {[...Array(5)].map((_, i) => (
             <Skeleton key={i} className="h-28 rounded-xl" />
           ))}
@@ -27,11 +27,11 @@ export default function DashboardLoading() {
       </div>
 
       {/* Charts + Right Column */}
-      <div className="grid gap-5 lg:grid-cols-7">
+      <div className="grid gap-6 lg:grid-cols-7">
         <div className="col-span-full lg:col-span-4">
           <Skeleton className="h-[460px] rounded-xl" />
         </div>
-        <div className="col-span-full lg:col-span-3 space-y-5">
+        <div className="col-span-full lg:col-span-3 space-y-6">
           <Skeleton className="h-48 rounded-xl" />
           <Skeleton className="h-48 rounded-xl" />
           <Skeleton className="h-48 rounded-xl" />

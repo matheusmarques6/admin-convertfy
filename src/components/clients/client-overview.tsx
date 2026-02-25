@@ -2,8 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { Globe, Mail, Phone, Building, User, Calendar, Loader2, AlertCircle, CheckCircle2 } from "lucide-react"
-import { CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { SkeletonShimmer } from "@/components/ui/skeleton"
@@ -95,7 +94,7 @@ export function ClientOverview({ client }: ClientOverviewProps) {
   return (
     <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
       {/* Contact Info */}
-      <GlowCard color="primary" intensity="subtle">
+      <Card className="rounded-xl border bg-card">
         <CardHeader>
           <CardTitle className="text-base">Informações de Contato</CardTitle>
         </CardHeader>
@@ -156,10 +155,10 @@ export function ClientOverview({ client }: ClientOverviewProps) {
             </div>
           )}
         </CardContent>
-      </GlowCard>
+      </Card>
 
       {/* Contract & Financial Summary */}
-      <GlowCard color="success" intensity="moderate">
+      <Card className="rounded-xl border bg-card">
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-base">Resumo Financeiro</CardTitle>
           {isLoadingAsaas ? (
@@ -234,21 +233,21 @@ export function ClientOverview({ client }: ClientOverviewProps) {
             </>
           )}
           {overdueAmount > 0 && (
-            <div className="flex items-center gap-2 p-2 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800">
-              <AlertCircle className="h-4 w-4 text-red-500" />
+            <div className="flex items-center gap-2 p-2 rounded-lg bg-destructive/10 border border-destructive/20">
+              <AlertCircle className="h-4 w-4 text-destructive" />
               <div>
-                <p className="text-xs text-red-600 dark:text-red-400">Vencido</p>
-                <p className="text-sm font-medium text-red-600 dark:text-red-400">
+                <p className="text-xs text-destructive">Vencido</p>
+                <p className="text-sm font-medium text-destructive">
                   {formatCurrency(overdueAmount)}
                 </p>
               </div>
             </div>
           )}
         </CardContent>
-      </GlowCard>
+      </Card>
 
       {/* Responsible & Next Meeting */}
-      <GlowCard color="primary" intensity="subtle">
+      <Card className="rounded-xl border bg-card">
         <CardHeader>
           <CardTitle className="text-base">Gestão</CardTitle>
         </CardHeader>
@@ -296,7 +295,7 @@ export function ClientOverview({ client }: ClientOverviewProps) {
             <p className="text-sm">{formatDate(client.created_at)}</p>
           </div>
         </CardContent>
-      </GlowCard>
+      </Card>
 
       {/* Custom Fields - filter out asaas internal fields and cpf_cnpj */}
       {(() => {
@@ -305,7 +304,7 @@ export function ClientOverview({ client }: ClientOverviewProps) {
           : []
         if (displayFields.length === 0) return null
         return (
-          <GlowCard color="primary" intensity="subtle" className="md:col-span-2 lg:col-span-3">
+          <Card className="rounded-xl border bg-card md:col-span-2 lg:col-span-3">
             <CardHeader>
               <CardTitle className="text-base">Campos Personalizados</CardTitle>
             </CardHeader>
@@ -321,7 +320,7 @@ export function ClientOverview({ client }: ClientOverviewProps) {
                 ))}
               </div>
             </CardContent>
-          </GlowCard>
+          </Card>
         )
       })()}
     </div>

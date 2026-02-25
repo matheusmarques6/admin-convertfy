@@ -38,11 +38,11 @@ export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps)
   const totalAlerts = alerts.length
 
   return (
-    <div className="rounded-xl border bg-card">
+    <div className="rounded-xl border border-border bg-card">
       <CardHeader className="p-5 pb-3">
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle className="text-sm font-medium">Alertas e Lembretes</CardTitle>
+            <CardTitle className="text-sm font-medium text-foreground">Alertas e Lembretes</CardTitle>
           </div>
           {totalAlerts > 0 && (
             <Badge variant="destructive" className="bg-destructive/10 text-destructive border-0 rounded-full text-xs px-2 h-5">
@@ -72,14 +72,14 @@ export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps)
                     }`} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-[13px] font-medium">{alert.title}</p>
+                    <p className="text-sm font-medium text-foreground">{alert.title}</p>
                     <p className="text-xs text-muted-foreground truncate">
                       {alert.description}
                     </p>
                   </div>
                   <Badge variant={getSeverityColor(alert.severity)} className="shrink-0 text-[10px] h-5 px-2">
                     {alert.severity === "high" ? "Urgente" :
-                     alert.severity === "medium" ? "Atenção" : "Baixo"}
+                     alert.severity === "medium" ? "Atencao" : "Baixo"}
                   </Badge>
                 </div>
               )
@@ -94,19 +94,19 @@ export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps)
         {/* Upcoming Meetings */}
         {meetings.length > 0 && (
           <>
-            <div className="flex items-center gap-2 pt-3 mt-3 border-t border-border/50">
+            <div className="flex items-center gap-2 pt-3 mt-3 border-t border-border">
               <Calendar className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium">Próximas Reuniões</span>
+              <span className="text-sm font-medium text-foreground">Proximas Reunioes</span>
             </div>
             <ScrollArea className="h-[150px]">
               <div className="space-y-2">
                 {meetings.map((meeting) => (
                   <div
                     key={meeting.id}
-                    className="flex items-center justify-between p-2 rounded-lg hover:bg-muted transition-colors"
+                    className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/50 transition-colors"
                   >
                     <div>
-                      <p className="text-sm font-medium">{meeting.title}</p>
+                      <p className="text-sm font-medium text-foreground">{meeting.title}</p>
                       <p className="text-xs text-muted-foreground">
                         {formatDateTime(meeting.scheduled_at)}
                       </p>

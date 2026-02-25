@@ -60,19 +60,19 @@ function timeAgo(dateStr: string): string {
 
   const minutes = Math.floor(diff / 60000)
   if (minutes < 1) return "agora"
-  if (minutes < 60) return `${minutes} min atrás`
+  if (minutes < 60) return `${minutes} min atras`
 
   const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h atrás`
+  if (hours < 24) return `${hours}h atras`
 
   const days = Math.floor(hours / 24)
-  if (days < 30) return `${days}d atrás`
+  if (days < 30) return `${days}d atras`
 
   return new Date(dateStr).toLocaleDateString("pt-BR")
 }
 
 const ONBOARDING_STATUS: Record<string, { label: string; color: string }> = {
-  not_started: { label: "Não Iniciado", color: "bg-gray-500/10 text-gray-500" },
+  not_started: { label: "Nao Iniciado", color: "bg-gray-500/10 text-gray-500" },
   in_progress: { label: "Em Progresso", color: "bg-blue-500/10 text-blue-500" },
   paused: { label: "Pausado", color: "bg-yellow-500/10 text-yellow-500" },
 }
@@ -100,11 +100,11 @@ interface OperationalOverviewProps {
 
 export function OperationalOverview({ activities, onboardings }: OperationalOverviewProps) {
   return (
-    <div className="rounded-xl border bg-card">
+    <div className="rounded-xl border border-border bg-card">
       <CardHeader className="p-5 pb-3">
         <div className="flex items-center gap-2">
-          <Activity className="h-4 w-4 text-info" />
-          <CardTitle className="text-sm font-medium">Overview Operacional</CardTitle>
+          <Activity className="h-4 w-4 text-muted-foreground" />
+          <CardTitle className="text-sm font-medium text-foreground">Overview Operacional</CardTitle>
         </div>
       </CardHeader>
       <CardContent className="px-5 pb-5">
@@ -136,10 +136,10 @@ export function OperationalOverview({ activities, onboardings }: OperationalOver
                           <Icon className={cn("h-3.5 w-3.5", color)} />
                         </div>
                         <div className="flex-1 space-y-0.5">
-                          <p className="text-[13px] leading-tight">{activity.description}</p>
-                          <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                          <p className="text-sm leading-tight text-foreground">{activity.description}</p>
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
                             <span>{profileName || "Sistema"}</span>
-                            <span>•</span>
+                            <span>·</span>
                             <span>{timeAgo(activity.created_at)}</span>
                           </div>
                         </div>
@@ -170,17 +170,17 @@ export function OperationalOverview({ activities, onboardings }: OperationalOver
                     return (
                       <div
                         key={onboarding.id}
-                        className="p-2.5 rounded-lg border border-border/50 hover:bg-muted/30 transition-colors"
+                        className="p-2.5 rounded-lg border border-border hover:bg-muted/30 transition-colors"
                       >
                         <div className="flex items-start gap-3">
-                          <div className="rounded-md p-1.5 bg-info/10 shrink-0">
-                            <Rocket className="h-3.5 w-3.5 text-info" />
+                          <div className="rounded-md p-1.5 bg-cyan-500/10 shrink-0">
+                            <Rocket className="h-3.5 w-3.5 text-cyan-600 dark:text-cyan-400" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-[13px] font-medium truncate">
+                            <p className="text-sm font-medium truncate text-foreground">
                               {store?.store_name || "Loja"}
                             </p>
-                            <p className="text-[11px] text-muted-foreground truncate">
+                            <p className="text-xs text-muted-foreground truncate">
                               {client?.name || "Cliente"}
                             </p>
                             <div className="flex items-center gap-2 mt-1.5">
@@ -191,12 +191,12 @@ export function OperationalOverview({ activities, onboardings }: OperationalOver
                                 {status.label}
                               </Badge>
                               <span className="text-[10px] text-muted-foreground">
-                                {completedSteps}/{totalSteps} concluídos
+                                {completedSteps}/{totalSteps} concluidos
                               </span>
                             </div>
                             <div className="mt-1.5 flex items-center gap-2">
                               <Progress value={onboarding.progress_percent} className="h-1 flex-1" />
-                              <span className="text-[11px] font-medium">{onboarding.progress_percent}%</span>
+                              <span className="text-xs font-medium text-foreground">{onboarding.progress_percent}%</span>
                             </div>
                             {onboarding.target_completion_date && (
                               <p className="text-[10px] text-muted-foreground mt-1">

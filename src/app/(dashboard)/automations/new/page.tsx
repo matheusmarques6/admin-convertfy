@@ -14,8 +14,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
 import { Skeleton } from "@/components/ui/skeleton"
 
@@ -152,7 +151,7 @@ export default function NewAutomationPage() {
       </div>
 
       {/* Basic Info */}
-      <GlowCard color="primary" intensity="subtle">
+      <Card className="rounded-xl border bg-card">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <Zap className="h-4 w-4" />
@@ -179,10 +178,10 @@ export default function NewAutomationPage() {
             </div>
           </div>
         </CardContent>
-      </GlowCard>
+      </Card>
 
       {/* Workflow Builder */}
-      <GlowCard color="primary" intensity="subtle">
+      <Card className="rounded-xl border bg-card">
         <CardHeader>
           <CardTitle className="text-base">Construtor de Fluxo</CardTitle>
           <CardDescription>
@@ -193,10 +192,10 @@ export default function NewAutomationPage() {
         <CardContent>
           <WorkflowBuilder onChange={handleWorkflowChange} />
         </CardContent>
-      </GlowCard>
+      </Card>
 
       {/* Tips */}
-      <GlowCard color="primary" intensity="subtle" className="bg-muted/50">
+      <Card className="rounded-xl border bg-muted/50">
         <CardContent className="pt-6">
           <div className="grid gap-4 md:grid-cols-3 text-sm">
             <div className="flex items-start gap-3">
@@ -239,7 +238,7 @@ export default function NewAutomationPage() {
             </div>
           </div>
         </CardContent>
-      </GlowCard>
+      </Card>
     </div>
   )
 }

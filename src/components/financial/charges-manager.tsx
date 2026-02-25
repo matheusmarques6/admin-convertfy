@@ -19,7 +19,6 @@ import {
   Search,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -340,7 +339,7 @@ export function ChargesManager() {
     <div className="space-y-6">
       {/* Summary Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <GlowCard color="destructive" intensity="intense">
+        <Card className="rounded-xl border bg-card">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
               <AlertCircle className="h-4 w-4 text-destructive" />
@@ -355,62 +354,62 @@ export function ChargesManager() {
               {data.summary.overdue.count} cobranças
             </p>
           </CardContent>
-        </GlowCard>
+        </Card>
 
-        <GlowCard color="warning" intensity="intense">
+        <Card className="rounded-xl border bg-card">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <Clock className="h-4 w-4 text-warning" />
+              <Clock className="h-4 w-4 text-amber-500" />
               Pendentes
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-warning">
+            <div className="text-2xl font-bold text-amber-500">
               {formatCurrency(data.summary.pending.value)}
             </div>
             <p className="text-xs text-muted-foreground">
               {data.summary.pending.count} cobranças
             </p>
           </CardContent>
-        </GlowCard>
+        </Card>
 
-        <GlowCard color="info" intensity="intense">
+        <Card className="rounded-xl border bg-card">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-info" />
+              <Calendar className="h-4 w-4 text-blue-500" />
               Próximos 7 dias
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-info">
+            <div className="text-2xl font-bold text-blue-500">
               {formatCurrency(data.summary.upcoming.value)}
             </div>
             <p className="text-xs text-muted-foreground">
               {data.summary.upcoming.count} cobranças
             </p>
           </CardContent>
-        </GlowCard>
+        </Card>
 
-        <GlowCard color="success" intensity="intense">
+        <Card className="rounded-xl border bg-card">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-success" />
+              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
               Recebidas
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-success">
+            <div className="text-2xl font-bold text-emerald-500">
               {formatCurrency(data.summary.received.value)}
             </div>
             <p className="text-xs text-muted-foreground">
               {data.summary.received.count} cobranças
             </p>
           </CardContent>
-        </GlowCard>
+        </Card>
       </div>
 
       {/* Filters and Table */}
-      <GlowCard color="primary" intensity="subtle">
+      <Card className="rounded-xl border bg-card">
         <CardHeader>
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
@@ -523,7 +522,7 @@ export function ChargesManager() {
             </TabsContent>
           </Tabs>
         </CardContent>
-      </GlowCard>
+      </Card>
 
       {/* Cancel Dialog */}
       <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>

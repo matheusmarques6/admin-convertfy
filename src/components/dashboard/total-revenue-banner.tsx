@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import Link from "next/link"
 import { format } from "date-fns"
 import { TrendingUp, RefreshCw, Megaphone, Workflow, Store } from "lucide-react"
-import { CardDescription, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import {
   Select,
@@ -119,7 +118,7 @@ export function TotalRevenueBanner({ storeIds }: TotalRevenueBannerProps = {}) {
   // Skeleton loading
   if (isLoading && !data) {
     return (
-      <div className="relative overflow-hidden rounded-2xl border border-border/50 bg-card p-6">
+      <div className="rounded-xl border border-border bg-card p-6">
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <Skeleton className="h-6 w-48" />
@@ -146,12 +145,12 @@ export function TotalRevenueBanner({ storeIds }: TotalRevenueBannerProps = {}) {
   // Empty state
   if (data && data.storesCount === 0) {
     return (
-      <div className="relative overflow-hidden rounded-2xl border border-border/50 bg-card p-6">
+      <div className="rounded-xl border border-border bg-card p-6">
         <div className="flex flex-col items-center justify-center py-8">
-          <div className="rounded-xl bg-muted/50 p-3 mb-4">
+          <div className="rounded-xl bg-muted p-3 mb-4">
             <Store className="h-8 w-8 text-muted-foreground" />
           </div>
-          <h3 className="text-base font-semibold">Resultado Total</h3>
+          <h3 className="text-base font-semibold text-foreground">Resultado Total</h3>
           <p className="text-sm text-muted-foreground text-center mt-1.5 max-w-xs">
             Conecte lojas com Klaviyo para ver a receita gerada
           </p>
@@ -163,15 +162,15 @@ export function TotalRevenueBanner({ storeIds }: TotalRevenueBannerProps = {}) {
   const maxRevenue = data?.topStores[0]?.totalRevenue || 1
 
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-border/50 bg-gradient-to-br from-[#5327F2]/8 via-card to-card before:absolute before:top-0 before:left-0 before:right-0 before:h-[2px] before:bg-gradient-to-r before:from-[#5327F2] before:via-[#4B53F2] before:to-[#05AFF2] before:rounded-t-2xl">
+    <div className="rounded-xl border border-border bg-card">
       <div className="p-6 space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-2.5">
-            <div className="rounded-lg bg-[#5327F2]/10 p-1.5">
-              <TrendingUp className="h-4 w-4 text-[#5327F2]" />
+            <div className="rounded-lg bg-primary/10 p-1.5">
+              <TrendingUp className="h-4 w-4 text-primary" />
             </div>
-            <h2 className="text-base font-semibold">Resultado Total</h2>
+            <h2 className="text-base font-semibold text-foreground">Resultado Total</h2>
             <span className="text-xs text-muted-foreground hidden sm:inline">
               Receita gerada via Klaviyo
             </span>
@@ -182,7 +181,7 @@ export function TotalRevenueBanner({ storeIds }: TotalRevenueBannerProps = {}) {
               setCustomStart(undefined)
               setCustomEnd(undefined)
             }}>
-              <SelectTrigger className="w-28 h-9 rounded-lg border-border/60">
+              <SelectTrigger className="w-28 h-9 rounded-lg">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -211,32 +210,32 @@ export function TotalRevenueBanner({ storeIds }: TotalRevenueBannerProps = {}) {
 
         {/* Main number */}
         <div>
-          <CardTitle className="text-4xl md:text-5xl font-bold tracking-tight text-[#5327F2]">
+          <p className="text-3xl md:text-4xl font-bold tracking-tight text-primary">
             {formatCurrency(animatedTotal)}
-          </CardTitle>
-          <CardDescription className="mt-1.5 text-sm">
+          </p>
+          <p className="mt-1.5 text-sm text-muted-foreground">
             {data?.storesWithRevenue || 0} de {data?.storesCount || 0} lojas geraram receita
-          </CardDescription>
+          </p>
         </div>
 
         {/* Breakdown: campaigns vs flows */}
         <div className="grid grid-cols-2 gap-4">
-          <div className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/80 backdrop-blur-sm">
-            <div className="rounded-xl p-2.5 bg-[#5327F2]/10">
-              <Megaphone className="h-4 w-4 text-[#5327F2]" />
+          <div className="flex items-center gap-3 p-4 rounded-xl border border-border bg-card">
+            <div className="rounded-xl p-2.5 bg-primary/10">
+              <Megaphone className="h-4 w-4 text-primary" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground font-medium">Campanhas</p>
-              <p className="text-lg font-semibold tracking-tight">{formatCurrency(animatedCampaign)}</p>
+              <p className="text-lg font-semibold tracking-tight text-foreground">{formatCurrency(animatedCampaign)}</p>
             </div>
           </div>
-          <div className="flex items-center gap-3 p-4 rounded-xl border border-border/40 bg-card/80 backdrop-blur-sm">
-            <div className="rounded-xl p-2.5 bg-[#05AFF2]/10">
-              <Workflow className="h-4 w-4 text-[#05AFF2]" />
+          <div className="flex items-center gap-3 p-4 rounded-xl border border-border bg-card">
+            <div className="rounded-xl p-2.5 bg-cyan-500/10">
+              <Workflow className="h-4 w-4 text-cyan-600 dark:text-cyan-400" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground font-medium">Flows</p>
-              <p className="text-lg font-semibold tracking-tight">{formatCurrency(animatedFlow)}</p>
+              <p className="text-lg font-semibold tracking-tight text-foreground">{formatCurrency(animatedFlow)}</p>
             </div>
           </div>
         </div>
@@ -255,17 +254,17 @@ export function TotalRevenueBanner({ storeIds }: TotalRevenueBannerProps = {}) {
                     className="block group"
                   >
                     <div className="flex items-center justify-between text-sm mb-1.5">
-                      <span className="truncate max-w-[60%] group-hover:text-[#5327F2] transition-colors">
+                      <span className="truncate max-w-[60%] text-foreground group-hover:text-primary transition-colors">
                         {store.storeName}
                         <span className="text-muted-foreground ml-1.5 text-xs">
                           ({store.clientName})
                         </span>
                       </span>
-                      <span className="font-medium tabular-nums">{formatCurrency(store.totalRevenue)}</span>
+                      <span className="font-medium tabular-nums text-foreground">{formatCurrency(store.totalRevenue)}</span>
                     </div>
-                    <div className="h-2.5 rounded-full bg-muted/60 overflow-hidden">
+                    <div className="h-2 rounded-full bg-muted overflow-hidden">
                       <div
-                        className="h-full rounded-full bg-gradient-to-r from-[#5327F2] to-[#05AFF2] transition-all duration-500"
+                        className="h-full rounded-full bg-primary transition-all duration-500"
                         style={{ width: `${widthPercent}%` }}
                       />
                     </div>

@@ -13,7 +13,6 @@ import {
   Loader2,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { formatDateTime } from "@/lib/utils"
 import { cn } from "@/lib/utils"
@@ -72,7 +71,7 @@ export function ClientTimeline({ clientId }: ClientTimelineProps) {
   }
 
   return (
-    <GlowCard color="primary" intensity="subtle">
+    <Card className="rounded-xl border bg-card">
       <CardHeader>
         <CardTitle className="text-base">Histórico de Atividades</CardTitle>
       </CardHeader>
@@ -92,8 +91,8 @@ export function ClientTimeline({ clientId }: ClientTimelineProps) {
                 {sortedActivities.map((activity) => {
                   const config = activityIcons[activity.type] || {
                     icon: Edit,
-                    color: "text-gray-500",
-                    bg: "bg-gray-500/10",
+                    color: "text-muted-foreground",
+                    bg: "bg-muted",
                   }
                   const Icon = config.icon
 
@@ -124,6 +123,6 @@ export function ClientTimeline({ clientId }: ClientTimelineProps) {
           </ScrollArea>
         )}
       </CardContent>
-    </GlowCard>
+    </Card>
   )
 }

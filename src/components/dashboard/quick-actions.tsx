@@ -18,19 +18,19 @@ const linkActions = [
     primary: false,
   },
   {
-    label: "Agendar Reunião",
+    label: "Agendar Reuniao",
     href: "/meetings",
     icon: Calendar,
     primary: false,
   },
   {
-    label: "Criar Relatório",
+    label: "Criar Relatorio",
     href: "/reports/new",
     icon: FileText,
     primary: false,
   },
   {
-    label: "Nova Automação",
+    label: "Nova Automacao",
     href: "/automations/new",
     icon: Zap,
     primary: false,
@@ -47,8 +47,8 @@ export function QuickActions() {
           size="sm"
           className={
             action.primary
-              ? "bg-[#5327F2] hover:bg-[#5327F2]/90 text-white shadow-sm shadow-[#5327F2]/20 rounded-lg h-9 px-4 text-[13px] font-medium"
-              : "border border-border/60 bg-card hover:bg-accent text-muted-foreground hover:text-foreground rounded-lg h-9 px-4 text-[13px] font-medium transition-colors"
+              ? "bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg h-9 px-4 text-sm font-medium"
+              : "rounded-lg h-9 px-4 text-sm font-medium"
           }
           asChild
         >

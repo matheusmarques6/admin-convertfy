@@ -16,7 +16,6 @@ import {
   Building2,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -251,7 +250,7 @@ export function WiseReconciliation() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold flex items-center gap-2">
-            <Wallet className="h-5 w-5 text-[#9FE870]" />
+            <Wallet className="h-5 w-5 text-emerald-500" />
             Wise - Conciliação de Pagamentos
           </h2>
           <p className="text-sm text-muted-foreground">
@@ -273,20 +272,20 @@ export function WiseReconciliation() {
       {balances.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {Object.entries(totalByCurrency).map(([currency, amount]) => (
-            <GlowCard key={currency} color="success" intensity="moderate">
+            <Card key={currency} className="rounded-xl border bg-card">
               <CardHeader className="pb-2">
                 <CardDescription>Saldo {currency}</CardDescription>
                 <CardTitle className="text-xl">
                   {formatCurrency(amount, currency)}
                 </CardTitle>
               </CardHeader>
-            </GlowCard>
+            </Card>
           ))}
         </div>
       )}
 
       {/* Filters */}
-      <GlowCard color="primary" intensity="subtle">
+      <Card className="rounded-xl border bg-card">
         <CardHeader>
           <CardTitle className="text-base">Filtros</CardTitle>
         </CardHeader>
@@ -337,10 +336,10 @@ export function WiseReconciliation() {
             </div>
           </div>
         </CardContent>
-      </GlowCard>
+      </Card>
 
       {/* Transactions Table */}
-      <GlowCard color="primary" intensity="subtle">
+      <Card className="rounded-xl border bg-card">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <ArrowDownRight className="h-4 w-4 text-success" />
@@ -435,7 +434,7 @@ export function WiseReconciliation() {
             </Table>
           )}
         </CardContent>
-      </GlowCard>
+      </Card>
 
       {/* Reconcile Dialog */}
       <Dialog

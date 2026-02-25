@@ -17,7 +17,6 @@ import {
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
 import {
   Select,
   SelectContent,
@@ -85,7 +84,7 @@ const SEVERITY_CONFIG = {
   },
   info: {
     label: "Info",
-    className: "bg-blue-500/15 text-blue-500 border-blue-500/30",
+    className: "bg-primary/10 text-primary border-primary/30",
   },
 } as const
 
@@ -256,7 +255,7 @@ export function StoreAlertsTab({ storeId, storeName }: StoreAlertsTabProps) {
               <div
                 key={type}
                 className={`rounded-lg border p-3 flex items-center gap-3 ${
-                  count > 0 ? config.bgColor + " border-current/20" : "border-border"
+                  count > 0 ? config.bgColor + " border-border" : "bg-card border-border"
                 }`}
               >
                 <Icon className={`h-5 w-5 ${count > 0 ? config.color : "text-muted-foreground/40"}`} />
@@ -329,10 +328,15 @@ export function StoreAlertsTab({ storeId, storeName }: StoreAlertsTabProps) {
             const TypeIcon = typeConfig.icon
 
             return (
-              <GlowCard
+              <Card
                 key={alert.id}
-                color={alert.severity === "critical" ? "destructive" : "primary"}
-                intensity={alert.status === "active" ? "moderate" : "subtle"}
+                className={`rounded-xl ${
+                  alert.status === "active" && alert.severity === "critical"
+                    ? "border-destructive/30"
+                    : alert.status === "active"
+                    ? "border-warning/30"
+                    : ""
+                }`}
               >
                 <CardContent className="pt-4 pb-3">
                   <div className="flex items-start gap-3">
@@ -396,7 +400,7 @@ export function StoreAlertsTab({ storeId, storeName }: StoreAlertsTabProps) {
                     )}
                   </div>
                 </CardContent>
-              </GlowCard>
+              </Card>
             )
           })}
         </div>

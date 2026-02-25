@@ -298,7 +298,7 @@ export function ClientsTable({ clients }: ClientsTableProps) {
               const clientStatus = clientsStatus[client.id]
 
               return (
-                <TableRow key={client.id} className={clientStatus?.hasOverdue ? "bg-red-50/50 dark:bg-red-950/10" : ""}>
+                <TableRow key={client.id} className={clientStatus?.hasOverdue ? "bg-destructive/5" : ""}>
                   <TableCell>
                     <div className="flex items-center gap-3">
                       <Avatar className="h-10 w-10">
@@ -315,7 +315,7 @@ export function ClientsTable({ clients }: ClientsTableProps) {
                           {clientStatus?.hasOverdue && (
                             <Tooltip>
                               <TooltipTrigger>
-                                <AlertCircle className="h-4 w-4 text-red-500" />
+                                <AlertCircle className="h-4 w-4 text-destructive" />
                               </TooltipTrigger>
                               <TooltipContent>
                                 <p>Inadimplente - {clientStatus.overdueCount} cobranças vencidas</p>
@@ -354,12 +354,12 @@ export function ClientsTable({ clients }: ClientsTableProps) {
                           </Badge>
                         )}
                         {clientStatus.overdueValue > 0 && (
-                          <p className="text-xs text-red-500">
+                          <p className="text-xs text-destructive">
                             {formatCurrency(clientStatus.overdueValue)} vencido
                           </p>
                         )}
                         {clientStatus.pendingValue > 0 && !clientStatus.hasOverdue && (
-                          <p className="text-xs text-amber-500">
+                          <p className="text-xs text-warning">
                             {formatCurrency(clientStatus.pendingValue)} pendente
                           </p>
                         )}
@@ -379,7 +379,7 @@ export function ClientsTable({ clients }: ClientsTableProps) {
                     ) : clientStatus?.subscription ? (
                       <div className="space-y-1">
                         <div className="flex items-center gap-1">
-                          <Repeat className="h-3 w-3 text-purple-500" />
+                          <Repeat className="h-3 w-3 text-primary" />
                           <span className="font-medium text-sm">
                             {formatCurrency(clientStatus.subscription.value)}
                           </span>
@@ -391,7 +391,7 @@ export function ClientsTable({ clients }: ClientsTableProps) {
                     ) : activeContract ? (
                       <div className="space-y-1">
                         <div className="flex items-center gap-1">
-                          <DollarSign className="h-3 w-3 text-emerald-500" />
+                          <DollarSign className="h-3 w-3 text-success" />
                           <span className="font-medium text-sm">
                             {formatCurrency(activeContract.monthly_value)}
                           </span>
@@ -407,10 +407,10 @@ export function ClientsTable({ clients }: ClientsTableProps) {
                       <div
                         className={`h-2.5 w-2.5 rounded-full ${
                           healthColor === "green"
-                            ? "bg-emerald-500"
+                            ? "bg-success"
                             : healthColor === "yellow"
-                            ? "bg-amber-500"
-                            : "bg-red-500"
+                            ? "bg-warning"
+                            : "bg-destructive"
                         }`}
                       />
                       <span className="text-sm font-medium">{client.health_score}%</span>

@@ -10,11 +10,11 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
 
 const STATUS_COLORS: Record<string, string> = {
-  active: "bg-green-500/10 text-green-500",
-  prospect: "bg-blue-500/10 text-blue-500",
-  onboarding: "bg-purple-500/10 text-purple-500",
-  inactive: "bg-gray-500/10 text-gray-500",
-  churned: "bg-red-500/10 text-red-500",
+  active: "bg-green-500/10 text-green-600 dark:text-green-400",
+  prospect: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+  onboarding: "bg-purple-500/10 text-purple-600 dark:text-purple-400",
+  inactive: "bg-gray-500/10 text-gray-600 dark:text-gray-400",
+  churned: "bg-red-500/10 text-red-600 dark:text-red-400",
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -32,13 +32,13 @@ function timeAgo(dateStr: string): string {
 
   const minutes = Math.floor(diff / 60000)
   if (minutes < 1) return "agora"
-  if (minutes < 60) return `${minutes} min atrás`
+  if (minutes < 60) return `${minutes} min atras`
 
   const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h atrás`
+  if (hours < 24) return `${hours}h atras`
 
   const days = Math.floor(hours / 24)
-  if (days < 30) return `${days}d atrás`
+  if (days < 30) return `${days}d atras`
 
   return new Date(dateStr).toLocaleDateString("pt-BR")
 }
@@ -57,12 +57,12 @@ interface NewClientsProps {
 
 export function NewClients({ clients }: NewClientsProps) {
   return (
-    <div className="rounded-xl border bg-card">
+    <div className="rounded-xl border border-border bg-card">
       <CardHeader className="p-5 pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <UserPlus className="h-4 w-4 text-primary" />
-            <CardTitle className="text-sm font-medium">Novos Clientes</CardTitle>
+            <CardTitle className="text-sm font-medium text-foreground">Novos Clientes</CardTitle>
           </div>
           {clients.length > 0 && (
             <Badge variant="secondary" className="rounded-full text-xs">
@@ -79,16 +79,16 @@ export function NewClients({ clients }: NewClientsProps) {
                 <Link
                   key={client.id}
                   href={`/clients/${client.id}`}
-                  className="flex items-center gap-3 p-3 rounded-lg border border-border/50 hover:bg-muted/30 transition-colors"
+                  className="flex items-center gap-3 p-3 rounded-lg border border-border hover:bg-muted/30 transition-colors"
                 >
                   <Avatar className="h-8 w-8">
-                    <AvatarFallback className="bg-primary/10 text-primary text-[11px]">
+                    <AvatarFallback className="bg-primary/10 text-primary text-xs">
                       {client.name.slice(0, 2).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <p className="text-[13px] font-medium truncate">{client.name}</p>
+                      <p className="text-sm font-medium truncate text-foreground">{client.name}</p>
                       <Badge
                         variant="secondary"
                         className={cn("text-[10px] h-5 px-2 shrink-0", STATUS_COLORS[client.status])}
@@ -97,16 +97,16 @@ export function NewClients({ clients }: NewClientsProps) {
                       </Badge>
                     </div>
                     <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[11px] text-muted-foreground">
+                      <span className="text-xs text-muted-foreground">
                         {timeAgo(client.created_at)}
                       </span>
-                      <span className="text-[11px] text-muted-foreground">•</span>
+                      <span className="text-xs text-muted-foreground">·</span>
                       <div className="flex items-center gap-1.5 flex-1">
                         <Progress
                           value={client.health_score}
                           className="h-1 w-14"
                         />
-                        <span className="text-[11px] text-muted-foreground">
+                        <span className="text-xs text-muted-foreground">
                           {client.health_score}
                         </span>
                       </div>
@@ -119,7 +119,7 @@ export function NewClients({ clients }: NewClientsProps) {
         ) : (
           <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
             <Users className="h-8 w-8 mb-2 opacity-50" />
-            <p className="text-sm">Nenhum novo cliente nos últimos 30 dias</p>
+            <p className="text-sm">Nenhum novo cliente nos ultimos 30 dias</p>
           </div>
         )}
       </CardContent>

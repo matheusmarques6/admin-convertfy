@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from "react"
 import { Bell, Check, CheckCheck, Trash2, Loader2, Info, AlertTriangle, XCircle, PartyPopper } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -149,11 +148,9 @@ export default function NotificationsPage() {
           ) : (
             <div className="space-y-2">
               {filtered.map((notification) => (
-                <GlowCard
+                <Card
                   key={notification.id}
-                  color="primary"
-                  intensity="subtle"
-                  className={`transition-colors ${!notification.read ? "bg-primary/5 border-primary/20" : ""}`}
+                  className={`rounded-xl border bg-card transition-colors ${!notification.read ? "bg-primary/5 border-primary/20" : ""}`}
                 >
                   <CardContent className="flex items-start gap-3 p-4">
                     <div className="mt-0.5">
@@ -200,7 +197,7 @@ export default function NotificationsPage() {
                       </Button>
                     </div>
                   </CardContent>
-                </GlowCard>
+                </Card>
               ))}
             </div>
           )}
