@@ -162,7 +162,7 @@ export function TotalRevenueBanner({ storeIds }: TotalRevenueBannerProps = {}) {
   const maxRevenue = data?.topStores[0]?.totalRevenue || 1
 
   return (
-    <div className="rounded-xl border border-primary/20 bg-gradient-to-br from-primary/5 via-card to-card">
+    <div className="rounded-xl border border-primary/30 bg-gradient-to-br from-primary/10 via-primary/5 to-card shadow-sm shadow-primary/5">
       <div className="p-6 space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-3">

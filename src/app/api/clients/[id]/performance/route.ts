@@ -136,12 +136,17 @@ export async function GET(
           if (apiKey) {
             klaviyoData = await fetchKlaviyoPerformance(apiKey, period, undefined, customStartDate, customEndDate)
 
-            // If fetch returned empty data (rate limited / fail-fast), try stale cache
-            if (!klaviyoData || (klaviyoData.storeRevenue === 0 && klaviyoData.attributedRevenue === 0)) {
-              const stale = await getStaleCache<KlaviyoPerformanceData>(adminClient, store.id, "klaviyo_perf", period)
-              if (stale) {
-                log.info(`[ClientPerf] Using stale cache for store ${store.id} (fresh fetch returned empty)`)
-                klaviyoData = stale.data
+            // If fetch returned data that looks incomplete (e.g., storeRevenue > 0 but
+            // no campaigns/flows — likely partial API failure), try stale cache for better data
+            if (klaviyoData) {
+              const hasRevenue = klaviyoData.storeRevenue > 0 || klaviyoData.attributedRevenue > 0
+              const hasCampaignOrFlowData = klaviyoData.recentCampaigns.length > 0 || klaviyoData.topFlows.length > 0 || klaviyoData.attributedRevenue > 0
+              if (!hasRevenue || !hasCampaignOrFlowData) {
+                const stale = await getStaleCache<KlaviyoPerformanceData>(adminClient, store.id, "klaviyo_perf", period)
+                if (stale) {
+                  log.info(`[ClientPerf] Using stale cache for store ${store.id} (fresh fetch returned incomplete: revenue=${hasRevenue}, campaigns/flows=${hasCampaignOrFlowData})`)
+                  klaviyoData = stale.data
+                }
               }
             }
           }
@@ -224,9 +229,15 @@ export async function GET(
       })),
     }
 
-    // Save to cache (fire-and-forget)
-    const cachePeriodKey = period === "custom" && customStartDate ? `${period}:${customStartDate}:${customEndDate}` : period
-    setCache(adminClient, clientId, "client_performance", cachePeriodKey, responseData as unknown as Record<string, unknown>).catch(() => {})
+    // Save to cache only if we have meaningful data (avoid caching incomplete results)
+    const hasKlaviyoData = totals.klaviyoRevenue > 0 || totals.campaignRevenue > 0 || totals.flowRevenue > 0
+    const hasShopifyData = totals.shopifyRevenue > 0
+    if (hasKlaviyoData || hasShopifyData) {
+      const cachePeriodKey = period === "custom" && customStartDate ? `${period}:${customStartDate}:${customEndDate}` : period
+      setCache(adminClient, clientId, "client_performance", cachePeriodKey, responseData as unknown as Record<string, unknown>).catch(() => {})
+    } else {
+      log.info("[ClientPerformance] Skipping cache save — no meaningful data (klaviyo or shopify)")
+    }
 
     return successResponse(request, responseData)
   } catch (error) {

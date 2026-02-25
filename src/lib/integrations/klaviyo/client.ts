@@ -10,6 +10,19 @@ import { enqueueKlaviyoRequest } from "./rate-limiter"
 
 const log = logger.child("KlaviyoClient")
 
+/**
+ * Thrown when Klaviyo returns 429 and we cannot wait for the Retry-After.
+ * Callers should catch this and fall back to cached data.
+ */
+export class KlaviyoRateLimitError extends Error {
+  public retryAfterMs: number
+  constructor(retryAfterMs: number) {
+    super(`Klaviyo rate limited (Retry-After: ${retryAfterMs}ms)`)
+    this.name = "KlaviyoRateLimitError"
+    this.retryAfterMs = retryAfterMs
+  }
+}
+
 // Latest stable API revision per Klaviyo documentation
 // https://developers.klaviyo.com/en/docs/api_versioning_and_deprecation_policy
 export const KLAVIYO_API_URL = "https://a.klaviyo.com/api"
@@ -99,10 +112,11 @@ async function _klaviyoRequestInner<T>(
         const retryAfter = response.headers.get("retry-after")
         const rawWaitTime = retryAfter ? parseInt(retryAfter) * 1000 : 2000
 
-        // Fail fast if Klaviyo wants us to wait too long (prevents Vercel timeout)
+        // Fail fast if Klaviyo wants us to wait too long (prevents Vercel timeout).
+        // Throw instead of returning null so callers can fall back to cached data.
         if (rawWaitTime > MAX_RETRY_AFTER_MS) {
-          log.warn(`[${logTag}] Rate limited with Retry-After ${rawWaitTime}ms (>${MAX_RETRY_AFTER_MS}ms cap). Failing fast — use cached data.`)
-          return null
+          log.warn(`[${logTag}] Rate limited with Retry-After ${rawWaitTime}ms (>${MAX_RETRY_AFTER_MS}ms cap). Throwing — callers should use cached data.`)
+          throw new KlaviyoRateLimitError(rawWaitTime)
         }
 
         log.warn(`[${logTag}] Rate limited. Waiting ${rawWaitTime}ms`)
@@ -112,7 +126,7 @@ async function _klaviyoRequestInner<T>(
           continue
         }
         log.error(`[${logTag}] Max retries reached for rate limiting`)
-        return null
+        throw new KlaviyoRateLimitError(rawWaitTime)
       }
 
       // Handle server errors with retry

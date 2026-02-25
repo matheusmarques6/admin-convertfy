@@ -10,6 +10,7 @@ export {
   MIN_REQUEST_INTERVAL,
   sleep,
   klaviyoRequest,
+  KlaviyoRateLimitError,
   getCurrencySymbol,
   parseDateRange,
   parseDateRangeInTimezone,

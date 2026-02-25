@@ -249,11 +249,16 @@ export async function GET(request: NextRequest) {
             log.info(`[Cache SKIP] Outdated cache version for ${cacheType} store ${storeId} (got ${cached._cacheVersion}, need ${CACHE_VERSION})`)
             return null
           }
-          // Skip stale cache (zero revenue, impossible ratios, or missing names)
+          // Skip stale cache (zero revenue, incomplete data, impossible ratios, or missing names)
           if (cacheType === "klaviyo_perf") {
             const perf = cached as unknown as KlaviyoPerformanceData
-            if (perf.storeRevenue === 0 || perf.attributedRevenue === 0) {
-              log.info(`[Cache SKIP] Stale klaviyo_perf cache for store ${storeId} - zero revenue (store=${perf.storeRevenue}, attributed=${perf.attributedRevenue})`)
+            if (perf.storeRevenue === 0 && perf.attributedRevenue === 0) {
+              log.info(`[Cache SKIP] Stale klaviyo_perf cache for store ${storeId} - all zero revenue`)
+              return null
+            }
+            // Skip cache where metric-aggregates worked but reports failed (storeRevenue > 0 but no campaigns/flows)
+            if (perf.storeRevenue > 0 && perf.attributedRevenue === 0 && perf.recentCampaigns.length === 0 && perf.topFlows.length === 0) {
+              log.info(`[Cache SKIP] Incomplete klaviyo_perf cache for store ${storeId} - has storeRevenue but no campaigns/flows`)
               return null
             }
             // Impossible: attributed revenue > store revenue means storeRevenue is wrong
@@ -346,18 +351,21 @@ export async function GET(request: NextRequest) {
           try {
             const perf = await fetchKlaviyoPerformance(apiKey, period)
 
-            // If fetch returned data with actual values, cache it
-            if (perf && (perf.storeRevenue > 0 || perf.attributedRevenue > 0)) {
+            // Check if data looks complete: has revenue AND has campaign/flow detail
+            const hasRevenue = perf && (perf.storeRevenue > 0 || perf.attributedRevenue > 0)
+            const hasCampaignOrFlowData = perf && (perf.recentCampaigns.length > 0 || perf.topFlows.length > 0 || perf.attributedRevenue > 0)
+
+            if (hasRevenue && hasCampaignOrFlowData) {
               storeData.klaviyoPerf = perf
               saveToCache(store.id, "klaviyo_perf", perf as unknown as Record<string, unknown>)
             } else {
-              // Rate limited or empty — try stale cache as fallback
+              // Incomplete data (e.g., metric-aggregates OK but reports failed) — try stale cache
               const stale = await getStaleData(store.id, "klaviyo_perf")
               if (stale) {
-                log.info(`[Portal] Using stale cache for store ${store.id} (fresh fetch returned empty)`)
+                log.info(`[Portal] Using stale cache for store ${store.id} (fresh fetch returned incomplete: revenue=${hasRevenue}, campaigns/flows=${hasCampaignOrFlowData})`)
                 storeData.klaviyoPerf = stale as unknown as KlaviyoPerformanceData
               } else {
-                storeData.klaviyoPerf = perf // Use empty data if no stale available
+                storeData.klaviyoPerf = perf // Use whatever data we got if no stale available
               }
             }
           } catch (error) {

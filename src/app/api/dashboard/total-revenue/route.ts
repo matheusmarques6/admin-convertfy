@@ -140,8 +140,8 @@ export async function GET(request: NextRequest) {
 
     const { data: stores, error: storesError } = await admin
       .from("client_stores")
-      .select("id, store_name, klaviyo_private_key, client_id")
-      .not("klaviyo_private_key", "is", null)
+      .select("id, store_name, klaviyo_private_key, klaviyo_api_key, client_id")
+      .or("klaviyo_private_key.not.is.null,klaviyo_api_key.not.is.null")
       .eq("is_active", true)
       .in("client_id", clientIds)
 

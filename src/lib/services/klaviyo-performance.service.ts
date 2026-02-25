@@ -9,6 +9,7 @@
  */
 import {
   klaviyoRequest,
+  KlaviyoRateLimitError,
   getAccountInfo,
   findPlacedOrderMetric,
   getTimezoneOffset,
@@ -156,36 +157,62 @@ export async function fetchKlaviyoPerformance(
   // Note: sleep between requests is no longer needed here.
   // The global rate limiter (rate-limiter.ts) serializes all Klaviyo
   // requests per API key with proper intervals automatically.
-  const campaignReport = await klaviyoRequest<KlaviyoReport>(apiKey, "/campaign-values-reports/", {
-    method: "POST",
-    logTag: "PerfCampaignReport",
-    body: {
-      data: {
-        type: "campaign-values-report",
-        attributes: {
-          statistics: reportStats,
-          timeframe: { start: startISO, end: endISO },
-          conversion_metric_id: placedOrderMetric,
+  //
+  // If rate limited (KlaviyoRateLimitError), we let it propagate up to
+  // the route handler, which will fall back to stale cached data.
+  // For other failures (null return), we continue with empty data.
+  let campaignReport: KlaviyoReport | null = null
+  let flowReport: KlaviyoReport | null = null
+  let rateLimited = false
+
+  try {
+    campaignReport = await klaviyoRequest<KlaviyoReport>(apiKey, "/campaign-values-reports/", {
+      method: "POST",
+      logTag: "PerfCampaignReport",
+      body: {
+        data: {
+          type: "campaign-values-report",
+          attributes: {
+            statistics: reportStats,
+            timeframe: { start: startISO, end: endISO },
+            conversion_metric_id: placedOrderMetric,
+          },
         },
       },
-    },
-  })
+    })
+  } catch (err) {
+    if (err instanceof KlaviyoRateLimitError) {
+      log.warn(`[KlaviyoPerf] Campaign report rate limited (${err.retryAfterMs}ms)`)
+      rateLimited = true
+    } else {
+      log.error("[KlaviyoPerf] Campaign report error:", err)
+    }
+  }
 
   // ── 2. Flow Values Report ──
-  const flowReport = await klaviyoRequest<KlaviyoReport>(apiKey, "/flow-values-reports/", {
-    method: "POST",
-    logTag: "PerfFlowReport",
-    body: {
-      data: {
-        type: "flow-values-report",
-        attributes: {
-          statistics: reportStats,
-          timeframe: { start: startISO, end: endISO },
-          conversion_metric_id: placedOrderMetric,
+  try {
+    flowReport = await klaviyoRequest<KlaviyoReport>(apiKey, "/flow-values-reports/", {
+      method: "POST",
+      logTag: "PerfFlowReport",
+      body: {
+        data: {
+          type: "flow-values-report",
+          attributes: {
+            statistics: reportStats,
+            timeframe: { start: startISO, end: endISO },
+            conversion_metric_id: placedOrderMetric,
+          },
         },
       },
-    },
-  })
+    })
+  } catch (err) {
+    if (err instanceof KlaviyoRateLimitError) {
+      log.warn(`[KlaviyoPerf] Flow report rate limited (${err.retryAfterMs}ms)`)
+      rateLimited = true
+    } else {
+      log.error("[KlaviyoPerf] Flow report error:", err)
+    }
+  }
 
   // ── 3. Store revenue via metric-aggregates (Placed Order) ──
   // Uses the same parameters as the Klaviyo dashboard:
@@ -203,26 +230,36 @@ export async function fetchKlaviyoPerformance(
     nextDay.setDate(nextDay.getDate() + 1)
     const nextDayStr = `${nextDay.getFullYear()}-${pad2(nextDay.getMonth() + 1)}-${pad2(nextDay.getDate())}`
 
-    const metricAgg = await klaviyoRequest<KlaviyoMetricAggregate>(apiKey, "/metric-aggregates/", {
-      method: "POST",
-      logTag: "PerfMetricAgg",
-      body: {
-        data: {
-          type: "metric-aggregate",
-          attributes: {
-            metric_id: placedOrderMetric,
-            measurements: ["sum_value", "count"],
-            interval: "day",
-            page_size: 500,
-            filter: [
-              `greater-or-equal(datetime,${startDate}T00:00:00)`,
-              `less-than(datetime,${nextDayStr}T00:00:00)`,
-            ],
-            timezone,
+    let metricAgg: KlaviyoMetricAggregate | null = null
+    try {
+      metricAgg = await klaviyoRequest<KlaviyoMetricAggregate>(apiKey, "/metric-aggregates/", {
+        method: "POST",
+        logTag: "PerfMetricAgg",
+        body: {
+          data: {
+            type: "metric-aggregate",
+            attributes: {
+              metric_id: placedOrderMetric,
+              measurements: ["sum_value", "count"],
+              interval: "day",
+              page_size: 500,
+              filter: [
+                `greater-or-equal(datetime,${startDate}T00:00:00)`,
+                `less-than(datetime,${nextDayStr}T00:00:00)`,
+              ],
+              timezone,
+            },
           },
         },
-      },
-    })
+      })
+    } catch (err) {
+      if (err instanceof KlaviyoRateLimitError) {
+        log.warn(`[KlaviyoPerf] Metric aggregates rate limited (${err.retryAfterMs}ms)`)
+        rateLimited = true
+      } else {
+        log.error("[KlaviyoPerf] Metric aggregates error:", err)
+      }
+    }
 
     // Klaviyo metric-aggregates returns an extra bucket for the day BEFORE the
     // requested start date. We must skip it by checking the dates array.
@@ -252,8 +289,18 @@ export async function fetchKlaviyoPerformance(
     log.info(`[KlaviyoPerf] metric-aggregates: storeRevenue=${storeRevenue.toFixed(2)}, storeOrders=${storeOrders}, timezone=${timezone}, buckets=${aggDates.length}, startFilter=${startDate}`)
   }
 
+  // If both reports failed due to rate limiting, throw so callers can use cached data.
+  // This is critical: returning empty data would be cached as "valid" and hide real campaigns.
   if (!campaignReport && !flowReport) {
+    if (rateLimited) {
+      throw new KlaviyoRateLimitError(0)
+    }
     throw new Error("Falha ao conectar com a API do Klaviyo. Verifique as credenciais.")
+  }
+
+  // If only one report was rate limited, log a warning but continue with partial data
+  if (rateLimited && (!campaignReport || !flowReport)) {
+    log.warn(`[KlaviyoPerf] Partial data: campaignReport=${!!campaignReport}, flowReport=${!!flowReport} (rate limited)`)
   }
 
   // ── Aggregate campaign results by campaign_id ──
