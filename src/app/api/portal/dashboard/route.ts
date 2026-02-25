@@ -59,28 +59,27 @@ export async function GET(request: NextRequest) {
     const now = new Date()
     const startDate = new Date()
 
-    // "Last N days" includes today: subtract N-1 for exactly N calendar days
     switch (period) {
       case "1d":
         startDate.setDate(now.getDate() - 1)
         break
       case "7d":
-        startDate.setDate(now.getDate() - 6)
+        startDate.setDate(now.getDate() - 7)
         break
       case "15d":
-        startDate.setDate(now.getDate() - 14)
+        startDate.setDate(now.getDate() - 15)
         break
       case "30d":
-        startDate.setDate(now.getDate() - 29)
+        startDate.setDate(now.getDate() - 30)
         break
       case "90d":
-        startDate.setDate(now.getDate() - 89)
+        startDate.setDate(now.getDate() - 90)
         break
       case "12m":
         startDate.setFullYear(now.getFullYear() - 1)
         break
       default:
-        startDate.setDate(now.getDate() - 29)
+        startDate.setDate(now.getDate() - 30)
     }
 
     // Use local date components to avoid UTC shift on Vercel servers

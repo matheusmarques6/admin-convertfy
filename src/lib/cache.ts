@@ -4,7 +4,7 @@ import { logger } from "@/lib/logger"
 const log = logger.child("Cache")
 
 // Bump this version to invalidate all cached data when calculation logic changes
-export const CACHE_VERSION = 3
+export const CACHE_VERSION = 4
 
 // TTL in minutes per cache type and period
 const CACHE_TTL: Record<string, Record<string, number>> = {

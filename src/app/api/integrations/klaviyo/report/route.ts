@@ -1066,6 +1066,7 @@ export async function GET(request: NextRequest) {
       const metricAgg = await klaviyoRequest<{
         data?: {
           attributes?: Record<string, unknown> & {
+            dates?: string[]
             data?: Array<{ measurements?: Record<string, number | number[]> }>
           }
         }
@@ -1090,22 +1091,28 @@ export async function GET(request: NextRequest) {
         },
       })
 
+      // Klaviyo metric-aggregates returns an extra bucket for the day BEFORE
+      // the requested start date. Skip it by checking the dates array.
+      const aggDates = metricAgg?.data?.attributes?.dates || []
       const aggData = metricAgg?.data?.attributes?.data || []
+      const startThreshold = new Date(`${startDateStr}T00:00:00Z`).getTime()
+
       for (const row of aggData) {
         const m = row.measurements || {}
-        if (Array.isArray(m.sum_value)) {
-          for (const v of m.sum_value) storeRevenue += Number(v) || 0
-        } else {
-          storeRevenue += Number(m.sum_value) || 0
-        }
-        if (Array.isArray(m.count)) {
-          for (const c of m.count) storeOrders += Number(c) || 0
-        } else {
-          storeOrders += Number(m.count) || 0
+        const sumValues = Array.isArray(m.sum_value) ? m.sum_value : [m.sum_value || 0]
+        const countValues = Array.isArray(m.count) ? m.count : [m.count || 0]
+
+        for (let i = 0; i < sumValues.length; i++) {
+          if (aggDates[i]) {
+            const bucketTime = new Date(aggDates[i]).getTime()
+            if (bucketTime < startThreshold) continue
+          }
+          storeRevenue += Number(sumValues[i]) || 0
+          storeOrders += Number(countValues[i]) || 0
         }
       }
 
-      log.info(`[Klaviyo] metric-aggregates: storeRevenue=${storeRevenue.toFixed(2)}, storeOrders=${storeOrders}, tz=${accountTz}`)
+      log.info(`[Klaviyo] metric-aggregates: storeRevenue=${storeRevenue.toFixed(2)}, storeOrders=${storeOrders}, tz=${accountTz}, buckets=${aggDates.length}`)
     }
 
     // Merge flow data with names, excluding archived flows
