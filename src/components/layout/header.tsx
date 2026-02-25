@@ -176,7 +176,7 @@ export function Header({ user: userProp }: HeaderProps) {
   }
 
   return (
-    <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b border-border/50 bg-background/80 backdrop-blur-xl px-6">
+    <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b border-border bg-background/95 backdrop-blur-sm px-6">
       {/* Mobile Menu */}
       <Sheet>
         <SheetTrigger asChild>
@@ -184,13 +184,13 @@ export function Header({ user: userProp }: HeaderProps) {
             <Menu className="h-4 w-4" />
           </Button>
         </SheetTrigger>
-        <SheetContent side="left" className="p-0 w-[260px]">
+        <SheetContent side="left" className="p-0 w-[240px]">
           <Sidebar user={userProp} />
         </SheetContent>
       </Sheet>
 
       {/* Page Title */}
-      <h1 className="text-sm font-medium text-foreground/80 truncate">{getPageTitle()}</h1>
+      <h1 className="text-base font-semibold text-foreground truncate">{getPageTitle()}</h1>
 
       {/* Spacer */}
       <div className="flex-1" />

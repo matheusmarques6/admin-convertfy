@@ -9,8 +9,6 @@ import {
   Target,
   Clock,
 } from "lucide-react"
-import { GlowCard } from "@/components/ui/glow-card"
-import type { GlowColor } from "@/components/ui/glow-card"
 import { formatCurrency, formatNumber } from "@/lib/utils"
 import { cn } from "@/lib/utils"
 
@@ -35,7 +33,7 @@ export function DashboardMetrics({ metrics }: DashboardMetricsProps) {
     icon: React.ElementType
     iconColor: string
     iconBg: string
-    glowColor: GlowColor
+    accentColor: string
   }> = [
     {
       title: "Faturamento",
@@ -45,7 +43,7 @@ export function DashboardMetrics({ metrics }: DashboardMetricsProps) {
       icon: DollarSign,
       iconColor: "text-success",
       iconBg: "bg-success/10",
-      glowColor: "success",
+      accentColor: "border-t-success",
     },
     {
       title: "Clientes Ativos",
@@ -53,9 +51,9 @@ export function DashboardMetrics({ metrics }: DashboardMetricsProps) {
       change: "+3",
       changeType: "positive" as const,
       icon: Users,
-      iconColor: "text-[#5327F2]",
-      iconBg: "bg-[#5327F2]/10",
-      glowColor: "primary",
+      iconColor: "text-primary",
+      iconBg: "bg-primary/10",
+      accentColor: "border-t-primary",
     },
     {
       title: "Pipeline",
@@ -64,34 +62,40 @@ export function DashboardMetrics({ metrics }: DashboardMetricsProps) {
       icon: Target,
       iconColor: "text-warning",
       iconBg: "bg-warning/10",
-      glowColor: "warning",
+      accentColor: "border-t-warning",
     },
     {
       title: "A Receber",
       value: formatCurrency(metrics.pendingPayments),
       icon: Clock,
       iconColor: "text-muted-foreground",
-      iconBg: "bg-muted/60",
-      glowColor: "info",
+      iconBg: "bg-muted",
+      accentColor: "border-t-muted-foreground",
     },
   ]
 
   return (
-    <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+    <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
       {cards.map((card) => (
-        <GlowCard key={card.title} color={card.glowColor} intensity="subtle" surfaceClassName="p-5">
+        <div
+          key={card.title}
+          className={cn(
+            "rounded-xl border border-border bg-card p-5 border-t-2 transition-shadow hover:shadow-sm",
+            card.accentColor
+          )}
+        >
           <div className="flex flex-row items-center justify-between mb-3">
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            <span className="text-sm font-medium text-muted-foreground">
               {card.title}
             </span>
             <div className={cn("rounded-lg p-1.5", card.iconBg)}>
               <card.icon className={cn("h-3.5 w-3.5", card.iconColor)} />
             </div>
           </div>
-          <div className="text-2xl font-bold tracking-tight">{card.value}</div>
+          <div className="text-2xl font-bold tracking-tight text-foreground">{card.value}</div>
           {card.change && (
             <p className={cn(
-              "text-[11px] flex items-center gap-1 mt-1.5",
+              "text-xs flex items-center gap-1 mt-1.5",
               card.changeType === "positive" ? "text-success" : "text-destructive"
             )}>
               {card.changeType === "positive" ? (
@@ -99,13 +103,13 @@ export function DashboardMetrics({ metrics }: DashboardMetricsProps) {
               ) : (
                 <TrendingDown className="h-3 w-3" />
               )}
-              {card.change} vs mês anterior
+              {card.change} vs mes anterior
             </p>
           )}
           {card.subtitle && (
-            <p className="text-[11px] text-muted-foreground mt-1.5">{card.subtitle}</p>
+            <p className="text-xs text-muted-foreground mt-1.5">{card.subtitle}</p>
           )}
-        </GlowCard>
+        </div>
       ))}
 
       {/* Overdue Alert Card */}
@@ -117,7 +121,7 @@ export function DashboardMetrics({ metrics }: DashboardMetricsProps) {
           <div>
             <p className="text-sm font-medium text-destructive">Pagamentos em Atraso</p>
             <p className="text-xs text-muted-foreground">
-              Você tem {formatCurrency(metrics.overduePayments)} em pagamentos vencidos
+              Voce tem {formatCurrency(metrics.overduePayments)} em pagamentos vencidos
             </p>
           </div>
         </div>
