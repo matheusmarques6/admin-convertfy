@@ -94,14 +94,14 @@ const CHANNEL_CONFIG = {
   email: {
     icon: Mail,
     color: "bg-blue-500",
-    lightColor: "bg-blue-50",
+    lightColor: "bg-blue-50 dark:bg-blue-500/10",
     textColor: "text-blue-600",
     label: "Email"
   },
   sms: {
     icon: MessageSquare,
     color: "bg-emerald-500",
-    lightColor: "bg-emerald-50",
+    lightColor: "bg-emerald-50 dark:bg-emerald-500/10",
     textColor: "text-emerald-600",
     label: "SMS"
   },
