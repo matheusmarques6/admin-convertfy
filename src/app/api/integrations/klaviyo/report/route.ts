@@ -66,7 +66,7 @@ type ListsResponse = {
 type FlowsResponse = {
   data: Array<{
     id: string
-    attributes: { name: string; status: string; created: string; trigger_type: string }
+    attributes: { name: string; status: string; created: string; trigger_type: string; archived: boolean }
   }>
   links?: { next?: string }
 }
@@ -177,6 +177,7 @@ async function getFlows(apiKey: string) {
     status: string
     triggerType: string
     created: string
+    archived: boolean
   }> = []
 
   // page[size] works for flows (unlike lists/segments which reject it)
@@ -193,7 +194,8 @@ async function getFlows(apiKey: string) {
         name: f.attributes.name,
         status: f.attributes.status,
         triggerType: f.attributes.trigger_type,
-        created: f.attributes.created
+        created: f.attributes.created,
+        archived: f.attributes.archived ?? false,
       })
     }
 
@@ -1104,15 +1106,29 @@ export async function GET(request: NextRequest) {
       log.error("[Klaviyo] Metric aggregates failed (non-fatal):", e)
     }
 
-    // Merge flow data with names
-    const flowsWithNames = flowReport.flows.map(fr => {
-      const flowInfo = allFlows.find(f => f.id === fr.flowId)
-      return {
-        ...fr,
-        name: flowInfo?.name || "Unknown Flow",
-        status: flowInfo?.status || "unknown"
-      }
-    }).filter(f => f.revenue > 0 || f.delivered > 0)
+    // Merge flow data with names, excluding archived flows
+    const archivedFlowIds = new Set(allFlows.filter(f => f.archived).map(f => f.id))
+    log.info(`[Klaviyo] Archived flows excluded from revenue: ${archivedFlowIds.size}`)
+
+    const flowsWithNames = flowReport.flows
+      .filter(fr => !archivedFlowIds.has(fr.flowId))
+      .map(fr => {
+        const flowInfo = allFlows.find(f => f.id === fr.flowId)
+        return {
+          ...fr,
+          name: flowInfo?.name || "Unknown Flow",
+          status: flowInfo?.status || "unknown"
+        }
+      }).filter(f => f.revenue > 0 || f.delivered > 0)
+
+    // Recalculate flow revenue excluding archived flows
+    const activeFlowRevenue = flowReport.flows
+      .filter(fr => !archivedFlowIds.has(fr.flowId))
+      .reduce((sum, fr) => sum + fr.revenue, 0)
+    const activeFlowConversions = flowReport.flows
+      .filter(fr => !archivedFlowIds.has(fr.flowId))
+      .reduce((sum, fr) => sum + fr.conversions, 0)
+    log.info(`[Klaviyo] Flow revenue: total=${flowReport.totalRevenue.toFixed(2)}, active-only=${activeFlowRevenue.toFixed(2)}`)
 
     // Merge campaign data with names (search ALL campaigns, not just filtered)
     const campaignsWithNames = campaignReport.campaigns.map(cr => {
@@ -1145,9 +1161,9 @@ export async function GET(request: NextRequest) {
       log.info(`[Klaviyo] -> ${c.name} (${c.id}): delivered=${c.delivered}`)
     })
 
-    // Calculate totals
-    const totalKlaviyoRevenue = flowReport.totalRevenue + campaignReport.totalRevenue
-    const totalConversions = flowReport.totalConversions + campaignReport.totalConversions
+    // Calculate totals (using active-only flow revenue, excluding archived)
+    const totalKlaviyoRevenue = activeFlowRevenue + campaignReport.totalRevenue
+    const totalConversions = activeFlowConversions + campaignReport.totalConversions
     const totalDelivered = (flowReport.totalDelivered || 0) + (campaignReport.totalDelivered || 0)
     const totalOpens = (flowReport.totalOpens || 0) + (campaignReport.totalOpens || 0)
     const totalClicks = (flowReport.totalClicks || 0) + (campaignReport.totalClicks || 0)
@@ -1157,7 +1173,7 @@ export async function GET(request: NextRequest) {
     log.info("[Klaviyo] ========== FINAL SUMMARY ==========")
     log.info(`[Klaviyo] Total Klaviyo Revenue: ${accountInfo.currency} ${totalKlaviyoRevenue.toFixed(2)}`)
     log.info(`[Klaviyo] - Campaigns: ${accountInfo.currency} ${campaignReport.totalRevenue.toFixed(2)}`)
-    log.info(`[Klaviyo] - Flows: ${accountInfo.currency} ${flowReport.totalRevenue.toFixed(2)}`)
+    log.info(`[Klaviyo] - Flows (active only): ${accountInfo.currency} ${activeFlowRevenue.toFixed(2)}`)
     log.info(`[Klaviyo] Total Conversions: ${totalConversions}`)
     log.info(`[Klaviyo] Total Delivered: ${totalDelivered}`)
     log.info("[Klaviyo] ========================================")
@@ -1182,7 +1198,7 @@ export async function GET(request: NextRequest) {
         totalRevenue: totalKlaviyoRevenue,
         klaviyoAttributedRevenue: totalKlaviyoRevenue,
         campaignRevenue: campaignReport.totalRevenue,
-        flowRevenue: flowReport.totalRevenue,
+        flowRevenue: activeFlowRevenue,
         totalOrders: totalConversions,
         klaviyoAttributedOrders: totalConversions,
         averageOrderValue: totalConversions > 0 ? totalKlaviyoRevenue / totalConversions : 0,
