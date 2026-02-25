@@ -24,7 +24,7 @@ interface Client {
 interface StoreLinkModalProps {
   storeId: string
   storeName: string
-  orgId: string
+  orgId?: string
   isOpen: boolean
   onClose: () => void
   onSuccess: () => void
@@ -33,7 +33,6 @@ interface StoreLinkModalProps {
 export function StoreLinkModal({
   storeId,
   storeName,
-  orgId,
   isOpen,
   onClose,
   onSuccess,
@@ -69,7 +68,7 @@ export function StoreLinkModal({
       setIsSearching(true)
       try {
         const res = await fetch(
-          `/api/clients/search?q=${encodeURIComponent(query)}&org_id=${encodeURIComponent(orgId)}`
+          `/api/clients/search?q=${encodeURIComponent(query)}`
         )
         const data = await res.json()
         if (data.clients) {
@@ -81,7 +80,7 @@ export function StoreLinkModal({
         setIsSearching(false)
       }
     },
-    [orgId]
+    []
   )
 
   // Handle search input change with debounce

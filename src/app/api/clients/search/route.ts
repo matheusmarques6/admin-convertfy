@@ -5,24 +5,35 @@ import { logger } from "@/lib/logger"
 
 const log = logger.child("ClientsSearch")
 
-// GET - Search clients by name/email/company within an org
+async function resolveOrgId(supabase: Awaited<ReturnType<typeof createClient>>, userId: string): Promise<string> {
+  const { data: orgMember } = await supabase
+    .from("org_members")
+    .select("org_id")
+    .eq("profile_id", userId)
+    .eq("is_active", true)
+    .limit(1)
+    .single()
+
+  if (!orgMember?.org_id) {
+    throw new AppError("Acesso negado: usuário sem organização", 403)
+  }
+  return orgMember.org_id
+}
+
+// GET - Search clients by name/email/company within the user's org
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    await requireAuth(supabase)
+    const user = await requireAuth(supabase)
 
     const searchParams = request.nextUrl.searchParams
     const query = searchParams.get("q") || ""
-    const orgId = searchParams.get("org_id")
-
-    if (!orgId) {
-      throw new AppError("org_id is required", 400)
-    }
 
     if (query.length < 2) {
       return successResponse(request, { clients: [] })
     }
 
+    const orgId = await resolveOrgId(supabase, user.id)
     const adminClient = createAdminClient()
 
     // Search clients by name, email, or company using ilike
