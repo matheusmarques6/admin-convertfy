@@ -230,8 +230,8 @@ export default function PortalStoresPage() {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] text-center">
         <AlertCircle className="h-12 w-12 text-red-600 mb-4" />
-        <h2 className="text-xl font-semibold text-slate-800 mb-2">Erro ao carregar</h2>
-        <p className="text-slate-500 mb-4">{error}</p>
+        <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-100 mb-2">Erro ao carregar</h2>
+        <p className="text-slate-500 dark:text-slate-400 mb-4">{error}</p>
         <Button onClick={fetchStores} className="bg-[#5327F2] hover:bg-[#4520D4] text-white shadow-sm">Tentar novamente</Button>
       </div>
     )
@@ -242,8 +242,8 @@ export default function PortalStoresPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Suas Lojas</h1>
-          <p className="text-slate-500">
+          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Suas Lojas</h1>
+          <p className="text-slate-500 dark:text-slate-400">
             Acompanhe os resultados e configure as integrações de cada loja
           </p>
         </div>
@@ -257,11 +257,11 @@ export default function PortalStoresPage() {
 
       {/* Stores Grid */}
       {stores.length === 0 ? (
-        <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm">
+        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20">
           <CardContent className="flex flex-col items-center justify-center py-12">
-            <Store className="h-12 w-12 text-slate-400 mb-4" />
-            <h3 className="text-lg font-medium text-slate-800 mb-2">Nenhuma loja configurada</h3>
-            <p className="text-slate-500 text-center max-w-md">
+            <Store className="h-12 w-12 text-slate-400 dark:text-slate-500 mb-4" />
+            <h3 className="text-lg font-medium text-slate-800 dark:text-slate-100 mb-2">Nenhuma loja configurada</h3>
+            <p className="text-slate-500 dark:text-slate-400 text-center max-w-md">
               Suas lojas serão exibidas aqui assim que forem configuradas pela equipe Convertfy.
             </p>
           </CardContent>
@@ -271,7 +271,7 @@ export default function PortalStoresPage() {
           {stores.map((store) => {
             const needsSetup = !store.hasKlaviyo || !store.shopify_access_token
             return (
-              <div key={store.id} className="bg-white rounded-xl border border-slate-200/80 shadow-sm">
+              <div key={store.id} className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20">
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
@@ -279,16 +279,16 @@ export default function PortalStoresPage() {
                         <Store className="h-6 w-6 text-[#5327F2]" />
                       </div>
                       <div>
-                        <CardTitle className="text-lg text-slate-800">{store.store_name}</CardTitle>
-                        <CardDescription className="capitalize text-slate-500">{store.platform}</CardDescription>
+                        <CardTitle className="text-lg text-slate-800 dark:text-slate-100">{store.store_name}</CardTitle>
+                        <CardDescription className="capitalize text-slate-500 dark:text-slate-400">{store.platform}</CardDescription>
                       </div>
                     </div>
                     {store.is_active ? (
-                      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-emerald-50 text-emerald-700">
+                      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">
                         Ativa
                       </span>
                     ) : (
-                      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-slate-100 text-slate-500">
+                      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
                         Inativa
                       </span>
                     )}
@@ -298,25 +298,25 @@ export default function PortalStoresPage() {
                   {/* Integration Status */}
                   <div className="space-y-2 mb-4">
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-slate-500">Klaviyo</span>
+                      <span className="text-slate-500 dark:text-slate-400">Klaviyo</span>
                       {store.hasKlaviyo ? (
-                        <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium bg-emerald-50 text-emerald-700 border-emerald-200">
+                        <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/30">
                           Conectado
                         </span>
                       ) : (
-                        <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium bg-amber-50 text-amber-700 border-amber-200">
+                        <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/30">
                           Não conectado
                         </span>
                       )}
                     </div>
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-slate-500">Shopify</span>
+                      <span className="text-slate-500 dark:text-slate-400">Shopify</span>
                       {store.shopify_access_token ? (
-                        <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium bg-emerald-50 text-emerald-700 border-emerald-200">
+                        <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/30">
                           Conectado
                         </span>
                       ) : (
-                        <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium bg-amber-50 text-amber-700 border-amber-200">
+                        <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/30">
                           Não conectado
                         </span>
                       )}
@@ -334,14 +334,14 @@ export default function PortalStoresPage() {
                       <Button
                         variant="outline"
                         onClick={() => openCredentialsDialog(store)}
-                        className="border-slate-200/80 text-slate-800 hover:bg-slate-50"
+                        className="border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]"
                       >
                         <Settings className="h-4 w-4 mr-1" />
                         Configurar
                       </Button>
                     )}
                     {!needsSetup && store.store_url && (
-                      <Button variant="outline" size="icon" asChild className="border-slate-200/80 text-slate-800 hover:bg-slate-50">
+                      <Button variant="outline" size="icon" asChild className="border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
                         <a href={store.store_url} target="_blank" rel="noopener noreferrer">
                           <ExternalLink className="h-4 w-4" />
                         </a>
@@ -357,9 +357,9 @@ export default function PortalStoresPage() {
 
       {/* Quick Stats Legend */}
       {stores.length > 0 && (
-        <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm">
+        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20">
           <CardHeader>
-            <CardTitle className="text-[15px] font-semibold text-slate-800">Como ler seus relatórios</CardTitle>
+            <CardTitle className="text-[15px] font-semibold text-slate-800 dark:text-slate-100">Como ler seus relatórios</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid gap-4 md:grid-cols-4">
@@ -368,19 +368,19 @@ export default function PortalStoresPage() {
                   <Users className="h-4 w-4 text-[#05AFF2]" />
                 </div>
                 <div>
-                  <p className="font-medium text-sm text-slate-800">Total de Leads</p>
-                  <p className="text-xs text-slate-500">
+                  <p className="font-medium text-sm text-slate-800 dark:text-slate-100">Total de Leads</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
                     Total de contatos cadastrados na sua base
                   </p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center flex-shrink-0">
+                <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
                   <TrendingUp className="h-4 w-4 text-emerald-600" />
                 </div>
                 <div>
-                  <p className="font-medium text-sm text-slate-800">Leads Engajados</p>
-                  <p className="text-xs text-slate-500">
+                  <p className="font-medium text-sm text-slate-800 dark:text-slate-100">Leads Engajados</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
                     Contatos que interagiram nos últimos 90 dias
                   </p>
                 </div>
@@ -390,19 +390,19 @@ export default function PortalStoresPage() {
                   <DollarSign className="h-4 w-4 text-[#5327F2]" />
                 </div>
                 <div>
-                  <p className="font-medium text-sm text-slate-800">Receita Atribuída</p>
-                  <p className="text-xs text-slate-500">
+                  <p className="font-medium text-sm text-slate-800 dark:text-slate-100">Receita Atribuída</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
                     Vendas geradas via email marketing
                   </p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0">
+                <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center flex-shrink-0">
                   <Mail className="h-4 w-4 text-amber-600" />
                 </div>
                 <div>
-                  <p className="font-medium text-sm text-slate-800">Campanhas</p>
-                  <p className="text-xs text-slate-500">
+                  <p className="font-medium text-sm text-slate-800 dark:text-slate-100">Campanhas</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
                     Emails enviados e suas métricas
                   </p>
                 </div>
@@ -414,10 +414,10 @@ export default function PortalStoresPage() {
 
       {/* Credentials Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-lg bg-white border-slate-200/80">
+        <DialogContent className="sm:max-w-lg bg-white dark:bg-[#151922] border-slate-200/80 dark:border-slate-700/40">
           <DialogHeader>
-            <DialogTitle className="text-slate-800">Configurar Integrações</DialogTitle>
-            <DialogDescription className="text-slate-500">
+            <DialogTitle className="text-slate-800 dark:text-slate-100">Configurar Integrações</DialogTitle>
+            <DialogDescription className="text-slate-500 dark:text-slate-400">
               {selectedStore?.store_name} &mdash; Insira suas credenciais para conectar as integrações.
             </DialogDescription>
           </DialogHeader>
@@ -426,20 +426,20 @@ export default function PortalStoresPage() {
             {/* Klaviyo Section */}
             {selectedStore && !selectedStore.hasKlaviyo && (
               <div className="space-y-4">
-                <h4 className="font-medium flex items-center gap-2 text-slate-800">
+                <h4 className="font-medium flex items-center gap-2 text-slate-800 dark:text-slate-100">
                   <Key className="h-4 w-4 text-[#5327F2]" />
                   Klaviyo
                 </h4>
                 <div className="space-y-2">
-                  <Label className="text-[13px] font-medium text-slate-700">Private API Key</Label>
+                  <Label className="text-[13px] font-medium text-slate-700 dark:text-slate-200">Private API Key</Label>
                   <Input
                     type="password"
                     placeholder="pk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                     value={credForm.klaviyo_private_key}
                     onChange={(e) => setCredForm({ ...credForm, klaviyo_private_key: e.target.value })}
-                    className="h-10 bg-slate-50 border-slate-200 text-slate-800"
+                    className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100"
                   />
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
                     Encontre em Klaviyo &rarr; Settings &rarr; API Keys &rarr; Create Private API Key
                   </p>
                 </div>
@@ -448,7 +448,7 @@ export default function PortalStoresPage() {
                   size="sm"
                   onClick={testKlaviyo}
                   disabled={testing === "klaviyo" || !credForm.klaviyo_private_key}
-                  className="border-slate-200/80 text-slate-800 hover:bg-slate-50"
+                  className="border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]"
                 >
                   {testing === "klaviyo" ? (
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -473,32 +473,32 @@ export default function PortalStoresPage() {
             {/* Shopify Section */}
             {selectedStore && !selectedStore.shopify_access_token && (
               <div className="space-y-4">
-                <h4 className="font-medium flex items-center gap-2 text-slate-800">
+                <h4 className="font-medium flex items-center gap-2 text-slate-800 dark:text-slate-100">
                   <Store className="h-4 w-4 text-emerald-600" />
                   Shopify
                 </h4>
                 <div className="space-y-2">
-                  <Label className="text-[13px] font-medium text-slate-700">Domínio da Loja</Label>
+                  <Label className="text-[13px] font-medium text-slate-700 dark:text-slate-200">Domínio da Loja</Label>
                   <Input
                     placeholder="minhaloja.myshopify.com"
                     value={credForm.shopify_store_domain}
                     onChange={(e) => setCredForm({ ...credForm, shopify_store_domain: e.target.value })}
-                    className="h-10 bg-slate-50 border-slate-200 text-slate-800"
+                    className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100"
                   />
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
                     Domínio .myshopify.com da sua loja
                   </p>
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-[13px] font-medium text-slate-700">Admin API Access Token</Label>
+                  <Label className="text-[13px] font-medium text-slate-700 dark:text-slate-200">Admin API Access Token</Label>
                   <Input
                     type="password"
                     placeholder="shpat_xxxxxxxxxxxxxxxx"
                     value={credForm.shopify_access_token}
                     onChange={(e) => setCredForm({ ...credForm, shopify_access_token: e.target.value })}
-                    className="h-10 bg-slate-50 border-slate-200 text-slate-800"
+                    className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100"
                   />
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
                     Settings &rarr; Apps &rarr; Develop apps &rarr; Create app &rarr; Admin API access token
                   </p>
                 </div>
@@ -507,7 +507,7 @@ export default function PortalStoresPage() {
                   size="sm"
                   onClick={testShopify}
                   disabled={testing === "shopify" || !credForm.shopify_store_domain || !credForm.shopify_access_token}
-                  className="border-slate-200/80 text-slate-800 hover:bg-slate-50"
+                  className="border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]"
                 >
                   {testing === "shopify" ? (
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -539,7 +539,7 @@ export default function PortalStoresPage() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)} className="border-slate-200/80 text-slate-800 hover:bg-slate-50">
+            <Button variant="outline" onClick={() => setDialogOpen(false)} className="border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
               Cancelar
             </Button>
             <Button

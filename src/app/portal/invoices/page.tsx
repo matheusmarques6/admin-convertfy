@@ -81,31 +81,31 @@ interface InvoicesResponse {
 const STATUS_CONFIG = {
   pending: {
     label: "Pendente",
-    color: "bg-amber-50 text-amber-700 border-amber-200",
+    color: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20",
     dotColor: "bg-amber-500",
     icon: Clock,
   },
   paid: {
     label: "Paga",
-    color: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    color: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20",
     dotColor: "bg-emerald-500",
     icon: CheckCircle,
   },
   overdue: {
     label: "Vencida",
-    color: "bg-red-50 text-red-700 border-red-200",
+    color: "bg-red-50 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20",
     dotColor: "bg-red-500",
     icon: AlertCircle,
   },
   cancelled: {
     label: "Cancelada",
-    color: "bg-slate-100 text-slate-500 border-slate-200",
+    color: "bg-slate-100 text-slate-500 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700/40",
     dotColor: "bg-slate-400",
     icon: AlertTriangle,
   },
   refunded: {
     label: "Reembolsada",
-    color: "bg-purple-50 text-purple-700 border-purple-200",
+    color: "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-500/10 dark:text-purple-400 dark:border-purple-500/20",
     dotColor: "bg-purple-500",
     icon: DollarSign,
   },
@@ -182,9 +182,9 @@ function StatCard({
   const content = (
     <div className="flex items-center justify-between">
       <div>
-        <p className="text-[13px] font-medium text-slate-500 mb-1">{title}</p>
-        <p className="text-2xl font-bold text-slate-800">{value}</p>
-        {subtitle && <p className="text-xs text-slate-400 mt-1">{subtitle}</p>}
+        <p className="text-[13px] font-medium text-slate-500 dark:text-slate-400 mb-1">{title}</p>
+        <p className="text-2xl font-bold text-slate-800 dark:text-slate-100">{value}</p>
+        {subtitle && <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{subtitle}</p>}
       </div>
       <div className={`rounded-xl p-3 ${iconBgColor}`}>
         <Icon className={`h-6 w-6 ${iconColor}`} />
@@ -193,7 +193,7 @@ function StatCard({
   )
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm p-5 hover:shadow-md transition-shadow">
+    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 p-5 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow">
       {content}
     </div>
   )
@@ -207,32 +207,32 @@ function BoletoCard({ invoice, onPayClick }: { invoice: Invoice; onPayClick: () 
 
   return (
     <div className={`
-      rounded-2xl border overflow-hidden bg-white shadow-md
+      rounded-2xl border overflow-hidden bg-white dark:bg-[#151922] shadow-md dark:shadow-slate-900/30
       ${isOverdue
-        ? "border-red-200"
-        : "border-slate-200/80"
+        ? "border-red-200 dark:border-red-500/20"
+        : "border-slate-200/80 dark:border-slate-700/40"
       }
     `}>
       {/* Header */}
       <div className={`
         px-6 py-4 flex items-center justify-between border-b
         ${isOverdue
-          ? "bg-gradient-to-r from-red-50 to-white border-red-100"
-          : "bg-gradient-to-r from-slate-50 to-white border-slate-100"
+          ? "bg-gradient-to-r from-red-50 to-white dark:from-red-500/10 dark:to-[#151922] border-red-100 dark:border-red-500/20"
+          : "bg-gradient-to-r from-slate-50 to-white dark:from-slate-800 dark:to-[#151922] border-slate-100 dark:border-slate-700/30"
         }
       `}>
         <div className="flex items-center gap-3">
           <div className={`
             p-2 rounded-lg
-            ${isOverdue ? "bg-red-50" : "bg-emerald-50"}
+            ${isOverdue ? "bg-red-50 dark:bg-red-500/10" : "bg-emerald-50 dark:bg-emerald-500/10"}
           `}>
             <Receipt className={`h-5 w-5 ${isOverdue ? "text-red-600" : "text-emerald-600"}`} />
           </div>
           <div>
-            <h3 className="font-semibold text-slate-800">
+            <h3 className="font-semibold text-slate-800 dark:text-slate-100">
               {isOverdue ? "Fatura em Atraso" : "Próxima Fatura"}
             </h3>
-            <p className="text-sm text-slate-500">{invoice.description || "Mensalidade Convertfy"}</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">{invoice.description || "Mensalidade Convertfy"}</p>
           </div>
         </div>
         <Badge className={STATUS_CONFIG[invoice.status]?.color || STATUS_CONFIG.pending.color}>
@@ -244,7 +244,7 @@ function BoletoCard({ invoice, onPayClick }: { invoice: Invoice; onPayClick: () 
       <div className="p-6 space-y-6">
         {/* Amount */}
         <div className="text-center">
-          <p className="text-sm text-slate-500 mb-1">Valor a Pagar</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">Valor a Pagar</p>
           <p className={`text-5xl font-bold ${isOverdue ? "text-red-600" : "text-emerald-600"}`}>
             {formatCurrency(invoice.amount)}
           </p>
@@ -253,20 +253,20 @@ function BoletoCard({ invoice, onPayClick }: { invoice: Invoice; onPayClick: () 
         {/* Due Date Info */}
         <div className={`
           rounded-xl p-4 flex items-center justify-between
-          ${isOverdue ? "bg-red-50 border border-red-200" : "bg-slate-50 border border-slate-200/80"}
+          ${isOverdue ? "bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20" : "bg-slate-50 dark:bg-[#1A1F2E] border border-slate-200/80 dark:border-slate-700/40"}
         `}>
           <div className="flex items-center gap-3">
-            <Calendar className={`h-5 w-5 ${isOverdue ? "text-red-600" : "text-slate-400"}`} />
+            <Calendar className={`h-5 w-5 ${isOverdue ? "text-red-600" : "text-slate-400 dark:text-slate-500"}`} />
             <div>
-              <p className="text-sm text-slate-500">Vencimento</p>
-              <p className="font-semibold text-slate-800">{formatDateLong(invoice.due_date)}</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">Vencimento</p>
+              <p className="font-semibold text-slate-800 dark:text-slate-100">{formatDateLong(invoice.due_date)}</p>
             </div>
           </div>
           <div className={`
             text-right px-3 py-1 rounded-lg
             ${dueInfo.urgent
-              ? (isOverdue ? "bg-red-50 text-red-600" : "bg-amber-50 text-amber-600")
-              : "bg-slate-100 text-slate-600"
+              ? (isOverdue ? "bg-red-50 dark:bg-red-500/10 text-red-600" : "bg-amber-50 dark:bg-amber-500/10 text-amber-600")
+              : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
             }
           `}>
             <p className="text-sm font-medium">{dueInfo.text}</p>
@@ -276,7 +276,7 @@ function BoletoCard({ invoice, onPayClick }: { invoice: Invoice; onPayClick: () 
         {/* Payment Options */}
         {canPay && (
           <div className="space-y-3">
-            <p className="text-sm text-slate-500 text-center">Opções de Pagamento</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400 text-center">Opções de Pagamento</p>
             <div className="grid grid-cols-2 gap-3">
               {/* PIX Button */}
               {invoice.pix_qr_code && (
@@ -293,7 +293,7 @@ function BoletoCard({ invoice, onPayClick }: { invoice: Invoice; onPayClick: () 
               {invoice.bank_slip_url && (
                 <Button
                   variant="outline"
-                  className="flex-1 bg-slate-50 border-slate-200 text-slate-800 hover:bg-slate-100 h-14"
+                  className="flex-1 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700 h-14"
                   asChild
                 >
                   <a href={invoice.bank_slip_url} target="_blank" rel="noopener noreferrer">
@@ -318,7 +318,7 @@ function BoletoCard({ invoice, onPayClick }: { invoice: Invoice; onPayClick: () 
 
               {/* Fallback if no payment links */}
               {!invoice.pix_qr_code && !invoice.bank_slip_url && !invoice.invoice_url && (
-                <div className="col-span-2 text-center py-4 text-slate-400 text-sm">
+                <div className="col-span-2 text-center py-4 text-slate-400 dark:text-slate-500 text-sm">
                   Links de pagamento em processamento...
                 </div>
               )}
@@ -337,7 +337,7 @@ function InvoiceRow({ invoice, onClick }: { invoice: Invoice; onClick: () => voi
   return (
     <div
       onClick={onClick}
-      className="flex items-center gap-4 p-4 rounded-xl bg-white border border-slate-200/80 hover:bg-slate-50/50 cursor-pointer transition-all group shadow-sm"
+      className="flex items-center gap-4 p-4 rounded-xl bg-white dark:bg-[#151922] border border-slate-200/80 dark:border-slate-700/40 hover:bg-slate-50/50 dark:hover:bg-white/[0.04] cursor-pointer transition-all group shadow-sm dark:shadow-slate-900/20"
     >
       {/* Status Icon */}
       <div className={`p-2 rounded-lg ${statusConfig.color.split(" ")[0]}`}>
@@ -346,24 +346,24 @@ function InvoiceRow({ invoice, onClick }: { invoice: Invoice; onClick: () => voi
 
       {/* Info */}
       <div className="flex-1 min-w-0">
-        <p className="font-medium text-slate-800 truncate">
+        <p className="font-medium text-slate-800 dark:text-slate-100 truncate">
           {invoice.description || "Mensalidade Convertfy"}
         </p>
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-slate-500 dark:text-slate-400">
           Vencimento: {formatDate(invoice.due_date)}
         </p>
       </div>
 
       {/* Amount */}
       <div className="text-right">
-        <p className="font-bold text-slate-800">{formatCurrency(invoice.amount)}</p>
+        <p className="font-bold text-slate-800 dark:text-slate-100">{formatCurrency(invoice.amount)}</p>
         <Badge variant="outline" className={`text-xs ${statusConfig.color}`}>
           {statusConfig.label}
         </Badge>
       </div>
 
       {/* Arrow */}
-      <ArrowRight className="h-5 w-5 text-slate-400 group-hover:text-slate-500 transition-colors" />
+      <ArrowRight className="h-5 w-5 text-slate-400 dark:text-slate-500 group-hover:text-slate-500 dark:group-hover:text-slate-400 transition-colors" />
     </div>
   )
 }
@@ -391,15 +391,15 @@ function PixModal({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="bg-white border-slate-200/80 text-slate-800 max-w-md shadow-md">
+      <DialogContent className="bg-white dark:bg-[#151922] border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 max-w-md shadow-md dark:shadow-slate-900/30">
         <DialogHeader>
-          <DialogTitle className="text-xl text-center text-slate-800">Pagar com PIX</DialogTitle>
+          <DialogTitle className="text-xl text-center text-slate-800 dark:text-slate-100">Pagar com PIX</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-6 py-4">
           {/* Amount */}
           <div className="text-center">
-            <p className="text-sm text-slate-500">Valor</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">Valor</p>
             <p className="text-3xl font-bold text-[#5327F2]">
               {formatCurrency(invoice.amount)}
             </p>
@@ -407,7 +407,7 @@ function PixModal({
 
           {/* QR Code */}
           <div className="flex justify-center">
-            <div className="bg-white p-4 rounded-xl border border-slate-200/80">
+            <div className="bg-white dark:bg-[#151922] p-4 rounded-xl border border-slate-200/80 dark:border-slate-700/40">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={`data:image/png;base64,${invoice.pix_qr_code.encodedImage}`}
@@ -418,7 +418,7 @@ function PixModal({
           </div>
 
           {/* Instructions */}
-          <div className="text-center text-sm text-slate-500">
+          <div className="text-center text-sm text-slate-500 dark:text-slate-400">
             <p>Escaneie o QR Code acima com o app do seu banco</p>
             <p>ou copie o código PIX abaixo</p>
           </div>
@@ -427,7 +427,7 @@ function PixModal({
           <Button
             onClick={copyPixCode}
             variant="outline"
-            className="w-full bg-slate-50 border-slate-200 text-slate-800 hover:bg-slate-100"
+            className="w-full bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700"
           >
             {copied ? (
               <>
@@ -443,7 +443,7 @@ function PixModal({
           </Button>
 
           {/* Expiration Notice */}
-          <p className="text-xs text-slate-400 text-center">
+          <p className="text-xs text-slate-400 dark:text-slate-500 text-center">
             Este código PIX é válido por tempo limitado
           </p>
         </div>
@@ -531,16 +531,16 @@ export default function PortalInvoicesPage() {
     return (
       <div className="min-h-screen p-6 space-y-6">
         <div className="flex items-center justify-between">
-          <Skeleton className="h-10 w-48 bg-slate-100" />
-          <Skeleton className="h-10 w-32 bg-slate-100" />
+          <Skeleton className="h-10 w-48 bg-slate-100 dark:bg-slate-800" />
+          <Skeleton className="h-10 w-32 bg-slate-100 dark:bg-slate-800" />
         </div>
-        <Skeleton className="h-64 rounded-2xl bg-slate-100" />
-        <div className="grid gap-4 md:grid-cols-4">
+        <Skeleton className="h-64 rounded-2xl bg-slate-100 dark:bg-slate-800" />
+        <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
           {[1, 2, 3, 4].map((i) => (
-            <Skeleton key={i} className="h-24 rounded-xl bg-slate-100" />
+            <Skeleton key={i} className="h-24 rounded-xl bg-slate-100 dark:bg-slate-800" />
           ))}
         </div>
-        <Skeleton className="h-96 rounded-xl bg-slate-100" />
+        <Skeleton className="h-96 rounded-xl bg-slate-100 dark:bg-slate-800" />
       </div>
     )
   }
@@ -551,12 +551,12 @@ export default function PortalInvoicesPage() {
   if (error) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6">
-        <div className="bg-white rounded-xl border border-slate-200/80 shadow-md p-8 text-center max-w-md">
-          <div className="rounded-full bg-red-50 p-4 w-fit mx-auto mb-4">
+        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-md dark:shadow-slate-900/30 p-8 text-center max-w-md">
+          <div className="rounded-full bg-red-50 dark:bg-red-500/10 p-4 w-fit mx-auto mb-4">
             <AlertCircle className="h-10 w-10 text-red-600" />
           </div>
-          <h2 className="text-xl font-semibold text-slate-800 mb-2">Erro ao carregar</h2>
-          <p className="text-slate-500 mb-6">{error}</p>
+          <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-100 mb-2">Erro ao carregar</h2>
+          <p className="text-slate-500 dark:text-slate-400 mb-6">{error}</p>
           <Button onClick={fetchInvoices} className="bg-[#5327F2] hover:bg-[#4520D4] text-white shadow-sm">
             Tentar novamente
           </Button>
@@ -569,15 +569,15 @@ export default function PortalInvoicesPage() {
   // RENDER: Main
   // ============================================
   return (
-    <div className="min-h-screen text-slate-800">
+    <div className="min-h-screen text-slate-800 dark:text-slate-100">
       <div className="max-w-[1200px] mx-auto p-6 space-y-6">
 
         {/* ========== HEADER ========== */}
-        <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm p-6">
+        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 p-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-slate-800">Faturas</h1>
-              <p className="text-slate-500">
+              <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Faturas</h1>
+              <p className="text-slate-500 dark:text-slate-400">
                 Acompanhe seus pagamentos e histórico financeiro
               </p>
             </div>
@@ -585,7 +585,7 @@ export default function PortalInvoicesPage() {
               variant="outline"
               onClick={fetchInvoices}
               disabled={loading}
-              className="bg-slate-50 border-slate-200 text-slate-800 hover:bg-slate-100"
+              className="bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700"
             >
               <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
               Atualizar
@@ -603,14 +603,14 @@ export default function PortalInvoicesPage() {
 
         {/* ========== NO PENDING INVOICES MESSAGE ========== */}
         {!nextInvoice && stats && stats.pending === 0 && stats.overdue === 0 && (
-          <div className="rounded-2xl bg-white border border-emerald-200 shadow-sm p-8 text-center">
-            <div className="rounded-full bg-emerald-50 p-4 w-fit mx-auto mb-4">
+          <div className="rounded-2xl bg-white dark:bg-[#151922] border border-emerald-200 dark:border-emerald-500/20 shadow-sm dark:shadow-slate-900/20 p-8 text-center">
+            <div className="rounded-full bg-emerald-50 dark:bg-emerald-500/10 p-4 w-fit mx-auto mb-4">
               <CheckCircle className="h-10 w-10 text-emerald-600" />
             </div>
-            <h3 className="text-xl font-semibold text-slate-800 mb-2">
+            <h3 className="text-xl font-semibold text-slate-800 dark:text-slate-100 mb-2">
               Tudo em dia!
             </h3>
-            <p className="text-slate-500">
+            <p className="text-slate-500 dark:text-slate-400">
               Você não possui faturas pendentes no momento.
             </p>
           </div>
@@ -618,14 +618,14 @@ export default function PortalInvoicesPage() {
 
         {/* ========== STATS CARDS ========== */}
         {stats && (
-          <div className="grid gap-4 md:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
             <StatCard
               title="Total Pendente"
               value={formatCurrency(stats.totalPending)}
               subtitle={`${stats.pending} fatura${stats.pending !== 1 ? "s" : ""}`}
               icon={Clock}
               iconColor="text-amber-600"
-              iconBgColor="bg-amber-50"
+              iconBgColor="bg-amber-50 dark:bg-amber-500/10"
             />
             <StatCard
               title="Em Atraso"
@@ -633,7 +633,7 @@ export default function PortalInvoicesPage() {
               subtitle={`${stats.overdue} fatura${stats.overdue !== 1 ? "s" : ""}`}
               icon={AlertCircle}
               iconColor="text-red-600"
-              iconBgColor="bg-red-50"
+              iconBgColor="bg-red-50 dark:bg-red-500/10"
             />
             <StatCard
               title="Pagas"
@@ -641,7 +641,7 @@ export default function PortalInvoicesPage() {
               subtitle={`${stats.paid} fatura${stats.paid !== 1 ? "s" : ""}`}
               icon={CheckCircle}
               iconColor="text-emerald-600"
-              iconBgColor="bg-emerald-50"
+              iconBgColor="bg-emerald-50 dark:bg-emerald-500/10"
             />
             <StatCard
               title="Total de Faturas"
@@ -649,45 +649,45 @@ export default function PortalInvoicesPage() {
               subtitle="histórico completo"
               icon={FileText}
               iconColor="text-[#05AFF2]"
-              iconBgColor="bg-sky-50"
+              iconBgColor="bg-sky-50 dark:bg-sky-500/10"
             />
           </div>
         )}
 
         {/* ========== FILTERS ========== */}
-        <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm p-4">
+        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 p-4">
           <div className="flex flex-col gap-4 md:flex-row md:items-center">
             <div className="flex-1">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 dark:text-slate-500" />
                 <Input
                   placeholder="Buscar por descrição ou valor..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="pl-10 h-10 bg-slate-50 border-slate-200 text-slate-800 placeholder:text-slate-400"
+                  className="pl-10 h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                 />
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Filter className="h-4 w-4 text-slate-400" />
+              <Filter className="h-4 w-4 text-slate-400 dark:text-slate-500" />
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[160px] h-10 bg-slate-50 border-slate-200 text-slate-800">
+                <SelectTrigger className="w-[160px] h-10 bg-slate-50 dark:bg-[#151922] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
-                <SelectContent className="bg-white border-slate-200/80">
-                  <SelectItem value="all" className="text-slate-800 hover:bg-slate-50">
+                <SelectContent className="bg-white dark:bg-[#151922] border-slate-200/80 dark:border-slate-700/40">
+                  <SelectItem value="all" className="text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
                     Todos
                   </SelectItem>
-                  <SelectItem value="pending" className="text-slate-800 hover:bg-slate-50">
+                  <SelectItem value="pending" className="text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
                     Pendentes
                   </SelectItem>
-                  <SelectItem value="overdue" className="text-slate-800 hover:bg-slate-50">
+                  <SelectItem value="overdue" className="text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
                     Vencidas
                   </SelectItem>
-                  <SelectItem value="paid" className="text-slate-800 hover:bg-slate-50">
+                  <SelectItem value="paid" className="text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
                     Pagas
                   </SelectItem>
-                  <SelectItem value="cancelled" className="text-slate-800 hover:bg-slate-50">
+                  <SelectItem value="cancelled" className="text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
                     Canceladas
                   </SelectItem>
                 </SelectContent>
@@ -698,15 +698,15 @@ export default function PortalInvoicesPage() {
 
         {/* ========== INVOICE HISTORY ========== */}
         <div className="space-y-4">
-          <h2 className="text-[15px] font-semibold text-slate-800">Histórico de Faturas</h2>
+          <h2 className="text-[15px] font-semibold text-slate-800 dark:text-slate-100">Histórico de Faturas</h2>
 
           {historyInvoices.length === 0 ? (
-            <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm p-12 text-center">
-              <FileText className="h-12 w-12 mx-auto mb-4 text-slate-300" />
-              <p className="text-lg font-medium text-slate-500 mb-1">
+            <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 p-12 text-center">
+              <FileText className="h-12 w-12 mx-auto mb-4 text-slate-300 dark:text-slate-600" />
+              <p className="text-lg font-medium text-slate-500 dark:text-slate-400 mb-1">
                 Nenhuma fatura encontrada
               </p>
-              <p className="text-sm text-slate-400">
+              <p className="text-sm text-slate-400 dark:text-slate-500">
                 {search || statusFilter !== "all"
                   ? "Tente ajustar os filtros"
                   : "Suas faturas aparecerão aqui"}
@@ -730,11 +730,11 @@ export default function PortalInvoicesPage() {
         </div>
 
         {/* ========== PAYMENT INFO ========== */}
-        <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm p-6">
-          <h3 className="text-[15px] font-semibold text-slate-800 mb-4">
+        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 p-6">
+          <h3 className="text-[15px] font-semibold text-slate-800 dark:text-slate-100 mb-4">
             Informações de Pagamento
           </h3>
-          <ul className="space-y-3 text-sm text-slate-500">
+          <ul className="space-y-3 text-sm text-slate-500 dark:text-slate-400">
             <li className="flex items-start gap-3">
               <CheckCircle className="h-4 w-4 text-emerald-600 mt-0.5 flex-shrink-0" />
               <span>
@@ -754,8 +754,8 @@ export default function PortalInvoicesPage() {
               </span>
             </li>
           </ul>
-          <div className="mt-4 pt-4 border-t border-slate-100">
-            <p className="text-sm text-slate-500">
+          <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-700/30">
+            <p className="text-sm text-slate-500 dark:text-slate-400">
               Dúvidas sobre cobranças?{" "}
               <a
                 href="mailto:financeiro@convertfy.com.br"

@@ -75,18 +75,18 @@ export default function PortalDashboardPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <Skeleton className="h-7 w-36 bg-slate-200 mb-2" />
-            <Skeleton className="h-4 w-48 bg-slate-100" />
+            <Skeleton className="h-7 w-36 bg-slate-200 dark:bg-slate-700 mb-2" />
+            <Skeleton className="h-4 w-48 bg-slate-100 dark:bg-slate-800" />
           </div>
           <div className="flex gap-3">
-            <Skeleton className="h-10 w-32 bg-slate-200 rounded-lg" />
-            <Skeleton className="h-10 w-10 bg-slate-200 rounded-lg" />
+            <Skeleton className="h-10 w-32 bg-slate-200 dark:bg-slate-700 rounded-lg" />
+            <Skeleton className="h-10 w-10 bg-slate-200 dark:bg-slate-700 rounded-lg" />
           </div>
         </div>
-        <Skeleton className="h-48 bg-slate-100 rounded-2xl" />
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+        <Skeleton className="h-48 bg-slate-100 dark:bg-slate-800 rounded-2xl" />
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
           {[1, 2, 3, 4, 5, 6].map((i) => (
-            <Skeleton key={i} className="h-36 bg-white rounded-xl border border-slate-100" />
+            <Skeleton key={i} className="h-36 bg-white dark:bg-[#151922] rounded-xl border border-slate-100 dark:border-slate-700/30" />
           ))}
         </div>
       </div>
@@ -96,12 +96,12 @@ export default function PortalDashboardPage() {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh]">
-        <div className="bg-white rounded-2xl border border-slate-200 p-10 text-center max-w-md shadow-sm">
-          <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-4">
+        <div className="bg-white dark:bg-[#151922] rounded-2xl border border-slate-200 dark:border-slate-700/40 p-10 text-center max-w-md shadow-sm dark:shadow-slate-900/20">
+          <div className="w-14 h-14 rounded-full bg-red-50 dark:bg-red-500/10 flex items-center justify-center mx-auto mb-4">
             <AlertCircle className="h-7 w-7 text-red-500" />
           </div>
-          <h2 className="text-lg font-semibold text-slate-800 mb-2">Erro ao carregar</h2>
-          <p className="text-slate-500 text-sm mb-6">{error}</p>
+          <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100 mb-2">Erro ao carregar</h2>
+          <p className="text-slate-500 dark:text-slate-400 text-sm mb-6">{error}</p>
           <Button
             onClick={() => fetchDashboard()}
             className="bg-[#5327F2] hover:bg-[#4520D4] text-white shadow-sm"
@@ -128,10 +128,10 @@ export default function PortalDashboardPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Dashboard</h1>
+          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Dashboard</h1>
           <div className="flex items-center gap-2 mt-1">
             {data.dateRange && (
-              <p className="text-sm text-slate-500">{formatDateRange(data.dateRange.start, data.dateRange.end)}</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">{formatDateRange(data.dateRange.start, data.dateRange.end)}</p>
             )}
             {refreshing && (
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#5327F2]/10 text-[#5327F2] text-xs font-medium">
@@ -144,11 +144,11 @@ export default function PortalDashboardPage() {
 
         <div className="flex items-center gap-3">
           <Select value={period} onValueChange={setPeriod}>
-            <SelectTrigger className="w-[140px] h-10 bg-white border-slate-200 text-slate-700 rounded-lg shadow-sm">
-              <CalendarDays className="h-4 w-4 mr-2 text-slate-400" />
+            <SelectTrigger className="w-[140px] h-10 bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40 text-slate-700 dark:text-slate-200 rounded-lg shadow-sm dark:shadow-slate-900/20">
+              <CalendarDays className="h-4 w-4 mr-2 text-slate-400 dark:text-slate-500" />
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="bg-white border-slate-200 shadow-lg">
+            <SelectContent className="bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40 shadow-lg">
               <SelectItem value="7d">7 dias</SelectItem>
               <SelectItem value="15d">15 dias</SelectItem>
               <SelectItem value="30d">30 dias</SelectItem>
@@ -161,7 +161,7 @@ export default function PortalDashboardPage() {
             size="icon"
             onClick={() => fetchDashboard(true)}
             disabled={refreshing}
-            className="h-10 w-10 bg-white border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded-lg shadow-sm"
+            className="h-10 w-10 bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06] rounded-lg shadow-sm dark:shadow-slate-900/20"
             title="Atualizar dados"
           >
             <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
@@ -194,12 +194,12 @@ export default function PortalDashboardPage() {
 
             {/* Invoices quick card */}
             {(data.invoices.pending > 0 || data.invoices.overdue > 0) && (
-              <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-sm">
+              <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20">
                 <div className="flex items-center gap-2 mb-4">
-                  <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
+                  <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center">
                     <DollarSign className="h-4 w-4 text-amber-600" />
                   </div>
-                  <span className="text-[13px] font-semibold text-slate-800">Faturas</span>
+                  <span className="text-[13px] font-semibold text-slate-800 dark:text-slate-100">Faturas</span>
                 </div>
                 {data.invoices.overdue > 0 && (
                   <div className="mb-3">
@@ -209,8 +209,8 @@ export default function PortalDashboardPage() {
                 )}
                 {data.invoices.pending > 0 && (
                   <div>
-                    <p className="text-lg font-bold text-slate-800">{formatCurrency(data.invoices.totalPending)}</p>
-                    <p className="text-xs text-slate-500">{data.invoices.pending} fatura(s) pendente(s)</p>
+                    <p className="text-lg font-bold text-slate-800 dark:text-slate-100">{formatCurrency(data.invoices.totalPending)}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">{data.invoices.pending} fatura(s) pendente(s)</p>
                   </div>
                 )}
               </div>
@@ -220,12 +220,12 @@ export default function PortalDashboardPage() {
 
         {/* KPI Cards */}
         <AnimatedItem>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-            <KpiCard label="Pedidos" value={formatNumber(storeOrders)} icon={ShoppingCart} iconColor="text-blue-600" iconBg="bg-blue-50" />
-            <KpiCard label="Ticket Médio" value={formatCurrency(ticketMedio)} icon={Receipt} iconColor="text-emerald-600" iconBg="bg-emerald-50" />
-            <KpiCard label="Recuperação de Carrinho" value={formatPercent(recoveryRate)} icon={ShoppingBag} iconColor="text-amber-600" iconBg="bg-amber-50" />
-            <KpiCard label="Receita por Lead" value={formatCurrency(receitaPorLead)} icon={Users} iconColor="text-violet-600" iconBg="bg-violet-50" />
-            <KpiCard label="Flows Ativos" value={`${klaviyo?.activeFlows || 0} / ${klaviyo?.flowsCount || 0}`} icon={Zap} iconColor="text-cyan-600" iconBg="bg-cyan-50" />
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+            <KpiCard label="Pedidos" value={formatNumber(storeOrders)} icon={ShoppingCart} iconColor="text-blue-600" iconBg="bg-blue-50 dark:bg-blue-500/10" />
+            <KpiCard label="Ticket Médio" value={formatCurrency(ticketMedio)} icon={Receipt} iconColor="text-emerald-600" iconBg="bg-emerald-50 dark:bg-emerald-500/10" />
+            <KpiCard label="Recuperação de Carrinho" value={formatPercent(recoveryRate)} icon={ShoppingBag} iconColor="text-amber-600" iconBg="bg-amber-50 dark:bg-amber-500/10" />
+            <KpiCard label="Receita por Lead" value={formatCurrency(receitaPorLead)} icon={Users} iconColor="text-violet-600" iconBg="bg-violet-50 dark:bg-violet-500/10" />
+            <KpiCard label="Flows Ativos" value={`${klaviyo?.activeFlows || 0} / ${klaviyo?.flowsCount || 0}`} icon={Zap} iconColor="text-cyan-600" iconBg="bg-cyan-50 dark:bg-cyan-500/10" />
           </div>
         </AnimatedItem>
       </AnimatedContainer>
@@ -247,14 +247,14 @@ function KpiCard({
   iconBg: string
 }) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200/80 p-4 shadow-sm hover:shadow-md transition-shadow duration-200">
+    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-4 shadow-sm dark:shadow-slate-900/20 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200">
       <div className="flex items-center gap-2 mb-3">
         <div className={`w-7 h-7 rounded-lg ${iconBg} flex items-center justify-center`}>
           <Icon className={`h-3.5 w-3.5 ${iconColor}`} />
         </div>
-        <span className="text-xs text-slate-500 font-medium">{label}</span>
+        <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">{label}</span>
       </div>
-      <p className="text-xl font-bold text-slate-800">{value}</p>
+      <p className="text-xl font-bold text-slate-800 dark:text-slate-100">{value}</p>
     </div>
   )
 }

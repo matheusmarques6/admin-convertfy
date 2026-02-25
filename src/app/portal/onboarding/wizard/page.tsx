@@ -210,14 +210,14 @@ export default function OnboardingWizardPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-[#F8F9FB]">
+      <div className="flex items-center justify-center min-h-screen bg-[#F8F9FB] dark:bg-[#0B0E14]">
         <div className="h-10 w-10 animate-spin rounded-full border-[3px] border-[#5327F2]/20 border-t-[#5327F2]" />
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-[#F8F9FB]">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-[#F8F9FB] dark:bg-[#0B0E14]">
       <div className="w-full max-w-2xl">
         {/* Progress Steps */}
         <div className="mb-8">
@@ -233,7 +233,7 @@ export default function OnboardingWizardPage() {
                       "flex items-center justify-center w-10 h-10 rounded-full border-2 transition-colors",
                       isActive && "border-[#5327F2] bg-[#5327F2] text-white",
                       isComplete && "border-emerald-500 bg-emerald-500 text-white",
-                      !isActive && !isComplete && "border-slate-200 text-slate-400"
+                      !isActive && !isComplete && "border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500"
                     )}
                   >
                     {isComplete ? <CheckCircle2 className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
@@ -242,7 +242,7 @@ export default function OnboardingWizardPage() {
                     <div
                       className={cn(
                         "w-12 sm:w-20 h-0.5 mx-2",
-                        i < currentStep ? "bg-emerald-500" : "bg-slate-200"
+                        i < currentStep ? "bg-emerald-500" : "bg-slate-200 dark:bg-slate-700"
                       )}
                     />
                   )}
@@ -250,16 +250,16 @@ export default function OnboardingWizardPage() {
               )
             })}
           </div>
-          <p className="text-center text-sm text-slate-500">
+          <p className="text-center text-sm text-slate-500 dark:text-slate-400">
             Passo {currentStep + 1} de {STEPS.length} — {STEPS[currentStep].label}
           </p>
         </div>
 
         {/* Step Content */}
-        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+        <div className="bg-white dark:bg-[#151922] rounded-2xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 overflow-hidden">
           <div className="px-8 pt-8 pb-4">
-            <h2 className="text-lg font-semibold text-slate-800">{STEPS[currentStep].label}</h2>
-            <p className="text-sm text-slate-500 mt-1">
+            <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">{STEPS[currentStep].label}</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
               {currentStep === 0 && "Precisamos de algumas informações sobre você para começar."}
               {currentStep === 1 && "Conte-nos sobre a loja que você deseja gerenciar."}
               {currentStep === 2 && "Insira o código de colaborador da Shopify para acesso à loja."}
@@ -272,22 +272,22 @@ export default function OnboardingWizardPage() {
               <>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="name" className="text-[13px] text-slate-700 font-medium">Nome Completo *</Label>
-                    <Input id="name" value={name} onChange={e => setName(e.target.value)} placeholder="Seu nome completo" className="h-10 bg-slate-50 border-slate-200 text-slate-800" />
+                    <Label htmlFor="name" className="text-[13px] text-slate-700 dark:text-slate-200 font-medium">Nome Completo *</Label>
+                    <Input id="name" value={name} onChange={e => setName(e.target.value)} placeholder="Seu nome completo" className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100" />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="email" className="text-[13px] text-slate-700 font-medium">Email</Label>
-                    <Input id="email" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="seu@email.com" className="h-10 bg-slate-50 border-slate-200 text-slate-800" />
+                    <Label htmlFor="email" className="text-[13px] text-slate-700 dark:text-slate-200 font-medium">Email</Label>
+                    <Input id="email" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="seu@email.com" className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100" />
                   </div>
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="cpf_cnpj" className="text-[13px] text-slate-700 font-medium">CPF / CNPJ</Label>
-                    <Input id="cpf_cnpj" value={cpfCnpj} onChange={e => setCpfCnpj(e.target.value)} placeholder="00.000.000/0000-00" className="h-10 bg-slate-50 border-slate-200 text-slate-800" />
+                    <Label htmlFor="cpf_cnpj" className="text-[13px] text-slate-700 dark:text-slate-200 font-medium">CPF / CNPJ</Label>
+                    <Input id="cpf_cnpj" value={cpfCnpj} onChange={e => setCpfCnpj(e.target.value)} placeholder="00.000.000/0000-00" className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100" />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="company" className="text-[13px] text-slate-700 font-medium">Empresa</Label>
-                    <Input id="company" value={company} onChange={e => setCompany(e.target.value)} placeholder="Nome da empresa" className="h-10 bg-slate-50 border-slate-200 text-slate-800" />
+                    <Label htmlFor="company" className="text-[13px] text-slate-700 dark:text-slate-200 font-medium">Empresa</Label>
+                    <Input id="company" value={company} onChange={e => setCompany(e.target.value)} placeholder="Nome da empresa" className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100" />
                   </div>
                 </div>
               </>
@@ -298,20 +298,20 @@ export default function OnboardingWizardPage() {
               <>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="store_name" className="text-[13px] text-slate-700 font-medium">Nome da Loja *</Label>
-                    <Input id="store_name" value={storeName} onChange={e => setStoreName(e.target.value)} placeholder="Minha Loja" className="h-10 bg-slate-50 border-slate-200 text-slate-800" />
+                    <Label htmlFor="store_name" className="text-[13px] text-slate-700 dark:text-slate-200 font-medium">Nome da Loja *</Label>
+                    <Input id="store_name" value={storeName} onChange={e => setStoreName(e.target.value)} placeholder="Minha Loja" className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100" />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="store_url" className="text-[13px] text-slate-700 font-medium">URL da Loja</Label>
-                    <Input id="store_url" value={storeUrl} onChange={e => setStoreUrl(e.target.value)} placeholder="minhaloja.myshopify.com" className="h-10 bg-slate-50 border-slate-200 text-slate-800" />
+                    <Label htmlFor="store_url" className="text-[13px] text-slate-700 dark:text-slate-200 font-medium">URL da Loja</Label>
+                    <Input id="store_url" value={storeUrl} onChange={e => setStoreUrl(e.target.value)} placeholder="minhaloja.myshopify.com" className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100" />
                   </div>
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <Label className="text-[13px] text-slate-700 font-medium">Plataforma</Label>
+                    <Label className="text-[13px] text-slate-700 dark:text-slate-200 font-medium">Plataforma</Label>
                     <Select value={platform} onValueChange={setPlatform}>
-                      <SelectTrigger className="h-10 bg-slate-50 border-slate-200 text-slate-800"><SelectValue /></SelectTrigger>
-                      <SelectContent className="bg-white border-slate-200 shadow-lg">
+                      <SelectTrigger className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100"><SelectValue /></SelectTrigger>
+                      <SelectContent className="bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40 shadow-lg">
                         <SelectItem value="shopify">Shopify</SelectItem>
                         <SelectItem value="woocommerce">WooCommerce</SelectItem>
                         <SelectItem value="nuvemshop">Nuvemshop</SelectItem>
@@ -322,16 +322,16 @@ export default function OnboardingWizardPage() {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="niche" className="text-[13px] text-slate-700 font-medium">Nicho da Loja</Label>
-                    <Input id="niche" value={niche} onChange={e => setNiche(e.target.value)} placeholder="Ex: Moda, Cosméticos, Eletrônicos" className="h-10 bg-slate-50 border-slate-200 text-slate-800" />
+                    <Label htmlFor="niche" className="text-[13px] text-slate-700 dark:text-slate-200 font-medium">Nicho da Loja</Label>
+                    <Input id="niche" value={niche} onChange={e => setNiche(e.target.value)} placeholder="Ex: Moda, Cosméticos, Eletrônicos" className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100" />
                   </div>
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <Label className="text-[13px] text-slate-700 font-medium">País</Label>
+                    <Label className="text-[13px] text-slate-700 dark:text-slate-200 font-medium">País</Label>
                     <Select value={country} onValueChange={setCountry}>
-                      <SelectTrigger className="h-10 bg-slate-50 border-slate-200 text-slate-800"><SelectValue /></SelectTrigger>
-                      <SelectContent className="bg-white border-slate-200 shadow-lg">
+                      <SelectTrigger className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100"><SelectValue /></SelectTrigger>
+                      <SelectContent className="bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40 shadow-lg">
                         <SelectItem value="BR">Brasil</SelectItem>
                         <SelectItem value="US">Estados Unidos</SelectItem>
                         <SelectItem value="PT">Portugal</SelectItem>
@@ -340,10 +340,10 @@ export default function OnboardingWizardPage() {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-[13px] text-slate-700 font-medium">Idioma</Label>
+                    <Label className="text-[13px] text-slate-700 dark:text-slate-200 font-medium">Idioma</Label>
                     <Select value={language} onValueChange={setLanguage}>
-                      <SelectTrigger className="h-10 bg-slate-50 border-slate-200 text-slate-800"><SelectValue /></SelectTrigger>
-                      <SelectContent className="bg-white border-slate-200 shadow-lg">
+                      <SelectTrigger className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100"><SelectValue /></SelectTrigger>
+                      <SelectContent className="bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40 shadow-lg">
                         <SelectItem value="pt-BR">Português (BR)</SelectItem>
                         <SelectItem value="en-US">English (US)</SelectItem>
                         <SelectItem value="es">Español</SelectItem>
@@ -352,14 +352,14 @@ export default function OnboardingWizardPage() {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="target_audience" className="text-[13px] text-slate-700 font-medium">Público Alvo</Label>
-                  <Textarea id="target_audience" value={targetAudience} onChange={e => setTargetAudience(e.target.value)} placeholder="Descreva seu público alvo..." rows={2} className="bg-slate-50 border-slate-200 text-slate-800" />
+                  <Label htmlFor="target_audience" className="text-[13px] text-slate-700 dark:text-slate-200 font-medium">Público Alvo</Label>
+                  <Textarea id="target_audience" value={targetAudience} onChange={e => setTargetAudience(e.target.value)} placeholder="Descreva seu público alvo..." rows={2} className="bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100" />
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-[13px] text-slate-700 font-medium">Tipo de Frete Grátis</Label>
+                  <Label className="text-[13px] text-slate-700 dark:text-slate-200 font-medium">Tipo de Frete Grátis</Label>
                   <Select value={freeShippingType} onValueChange={setFreeShippingType}>
-                    <SelectTrigger className="h-10 bg-slate-50 border-slate-200 text-slate-800"><SelectValue placeholder="Selecione..." /></SelectTrigger>
-                    <SelectContent className="bg-white border-slate-200 shadow-lg">
+                    <SelectTrigger className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100"><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                    <SelectContent className="bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40 shadow-lg">
                       <SelectItem value="fixed">Fixo (acima de X reais)</SelectItem>
                       <SelectItem value="custom">Personalizado (por região/produto)</SelectItem>
                       <SelectItem value="none">Sem frete grátis</SelectItem>
@@ -372,25 +372,25 @@ export default function OnboardingWizardPage() {
             {/* Step 3: Shopify Collaborator Code */}
             {currentStep === 2 && (
               <div className="space-y-4">
-                <div className="p-4 rounded-xl bg-slate-50 text-sm space-y-2">
-                  <p className="font-medium text-slate-700">Como obter o código de colaborador:</p>
-                  <ol className="list-decimal list-inside space-y-1 text-slate-500">
+                <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#1A1F2E] text-sm space-y-2">
+                  <p className="font-medium text-slate-700 dark:text-slate-200">Como obter o código de colaborador:</p>
+                  <ol className="list-decimal list-inside space-y-1 text-slate-500 dark:text-slate-400">
                     <li>Acesse o painel admin da sua loja Shopify</li>
                     <li>Vá em Configurações &gt; Usuários e permissões</li>
                     <li>Na seção &quot;Colaboradores&quot;, copie o código de acesso</li>
                   </ol>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="collaborator_code" className="text-[13px] text-slate-700 font-medium">Código de Colaborador</Label>
+                  <Label htmlFor="collaborator_code" className="text-[13px] text-slate-700 dark:text-slate-200 font-medium">Código de Colaborador</Label>
                   <Input
                     id="collaborator_code"
                     value={collaboratorCode}
                     onChange={e => setCollaboratorCode(e.target.value)}
                     placeholder="Cole o código aqui"
-                    className="h-10 bg-slate-50 border-slate-200 text-slate-800"
+                    className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100"
                   />
                 </div>
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-slate-400 dark:text-slate-500">
                   Este passo pode ser pulado e configurado depois.
                 </p>
               </div>
@@ -399,9 +399,9 @@ export default function OnboardingWizardPage() {
             {/* Step 4: Klaviyo Keys */}
             {currentStep === 3 && (
               <div className="space-y-4">
-                <div className="p-4 rounded-xl bg-slate-50 text-sm space-y-2">
-                  <p className="font-medium text-slate-700">Como obter a Private API Key do Klaviyo:</p>
-                  <ol className="list-decimal list-inside space-y-1 text-slate-500">
+                <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#1A1F2E] text-sm space-y-2">
+                  <p className="font-medium text-slate-700 dark:text-slate-200">Como obter a Private API Key do Klaviyo:</p>
+                  <ol className="list-decimal list-inside space-y-1 text-slate-500 dark:text-slate-400">
                     <li>Acesse sua conta Klaviyo em klaviyo.com</li>
                     <li>Vá em Account &gt; Settings &gt; API Keys</li>
                     <li>Crie uma Private API Key com todas as permissões</li>
@@ -409,14 +409,14 @@ export default function OnboardingWizardPage() {
                   </ol>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="klaviyo_key" className="text-[13px] text-slate-700 font-medium">Private API Key *</Label>
+                  <Label htmlFor="klaviyo_key" className="text-[13px] text-slate-700 dark:text-slate-200 font-medium">Private API Key *</Label>
                   <Input
                     id="klaviyo_key"
                     type="password"
                     value={klaviyoKey}
                     onChange={e => setKlaviyoKey(e.target.value)}
                     placeholder="pk_xxxxxxxxxxxx"
-                    className="h-10 bg-slate-50 border-slate-200 text-slate-800"
+                    className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100"
                   />
                 </div>
               </div>
@@ -430,7 +430,7 @@ export default function OnboardingWizardPage() {
             variant="ghost"
             onClick={() => setCurrentStep(Math.max(0, currentStep - 1))}
             disabled={currentStep === 0 || saving}
-            className="text-slate-600 hover:text-slate-800"
+            className="text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-slate-100"
           >
             <ChevronLeft className="h-4 w-4 mr-1" />
             Voltar
@@ -442,7 +442,7 @@ export default function OnboardingWizardPage() {
                 variant="ghost"
                 onClick={() => setCurrentStep(currentStep + 1)}
                 disabled={saving}
-                className="text-slate-600 hover:text-slate-800"
+                className="text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-slate-100"
               >
                 Pular
               </Button>

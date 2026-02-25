@@ -33,6 +33,7 @@ import {
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
+import { PortalThemeToggle } from "@/components/portal/theme-toggle"
 
 interface PortalUser {
   id: string
@@ -217,7 +218,7 @@ export default function PortalLayout({
   // Show loading while checking auth
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[#F8F9FB]">
+      <div className="flex h-screen items-center justify-center bg-[#F8F9FB] dark:bg-[#0B0E14]">
         <div className="flex flex-col items-center gap-3">
           <div className="h-10 w-10 animate-spin rounded-full border-[3px] border-[#5327F2]/20 border-t-[#5327F2]" />
           <span className="text-sm text-slate-400">Carregando...</span>
@@ -230,7 +231,7 @@ export default function PortalLayout({
   if (!user) {
     router.push("/portal/login")
     return (
-      <div className="flex h-screen items-center justify-center bg-[#F8F9FB]">
+      <div className="flex h-screen items-center justify-center bg-[#F8F9FB] dark:bg-[#0B0E14]">
         <div className="h-10 w-10 animate-spin rounded-full border-[3px] border-[#5327F2]/20 border-t-[#5327F2]" />
       </div>
     )
@@ -366,7 +367,7 @@ export default function PortalLayout({
 
   return (
     <div
-      className="min-h-screen bg-[#F8F9FB]"
+      className="min-h-screen bg-[#F8F9FB] dark:bg-[#0B0E14]"
       style={branding.primary_color !== "#3b82f6" ? {
         "--portal-primary": branding.primary_color,
         "--portal-primary-foreground": "#ffffff",
@@ -381,9 +382,9 @@ export default function PortalLayout({
               <Image
                 src="/images/logo da convertfy com escrito branco.png"
                 alt="Convertfy"
-                width={160}
-                height={36}
-                className="h-8 w-auto object-contain"
+                width={200}
+                height={44}
+                className="h-10 w-auto object-contain"
                 priority
               />
             </Link>
@@ -402,10 +403,10 @@ export default function PortalLayout({
 
       {/* Mobile Header */}
       <div className="lg:hidden">
-        <div className="fixed top-0 left-0 right-0 z-40 flex h-14 items-center gap-3 border-b border-slate-200/80 bg-white/95 backdrop-blur-sm px-4">
+        <div className="fixed top-0 left-0 right-0 z-40 flex h-14 items-center gap-3 border-b border-slate-200/80 dark:border-slate-700/40 bg-white/95 dark:bg-[#151922]/95 backdrop-blur-sm px-4">
           <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
             <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-9 w-9 text-slate-600">
+              <Button variant="ghost" size="icon" className="h-9 w-9 text-slate-600 dark:text-slate-300">
                 <Menu className="h-5 w-5" />
               </Button>
             </SheetTrigger>
@@ -418,7 +419,7 @@ export default function PortalLayout({
                     alt="Convertfy"
                     width={160}
                     height={36}
-                    className="h-8 w-auto object-contain"
+                    className="h-10 w-auto object-contain"
                   />
                 </div>
 
@@ -435,8 +436,10 @@ export default function PortalLayout({
           </Sheet>
 
           <div className="flex-1">
-            <span className="text-sm font-semibold text-slate-800">{getPageTitle()}</span>
+            <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">{getPageTitle()}</span>
           </div>
+
+          <PortalThemeToggle className="h-9 w-9 text-slate-400 dark:text-slate-300 hover:text-slate-600 dark:hover:text-slate-100" />
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -481,18 +484,19 @@ export default function PortalLayout({
       {/* Main Content */}
       <main className="lg:pl-[260px]">
         {/* Desktop Header */}
-        <header className="hidden lg:flex sticky top-0 z-30 h-14 items-center justify-between border-b border-slate-200/80 bg-white/80 backdrop-blur-md px-8">
+        <header className="hidden lg:flex sticky top-0 z-30 h-14 items-center justify-between border-b border-slate-200/80 dark:border-slate-700/40 bg-white/80 dark:bg-[#151922]/80 backdrop-blur-md px-8">
           <div className="flex items-center gap-3">
-            <h1 className="text-[15px] font-semibold text-slate-800">{user.clientName}</h1>
+            <h1 className="text-[15px] font-semibold text-slate-800 dark:text-slate-100">{user.clientName}</h1>
             {activeStore && (
               <>
-                <span className="text-slate-300">/</span>
-                <span className="text-[13px] text-slate-500">{activeStore.name}</span>
+                <span className="text-slate-300 dark:text-slate-600">/</span>
+                <span className="text-[13px] text-slate-500 dark:text-slate-400">{activeStore.name}</span>
               </>
             )}
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" className="h-9 w-9 text-slate-400 hover:text-slate-600">
+            <PortalThemeToggle className="h-9 w-9 text-slate-400 dark:text-slate-300 hover:text-slate-600 dark:hover:text-slate-100" />
+            <Button variant="ghost" size="icon" className="h-9 w-9 text-slate-400 dark:text-slate-300 hover:text-slate-600 dark:hover:text-slate-100">
               <Bell className="h-[18px] w-[18px]" />
             </Button>
           </div>

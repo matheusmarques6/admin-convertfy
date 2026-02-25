@@ -62,14 +62,14 @@ export default function PortalFlowsPage() {
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <Skeleton className="h-7 w-24 bg-slate-200" />
+          <Skeleton className="h-7 w-24 bg-slate-200 dark:bg-slate-700" />
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[1, 2, 3, 4].map(i => (
-            <Skeleton key={i} className="h-24 bg-white rounded-xl border border-slate-100" />
+            <Skeleton key={i} className="h-24 bg-white dark:bg-[#151922] rounded-xl border border-slate-100 dark:border-slate-700/30" />
           ))}
         </div>
-        <Skeleton className="h-80 bg-white rounded-xl border border-slate-100" />
+        <Skeleton className="h-80 bg-white dark:bg-[#151922] rounded-xl border border-slate-100 dark:border-slate-700/30" />
       </div>
     )
   }
@@ -77,12 +77,12 @@ export default function PortalFlowsPage() {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh]">
-        <div className="bg-white rounded-2xl border border-slate-200 p-10 text-center max-w-md shadow-sm">
-          <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-4">
+        <div className="bg-white dark:bg-[#151922] rounded-2xl border border-slate-200 dark:border-slate-700/40 p-10 text-center max-w-md shadow-sm dark:shadow-slate-900/20">
+          <div className="w-14 h-14 rounded-full bg-red-50 dark:bg-red-500/10 flex items-center justify-center mx-auto mb-4">
             <AlertCircle className="h-7 w-7 text-red-500" />
           </div>
-          <h2 className="text-lg font-semibold text-slate-800 mb-2">Erro ao carregar</h2>
-          <p className="text-slate-500 text-sm mb-6">{error}</p>
+          <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100 mb-2">Erro ao carregar</h2>
+          <p className="text-slate-500 dark:text-slate-400 text-sm mb-6">{error}</p>
           <Button onClick={() => fetchData()} className="bg-[#5327F2] hover:bg-[#4520D4] text-white">
             Tentar novamente
           </Button>
@@ -109,10 +109,10 @@ export default function PortalFlowsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Flows</h1>
+          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Flows</h1>
           <div className="flex items-center gap-2 mt-1">
             {data.dateRange && (
-              <p className="text-sm text-slate-500">{formatDateRange(data.dateRange.start, data.dateRange.end)}</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">{formatDateRange(data.dateRange.start, data.dateRange.end)}</p>
             )}
             {refreshing && (
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#5327F2]/10 text-[#5327F2] text-xs font-medium">
@@ -124,11 +124,11 @@ export default function PortalFlowsPage() {
         </div>
         <div className="flex items-center gap-3">
           <Select value={period} onValueChange={setPeriod}>
-            <SelectTrigger className="w-[140px] h-10 bg-white border-slate-200 text-slate-700 rounded-lg shadow-sm">
-              <CalendarDays className="h-4 w-4 mr-2 text-slate-400" />
+            <SelectTrigger className="w-[140px] h-10 bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40 text-slate-700 dark:text-slate-200 rounded-lg shadow-sm dark:shadow-slate-900/20">
+              <CalendarDays className="h-4 w-4 mr-2 text-slate-400 dark:text-slate-500" />
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="bg-white border-slate-200 shadow-lg">
+            <SelectContent className="bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40 shadow-lg">
               <SelectItem value="7d">7 dias</SelectItem>
               <SelectItem value="15d">15 dias</SelectItem>
               <SelectItem value="30d">30 dias</SelectItem>
@@ -140,7 +140,7 @@ export default function PortalFlowsPage() {
             size="icon"
             onClick={() => fetchData(true)}
             disabled={refreshing}
-            className="h-10 w-10 bg-white border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded-lg shadow-sm"
+            className="h-10 w-10 bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06] rounded-lg shadow-sm dark:shadow-slate-900/20"
           >
             <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
           </Button>
@@ -160,48 +160,48 @@ export default function PortalFlowsPage() {
 
         {/* Flows Table */}
         <AnimatedItem>
-          <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm overflow-hidden">
-            <div className="px-6 py-4 border-b border-slate-100">
-              <h3 className="text-[15px] font-semibold text-slate-800">Todos os Flows</h3>
+          <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700/30">
+              <h3 className="text-[15px] font-semibold text-slate-800 dark:text-slate-100">Todos os Flows</h3>
             </div>
 
             {flows.length === 0 ? (
-              <p className="text-sm text-slate-500 py-12 text-center">Nenhum flow encontrado no período</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400 py-12 text-center">Nenhum flow encontrado no período</p>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full">
+                <table className="w-full min-w-[600px]">
                   <thead>
-                    <tr className="border-b border-slate-100 bg-slate-50/50">
-                      <th className="text-left text-xs text-slate-500 font-medium py-3 px-6">Nome</th>
-                      <th className="text-right text-xs text-slate-500 font-medium py-3 px-4">Entregas</th>
-                      <th className="text-right text-xs text-slate-500 font-medium py-3 px-4">Abertura</th>
-                      <th className="text-right text-xs text-slate-500 font-medium py-3 px-4">Cliques</th>
-                      <th className="text-right text-xs text-slate-500 font-medium py-3 px-4">Receita</th>
-                      <th className="text-right text-xs text-slate-500 font-medium py-3 px-6">Rec/dest</th>
+                    <tr className="border-b border-slate-100 dark:border-slate-700/30 bg-slate-50/50 dark:bg-slate-800/30">
+                      <th className="text-left text-xs text-slate-500 dark:text-slate-400 font-medium py-3 px-6">Nome</th>
+                      <th className="text-right text-xs text-slate-500 dark:text-slate-400 font-medium py-3 px-4">Entregas</th>
+                      <th className="text-right text-xs text-slate-500 dark:text-slate-400 font-medium py-3 px-4">Abertura</th>
+                      <th className="text-right text-xs text-slate-500 dark:text-slate-400 font-medium py-3 px-4">Cliques</th>
+                      <th className="text-right text-xs text-slate-500 dark:text-slate-400 font-medium py-3 px-4">Receita</th>
+                      <th className="text-right text-xs text-slate-500 dark:text-slate-400 font-medium py-3 px-6">Rec/dest</th>
                     </tr>
                   </thead>
                   <tbody>
                     {flows.map((flow, index) => {
                       const revenuePerRecipient = flow.delivered > 0 ? flow.revenue / flow.delivered : 0
                       return (
-                        <tr key={flow.id} className={`border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors ${index === 0 ? "bg-emerald-50/30" : ""}`}>
+                        <tr key={flow.id} className={`border-b border-slate-50 dark:border-slate-700/20 last:border-0 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors ${index === 0 ? "bg-emerald-50/30 dark:bg-emerald-500/5" : ""}`}>
                           <td className="py-3.5 px-6">
                             <div className="flex items-center gap-2.5">
                               {index < 3 && (
                                 <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
-                                  index === 0 ? "bg-[#5327F2]/10 text-[#5327F2]" : "bg-slate-100 text-slate-400"
+                                  index === 0 ? "bg-[#5327F2]/10 text-[#5327F2]" : "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500"
                                 }`}>
                                   {index + 1}
                                 </div>
                               )}
-                              <span className="text-sm font-medium text-slate-700 truncate max-w-[220px]">{flow.name}</span>
+                              <span className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate max-w-[220px]">{flow.name}</span>
                             </div>
                           </td>
-                          <td className="text-right text-sm text-slate-600 py-3.5 px-4">{formatNumber(flow.delivered)}</td>
-                          <td className="text-right text-sm text-slate-600 py-3.5 px-4">{flow.openRate.toFixed(1)}%</td>
-                          <td className="text-right text-sm text-slate-600 py-3.5 px-4">{flow.clickRate.toFixed(1)}%</td>
+                          <td className="text-right text-sm text-slate-600 dark:text-slate-300 py-3.5 px-4">{formatNumber(flow.delivered)}</td>
+                          <td className="text-right text-sm text-slate-600 dark:text-slate-300 py-3.5 px-4">{flow.openRate.toFixed(1)}%</td>
+                          <td className="text-right text-sm text-slate-600 dark:text-slate-300 py-3.5 px-4">{flow.clickRate.toFixed(1)}%</td>
                           <td className="text-right text-sm font-semibold text-emerald-600 py-3.5 px-4">{formatCurrency(flow.revenue)}</td>
-                          <td className="text-right text-sm text-slate-600 py-3.5 px-6">{formatCurrency(revenuePerRecipient)}</td>
+                          <td className="text-right text-sm text-slate-600 dark:text-slate-300 py-3.5 px-6">{formatCurrency(revenuePerRecipient)}</td>
                         </tr>
                       )
                     })}
@@ -223,7 +223,7 @@ function SummaryCard({
   label,
   value,
   subtitle,
-  valueColor = "text-slate-800",
+  valueColor = "text-slate-800 dark:text-slate-100",
   isSmallValue = false,
 }: {
   icon: React.ElementType
@@ -236,15 +236,15 @@ function SummaryCard({
   isSmallValue?: boolean
 }) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200/80 p-4 shadow-sm hover:shadow-md transition-shadow duration-200">
+    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-4 shadow-sm dark:shadow-slate-900/20 hover:shadow-md transition-shadow duration-200">
       <div className="flex items-center gap-2 mb-3">
         <div className={`w-7 h-7 rounded-lg ${iconBg} flex items-center justify-center`}>
           <Icon className={`h-3.5 w-3.5 ${iconColor}`} />
         </div>
-        <span className="text-xs text-slate-500 font-medium">{label}</span>
+        <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">{label}</span>
       </div>
       <p className={`${isSmallValue ? "text-sm" : "text-xl"} font-bold ${valueColor} truncate`}>{value}</p>
-      <p className="text-xs text-slate-400 mt-0.5">{subtitle}</p>
+      <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{subtitle}</p>
     </div>
   )
 }

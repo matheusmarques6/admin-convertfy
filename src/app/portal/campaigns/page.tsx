@@ -117,37 +117,37 @@ const CHANNEL_CONFIG = {
 const STATUS_CONFIG: Record<string, { label: string; color: string; dotColor: string }> = {
   draft: {
     label: "Rascunho",
-    color: "bg-slate-100 text-slate-500 border-slate-200",
+    color: "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700/40",
     dotColor: "bg-slate-400"
   },
   pending_review: {
     label: "Em Revisão",
-    color: "bg-blue-50 text-blue-600 border-blue-200",
+    color: "bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-500/20",
     dotColor: "bg-blue-500"
   },
   approved: {
     label: "Aprovada",
-    color: "bg-teal-50 text-teal-600 border-teal-200",
+    color: "bg-teal-50 dark:bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-200 dark:border-teal-500/20",
     dotColor: "bg-teal-500"
   },
   rejected: {
     label: "Rejeitada",
-    color: "bg-orange-50 text-orange-600 border-orange-200",
+    color: "bg-orange-50 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-500/20",
     dotColor: "bg-orange-500"
   },
   scheduled: {
     label: "Agendada",
-    color: "bg-blue-50 text-blue-600 border-blue-200",
+    color: "bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-500/20",
     dotColor: "bg-blue-500"
   },
   sent: {
     label: "Enviada",
-    color: "bg-emerald-50 text-emerald-600 border-emerald-200",
+    color: "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20",
     dotColor: "bg-emerald-500"
   },
   cancelled: {
     label: "Cancelada",
-    color: "bg-red-50 text-red-600 border-red-200",
+    color: "bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 border-red-200 dark:border-red-500/20",
     dotColor: "bg-red-500"
   },
 }
@@ -249,7 +249,7 @@ function StatCard({
   subtitle,
   icon: Icon,
   iconColor = "text-emerald-600",
-  iconBgColor = "bg-emerald-50",
+  iconBgColor = "bg-emerald-50 dark:bg-emerald-500/10",
 }: {
   title: string
   value: string | number
@@ -261,9 +261,9 @@ function StatCard({
   const content = (
     <div className="flex items-center justify-between">
       <div>
-        <p className="text-sm text-slate-500 mb-1">{title}</p>
-        <p className="text-2xl font-bold text-slate-800">{value}</p>
-        {subtitle && <p className="text-xs text-slate-400 mt-1">{subtitle}</p>}
+        <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">{title}</p>
+        <p className="text-2xl font-bold text-slate-800 dark:text-slate-100">{value}</p>
+        {subtitle && <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{subtitle}</p>}
       </div>
       <div className={`rounded-xl p-3 ${iconBgColor}`}>
         <Icon className={`h-6 w-6 ${iconColor}`} />
@@ -272,7 +272,7 @@ function StatCard({
   )
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm p-5 hover:shadow-md transition-shadow">
+    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 p-5 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow">
       {content}
     </div>
   )
@@ -316,7 +316,7 @@ function CampaignCard({
   return (
     <div
       onClick={onClick}
-      className="rounded-lg bg-slate-50 border border-slate-200/80 p-3 cursor-pointer hover:bg-white hover:shadow-sm transition-all group"
+      className="rounded-lg bg-slate-50 dark:bg-[#1A1F2E] border border-slate-200/80 dark:border-slate-700/40 p-3 cursor-pointer hover:bg-white dark:hover:bg-[#151922] hover:shadow-sm dark:hover:shadow-slate-900/20 transition-all group"
     >
       <div className="flex items-start gap-3">
         <div
@@ -328,7 +328,7 @@ function CampaignCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             {campaign.scheduledTime && (
-              <span className="text-xs text-slate-500 font-medium">
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
                 {formatTime(campaign.scheduledTime)}
               </span>
             )}
@@ -336,16 +336,16 @@ function CampaignCard({
               {statusConfig.label}
             </Badge>
           </div>
-          <p className="font-medium text-slate-800 text-sm truncate group-hover:text-[#5327F2] transition-colors">
+          <p className="font-medium text-slate-800 dark:text-slate-100 text-sm truncate group-hover:text-[#5327F2] transition-colors">
             {campaign.name}
           </p>
           {campaign.segmentName && (
-            <p className="text-xs text-slate-500 truncate mt-0.5">
+            <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
               {campaign.segmentName}
             </p>
           )}
           {campaign.recipients && (
-            <p className="text-xs text-slate-500 mt-1">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
               <Users className="h-3 w-3 inline mr-1" />
               {formatNumber(campaign.recipients)} destinatários
             </p>
@@ -643,18 +643,18 @@ export default function PortalCampaignsPage() {
   // ============================================
   if (loading && campaigns.length === 0) {
     return (
-      <div className="min-h-screen bg-slate-50/50 p-6 space-y-6">
+      <div className="min-h-screen bg-slate-50/50 dark:bg-[#0B0E14] p-6 space-y-6">
         <div className="flex items-center justify-between">
-          <Skeleton className="h-10 w-64 bg-white" />
-          <Skeleton className="h-10 w-32 bg-white" />
+          <Skeleton className="h-10 w-64 bg-white dark:bg-[#151922]" />
+          <Skeleton className="h-10 w-32 bg-white dark:bg-[#151922]" />
         </div>
         <div className="grid gap-4 md:grid-cols-4">
           {[1, 2, 3, 4].map((i) => (
-            <Skeleton key={i} className="h-24 rounded-xl bg-white" />
+            <Skeleton key={i} className="h-24 rounded-xl bg-white dark:bg-[#151922]" />
           ))}
         </div>
-        <Skeleton className="h-12 rounded-xl bg-white" />
-        <Skeleton className="h-[500px] rounded-xl bg-white" />
+        <Skeleton className="h-12 rounded-xl bg-white dark:bg-[#151922]" />
+        <Skeleton className="h-[500px] rounded-xl bg-white dark:bg-[#151922]" />
       </div>
     )
   }
@@ -664,14 +664,14 @@ export default function PortalCampaignsPage() {
   // ============================================
   if (error) {
     return (
-      <div className="min-h-screen bg-slate-50/50 flex flex-col items-center justify-center p-6">
-        <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm p-8 text-center max-w-md">
-          <div className="rounded-full bg-red-50 p-4 w-fit mx-auto mb-4">
+      <div className="min-h-screen bg-slate-50/50 dark:bg-[#0B0E14] flex flex-col items-center justify-center p-6">
+        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 p-8 text-center max-w-md">
+          <div className="rounded-full bg-red-50 dark:bg-red-500/10 p-4 w-fit mx-auto mb-4">
             <AlertCircle className="h-10 w-10 text-red-600" />
           </div>
-          <h2 className="text-xl font-semibold text-slate-800 mb-2">Erro ao carregar</h2>
-          <p className="text-slate-500 mb-6">{error}</p>
-          <Button onClick={fetchCampaigns} className="bg-[#5327F2] hover:bg-[#4520D4] text-white shadow-sm">
+          <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-100 mb-2">Erro ao carregar</h2>
+          <p className="text-slate-500 dark:text-slate-400 mb-6">{error}</p>
+          <Button onClick={fetchCampaigns} className="bg-[#5327F2] hover:bg-[#4520D4] text-white shadow-sm dark:shadow-slate-900/20">
             Tentar novamente
           </Button>
         </div>
@@ -690,7 +690,7 @@ export default function PortalCampaignsPage() {
       days.push(
         <div
           key={`empty-${i}`}
-          className="min-h-[120px] bg-slate-50/50 border border-slate-100"
+          className="min-h-[120px] bg-slate-50/50 dark:bg-slate-800/30 border border-slate-100 dark:border-slate-700/30"
         />
       )
     }
@@ -706,22 +706,22 @@ export default function PortalCampaignsPage() {
           key={day}
           onClick={() => handleDayClick(date)}
           className={`
-            min-h-[120px] border border-slate-100 p-2 cursor-pointer transition-all
-            hover:bg-slate-50
-            ${dayIsToday ? "bg-[#5327F2]/5 border-[#5327F2]/30" : "bg-white"}
+            min-h-[120px] border border-slate-100 dark:border-slate-700/30 p-2 cursor-pointer transition-all
+            hover:bg-slate-50 dark:hover:bg-white/[0.06]
+            ${dayIsToday ? "bg-[#5327F2]/5 border-[#5327F2]/30" : "bg-white dark:bg-[#151922]"}
           `}
         >
           <div className="flex items-center justify-between mb-2">
             <span
               className={`
                 text-sm font-medium w-7 h-7 flex items-center justify-center rounded-full
-                ${dayIsToday ? "bg-[#5327F2] text-white" : "text-slate-500"}
+                ${dayIsToday ? "bg-[#5327F2] text-white" : "text-slate-500 dark:text-slate-400"}
               `}
             >
               {day}
             </span>
             {dayCampaigns.length > 3 && (
-              <span className="text-xs text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+              <span className="text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
                 +{dayCampaigns.length - 3}
               </span>
             )}
@@ -760,24 +760,24 @@ export default function PortalCampaignsPage() {
                 min-h-[400px] rounded-xl border p-3
                 ${dayIsToday
                   ? "bg-[#5327F2]/5 border-[#5327F2]/30"
-                  : "bg-white border-slate-200/80"
+                  : "bg-white dark:bg-[#151922] border-slate-200/80 dark:border-slate-700/40"
                 }
               `}
             >
               {/* Day Header */}
-              <div className="text-center mb-3 pb-3 border-b border-slate-200/80">
-                <p className="text-xs text-slate-400 uppercase tracking-wide">
+              <div className="text-center mb-3 pb-3 border-b border-slate-200/80 dark:border-slate-700/40">
+                <p className="text-xs text-slate-400 dark:text-slate-500 uppercase tracking-wide">
                   {WEEK_DAYS[date.getDay()]}
                 </p>
                 <p
                   className={`
                     text-2xl font-bold mt-1
-                    ${dayIsToday ? "text-[#5327F2]" : "text-slate-800"}
+                    ${dayIsToday ? "text-[#5327F2]" : "text-slate-800 dark:text-slate-100"}
                   `}
                 >
                   {date.getDate()}
                 </p>
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-slate-400 dark:text-slate-500">
                   {MONTH_NAMES[date.getMonth()].substring(0, 3)}
                 </p>
               </div>
@@ -785,7 +785,7 @@ export default function PortalCampaignsPage() {
               {/* Campaigns */}
               <div className="space-y-2">
                 {dayCampaigns.length === 0 ? (
-                  <p className="text-xs text-slate-400 text-center py-4">
+                  <p className="text-xs text-slate-400 dark:text-slate-500 text-center py-4">
                     Sem campanhas
                   </p>
                 ) : (
@@ -809,14 +809,14 @@ export default function PortalCampaignsPage() {
   // RENDER: Main
   // ============================================
   return (
-    <div className="min-h-screen bg-slate-50/50 text-slate-800">
+    <div className="min-h-screen bg-slate-50/50 dark:bg-[#0B0E14] text-slate-800 dark:text-slate-100">
       <div className="max-w-[1600px] mx-auto p-6 space-y-6">
 
         {/* ========== HEADER ========== */}
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-slate-800">Calendário de Campanhas</h1>
-            <p className="text-slate-500">
+            <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Calendário de Campanhas</h1>
+            <p className="text-slate-500 dark:text-slate-400">
               Acompanhe todas as campanhas de marketing programadas
             </p>
           </div>
@@ -824,7 +824,7 @@ export default function PortalCampaignsPage() {
             variant="outline"
             onClick={fetchCampaigns}
             disabled={loading}
-            className="bg-white border-slate-200/80 text-slate-800 hover:bg-slate-50 shadow-sm"
+            className="bg-white dark:bg-[#151922] border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-white/[0.06] shadow-sm dark:shadow-slate-900/20"
           >
             <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
             Atualizar
@@ -870,20 +870,20 @@ export default function PortalCampaignsPage() {
         )}
 
         {/* ========== FILTERS & NAVIGATION ========== */}
-        <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm p-4">
+        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 p-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
 
             {/* Left: View Toggle + Navigation */}
             <div className="flex items-center gap-3">
               {/* View Toggle */}
-              <div className="flex rounded-lg bg-slate-100 p-1">
+              <div className="flex rounded-lg bg-slate-100 dark:bg-slate-800 p-1">
                 <button
                   onClick={() => setViewMode("month")}
                   className={`
                     flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all
                     ${viewMode === "month"
                       ? "bg-[#5327F2] text-white shadow-sm"
-                      : "text-slate-500 hover:text-slate-800"
+                      : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
                     }
                   `}
                 >
@@ -896,7 +896,7 @@ export default function PortalCampaignsPage() {
                     flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all
                     ${viewMode === "week"
                       ? "bg-[#5327F2] text-white shadow-sm"
-                      : "text-slate-500 hover:text-slate-800"
+                      : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
                     }
                   `}
                 >
@@ -911,12 +911,12 @@ export default function PortalCampaignsPage() {
                   variant="outline"
                   size="icon"
                   onClick={goToPrev}
-                  className="bg-slate-100 border-slate-200 text-slate-800 hover:bg-slate-200"
+                  className="bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-700"
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
                 <div className="w-44 text-center">
-                  <h2 className="text-[15px] font-semibold text-slate-800">
+                  <h2 className="text-[15px] font-semibold text-slate-800 dark:text-slate-100">
                     {getNavigationTitle()}
                   </h2>
                 </div>
@@ -924,7 +924,7 @@ export default function PortalCampaignsPage() {
                   variant="outline"
                   size="icon"
                   onClick={goToNext}
-                  className="bg-slate-100 border-slate-200 text-slate-800 hover:bg-slate-200"
+                  className="bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-700"
                 >
                   <ChevronRight className="h-4 w-4" />
                 </Button>
@@ -932,7 +932,7 @@ export default function PortalCampaignsPage() {
                   variant="ghost"
                   size="sm"
                   onClick={goToToday}
-                  className="text-slate-500 hover:text-slate-800 hover:bg-slate-100"
+                  className="text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
                 >
                   Hoje
                 </Button>
@@ -943,19 +943,19 @@ export default function PortalCampaignsPage() {
             <div className="flex flex-wrap items-center gap-3">
               {/* Store Filter */}
               <Select value={selectedStore} onValueChange={setSelectedStore}>
-                <SelectTrigger className="w-[160px] h-10 bg-slate-50 border-slate-200 text-slate-800">
-                  <Store className="h-4 w-4 mr-2 text-slate-400" />
+                <SelectTrigger className="w-[160px] h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100">
+                  <Store className="h-4 w-4 mr-2 text-slate-400 dark:text-slate-500" />
                   <SelectValue placeholder="Loja" />
                 </SelectTrigger>
-                <SelectContent className="bg-white border-slate-200">
-                  <SelectItem value="all" className="text-slate-800 hover:bg-slate-50">
+                <SelectContent className="bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40">
+                  <SelectItem value="all" className="text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
                     Todas as lojas
                   </SelectItem>
                   {stores.map((store) => (
                     <SelectItem
                       key={store.id}
                       value={store.id}
-                      className="text-slate-800 hover:bg-slate-50"
+                      className="text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-white/[0.06]"
                     >
                       {store.store_name}
                     </SelectItem>
@@ -965,21 +965,21 @@ export default function PortalCampaignsPage() {
 
               {/* Channel Filter */}
               <Select value={selectedChannel} onValueChange={setSelectedChannel}>
-                <SelectTrigger className="w-[140px] h-10 bg-slate-50 border-slate-200 text-slate-800">
-                  <Mail className="h-4 w-4 mr-2 text-slate-400" />
+                <SelectTrigger className="w-[140px] h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100">
+                  <Mail className="h-4 w-4 mr-2 text-slate-400 dark:text-slate-500" />
                   <SelectValue placeholder="Canal" />
                 </SelectTrigger>
-                <SelectContent className="bg-white border-slate-200">
-                  <SelectItem value="all" className="text-slate-800 hover:bg-slate-50">
+                <SelectContent className="bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40">
+                  <SelectItem value="all" className="text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
                     Todos os canais
                   </SelectItem>
-                  <SelectItem value="email" className="text-slate-800 hover:bg-slate-50">
+                  <SelectItem value="email" className="text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
                     <div className="flex items-center gap-2">
                       <Mail className="h-4 w-4 text-blue-500" />
                       Email
                     </div>
                   </SelectItem>
-                  <SelectItem value="sms" className="text-slate-800 hover:bg-slate-50">
+                  <SelectItem value="sms" className="text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
                     <div className="flex items-center gap-2">
                       <MessageSquare className="h-4 w-4 text-emerald-500" />
                       SMS
@@ -990,33 +990,33 @@ export default function PortalCampaignsPage() {
 
               {/* Status Filter */}
               <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-                <SelectTrigger className="w-[150px] h-10 bg-slate-50 border-slate-200 text-slate-800">
-                  <Filter className="h-4 w-4 mr-2 text-slate-400" />
+                <SelectTrigger className="w-[150px] h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100">
+                  <Filter className="h-4 w-4 mr-2 text-slate-400 dark:text-slate-500" />
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
-                <SelectContent className="bg-white border-slate-200">
-                  <SelectItem value="all" className="text-slate-800 hover:bg-slate-50">
+                <SelectContent className="bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40">
+                  <SelectItem value="all" className="text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
                     Todos os status
                   </SelectItem>
-                  <SelectItem value="scheduled" className="text-slate-800 hover:bg-slate-50">
+                  <SelectItem value="scheduled" className="text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
                     <div className="flex items-center gap-2">
                       <div className="w-2 h-2 rounded-full bg-blue-500" />
                       Agendada
                     </div>
                   </SelectItem>
-                  <SelectItem value="sent" className="text-slate-800 hover:bg-slate-50">
+                  <SelectItem value="sent" className="text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
                     <div className="flex items-center gap-2">
                       <div className="w-2 h-2 rounded-full bg-emerald-500" />
                       Enviada
                     </div>
                   </SelectItem>
-                  <SelectItem value="draft" className="text-slate-800 hover:bg-slate-50">
+                  <SelectItem value="draft" className="text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
                     <div className="flex items-center gap-2">
                       <div className="w-2 h-2 rounded-full bg-slate-400" />
                       Rascunho
                     </div>
                   </SelectItem>
-                  <SelectItem value="cancelled" className="text-slate-800 hover:bg-slate-50">
+                  <SelectItem value="cancelled" className="text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
                     <div className="flex items-center gap-2">
                       <div className="w-2 h-2 rounded-full bg-red-500" />
                       Cancelada
@@ -1031,40 +1031,40 @@ export default function PortalCampaignsPage() {
         {/* ========== LEGEND ========== */}
         <div className="flex flex-wrap items-center gap-6 px-2">
           <div className="flex items-center gap-4">
-            <span className="text-xs text-slate-400 uppercase tracking-wide">Canal:</span>
+            <span className="text-xs text-slate-400 dark:text-slate-500 uppercase tracking-wide">Canal:</span>
             <div className="flex items-center gap-1.5">
               <div className="w-3 h-3 rounded bg-blue-500" />
-              <span className="text-xs text-slate-500">Email</span>
+              <span className="text-xs text-slate-500 dark:text-slate-400">Email</span>
             </div>
             <div className="flex items-center gap-1.5">
               <div className="w-3 h-3 rounded bg-emerald-500" />
-              <span className="text-xs text-slate-500">SMS</span>
+              <span className="text-xs text-slate-500 dark:text-slate-400">SMS</span>
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <span className="text-xs text-slate-400 uppercase tracking-wide">Status:</span>
+            <span className="text-xs text-slate-400 dark:text-slate-500 uppercase tracking-wide">Status:</span>
             {Object.entries(STATUS_CONFIG).map(([key, config]) => (
               <div key={key} className="flex items-center gap-1.5">
                 <div className={`w-2 h-2 rounded-full ${config.dotColor}`} />
-                <span className="text-xs text-slate-500">{config.label}</span>
+                <span className="text-xs text-slate-500 dark:text-slate-400">{config.label}</span>
               </div>
             ))}
           </div>
         </div>
 
         {/* ========== CALENDAR ========== */}
-        <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm overflow-hidden">
+        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 overflow-hidden">
           {viewMode === "month" ? (
             <>
               {/* Week days header */}
-              <div className="grid grid-cols-7 bg-slate-50">
+              <div className="grid grid-cols-7 bg-slate-50 dark:bg-[#1A1F2E]">
                 {WEEK_DAYS.map((day, index) => (
                   <div
                     key={day}
                     className={`
-                      py-3 text-center text-sm font-medium text-slate-500
-                      border-r border-slate-100 last:border-r-0
-                      ${index === 0 || index === 6 ? "text-slate-400" : ""}
+                      py-3 text-center text-sm font-medium text-slate-500 dark:text-slate-400
+                      border-r border-slate-100 dark:border-slate-700/30 last:border-r-0
+                      ${index === 0 || index === 6 ? "text-slate-400 dark:text-slate-500" : ""}
                     `}
                   >
                     {day}
@@ -1085,7 +1085,7 @@ export default function PortalCampaignsPage() {
 
         {/* ========== CAMPAIGN DETAIL MODAL ========== */}
         <Dialog open={!!selectedCampaign} onOpenChange={() => setSelectedCampaign(null)}>
-          <DialogContent className="bg-white border-slate-200/80 text-slate-800 max-w-lg">
+          <DialogContent className="bg-white dark:bg-[#151922] border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 max-w-lg">
             {selectedCampaign && (
               <>
                 <DialogHeader>
@@ -1100,10 +1100,10 @@ export default function PortalCampaignsPage() {
                       })()}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <DialogTitle className="text-xl text-slate-800">
+                      <DialogTitle className="text-xl text-slate-800 dark:text-slate-100">
                         {selectedCampaign.name}
                       </DialogTitle>
-                      <p className="text-sm text-slate-500 mt-1">
+                      <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
                         {selectedCampaign.storeNames && selectedCampaign.storeNames.length > 1
                           ? selectedCampaign.storeNames.join(", ")
                           : selectedCampaign.store?.store_name || "Loja"}{" "}
@@ -1133,82 +1133,82 @@ export default function PortalCampaignsPage() {
 
                   {/* Subject Line */}
                   {selectedCampaign.subjectLine && (
-                    <div className="rounded-lg bg-slate-50 border border-slate-100 p-4">
+                    <div className="rounded-lg bg-slate-50 dark:bg-[#1A1F2E] border border-slate-100 dark:border-slate-700/30 p-4">
                       <div className="flex items-center gap-2 mb-2">
-                        <FileText className="h-4 w-4 text-slate-400" />
-                        <p className="text-xs text-slate-400 uppercase tracking-wide">Assunto</p>
+                        <FileText className="h-4 w-4 text-slate-400 dark:text-slate-500" />
+                        <p className="text-xs text-slate-400 dark:text-slate-500 uppercase tracking-wide">Assunto</p>
                       </div>
-                      <p className="text-sm text-slate-800">{selectedCampaign.subjectLine}</p>
+                      <p className="text-sm text-slate-800 dark:text-slate-100">{selectedCampaign.subjectLine}</p>
                     </div>
                   )}
 
                   {/* Segment */}
                   {selectedCampaign.segmentName && (
-                    <div className="rounded-lg bg-slate-50 border border-slate-100 p-4">
+                    <div className="rounded-lg bg-slate-50 dark:bg-[#1A1F2E] border border-slate-100 dark:border-slate-700/30 p-4">
                       <div className="flex items-center gap-2 mb-2">
-                        <Target className="h-4 w-4 text-slate-400" />
-                        <p className="text-xs text-slate-400 uppercase tracking-wide">Segmento</p>
+                        <Target className="h-4 w-4 text-slate-400 dark:text-slate-500" />
+                        <p className="text-xs text-slate-400 dark:text-slate-500 uppercase tracking-wide">Segmento</p>
                       </div>
-                      <p className="text-sm text-slate-800">{selectedCampaign.segmentName}</p>
+                      <p className="text-sm text-slate-800 dark:text-slate-100">{selectedCampaign.segmentName}</p>
                     </div>
                   )}
 
                   {/* Description */}
                   {selectedCampaign.description && (
                     <div>
-                      <p className="text-xs text-slate-400 uppercase tracking-wide mb-2">Descrição</p>
-                      <p className="text-sm text-slate-500">{selectedCampaign.description}</p>
+                      <p className="text-xs text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-2">Descrição</p>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">{selectedCampaign.description}</p>
                     </div>
                   )}
 
                   {/* Performance Metrics (only for sent campaigns) */}
                   {selectedCampaign.status === "sent" && (
-                    <div className="border-t border-slate-200/80 pt-5">
-                      <p className="text-xs text-slate-400 uppercase tracking-wide mb-4">Performance</p>
+                    <div className="border-t border-slate-200/80 dark:border-slate-700/40 pt-5">
+                      <p className="text-xs text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-4">Performance</p>
                       <div className="grid grid-cols-2 gap-4">
-                        <div className="rounded-lg bg-sky-50 border border-sky-100 p-3">
+                        <div className="rounded-lg bg-sky-50 dark:bg-sky-500/10 border border-sky-100 dark:border-sky-500/20 p-3">
                           <div className="flex items-center gap-2">
                             <Users className="h-4 w-4 text-[#05AFF2]" />
-                            <span className="text-xs text-slate-500">Enviados</span>
+                            <span className="text-xs text-slate-500 dark:text-slate-400">Enviados</span>
                           </div>
-                          <p className="text-lg font-bold text-slate-800 mt-1">
+                          <p className="text-lg font-bold text-slate-800 dark:text-slate-100 mt-1">
                             {formatNumber(selectedCampaign.recipients || 0)}
                           </p>
                         </div>
-                        <div className="rounded-lg bg-emerald-50 border border-emerald-100 p-3">
+                        <div className="rounded-lg bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 p-3">
                           <div className="flex items-center gap-2">
                             <Eye className="h-4 w-4 text-emerald-600" />
-                            <span className="text-xs text-slate-500">Abertura</span>
+                            <span className="text-xs text-slate-500 dark:text-slate-400">Abertura</span>
                           </div>
-                          <p className="text-lg font-bold text-slate-800 mt-1">
+                          <p className="text-lg font-bold text-slate-800 dark:text-slate-100 mt-1">
                             {formatPercent(selectedCampaign.opened || 0, selectedCampaign.delivered || 0)}
                           </p>
                         </div>
-                        <div className="rounded-lg bg-amber-50 border border-amber-100 p-3">
+                        <div className="rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-100 dark:border-amber-500/20 p-3">
                           <div className="flex items-center gap-2">
                             <MousePointerClick className="h-4 w-4 text-amber-600" />
-                            <span className="text-xs text-slate-500">Cliques</span>
+                            <span className="text-xs text-slate-500 dark:text-slate-400">Cliques</span>
                           </div>
-                          <p className="text-lg font-bold text-slate-800 mt-1">
+                          <p className="text-lg font-bold text-slate-800 dark:text-slate-100 mt-1">
                             {formatPercent(selectedCampaign.clicked || 0, selectedCampaign.delivered || 0)}
                           </p>
                         </div>
                         <div className="rounded-lg bg-[#5327F2]/5 border border-[#5327F2]/10 p-3">
                           <div className="flex items-center gap-2">
                             <TrendingUp className="h-4 w-4 text-[#5327F2]" />
-                            <span className="text-xs text-slate-500">Conversões</span>
+                            <span className="text-xs text-slate-500 dark:text-slate-400">Conversões</span>
                           </div>
-                          <p className="text-lg font-bold text-slate-800 mt-1">
+                          <p className="text-lg font-bold text-slate-800 dark:text-slate-100 mt-1">
                             {formatNumber(selectedCampaign.converted || 0)}
                           </p>
                         </div>
                       </div>
                       {(selectedCampaign.revenue || 0) > 0 && (
-                        <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-4 mt-4">
+                        <div className="rounded-lg bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 p-4 mt-4">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
                               <DollarSign className="h-5 w-5 text-emerald-600" />
-                              <span className="text-sm text-slate-500">Receita Gerada</span>
+                              <span className="text-sm text-slate-500 dark:text-slate-400">Receita Gerada</span>
                             </div>
                             <p className="text-xl font-bold text-emerald-600">
                               {formatCurrency(selectedCampaign.revenue || 0)}
@@ -1229,9 +1229,9 @@ export default function PortalCampaignsPage() {
           open={!!selectedDayCampaigns && !selectedCampaign}
           onOpenChange={() => setSelectedDayCampaigns(null)}
         >
-          <DialogContent className="bg-white border-slate-200/80 text-slate-800">
+          <DialogContent className="bg-white dark:bg-[#151922] border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-100">
             <DialogHeader>
-              <DialogTitle className="text-slate-800">
+              <DialogTitle className="text-slate-800 dark:text-slate-100">
                 Campanhas em {selectedDayDate ? formatDate(selectedDayDate) : ""}
               </DialogTitle>
             </DialogHeader>
@@ -1246,7 +1246,7 @@ export default function PortalCampaignsPage() {
                       setSelectedDayCampaigns(null)
                       setSelectedCampaign(campaign)
                     }}
-                    className="flex items-center gap-4 p-4 rounded-xl bg-slate-50 border border-slate-200/80 cursor-pointer hover:bg-white hover:shadow-md transition-all"
+                    className="flex items-center gap-4 p-4 rounded-xl bg-slate-50 dark:bg-[#1A1F2E] border border-slate-200/80 dark:border-slate-700/40 cursor-pointer hover:bg-white dark:hover:bg-[#151922] hover:shadow-md transition-all"
                   >
                     <div
                       className="w-12 h-12 rounded-xl flex items-center justify-center"
@@ -1255,8 +1255,8 @@ export default function PortalCampaignsPage() {
                       <ChannelIcon className="h-6 w-6 text-white" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-slate-800 truncate">{campaign.name}</p>
-                      <p className="text-sm text-slate-500">
+                      <p className="font-medium text-slate-800 dark:text-slate-100 truncate">{campaign.name}</p>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">
                         {campaign.scheduledTime ? formatTime(campaign.scheduledTime) : "Sem horário"} •{" "}
                         {campaign.store?.store_name || "Loja"}
                       </p>

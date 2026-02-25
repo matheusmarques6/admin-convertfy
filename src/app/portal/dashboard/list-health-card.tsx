@@ -11,22 +11,22 @@ export function ListHealthCard({ bounceRate, unsubscribeRate }: ListHealthCardPr
   const score = Math.round((bounceScore * 0.5 + unsubScore * 0.5))
 
   const status = score > 80
-    ? { label: "Tudo certo", color: "text-emerald-600", ringColor: "stroke-emerald-500", bgColor: "bg-emerald-50", iconBg: "bg-emerald-50", iconColor: "text-emerald-600" }
+    ? { label: "Tudo certo", color: "text-emerald-600", ringColor: "stroke-emerald-500", bgColor: "bg-emerald-50 dark:bg-emerald-500/10", iconBg: "bg-emerald-50 dark:bg-emerald-500/10", iconColor: "text-emerald-600" }
     : score > 50
-      ? { label: "Requer atenção", color: "text-amber-600", ringColor: "stroke-amber-500", bgColor: "bg-amber-50", iconBg: "bg-amber-50", iconColor: "text-amber-600" }
-      : { label: "Ação necessária", color: "text-red-600", ringColor: "stroke-red-500", bgColor: "bg-red-50", iconBg: "bg-red-50", iconColor: "text-red-600" }
+      ? { label: "Requer atenção", color: "text-amber-600", ringColor: "stroke-amber-500", bgColor: "bg-amber-50 dark:bg-amber-500/10", iconBg: "bg-amber-50 dark:bg-amber-500/10", iconColor: "text-amber-600" }
+      : { label: "Ação necessária", color: "text-red-600", ringColor: "stroke-red-500", bgColor: "bg-red-50 dark:bg-red-500/10", iconBg: "bg-red-50 dark:bg-red-500/10", iconColor: "text-red-600" }
 
   const radius = 36
   const circumference = 2 * Math.PI * radius
   const progress = (score / 100) * circumference
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition-shadow duration-200">
+    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20 hover:shadow-md transition-shadow duration-200">
       <div className="flex items-center gap-2 mb-4">
         <div className={`w-7 h-7 rounded-lg ${status.iconBg} flex items-center justify-center`}>
           <Shield className={`h-3.5 w-3.5 ${status.iconColor}`} />
         </div>
-        <span className="text-[13px] font-semibold text-slate-800">Saúde da Lista</span>
+        <span className="text-[13px] font-semibold text-slate-800 dark:text-slate-100">Saúde da Lista</span>
       </div>
 
       <div className="flex items-center gap-4">
@@ -36,7 +36,7 @@ export function ListHealthCard({ bounceRate, unsubscribeRate }: ListHealthCardPr
             <circle
               cx="40" cy="40" r={radius}
               fill="none"
-              className="stroke-slate-100"
+              className="stroke-slate-100 dark:stroke-slate-700"
               strokeWidth="6"
             />
             <circle
@@ -61,12 +61,12 @@ export function ListHealthCard({ bounceRate, unsubscribeRate }: ListHealthCardPr
           </div>
           <div className="space-y-1.5">
             <div className="flex justify-between text-xs">
-              <span className="text-slate-500">Bounce rate</span>
-              <span className="text-slate-700 font-medium">{bounceRate.toFixed(2)}%</span>
+              <span className="text-slate-500 dark:text-slate-400">Bounce rate</span>
+              <span className="text-slate-700 dark:text-slate-200 font-medium">{bounceRate.toFixed(2)}%</span>
             </div>
             <div className="flex justify-between text-xs">
-              <span className="text-slate-500">Unsub rate</span>
-              <span className="text-slate-700 font-medium">{unsubscribeRate.toFixed(2)}%</span>
+              <span className="text-slate-500 dark:text-slate-400">Unsub rate</span>
+              <span className="text-slate-700 dark:text-slate-200 font-medium">{unsubscribeRate.toFixed(2)}%</span>
             </div>
           </div>
         </div>

@@ -21,14 +21,14 @@ function StatBlock({
   colorClass?: string
 }) {
   return (
-    <div className="flex items-start gap-3 py-3 border-b border-slate-200/50 last:border-0">
-      <div className="rounded-lg bg-slate-100/50 p-2 mt-0.5">
-        <Icon className="h-4 w-4 text-slate-500" />
+    <div className="flex items-start gap-3 py-3 border-b border-slate-200/50 dark:border-slate-700/30 last:border-0">
+      <div className="rounded-lg bg-slate-100/50 dark:bg-slate-800/50 p-2 mt-0.5">
+        <Icon className="h-4 w-4 text-slate-500 dark:text-slate-400" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-xs text-slate-500">{label}</p>
-        <p className={`text-lg font-bold ${colorClass || "text-slate-800"}`}>{value}</p>
-        {subtitle && <p className="text-xs text-slate-500">{subtitle}</p>}
+        <p className="text-xs text-slate-500 dark:text-slate-400">{label}</p>
+        <p className={`text-lg font-bold ${colorClass || "text-slate-800 dark:text-slate-100"}`}>{value}</p>
+        {subtitle && <p className="text-xs text-slate-500 dark:text-slate-400">{subtitle}</p>}
       </div>
     </div>
   )
@@ -51,13 +51,13 @@ export function AudienceMetrics({ klaviyo, shopify }: AudienceMetricsProps) {
     ? "text-emerald-600"
     : recurringRate >= 15
       ? "text-amber-600"
-      : "text-slate-800"
+      : "text-slate-800 dark:text-slate-100"
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-sm">
+    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20">
       <div className="flex items-center gap-2 mb-2">
-        <Users className="h-4 w-4 text-slate-500" />
-        <h3 className="text-sm font-semibold text-slate-800">Audiência & Clientes</h3>
+        <Users className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+        <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Audiência & Clientes</h3>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6">

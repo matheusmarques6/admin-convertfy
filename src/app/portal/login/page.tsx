@@ -102,33 +102,33 @@ export default function PortalLoginPage() {
       </div>
 
       {/* Right Panel - Login Form */}
-      <div className="flex-1 flex items-center justify-center bg-[#F8F9FB] px-6">
+      <div className="flex-1 flex items-center justify-center bg-[#F8F9FB] dark:bg-[#0B0E14] px-6">
         <div className="w-full max-w-[400px]">
           {/* Mobile Logo */}
           <div className="lg:hidden flex flex-col items-center mb-10">
             <div className="w-14 h-14 rounded-2xl bg-[#5327F2] flex items-center justify-center mb-4 shadow-lg shadow-[#5327F2]/25">
               <span className="text-white font-bold text-xl">C</span>
             </div>
-            <h1 className="text-xl font-bold text-slate-800">Convertfy</h1>
-            <p className="text-slate-500 text-sm">Portal do Cliente</p>
+            <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100">Convertfy</h1>
+            <p className="text-slate-500 dark:text-slate-400 text-sm">Portal do Cliente</p>
           </div>
 
           {/* Form Card */}
-          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-8">
+          <div className="bg-white dark:bg-[#151922] rounded-2xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 p-8">
             <div className="mb-6">
-              <h1 className="text-xl font-semibold text-slate-800 mb-1">Bem-vindo de volta</h1>
-              <p className="text-sm text-slate-500">Entre com suas credenciais para acessar o portal</p>
+              <h1 className="text-xl font-semibold text-slate-800 dark:text-slate-100 mb-1">Bem-vindo de volta</h1>
+              <p className="text-sm text-slate-500 dark:text-slate-400">Entre com suas credenciais para acessar o portal</p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-5">
               {error && (
-                <Alert variant="destructive" className="bg-red-50 border-red-200 text-red-700">
+                <Alert variant="destructive" className="bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/20 text-red-700 dark:text-red-400">
                   <AlertDescription className="text-[13px]">{error}</AlertDescription>
                 </Alert>
               )}
 
               <div className="space-y-2">
-                <Label htmlFor="email" className="text-[13px] font-medium text-slate-700">Email</Label>
+                <Label htmlFor="email" className="text-[13px] font-medium text-slate-700 dark:text-slate-200">Email</Label>
                 <Input
                   id="email"
                   type="email"
@@ -138,12 +138,12 @@ export default function PortalLoginPage() {
                   required
                   disabled={loading}
                   autoComplete="email"
-                  className="h-11 bg-slate-50 border-slate-200 text-slate-800 placeholder:text-slate-400 focus:border-[#5327F2] focus:ring-[#5327F2]/20"
+                  className="h-11 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-[#5327F2] focus:ring-[#5327F2]/20"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="password" className="text-[13px] font-medium text-slate-700">Senha</Label>
+                <Label htmlFor="password" className="text-[13px] font-medium text-slate-700 dark:text-slate-200">Senha</Label>
                 <div className="relative">
                   <Input
                     id="password"
@@ -154,13 +154,13 @@ export default function PortalLoginPage() {
                     required
                     disabled={loading}
                     autoComplete="current-password"
-                    className="h-11 bg-slate-50 border-slate-200 text-slate-800 placeholder:text-slate-400 focus:border-[#5327F2] focus:ring-[#5327F2]/20 pr-10"
+                    className="h-11 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-[#5327F2] focus:ring-[#5327F2]/20 pr-10"
                   />
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="absolute right-0 top-0 h-full px-3 hover:bg-transparent text-slate-400 hover:text-slate-600"
+                    className="absolute right-0 top-0 h-full px-3 hover:bg-transparent text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
                     onClick={() => setShowPassword(!showPassword)}
                     disabled={loading}
                   >
@@ -186,7 +186,7 @@ export default function PortalLoginPage() {
             </form>
 
             <div className="mt-6 text-center">
-              <p className="text-[13px] text-slate-500">
+              <p className="text-[13px] text-slate-500 dark:text-slate-400">
                 Problemas para acessar?{" "}
                 <a href="mailto:suporte@convertfy.com.br" className="text-[#5327F2] hover:text-[#4520D4] font-medium">
                   Entre em contato
@@ -195,7 +195,7 @@ export default function PortalLoginPage() {
             </div>
           </div>
 
-          <p className="mt-6 text-center text-xs text-slate-400">
+          <p className="mt-6 text-center text-xs text-slate-400 dark:text-slate-500">
             &copy; {new Date().getFullYear()} Convertfy. Todos os direitos reservados.
           </p>
         </div>

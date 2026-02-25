@@ -97,7 +97,7 @@ export default function ChangePasswordPage() {
 
   if (checking) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#F8F9FB]">
+      <div className="min-h-screen flex items-center justify-center bg-[#F8F9FB] dark:bg-[#0B0E14]">
         <div className="h-10 w-10 animate-spin rounded-full border-[3px] border-[#5327F2]/20 border-t-[#5327F2]" />
       </div>
     )
@@ -105,13 +105,13 @@ export default function ChangePasswordPage() {
 
   if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#F8F9FB] px-4">
-        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-10 text-center max-w-md">
-          <div className="w-16 h-16 rounded-full bg-emerald-50 flex items-center justify-center mx-auto mb-4">
-            <CheckCircle className="h-8 w-8 text-emerald-600" />
+      <div className="min-h-screen flex items-center justify-center bg-[#F8F9FB] dark:bg-[#0B0E14] px-4">
+        <div className="bg-white dark:bg-[#151922] rounded-2xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 p-10 text-center max-w-md">
+          <div className="w-16 h-16 rounded-full bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center mx-auto mb-4">
+            <CheckCircle className="h-8 w-8 text-emerald-600 dark:text-emerald-400" />
           </div>
-          <h2 className="text-xl font-semibold text-slate-800 mb-2">Senha alterada com sucesso!</h2>
-          <p className="text-slate-500 text-sm">
+          <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-100 mb-2">Senha alterada com sucesso!</h2>
+          <p className="text-slate-500 dark:text-slate-400 text-sm">
             Você será redirecionado para o dashboard em instantes...
           </p>
         </div>
@@ -120,34 +120,34 @@ export default function ChangePasswordPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#F8F9FB] px-4">
+    <div className="min-h-screen flex items-center justify-center bg-[#F8F9FB] dark:bg-[#0B0E14] px-4">
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
           <div className="w-14 h-14 rounded-2xl bg-[#5327F2] flex items-center justify-center mb-4 shadow-lg shadow-[#5327F2]/25">
             <Lock className="h-7 w-7 text-white" />
           </div>
-          <h1 className="text-xl font-bold text-slate-800">Criar Nova Senha</h1>
-          <p className="text-slate-500 text-sm text-center mt-1">
+          <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100">Criar Nova Senha</h1>
+          <p className="text-slate-500 dark:text-slate-400 text-sm text-center mt-1">
             Por segurança, crie uma nova senha para continuar
           </p>
         </div>
 
-        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+        <div className="bg-white dark:bg-[#151922] rounded-2xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 overflow-hidden">
           <div className="px-8 pt-8 pb-4 text-center">
-            <h2 className="text-lg font-semibold text-slate-800">Primeira vez acessando?</h2>
-            <p className="text-sm text-slate-500 mt-1">Escolha uma senha segura para proteger sua conta</p>
+            <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Primeira vez acessando?</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Escolha uma senha segura para proteger sua conta</p>
           </div>
           <div className="px-8 pb-8">
             <form onSubmit={handleSubmit} className="space-y-4">
               {error && (
-                <Alert variant="destructive" className="bg-red-50 border-red-200">
-                  <AlertDescription className="text-red-700 text-[13px]">{error}</AlertDescription>
+                <Alert variant="destructive" className="bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/20">
+                  <AlertDescription className="text-red-700 dark:text-red-400 text-[13px]">{error}</AlertDescription>
                 </Alert>
               )}
 
               <div className="space-y-2">
-                <Label htmlFor="newPassword" className="text-[13px] font-medium text-slate-700">Nova Senha</Label>
+                <Label htmlFor="newPassword" className="text-[13px] font-medium text-slate-700 dark:text-slate-200">Nova Senha</Label>
                 <div className="relative">
                   <Input
                     id="newPassword"
@@ -158,13 +158,13 @@ export default function ChangePasswordPage() {
                     required
                     disabled={loading}
                     autoComplete="new-password"
-                    className="h-11 bg-slate-50 border-slate-200 text-slate-800 placeholder:text-slate-400 focus:border-[#5327F2] focus:ring-[#5327F2]/20 pr-10"
+                    className="h-11 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-[#5327F2] focus:ring-[#5327F2]/20 pr-10"
                   />
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="absolute right-0 top-0 h-full px-3 hover:bg-transparent text-slate-400 hover:text-slate-600"
+                    className="absolute right-0 top-0 h-full px-3 hover:bg-transparent text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
                     onClick={() => setShowPassword(!showPassword)}
                     disabled={loading}
                   >
@@ -174,7 +174,7 @@ export default function ChangePasswordPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="confirmPassword" className="text-[13px] font-medium text-slate-700">Confirmar Senha</Label>
+                <Label htmlFor="confirmPassword" className="text-[13px] font-medium text-slate-700 dark:text-slate-200">Confirmar Senha</Label>
                 <div className="relative">
                   <Input
                     id="confirmPassword"
@@ -185,13 +185,13 @@ export default function ChangePasswordPage() {
                     required
                     disabled={loading}
                     autoComplete="new-password"
-                    className="h-11 bg-slate-50 border-slate-200 text-slate-800 placeholder:text-slate-400 focus:border-[#5327F2] focus:ring-[#5327F2]/20 pr-10"
+                    className="h-11 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-[#5327F2] focus:ring-[#5327F2]/20 pr-10"
                   />
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="absolute right-0 top-0 h-full px-3 hover:bg-transparent text-slate-400 hover:text-slate-600"
+                    className="absolute right-0 top-0 h-full px-3 hover:bg-transparent text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                     disabled={loading}
                   >
@@ -202,7 +202,7 @@ export default function ChangePasswordPage() {
 
               {/* Password Requirements */}
               <div className="space-y-2 text-sm">
-                <p className="font-medium text-slate-500 text-[13px]">Requisitos da senha:</p>
+                <p className="font-medium text-slate-500 dark:text-slate-400 text-[13px]">Requisitos da senha:</p>
                 <ul className="space-y-1.5">
                   <RequirementItem met={hasMinLength}>Mínimo de 8 caracteres</RequirementItem>
                   <RequirementItem met={hasUpperCase}>Uma letra maiúscula</RequirementItem>
@@ -230,7 +230,7 @@ export default function ChangePasswordPage() {
           </div>
         </div>
 
-        <p className="mt-6 text-center text-xs text-slate-400">
+        <p className="mt-6 text-center text-xs text-slate-400 dark:text-slate-500">
           &copy; {new Date().getFullYear()} Convertfy. Todos os direitos reservados.
         </p>
       </div>
@@ -240,8 +240,8 @@ export default function ChangePasswordPage() {
 
 function RequirementItem({ met, children }: { met: boolean; children: React.ReactNode }) {
   return (
-    <li className={`flex items-center gap-2 text-[13px] ${met ? "text-emerald-600" : "text-slate-400"}`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${met ? "bg-emerald-500" : "bg-slate-300"}`} />
+    <li className={`flex items-center gap-2 text-[13px] ${met ? "text-emerald-600 dark:text-emerald-400" : "text-slate-400 dark:text-slate-500"}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${met ? "bg-emerald-500" : "bg-slate-300 dark:bg-slate-600"}`} />
       {children}
     </li>
   )

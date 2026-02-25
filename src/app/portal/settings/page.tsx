@@ -160,12 +160,12 @@ export default function PortalSettingsPage() {
     return (
       <div className="space-y-6">
         <div>
-          <Skeleton className="h-7 w-48 bg-slate-200 mb-2" />
-          <Skeleton className="h-4 w-64 bg-slate-100" />
+          <Skeleton className="h-7 w-48 bg-slate-200 dark:bg-slate-700 mb-2" />
+          <Skeleton className="h-4 w-64 bg-slate-100 dark:bg-slate-800" />
         </div>
         <div className="grid gap-6 md:grid-cols-2">
-          <Skeleton className="h-64 bg-white rounded-xl border border-slate-100" />
-          <Skeleton className="h-64 bg-white rounded-xl border border-slate-100" />
+          <Skeleton className="h-64 bg-white dark:bg-[#151922] rounded-xl border border-slate-100 dark:border-slate-700/30" />
+          <Skeleton className="h-64 bg-white dark:bg-[#151922] rounded-xl border border-slate-100 dark:border-slate-700/30" />
         </div>
       </div>
     )
@@ -175,70 +175,70 @@ export default function PortalSettingsPage() {
     <div className="max-w-[1200px] mx-auto space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-slate-800">Configurações</h1>
-        <p className="text-slate-500 text-sm mt-1">Gerencie suas informações e preferências</p>
+        <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Configurações</h1>
+        <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Gerencie suas informações e preferências</p>
       </div>
 
       {/* Alerts */}
       {error && (
-        <Alert variant="destructive" className="bg-red-50 border-red-200">
+        <Alert variant="destructive" className="bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/20">
           <AlertCircle className="h-4 w-4 text-red-500" />
-          <AlertDescription className="text-red-700 text-[13px]">{error}</AlertDescription>
+          <AlertDescription className="text-red-700 dark:text-red-400 text-[13px]">{error}</AlertDescription>
         </Alert>
       )}
 
       {success && (
-        <Alert className="border-emerald-200 bg-emerald-50">
+        <Alert className="border-emerald-200 dark:border-emerald-500/20 bg-emerald-50 dark:bg-emerald-500/10">
           <CheckCircle className="h-4 w-4 text-emerald-600" />
-          <AlertDescription className="text-emerald-700 text-[13px]">{success}</AlertDescription>
+          <AlertDescription className="text-emerald-700 dark:text-emerald-400 text-[13px]">{success}</AlertDescription>
         </Alert>
       )}
 
       <div className="grid gap-6 md:grid-cols-2">
         {/* Profile */}
-        <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-100">
-            <h3 className="text-[15px] font-semibold text-slate-800 flex items-center gap-2">
+        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700/30">
+            <h3 className="text-[15px] font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
               <User className="h-4 w-4 text-[#5327F2]" />
               Perfil
             </h3>
-            <p className="text-xs text-slate-500 mt-0.5">Suas informações pessoais</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Suas informações pessoais</p>
           </div>
           <div className="p-6 space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="name" className="text-[13px] text-slate-700 font-medium">Nome</Label>
+              <Label htmlFor="name" className="text-[13px] text-slate-700 dark:text-slate-200 font-medium">Nome</Label>
               <Input
                 id="name"
                 value={profile?.name || ""}
                 onChange={(e) => setProfile(prev => prev ? { ...prev, name: e.target.value } : null)}
-                className="h-10 bg-slate-50 border-slate-200 text-slate-800"
+                className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="email" className="text-[13px] text-slate-700 font-medium">Email</Label>
+              <Label htmlFor="email" className="text-[13px] text-slate-700 dark:text-slate-200 font-medium">Email</Label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 dark:text-slate-500" />
                 <Input
                   id="email"
                   value={profile?.email || ""}
                   disabled
-                  className="pl-10 h-10 bg-slate-100 border-slate-200 text-slate-500"
+                  className="pl-10 h-10 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700/40 text-slate-500 dark:text-slate-400"
                 />
               </div>
-              <p className="text-xs text-slate-400">O email não pode ser alterado</p>
+              <p className="text-xs text-slate-400 dark:text-slate-500">O email não pode ser alterado</p>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="phone" className="text-[13px] text-slate-700 font-medium">Telefone</Label>
+              <Label htmlFor="phone" className="text-[13px] text-slate-700 dark:text-slate-200 font-medium">Telefone</Label>
               <div className="relative">
-                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 dark:text-slate-500" />
                 <Input
                   id="phone"
                   value={profile?.phone || ""}
                   onChange={(e) => setProfile(prev => prev ? { ...prev, phone: e.target.value } : null)}
                   placeholder="(11) 99999-9999"
-                  className="pl-10 h-10 bg-slate-50 border-slate-200 text-slate-800"
+                  className="pl-10 h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                 />
               </div>
             </div>
@@ -255,30 +255,30 @@ export default function PortalSettingsPage() {
         </div>
 
         {/* Change Password */}
-        <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-100">
-            <h3 className="text-[15px] font-semibold text-slate-800 flex items-center gap-2">
+        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700/30">
+            <h3 className="text-[15px] font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
               <Lock className="h-4 w-4 text-amber-600" />
               Alterar Senha
             </h3>
-            <p className="text-xs text-slate-500 mt-0.5">Mantenha sua conta segura</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Mantenha sua conta segura</p>
           </div>
           <div className="p-6">
             <form onSubmit={handleChangePassword} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="currentPassword" className="text-[13px] text-slate-700 font-medium">Senha Atual</Label>
+                <Label htmlFor="currentPassword" className="text-[13px] text-slate-700 dark:text-slate-200 font-medium">Senha Atual</Label>
                 <Input
                   id="currentPassword"
                   type="password"
                   value={currentPassword}
                   onChange={(e) => setCurrentPassword(e.target.value)}
                   required
-                  className="h-10 bg-slate-50 border-slate-200 text-slate-800"
+                  className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="newPassword" className="text-[13px] text-slate-700 font-medium">Nova Senha</Label>
+                <Label htmlFor="newPassword" className="text-[13px] text-slate-700 dark:text-slate-200 font-medium">Nova Senha</Label>
                 <Input
                   id="newPassword"
                   type="password"
@@ -286,24 +286,24 @@ export default function PortalSettingsPage() {
                   onChange={(e) => setNewPassword(e.target.value)}
                   required
                   minLength={8}
-                  className="h-10 bg-slate-50 border-slate-200 text-slate-800"
+                  className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100"
                 />
-                <p className="text-xs text-slate-400">Mínimo de 8 caracteres</p>
+                <p className="text-xs text-slate-400 dark:text-slate-500">Mínimo de 8 caracteres</p>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="confirmPassword" className="text-[13px] text-slate-700 font-medium">Confirmar Nova Senha</Label>
+                <Label htmlFor="confirmPassword" className="text-[13px] text-slate-700 dark:text-slate-200 font-medium">Confirmar Nova Senha</Label>
                 <Input
                   id="confirmPassword"
                   type="password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
-                  className="h-10 bg-slate-50 border-slate-200 text-slate-800"
+                  className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100"
                 />
               </div>
 
-              <Button type="submit" disabled={changingPassword} variant="outline" className="border-slate-200 text-slate-700 hover:bg-slate-50">
+              <Button type="submit" disabled={changingPassword} variant="outline" className="border-slate-200 dark:border-slate-700/40 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
                 {changingPassword ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 ) : (
@@ -316,13 +316,13 @@ export default function PortalSettingsPage() {
         </div>
 
         {/* Notifications */}
-        <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm overflow-hidden md:col-span-2">
-          <div className="px-6 py-4 border-b border-slate-100">
-            <h3 className="text-[15px] font-semibold text-slate-800 flex items-center gap-2">
+        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 overflow-hidden md:col-span-2">
+          <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700/30">
+            <h3 className="text-[15px] font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
               <Bell className="h-4 w-4 text-[#05AFF2]" />
               Notificações por Email
             </h3>
-            <p className="text-xs text-slate-500 mt-0.5">Escolha quais notificações deseja receber</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Escolha quais notificações deseja receber</p>
           </div>
           <div className="p-6">
             <div className="space-y-8">
@@ -390,7 +390,7 @@ export default function PortalSettingsPage() {
 function NotifSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <h4 className="text-[13px] font-semibold text-slate-800 mb-4 uppercase tracking-wide">{title}</h4>
+      <h4 className="text-[13px] font-semibold text-slate-800 dark:text-slate-100 mb-4 uppercase tracking-wide">{title}</h4>
       <div className="space-y-4">{children}</div>
     </div>
   )
@@ -410,8 +410,8 @@ function NotifRow({
   return (
     <div className="flex items-center justify-between py-1">
       <div>
-        <p className="text-sm font-medium text-slate-700">{title}</p>
-        <p className="text-xs text-slate-400">{description}</p>
+        <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{title}</p>
+        <p className="text-xs text-slate-400 dark:text-slate-500">{description}</p>
       </div>
       <Switch checked={checked} onCheckedChange={onChange} />
     </div>

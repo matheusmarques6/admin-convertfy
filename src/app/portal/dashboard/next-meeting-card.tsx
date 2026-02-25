@@ -25,14 +25,14 @@ export function NextMeetingCard({ meetings }: NextMeetingCardProps) {
 
   if (!nextMeeting) {
     return (
-      <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition-shadow duration-200">
+      <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200">
         <div className="flex items-center gap-2 mb-3">
-          <div className="flex items-center justify-center h-7 w-7 rounded-lg bg-purple-50">
+          <div className="flex items-center justify-center h-7 w-7 rounded-lg bg-purple-50 dark:bg-purple-500/10">
             <Video className="h-4 w-4 text-purple-600" />
           </div>
-          <span className="text-[13px] text-slate-500 uppercase tracking-wide">Próxima Reunião</span>
+          <span className="text-[13px] text-slate-500 dark:text-slate-400 uppercase tracking-wide">Próxima Reunião</span>
         </div>
-        <p className="text-sm text-slate-500">Nenhuma reunião agendada</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400">Nenhuma reunião agendada</p>
       </div>
     )
   }
@@ -53,17 +53,17 @@ export function NextMeetingCard({ meetings }: NextMeetingCardProps) {
       : meetingDate.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition-shadow duration-200">
+    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200">
       <div className="flex items-center gap-2 mb-3">
-        <div className={`flex items-center justify-center h-7 w-7 rounded-lg ${isWithin24h ? "bg-cyan-50" : "bg-purple-50"}`}>
+        <div className={`flex items-center justify-center h-7 w-7 rounded-lg ${isWithin24h ? "bg-cyan-50 dark:bg-cyan-500/10" : "bg-purple-50 dark:bg-purple-500/10"}`}>
           <Video className={`h-4 w-4 ${isWithin24h ? "text-cyan-600" : "text-purple-600"}`} />
         </div>
-        <span className="text-[13px] text-slate-500 uppercase tracking-wide">Próxima Reunião</span>
+        <span className="text-[13px] text-slate-500 dark:text-slate-400 uppercase tracking-wide">Próxima Reunião</span>
       </div>
 
-      <p className="text-sm font-semibold text-slate-800 mb-1">{nextMeeting.title}</p>
+      <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-1">{nextMeeting.title}</p>
 
-      <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-2">
+      <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 mb-2">
         <Calendar className="h-3 w-3" />
         <span>{dateLabel}</span>
         <span>·</span>
@@ -85,7 +85,7 @@ export function NextMeetingCard({ meetings }: NextMeetingCardProps) {
           href={nextMeeting.meetingUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-50 text-[#05AFF2] hover:bg-cyan-100 transition-colors text-sm"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-50 dark:bg-cyan-500/10 text-[#05AFF2] hover:bg-cyan-100 dark:hover:bg-cyan-500/20 transition-colors text-sm"
         >
           <ExternalLink className="h-3 w-3" />
           Entrar na reunião
