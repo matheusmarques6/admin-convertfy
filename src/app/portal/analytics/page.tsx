@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react"
 import {
-  Store,
   CalendarDays,
   RefreshCw,
   AlertCircle,
@@ -37,18 +36,17 @@ export default function PortalAnalyticsPage() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [selectedStoreId, setSelectedStoreId] = useState<string>(() => {
-    try { return localStorage.getItem("portal_active_store") || "all" } catch { return "all" }
-  })
   const [period, setPeriod] = useState("30d")
 
   const fetchData = useCallback(async (showRefresh = false) => {
     if (showRefresh) setRefreshing(true)
 
     try {
+      let storeId: string | null = null
+      try { storeId = localStorage.getItem("portal_active_store") } catch { /* ignore */ }
       const params = new URLSearchParams({
         period,
-        ...(selectedStoreId !== "all" && { store_id: selectedStoreId }),
+        ...(storeId && { store_id: storeId }),
       })
 
       const response = await fetch(`/api/portal/dashboard?${params}`)
@@ -65,7 +63,7 @@ export default function PortalAnalyticsPage() {
       setLoading(false)
       setRefreshing(false)
     }
-  }, [period, selectedStoreId])
+  }, [period])
 
   useEffect(() => {
     fetchData()
@@ -151,21 +149,6 @@ export default function PortalAnalyticsPage() {
           </div>
 
           <div className="flex items-center gap-3">
-            <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
-              <SelectTrigger className="w-[180px] bg-card border-border text-foreground">
-                <Store className="h-4 w-4 mr-2 text-muted-foreground" />
-                <SelectValue placeholder="Selecione a loja" />
-              </SelectTrigger>
-              <SelectContent className="bg-card border-border">
-                <SelectItem value="all" className="text-foreground hover:bg-muted">Todas as lojas</SelectItem>
-                {data.stores?.map((store) => (
-                  <SelectItem key={store.id} value={store.id} className="text-foreground hover:bg-muted">
-                    {store.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
             <Select value={period} onValueChange={setPeriod}>
               <SelectTrigger className="w-[140px] bg-card border-border text-foreground">
                 <CalendarDays className="h-4 w-4 mr-2 text-muted-foreground" />
