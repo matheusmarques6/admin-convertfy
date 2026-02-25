@@ -172,7 +172,7 @@ export function ImportAsaasButton() {
                           {stats.syncedClients} de {stats.asaasCustomers} clientes
                         </p>
                       </div>
-                      <div className="text-2xl font-bold text-success">
+                      <div className="text-2xl font-bold text-foreground">
                         {stats.asaasCustomers > 0
                           ? Math.round((stats.syncedClients / stats.asaasCustomers) * 100)
                           : 0}%

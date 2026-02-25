@@ -271,7 +271,7 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
             <div className="grid gap-4 md:grid-cols-3">
               <div>
                 <p className="text-xs text-muted-foreground">Valor Mensal</p>
-                <p className="text-2xl font-bold text-success">
+                <p className="text-xl font-semibold text-foreground">
                   {formatCurrency(activeContract.monthly_value)}
                 </p>
               </div>

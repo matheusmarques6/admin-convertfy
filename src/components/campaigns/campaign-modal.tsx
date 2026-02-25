@@ -433,12 +433,12 @@ export function CampaignModal({
                 </div>
 
                 {campaign.revenue && campaign.revenue > 0 && (
-                  <div className="mt-4 bg-green-50 dark:bg-green-950/20 p-4 rounded-lg">
-                    <div className="flex items-center gap-2 text-green-700 dark:text-green-400 mb-1">
-                      <DollarSign className="h-5 w-5" />
-                      <span className="font-medium">Receita Gerada</span>
+                  <div className="mt-4 bg-emerald-500/5 border border-emerald-500/20 p-4 rounded-lg">
+                    <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                      <DollarSign className="h-4 w-4 text-emerald-500" />
+                      <span className="text-sm font-medium">Receita Gerada</span>
                     </div>
-                    <p className="text-2xl font-bold text-green-700 dark:text-green-400">
+                    <p className="text-xl font-semibold text-foreground">
                       R$ {campaign.revenue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                     </p>
                   </div>

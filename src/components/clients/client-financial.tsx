@@ -757,33 +757,42 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
   return (
     <div className="space-y-6">
       {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card className="rounded-xl border bg-card p-6">
-          <p className="text-sm text-muted-foreground mb-1">Total Recebido</p>
-          <p className="text-2xl font-bold text-success">
+      <div className="grid gap-3 md:grid-cols-4">
+        <Card className="rounded-xl border bg-card p-5">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-medium text-muted-foreground">Total Recebido</span>
+            <div className="rounded-full w-2 h-2 bg-emerald-500" />
+          </div>
+          <p className="text-xl font-semibold text-foreground">
             {formatCurrency(computedSummary.paidValue)}
           </p>
-          <p className="text-xs text-muted-foreground mt-2">
+          <p className="text-[11px] text-muted-foreground mt-1">
             {computedSummary.paidCount} cobranças pagas
           </p>
         </Card>
 
-        <Card className="rounded-xl border bg-card p-6">
-          <p className="text-sm text-muted-foreground mb-1">Pendente</p>
-          <p className="text-2xl font-bold text-warning">
+        <Card className="rounded-xl border bg-card p-5">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-medium text-muted-foreground">Pendente</span>
+            <div className="rounded-full w-2 h-2 bg-amber-500" />
+          </div>
+          <p className="text-xl font-semibold text-foreground">
             {formatCurrency(computedSummary.pendingValue)}
           </p>
-          <p className="text-xs text-muted-foreground mt-2">
+          <p className="text-[11px] text-muted-foreground mt-1">
             {computedSummary.pendingCount} cobranças pendentes
           </p>
         </Card>
 
-        <Card className="rounded-xl border bg-card p-6">
-          <p className="text-sm text-muted-foreground mb-1">Vencido</p>
-          <p className="text-2xl font-bold text-destructive">
+        <Card className="rounded-xl border bg-card p-5">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-medium text-muted-foreground">Vencido</span>
+            <div className="rounded-full w-2 h-2 bg-red-500" />
+          </div>
+          <p className="text-xl font-semibold text-foreground">
             {formatCurrency(computedSummary.overdueValue)}
           </p>
-          <p className="text-xs text-muted-foreground mt-2">
+          <p className="text-[11px] text-muted-foreground mt-1">
             {computedSummary.overdueCount} cobranças vencidas
           </p>
         </Card>

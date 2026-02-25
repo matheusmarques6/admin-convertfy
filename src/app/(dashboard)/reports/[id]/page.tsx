@@ -393,7 +393,7 @@ export default function ReportPage() {
                   <TrendingUp className="h-4 w-4 text-emerald-500" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-emerald-500">
+                  <div className="text-2xl font-bold text-foreground">
                     {formatReportCurrency(revenue.totalRevenue)}
                   </div>
                 </CardContent>
@@ -540,7 +540,7 @@ export default function ReportPage() {
                   <MousePointer className="h-4 w-4 text-emerald-500" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-emerald-500">
+                  <div className="text-2xl font-bold text-foreground">
                     {emailPerformance.openRate.toFixed(1)}%
                   </div>
                   {emailPerformance.opened !== undefined && (
@@ -578,7 +578,7 @@ export default function ReportPage() {
                   <TrendingUp className="h-4 w-4 text-destructive" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-destructive">
+                  <div className="text-2xl font-bold text-foreground">
                     {emailPerformance.bounceRate.toFixed(2)}%
                   </div>
                   {emailPerformance.bounced !== undefined && (

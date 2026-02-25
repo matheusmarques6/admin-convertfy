@@ -222,147 +222,137 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
       ) : (
         <>
           {/* Main Metrics */}
-          <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
-            <div className="rounded-xl border border-border bg-card p-5 border-t-2 border-t-success">
-              <p className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium">
-                <TrendingUp className="h-3.5 w-3.5 text-success" />
-                Recebido
-              </p>
-              <p className="text-2xl font-bold text-success mt-2">
+          <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
+            <div className="rounded-xl border border-border bg-card p-4">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-medium text-muted-foreground">Recebido</span>
+                <div className="rounded-full p-1.5 bg-emerald-500/10">
+                  <TrendingUp className="h-3 w-3 text-emerald-500" />
+                </div>
+              </div>
+              <p className="text-xl font-semibold tracking-tight text-foreground">
                 {formatCurrency(data?.summary.received || 0)}
               </p>
-              <p className="text-xs text-muted-foreground mt-1.5">
+              <p className="text-[11px] text-muted-foreground mt-1">
                 {data?.counts.received || 0} cobranças pagas
               </p>
             </div>
 
-            <div className="rounded-xl border border-border bg-card p-5 border-t-2 border-t-warning">
-              <p className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium">
-                <Clock className="h-3.5 w-3.5 text-warning" />
-                Pendente
-              </p>
-              <p className="text-2xl font-bold text-warning mt-2">
+            <div className="rounded-xl border border-border bg-card p-4">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-medium text-muted-foreground">Pendente</span>
+                <div className="rounded-full p-1.5 bg-amber-500/10">
+                  <Clock className="h-3 w-3 text-amber-500" />
+                </div>
+              </div>
+              <p className="text-xl font-semibold tracking-tight text-foreground">
                 {formatCurrency(data?.summary.pending || 0)}
               </p>
-              <p className="text-xs text-muted-foreground mt-1.5">
+              <p className="text-[11px] text-muted-foreground mt-1">
                 {data?.counts.pending || 0} cobranças a receber
               </p>
             </div>
 
-            <div className="rounded-xl border border-border bg-card p-5 border-t-2 border-t-destructive">
-              <p className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium">
-                <AlertCircle className="h-3.5 w-3.5 text-destructive" />
-                Vencido
-              </p>
-              <p className="text-2xl font-bold text-destructive mt-2">
+            <div className="rounded-xl border border-border bg-card p-4">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-medium text-muted-foreground">Vencido</span>
+                <div className="rounded-full p-1.5 bg-red-500/10">
+                  <AlertCircle className="h-3 w-3 text-red-500" />
+                </div>
+              </div>
+              <p className="text-xl font-semibold tracking-tight text-foreground">
                 {formatCurrency(data?.summary.overdue || 0)}
               </p>
-              <p className="text-xs text-muted-foreground mt-1.5">
+              <p className="text-[11px] text-muted-foreground mt-1">
                 {data?.counts.overdue || 0} cobranças vencidas
               </p>
             </div>
 
-            <div className="rounded-xl border border-border bg-card p-5 border-t-2 border-t-foreground">
-              <p className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium">
-                <DollarSign className="h-3.5 w-3.5" />
-                Total Período
-              </p>
-              <p className="text-2xl font-bold text-foreground mt-2">
+            <div className="rounded-xl border border-border bg-card p-4">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-medium text-muted-foreground">Total Período</span>
+                <div className="rounded-full p-1.5 bg-muted">
+                  <DollarSign className="h-3 w-3 text-foreground" />
+                </div>
+              </div>
+              <p className="text-xl font-semibold tracking-tight text-foreground">
                 {formatCurrency((data?.summary.received || 0) + (data?.summary.pending || 0))}
               </p>
-              <p className="text-xs text-muted-foreground mt-1.5">
+              <p className="text-[11px] text-muted-foreground mt-1">
                 {data?.counts.total || 0} cobranças no período
               </p>
             </div>
 
-            <div className="rounded-xl border border-border bg-card p-5 border-t-2 border-t-primary">
-              <p className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium">
-                <Repeat className="h-3.5 w-3.5 text-primary" />
-                MRR
-              </p>
-              <p className="text-2xl font-bold text-primary mt-2">
+            <div className="rounded-xl border border-border bg-card p-4">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-medium text-muted-foreground">MRR</span>
+                <div className="rounded-full p-1.5 bg-primary/10">
+                  <Repeat className="h-3 w-3 text-primary" />
+                </div>
+              </div>
+              <p className="text-xl font-semibold tracking-tight text-foreground">
                 {formatCurrency(data?.connected && data?.asaasMrr ? data.asaasMrr : mrr)}
               </p>
-              <p className="text-xs text-muted-foreground mt-1.5">
+              <p className="text-[11px] text-muted-foreground mt-1">
                 Receita recorrente mensal
               </p>
             </div>
           </div>
 
-          {/* Secondary Metrics */}
-          <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-            <div className="rounded-xl border border-border bg-card p-5">
-              <p className="text-xs text-muted-foreground">Clientes Asaas</p>
-              <p className="text-xl font-bold flex items-center gap-2 mt-2 text-foreground">
-                <Users className="h-4 w-4 text-primary" />
-                {data?.summary.totalClients || 0}
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-border bg-card p-5">
-              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Users className="h-3.5 w-3.5 text-destructive" />
-                Clientes Inadimplentes
-              </p>
-              <p className="text-xl font-bold text-destructive mt-2">
-                {data?.inadimplentes?.totalClients || 0}
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                {data?.inadimplentes?.totalCharges || 0} cobranças ·{formatCurrency(data?.inadimplentes?.totalValue || 0)}
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-border bg-card p-5">
-              <p className="text-xs text-muted-foreground">Assinaturas Ativas</p>
-              <p className="text-xl font-bold flex items-center gap-2 mt-2 text-foreground">
-                <Repeat className="h-4 w-4 text-primary" />
-                {data?.summary.activeSubscriptions || 0}
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-border bg-card p-5">
-              <p className="text-xs text-muted-foreground">Estornado</p>
-              <p className="text-xl font-bold flex items-center gap-2 text-muted-foreground mt-2">
-                {formatCurrency(data?.summary.refunded || 0)}
-              </p>
-            </div>
-          </div>
-
-          {/* By Payment Type */}
+          {/* Secondary row: clients, inadimplentes, subscriptions, refunded + payment methods */}
           <div className="rounded-xl border border-border bg-card">
-            <div className="p-5 pb-3">
-              <h3 className="text-sm font-medium text-foreground">Faturamento por Método</h3>
+            <div className="grid grid-cols-2 lg:grid-cols-4 divide-x divide-border">
+              <div className="p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">Clientes Asaas</span>
+                </div>
+                <p className="text-lg font-semibold text-foreground">{data?.summary.totalClients || 0}</p>
+              </div>
+              <div className="p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <AlertCircle className="h-3.5 w-3.5 text-red-500" />
+                  <span className="text-xs text-muted-foreground">Inadimplentes</span>
+                </div>
+                <p className="text-lg font-semibold text-foreground">{data?.inadimplentes?.totalClients || 0}</p>
+                <p className="text-[11px] text-muted-foreground">
+                  {data?.inadimplentes?.totalCharges || 0} cobranças · {formatCurrency(data?.inadimplentes?.totalValue || 0)}
+                </p>
+              </div>
+              <div className="p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <Repeat className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">Assinaturas Ativas</span>
+                </div>
+                <p className="text-lg font-semibold text-foreground">{data?.summary.activeSubscriptions || 0}</p>
+              </div>
+              <div className="p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">Estornado</span>
+                </div>
+                <p className="text-lg font-semibold text-foreground">{formatCurrency(data?.summary.refunded || 0)}</p>
+              </div>
             </div>
-            <div className="px-5 pb-5">
-              <div className="grid gap-4 md:grid-cols-3">
-                <div className="flex items-center gap-3 rounded-lg bg-muted/40 p-3">
-                  <div className="rounded-lg p-2 bg-success/10">
-                    <QrCode className="h-4 w-4 text-success" />
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">PIX</p>
-                    <p className="text-base font-semibold text-foreground">{formatCurrency(data?.byType.PIX || 0)}</p>
-                  </div>
-                </div>
 
-                <div className="flex items-center gap-3 rounded-lg bg-muted/40 p-3">
-                  <div className="rounded-lg p-2 bg-primary/10">
-                    <FileText className="h-4 w-4 text-primary" />
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Boleto</p>
-                    <p className="text-base font-semibold text-foreground">{formatCurrency(data?.byType.BOLETO || 0)}</p>
-                  </div>
+            {/* Payment Methods */}
+            <div className="border-t border-border px-4 py-3">
+              <div className="flex items-center gap-6 flex-wrap">
+                <span className="text-xs font-medium text-muted-foreground">Por método:</span>
+                <div className="flex items-center gap-2">
+                  <QrCode className="h-3.5 w-3.5 text-emerald-500" />
+                  <span className="text-xs text-muted-foreground">PIX</span>
+                  <span className="text-sm font-medium text-foreground">{formatCurrency(data?.byType.PIX || 0)}</span>
                 </div>
-
-                <div className="flex items-center gap-3 rounded-lg bg-muted/40 p-3">
-                  <div className="rounded-lg p-2 bg-warning/10">
-                    <CreditCard className="h-4 w-4 text-warning" />
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Cartão</p>
-                    <p className="text-base font-semibold text-foreground">{formatCurrency(data?.byType.CREDIT_CARD || 0)}</p>
-                  </div>
+                <div className="flex items-center gap-2">
+                  <FileText className="h-3.5 w-3.5 text-primary" />
+                  <span className="text-xs text-muted-foreground">Boleto</span>
+                  <span className="text-sm font-medium text-foreground">{formatCurrency(data?.byType.BOLETO || 0)}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CreditCard className="h-3.5 w-3.5 text-amber-500" />
+                  <span className="text-xs text-muted-foreground">Cartão</span>
+                  <span className="text-sm font-medium text-foreground">{formatCurrency(data?.byType.CREDIT_CARD || 0)}</span>
                 </div>
               </div>
             </div>

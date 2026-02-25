@@ -248,7 +248,7 @@ export function SubscriptionsManager() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-emerald-500">
+            <div className="text-2xl font-bold text-foreground">
               {activeSubscriptions.length}
             </div>
           </CardContent>

@@ -33,7 +33,6 @@ export function DashboardMetrics({ metrics }: DashboardMetricsProps) {
     icon: React.ElementType
     iconColor: string
     iconBg: string
-    accentColor: string
   }> = [
     {
       title: "Faturamento",
@@ -41,9 +40,8 @@ export function DashboardMetrics({ metrics }: DashboardMetricsProps) {
       change: "+12.5%",
       changeType: "positive" as const,
       icon: DollarSign,
-      iconColor: "text-success",
-      iconBg: "bg-success/10",
-      accentColor: "border-t-success",
+      iconColor: "text-emerald-500",
+      iconBg: "bg-emerald-500/10",
     },
     {
       title: "Clientes Ativos",
@@ -53,16 +51,14 @@ export function DashboardMetrics({ metrics }: DashboardMetricsProps) {
       icon: Users,
       iconColor: "text-primary",
       iconBg: "bg-primary/10",
-      accentColor: "border-t-primary",
     },
     {
       title: "Pipeline",
       value: formatCurrency(metrics.pipelineValue),
       subtitle: `${metrics.totalDeals} deals ativos`,
       icon: Target,
-      iconColor: "text-warning",
-      iconBg: "bg-warning/10",
-      accentColor: "border-t-warning",
+      iconColor: "text-amber-500",
+      iconBg: "bg-amber-500/10",
     },
     {
       title: "A Receber",
@@ -70,44 +66,40 @@ export function DashboardMetrics({ metrics }: DashboardMetricsProps) {
       icon: Clock,
       iconColor: "text-muted-foreground",
       iconBg: "bg-muted",
-      accentColor: "border-t-muted-foreground",
     },
   ]
 
   return (
-    <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+    <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
       {cards.map((card) => (
         <div
           key={card.title}
-          className={cn(
-            "rounded-xl border border-border bg-card p-5 border-t-2 transition-shadow hover:shadow-sm",
-            card.accentColor
-          )}
+          className="rounded-xl border border-border bg-card p-4"
         >
-          <div className="flex flex-row items-center justify-between mb-3">
-            <span className="text-sm font-medium text-muted-foreground">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-medium text-muted-foreground">
               {card.title}
             </span>
-            <div className={cn("rounded-lg p-1.5", card.iconBg)}>
-              <card.icon className={cn("h-3.5 w-3.5", card.iconColor)} />
+            <div className={cn("rounded-full p-1.5", card.iconBg)}>
+              <card.icon className={cn("h-3 w-3", card.iconColor)} />
             </div>
           </div>
-          <div className="text-2xl font-bold tracking-tight text-foreground">{card.value}</div>
+          <div className="text-xl font-semibold tracking-tight text-foreground">{card.value}</div>
           {card.change && (
             <p className={cn(
-              "text-xs flex items-center gap-1 mt-1.5",
-              card.changeType === "positive" ? "text-success" : "text-destructive"
+              "text-xs flex items-center gap-1 mt-1",
+              card.changeType === "positive" ? "text-emerald-500" : "text-red-500"
             )}>
               {card.changeType === "positive" ? (
                 <TrendingUp className="h-3 w-3" />
               ) : (
                 <TrendingDown className="h-3 w-3" />
               )}
-              {card.change} vs mes anterior
+              {card.change} vs mês anterior
             </p>
           )}
           {card.subtitle && (
-            <p className="text-xs text-muted-foreground mt-1.5">{card.subtitle}</p>
+            <p className="text-[11px] text-muted-foreground mt-1">{card.subtitle}</p>
           )}
         </div>
       ))}
@@ -121,7 +113,7 @@ export function DashboardMetrics({ metrics }: DashboardMetricsProps) {
           <div>
             <p className="text-sm font-medium text-destructive">Pagamentos em Atraso</p>
             <p className="text-xs text-muted-foreground">
-              Voce tem {formatCurrency(metrics.overduePayments)} em pagamentos vencidos
+              Você tem {formatCurrency(metrics.overduePayments)} em pagamentos vencidos
             </p>
           </div>
         </div>

@@ -273,13 +273,13 @@ export default async function DashboardPage() {
       {/* Quick Actions */}
       <QuickActions />
 
+      {/* Revenue Banner - Resultado Total Klaviyo (principal) */}
+      <TotalRevenueBanner />
+
       {/* Financial KPIs */}
       <Suspense fallback={<MetricsSkeleton />}>
         <BillingMetrics mrr={data.mrr} />
       </Suspense>
-
-      {/* Revenue Banner */}
-      <TotalRevenueBanner />
 
       {/* Main Content: Charts + Sidebar */}
       <div className="grid gap-6 lg:grid-cols-7">
