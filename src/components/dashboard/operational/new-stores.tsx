@@ -3,7 +3,6 @@
 import Link from "next/link"
 import { Store } from "lucide-react"
 import { CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Progress } from "@/components/ui/progress"
@@ -62,24 +61,24 @@ interface NewStoresProps {
 
 export function NewStores({ stores }: NewStoresProps) {
   return (
-    <GlowCard color="success" intensity="subtle">
-      <CardHeader className="pb-3">
+    <div className="rounded-xl border bg-card">
+      <CardHeader className="p-5 pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Store className="h-4 w-4 text-success" />
-            <CardTitle className="text-base">Lojas para Implementação</CardTitle>
+            <CardTitle className="text-sm font-medium">Lojas para Implementação</CardTitle>
           </div>
           {stores.length > 0 && (
-            <Badge variant="secondary" className="rounded-full">
+            <Badge variant="secondary" className="rounded-full text-xs">
               {stores.length}
             </Badge>
           )}
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="px-5 pb-5">
         {stores.length > 0 ? (
           <ScrollArea className="h-[300px] pr-4">
-            <div className="space-y-3">
+            <div className="space-y-2">
               {stores.map((store) => {
                 const client = Array.isArray(store.client) ? store.client[0] : store.client
                 const onboarding = store.onboardings?.[0]
@@ -94,36 +93,36 @@ export function NewStores({ stores }: NewStoresProps) {
                     key={store.id}
                     href={`/stores/${store.id}`}
                     className={cn(
-                      "block p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors",
-                      hasNoOnboarding && "border border-warning/30"
+                      "block p-3 rounded-lg border border-border/50 hover:bg-muted/30 transition-colors",
+                      hasNoOnboarding && "border-warning/30"
                     )}
                   >
                     <div className="flex items-start gap-3">
-                      <div className="rounded-lg p-2 bg-success/10 shrink-0">
-                        <Store className="h-4 w-4 text-success" />
+                      <div className="rounded-md p-1.5 bg-success/10 shrink-0">
+                        <Store className="h-3.5 w-3.5 text-success" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <p className="text-sm font-medium truncate">{store.store_name}</p>
+                          <p className="text-[13px] font-medium truncate">{store.store_name}</p>
                           <Badge
                             variant="secondary"
-                            className={cn("text-[10px] px-1.5 py-0 shrink-0", platform.color)}
+                            className={cn("text-[10px] h-5 px-2 shrink-0", platform.color)}
                           >
                             {platform.label}
                           </Badge>
                         </div>
                         {client && (
-                          <p className="text-xs text-muted-foreground truncate mt-0.5">
+                          <p className="text-[11px] text-muted-foreground truncate mt-0.5">
                             {client.name}
                           </p>
                         )}
 
                         {onboarding ? (
-                          <div className="mt-2 space-y-1">
+                          <div className="mt-1.5 space-y-1">
                             <div className="flex items-center justify-between">
                               <Badge
                                 variant="secondary"
-                                className={cn("text-[10px] px-1.5 py-0", onboardingStatus?.color)}
+                                className={cn("text-[10px] h-5 px-2", onboardingStatus?.color)}
                               >
                                 {onboardingStatus?.label} {onboarding.progress_percent}%
                               </Badge>
@@ -133,11 +132,11 @@ export function NewStores({ stores }: NewStoresProps) {
                                 </span>
                               )}
                             </div>
-                            <Progress value={onboarding.progress_percent} className="h-1.5" />
+                            <Progress value={onboarding.progress_percent} className="h-1" />
                           </div>
                         ) : (
-                          <div className="mt-2">
-                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-yellow-500/10 text-yellow-600">
+                          <div className="mt-1.5">
+                            <Badge variant="secondary" className="text-[10px] h-5 px-2 bg-yellow-500/10 text-yellow-600">
                               Sem onboarding
                             </Badge>
                             <span className="text-[10px] text-muted-foreground ml-2">
@@ -159,6 +158,6 @@ export function NewStores({ stores }: NewStoresProps) {
           </div>
         )}
       </CardContent>
-    </GlowCard>
+    </div>
   )
 }

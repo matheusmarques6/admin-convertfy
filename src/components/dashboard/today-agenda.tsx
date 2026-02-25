@@ -6,7 +6,6 @@ import { ptBR } from "date-fns/locale"
 import { Video, ExternalLink, Calendar, ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import type { Meeting } from "@/types"
@@ -30,14 +29,14 @@ export function TodayAgenda({ meetings }: TodayAgendaProps) {
   const now = new Date()
 
   return (
-    <GlowCard color="info" intensity="subtle">
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center justify-between text-base">
+    <div className="rounded-xl border bg-card">
+      <CardHeader className="p-5 pb-3">
+        <CardTitle className="text-sm font-medium flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Calendar className="h-4 w-4 text-primary" />
+            <Calendar className="h-4 w-4 text-[#5327F2]" />
             Agenda de Hoje
           </div>
-          <Button variant="ghost" size="sm" className="text-xs h-7" asChild>
+          <Button variant="ghost" size="sm" className="text-[11px] text-muted-foreground hover:text-[#5327F2] h-7" asChild>
             <Link href="/meetings?view=calendar">
               Ver calendário
               <ArrowRight className="ml-1 h-3 w-3" />
@@ -47,8 +46,8 @@ export function TodayAgenda({ meetings }: TodayAgendaProps) {
       </CardHeader>
       <CardContent>
         {todayMeetings.length === 0 ? (
-          <div className="text-center py-4 text-muted-foreground text-sm">
-            <Video className="h-8 w-8 mx-auto mb-1.5 opacity-30" />
+          <div className="text-center py-6 text-muted-foreground text-sm">
+            <Video className="h-8 w-8 mx-auto mb-1.5 opacity-20" />
             <p>Nenhuma reunião hoje</p>
           </div>
         ) : (
@@ -63,8 +62,8 @@ export function TodayAgenda({ meetings }: TodayAgendaProps) {
                 <div
                   key={meeting.id}
                   className={cn(
-                    "flex items-center justify-between p-2.5 rounded-lg border transition-colors",
-                    isHappeningNow && "border-primary bg-primary/5"
+                    "flex items-center justify-between p-2.5 rounded-lg border border-border/50 hover:border-border transition-colors",
+                    isHappeningNow && "border-[#5327F2]/30 bg-[#5327F2]/5"
                   )}
                 >
                   <div className="flex items-center gap-3 min-w-0">
@@ -81,7 +80,7 @@ export function TodayAgenda({ meetings }: TodayAgendaProps) {
                       <div className="flex items-center gap-1.5">
                         <p className="text-sm font-medium truncate">{meeting.title}</p>
                         {isHappeningNow && (
-                          <Badge variant="default" className="text-[10px] h-4">Agora</Badge>
+                          <Badge variant="default" className="bg-[#5327F2] text-white text-[10px] h-4">Agora</Badge>
                         )}
                       </div>
                       <p className="text-xs text-muted-foreground">
@@ -103,6 +102,6 @@ export function TodayAgenda({ meetings }: TodayAgendaProps) {
           </div>
         )}
       </CardContent>
-    </GlowCard>
+    </div>
   )
 }

@@ -176,12 +176,12 @@ export function Header({ user: userProp }: HeaderProps) {
   }
 
   return (
-    <header className="sticky top-0 z-40 flex h-16 items-center gap-4 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-6">
+    <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b border-border/50 bg-background/80 backdrop-blur-xl px-6">
       {/* Mobile Menu */}
       <Sheet>
         <SheetTrigger asChild>
-          <Button variant="ghost" size="icon" className="md:hidden">
-            <Menu className="h-5 w-5" />
+          <Button variant="ghost" size="icon" className="md:hidden h-8 w-8">
+            <Menu className="h-4 w-4" />
           </Button>
         </SheetTrigger>
         <SheetContent side="left" className="p-0 w-[260px]">
@@ -190,46 +190,44 @@ export function Header({ user: userProp }: HeaderProps) {
       </Sheet>
 
       {/* Page Title */}
-      <h1 className="text-lg font-semibold truncate">{getPageTitle()}</h1>
+      <h1 className="text-sm font-medium text-foreground/80 truncate">{getPageTitle()}</h1>
 
       {/* Spacer */}
       <div className="flex-1" />
 
       {/* Actions */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1">
         {/* Theme Toggle */}
         <Button
           variant="ghost"
           size="icon"
+          className="h-8 w-8 text-muted-foreground hover:text-foreground"
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
         >
-          <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-          <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+          <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+          <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
           <span className="sr-only">Alternar tema</span>
         </Button>
 
         {/* Notifications */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="relative">
-              <Bell className="h-5 w-5" />
+            <Button variant="ghost" size="icon" className="relative h-8 w-8 text-muted-foreground hover:text-foreground">
+              <Bell className="h-4 w-4" />
               {unreadCount > 0 && (
-                <Badge
-                  variant="destructive"
-                  className="absolute -top-1 -right-1 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs"
-                >
+                <span className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-[#5327F2] flex items-center justify-center text-[10px] font-medium text-white">
                   {unreadCount > 9 ? "9+" : unreadCount}
-                </Badge>
+                </span>
               )}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-80">
             <DropdownMenuLabel className="flex items-center justify-between">
-              Notificações
+              <span className="text-sm">Notificações</span>
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-auto p-0 text-xs text-primary"
+                className="h-auto p-0 text-xs text-[#5327F2] hover:text-[#5327F2]/80"
                 onClick={markAllAsRead}
                 disabled={unreadCount === 0}
               >
@@ -240,7 +238,7 @@ export function Header({ user: userProp }: HeaderProps) {
 
             {isLoading ? (
               <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
               </div>
             ) : notifications.length === 0 ? (
               <div className="py-8 text-center text-sm text-muted-foreground">
@@ -250,7 +248,7 @@ export function Header({ user: userProp }: HeaderProps) {
               notifications.map((notification) => (
                 <DropdownMenuItem
                   key={notification.id}
-                  className={`flex flex-col items-start p-3 cursor-pointer ${notification.read ? 'opacity-60' : ''}`}
+                  className={`flex flex-col items-start p-3 cursor-pointer ${notification.read ? 'opacity-50' : ''}`}
                   onClick={() => markAsRead(notification.id)}
                 >
                   <div className="flex items-center justify-between w-full">
@@ -259,12 +257,12 @@ export function Header({ user: userProp }: HeaderProps) {
                       {notification.title}
                       {notification.read && <Check className="h-3 w-3 text-muted-foreground" />}
                     </span>
-                    <span className="text-xs text-muted-foreground">
+                    <span className="text-[11px] text-muted-foreground">
                       {getTimeAgo(notification.created_at)}
                     </span>
                   </div>
                   {notification.body && (
-                    <span className="text-xs text-muted-foreground mt-1">
+                    <span className="text-xs text-muted-foreground mt-1 line-clamp-2">
                       {notification.body}
                     </span>
                   )}
@@ -273,7 +271,7 @@ export function Header({ user: userProp }: HeaderProps) {
             )}
 
             <DropdownMenuSeparator />
-            <DropdownMenuItem asChild className="justify-center text-primary cursor-pointer">
+            <DropdownMenuItem asChild className="justify-center text-[#5327F2] cursor-pointer text-xs">
               <Link href="/notifications">
                 Ver todas as notificações
               </Link>

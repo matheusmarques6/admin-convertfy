@@ -3,7 +3,6 @@
 import Link from "next/link"
 import { Calendar, AlertCircle, Clock, FileText, HeartPulse } from "lucide-react"
 import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -39,15 +38,14 @@ export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps)
   const totalAlerts = alerts.length
 
   return (
-    <GlowCard color="warning" intensity="subtle">
-      <CardHeader className="pb-3">
+    <div className="rounded-xl border bg-card">
+      <CardHeader className="p-5 pb-3">
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle className="text-base">Alertas e Lembretes</CardTitle>
-            <CardDescription>Itens que precisam da sua atenção</CardDescription>
+            <CardTitle className="text-sm font-medium">Alertas e Lembretes</CardTitle>
           </div>
           {totalAlerts > 0 && (
-            <Badge variant="destructive" className="rounded-full">
+            <Badge variant="destructive" className="bg-destructive/10 text-destructive border-0 rounded-full text-xs px-2 h-5">
               {totalAlerts}
             </Badge>
           )}
@@ -62,9 +60,9 @@ export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps)
               return (
                 <div
                   key={alert.id}
-                  className="flex items-start gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+                  className="flex items-start gap-3 p-2.5 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors"
                 >
-                  <div className={`rounded-lg p-2 ${
+                  <div className={`rounded-md p-1.5 ${
                     alert.severity === "high" ? "bg-destructive/10" :
                     alert.severity === "medium" ? "bg-warning/10" : "bg-muted"
                   }`}>
@@ -74,12 +72,12 @@ export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps)
                     }`} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium">{alert.title}</p>
+                    <p className="text-[13px] font-medium">{alert.title}</p>
                     <p className="text-xs text-muted-foreground truncate">
                       {alert.description}
                     </p>
                   </div>
-                  <Badge variant={getSeverityColor(alert.severity)} className="shrink-0">
+                  <Badge variant={getSeverityColor(alert.severity)} className="shrink-0 text-[10px] h-5 px-2">
                     {alert.severity === "high" ? "Urgente" :
                      alert.severity === "medium" ? "Atenção" : "Baixo"}
                   </Badge>
@@ -96,7 +94,7 @@ export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps)
         {/* Upcoming Meetings */}
         {meetings.length > 0 && (
           <>
-            <div className="flex items-center gap-2 pt-2">
+            <div className="flex items-center gap-2 pt-3 mt-3 border-t border-border/50">
               <Calendar className="h-4 w-4 text-muted-foreground" />
               <span className="text-sm font-medium">Próximas Reuniões</span>
             </div>
@@ -125,6 +123,6 @@ export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps)
           </>
         )}
       </CardContent>
-    </GlowCard>
+    </div>
   )
 }

@@ -65,18 +65,18 @@ export function OperationalMetrics({ metrics }: OperationalMetricsProps) {
   ]
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+    <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
       {cards.map((card) => (
-        <GlowCard key={card.title} color={card.glowColor} intensity="intense" surfaceClassName="p-6">
+        <GlowCard key={card.title} color={card.glowColor} intensity="subtle" surfaceClassName="p-5">
           <div className="flex flex-row items-center justify-between pb-2">
-            <span className="text-sm font-medium text-muted-foreground">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               {card.title}
             </span>
-            <div className={cn("rounded-lg p-2", card.iconBg)}>
-              <card.icon className={cn("h-4 w-4", card.iconColor)} />
+            <div className={cn("rounded-lg p-1.5", card.iconBg)}>
+              <card.icon className={cn("h-3.5 w-3.5", card.iconColor)} />
             </div>
           </div>
-          <div className="text-2xl font-bold">{card.value}</div>
+          <div className="text-2xl font-bold tracking-tight">{card.value}</div>
           {card.subtitle && (
             <p className="text-xs text-muted-foreground mt-1">{card.subtitle}</p>
           )}

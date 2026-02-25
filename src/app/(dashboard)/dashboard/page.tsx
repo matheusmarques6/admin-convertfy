@@ -231,14 +231,14 @@ async function getDashboardData() {
 
 function MetricsSkeleton() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="flex items-center gap-2">
-        <Skeleton className="h-10 w-48" />
-        <Skeleton className="h-10 w-10" />
+        <Skeleton className="h-8 w-40 rounded-lg" />
+        <Skeleton className="h-8 w-8 rounded-lg" />
       </div>
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {[...Array(4)].map((_, i) => (
-          <Skeleton key={i} className="h-32" />
+      <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
+        {[...Array(5)].map((_, i) => (
+          <Skeleton key={i} className="h-28 rounded-xl" />
         ))}
       </div>
     </div>
@@ -279,15 +279,15 @@ export default async function DashboardPage() {
   const data = await getDashboardData()
 
   return (
-    <AnimatedContainer className="space-y-6">
-      {/* Total Revenue Banner */}
-      <AnimatedItem>
-        <TotalRevenueBanner />
-      </AnimatedItem>
-
+    <AnimatedContainer className="space-y-5 max-w-[1600px]">
       {/* Quick Actions */}
       <AnimatedItem>
         <QuickActions />
+      </AnimatedItem>
+
+      {/* Total Revenue Banner */}
+      <AnimatedItem>
+        <TotalRevenueBanner />
       </AnimatedItem>
 
       {/* Billing Metrics with Period Selector */}
@@ -299,7 +299,7 @@ export default async function DashboardPage() {
 
       {/* Charts and Activity */}
       <AnimatedItem>
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-7">
+        <div className="grid gap-5 lg:grid-cols-7">
           <div className="col-span-full lg:col-span-4">
             <DashboardCharts
               revenueData={data.revenueData}
@@ -307,7 +307,7 @@ export default async function DashboardPage() {
               pipelineData={data.pipelineData}
             />
           </div>
-          <div className="col-span-full lg:col-span-3 space-y-6">
+          <div className="col-span-full lg:col-span-3 space-y-5">
             <TodayAgenda meetings={data.upcomingMeetings} />
             <DashboardAlerts meetings={data.upcomingMeetings} alerts={data.alerts} />
             <RecentActivity activities={data.activities} />

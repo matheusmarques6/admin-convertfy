@@ -196,7 +196,7 @@ export default async function DashboardLayout({
         {/* Main Content */}
         <div className="flex-1 flex flex-col overflow-hidden">
           <Header user={userData} />
-          <main className="flex-1 overflow-auto p-6">
+          <main className="flex-1 overflow-auto px-5 py-5 md:px-6 md:py-5">
             <ErrorBoundary>
               {children}
             </ErrorBoundary>

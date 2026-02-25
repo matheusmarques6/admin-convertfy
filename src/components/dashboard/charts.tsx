@@ -25,7 +25,6 @@ import {
 import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { GlowCard } from "@/components/ui/glow-card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatCurrency, cn } from "@/lib/utils"
 
@@ -96,17 +95,17 @@ export function DashboardCharts({
   const hasRevenueData = displayRevenueData.some((d) => d.receita > 0)
 
   return (
-    <GlowCard color="primary" intensity="subtle" className="h-full" surfaceClassName="gradient-accent-border">
+    <div className="rounded-xl border bg-card h-full gradient-accent-border">
       <CardHeader>
-        <CardTitle>Visão Geral</CardTitle>
-        <CardDescription>Acompanhe o desempenho da sua agência</CardDescription>
+        <CardTitle className="text-base font-semibold">Visão Geral</CardTitle>
+        <CardDescription className="text-xs">Acompanhe o desempenho da sua agência</CardDescription>
       </CardHeader>
       <CardContent>
         <Tabs defaultValue="revenue" className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="revenue">Receita</TabsTrigger>
-            <TabsTrigger value="pipeline">Pipeline</TabsTrigger>
-            <TabsTrigger value="clients">Clientes</TabsTrigger>
+          <TabsList className="bg-muted/50 rounded-lg p-0.5">
+            <TabsTrigger value="revenue" className="rounded-md text-xs h-7 px-3">Receita</TabsTrigger>
+            <TabsTrigger value="pipeline" className="rounded-md text-xs h-7 px-3">Pipeline</TabsTrigger>
+            <TabsTrigger value="clients" className="rounded-md text-xs h-7 px-3">Clientes</TabsTrigger>
           </TabsList>
 
           {/* === RECEITA TAB (enhanced with Asaas data) === */}
@@ -187,7 +186,7 @@ export function DashboardCharts({
 
             {/* Bottom cards: Novos Deals + Próximos 7 dias */}
             <div className="grid gap-3 grid-cols-2 pt-2">
-              <div className="rounded-lg border bg-muted/30 p-3">
+              <div className="rounded-lg border bg-muted/20 p-3">
                 <div className="flex items-center gap-2 mb-2">
                   <div className="rounded-md p-1.5 bg-[#5327F2]/10">
                     <Target className="h-3.5 w-3.5 text-[#5327F2]" />
@@ -201,14 +200,14 @@ export function DashboardCharts({
                 <p className="text-xs text-muted-foreground">
                   {formatCurrency(financialData?.newDeals.pipelineValue ?? 0)} em pipeline
                 </p>
-                <Button variant="ghost" size="sm" className="mt-1.5 -ml-2 h-7 text-xs text-[#5327F2]" asChild>
+                <Button variant="ghost" size="sm" className="mt-1.5 -ml-2 h-7 text-[#5327F2] text-xs" asChild>
                   <Link href="/pipeline">
                     Ver Pipeline <ArrowRight className="ml-1 h-3 w-3" />
                   </Link>
                 </Button>
               </div>
 
-              <div className="rounded-lg border bg-muted/30 p-3">
+              <div className="rounded-lg border bg-muted/20 p-3">
                 <div className="flex items-center gap-2 mb-2">
                   <div className="rounded-md p-1.5 bg-warning/10">
                     <Calendar className="h-3.5 w-3.5 text-warning" />
@@ -330,6 +329,6 @@ export function DashboardCharts({
           </TabsContent>
         </Tabs>
       </CardContent>
-    </GlowCard>
+    </div>
   )
 }

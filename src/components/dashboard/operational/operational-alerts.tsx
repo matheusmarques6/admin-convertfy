@@ -9,7 +9,6 @@ import {
   CheckCircle2,
 } from "lucide-react"
 import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import type { DashboardAlert } from "@/types"
@@ -42,36 +41,36 @@ export function OperationalAlerts({ alerts }: OperationalAlertsProps) {
   const highCount = alerts.filter(a => a.severity === "high").length
 
   return (
-    <GlowCard color="warning" intensity="subtle">
-      <CardHeader className="pb-3">
+    <div className="rounded-xl border bg-card">
+      <CardHeader className="p-5 pb-3">
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle className="text-base">Alertas Recentes</CardTitle>
+            <CardTitle className="text-sm font-medium">Alertas Recentes</CardTitle>
             <CardDescription>Itens que precisam da sua atenção</CardDescription>
           </div>
           {alerts.length > 0 && (
-            <Badge variant={highCount > 0 ? "destructive" : "secondary"} className="rounded-full">
+            <Badge variant={highCount > 0 ? "destructive" : "secondary"} className="bg-destructive/10 text-destructive border-0 text-xs rounded-full">
               {alerts.length}
             </Badge>
           )}
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="px-5 pb-5">
         {alerts.length > 0 ? (
           <ScrollArea className="h-[300px] pr-4">
-            <div className="space-y-3">
+            <div className="space-y-2">
               {alerts.map((alert) => {
                 const Icon = ALERT_ICONS[alert.type] || Clock
                 return (
                   <div
                     key={alert.id}
-                    className="flex items-start gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+                    className="flex items-start gap-3 p-2.5 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors"
                   >
-                    <div className={`rounded-lg p-2 ${
+                    <div className={`rounded-md p-1.5 ${
                       alert.severity === "high" ? "bg-destructive/10" :
                       alert.severity === "medium" ? "bg-warning/10" : "bg-muted"
                     }`}>
-                      <Icon className={`h-4 w-4 ${
+                      <Icon className={`h-3.5 w-3.5 ${
                         alert.severity === "high" ? "text-destructive" :
                         alert.severity === "medium" ? "text-warning" : "text-muted-foreground"
                       }`} />
@@ -82,7 +81,7 @@ export function OperationalAlerts({ alerts }: OperationalAlertsProps) {
                         {alert.description}
                       </p>
                     </div>
-                    <Badge variant={getSeverityColor(alert.severity)} className="shrink-0">
+                    <Badge variant={getSeverityColor(alert.severity)} className="shrink-0 text-[10px] h-5 px-2">
                       {alert.severity === "high" ? "Urgente" :
                        alert.severity === "medium" ? "Atenção" : "Baixo"}
                     </Badge>
@@ -98,6 +97,6 @@ export function OperationalAlerts({ alerts }: OperationalAlertsProps) {
           </div>
         )}
       </CardContent>
-    </GlowCard>
+    </div>
   )
 }

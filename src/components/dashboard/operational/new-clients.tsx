@@ -3,7 +3,6 @@
 import Link from "next/link"
 import { Users, UserPlus } from "lucide-react"
 import { CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { GlowCard } from "@/components/ui/glow-card"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Progress } from "@/components/ui/progress"
@@ -58,56 +57,56 @@ interface NewClientsProps {
 
 export function NewClients({ clients }: NewClientsProps) {
   return (
-    <GlowCard color="primary" intensity="subtle">
-      <CardHeader className="pb-3">
+    <div className="rounded-xl border bg-card">
+      <CardHeader className="p-5 pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <UserPlus className="h-4 w-4 text-primary" />
-            <CardTitle className="text-base">Novos Clientes</CardTitle>
+            <CardTitle className="text-sm font-medium">Novos Clientes</CardTitle>
           </div>
           {clients.length > 0 && (
-            <Badge variant="secondary" className="rounded-full">
+            <Badge variant="secondary" className="rounded-full text-xs">
               {clients.length}
             </Badge>
           )}
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="px-5 pb-5">
         {clients.length > 0 ? (
           <ScrollArea className="h-[300px] pr-4">
-            <div className="space-y-3">
+            <div className="space-y-2">
               {clients.map((client) => (
                 <Link
                   key={client.id}
                   href={`/clients/${client.id}`}
-                  className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
+                  className="flex items-center gap-3 p-3 rounded-lg border border-border/50 hover:bg-muted/30 transition-colors"
                 >
-                  <Avatar className="h-9 w-9">
-                    <AvatarFallback className="bg-primary/10 text-primary text-xs">
+                  <Avatar className="h-8 w-8">
+                    <AvatarFallback className="bg-primary/10 text-primary text-[11px]">
                       {client.name.slice(0, 2).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium truncate">{client.name}</p>
+                      <p className="text-[13px] font-medium truncate">{client.name}</p>
                       <Badge
                         variant="secondary"
-                        className={cn("text-[10px] px-1.5 py-0 shrink-0", STATUS_COLORS[client.status])}
+                        className={cn("text-[10px] h-5 px-2 shrink-0", STATUS_COLORS[client.status])}
                       >
                         {STATUS_LABELS[client.status] || client.status}
                       </Badge>
                     </div>
                     <div className="flex items-center gap-2 mt-1">
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-[11px] text-muted-foreground">
                         {timeAgo(client.created_at)}
                       </span>
-                      <span className="text-xs text-muted-foreground">•</span>
+                      <span className="text-[11px] text-muted-foreground">•</span>
                       <div className="flex items-center gap-1.5 flex-1">
                         <Progress
                           value={client.health_score}
-                          className="h-1.5 w-16"
+                          className="h-1 w-14"
                         />
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-[11px] text-muted-foreground">
                           {client.health_score}
                         </span>
                       </div>
@@ -124,6 +123,6 @@ export function NewClients({ clients }: NewClientsProps) {
           </div>
         )}
       </CardContent>
-    </GlowCard>
+    </div>
   )
 }

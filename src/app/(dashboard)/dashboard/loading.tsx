@@ -2,30 +2,39 @@ import { Skeleton, SkeletonMetric } from "@/components/ui/skeleton"
 
 export default function DashboardLoading() {
   return (
-    <div className="space-y-6 p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-10 w-36" />
+    <div className="space-y-5 max-w-[1600px]">
+      {/* Quick Actions */}
+      <div className="flex items-center gap-3">
+        <Skeleton className="h-9 w-32 rounded-lg" />
+        <Skeleton className="h-9 w-28 rounded-lg" />
+        <Skeleton className="h-9 w-36 rounded-lg" />
       </div>
 
-      {/* Metrics Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <SkeletonMetric />
-        <SkeletonMetric />
-        <SkeletonMetric />
-        <SkeletonMetric />
-      </div>
+      {/* Revenue Banner */}
+      <Skeleton className="h-64 w-full rounded-2xl" />
 
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="rounded-xl border bg-card p-6">
-          <Skeleton className="h-5 w-32 mb-4" />
-          <Skeleton className="h-[250px] w-full" />
+      {/* Billing Metrics Grid */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-8 w-40 rounded-lg" />
+          <Skeleton className="h-8 w-8 rounded-lg" />
         </div>
-        <div className="rounded-xl border bg-card p-6">
-          <Skeleton className="h-5 w-32 mb-4" />
-          <Skeleton className="h-[250px] w-full" />
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          {[...Array(5)].map((_, i) => (
+            <Skeleton key={i} className="h-28 rounded-xl" />
+          ))}
+        </div>
+      </div>
+
+      {/* Charts + Right Column */}
+      <div className="grid gap-5 lg:grid-cols-7">
+        <div className="col-span-full lg:col-span-4">
+          <Skeleton className="h-[460px] rounded-xl" />
+        </div>
+        <div className="col-span-full lg:col-span-3 space-y-5">
+          <Skeleton className="h-48 rounded-xl" />
+          <Skeleton className="h-48 rounded-xl" />
+          <Skeleton className="h-48 rounded-xl" />
         </div>
       </div>
     </div>

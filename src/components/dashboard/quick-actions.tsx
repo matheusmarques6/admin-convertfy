@@ -9,42 +9,51 @@ const linkActions = [
     label: "Novo Cliente",
     href: "/clients/new",
     icon: UserPlus,
-    variant: "default" as const,
-    className: "bg-[#5327F2] hover:bg-[#5327F2]/90 text-white",
+    primary: true,
   },
   {
     label: "Novo Deal",
     href: "/pipeline?action=new",
     icon: Plus,
-    variant: "outline" as const,
+    primary: false,
   },
   {
     label: "Agendar Reunião",
     href: "/meetings",
     icon: Calendar,
-    variant: "outline" as const,
+    primary: false,
   },
   {
     label: "Criar Relatório",
     href: "/reports/new",
     icon: FileText,
-    variant: "outline" as const,
+    primary: false,
   },
   {
     label: "Nova Automação",
     href: "/automations/new",
     icon: Zap,
-    variant: "outline" as const,
+    primary: false,
   },
 ]
 
 export function QuickActions() {
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex items-center gap-3 flex-wrap">
       {linkActions.map((action) => (
-        <Button key={action.label} variant={action.variant} size="sm" className={"className" in action ? action.className : undefined} asChild>
+        <Button
+          key={action.label}
+          variant={action.primary ? "default" : "outline"}
+          size="sm"
+          className={
+            action.primary
+              ? "bg-[#5327F2] hover:bg-[#5327F2]/90 text-white shadow-sm shadow-[#5327F2]/20 rounded-lg h-9 px-4 text-[13px] font-medium"
+              : "border border-border/60 bg-card hover:bg-accent text-muted-foreground hover:text-foreground rounded-lg h-9 px-4 text-[13px] font-medium transition-colors"
+          }
+          asChild
+        >
           <Link href={action.href}>
-            <action.icon className="mr-2 h-4 w-4" />
+            <action.icon className="h-3.5 w-3.5 mr-1.5" />
             {action.label}
           </Link>
         </Button>

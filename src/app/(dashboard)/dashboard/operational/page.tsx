@@ -273,7 +273,7 @@ export default async function OperationalDashboardPage() {
   const data = await getOperationalData()
 
   return (
-    <AnimatedContainer className="space-y-6">
+    <AnimatedContainer className="space-y-5 max-w-[1600px]">
       {/* Resultado Total - filtrado pelas lojas do agente */}
       <AnimatedItem>
         <TotalRevenueBanner storeIds={data.storeIds} />
@@ -286,12 +286,12 @@ export default async function OperationalDashboardPage() {
 
       {/* Grid: Novos Clientes + Lojas | Alertas + Overview */}
       <AnimatedItem>
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-7">
-          <div className="col-span-full lg:col-span-4 space-y-6">
+        <div className="grid gap-5 lg:grid-cols-7">
+          <div className="col-span-full lg:col-span-4 space-y-5">
             <NewClients clients={data.newClients} />
             <NewStores stores={data.newStores} />
           </div>
-          <div className="col-span-full lg:col-span-3 space-y-6">
+          <div className="col-span-full lg:col-span-3 space-y-5">
             <OperationalAlerts alerts={data.alerts} />
             <OperationalOverview
               activities={data.recentActivities}
