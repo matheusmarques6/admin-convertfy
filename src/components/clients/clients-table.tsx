@@ -62,9 +62,17 @@ import type { Client, Contract, User } from "@/types"
 const CACHE_KEY = "clients_status_cache"
 const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
 
+interface ClientStore {
+  id: string
+  store_name: string
+  platform: string
+  is_active: boolean
+}
+
 interface ClientWithRelations extends Client {
   contracts?: Contract[]
   owner?: User
+  client_stores?: ClientStore[]
 }
 
 interface ClientsTableProps {
@@ -323,9 +331,26 @@ export function ClientsTable({ clients }: ClientsTableProps) {
                             </Tooltip>
                           )}
                         </Link>
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          {client.company && <span>{client.company}</span>}
-                        </div>
+                        {client.company && (
+                          <p className="text-sm text-muted-foreground">{client.company}</p>
+                        )}
+                        {client.client_stores && client.client_stores.length > 0 && (
+                          <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                            {client.client_stores.slice(0, 3).map((store) => (
+                              <span
+                                key={store.id}
+                                className="inline-flex items-center text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground"
+                              >
+                                {store.store_name}
+                              </span>
+                            ))}
+                            {client.client_stores.length > 3 && (
+                              <span className="text-[10px] text-muted-foreground">
+                                +{client.client_stores.length - 3}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </TableCell>

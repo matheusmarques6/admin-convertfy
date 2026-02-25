@@ -223,7 +223,7 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
         <>
           {/* Main Metrics */}
           <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
-            <div className="rounded-xl border border-border bg-card p-4">
+            <div className="rounded-xl border border-emerald-200 dark:border-emerald-500/20 bg-gradient-to-br from-emerald-50 to-card dark:from-emerald-500/5 dark:to-card p-4">
               <div className="flex items-center justify-between mb-3">
                 <span className="text-xs font-medium text-muted-foreground">Recebido</span>
                 <div className="rounded-full p-1.5 bg-emerald-500/10">
@@ -238,7 +238,7 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
               </p>
             </div>
 
-            <div className="rounded-xl border border-border bg-card p-4">
+            <div className="rounded-xl border border-amber-200 dark:border-amber-500/20 bg-gradient-to-br from-amber-50 to-card dark:from-amber-500/5 dark:to-card p-4">
               <div className="flex items-center justify-between mb-3">
                 <span className="text-xs font-medium text-muted-foreground">Pendente</span>
                 <div className="rounded-full p-1.5 bg-amber-500/10">
@@ -253,7 +253,7 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
               </p>
             </div>
 
-            <div className="rounded-xl border border-border bg-card p-4">
+            <div className="rounded-xl border border-red-200 dark:border-red-500/20 bg-gradient-to-br from-red-50 to-card dark:from-red-500/5 dark:to-card p-4">
               <div className="flex items-center justify-between mb-3">
                 <span className="text-xs font-medium text-muted-foreground">Vencido</span>
                 <div className="rounded-full p-1.5 bg-red-500/10">
@@ -283,7 +283,7 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
               </p>
             </div>
 
-            <div className="rounded-xl border border-border bg-card p-4">
+            <div className="rounded-xl border border-blue-200 dark:border-primary/20 bg-gradient-to-br from-blue-50 to-card dark:from-primary/5 dark:to-card p-4">
               <div className="flex items-center justify-between mb-3">
                 <span className="text-xs font-medium text-muted-foreground">MRR</span>
                 <div className="rounded-full p-1.5 bg-primary/10">

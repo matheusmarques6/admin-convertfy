@@ -206,6 +206,7 @@ export function ReportsList({
   const [storeFilter, setStoreFilter] = useState<string>(initialStoreId || "all")
   const [typeFilter, setTypeFilter] = useState<string>("all")
   const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [monthFilter, setMonthFilter] = useState<string>("all")
   const [showFilters, setShowFilters] = useState(!!initialStoreId)
 
   // Delete dialog
@@ -273,6 +274,20 @@ export function ReportsList({
   }, [filteredReports])
 
   const sortedMonths = Object.keys(groupedReports).sort((a, b) => b.localeCompare(a))
+
+  // All available months for the month filter (from all reports, not filtered)
+  const availableMonths = useMemo(() => {
+    const monthSet = new Set<string>()
+    reports.forEach(report => {
+      monthSet.add(getReportMonth(report))
+    })
+    return Array.from(monthSet).sort((a, b) => b.localeCompare(a))
+  }, [reports])
+
+  // Filter months by selected month
+  const displayedMonths = monthFilter === "all"
+    ? sortedMonths
+    : sortedMonths.filter(m => m === monthFilter)
 
   // Delete report
   async function handleDelete() {
@@ -343,7 +358,7 @@ export function ReportsList({
     }
   }
 
-  const hasActiveFilters = searchTerm || clientFilter !== "all" || storeFilter !== "all" || typeFilter !== "all" || statusFilter !== "all"
+  const hasActiveFilters = searchTerm || clientFilter !== "all" || storeFilter !== "all" || typeFilter !== "all" || statusFilter !== "all" || monthFilter !== "all"
 
   function clearFilters() {
     setSearchTerm("")
@@ -351,6 +366,7 @@ export function ReportsList({
     setStoreFilter("all")
     setTypeFilter("all")
     setStatusFilter("all")
+    setMonthFilter("all")
   }
 
   return (
@@ -557,6 +573,23 @@ export function ReportsList({
                   </Select>
                 </div>
 
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">Mês</label>
+                  <Select value={monthFilter} onValueChange={setMonthFilter}>
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="Todos os meses" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos os meses</SelectItem>
+                      {availableMonths.map(month => (
+                        <SelectItem key={month} value={month}>
+                          {formatMonth(month)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 {hasActiveFilters && (
                   <div className="flex items-end">
                     <Button variant="ghost" size="sm" onClick={clearFilters}>
@@ -571,6 +604,35 @@ export function ReportsList({
         </CardContent>
       </Card>
 
+      {/* Month Navigation Bar */}
+      {availableMonths.length > 1 && (
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
+          <Button
+            variant={monthFilter === "all" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setMonthFilter("all")}
+            className="shrink-0"
+          >
+            <Calendar className="mr-1.5 h-3.5 w-3.5" />
+            Todos
+          </Button>
+          {availableMonths.map(month => (
+            <Button
+              key={month}
+              variant={monthFilter === month ? "default" : "outline"}
+              size="sm"
+              onClick={() => setMonthFilter(month)}
+              className="shrink-0"
+            >
+              {formatMonth(month)}
+              <Badge variant="secondary" className="ml-1.5 h-5 min-w-[20px] px-1.5 text-[10px]">
+                {groupedReports[month]?.length || reports.filter(r => getReportMonth(r) === month).length}
+              </Badge>
+            </Button>
+          ))}
+        </div>
+      )}
+
       {/* Results info */}
       {hasActiveFilters && (
         <p className="text-sm text-muted-foreground">
@@ -579,7 +641,7 @@ export function ReportsList({
       )}
 
       {/* Reports by Month */}
-      {sortedMonths.length === 0 ? (
+      {displayedMonths.length === 0 ? (
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center justify-center py-12">
             <div className="rounded-full bg-muted p-4 mb-4">
@@ -605,7 +667,7 @@ export function ReportsList({
           </CardContent>
         </Card>
       ) : (
-        sortedMonths.map((month) => (
+        displayedMonths.map((month) => (
           <Card key={month} className="rounded-xl border bg-card">
             <CardHeader>
               <CardTitle className="text-base">{formatMonth(month)}</CardTitle>
@@ -719,7 +781,7 @@ export function ReportsList({
                           {revenue !== undefined && (
                             <div>
                               <p className="text-xs text-muted-foreground">Receita</p>
-                              <p className="font-medium text-emerald-500">
+                              <p className="font-medium text-foreground">
                                 {formatCurrency(revenue)}
                               </p>
                             </div>
