@@ -108,8 +108,8 @@ const CHANNEL_CONFIG = {
   push: {
     icon: Send,
     color: "bg-purple-500",
-    lightColor: "bg-[#5327F2]/10",
-    textColor: "text-[#5327F2]",
+    lightColor: "bg-primary/10",
+    textColor: "text-primary",
     label: "Push"
   },
 }
@@ -336,7 +336,7 @@ function CampaignCard({
               {statusConfig.label}
             </Badge>
           </div>
-          <p className="font-medium text-slate-800 dark:text-slate-100 text-sm truncate group-hover:text-[#5327F2] transition-colors">
+          <p className="font-medium text-slate-800 dark:text-slate-100 text-sm truncate group-hover:text-primary transition-colors">
             {campaign.name}
           </p>
           {campaign.segmentName && (
@@ -671,7 +671,7 @@ export default function PortalCampaignsPage() {
           </div>
           <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-100 mb-2">Erro ao carregar</h2>
           <p className="text-slate-500 dark:text-slate-400 mb-6">{error}</p>
-          <Button onClick={fetchCampaigns} className="bg-[#5327F2] hover:bg-[#4520D4] text-white shadow-sm dark:shadow-slate-900/20">
+          <Button onClick={fetchCampaigns} className="bg-primary hover:bg-primary/85 text-white shadow-sm dark:shadow-slate-900/20">
             Tentar novamente
           </Button>
         </div>
@@ -708,14 +708,14 @@ export default function PortalCampaignsPage() {
           className={`
             min-h-[120px] border border-slate-100 dark:border-slate-700/30 p-2 cursor-pointer transition-all
             hover:bg-slate-50 dark:hover:bg-white/[0.06]
-            ${dayIsToday ? "bg-[#5327F2]/5 border-[#5327F2]/30" : "bg-white dark:bg-[#151922]"}
+            ${dayIsToday ? "bg-primary/5 border-primary/30" : "bg-white dark:bg-[#151922]"}
           `}
         >
           <div className="flex items-center justify-between mb-2">
             <span
               className={`
                 text-sm font-medium w-7 h-7 flex items-center justify-center rounded-full
-                ${dayIsToday ? "bg-[#5327F2] text-white" : "text-slate-500 dark:text-slate-400"}
+                ${dayIsToday ? "bg-primary text-white" : "text-slate-500 dark:text-slate-400"}
               `}
             >
               {day}
@@ -759,7 +759,7 @@ export default function PortalCampaignsPage() {
               className={`
                 min-h-[400px] rounded-xl border p-3
                 ${dayIsToday
-                  ? "bg-[#5327F2]/5 border-[#5327F2]/30"
+                  ? "bg-primary/5 border-primary/30"
                   : "bg-white dark:bg-[#151922] border-slate-200/80 dark:border-slate-700/40"
                 }
               `}
@@ -772,7 +772,7 @@ export default function PortalCampaignsPage() {
                 <p
                   className={`
                     text-2xl font-bold mt-1
-                    ${dayIsToday ? "text-[#5327F2]" : "text-slate-800 dark:text-slate-100"}
+                    ${dayIsToday ? "text-primary" : "text-slate-800 dark:text-slate-100"}
                   `}
                 >
                   {date.getDate()}
@@ -882,7 +882,7 @@ export default function PortalCampaignsPage() {
                   className={`
                     flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all
                     ${viewMode === "month"
-                      ? "bg-[#5327F2] text-white shadow-sm dark:shadow-slate-900/20"
+                      ? "bg-primary text-white shadow-sm dark:shadow-slate-900/20"
                       : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
                     }
                   `}
@@ -895,7 +895,7 @@ export default function PortalCampaignsPage() {
                   className={`
                     flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all
                     ${viewMode === "week"
-                      ? "bg-[#5327F2] text-white shadow-sm dark:shadow-slate-900/20"
+                      ? "bg-primary text-white shadow-sm dark:shadow-slate-900/20"
                       : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
                     }
                   `}
@@ -1127,7 +1127,7 @@ export default function PortalCampaignsPage() {
                       <Badge className="bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20">Klaviyo</Badge>
                     )}
                     {selectedCampaign.source === "batch" && (
-                      <Badge className="bg-[#5327F2]/10 text-[#5327F2] border-[#5327F2]/20">Lote</Badge>
+                      <Badge className="bg-primary/10 text-primary border-primary/20">Lote</Badge>
                     )}
                   </div>
 
@@ -1193,9 +1193,9 @@ export default function PortalCampaignsPage() {
                             {formatPercent(selectedCampaign.clicked || 0, selectedCampaign.delivered || 0)}
                           </p>
                         </div>
-                        <div className="rounded-lg bg-[#5327F2]/5 border border-[#5327F2]/10 p-3">
+                        <div className="rounded-lg bg-primary/5 border border-primary/10 p-3">
                           <div className="flex items-center gap-2">
-                            <TrendingUp className="h-4 w-4 text-[#5327F2]" />
+                            <TrendingUp className="h-4 w-4 text-primary" />
                             <span className="text-xs text-slate-500 dark:text-slate-400">Conversões</span>
                           </div>
                           <p className="text-lg font-bold text-slate-800 dark:text-slate-100 mt-1">

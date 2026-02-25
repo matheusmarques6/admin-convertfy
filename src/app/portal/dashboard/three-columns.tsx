@@ -13,7 +13,7 @@ export function ThreeColumns({ klaviyo }: ThreeColumnsProps) {
       <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium text-slate-800 dark:text-slate-100 flex items-center gap-2">
-            <Zap className="h-4 w-4 text-[#5327F2]" />
+            <Zap className="h-4 w-4 text-primary" />
             Fluxos com melhor desempenho
           </h3>
         </div>

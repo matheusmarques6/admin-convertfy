@@ -141,7 +141,7 @@ interface StageConfig {
 // New phase-based stages
 const STAGES: StageConfig[] = [
   { id: "pending_approval", name: "Aguardando Aprovação", color: "#F97316", icon: <Clock className="h-4 w-4" /> },
-  { id: "generating_copies", name: "Gerando Copies", color: "#8B5CF6", icon: <Sparkles className="h-4 w-4" /> },
+  { id: "generating_copies", name: "Gerando Copies", color: "#06B6D4", icon: <Sparkles className="h-4 w-4" /> },
   { id: "design", name: "Design", color: "#EC4899", icon: <Palette className="h-4 w-4" /> },
   { id: "implementation", name: "Implementação", color: "#3B82F6", icon: <Code2 className="h-4 w-4" /> },
   { id: "completed", name: "Concluído", color: "#22C55E", icon: <CheckCircle2 className="h-4 w-4" /> },

@@ -40,7 +40,7 @@ export function RevenueChannels({ klaviyo }: RevenueChannelsProps) {
     <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-medium text-slate-800 dark:text-slate-100 flex items-center gap-2">
-          <BarChart3 className="h-4 w-4 text-[#5327F2]" />
+          <BarChart3 className="h-4 w-4 text-primary" />
           Canais de Receita
         </h3>
       </div>
@@ -51,7 +51,7 @@ export function RevenueChannels({ klaviyo }: RevenueChannelsProps) {
           percent={flowPercent}
           value={flowRevenue}
           icon={Zap}
-          color="bg-[#5327F2]/10 text-[#5327F2]"
+          color="bg-primary/10 text-primary"
           active={activeChannel === "flows"}
           onClick={() => setActiveChannel(activeChannel === "flows" ? "all" : "flows")}
         />
@@ -84,7 +84,7 @@ export function RevenueChannels({ klaviyo }: RevenueChannelsProps) {
         <div className="h-3 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden flex">
           {flowPercent > 0 && (
             <div
-              className="h-full bg-[#5327F2] transition-all"
+              className="h-full bg-primary transition-all"
               style={{ width: `${flowPercent}%`, opacity: activeChannel === "all" || activeChannel === "flows" ? 1 : 0.2 }}
               title={`Flows: ${flowPercent.toFixed(1)}%`}
             />
@@ -108,7 +108,7 @@ export function RevenueChannels({ klaviyo }: RevenueChannelsProps) {
 
       {/* Channel breakdown details */}
       <div className="space-y-2">
-        <BreakdownRow label="Flows" value={flowRevenue} percent={flowPercent} color="bg-[#5327F2]" />
+        <BreakdownRow label="Flows" value={flowRevenue} percent={flowPercent} color="bg-primary" />
         <BreakdownRow label="Campanhas" value={campaignRevenue} percent={campaignPercent} color="bg-blue-500" />
         <BreakdownRow label="SMS" value={smsRevenue} percent={smsPercent} color="bg-amber-500" />
       </div>
@@ -138,7 +138,7 @@ function ChannelCardLocal({
       className={`rounded-xl p-4 border transition-all cursor-pointer ${
         active
           ? `${color} border-current`
-          : "bg-white dark:bg-[#151922] border-slate-200/80 dark:border-slate-700/40 hover:border-[#5327F2]/30"
+          : "bg-white dark:bg-[#151922] border-slate-200/80 dark:border-slate-700/40 hover:border-primary/30"
       }`}
       onClick={onClick}
     >

@@ -104,7 +104,7 @@ export default function PortalDashboardPage() {
           <p className="text-slate-500 dark:text-slate-400 text-sm mb-6">{error}</p>
           <Button
             onClick={() => fetchDashboard()}
-            className="bg-[#5327F2] hover:bg-[#4520D4] text-white shadow-sm"
+            className="bg-primary hover:bg-primary/85 text-white shadow-sm"
           >
             Tentar novamente
           </Button>
@@ -134,7 +134,7 @@ export default function PortalDashboardPage() {
               <p className="text-sm text-slate-500 dark:text-slate-400">{formatDateRange(data.dateRange.start, data.dateRange.end)}</p>
             )}
             {refreshing && (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#5327F2]/10 text-[#5327F2] text-xs font-medium">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium">
                 <RefreshCw className="h-3 w-3 animate-spin" />
                 Atualizando...
               </span>

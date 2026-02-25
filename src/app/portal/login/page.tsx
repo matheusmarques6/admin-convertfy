@@ -82,7 +82,7 @@ export default function PortalLoginPage() {
     <div className="min-h-screen flex">
       {/* Left Panel - Brand */}
       <div className="hidden lg:flex lg:w-[480px] bg-[#0B0E14] flex-col items-center justify-center relative overflow-hidden">
-        <div className="absolute top-1/4 left-1/4 w-[400px] h-[400px] bg-[#5327F2]/20 rounded-full blur-[120px]" />
+        <div className="absolute top-1/4 left-1/4 w-[400px] h-[400px] bg-primary/20 rounded-full blur-[120px]" />
         <div className="absolute bottom-1/4 right-1/4 w-[300px] h-[300px] bg-[#05AFF2]/15 rounded-full blur-[100px]" />
 
         <div className="relative z-10 px-12 text-center">
@@ -106,7 +106,7 @@ export default function PortalLoginPage() {
         <div className="w-full max-w-[400px]">
           {/* Mobile Logo */}
           <div className="lg:hidden flex flex-col items-center mb-10">
-            <div className="w-14 h-14 rounded-2xl bg-[#5327F2] flex items-center justify-center mb-4 shadow-lg shadow-[#5327F2]/25">
+            <div className="w-14 h-14 rounded-2xl bg-primary flex items-center justify-center mb-4 shadow-lg shadow-primary/25">
               <span className="text-white font-bold text-xl">C</span>
             </div>
             <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100">Convertfy</h1>
@@ -138,7 +138,7 @@ export default function PortalLoginPage() {
                   required
                   disabled={loading}
                   autoComplete="email"
-                  className="h-11 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-[#5327F2] focus:ring-[#5327F2]/20"
+                  className="h-11 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-primary focus:ring-primary/20"
                 />
               </div>
 
@@ -154,7 +154,7 @@ export default function PortalLoginPage() {
                     required
                     disabled={loading}
                     autoComplete="current-password"
-                    className="h-11 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-[#5327F2] focus:ring-[#5327F2]/20 pr-10"
+                    className="h-11 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-primary focus:ring-primary/20 pr-10"
                   />
                   <Button
                     type="button"
@@ -171,7 +171,7 @@ export default function PortalLoginPage() {
 
               <Button
                 type="submit"
-                className="w-full h-11 bg-[#5327F2] hover:bg-[#4520D4] text-white font-medium shadow-lg shadow-[#5327F2]/20 transition-all duration-200"
+                className="w-full h-11 bg-primary hover:bg-primary/85 text-white font-medium shadow-lg shadow-primary/20 transition-all duration-200"
                 disabled={loading}
               >
                 {loading ? (
@@ -188,7 +188,7 @@ export default function PortalLoginPage() {
             <div className="mt-6 text-center">
               <p className="text-[13px] text-slate-500 dark:text-slate-400">
                 Problemas para acessar?{" "}
-                <a href="mailto:suporte@convertfy.com.br" className="text-[#5327F2] hover:text-[#4520D4] font-medium">
+                <a href="mailto:suporte@convertfy.com.br" className="text-primary hover:text-primary/85 font-medium">
                   Entre em contato
                 </a>
               </p>

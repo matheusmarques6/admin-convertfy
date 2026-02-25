@@ -232,7 +232,7 @@ export default function PortalStoresPage() {
         <AlertCircle className="h-12 w-12 text-red-600 mb-4" />
         <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-100 mb-2">Erro ao carregar</h2>
         <p className="text-slate-500 dark:text-slate-400 mb-4">{error}</p>
-        <Button onClick={fetchStores} className="bg-[#5327F2] hover:bg-[#4520D4] text-white shadow-sm">Tentar novamente</Button>
+        <Button onClick={fetchStores} className="bg-primary hover:bg-primary/85 text-white shadow-sm">Tentar novamente</Button>
       </div>
     )
   }
@@ -247,7 +247,7 @@ export default function PortalStoresPage() {
             Acompanhe os resultados e configure as integrações de cada loja
           </p>
         </div>
-        <Button asChild className="bg-[#5327F2] hover:bg-[#4520D4] text-white shadow-sm">
+        <Button asChild className="bg-primary hover:bg-primary/85 text-white shadow-sm">
           <Link href="/portal/stores/new">
             <Store className="h-4 w-4 mr-2" />
             Nova Loja
@@ -275,8 +275,8 @@ export default function PortalStoresPage() {
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-lg bg-[#5327F2]/10 flex items-center justify-center">
-                        <Store className="h-6 w-6 text-[#5327F2]" />
+                      <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
+                        <Store className="h-6 w-6 text-primary" />
                       </div>
                       <div>
                         <CardTitle className="text-lg text-slate-800 dark:text-slate-100">{store.store_name}</CardTitle>
@@ -325,7 +325,7 @@ export default function PortalStoresPage() {
 
                   {/* Actions */}
                   <div className="flex gap-2">
-                    <Button asChild className="flex-1 bg-[#5327F2] hover:bg-[#4520D4] text-white shadow-sm">
+                    <Button asChild className="flex-1 bg-primary hover:bg-primary/85 text-white shadow-sm">
                       <Link href={`/portal/stores/${store.id}`}>
                         Ver Relatório
                       </Link>
@@ -386,8 +386,8 @@ export default function PortalStoresPage() {
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-lg bg-[#5327F2]/10 flex items-center justify-center flex-shrink-0">
-                  <DollarSign className="h-4 w-4 text-[#5327F2]" />
+                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <DollarSign className="h-4 w-4 text-primary" />
                 </div>
                 <div>
                   <p className="font-medium text-sm text-slate-800 dark:text-slate-100">Receita Atribuída</p>
@@ -427,7 +427,7 @@ export default function PortalStoresPage() {
             {selectedStore && !selectedStore.hasKlaviyo && (
               <div className="space-y-4">
                 <h4 className="font-medium flex items-center gap-2 text-slate-800 dark:text-slate-100">
-                  <Key className="h-4 w-4 text-[#5327F2]" />
+                  <Key className="h-4 w-4 text-primary" />
                   Klaviyo
                 </h4>
                 <div className="space-y-2">
@@ -545,7 +545,7 @@ export default function PortalStoresPage() {
             <Button
               onClick={handleSaveCredentials}
               disabled={saving || (!credForm.klaviyo_private_key && !credForm.shopify_access_token)}
-              className="bg-[#5327F2] hover:bg-[#4520D4] text-white shadow-sm"
+              className="bg-primary hover:bg-primary/85 text-white shadow-sm"
             >
               {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Salvar Credenciais

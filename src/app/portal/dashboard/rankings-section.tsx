@@ -70,7 +70,7 @@ export function RankingsSection({ shopify }: RankingsSectionProps) {
             shopify.topProducts.slice(0, 10).map((product, index) => (
               <div key={product.name} className="flex items-center gap-3 py-3 border-b border-slate-200/50 dark:border-slate-700/30 last:border-0">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
-                  index === 0 ? "bg-[#5327F2]/20 text-[#5327F2]" :
+                  index === 0 ? "bg-primary/20 text-primary" :
                   index === 1 ? "bg-blue-500/20 text-blue-400" :
                   index === 2 ? "bg-purple-500/20 text-purple-400" :
                   "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"

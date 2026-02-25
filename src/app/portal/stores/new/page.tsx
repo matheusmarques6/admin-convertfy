@@ -284,7 +284,7 @@ export default function PortalNewStorePage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Button onClick={() => router.push("/portal/onboarding")} className="w-full bg-[#5327F2] hover:bg-[#4520D4] text-white shadow-sm">
+            <Button onClick={() => router.push("/portal/onboarding")} className="w-full bg-primary hover:bg-primary/85 text-white shadow-sm">
               Ver Onboarding
             </Button>
             <Button variant="outline" onClick={() => router.push("/portal/stores")} className="w-full border-slate-200 dark:border-slate-700/40 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
@@ -360,7 +360,7 @@ export default function PortalNewStorePage() {
               <button
                 onClick={() => { if (isCompleted) setCurrentStep(step.id) }}
                 className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors w-full justify-center
-                  ${isActive ? "bg-[#5327F2] text-white shadow-sm" : ""}
+                  ${isActive ? "bg-primary text-white shadow-sm" : ""}
                   ${isCompleted ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 cursor-pointer hover:bg-emerald-100 dark:hover:bg-emerald-500/20" : ""}
                   ${!isActive && !isCompleted ? "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500" : ""}
                 `}
@@ -495,8 +495,8 @@ export default function PortalNewStorePage() {
                     </Button>
                   </div>
                 ) : (
-                  <div className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed dark:border-slate-700/40 p-6 cursor-pointer hover:border-[#5327F2]/40 hover:bg-[#5327F2]/5 dark:hover:bg-[#5327F2]/10 transition-colors" onClick={() => logoInputRef.current?.click()}>
-                    {uploadingField === "logo" ? <Loader2 className="h-6 w-6 animate-spin text-[#5327F2]" /> : <Upload className="h-6 w-6 text-slate-400 dark:text-slate-500" />}
+                  <div className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed dark:border-slate-700/40 p-6 cursor-pointer hover:border-primary/40 hover:bg-primary/5 dark:hover:bg-primary/10 transition-colors" onClick={() => logoInputRef.current?.click()}>
+                    {uploadingField === "logo" ? <Loader2 className="h-6 w-6 animate-spin text-primary" /> : <Upload className="h-6 w-6 text-slate-400 dark:text-slate-500" />}
                     <span className="text-sm text-slate-500 dark:text-slate-400">Clique para enviar o logo</span>
                     <span className="text-xs text-slate-400 dark:text-slate-500">PNG, JPG, SVG, WebP (máx. 10MB)</span>
                   </div>
@@ -521,8 +521,8 @@ export default function PortalNewStorePage() {
                     </Button>
                   </div>
                 ) : (
-                  <div className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed dark:border-slate-700/40 p-6 cursor-pointer hover:border-[#5327F2]/40 hover:bg-[#5327F2]/5 dark:hover:bg-[#5327F2]/10 transition-colors" onClick={() => designInputRef.current?.click()}>
-                    {uploadingField === "design" ? <Loader2 className="h-6 w-6 animate-spin text-[#5327F2]" /> : <Upload className="h-6 w-6 text-slate-400 dark:text-slate-500" />}
+                  <div className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed dark:border-slate-700/40 p-6 cursor-pointer hover:border-primary/40 hover:bg-primary/5 dark:hover:bg-primary/10 transition-colors" onClick={() => designInputRef.current?.click()}>
+                    {uploadingField === "design" ? <Loader2 className="h-6 w-6 animate-spin text-primary" /> : <Upload className="h-6 w-6 text-slate-400 dark:text-slate-500" />}
                     <span className="text-sm text-slate-500 dark:text-slate-400">Clique para enviar referência visual</span>
                     <span className="text-xs text-slate-400 dark:text-slate-500">PNG, JPG, SVG, WebP, PDF (máx. 10MB)</span>
                   </div>
@@ -542,8 +542,8 @@ export default function PortalNewStorePage() {
                     </Button>
                   </div>
                 ) : (
-                  <div className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed dark:border-slate-700/40 p-6 cursor-pointer hover:border-[#5327F2]/40 hover:bg-[#5327F2]/5 dark:hover:bg-[#5327F2]/10 transition-colors" onClick={() => brandInputRef.current?.click()}>
-                    {uploadingField === "brand_manual" ? <Loader2 className="h-6 w-6 animate-spin text-[#5327F2]" /> : <Upload className="h-6 w-6 text-slate-400 dark:text-slate-500" />}
+                  <div className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed dark:border-slate-700/40 p-6 cursor-pointer hover:border-primary/40 hover:bg-primary/5 dark:hover:bg-primary/10 transition-colors" onClick={() => brandInputRef.current?.click()}>
+                    {uploadingField === "brand_manual" ? <Loader2 className="h-6 w-6 animate-spin text-primary" /> : <Upload className="h-6 w-6 text-slate-400 dark:text-slate-500" />}
                     <span className="text-sm text-slate-500 dark:text-slate-400">Clique para enviar o manual da marca</span>
                     <span className="text-xs text-slate-400 dark:text-slate-500">PDF, PNG, JPG (máx. 10MB)</span>
                   </div>

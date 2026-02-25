@@ -22,7 +22,7 @@ export function HeroSection({ klaviyo }: HeroSectionProps) {
   return (
     <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#0B0E14] via-[#12152B] to-[#1A1040] p-6 lg:p-8 shadow-xl">
       {/* Decorative orbs */}
-      <div className="absolute -top-20 -right-20 w-60 h-60 bg-[#5327F2]/20 rounded-full blur-[80px]" />
+      <div className="absolute -top-20 -right-20 w-60 h-60 bg-primary/20 rounded-full blur-[80px]" />
       <div className="absolute -bottom-16 -left-16 w-48 h-48 bg-[#05AFF2]/15 rounded-full blur-[60px]" />
 
       <div className="relative">

@@ -199,7 +199,7 @@ export default function PortalSettingsPage() {
         <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700/30">
             <h3 className="text-[15px] font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-              <User className="h-4 w-4 text-[#5327F2]" />
+              <User className="h-4 w-4 text-primary" />
               Perfil
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Suas informações pessoais</p>
@@ -243,7 +243,7 @@ export default function PortalSettingsPage() {
               </div>
             </div>
 
-            <Button onClick={handleSaveProfile} disabled={saving} className="bg-[#5327F2] hover:bg-[#4520D4] text-white shadow-sm">
+            <Button onClick={handleSaveProfile} disabled={saving} className="bg-primary hover:bg-primary/85 text-white shadow-sm">
               {saving ? (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               ) : (
@@ -371,7 +371,7 @@ export default function PortalSettingsPage() {
                 />
               </NotifSection>
 
-              <Button onClick={handleSaveNotifications} disabled={saving} className="bg-[#5327F2] hover:bg-[#4520D4] text-white shadow-sm">
+              <Button onClick={handleSaveNotifications} disabled={saving} className="bg-primary hover:bg-primary/85 text-white shadow-sm">
                 {saving ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 ) : (

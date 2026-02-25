@@ -211,7 +211,7 @@ export default function OnboardingWizardPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-[#F8F9FB] dark:bg-[#0B0E14]">
-        <div className="h-10 w-10 animate-spin rounded-full border-[3px] border-[#5327F2]/20 border-t-[#5327F2]" />
+        <div className="h-10 w-10 animate-spin rounded-full border-[3px] border-primary/20 border-t-primary" />
       </div>
     )
   }
@@ -231,7 +231,7 @@ export default function OnboardingWizardPage() {
                   <div
                     className={cn(
                       "flex items-center justify-center w-10 h-10 rounded-full border-2 transition-colors",
-                      isActive && "border-[#5327F2] bg-[#5327F2] text-white",
+                      isActive && "border-primary bg-primary text-white",
                       isComplete && "border-emerald-500 bg-emerald-500 text-white",
                       !isActive && !isComplete && "border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500"
                     )}
@@ -447,7 +447,7 @@ export default function OnboardingWizardPage() {
                 Pular
               </Button>
             )}
-            <Button onClick={handleNext} disabled={saving} className="bg-[#5327F2] hover:bg-[#4520D4] text-white shadow-sm">
+            <Button onClick={handleNext} disabled={saving} className="bg-primary hover:bg-primary/85 text-white shadow-sm">
               {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               {currentStep === 3 ? (
                 <>

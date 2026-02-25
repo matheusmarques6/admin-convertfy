@@ -181,7 +181,7 @@ export default function PortalStoreReportPage({
               Voltar
             </Link>
           </Button>
-          <Button onClick={() => fetchReport()} className="bg-[#5327F2] hover:bg-[#4520D4] text-white shadow-sm">Tentar novamente</Button>
+          <Button onClick={() => fetchReport()} className="bg-primary hover:bg-primary/85 text-white shadow-sm">Tentar novamente</Button>
         </div>
       </div>
     )
@@ -201,8 +201,8 @@ export default function PortalStoreReportPage({
               <ArrowLeft className="h-4 w-4" />
             </Link>
           </Button>
-          <div className="w-12 h-12 rounded-lg bg-[#5327F2]/10 flex items-center justify-center">
-            <Store className="h-6 w-6 text-[#5327F2]" />
+          <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
+            <Store className="h-6 w-6 text-primary" />
           </div>
           <div>
             <h1 className="text-2xl font-bold">{store.store_name}</h1>
@@ -251,7 +251,7 @@ export default function PortalStoreReportPage({
             <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 p-5">
               <div className="flex items-center justify-between pb-2">
                 <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Total de Leads</span>
-                <Users className="h-4 w-4 text-[#5327F2]" />
+                <Users className="h-4 w-4 text-primary" />
               </div>
               <div className="text-2xl font-bold">
                 {formatNumber(klaviyo?.totalLeads || 0)}
@@ -482,7 +482,7 @@ export default function PortalStoreReportPage({
                           key={flow.id}
                           className="flex items-center gap-4 p-4 border border-slate-200/80 dark:border-slate-700/40 rounded-lg"
                         >
-                          <div className="w-8 h-8 rounded-full bg-[#5327F2]/10 flex items-center justify-center text-sm font-bold text-[#5327F2]">
+                          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-bold text-primary">
                             {index + 1}
                           </div>
                           <div className="flex-1">
@@ -578,7 +578,7 @@ export default function PortalStoreReportPage({
                 <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 p-5">
                   <div className="flex items-center justify-between pb-2">
                     <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Clientes Recorrentes</span>
-                    <TrendingUp className="h-4 w-4 text-[#5327F2]" />
+                    <TrendingUp className="h-4 w-4 text-primary" />
                   </div>
                   <div className="text-2xl font-bold">{formatPercent(shopify.recurringCustomerRate)}</div>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Taxa de recompra</p>
@@ -603,7 +603,7 @@ export default function PortalStoreReportPage({
                           key={product.name}
                           className="flex items-center gap-4 p-4 border border-slate-200/80 dark:border-slate-700/40 rounded-lg"
                         >
-                          <div className="w-8 h-8 rounded-full bg-[#5327F2]/10 flex items-center justify-center text-sm font-bold text-[#5327F2]">
+                          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-bold text-primary">
                             {index + 1}
                           </div>
                           <div className="flex-1">

@@ -83,7 +83,7 @@ export default function PortalFlowsPage() {
           </div>
           <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100 mb-2">Erro ao carregar</h2>
           <p className="text-slate-500 dark:text-slate-400 text-sm mb-6">{error}</p>
-          <Button onClick={() => fetchData()} className="bg-[#5327F2] hover:bg-[#4520D4] text-white">
+          <Button onClick={() => fetchData()} className="bg-primary hover:bg-primary/85 text-white">
             Tentar novamente
           </Button>
         </div>
@@ -115,7 +115,7 @@ export default function PortalFlowsPage() {
               <p className="text-sm text-slate-500 dark:text-slate-400">{formatDateRange(data.dateRange.start, data.dateRange.end)}</p>
             )}
             {refreshing && (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#5327F2]/10 text-[#5327F2] text-xs font-medium">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium">
                 <RefreshCw className="h-3 w-3 animate-spin" />
                 Atualizando...
               </span>
@@ -189,7 +189,7 @@ export default function PortalFlowsPage() {
                             <div className="flex items-center gap-2.5">
                               {index < 3 && (
                                 <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
-                                  index === 0 ? "bg-[#5327F2]/10 text-[#5327F2]" : "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500"
+                                  index === 0 ? "bg-primary/10 text-primary" : "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500"
                                 }`}>
                                   {index + 1}
                                 </div>

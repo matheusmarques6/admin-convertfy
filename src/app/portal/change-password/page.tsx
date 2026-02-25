@@ -98,7 +98,7 @@ export default function ChangePasswordPage() {
   if (checking) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F8F9FB] dark:bg-[#0B0E14]">
-        <div className="h-10 w-10 animate-spin rounded-full border-[3px] border-[#5327F2]/20 border-t-[#5327F2]" />
+        <div className="h-10 w-10 animate-spin rounded-full border-[3px] border-primary/20 border-t-primary" />
       </div>
     )
   }
@@ -124,7 +124,7 @@ export default function ChangePasswordPage() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
-          <div className="w-14 h-14 rounded-2xl bg-[#5327F2] flex items-center justify-center mb-4 shadow-lg shadow-[#5327F2]/25">
+          <div className="w-14 h-14 rounded-2xl bg-primary flex items-center justify-center mb-4 shadow-lg shadow-primary/25">
             <Lock className="h-7 w-7 text-white" />
           </div>
           <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100">Criar Nova Senha</h1>
@@ -158,7 +158,7 @@ export default function ChangePasswordPage() {
                     required
                     disabled={loading}
                     autoComplete="new-password"
-                    className="h-11 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-[#5327F2] focus:ring-[#5327F2]/20 pr-10"
+                    className="h-11 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-primary focus:ring-primary/20 pr-10"
                   />
                   <Button
                     type="button"
@@ -185,7 +185,7 @@ export default function ChangePasswordPage() {
                     required
                     disabled={loading}
                     autoComplete="new-password"
-                    className="h-11 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-[#5327F2] focus:ring-[#5327F2]/20 pr-10"
+                    className="h-11 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-primary focus:ring-primary/20 pr-10"
                   />
                   <Button
                     type="button"
@@ -214,7 +214,7 @@ export default function ChangePasswordPage() {
 
               <Button
                 type="submit"
-                className="w-full h-11 bg-[#5327F2] hover:bg-[#4520D4] text-white font-medium shadow-lg shadow-[#5327F2]/20"
+                className="w-full h-11 bg-primary hover:bg-primary/85 text-white font-medium shadow-lg shadow-primary/20"
                 disabled={loading || !hasMinLength || !passwordsMatch}
               >
                 {loading ? (

@@ -39,13 +39,13 @@ export function MetricCard({
     <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-4 shadow-sm dark:shadow-slate-900/20 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200">
       <div className="flex items-center gap-2 mb-3">
         <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
-          highlight ? "bg-[#5327F2]/10" : "bg-slate-100 dark:bg-slate-800"
+          highlight ? "bg-primary/10" : "bg-slate-100 dark:bg-slate-800"
         }`}>
-          <Icon className={`h-3.5 w-3.5 ${highlight ? "text-[#5327F2]" : "text-slate-500 dark:text-slate-400"}`} />
+          <Icon className={`h-3.5 w-3.5 ${highlight ? "text-primary" : "text-slate-500 dark:text-slate-400"}`} />
         </div>
         <span className="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wide">{title}</span>
       </div>
-      <p className={`text-xl font-bold ${highlight ? "text-[#5327F2]" : "text-slate-800 dark:text-slate-100"}`}>
+      <p className={`text-xl font-bold ${highlight ? "text-primary" : "text-slate-800 dark:text-slate-100"}`}>
         {value}
       </p>
       {subtitle && (
@@ -100,11 +100,11 @@ export function ChannelCard({
   return (
     <div className={`rounded-xl p-4 border transition-all cursor-pointer ${
       active
-        ? "bg-[#5327F2]/5 dark:bg-[#5327F2]/10 border-[#5327F2]/30 shadow-sm"
+        ? "bg-primary/5 dark:bg-primary/10 border-primary/30 shadow-sm"
         : "bg-white dark:bg-[#151922] border-slate-200/80 dark:border-slate-700/40 hover:border-slate-300 dark:hover:border-slate-600"
     }`}>
       <div className="flex items-center gap-2 mb-2">
-        <Icon className={`h-4 w-4 ${active ? "text-[#5327F2]" : "text-slate-400 dark:text-slate-500"}`} />
+        <Icon className={`h-4 w-4 ${active ? "text-primary" : "text-slate-400 dark:text-slate-500"}`} />
         <span className="text-xs text-slate-500 dark:text-slate-400">{title}</span>
       </div>
       <p className="text-2xl font-bold text-slate-800 dark:text-slate-100">
@@ -136,7 +136,7 @@ export function PerformanceRow({
   return (
     <div className={`flex items-center gap-4 py-3 px-3 rounded-lg ${isTop ? "bg-emerald-50/50 dark:bg-emerald-500/5" : ""}`}>
       <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-        rank <= 3 ? "bg-[#5327F2]/10 text-[#5327F2]" : "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500"
+        rank <= 3 ? "bg-primary/10 text-primary" : "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500"
       }`}>
         {rank}
       </div>
@@ -192,7 +192,7 @@ export function SimpleLineChart({ data, color = "emerald" }: { data: number[]; c
     return `${x},${y}`
   }).join(" ")
 
-  const strokeColor = color === "emerald" ? "#05AFF2" : "#5327F2"
+  const strokeColor = color === "emerald" ? "#05AFF2" : "#05AFF2"
 
   return (
     <div className="h-20 w-full">

@@ -319,7 +319,7 @@ export default function PortalLayout({
         <DropdownMenuTrigger asChild>
           <button className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg hover:bg-white/[0.06] transition-all duration-200 text-left group">
             <Avatar className="h-8 w-8">
-              <AvatarFallback className="bg-gradient-to-br from-[#5327F2] to-[#05AFF2] text-white text-[11px] font-semibold">
+              <AvatarFallback className="bg-gradient-to-br from-[#0284C7] to-[#05AFF2] text-white text-[11px] font-semibold">
                 {getInitials(user.name)}
               </AvatarFallback>
             </Avatar>
@@ -383,9 +383,9 @@ export default function PortalLayout({
               <Image
                 src="/images/logo da convertfy com escrito branco.png"
                 alt="Convertfy"
-                width={200}
-                height={44}
-                className="h-10 w-auto object-contain"
+                width={220}
+                height={56}
+                className="h-14 w-auto object-contain"
                 priority
               />
             </Link>
@@ -418,9 +418,9 @@ export default function PortalLayout({
                   <Image
                     src="/images/logo da convertfy com escrito branco.png"
                     alt="Convertfy"
-                    width={160}
-                    height={36}
-                    className="h-10 w-auto object-contain"
+                    width={220}
+                    height={56}
+                    className="h-14 w-auto object-contain"
                   />
                 </div>
 
@@ -446,7 +446,7 @@ export default function PortalLayout({
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="h-9 w-9">
                 <Avatar className="h-8 w-8">
-                  <AvatarFallback className="bg-gradient-to-br from-[#5327F2] to-[#05AFF2] text-white text-[11px] font-semibold">
+                  <AvatarFallback className="bg-gradient-to-br from-[#0284C7] to-[#05AFF2] text-white text-[11px] font-semibold">
                     {getInitials(user.name)}
                   </AvatarFallback>
                 </Avatar>
