@@ -10,18 +10,14 @@ export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
 }
 
-
-
-
-
 // GET - List campaigns for the client's stores (portal view)
-// IMPORTANT: Does NOT return instructions_doc_url or notes (internal fields)
+// Unified: campaigns (Klaviyo sync + manual) + campaign_batches
+// IMPORTANT: Does NOT return instructions_doc_url, notes, or preview_text (internal fields)
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
     const adminClient = createAdminClient()
 
-    // Get current user
     const user = await requireAuth(supabase)
 
     // Get portal user to find their client_id
@@ -63,15 +59,97 @@ export async function GET(request: NextRequest) {
     const storeId = searchParams.get("store_id")
     const channel = searchParams.get("channel")
 
-    // Determine which stores to filter by
+    // Determine which stores to filter by — validate storeId belongs to client
     let filterStoreIds = clientStoreIds
-    if (storeId && clientStoreIds.includes(storeId)) {
-      filterStoreIds = [storeId]
+    if (storeId) {
+      if (clientStoreIds.includes(storeId)) {
+        filterStoreIds = [storeId]
+      } else {
+        // Invalid store_id for this client — return empty instead of falling back
+        return successResponse(request, { campaigns: [], totalCount: 0 })
+      }
     }
 
-    // Fetch campaigns that include any of the client's stores
-    // Using a different approach: fetch all and filter in JS (more reliable than .overlaps())
-    let query = adminClient
+    // ============================================
+    // 1. Fetch from campaigns table (Klaviyo + manual)
+    // ============================================
+    let campaignsQuery = adminClient
+      .from("campaigns")
+      .select(`
+        id,
+        name,
+        description,
+        scheduled_date,
+        scheduled_time,
+        send_datetime,
+        channel,
+        campaign_type,
+        status,
+        subject_line,
+        segment_name,
+        estimated_recipients,
+        recipients,
+        delivered,
+        opened,
+        clicked,
+        converted,
+        revenue,
+        klaviyo_campaign_id,
+        color,
+        store_id,
+        created_at
+      `)
+      .in("store_id", filterStoreIds)
+      .order("scheduled_date", { ascending: true })
+
+    if (startDate) campaignsQuery = campaignsQuery.gte("scheduled_date", startDate)
+    if (endDate) campaignsQuery = campaignsQuery.lte("scheduled_date", endDate)
+    if (status) campaignsQuery = campaignsQuery.eq("status", status)
+    if (channel) campaignsQuery = campaignsQuery.eq("channel", channel)
+
+    const { data: campaigns, error: campaignsError } = await campaignsQuery
+
+    if (campaignsError) {
+      log.error("[Portal Campaigns] Error fetching campaigns:", campaignsError)
+      throw new AppError("Erro ao buscar campanhas", 500)
+    }
+
+    // Transform campaigns to portal format
+    const portalCampaigns = (campaigns || []).map(c => {
+      const storeId = c.store_id
+      const hasValidDate = c.scheduled_date != null
+
+      return {
+        id: c.id,
+        name: c.name,
+        description: c.description,
+        campaign_type: c.channel || "email",
+        scheduled_at: c.send_datetime || (hasValidDate ? `${c.scheduled_date}T${c.scheduled_time || "00:00"}:00` : c.created_at),
+        scheduled_date: c.scheduled_date,
+        scheduled_time: c.scheduled_time,
+        status: c.status,
+        subject_line: c.subject_line,
+        segment_name: c.segment_name,
+        estimated_recipients: c.estimated_recipients,
+        recipients: c.recipients,
+        delivered: c.delivered,
+        opened: c.opened,
+        clicked: c.clicked,
+        converted: c.converted,
+        revenue: c.revenue,
+        color: c.color || "#3b82f6",
+        created_at: c.created_at,
+        store_ids: storeId ? [storeId] : [],
+        store_names: storeId ? [storeNameMap[storeId] || "Loja"] : [],
+        stores_count: storeId ? 1 : 0,
+        source: c.klaviyo_campaign_id ? "klaviyo" : "manual",
+      }
+    })
+
+    // ============================================
+    // 2. Fetch from campaign_batches table — scoped to client stores
+    // ============================================
+    let batchesQuery = adminClient
       .from("campaign_batches")
       .select(`
         id,
@@ -82,75 +160,95 @@ export async function GET(request: NextRequest) {
         store_ids,
         created_at
       `)
+      .overlaps("store_ids", filterStoreIds)
       .order("scheduled_at", { ascending: true })
 
-    // Apply date filters if provided
-    if (startDate) {
-      query = query.gte("scheduled_at", startDate)
-    }
-    if (endDate) {
-      query = query.lte("scheduled_at", endDate)
-    }
+    if (startDate) batchesQuery = batchesQuery.gte("scheduled_at", startDate)
+    if (endDate) batchesQuery = batchesQuery.lte("scheduled_at", endDate + "T23:59:59.999Z")
     if (status) {
-      query = query.eq("status", status)
+      const batchStatusMap: Record<string, string> = {
+        sent: "completed",
+        scheduled: "scheduled",
+        cancelled: "cancelled",
+        draft: "scheduled",
+      }
+      batchesQuery = batchesQuery.eq("status", batchStatusMap[status] || status)
     }
     if (channel) {
-      // Map "sms" channel to include "whatsapp" as well
       if (channel === "sms") {
-        query = query.in("campaign_type", ["sms", "whatsapp"])
+        batchesQuery = batchesQuery.in("campaign_type", ["sms", "whatsapp"])
       } else {
-        query = query.eq("campaign_type", channel)
+        batchesQuery = batchesQuery.eq("campaign_type", channel)
       }
     }
 
-    const { data: allCampaigns, error } = await query
+    const { data: allBatches, error: batchesError } = await batchesQuery
 
-    log.debug("[Portal Campaigns] Client ID:", clientId)
-    log.debug("[Portal Campaigns] Client Store IDs:", clientStoreIds)
-    log.debug("[Portal Campaigns] All campaigns found:", allCampaigns?.length || 0)
-
-    if (error) {
-      log.error("[Portal Campaigns] Error fetching:", error)
-      throw new AppError("Erro ao buscar campanhas", 500)
+    if (batchesError) {
+      log.error("[Portal Campaigns] Error fetching batches:", batchesError)
+      // Continue with campaigns only
     }
 
-    // Filter campaigns that have at least one store belonging to this client
-    const campaigns = allCampaigns?.filter(campaign => {
-      const campaignStoreIds = campaign.store_ids || []
-      const hasMatchingStore = campaignStoreIds.some((id: string) => filterStoreIds.includes(id))
-      if (hasMatchingStore) {
-        log.debug(`[Portal Campaigns] Campaign matches: ${campaign.name}`, { store_ids: campaign.store_ids })
-      }
-      return hasMatchingStore
-    }) || []
+    // Map batch status to campaign status
+    const batchStatusMap: Record<string, string> = {
+      scheduled: "scheduled",
+      processing: "scheduled",
+      completed: "sent",
+      failed: "cancelled",
+      cancelled: "cancelled",
+    }
 
-    log.debug("[Portal Campaigns] Filtered campaigns:", campaigns.length)
-
-    // Filter store_ids to only show client's stores and add store names
-    // Also exclude internal fields (instructions_doc_url, notes)
-    const filteredCampaigns = campaigns?.map(campaign => {
-      // Filter to only show stores that belong to this client
-      const storeIds = campaign.store_ids || []
-      const relevantStoreIds = storeIds.filter((id: string) => clientStoreIds.includes(id))
+    // Transform batches to portal format — only show client's stores
+    const portalBatches = (allBatches || []).map(batch => {
+      const batchStoreIds: string[] = (batch.store_ids || []).filter(Boolean)
+      const relevantStoreIds = batchStoreIds.filter((id: string) => clientStoreIds.includes(id))
       const relevantStoreNames = relevantStoreIds.map((id: string) => storeNameMap[id] || "Loja")
 
+      const scheduledAt = new Date(batch.scheduled_at)
+      const isValidDate = !isNaN(scheduledAt.getTime())
+
       return {
-        id: campaign.id,
-        name: campaign.name,
-        campaign_type: campaign.campaign_type,
-        scheduled_at: campaign.scheduled_at,
-        status: campaign.status,
-        created_at: campaign.created_at,
-        // Only show client's stores
+        id: batch.id,
+        name: batch.name,
+        description: null,
+        campaign_type: batch.campaign_type,
+        scheduled_at: batch.scheduled_at,
+        scheduled_date: isValidDate ? scheduledAt.toISOString().split("T")[0] : null,
+        scheduled_time: isValidDate ? scheduledAt.toISOString().split("T")[1]?.substring(0, 5) : null,
+        status: batchStatusMap[batch.status] || batch.status,
+        subject_line: null,
+        segment_name: null,
+        estimated_recipients: null,
+        recipients: null,
+        delivered: null,
+        opened: null,
+        clicked: null,
+        converted: null,
+        revenue: null,
+        color: batch.campaign_type === "sms" ? "#10b981" : batch.campaign_type === "whatsapp" ? "#25d366" : "#3b82f6",
+        created_at: batch.created_at,
         store_ids: relevantStoreIds,
         store_names: relevantStoreNames,
         stores_count: relevantStoreIds.length,
+        source: "batch",
       }
-    }) || []
+    })
+
+    // ============================================
+    // 3. Merge and sort by full datetime for precision
+    // ============================================
+    const allCampaigns = [...portalCampaigns, ...portalBatches]
+      .sort((a, b) => {
+        const dateA = a.scheduled_at || ""
+        const dateB = b.scheduled_at || ""
+        return dateA.localeCompare(dateB)
+      })
+
+    log.debug(`[Portal Campaigns] Returning ${allCampaigns.length} campaigns (${portalCampaigns.length} individual + ${portalBatches.length} batches)`)
 
     return successResponse(request, {
-      campaigns: filteredCampaigns,
-      totalCount: filteredCampaigns.length,
+      campaigns: allCampaigns,
+      totalCount: allCampaigns.length,
     })
   } catch (error) {
     return errorResponse(request, error, "PortalCampaigns")

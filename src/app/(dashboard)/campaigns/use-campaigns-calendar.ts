@@ -14,6 +14,7 @@ export function useCampaignsCalendar() {
   const [selectedStore, setSelectedStore] = useState<string>("all")
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
+  const [syncingAll, setSyncingAll] = useState(false)
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [showFormModal, setShowFormModal] = useState(false)
@@ -85,6 +86,33 @@ export function useCampaignsCalendar() {
     }
   }
 
+  const syncAllStores = async () => {
+    setSyncingAll(true)
+    try {
+      const response = await fetch("/api/campaigns/sync-all", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        toast({
+          title: "Sync completo!",
+          description: `${data.totalSynced} campanhas de ${data.totalStores} lojas sincronizadas.${data.failedStores > 0 ? ` (${data.failedStores} falhas)` : ""}`,
+        })
+        fetchCampaigns()
+      } else {
+        const error = await response.json()
+        toast({ variant: "destructive", title: "Erro", description: error.error || "Erro ao sincronizar" })
+      }
+    } catch (error) {
+      console.error("Error syncing all stores:", error)
+      toast({ variant: "destructive", title: "Erro", description: "Erro ao sincronizar todas as lojas" })
+    } finally {
+      setSyncingAll(false)
+    }
+  }
+
   useEffect(() => { fetchStores() }, [fetchStores])
   useEffect(() => { fetchCampaigns() }, [fetchCampaigns])
 
@@ -125,7 +153,7 @@ export function useCampaignsCalendar() {
     // Calendar state
     year, month, daysInMonth, startingDayOfWeek,
     // Data
-    campaigns, stores, loading, syncing,
+    campaigns, stores, loading, syncing, syncingAll,
     selectedStore, setSelectedStore,
     selectedCampaign, setSelectedCampaign,
     selectedDate, setSelectedDate,
@@ -134,6 +162,6 @@ export function useCampaignsCalendar() {
     prevMonth, nextMonth, goToToday,
     getCampaignsForDay, isDayToday,
     handleDayClick, handleCampaignClick,
-    syncCampaigns, fetchCampaigns,
+    syncCampaigns, syncAllStores, fetchCampaigns,
   }
 }

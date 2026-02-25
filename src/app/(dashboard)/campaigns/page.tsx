@@ -183,7 +183,7 @@ export default function CampaignsCalendarPage() {
                 </Select>
               </div>
 
-              {cal.selectedStore !== "all" && (
+              {cal.selectedStore !== "all" ? (
                 <Button
                   variant="outline"
                   size="sm"
@@ -192,6 +192,16 @@ export default function CampaignsCalendarPage() {
                 >
                   <RefreshCw className={`h-4 w-4 mr-2 ${cal.syncing ? "animate-spin" : ""}`} />
                   Sincronizar Klaviyo
+                </Button>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => cal.syncAllStores()}
+                  disabled={cal.syncingAll}
+                >
+                  <RefreshCw className={`h-4 w-4 mr-2 ${cal.syncingAll ? "animate-spin" : ""}`} />
+                  Sync Todas as Lojas
                 </Button>
               )}
             </div>

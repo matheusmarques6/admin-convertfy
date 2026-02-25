@@ -63,6 +63,8 @@ interface Campaign {
   clicked?: number
   converted?: number
   revenue?: number
+  source?: "manual" | "klaviyo" | "batch"
+  storeNames?: string[]
   store?: {
     id: string
     store_name: string
@@ -422,39 +424,77 @@ export default function PortalCampaignsPage() {
     }
   }, [viewMode, year, month, daysInMonth, weekStart, weekEnd])
 
-  // Transform API data to calendar format
+  // Transform API data to calendar format (unified: campaigns + campaign_batches)
   const transformCampaignData = (apiCampaign: {
     id: string
     name: string
+    description?: string | null
     campaign_type: string
-    scheduled_at: string
+    channel?: string
+    scheduled_at?: string
+    scheduled_date?: string
+    scheduled_time?: string
     status: string
-    store_ids: string[]
-    store_names: string[]
-    stores_count: number
+    subject_line?: string | null
+    segment_name?: string | null
+    recipients?: number | null
+    delivered?: number | null
+    opened?: number | null
+    clicked?: number | null
+    converted?: number | null
+    revenue?: number | null
+    color?: string | null
+    store_ids?: string[]
+    store_names?: string[]
+    stores_count?: number
+    source?: string
   }): Campaign => {
-    const scheduledDate = new Date(apiCampaign.scheduled_at)
-    const dateStr = formatDateKey(scheduledDate)
-    const timeStr = scheduledDate.toTimeString().substring(0, 5)
+    // Handle both scheduled_at (batches) and scheduled_date (campaigns)
+    let dateStr: string
+    let timeStr: string | undefined
+
+    if (apiCampaign.scheduled_date) {
+      dateStr = apiCampaign.scheduled_date
+      timeStr = apiCampaign.scheduled_time || undefined
+    } else if (apiCampaign.scheduled_at) {
+      const scheduledDate = new Date(apiCampaign.scheduled_at)
+      if (!isNaN(scheduledDate.getTime())) {
+        dateStr = formatDateKey(scheduledDate)
+        timeStr = scheduledDate.toTimeString().substring(0, 5)
+      } else {
+        dateStr = formatDateKey(new Date())
+      }
+    } else {
+      dateStr = formatDateKey(new Date())
+    }
 
     // Map API status to calendar status
     const statusMap: Record<string, "draft" | "scheduled" | "sent" | "cancelled"> = {
+      draft: "draft",
       scheduled: "scheduled",
+      pending_review: "scheduled",
+      approved: "scheduled",
       processing: "scheduled",
       completed: "sent",
+      sent: "sent",
       failed: "cancelled",
       cancelled: "cancelled",
+      rejected: "cancelled",
     }
 
-    // Map campaign_type to channel
+    // Map channel value (prioritize explicit channel field over campaign_type)
     const channelMap: Record<string, "email" | "sms" | "push"> = {
       email: "email",
       sms: "sms",
       push: "push",
-      whatsapp: "sms", // Map whatsapp to sms for display
+      whatsapp: "sms",
     }
 
-    // Color based on campaign type
+    // Use channel field first (from campaigns table), fall back to campaign_type (from batches)
+    const rawChannel = apiCampaign.channel || apiCampaign.campaign_type
+    const resolvedChannel = channelMap[rawChannel] || "email"
+
+    // Color based on channel (use from API if available)
     const colorMap: Record<string, string> = {
       email: "#3b82f6",
       sms: "#10b981",
@@ -468,16 +508,26 @@ export default function PortalCampaignsPage() {
     return {
       id: apiCampaign.id,
       name: apiCampaign.name,
-      channel: channelMap[apiCampaign.campaign_type] || "email",
+      description: apiCampaign.description || undefined,
+      channel: resolvedChannel,
       type: apiCampaign.campaign_type,
       status: statusMap[apiCampaign.status] || "scheduled",
       scheduledDate: dateStr,
       scheduledTime: timeStr,
-      color: colorMap[apiCampaign.campaign_type] || "#3b82f6",
-      segmentName: storeNames.join(", "),
-      store: storeNames.length > 0 ? {
+      color: apiCampaign.color || colorMap[rawChannel] || "#3b82f6",
+      subjectLine: apiCampaign.subject_line || undefined,
+      segmentName: apiCampaign.segment_name || undefined,
+      recipients: apiCampaign.recipients || undefined,
+      delivered: apiCampaign.delivered || undefined,
+      opened: apiCampaign.opened || undefined,
+      clicked: apiCampaign.clicked || undefined,
+      converted: apiCampaign.converted || undefined,
+      revenue: apiCampaign.revenue || undefined,
+      source: (apiCampaign.source as Campaign["source"]) || "manual",
+      storeNames: storeNames.length > 0 ? storeNames : undefined,
+      store: storeIds.length > 0 ? {
         id: storeIds[0],
-        store_name: storeNames[0],
+        store_name: storeNames[0] || "Loja",
       } : undefined,
     }
   }
@@ -518,16 +568,16 @@ export default function PortalCampaignsPage() {
         })
       })
 
-      // Calculate stats
+      // Calculate stats with real metrics
       const calculatedStats: Stats = {
         total: transformedCampaigns.length,
         sent: transformedCampaigns.filter((c: Campaign) => c.status === "sent").length,
         scheduled: transformedCampaigns.filter((c: Campaign) => c.status === "scheduled").length,
         draft: transformedCampaigns.filter((c: Campaign) => c.status === "draft").length,
-        totalRevenue: 0,
-        totalRecipients: 0,
-        totalOpens: 0,
-        totalClicks: 0,
+        totalRevenue: transformedCampaigns.reduce((sum: number, c: Campaign) => sum + (c.revenue || 0), 0),
+        totalRecipients: transformedCampaigns.reduce((sum: number, c: Campaign) => sum + (c.recipients || 0), 0),
+        totalOpens: transformedCampaigns.reduce((sum: number, c: Campaign) => sum + (c.opened || 0), 0),
+        totalClicks: transformedCampaigns.reduce((sum: number, c: Campaign) => sum + (c.clicked || 0), 0),
       }
 
       setCampaigns(transformedCampaigns)
@@ -1069,8 +1119,10 @@ export default function PortalCampaignsPage() {
                         {selectedCampaign.name}
                       </DialogTitle>
                       <p className="text-sm text-muted-foreground mt-1">
-                        {selectedCampaign.store?.store_name || "Loja"} •{" "}
-                        {formatDate(selectedCampaign.scheduledDate)}
+                        {selectedCampaign.storeNames && selectedCampaign.storeNames.length > 1
+                          ? selectedCampaign.storeNames.join(", ")
+                          : selectedCampaign.store?.store_name || "Loja"}{" "}
+                        • {formatDate(selectedCampaign.scheduledDate)}
                         {selectedCampaign.scheduledTime && ` às ${formatTime(selectedCampaign.scheduledTime)}`}
                       </p>
                     </div>
@@ -1078,14 +1130,20 @@ export default function PortalCampaignsPage() {
                 </DialogHeader>
 
                 <div className="space-y-5 mt-4">
-                  {/* Status and Channel */}
-                  <div className="flex items-center gap-2">
+                  {/* Status, Channel and Source */}
+                  <div className="flex items-center gap-2 flex-wrap">
                     <Badge className={STATUS_CONFIG[selectedCampaign.status]?.color}>
                       {STATUS_CONFIG[selectedCampaign.status]?.label}
                     </Badge>
                     <Badge className={`${CHANNEL_CONFIG[selectedCampaign.channel]?.lightColor} ${CHANNEL_CONFIG[selectedCampaign.channel]?.textColor} border-0`}>
                       {CHANNEL_CONFIG[selectedCampaign.channel]?.label}
                     </Badge>
+                    {selectedCampaign.source === "klaviyo" && (
+                      <Badge className="bg-green-500/20 text-green-400 border-green-500/30">Klaviyo</Badge>
+                    )}
+                    {selectedCampaign.source === "batch" && (
+                      <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30">Lote</Badge>
+                    )}
                   </div>
 
                   {/* Subject Line */}

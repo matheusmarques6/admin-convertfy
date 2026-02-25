@@ -622,6 +622,7 @@ export interface PaginatedResponse<T> {
 export type CampaignStatus = "draft" | "pending_review" | "approved" | "rejected" | "scheduled" | "sent" | "cancelled"
 export type CampaignChannel = "email" | "sms" | "push" | "whatsapp"
 export type CampaignType = "promotional" | "newsletter" | "transactional" | "automation" | "seasonal" | "launch" | "other"
+export type CampaignSource = "manual" | "klaviyo" | "batch"
 
 export interface Campaign {
   id: string
@@ -653,6 +654,8 @@ export interface Campaign {
   color: string
   notes?: string
   created_by?: string
+  source?: CampaignSource
+  store_names?: string[]
   // Approval workflow fields
   submitted_by?: string
   submitted_at?: string

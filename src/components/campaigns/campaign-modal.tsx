@@ -87,6 +87,12 @@ const typeLabels = {
   other: "Outro",
 }
 
+const sourceConfig: Record<string, { label: string; color: string }> = {
+  manual: { label: "Manual", color: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300" },
+  klaviyo: { label: "Klaviyo", color: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300" },
+  batch: { label: "Lote", color: "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300" },
+}
+
 export function CampaignModal({
   campaign,
   onClose,
@@ -105,8 +111,8 @@ export function CampaignModal({
   const [loadingHistory, setLoadingHistory] = useState(false)
 
   const ChannelIcon = channelConfig[campaign.channel]?.icon || Mail
-  const channelInfo = channelConfig[campaign.channel]
-  const statusInfo = statusConfig[campaign.status]
+  const channelInfo = channelConfig[campaign.channel] || channelConfig.email
+  const statusInfo = statusConfig[campaign.status] || { color: "bg-gray-100 text-gray-800", label: campaign.status || "Desconhecido" }
 
   const canSubmit = ["draft", "rejected"].includes(campaign.status)
   const canApprove = campaign.status === "pending_review"
@@ -208,11 +214,11 @@ export function CampaignModal({
         onDelete()
       } else {
         const error = await response.json()
-        alert(`Erro: ${error.error}`)
+        toast({ variant: "destructive", title: "Erro", description: error.error || "Erro ao excluir" })
       }
     } catch (error) {
       console.error("Error deleting campaign:", error)
-      alert("Erro ao excluir campanha")
+      toast({ variant: "destructive", title: "Erro", description: "Erro ao excluir campanha" })
     } finally {
       setDeleting(false)
     }
@@ -256,18 +262,23 @@ export function CampaignModal({
             <div className="flex items-start gap-3">
               <div
                 className="w-12 h-12 rounded-lg flex items-center justify-center text-white flex-shrink-0"
-                style={{ backgroundColor: campaign.color }}
+                style={{ backgroundColor: campaign.color || "#3b82f6" }}
               >
                 <ChannelIcon className="h-6 w-6" />
               </div>
               <div>
                 <CardTitle className="text-xl">{campaign.name}</CardTitle>
-                <div className="flex items-center gap-2 mt-1">
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
                   <Badge className={statusInfo.color}>{statusInfo.label}</Badge>
                   <Badge variant="outline">{typeLabels[campaign.campaign_type]}</Badge>
                   <Badge variant="outline" className="capitalize">
                     {channelInfo?.label}
                   </Badge>
+                  {campaign.source && sourceConfig[campaign.source] && (
+                    <Badge className={sourceConfig[campaign.source].color}>
+                      {sourceConfig[campaign.source].label}
+                    </Badge>
+                  )}
                 </div>
               </div>
             </div>
@@ -309,9 +320,13 @@ export function CampaignModal({
           <div className="flex items-center gap-2">
             <Store className="h-4 w-4 text-muted-foreground" />
             <div>
-              <p className="text-sm text-muted-foreground">Loja</p>
+              <p className="text-sm text-muted-foreground">
+                {campaign.store_names && campaign.store_names.length > 1 ? "Lojas" : "Loja"}
+              </p>
               <p className="font-medium">
-                {campaign.store?.store_name || "Não especificada"}
+                {campaign.store_names && campaign.store_names.length > 0
+                  ? campaign.store_names.join(", ")
+                  : campaign.store?.store_name || "Não especificada"}
               </p>
             </div>
           </div>

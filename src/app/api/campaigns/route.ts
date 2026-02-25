@@ -32,7 +32,8 @@ export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
 }
 
-// GET - List campaigns with filters
+// GET - List campaigns with filters (unified: campaigns + campaign_batches)
+// C5 FIX: RLS on supabase client already scopes to user's org
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
@@ -45,8 +46,10 @@ export async function GET(request: NextRequest) {
     const endDate = searchParams.get("end_date")
     const status = searchParams.get("status")
     const channel = searchParams.get("channel")
+    const includeUnified = searchParams.get("unified") !== "false"
 
-    let query = supabase
+    // 1. Fetch from campaigns table (RLS scoped to user's accessible stores)
+    let campaignsQuery = supabase
       .from("campaigns")
       .select(`
         *,
@@ -55,21 +58,154 @@ export async function GET(request: NextRequest) {
       `)
       .order("scheduled_date", { ascending: true })
 
-    if (storeId) query = query.eq("store_id", storeId)
-    if (clientId) query = query.eq("client_id", clientId)
-    if (startDate) query = query.gte("scheduled_date", startDate)
-    if (endDate) query = query.lte("scheduled_date", endDate)
-    if (status) query = query.eq("status", status)
-    if (channel) query = query.eq("channel", channel)
+    if (storeId) campaignsQuery = campaignsQuery.eq("store_id", storeId)
+    if (clientId) campaignsQuery = campaignsQuery.eq("client_id", clientId)
+    if (startDate) campaignsQuery = campaignsQuery.gte("scheduled_date", startDate)
+    if (endDate) campaignsQuery = campaignsQuery.lte("scheduled_date", endDate)
+    if (status) campaignsQuery = campaignsQuery.eq("status", status)
+    if (channel) campaignsQuery = campaignsQuery.eq("channel", channel)
 
-    const { data: campaigns, error } = await query
+    const { data: campaigns, error: campaignsError } = await campaignsQuery
 
-    if (error) {
-      log.error("Error fetching campaigns", { error: error.message })
+    if (campaignsError) {
+      log.error("Error fetching campaigns", { error: campaignsError.message })
       throw new AppError("Erro ao buscar campanhas", 500)
     }
 
-    return successResponse(request, { campaigns: campaigns || [] })
+    // Track klaviyo IDs for deduplication
+    const klaviyoCampaignIds = new Set<string>()
+
+    const campaignsWithSource = (campaigns || []).map(c => {
+      if (c.klaviyo_campaign_id) {
+        klaviyoCampaignIds.add(c.klaviyo_campaign_id)
+      }
+      return {
+        ...c,
+        source: c.klaviyo_campaign_id ? "klaviyo" : "manual",
+      }
+    })
+
+    // 2. Fetch from campaign_batches table if unified mode
+    // C6 FIX: Use RLS-scoped supabase client (not adminClient)
+    let batchesAsCampaigns: Array<Record<string, unknown>> = []
+
+    if (includeUnified) {
+      let batchesQuery = supabase
+        .from("campaign_batches")
+        .select("*")
+        .order("scheduled_at", { ascending: true })
+
+      if (startDate) batchesQuery = batchesQuery.gte("scheduled_at", startDate)
+      if (endDate) batchesQuery = batchesQuery.lte("scheduled_at", endDate + "T23:59:59.999Z")
+      if (status) {
+        const batchStatusMap: Record<string, string> = {
+          sent: "completed",
+          scheduled: "scheduled",
+          cancelled: "cancelled",
+          draft: "scheduled",
+        }
+        const batchStatus = batchStatusMap[status] || status
+        batchesQuery = batchesQuery.eq("status", batchStatus)
+      }
+      if (channel) batchesQuery = batchesQuery.eq("campaign_type", channel)
+
+      const { data: batches, error: batchesError } = await batchesQuery
+
+      if (batchesError) {
+        log.error("Error fetching campaign_batches", { error: batchesError.message })
+        // Continue with campaigns only — don't fail entire request
+      }
+
+      if (batches && batches.length > 0) {
+        // Filter by storeId if specified, using contains
+        const filteredBatches = storeId
+          ? batches.filter(b => (b.store_ids || []).includes(storeId))
+          : batches
+
+        // Get store names for batches
+        const allStoreIds = [...new Set(
+          filteredBatches.flatMap(b => (b.store_ids || []).filter(Boolean))
+        )]
+
+        let storeNameMap: Record<string, string> = {}
+        if (allStoreIds.length > 0) {
+          const { data: storesData } = await supabase
+            .from("client_stores")
+            .select("id, store_name")
+            .in("id", allStoreIds)
+
+          if (storesData) {
+            storeNameMap = Object.fromEntries(storesData.map(s => [s.id, s.store_name]))
+          }
+        }
+
+        batchesAsCampaigns = filteredBatches.map(batch => {
+          const scheduledAt = new Date(batch.scheduled_at)
+          const scheduledDate = scheduledAt.toISOString().split("T")[0]
+          const scheduledTime = scheduledAt.toISOString().split("T")[1]?.substring(0, 5)
+
+          const statusMap: Record<string, string> = {
+            scheduled: "scheduled",
+            processing: "scheduled",
+            completed: "sent",
+            failed: "cancelled",
+            cancelled: "cancelled",
+          }
+
+          const batchStoreIds: string[] = (batch.store_ids || []).filter(Boolean)
+          const storeNames = batchStoreIds.map((id: string) => storeNameMap[id] || "Loja")
+
+          return {
+            id: `batch_${batch.id}`,
+            batch_id: batch.id,
+            store_id: batchStoreIds[0] || null,
+            client_id: null,
+            name: batch.name,
+            description: null,
+            scheduled_date: scheduledDate,
+            scheduled_time: scheduledTime,
+            send_datetime: batch.scheduled_at,
+            channel: batch.campaign_type || "email",
+            campaign_type: "promotional",
+            status: statusMap[batch.status] || "scheduled",
+            subject_line: null,
+            preview_text: null,
+            segment_name: null,
+            estimated_recipients: null,
+            recipients: null,
+            delivered: null,
+            opened: null,
+            clicked: null,
+            converted: null,
+            revenue: null,
+            klaviyo_campaign_id: null,
+            tags: [],
+            color: batch.campaign_type === "sms" ? "#10b981" : batch.campaign_type === "whatsapp" ? "#25d366" : "#8b5cf6",
+            notes: null,
+            created_by: batch.created_by,
+            created_at: batch.created_at,
+            updated_at: batch.updated_at,
+            source: "batch",
+            store_names: storeNames,
+            store: batchStoreIds[0] ? {
+              id: batchStoreIds[0],
+              store_name: storeNames[0] || "Loja",
+            } : null,
+            client: null,
+          }
+        })
+      }
+    }
+
+    // 3. Merge, sort by send_datetime for better precision
+    const allResults = [...campaignsWithSource, ...batchesAsCampaigns]
+      .sort((a, b) => {
+        const dateA = (a.send_datetime as string) || (a.scheduled_date as string) || ""
+        const dateB = (b.send_datetime as string) || (b.scheduled_date as string) || ""
+        return dateA.localeCompare(dateB)
+      })
+
+    return successResponse(request, { campaigns: allResults })
   } catch (error) {
     return errorResponse(request, error, "Campaigns GET")
   }
@@ -84,7 +220,6 @@ export async function POST(request: NextRequest) {
 
     const body = await parseAndValidate(request, campaignCreateSchema)
 
-    // Build send_datetime if time is provided
     let send_datetime = null
     if (body.scheduled_date && body.scheduled_time) {
       send_datetime = `${body.scheduled_date}T${body.scheduled_time}:00`
@@ -127,7 +262,7 @@ export async function POST(request: NextRequest) {
       throw new AppError("Erro ao criar campanha", 500)
     }
 
-    return successResponse(request, { campaign }, { status: 201, message: "Campanha criada com sucesso" })
+    return successResponse(request, { campaign: { ...campaign, source: "manual" } }, { status: 201, message: "Campanha criada com sucesso" })
   } catch (error) {
     return errorResponse(request, error, "Campaigns POST")
   }
