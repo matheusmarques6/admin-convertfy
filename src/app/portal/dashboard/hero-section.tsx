@@ -1,4 +1,4 @@
-import { formatCurrency, formatCurrencyCompact } from "@/lib/utils/format"
+import { formatCurrency } from "@/lib/utils/format"
 import { VariationBadge } from "./components"
 import type { KlaviyoData } from "./types"
 
@@ -38,7 +38,7 @@ export function HeroSection({ klaviyo }: HeroSectionProps) {
             )}
           </div>
           <p className="text-sm text-muted-foreground">
-            Klaviyo: {formatCurrency(totalRevenue)} · Flows: {formatCurrency(flowRevenue)} · Campanhas: {formatCurrency(campaignRevenue)}
+            Atribuição Klaviyo: {formatCurrency(totalRevenue)} ({attributionPercent.toFixed(2)}% do total)
           </p>
         </div>
         <div className="text-right">
@@ -57,7 +57,7 @@ export function HeroSection({ klaviyo }: HeroSectionProps) {
             <div className="w-2 h-2 rounded-full bg-purple-500" />
             <span className="text-xs text-muted-foreground">Lucro Estimado</span>
           </div>
-          <p className="text-lg font-bold text-foreground">{formatCurrencyCompact(estimatedProfit)}</p>
+          <p className="text-lg font-bold text-foreground">{formatCurrency(estimatedProfit)}</p>
           <p className="text-xs text-purple-400">30% margem</p>
         </div>
       </div>
@@ -87,8 +87,8 @@ function RevenueCard({
         <div className={`w-2 h-2 rounded-full ${dotClasses[color] || dotClasses.violet}`} />
         <span className="text-xs text-muted-foreground">{label}</span>
       </div>
-      <p className="text-lg font-bold text-foreground">{formatCurrencyCompact(value)}</p>
-      <p className={`text-xs ${textClasses[color] || textClasses.violet}`}>{percent.toFixed(0)}% da receita</p>
+      <p className="text-lg font-bold text-foreground">{formatCurrency(value)}</p>
+      <p className={`text-xs ${textClasses[color] || textClasses.violet}`}>{percent.toFixed(1)}% da receita</p>
     </div>
   )
 }

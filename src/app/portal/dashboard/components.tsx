@@ -1,5 +1,5 @@
 import { TrendingUp, TrendingDown } from "lucide-react"
-import { formatCurrencyCompact, formatNumber } from "@/lib/utils/format"
+import { formatCurrency, formatNumber } from "@/lib/utils/format"
 import { GlowCard } from "@/components/ui/glow-card"
 import type { GlowColor } from "@/components/ui/glow-card"
 
@@ -13,7 +13,7 @@ export function VariationBadge({ value, type = "percent" }: { value: number; typ
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-sm font-medium ${bgColor} ${textColor}`}>
       <Icon className="h-3 w-3" />
-      {type === "percent" ? `${isPositive ? "+" : ""}${value.toFixed(1)}%` : formatCurrencyCompact(Math.abs(value))}
+      {type === "percent" ? `${isPositive ? "+" : ""}${value.toFixed(1)}%` : formatCurrency(Math.abs(value))}
     </span>
   )
 }
@@ -72,7 +72,7 @@ export function FlowListItem({
         <p className="text-sm font-medium text-foreground truncate">{name}</p>
       </div>
       <div className="text-right">
-        <p className="text-sm font-bold text-foreground">{formatCurrencyCompact(value)}</p>
+        <p className="text-sm font-bold text-foreground">{formatCurrency(value)}</p>
         <p className="text-xs text-muted-foreground">{percent.toFixed(0)}%</p>
       </div>
     </div>
@@ -108,7 +108,7 @@ export function ChannelCard({
       <p className={`text-2xl font-bold ${active ? "text-foreground" : "text-foreground/80"}`}>
         {percent.toFixed(1)}%
       </p>
-      <p className="text-xs text-muted-foreground mt-1">{formatCurrencyCompact(value)}</p>
+      <p className="text-xs text-muted-foreground mt-1">{formatCurrency(value)}</p>
     </div>
   )
 }
@@ -155,7 +155,7 @@ export function PerformanceRow({
           <p className="text-[10px] text-muted-foreground/70">Clique</p>
         </div>
         <div>
-          <p className="text-sm font-bold text-success">{formatCurrencyCompact(revenue)}</p>
+          <p className="text-sm font-bold text-success">{formatCurrency(revenue)}</p>
           <p className="text-[10px] text-muted-foreground/70">Receita</p>
         </div>
       </div>
