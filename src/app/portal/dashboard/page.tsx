@@ -2,15 +2,15 @@
 
 import { useState, useEffect, useCallback } from "react"
 import {
-  Store,
   CalendarDays,
   RefreshCw,
+  AlertCircle,
   ShoppingCart,
   Receipt,
-  Send,
   Zap,
+  DollarSign,
   Users,
-  AlertCircle,
+  ShoppingBag,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -22,16 +22,15 @@ import {
 } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatCurrency, formatNumber, formatPercent, formatDateRange } from "@/lib/utils/format"
-import { MetricCard } from "./components"
 import { HeroSection } from "./hero-section"
-import { ThreeColumns } from "./three-columns"
-import { EmailPerformance } from "./email-performance"
-import { RevenueChannels } from "./revenue-channels"
-import { ConversionsSection } from "./conversions-section"
-import { RankingsSection } from "./rankings-section"
-import { MeetingsSection } from "./meetings-section"
-import { FooterStats } from "./footer-stats"
+import { OnboardingCard } from "./onboarding-card"
+import { NextCampaignsCard } from "./next-campaigns-card"
+import { NextMeetingCard } from "./next-meeting-card"
+import { ListHealthCard } from "./list-health-card"
+import { LastSendCard } from "./last-send-card"
+import { TopFlowCard } from "./top-flow-card"
 import { AnimatedContainer, AnimatedItem } from "@/components/ui/animated-container"
+import { GlowCard } from "@/components/ui/glow-card"
 import type { DashboardData } from "./types"
 
 export default function PortalDashboardPage() {
@@ -39,16 +38,17 @@ export default function PortalDashboardPage() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [selectedStoreId, setSelectedStoreId] = useState<string>("all")
   const [period, setPeriod] = useState("30d")
 
   const fetchDashboard = useCallback(async (showRefresh = false) => {
     if (showRefresh) setRefreshing(true)
 
     try {
+      let storeId: string | null = null
+      try { storeId = localStorage.getItem("portal_active_store") } catch { /* ignore */ }
       const params = new URLSearchParams({
         period,
-        ...(selectedStoreId !== "all" && { store_id: selectedStoreId }),
+        ...(storeId && { store_id: storeId }),
       })
 
       const response = await fetch(`/api/portal/dashboard?${params}`)
@@ -65,7 +65,7 @@ export default function PortalDashboardPage() {
       setLoading(false)
       setRefreshing(false)
     }
-  }, [period, selectedStoreId])
+  }, [period])
 
   useEffect(() => {
     fetchDashboard()
@@ -79,10 +79,6 @@ export default function PortalDashboardPage() {
             <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
             <p className="text-sm text-muted-foreground">Carregando dados...</p>
           </div>
-          <div className="flex gap-3">
-            <Skeleton className="h-10 w-36 bg-card" />
-            <Skeleton className="h-10 w-32 bg-card" />
-          </div>
         </div>
         <div className="rounded-xl bg-gradient-to-r from-primary/40 via-primary/20 to-card border border-primary/10 p-6">
           <div className="flex items-center gap-3 mb-4">
@@ -92,23 +88,11 @@ export default function PortalDashboardPage() {
           <Skeleton className="h-10 w-48 bg-muted/50 mb-2" />
           <Skeleton className="h-4 w-32 bg-muted/50" />
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          {[1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="rounded-xl bg-card/50 border border-border p-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <div key={i} className="rounded-xl bg-card/50 border border-border p-4 h-40">
               <Skeleton className="h-4 w-16 bg-muted mb-2" />
               <Skeleton className="h-8 w-24 bg-muted" />
-            </div>
-          ))}
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="rounded-xl bg-card border border-border p-5 h-64">
-              <Skeleton className="h-5 w-24 bg-muted mb-4" />
-              <div className="space-y-3">
-                {[1, 2, 3, 4].map((j) => (
-                  <Skeleton key={j} className="h-8 w-full bg-muted/50" />
-                ))}
-              </div>
             </div>
           ))}
         </div>
@@ -136,8 +120,12 @@ export default function PortalDashboardPage() {
   if (!data) return null
 
   const klaviyo = data.klaviyo
-  const shopify = data.shopify
-  const totalKlaviyoRevenue = klaviyo?.totalRevenue || 0
+  const storeRevenue = klaviyo?.storeRevenue || 0
+  const storeOrders = klaviyo?.storeOrders || 0
+  const totalRevenue = klaviyo?.totalRevenue || 0
+  const ticketMedio = storeOrders > 0 ? storeRevenue / storeOrders : 0
+  const receitaPorLead = klaviyo?.engagedLeads ? totalRevenue / klaviyo.engagedLeads : 0
+  const recoveryRate = klaviyo?.recoveryRate || 0
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -160,21 +148,6 @@ export default function PortalDashboardPage() {
           </div>
 
           <div className="flex items-center gap-3">
-            <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
-              <SelectTrigger className="w-[180px] bg-card border-border text-foreground">
-                <Store className="h-4 w-4 mr-2 text-muted-foreground" />
-                <SelectValue placeholder="Selecione a loja" />
-              </SelectTrigger>
-              <SelectContent className="bg-card border-border">
-                <SelectItem value="all" className="text-foreground hover:bg-muted">Todas as lojas</SelectItem>
-                {data.stores?.map((store) => (
-                  <SelectItem key={store.id} value={store.id} className="text-foreground hover:bg-muted">
-                    {store.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
             <Select value={period} onValueChange={setPeriod}>
               <SelectTrigger className="w-[140px] bg-card border-border text-foreground">
                 <CalendarDays className="h-4 w-4 mr-2 text-muted-foreground" />
@@ -201,47 +174,105 @@ export default function PortalDashboardPage() {
           </div>
         </div>
 
-        {/* Dashboard Sections */}
         <AnimatedContainer className="space-y-6">
+          {/* Hero: Financial Summary */}
           <AnimatedItem>
             <HeroSection klaviyo={klaviyo} />
           </AnimatedItem>
 
+          {/* Onboarding Card (conditional) */}
           <AnimatedItem>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              <MetricCard title="Pedidos" value={formatNumber(klaviyo?.storeOrders || 0)} subtitle="no período" icon={ShoppingCart} />
-              <MetricCard title="Ticket Médio" value={formatCurrency(klaviyo?.storeOrders ? (klaviyo?.storeRevenue || 0) / klaviyo.storeOrders : 0)} subtitle="receita / pedidos" icon={Receipt} />
-              <MetricCard title="Campanhas" value={klaviyo?.campaignsCount || 0} subtitle="enviadas" icon={Send} />
-              <MetricCard title="Flows Ativos" value={klaviyo?.activeFlows || 0} subtitle={`de ${klaviyo?.flowsCount || 0} total`} icon={Zap} highlight />
-              <MetricCard title="Engajamento" value={formatPercent(klaviyo?.engagementRate || 0)} subtitle="dos leads" icon={Users} />
+            <OnboardingCard />
+          </AnimatedItem>
+
+          {/* Operational Cards - 2x3 grid */}
+          <AnimatedItem>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <NextCampaignsCard campaigns={klaviyo?.recentCampaigns} />
+              <NextMeetingCard meetings={data.meetings} />
+              <ListHealthCard
+                bounceRate={klaviyo?.bounceRate || 0}
+                unsubscribeRate={klaviyo?.unsubscribeRate || 0}
+              />
+              <LastSendCard campaigns={klaviyo?.recentCampaigns} />
+              <TopFlowCard flows={klaviyo?.topFlows} />
+
+              {/* Invoices quick card */}
+              {(data.invoices.pending > 0 || data.invoices.overdue > 0) && (
+                <GlowCard color={data.invoices.overdue > 0 ? "destructive" : "warning"} intensity="moderate" surfaceClassName="p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <DollarSign className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground uppercase tracking-wide">Faturas</span>
+                  </div>
+                  {data.invoices.overdue > 0 && (
+                    <div className="mb-2">
+                      <p className="text-lg font-bold text-destructive">{formatCurrency(data.invoices.totalOverdue)}</p>
+                      <p className="text-xs text-destructive/80">{data.invoices.overdue} fatura(s) em atraso</p>
+                    </div>
+                  )}
+                  {data.invoices.pending > 0 && (
+                    <div>
+                      <p className="text-lg font-bold text-foreground">{formatCurrency(data.invoices.totalPending)}</p>
+                      <p className="text-xs text-muted-foreground">{data.invoices.pending} fatura(s) pendente(s)</p>
+                    </div>
+                  )}
+                </GlowCard>
+              )}
             </div>
           </AnimatedItem>
 
+          {/* KPI Cards */}
           <AnimatedItem>
-            <ThreeColumns klaviyo={klaviyo} />
-          </AnimatedItem>
-
-          <AnimatedItem>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <EmailPerformance klaviyo={klaviyo} />
-              <RevenueChannels klaviyo={klaviyo} />
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+              <KpiCard
+                label="Pedidos"
+                value={formatNumber(storeOrders)}
+                icon={ShoppingCart}
+              />
+              <KpiCard
+                label="Ticket Médio"
+                value={formatCurrency(ticketMedio)}
+                icon={Receipt}
+              />
+              <KpiCard
+                label="Recuperação de Carrinho"
+                value={formatPercent(recoveryRate)}
+                icon={ShoppingBag}
+              />
+              <KpiCard
+                label="Receita por Lead"
+                value={formatCurrency(receitaPorLead)}
+                icon={Users}
+              />
+              <KpiCard
+                label="Flows Ativos"
+                value={`${klaviyo?.activeFlows || 0} / ${klaviyo?.flowsCount || 0}`}
+                icon={Zap}
+              />
             </div>
-          </AnimatedItem>
-
-          <AnimatedItem>
-            <ConversionsSection shopify={shopify} />
-          </AnimatedItem>
-          <AnimatedItem>
-            <RankingsSection shopify={shopify} />
-          </AnimatedItem>
-          <AnimatedItem>
-            <MeetingsSection meetings={data.meetings} />
-          </AnimatedItem>
-          <AnimatedItem>
-            <FooterStats klaviyo={klaviyo} shopify={shopify} lastUpdated={data.lastUpdated} />
           </AnimatedItem>
         </AnimatedContainer>
       </div>
+    </div>
+  )
+}
+
+function KpiCard({
+  label,
+  value,
+  icon: Icon,
+}: {
+  label: string
+  value: string | number
+  icon: React.ElementType
+}) {
+  return (
+    <div className="rounded-xl bg-card/80 border border-border p-4">
+      <div className="flex items-center gap-2 mb-2">
+        <Icon className="h-4 w-4 text-muted-foreground" />
+        <span className="text-xs text-muted-foreground">{label}</span>
+      </div>
+      <p className="text-xl font-bold text-foreground">{value}</p>
     </div>
   )
 }

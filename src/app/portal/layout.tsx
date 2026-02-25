@@ -5,15 +5,18 @@ import { useRouter, usePathname } from "next/navigation"
 import Link from "next/link"
 import {
   LayoutDashboard,
+  BarChart3,
+  Send,
+  GitBranch,
   Store,
   FileText,
-  Calendar,
   Settings,
   LogOut,
   Menu,
-  User,
   Bell,
-  ClipboardCheck,
+  ChevronUp,
+  ChevronsUpDown,
+  Plus,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -45,13 +48,18 @@ interface Branding {
   primary_color: string
 }
 
+interface PortalStore {
+  id: string
+  name: string
+  platform: string
+}
+
+// PRD v2.1: 4 main navigation items
 const navigation = [
   { name: "Dashboard", href: "/portal/dashboard", icon: LayoutDashboard },
-  { name: "Onboarding", href: "/portal/onboarding", icon: ClipboardCheck },
-  { name: "Lojas", href: "/portal/stores", icon: Store },
-  { name: "Faturas", href: "/portal/invoices", icon: FileText },
-  { name: "Campanhas", href: "/portal/campaigns", icon: Calendar },
-  { name: "Configurações", href: "/portal/settings", icon: Settings },
+  { name: "Análise", href: "/portal/analytics", icon: BarChart3 },
+  { name: "Campanhas", href: "/portal/campaigns", icon: Send },
+  { name: "Flows", href: "/portal/flows", icon: GitBranch },
 ]
 
 function getInitials(name: string): string {
@@ -73,6 +81,8 @@ export default function PortalLayout({
   const [user, setUser] = useState<PortalUser | null>(null)
   const [loading, setLoading] = useState(true)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [stores, setStores] = useState<PortalStore[]>([])
+  const [activeStore, setActiveStore] = useState<PortalStore | null>(null)
   const [branding, setBranding] = useState<Branding>({
     name: "Convertfy",
     logo_url: null,
@@ -145,6 +155,29 @@ export default function PortalLayout({
         } catch {
           // Keep default branding on error
         }
+
+        // Fetch stores for store switcher
+        try {
+          const storesRes = await fetch("/api/portal/stores")
+          if (storesRes.ok) {
+            const storesData = await storesRes.json()
+            const storeList = (storesData.stores || []).map((s: { id: string; name: string; platform: string }) => ({
+              id: s.id,
+              name: s.name,
+              platform: s.platform,
+            }))
+            setStores(storeList)
+            if (storeList.length > 0) {
+              // Restore persisted store selection
+              let savedStoreId: string | null = null
+              try { savedStoreId = localStorage.getItem("portal_active_store") } catch { /* ignore */ }
+              const saved = savedStoreId ? storeList.find((st: PortalStore) => st.id === savedStoreId) : null
+              setActiveStore(saved || storeList[0])
+            }
+          }
+        } catch {
+          // Ignore store fetch errors
+        }
       } catch (error) {
         console.error("Auth check failed:", error)
         window.location.href = "/portal/login"
@@ -165,6 +198,14 @@ export default function PortalLayout({
     } finally {
       window.location.href = "/portal/login"
     }
+  }
+
+  const handleStoreChange = (store: PortalStore) => {
+    setActiveStore(store)
+    // Persist store selection so pages can read it
+    try { localStorage.setItem("portal_active_store", store.id) } catch { /* ignore */ }
+    // Reload current page to refresh data with new store context
+    window.location.reload()
   }
 
   // Show login and change-password pages without layout
@@ -190,6 +231,124 @@ export default function PortalLayout({
       </div>
     )
   }
+
+  // Sidebar content shared between desktop and mobile
+  const SidebarNav = ({ onLinkClick }: { onLinkClick?: () => void }) => (
+    <>
+      {navigation.map((item) => {
+        const isActive = pathname === item.href || pathname.startsWith(item.href + "/")
+        return (
+          <Link
+            key={item.name}
+            href={item.href}
+            onClick={onLinkClick}
+            className={cn(
+              "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+              isActive
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            )}
+          >
+            <item.icon className="h-5 w-5" />
+            {item.name}
+          </Link>
+        )
+      })}
+    </>
+  )
+
+  // Footer section shared between desktop and mobile
+  const SidebarFooter = () => (
+    <div className="border-t p-3 space-y-2">
+      {/* Store Switcher */}
+      {stores.length > 0 && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="flex items-center gap-3 w-full px-3 py-2 rounded-lg hover:bg-muted transition-colors text-left">
+              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                <Store className="h-4 w-4 text-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">{activeStore?.name || "Selecionar loja"}</p>
+                <p className="text-xs text-muted-foreground truncate">{activeStore?.platform || ""}</p>
+              </div>
+              <ChevronsUpDown className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="top" align="start" className="w-[232px]">
+            <DropdownMenuLabel className="text-xs text-muted-foreground">Lojas</DropdownMenuLabel>
+            {stores.map((store) => (
+              <DropdownMenuItem
+                key={store.id}
+                onClick={() => handleStoreChange(store)}
+                className={cn(activeStore?.id === store.id && "bg-muted")}
+              >
+                <Store className="mr-2 h-4 w-4" />
+                <span className="truncate">{store.name}</span>
+              </DropdownMenuItem>
+            ))}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link href="/portal/stores/new">
+                <Plus className="mr-2 h-4 w-4" />
+                Adicionar loja
+              </Link>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+
+      {/* Account Menu */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button className="flex items-center gap-3 w-full px-3 py-2 rounded-lg hover:bg-muted transition-colors text-left">
+            <Avatar className="h-8 w-8">
+              <AvatarFallback className="bg-primary/10 text-primary text-xs">
+                {getInitials(user.name)}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate">{user.name}</p>
+              <p className="text-xs text-muted-foreground truncate">{user.clientName}</p>
+            </div>
+            <ChevronUp className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent side="top" align="start" className="w-[232px]">
+          <DropdownMenuLabel>
+            <div>
+              <p className="font-medium">{user.name}</p>
+              <p className="text-xs text-muted-foreground">{user.email}</p>
+            </div>
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem asChild>
+            <Link href="/portal/settings">
+              <Settings className="mr-2 h-4 w-4" />
+              Configurações
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <Link href="/portal/invoices">
+              <FileText className="mr-2 h-4 w-4" />
+              Faturas
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <Link href="/portal/stores">
+              <Store className="mr-2 h-4 w-4" />
+              Gerenciar Lojas
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={handleLogout}>
+            <LogOut className="mr-2 h-4 w-4" />
+            Sair
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  )
 
   return (
     <div
@@ -221,40 +380,11 @@ export default function PortalLayout({
 
           {/* Navigation */}
           <nav className="flex-1 px-3 py-4 space-y-1">
-            {navigation.map((item) => {
-              const isActive = pathname === item.href
-              return (
-                <Link
-                  key={item.name}
-                  href={item.href}
-                  className={cn(
-                    "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
-                    isActive
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                  )}
-                >
-                  <item.icon className="h-5 w-5" />
-                  {item.name}
-                </Link>
-              )
-            })}
+            <SidebarNav />
           </nav>
 
-          {/* User Info */}
-          <div className="p-4 border-t">
-            <div className="flex items-center gap-3">
-              <Avatar className="h-10 w-10">
-                <AvatarFallback className="bg-primary/10 text-primary">
-                  {getInitials(user.name)}
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{user.name}</p>
-                <p className="text-xs text-muted-foreground truncate">{user.clientName}</p>
-              </div>
-            </div>
-          </div>
+          {/* Footer: Store Switcher + Account Menu */}
+          <SidebarFooter />
         </div>
       </aside>
 
@@ -286,38 +416,11 @@ export default function PortalLayout({
 
                 {/* Navigation */}
                 <nav className="flex-1 px-3 py-4 space-y-1">
-                  {navigation.map((item) => {
-                    const isActive = pathname === item.href
-                    return (
-                      <Link
-                        key={item.name}
-                        href={item.href}
-                        onClick={() => setMobileMenuOpen(false)}
-                        className={cn(
-                          "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
-                          isActive
-                            ? "bg-primary text-primary-foreground"
-                            : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                        )}
-                      >
-                        <item.icon className="h-5 w-5" />
-                        {item.name}
-                      </Link>
-                    )
-                  })}
+                  <SidebarNav onLinkClick={() => setMobileMenuOpen(false)} />
                 </nav>
 
-                {/* Logout */}
-                <div className="p-4 border-t">
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-start"
-                    onClick={handleLogout}
-                  >
-                    <LogOut className="mr-2 h-4 w-4" />
-                    Sair
-                  </Button>
-                </div>
+                {/* Footer */}
+                <SidebarFooter />
               </div>
             </SheetContent>
           </Sheet>
@@ -344,6 +447,19 @@ export default function PortalLayout({
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link href="/portal/settings">
+                  <Settings className="mr-2 h-4 w-4" />
+                  Configurações
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/portal/invoices">
+                  <FileText className="mr-2 h-4 w-4" />
+                  Faturas
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleLogout}>
                 <LogOut className="mr-2 h-4 w-4" />
                 Sair
@@ -364,38 +480,6 @@ export default function PortalLayout({
             <Button variant="ghost" size="icon">
               <Bell className="h-5 w-5" />
             </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="gap-2">
-                  <Avatar className="h-8 w-8">
-                    <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                      {getInitials(user.name)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <span className="hidden md:inline">{user.name}</span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel>
-                  <div>
-                    <p className="font-medium">{user.name}</p>
-                    <p className="text-xs text-muted-foreground">{user.email}</p>
-                  </div>
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <Link href="/portal/settings">
-                    <User className="mr-2 h-4 w-4" />
-                    Configurações
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleLogout}>
-                  <LogOut className="mr-2 h-4 w-4" />
-                  Sair
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
           </div>
         </header>
 
