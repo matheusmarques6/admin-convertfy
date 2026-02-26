@@ -74,18 +74,29 @@ export async function POST(request: NextRequest) {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
     const redirectTo = `${appUrl}/portal/auth/callback`
 
-    // Check if email already exists in auth.users
-    const { data: existingAuthUsers } = await adminClient.auth.admin.listUsers()
-    const existingAuthUser = existingAuthUsers?.users?.find(u => u.email === body.email)
-
-    // If auth user already exists, delete and re-invite so the email is sent
-    if (existingAuthUser) {
-      log.info("Auth user already exists, deleting to re-invite", { email: body.email })
-      await adminClient.auth.admin.deleteUser(existingAuthUser.id)
+    // Helper: delete all auth users with this email (paginated search)
+    async function deleteAuthUsersByEmail(email: string) {
+      let page = 1
+      const perPage = 50
+      while (true) {
+        const { data: usersPage } = await adminClient.auth.admin.listUsers({ page, perPage })
+        if (!usersPage?.users?.length) break
+        for (const u of usersPage.users) {
+          if (u.email === email) {
+            log.info("Deleting existing auth user", { email, authId: u.id })
+            await adminClient.auth.admin.deleteUser(u.id)
+          }
+        }
+        if (usersPage.users.length < perPage) break
+        page++
+      }
     }
 
+    // Delete any existing auth users with this email
+    await deleteAuthUsersByEmail(body.email)
+
     // Create auth user via invite (sends email automatically)
-    const { data: authUser, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(
+    let { data: authUser, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(
       body.email,
       {
         redirectTo,
@@ -97,12 +108,28 @@ export async function POST(request: NextRequest) {
       }
     )
 
+    // Retry once if still fails
+    if (inviteError?.message?.includes("already been registered")) {
+      log.warn("Invite failed after delete, retrying...", { email: body.email })
+      await new Promise(r => setTimeout(r, 1000))
+      await deleteAuthUsersByEmail(body.email)
+      const retry = await adminClient.auth.admin.inviteUserByEmail(
+        body.email,
+        {
+          redirectTo,
+          data: { name: body.name, is_portal_user: true, client_id: body.client_id },
+        }
+      )
+      authUser = retry.data
+      inviteError = retry.error
+    }
+
     if (inviteError) {
       log.error("Invite user failed", { error: inviteError.message })
       throw new AppError("Erro ao criar conta: " + inviteError.message, 500)
     }
 
-    const authUserId = authUser.user.id
+    const authUserId = authUser!.user!.id
 
     // Create portal user record
     const defaultPermissions = {

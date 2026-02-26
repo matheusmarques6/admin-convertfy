@@ -56,23 +56,40 @@ export async function POST(
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
     const redirectTo = `${appUrl}/portal/auth/callback`
 
-    // Delete any existing auth user for this email to create a fresh invite
-    if (portalUser.auth_user_id) {
-      await adminClient.auth.admin.deleteUser(portalUser.auth_user_id).catch(() => {
-        log.warn("Failed to delete auth user by ID, may already be deleted", { authUserId: portalUser.auth_user_id })
-      })
+    const savedAuthUserId = portalUser.auth_user_id
+
+    // Helper: find and delete all auth users with this email
+    async function deleteAuthUsersByEmail(email: string) {
+      // Delete by saved auth_user_id first
+      if (savedAuthUserId) {
+        await adminClient.auth.admin.deleteUser(savedAuthUserId).catch(() => {
+          log.warn("Failed to delete auth user by ID", { authUserId: savedAuthUserId })
+        })
+      }
+
+      // Search through all pages of auth users to find by email
+      let page = 1
+      const perPage = 50
+      while (true) {
+        const { data: usersPage } = await adminClient.auth.admin.listUsers({ page, perPage })
+        if (!usersPage?.users?.length) break
+
+        for (const u of usersPage.users) {
+          if (u.email === email) {
+            log.info("Deleting auth user found by email", { email, authId: u.id, page })
+            await adminClient.auth.admin.deleteUser(u.id)
+          }
+        }
+
+        if (usersPage.users.length < perPage) break
+        page++
+      }
     }
 
-    // Also check by email in case auth_user_id is stale/null
-    const { data: existingAuthUsers } = await adminClient.auth.admin.listUsers()
-    const existingByEmail = existingAuthUsers?.users?.find(u => u.email === portalUser.email)
-    if (existingByEmail && existingByEmail.id !== portalUser.auth_user_id) {
-      log.info("Found stale auth user by email, deleting", { email: portalUser.email, authId: existingByEmail.id })
-      await adminClient.auth.admin.deleteUser(existingByEmail.id)
-    }
+    // Delete existing auth users, then invite
+    await deleteAuthUsersByEmail(portalUser.email)
 
-    // Create new auth user via invite (sends email automatically)
-    const { data: authData, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(
+    let { data: authData, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(
       portalUser.email,
       {
         redirectTo,
@@ -83,8 +100,27 @@ export async function POST(
       }
     )
 
-    if (inviteError || !authData.user) {
-      log.error("Failed to send invite", inviteError)
+    // If still fails, try one more time after a short delay
+    if (inviteError?.message?.includes("already been registered")) {
+      log.warn("Invite still failed after delete, retrying...", { email: portalUser.email })
+      await new Promise(r => setTimeout(r, 1000))
+      await deleteAuthUsersByEmail(portalUser.email)
+      const retry = await adminClient.auth.admin.inviteUserByEmail(
+        portalUser.email,
+        {
+          redirectTo,
+          data: {
+            name: portalUser.name,
+            is_portal_user: true,
+          },
+        }
+      )
+      authData = retry.data
+      inviteError = retry.error
+    }
+
+    if (inviteError || !authData?.user) {
+      log.error("Failed to send invite after retries", inviteError)
       throw new AppError(
         `Erro ao enviar convite: ${inviteError?.message || "Erro desconhecido"}`,
         500
