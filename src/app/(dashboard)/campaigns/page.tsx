@@ -30,6 +30,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { CampaignModal } from "@/components/campaigns/campaign-modal"
 import { CampaignFormModal } from "@/components/campaigns/campaign-form-modal"
 import { CampaignsListView } from "@/components/campaigns/campaigns-list-view"
+import { CopyPipelineBoard } from "@/components/campaigns/copy-pipeline-board"
 import { QuickCampaignModal } from "@/components/campaigns/quick-campaign-modal"
 import { useCampaignsCalendar } from "./use-campaigns-calendar"
 import { CalendarGrid, channelConfig } from "./calendar-grid"
@@ -127,18 +128,8 @@ export default function CampaignsCalendarPage() {
       {/* Performance View */}
       {viewMode === "performance" && <CampaignsListView />}
 
-      {/* Copy View - Em Desenvolvimento */}
-      {viewMode === "copy" && (
-        <div className="flex flex-col items-center justify-center py-24 text-center">
-          <div className="rounded-full bg-muted p-4 mb-4">
-            <Construction className="h-8 w-8 text-muted-foreground" />
-          </div>
-          <h3 className="text-lg font-semibold">Copy</h3>
-          <p className="text-muted-foreground mt-1 max-w-md">
-            Geração de copys para campanhas em desenvolvimento. Em breve você poderá criar e gerenciar copys diretamente por aqui.
-          </p>
-        </div>
-      )}
+      {/* Copy Pipeline Board */}
+      {viewMode === "copy" && <CopyPipelineBoard />}
 
       {/* Calendar View */}
       {viewMode === "calendar" && (<>
