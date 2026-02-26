@@ -377,13 +377,7 @@ export function ReportsList({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Relatórios</h1>
-          <p className="text-muted-foreground">
-            Gerencie os relatórios mensais dos clientes
-          </p>
-        </div>
+      <div className="flex items-center justify-end">
         <div className="flex items-center gap-3">
           <Select value={monthFilter} onValueChange={setMonthFilter}>
             <SelectTrigger className="w-[180px]">

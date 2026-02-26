@@ -77,16 +77,12 @@ export function PipelineHeader({
       <div className="flex items-center gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold">Pipeline de Vendas</h1>
             {currentUserRole && (
               <Badge variant="outline" className="text-xs">
                 {roleLabels[currentUserRole]}
               </Badge>
             )}
           </div>
-          <p className="text-muted-foreground">
-            Gerencie seus negocios e oportunidades
-          </p>
         </div>
 
         {/* Pipeline Selector - always visible */}
