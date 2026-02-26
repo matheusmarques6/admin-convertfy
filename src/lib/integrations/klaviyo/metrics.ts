@@ -7,6 +7,10 @@ import { klaviyoRequest } from "./client"
 
 const log = logger.child("KlaviyoMetrics")
 
+// In-memory cache for metric IDs (metric IDs are stable per Klaviyo account)
+const metricIdCache = new Map<string, { id: string | null; timestamp: number }>()
+const METRIC_CACHE_TTL = 60 * 60 * 1000 // 1 hour
+
 interface KlaviyoMetric {
   id: string
   attributes: {
@@ -24,6 +28,13 @@ interface KlaviyoMetric {
  * Returns null if no matching metric is found (e.g. no e-commerce integration).
  */
 export async function findPlacedOrderMetric(apiKey: string): Promise<string | null> {
+  // Return cached if valid
+  const cached = metricIdCache.get(apiKey)
+  if (cached && (Date.now() - cached.timestamp) < METRIC_CACHE_TTL) {
+    log.info(`Using cached metric ID: ${cached.id}`)
+    return cached.id
+  }
+
   log.info("Fetching metrics with pagination...")
 
   const allMetrics: KlaviyoMetric[] = []
@@ -45,6 +56,7 @@ export async function findPlacedOrderMetric(apiKey: string): Promise<string | nu
     const match = findMatch(response.data)
     if (match) {
       log.info(`Using metric (found on page ${pageCount}): ${match.attributes.name} (${match.id})`)
+      metricIdCache.set(apiKey, { id: match.id, timestamp: Date.now() })
       return match.id
     }
 
@@ -55,6 +67,7 @@ export async function findPlacedOrderMetric(apiKey: string): Promise<string | nu
   }
 
   log.info(`Total metrics scanned: ${allMetrics.length} (${pageCount} pages) - No Placed Order metric found`)
+  metricIdCache.set(apiKey, { id: null, timestamp: Date.now() })
   return null
 }
 

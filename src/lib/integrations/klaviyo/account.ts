@@ -7,6 +7,10 @@ import { klaviyoRequest } from "./client"
 
 const log = logger.child("KlaviyoAccount")
 
+// In-memory cache for account info (timezone/currency are static per Klaviyo account)
+const accountInfoCache = new Map<string, { data: KlaviyoAccountInfo; timestamp: number }>()
+const ACCOUNT_CACHE_TTL = 60 * 60 * 1000 // 1 hour
+
 /**
  * Test API connection by calling the /accounts/ endpoint.
  */
@@ -36,6 +40,12 @@ export interface KlaviyoAccountInfo {
  * All consumers get the full object; each uses what it needs.
  */
 export async function getAccountInfo(apiKey: string): Promise<KlaviyoAccountInfo> {
+  // Return cached if valid
+  const cached = accountInfoCache.get(apiKey)
+  if (cached && (Date.now() - cached.timestamp) < ACCOUNT_CACHE_TTL) {
+    return cached.data
+  }
+
   const response = await klaviyoRequest<{
     data: Array<{
       id: string
@@ -56,12 +66,15 @@ export async function getAccountInfo(apiKey: string): Promise<KlaviyoAccountInfo
   const attrs = response.data[0].attributes
   log.info(`Account timezone: ${attrs.timezone}`)
 
-  return {
+  const info: KlaviyoAccountInfo = {
     currency: attrs.preferred_currency || "BRL",
     locale: attrs.locale || "pt-BR",
     orgName: attrs.contact_information?.organization_name || "",
     timezone: attrs.timezone || "America/Sao_Paulo"
   }
+
+  accountInfoCache.set(apiKey, { data: info, timestamp: Date.now() })
+  return info
 }
 
 /**

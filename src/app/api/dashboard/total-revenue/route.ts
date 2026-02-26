@@ -143,7 +143,7 @@ export async function GET(request: NextRequest) {
 
     const { data: stores, error: storesError } = await admin
       .from("client_stores")
-      .select("id, store_name, klaviyo_private_key, klaviyo_api_key, client_id")
+      .select("id, store_name, client_id")
       .or("klaviyo_private_key.not.is.null,klaviyo_api_key.not.is.null")
       .eq("is_active", true)
       .in("client_id", clientIds)
@@ -174,8 +174,9 @@ export async function GET(request: NextRequest) {
       return successResponse(request, emptyResult)
     }
 
-    // Process stores in chunks of 5 to avoid rate limiting
-    const CHUNK_SIZE = 5
+    // Process stores in chunks of 2 to avoid Klaviyo rate limiting
+    // Each store makes 2-4 API calls (account info + metric search + 2 reports)
+    const CHUNK_SIZE = 2
     const allResults: StoreRevenue[] = []
     for (let i = 0; i < filteredStores.length; i += CHUNK_SIZE) {
       const chunk = filteredStores.slice(i, i + CHUNK_SIZE)
