@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { usePermissions } from "@/lib/hooks/use-permissions"
-import { toast } from "sonner"
+import { toast } from "@/lib/hooks/use-toast"
 
 interface PipelineItem {
   id: string
