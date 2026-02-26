@@ -294,7 +294,7 @@ async function shopifyPaginatedRequest<T>(
 // Helpers - UTM
 // ---------------------------------------------------------------------------
 
-function extractUtmParams(url: string | null): {
+export function extractUtmParams(url: string | null): {
   utm_source?: string
   utm_medium?: string
   utm_campaign?: string
@@ -322,7 +322,7 @@ function extractUtmParams(url: string | null): {
 // Data fetching functions
 // ---------------------------------------------------------------------------
 
-async function fetchAllOrders(
+export async function fetchAllOrders(
   storeDomain: string,
   accessToken: string,
   dateRange: { start: string; end: string }
@@ -352,7 +352,7 @@ async function fetchAllOrders(
   return allOrders
 }
 
-async function getShopInfo(storeDomain: string, accessToken: string): Promise<ShopInfo | null> {
+export async function getShopInfo(storeDomain: string, accessToken: string): Promise<ShopInfo | null> {
   try {
     const response = await shopifyRequest<{
       shop: {

@@ -10,11 +10,10 @@ import {
   Key,
   Trash2,
   MoreVertical,
-  Copy,
-  Check,
   Loader2,
-  Eye,
-  EyeOff,
+  Send,
+  Clock,
+  CheckCircle2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -59,12 +58,11 @@ export function ClientPortalUsers({ clientId, clientName }: ClientPortalUsersPro
   const [portalUsers, setPortalUsers] = useState<ClientPortalUser[]>([])
   const [loading, setLoading] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
-  const [showPasswordModal, setShowPasswordModal] = useState(false)
+  const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [selectedUser, setSelectedUser] = useState<ClientPortalUser | null>(null)
-  const [tempPassword, setTempPassword] = useState<string | null>(null)
-  const [copiedPassword, setCopiedPassword] = useState(false)
-  const [showPassword, setShowPassword] = useState(false)
+  const [successMessage, setSuccessMessage] = useState("")
+  const [actionLoading, setActionLoading] = useState<string | null>(null)
 
   // Form state
   const [formData, setFormData] = useState({
@@ -118,9 +116,9 @@ export function ClientPortalUsers({ clientId, clientName }: ClientPortalUsersPro
 
       if (response.ok) {
         setPortalUsers([data.portalUser, ...portalUsers])
-        setTempPassword(data.tempPassword)
         setShowAddModal(false)
-        setShowPasswordModal(true)
+        setSuccessMessage(`Convite enviado para ${formData.email}`)
+        setShowSuccessModal(true)
         resetForm()
       } else {
         alert(data.error || "Erro ao criar usuário")
@@ -133,7 +131,31 @@ export function ClientPortalUsers({ clientId, clientName }: ClientPortalUsersPro
     }
   }
 
+  const handleSendInvite = async (userId: string, userEmail: string) => {
+    setActionLoading(userId)
+    try {
+      const response = await fetch(`/api/admin/portal-users/${userId}/send-invite`, {
+        method: "POST",
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setSuccessMessage(`Convite reenviado para ${userEmail}`)
+        setShowSuccessModal(true)
+      } else {
+        alert(data.error || "Erro ao enviar convite")
+      }
+    } catch (error) {
+      console.error("Error sending invite:", error)
+      alert("Erro ao enviar convite")
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
   const handleResetPassword = async (userId: string) => {
+    setActionLoading(userId)
     try {
       const response = await fetch(`/api/admin/portal-users/${userId}/reset-password`, {
         method: "POST",
@@ -142,14 +164,16 @@ export function ClientPortalUsers({ clientId, clientName }: ClientPortalUsersPro
       const data = await response.json()
 
       if (response.ok) {
-        setTempPassword(data.tempPassword)
-        setShowPasswordModal(true)
+        setSuccessMessage(`Email de redefinição de senha enviado para ${data.userEmail}`)
+        setShowSuccessModal(true)
       } else {
         alert(data.error || "Erro ao redefinir senha")
       }
     } catch (error) {
       console.error("Error resetting password:", error)
       alert("Erro ao redefinir senha")
+    } finally {
+      setActionLoading(null)
     }
   }
 
@@ -194,14 +218,6 @@ export function ClientPortalUsers({ clientId, clientName }: ClientPortalUsersPro
     }
   }
 
-  const copyPassword = () => {
-    if (tempPassword) {
-      navigator.clipboard.writeText(tempPassword)
-      setCopiedPassword(true)
-      setTimeout(() => setCopiedPassword(false), 2000)
-    }
-  }
-
   const resetForm = () => {
     setFormData({
       name: "",
@@ -217,6 +233,8 @@ export function ClientPortalUsers({ clientId, clientName }: ClientPortalUsersPro
       },
     })
   }
+
+  const hasLoggedIn = (user: ClientPortalUser) => (user.login_count || 0) > 0
 
   return (
     <Card className="rounded-xl border bg-card">
@@ -276,6 +294,18 @@ export function ClientPortalUsers({ clientId, clientName }: ClientPortalUsersPro
                           Inativo
                         </Badge>
                       )}
+                      {user.is_active && !hasLoggedIn(user) && (
+                        <Badge variant="outline" className="text-xs text-amber-600 border-amber-300 bg-amber-50">
+                          <Clock className="h-3 w-3 mr-1" />
+                          Convite pendente
+                        </Badge>
+                      )}
+                      {user.is_active && hasLoggedIn(user) && (
+                        <Badge variant="outline" className="text-xs text-emerald-600 border-emerald-300 bg-emerald-50">
+                          <CheckCircle2 className="h-3 w-3 mr-1" />
+                          Ativo
+                        </Badge>
+                      )}
                     </div>
                     <div className="flex items-center gap-4 text-sm text-muted-foreground">
                       <span className="flex items-center gap-1">
@@ -306,15 +336,26 @@ export function ClientPortalUsers({ clientId, clientName }: ClientPortalUsersPro
 
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon">
-                        <MoreVertical className="h-4 w-4" />
+                      <Button variant="ghost" size="icon" disabled={actionLoading === user.id}>
+                        {actionLoading === user.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <MoreVertical className="h-4 w-4" />
+                        )}
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => handleResetPassword(user.id)}>
-                        <Key className="h-4 w-4 mr-2" />
-                        Redefinir Senha
-                      </DropdownMenuItem>
+                      {!hasLoggedIn(user) ? (
+                        <DropdownMenuItem onClick={() => handleSendInvite(user.id, user.email)}>
+                          <Send className="h-4 w-4 mr-2" />
+                          Reenviar Convite
+                        </DropdownMenuItem>
+                      ) : (
+                        <DropdownMenuItem onClick={() => handleResetPassword(user.id)}>
+                          <Key className="h-4 w-4 mr-2" />
+                          Redefinir Senha
+                        </DropdownMenuItem>
+                      )}
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
                         className="text-destructive"
@@ -341,7 +382,7 @@ export function ClientPortalUsers({ clientId, clientName }: ClientPortalUsersPro
           <DialogHeader>
             <DialogTitle>Novo Usuário do Portal</DialogTitle>
             <DialogDescription>
-              Crie um acesso ao portal para {clientName}
+              Crie um acesso ao portal para {clientName}. Um email de convite será enviado automaticamente.
             </DialogDescription>
           </DialogHeader>
 
@@ -416,6 +457,13 @@ export function ClientPortalUsers({ clientId, clientName }: ClientPortalUsersPro
                 </div>
               ))}
             </div>
+
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
+              <div className="flex items-center gap-2 text-sm text-blue-700">
+                <Mail className="h-4 w-4 shrink-0" />
+                <span>O usuário receberá um email com link para criar sua senha.</span>
+              </div>
+            </div>
           </div>
 
           <DialogFooter>
@@ -423,54 +471,31 @@ export function ClientPortalUsers({ clientId, clientName }: ClientPortalUsersPro
               Cancelar
             </Button>
             <Button onClick={handleCreateUser} disabled={submitting || !formData.name || !formData.email}>
-              {submitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Criar Usuário
+              {submitting ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4 mr-2" />
+              )}
+              Criar e Enviar Convite
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Password Modal */}
-      <Dialog open={showPasswordModal} onOpenChange={setShowPasswordModal}>
-        <DialogContent className="max-w-md">
+      {/* Success Modal */}
+      <Dialog open={showSuccessModal} onOpenChange={setShowSuccessModal}>
+        <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Key className="h-5 w-5" />
-              Senha Temporária
-            </DialogTitle>
-            <DialogDescription>
-              Anote a senha abaixo. Ela não será mostrada novamente.
+            <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100">
+              <CheckCircle2 className="h-6 w-6 text-emerald-600" />
+            </div>
+            <DialogTitle className="text-center">Convite Enviado</DialogTitle>
+            <DialogDescription className="text-center">
+              {successMessage}
             </DialogDescription>
           </DialogHeader>
-
-          <div className="bg-muted p-4 rounded-lg">
-            <div className="flex items-center justify-between gap-2">
-              <code className="text-lg font-mono flex-1">
-                {showPassword ? tempPassword : "••••••••••••"}
-              </code>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setShowPassword(!showPassword)}
-              >
-                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </Button>
-              <Button variant="ghost" size="icon" onClick={copyPassword}>
-                {copiedPassword ? (
-                  <Check className="h-4 w-4 text-success" />
-                ) : (
-                  <Copy className="h-4 w-4" />
-                )}
-              </Button>
-            </div>
-          </div>
-
-          <p className="text-sm text-muted-foreground">
-            Envie essa senha para o cliente. Ele poderá alterá-la após o primeiro acesso.
-          </p>
-
-          <DialogFooter>
-            <Button onClick={() => setShowPasswordModal(false)}>Entendi</Button>
+          <DialogFooter className="sm:justify-center">
+            <Button onClick={() => setShowSuccessModal(false)}>OK</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

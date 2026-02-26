@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
-import { generateTempPassword } from "@/lib/utils/generate-password"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("PortalUsers")
@@ -78,34 +77,36 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+    const redirectTo = `${appUrl}/portal/auth/callback`
+
     // Check if email already exists in auth.users
     const { data: existingAuthUsers } = await adminClient.auth.admin.listUsers()
     const existingAuthUser = existingAuthUsers?.users?.find(u => u.email === email)
 
     let authUserId: string
-    let tempPassword: string | null = null
 
     if (existingAuthUser) {
       // User already exists in auth, just use their ID
       authUserId = existingAuthUser.id
     } else {
-      // Create new auth user with temporary password
-      tempPassword = generateTempPassword()
-      const { data: newAuthUser, error: createAuthError } = await adminClient.auth.admin.createUser({
+      // Create new auth user via invite (sends email automatically)
+      const { data: newAuthUser, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(
         email,
-        password: tempPassword,
-        email_confirm: true, // Auto-confirm email
-        user_metadata: {
-          name,
-          is_portal_user: true,
-          client_id,
-        },
-      })
+        {
+          redirectTo,
+          data: {
+            name,
+            is_portal_user: true,
+            client_id,
+          },
+        }
+      )
 
-      if (createAuthError || !newAuthUser.user) {
-        log.error("Error creating auth user:", createAuthError)
+      if (inviteError || !newAuthUser.user) {
+        log.error("Error inviting user:", inviteError)
         return NextResponse.json(
-          { error: "Failed to create auth user: " + (createAuthError?.message || "Unknown error") },
+          { error: "Failed to invite user: " + (inviteError?.message || "Unknown error") },
           { status: 500 }
         )
       }
@@ -158,8 +159,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       data: portalUser,
-      message: "Portal user created successfully.",
-      temp_password: tempPassword,
+      message: "Portal user created. Invite email sent.",
     })
   } catch (error) {
     return errorResponse(request, error, "PortalUsers")

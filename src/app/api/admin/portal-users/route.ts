@@ -1,6 +1,5 @@
 import { NextRequest } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
-import { generateTempPassword } from "@/lib/utils/generate-password"
 import { handleCorsPreFlight } from "@/lib/cors"
 import {
   errorResponse,
@@ -71,24 +70,26 @@ export async function POST(request: NextRequest) {
       throw new ConflictError("Este email já está cadastrado")
     }
 
-    const tempPassword = generateTempPassword()
     const adminClient = createAdminClient()
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+    const redirectTo = `${appUrl}/portal/auth/callback`
 
-    // Create auth user
-    const { data: authUser, error: signUpError } = await adminClient.auth.admin.createUser({
-      email: body.email,
-      password: tempPassword,
-      email_confirm: true,
-      user_metadata: {
-        name: body.name,
-        is_portal_user: true,
-        client_id: body.client_id,
-      },
-    })
+    // Create auth user via invite (sends email automatically)
+    const { data: authUser, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(
+      body.email,
+      {
+        redirectTo,
+        data: {
+          name: body.name,
+          is_portal_user: true,
+          client_id: body.client_id,
+        },
+      }
+    )
 
-    if (signUpError) {
-      log.error("Auth user creation failed", { error: signUpError.message })
-      throw new AppError("Erro ao criar conta: " + signUpError.message, 500)
+    if (inviteError) {
+      log.error("Invite user failed", { error: inviteError.message })
+      throw new AppError("Erro ao criar conta: " + inviteError.message, 500)
     }
 
     // Create portal user record
@@ -130,8 +131,7 @@ export async function POST(request: NextRequest) {
 
     return successResponse(request, {
       portalUser,
-      tempPassword,
-    }, { status: 201, message: "Usuário criado com sucesso. Anote a senha temporária!" })
+    }, { status: 201, message: "Usuário criado e convite enviado por email!" })
   } catch (error) {
     return errorResponse(request, error, "PortalUsers POST")
   }

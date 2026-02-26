@@ -47,7 +47,9 @@ import { ptBR } from "date-fns/locale"
 import type { DateRange } from "react-day-picker"
 import { createClient } from "@/lib/supabase/client"
 import { toast } from "@/lib/hooks/use-toast"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { KlaviyoPerformanceReport } from "./klaviyo-performance-report"
+import { RecoveryAnalysis } from "./recovery-analysis"
 
 interface ClientReportsProps {
   clientId: string
@@ -58,6 +60,8 @@ interface ClientStore {
   store_name: string
   klaviyo_private_key?: string
   klaviyo_api_key?: string
+  shopify_store_domain?: string
+  shopify_access_token?: string
 }
 
 interface SavedReport {
@@ -90,6 +94,7 @@ const formatCurrencyWithCode = (value: number | undefined | null, currency: stri
 
 export function ClientReports({ clientId }: ClientReportsProps) {
   const [stores, setStores] = useState<ClientStore[]>([])
+  const [shopifyStores, setShopifyStores] = useState<Array<{ id: string; store_name: string }>>([])
   const [savedReports, setSavedReports] = useState<SavedReport[]>([])
   const [isLoadingStores, setIsLoadingStores] = useState(true)
   const [isLoadingReports, setIsLoadingReports] = useState(true)
@@ -123,15 +128,23 @@ export function ClientReports({ clientId }: ClientReportsProps) {
       const supabase = createClient()
       const { data, error } = await supabase
         .from("client_stores")
-        .select("id, store_name, klaviyo_private_key, klaviyo_api_key")
+        .select("id, store_name, klaviyo_private_key, klaviyo_api_key, shopify_store_domain, shopify_access_token")
         .eq("client_id", clientId)
         .order("store_name")
 
       if (error) throw error
 
+      const allStores = data || []
+
       // Filter stores with Klaviyo configured
-      const klaviyoStores = (data || []).filter(s => s.klaviyo_private_key || s.klaviyo_api_key)
+      const klaviyoStores = allStores.filter(s => s.klaviyo_private_key || s.klaviyo_api_key)
       setStores(klaviyoStores)
+
+      // Filter stores with Shopify configured
+      const shopifyConfigured = allStores
+        .filter(s => s.shopify_store_domain && s.shopify_access_token)
+        .map(s => ({ id: s.id, store_name: s.store_name }))
+      setShopifyStores(shopifyConfigured)
 
       if (klaviyoStores.length > 0) {
         setSelectedStore(klaviyoStores[0].id)
@@ -503,15 +516,14 @@ export function ClientReports({ clientId }: ClientReportsProps) {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
+    <Tabs defaultValue="reports" className="space-y-6">
       <div className="flex justify-between items-center">
-        <div>
-          <h3 className="text-lg font-medium">Relatórios</h3>
-          <p className="text-sm text-muted-foreground">
-            Crie e visualize relatórios de performance
-          </p>
-        </div>
+        <TabsList>
+          <TabsTrigger value="reports">Relatórios</TabsTrigger>
+          <TabsTrigger value="recovery" disabled={shopifyStores.length === 0}>
+            Recuperação de Vendas
+          </TabsTrigger>
+        </TabsList>
         <div className="flex items-center gap-2">
           {savedReports.length >= 2 && (
             <Button variant="outline" onClick={() => setShowCompareDialog(true)}>
@@ -525,6 +537,8 @@ export function ClientReports({ clientId }: ClientReportsProps) {
           </Button>
         </div>
       </div>
+
+      <TabsContent value="reports" className="space-y-6">
 
       {/* No stores warning */}
       {stores.length === 0 && (
@@ -985,6 +999,25 @@ export function ClientReports({ clientId }: ClientReportsProps) {
           })()}
         </DialogContent>
       </Dialog>
-    </div>
+      </TabsContent>
+
+      <TabsContent value="recovery">
+        {shopifyStores.length > 0 ? (
+          <RecoveryAnalysis
+            stores={shopifyStores}
+            selectedStoreId={shopifyStores[0].id}
+          />
+        ) : (
+          <Card className="border-dashed">
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <Store className="h-8 w-8 text-muted-foreground mb-4" />
+              <p className="text-muted-foreground">
+                Configure a integração Shopify em pelo menos uma loja para usar esta análise.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+      </TabsContent>
+    </Tabs>
   )
 }
