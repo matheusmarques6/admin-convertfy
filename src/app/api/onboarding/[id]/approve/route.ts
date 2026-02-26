@@ -105,6 +105,36 @@ export async function POST(
         throw new AppError(result.error || "Erro ao aprovar onboarding", 500)
       }
 
+      // Create copy_pipeline entry (Story 3.5.5)
+      // Get org_id from org_member
+      const { data: memberOrg } = await adminClient
+        .from("org_members")
+        .select("org_id")
+        .eq("id", orgMember.id)
+        .single()
+
+      if (memberOrg) {
+        // Get briefing if exists
+        const { data: briefing } = await adminClient
+          .from("client_briefings")
+          .select("id")
+          .eq("client_id", onboarding.client_id)
+          .maybeSingle()
+
+        await adminClient.from("copy_pipeline").insert({
+          org_id: memberOrg.org_id,
+          client_id: onboarding.client_id,
+          store_id: onboarding.store_id,
+          onboarding_id: id,
+          briefing_id: briefing?.id || null,
+          status: "approved",
+          approved_by: orgMember.id,
+          approved_at: new Date().toISOString(),
+        })
+
+        log.info(`Copy pipeline created for onboarding ${id}`)
+      }
+
       log.info(`Onboarding ${id} approved`, { approvedBy: orgMember.id })
 
       return successResponse(request, {
