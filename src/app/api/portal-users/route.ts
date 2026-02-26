@@ -80,39 +80,37 @@ export async function POST(request: NextRequest) {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
     const redirectTo = `${appUrl}/portal/auth/callback`
 
-    // Check if email already exists in auth.users
+    // Check if email already exists in auth.users - delete and re-invite to send email
     const { data: existingAuthUsers } = await adminClient.auth.admin.listUsers()
     const existingAuthUser = existingAuthUsers?.users?.find(u => u.email === email)
 
-    let authUserId: string
-
     if (existingAuthUser) {
-      // User already exists in auth, just use their ID
-      authUserId = existingAuthUser.id
-    } else {
-      // Create new auth user via invite (sends email automatically)
-      const { data: newAuthUser, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(
-        email,
-        {
-          redirectTo,
-          data: {
-            name,
-            is_portal_user: true,
-            client_id,
-          },
-        }
-      )
-
-      if (inviteError || !newAuthUser.user) {
-        log.error("Error inviting user:", inviteError)
-        return NextResponse.json(
-          { error: "Failed to invite user: " + (inviteError?.message || "Unknown error") },
-          { status: 500 }
-        )
-      }
-
-      authUserId = newAuthUser.user.id
+      log.info("Auth user already exists, deleting to re-invite", { email })
+      await adminClient.auth.admin.deleteUser(existingAuthUser.id)
     }
+
+    // Create auth user via invite (sends email automatically)
+    const { data: newAuthUser, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(
+      email,
+      {
+        redirectTo,
+        data: {
+          name,
+          is_portal_user: true,
+          client_id,
+        },
+      }
+    )
+
+    if (inviteError || !newAuthUser.user) {
+      log.error("Error inviting user:", inviteError)
+      return NextResponse.json(
+        { error: "Failed to invite user: " + (inviteError?.message || "Unknown error") },
+        { status: 500 }
+      )
+    }
+
+    const authUserId = newAuthUser.user.id
 
     // Create portal user record
     const { data: portalUser, error: portalError } = await adminClient
@@ -133,10 +131,7 @@ export async function POST(request: NextRequest) {
 
     if (portalError) {
       log.error("Error creating portal user:", portalError)
-      // If we created a new auth user, we should delete it
-      if (!existingAuthUser) {
-        await adminClient.auth.admin.deleteUser(authUserId)
-      }
+      await adminClient.auth.admin.deleteUser(authUserId)
       return NextResponse.json(
         { error: "Failed to create portal user: " + portalError.message },
         { status: 500 }

@@ -78,33 +78,31 @@ export async function POST(request: NextRequest) {
     const { data: existingAuthUsers } = await adminClient.auth.admin.listUsers()
     const existingAuthUser = existingAuthUsers?.users?.find(u => u.email === body.email)
 
-    let authUserId: string
-
+    // If auth user already exists, delete and re-invite so the email is sent
     if (existingAuthUser) {
-      // User already exists in auth, reuse their ID
-      authUserId = existingAuthUser.id
-      log.info("Reusing existing auth user", { email: body.email, authUserId })
-    } else {
-      // Create new auth user via invite (sends email automatically)
-      const { data: authUser, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(
-        body.email,
-        {
-          redirectTo,
-          data: {
-            name: body.name,
-            is_portal_user: true,
-            client_id: body.client_id,
-          },
-        }
-      )
-
-      if (inviteError) {
-        log.error("Invite user failed", { error: inviteError.message })
-        throw new AppError("Erro ao criar conta: " + inviteError.message, 500)
-      }
-
-      authUserId = authUser.user.id
+      log.info("Auth user already exists, deleting to re-invite", { email: body.email })
+      await adminClient.auth.admin.deleteUser(existingAuthUser.id)
     }
+
+    // Create auth user via invite (sends email automatically)
+    const { data: authUser, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(
+      body.email,
+      {
+        redirectTo,
+        data: {
+          name: body.name,
+          is_portal_user: true,
+          client_id: body.client_id,
+        },
+      }
+    )
+
+    if (inviteError) {
+      log.error("Invite user failed", { error: inviteError.message })
+      throw new AppError("Erro ao criar conta: " + inviteError.message, 500)
+    }
+
+    const authUserId = authUser.user.id
 
     // Create portal user record
     const defaultPermissions = {
@@ -139,9 +137,7 @@ export async function POST(request: NextRequest) {
 
     if (insertError) {
       log.error("Portal user insert failed, rolling back auth user", { error: insertError.message })
-      if (!existingAuthUser) {
-        await adminClient.auth.admin.deleteUser(authUserId)
-      }
+      await adminClient.auth.admin.deleteUser(authUserId)
       throw new AppError("Erro ao criar usuário do portal", 500)
     }
 
