@@ -56,9 +56,19 @@ export async function POST(
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
     const redirectTo = `${appUrl}/portal/auth/callback`
 
-    // If user already has an auth account, delete it first to create a fresh invite
+    // Delete any existing auth user for this email to create a fresh invite
     if (portalUser.auth_user_id) {
-      await adminClient.auth.admin.deleteUser(portalUser.auth_user_id)
+      await adminClient.auth.admin.deleteUser(portalUser.auth_user_id).catch(() => {
+        log.warn("Failed to delete auth user by ID, may already be deleted", { authUserId: portalUser.auth_user_id })
+      })
+    }
+
+    // Also check by email in case auth_user_id is stale/null
+    const { data: existingAuthUsers } = await adminClient.auth.admin.listUsers()
+    const existingByEmail = existingAuthUsers?.users?.find(u => u.email === portalUser.email)
+    if (existingByEmail && existingByEmail.id !== portalUser.auth_user_id) {
+      log.info("Found stale auth user by email, deleting", { email: portalUser.email, authId: existingByEmail.id })
+      await adminClient.auth.admin.deleteUser(existingByEmail.id)
     }
 
     // Create new auth user via invite (sends email automatically)
