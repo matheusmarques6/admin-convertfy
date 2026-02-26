@@ -94,8 +94,8 @@ export default function PortalLayout({
   // Check authentication using browser Supabase client
   useEffect(() => {
     const checkAuth = async () => {
-      // Skip auth check for login and change-password pages
-      if (pathname === "/portal/login" || pathname === "/portal/change-password") {
+      // Skip auth check for login, change-password and auth callback pages
+      if (pathname === "/portal/login" || pathname === "/portal/change-password" || pathname.startsWith("/portal/auth/")) {
         setLoading(false)
         return
       }
@@ -210,8 +210,8 @@ export default function PortalLayout({
     window.location.reload()
   }
 
-  // Show login and change-password pages without layout
-  if (pathname === "/portal/login" || pathname === "/portal/change-password") {
+  // Show login, change-password and auth callback pages without layout
+  if (pathname === "/portal/login" || pathname === "/portal/change-password" || pathname.startsWith("/portal/auth/")) {
     return <>{children}</>
   }
 

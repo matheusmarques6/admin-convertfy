@@ -8,10 +8,6 @@ export const publicOnboardingSchema = z.object({
   cpf_cnpj: z.string().optional().nullable(),
   company: z.string().optional().nullable(),
 
-  // Password
-  password: z.string().min(8, "Senha deve ter pelo menos 8 caracteres").optional(),
-  use_temp_password: z.boolean().optional().default(false),
-
   // Store data
   store_name: z.string().min(2, "Nome da loja deve ter pelo menos 2 caracteres").max(100),
   store_url: z.string().min(5, "URL da loja é obrigatória"),
@@ -33,9 +29,6 @@ export const publicOnboardingSchema = z.object({
 
   // Honeypot (must be empty)
   website: z.string().max(0, "").optional().default(""),
-}).refine(
-  (data) => data.password || data.use_temp_password,
-  { message: "Forneça uma senha ou selecione senha temporária", path: ["password"] }
-)
+})
 
 export type PublicOnboardingFormData = z.infer<typeof publicOnboardingSchema>

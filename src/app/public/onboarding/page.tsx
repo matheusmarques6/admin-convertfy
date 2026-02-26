@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useRef } from "react"
-import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -9,9 +8,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Checkbox } from "@/components/ui/checkbox"
 import { useToast } from "@/lib/hooks/use-toast"
-import { Check, ChevronLeft, ChevronRight, Loader2, Store, User, Palette, Send, Upload, X, FileText, ImageIcon } from "lucide-react"
+import { Check, ChevronLeft, ChevronRight, Loader2, Store, User, Palette, Send, Upload, X, FileText, ImageIcon, Mail } from "lucide-react"
 
 const STEPS = [
   { id: 1, title: "Dados Pessoais", icon: User },
@@ -66,7 +64,6 @@ interface UploadedFile {
 }
 
 export default function PublicOnboardingPage() {
-  const router = useRouter()
   const { toast } = useToast()
   const [currentStep, setCurrentStep] = useState(1)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -87,9 +84,6 @@ export default function PublicOnboardingPage() {
     phone: "",
     cpf_cnpj: "",
     company: "",
-    password: "",
-    password_confirm: "",
-    use_temp_password: false,
     // Step 2
     store_name: "",
     store_url: "",
@@ -178,11 +172,6 @@ export default function PublicOnboardingPage() {
         if (!formData.name.trim()) return "Nome é obrigatório"
         if (!formData.email.trim()) return "Email é obrigatório"
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) return "Email inválido"
-        if (!formData.use_temp_password) {
-          if (!formData.password) return "Senha é obrigatória"
-          if (formData.password.length < 8) return "Senha deve ter pelo menos 8 caracteres"
-          if (formData.password !== formData.password_confirm) return "Senhas não conferem"
-        }
         return null
       case 2:
         if (!formData.store_name.trim()) return "Nome da loja é obrigatório"
@@ -220,8 +209,6 @@ export default function PublicOnboardingPage() {
         phone: formData.phone || null,
         cpf_cnpj: formData.cpf_cnpj || null,
         company: formData.company || null,
-        password: formData.use_temp_password ? undefined : formData.password,
-        use_temp_password: formData.use_temp_password,
         store_name: formData.store_name,
         store_url: formData.store_url,
         platform: formData.platform,
@@ -274,15 +261,13 @@ export default function PublicOnboardingPage() {
             </div>
             <CardTitle className="text-2xl">Cadastro Enviado!</CardTitle>
             <p className="text-slate-500 text-base mt-2">
-              Seu cadastro foi recebido com sucesso. Verifique seu email para dados de acesso ao portal.
-              Nossa equipe irá analisar seus dados e em breve seu onboarding começará.
+              Seu cadastro foi recebido com sucesso. Enviamos um <strong>link de acesso</strong> para o email <strong>{formData.email}</strong>.
+              Clique no link do email para criar sua senha e acessar o portal.
+            </p>
+            <p className="text-slate-400 text-sm mt-3">
+              Não recebeu? Verifique sua caixa de spam ou entre em contato com o suporte.
             </p>
           </CardHeader>
-          <CardContent>
-            <Button onClick={() => router.push("/portal/login")} className="w-full">
-              Acessar Portal
-            </Button>
-          </CardContent>
         </Card>
       </div>
     )
@@ -363,23 +348,11 @@ export default function PublicOnboardingPage() {
                 <Label htmlFor="company">Empresa</Label>
                 <Input id="company" value={formData.company} onChange={(e) => updateField("company", e.target.value)} placeholder="Nome da empresa" />
               </div>
-              <div className="border-t pt-4 mt-4">
-                <div className="flex items-center space-x-2 mb-4">
-                  <Checkbox id="use_temp" checked={formData.use_temp_password} onCheckedChange={(checked) => updateField("use_temp_password", !!checked)} />
-                  <Label htmlFor="use_temp" className="text-sm">Gerar senha temporária para mim</Label>
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 mt-4">
+                <div className="flex items-center gap-2 text-sm text-blue-700">
+                  <Mail className="h-4 w-4 shrink-0" />
+                  <span>Você receberá um link de acesso por email após o envio do cadastro.</span>
                 </div>
-                {!formData.use_temp_password && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="password">Senha *</Label>
-                      <Input id="password" type="password" value={formData.password} onChange={(e) => updateField("password", e.target.value)} placeholder="Mínimo 8 caracteres" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="password_confirm">Confirmar senha *</Label>
-                      <Input id="password_confirm" type="password" value={formData.password_confirm} onChange={(e) => updateField("password_confirm", e.target.value)} placeholder="Repita a senha" />
-                    </div>
-                  </div>
-                )}
               </div>
               {/* Honeypot */}
               <input type="text" name="website" value={formData.website} onChange={(e) => updateField("website", e.target.value)} className="hidden" tabIndex={-1} autoComplete="off" aria-hidden="true" />
@@ -624,7 +597,6 @@ export default function PublicOnboardingPage() {
                   {formData.phone && <><span className="text-slate-500">Telefone:</span><span>{formData.phone}</span></>}
                   {formData.cpf_cnpj && <><span className="text-slate-500">CPF/CNPJ:</span><span>{formData.cpf_cnpj}</span></>}
                   {formData.company && <><span className="text-slate-500">Empresa:</span><span>{formData.company}</span></>}
-                  <span className="text-slate-500">Senha:</span><span>{formData.use_temp_password ? "Temporária (enviada por email)" : "Definida por você"}</span>
                 </div>
               </div>
               <div className="border-t pt-4">

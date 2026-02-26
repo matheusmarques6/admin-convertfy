@@ -135,14 +135,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 4. Create portal account
-    let accountResult
+    // 4. Create portal account (sends invite email via Supabase)
     try {
-      accountResult = await portalAccountService.createPortalAccount({
+      await portalAccountService.createPortalAccount({
         clientId: client.id,
         email: data.email,
         name: data.name,
-        password: data.use_temp_password ? undefined : data.password,
       })
     } catch (error) {
       log.error("Failed to create portal account", error)
@@ -204,14 +202,7 @@ export async function POST(request: NextRequest) {
       await adminClient.from("client_onboarding_steps").insert(steps)
     }
 
-    // 6. Send welcome email
-    await portalAccountService.sendWelcomeEmail({
-      email: data.email,
-      name: data.name,
-      tempPassword: accountResult.tempPassword,
-    })
-
-    // 7. Notify approvers (via phase service side effects)
+    // 6. Notify approvers (via phase service side effects)
     try {
       await onboardingPhaseService.transition({
         onboardingId: onboarding.id,

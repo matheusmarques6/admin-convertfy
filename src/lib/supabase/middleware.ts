@@ -45,6 +45,11 @@ export async function updateSession(request: NextRequest) {
     return response
   }
 
+  // Portal auth callback - let it handle its own auth flow
+  if (request.nextUrl.pathname.startsWith("/portal/auth/callback")) {
+    return response
+  }
+
   // Protected routes check (admin)
   const protectedPaths = ["/dashboard", "/clients", "/pipeline", "/automations", "/settings", "/reports", "/tools", "/team", "/financial", "/meetings", "/stores", "/onboarding", "/notifications", "/campaigns"]
   const isProtectedPath = protectedPaths.some(path => request.nextUrl.pathname.startsWith(path))

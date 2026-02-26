@@ -1,54 +1,41 @@
 import { createAdminClient } from "@/lib/supabase/server"
-import { n8nTriggerService } from "@/lib/services/n8n-trigger.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("PortalAccount")
 
-function generateTempPassword(): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789"
-  const specials = "!@#$%"
-  let password = ""
-  for (let i = 0; i < 10; i++) {
-    password += chars.charAt(Math.floor(Math.random() * chars.length))
-  }
-  // Add a special character and a digit for strength
-  password += specials.charAt(Math.floor(Math.random() * specials.length))
-  password += Math.floor(Math.random() * 10)
-  return password
-}
-
 export class PortalAccountService {
   /**
-   * Create a portal account for a new client after form submission
+   * Create a portal account for a new client after form submission.
+   * Uses Supabase inviteUserByEmail() to send an invite link automatically.
+   * The user clicks the link, gets redirected to /portal/auth/callback,
+   * and then sets their password on /portal/change-password.
    */
   async createPortalAccount(params: {
     clientId: string
     email: string
     name: string
-    password?: string
   }): Promise<{
     userId: string
     portalUserId: string
-    tempPassword?: string
-    mustChangePassword: boolean
   }> {
     const adminClient = createAdminClient()
-    const useTempPassword = !params.password
-    const password = params.password || generateTempPassword()
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+    const redirectTo = `${appUrl}/portal/auth/callback`
 
-    // 1. Create Supabase Auth user
-    const { data: authData, error: authError } = await adminClient.auth.admin.createUser({
-      email: params.email,
-      password: password,
-      email_confirm: true,
-      user_metadata: {
-        name: params.name,
-        is_portal_user: true,
-      },
-    })
+    // 1. Create Supabase Auth user via invite (sends email automatically)
+    const { data: authData, error: authError } = await adminClient.auth.admin.inviteUserByEmail(
+      params.email,
+      {
+        redirectTo,
+        data: {
+          name: params.name,
+          is_portal_user: true,
+        },
+      }
+    )
 
     if (authError || !authData.user) {
-      log.error("Failed to create auth user", authError)
+      log.error("Failed to invite user", authError)
       throw new Error(`Erro ao criar conta: ${authError?.message || "Erro desconhecido"}`)
     }
 
@@ -64,7 +51,7 @@ export class PortalAccountService {
         email: params.email,
         role: "owner",
         is_active: true,
-        must_change_password: useTempPassword,
+        must_change_password: true,
       })
       .select("id")
       .single()
@@ -76,7 +63,7 @@ export class PortalAccountService {
       throw new Error("Erro ao criar usuário do portal")
     }
 
-    log.info("Portal account created", {
+    log.info("Portal account created via invite", {
       userId,
       portalUserId: portalUser.id,
       clientId: params.clientId,
@@ -85,28 +72,7 @@ export class PortalAccountService {
     return {
       userId,
       portalUserId: portalUser.id,
-      tempPassword: useTempPassword ? password : undefined,
-      mustChangePassword: useTempPassword,
     }
-  }
-
-  /**
-   * Send welcome email with credentials via N8N
-   */
-  async sendWelcomeEmail(params: {
-    email: string
-    name: string
-    tempPassword?: string
-  }): Promise<void> {
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
-    const loginUrl = `${appUrl}/portal/login`
-
-    await n8nTriggerService.triggerWelcomeEmail({
-      email: params.email,
-      name: params.name,
-      temp_password: params.tempPassword,
-      login_url: loginUrl,
-    })
   }
 }
 

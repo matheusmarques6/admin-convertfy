@@ -9,12 +9,24 @@ import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { createClient } from "@/lib/supabase/client"
 
+const ERROR_MESSAGES: Record<string, string> = {
+  link_invalido: "Link de acesso inválido. Solicite um novo link.",
+  link_expirado: "Link de acesso expirado. Solicite um novo link.",
+}
+
 export default function PortalLoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search)
+      const errorParam = params.get("error")
+      return errorParam ? ERROR_MESSAGES[errorParam] || null : null
+    }
+    return null
+  })
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
