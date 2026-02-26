@@ -1,14 +1,6 @@
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
-import { DashboardAlerts } from "@/components/dashboard/alerts"
-import { RecentActivity } from "@/components/dashboard/recent-activity"
-import { QuickActions } from "@/components/dashboard/quick-actions"
-import { TotalRevenueBanner } from "@/components/dashboard/total-revenue-banner"
-import { BoardPreview } from "@/components/dashboard/board-preview"
-import { WeekCalendarPreview } from "@/components/dashboard/week-calendar-preview"
-import { TopStoresCard } from "@/components/dashboard/top-stores-card"
-import { WorstPerformersCard } from "@/components/dashboard/worst-performers-card"
-import { OnboardingPreview } from "@/components/dashboard/onboarding-preview"
+import { DashboardLayout } from "@/components/dashboard/dashboard-layout"
 import type { DashboardAlert } from "@/types"
 
 export const dynamic = "force-dynamic"
@@ -166,14 +158,14 @@ async function getDashboardData() {
 }
 
 export default async function DashboardPage() {
-  const supabase2 = await createClient()
-  const { data: { user: authUser } } = await supabase2.auth.getUser()
+  const supabase = await createClient()
+  const { data: { user: authUser } } = await supabase.auth.getUser()
 
   if (!authUser) {
     redirect("/login")
   }
 
-  const { data: authProfile } = await supabase2
+  const { data: authProfile } = await supabase
     .from("profiles")
     .select("role")
     .eq("id", authUser.id)
@@ -181,7 +173,7 @@ export default async function DashboardPage() {
 
   const isAdmin = authProfile?.role === "admin"
 
-  const { data: authOrgMember } = await supabase2
+  const { data: authOrgMember } = await supabase
     .from("org_members")
     .select("role")
     .eq("profile_id", authUser.id)
@@ -189,34 +181,9 @@ export default async function DashboardPage() {
     .limit(1)
     .single()
 
-  if (!isAdmin && authOrgMember?.role !== "owner") {
-    redirect("/dashboard/operational")
-  }
-
-  const userRole = isAdmin ? "owner" : (authOrgMember?.role || "owner")
+  const userRole = isAdmin ? "owner" : (authOrgMember?.role || "support")
 
   const data = await getDashboardData()
 
-  return (
-    <div className="space-y-6">
-      {/* Quick Actions */}
-      <QuickActions />
-
-      {/* Revenue Banner - Resultado Total Klaviyo */}
-      <TotalRevenueBanner />
-
-      {/* Main Grid: 2 columns */}
-      <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
-        <BoardPreview tasks={data.activeTasks} />
-        <WeekCalendarPreview meetings={data.weekMeetings} tasks={data.weekTasks} />
-        <TopStoresCard />
-        <WorstPerformersCard />
-        <OnboardingPreview onboardings={data.activeOnboardings} userRole={userRole} />
-        <DashboardAlerts meetings={data.upcomingMeetings} alerts={data.alerts} />
-      </div>
-
-      {/* Full-width footer */}
-      <RecentActivity activities={data.activities} />
-    </div>
-  )
+  return <DashboardLayout data={data} userRole={userRole} />
 }

@@ -69,7 +69,9 @@ async function processChunk(
     stores.map(async (store) => {
       const clientName = clientNameMap.get(store.client_id) || "Cliente"
       try {
+        log.info(`[DEBUG] Fetching revenue for "${store.store_name}" (${store.id})...`)
         const revenue = await getKlaviyoRevenueForStore(store.id, period, customStartDate, customEndDate)
+        log.info(`[DEBUG] "${store.store_name}": total=${revenue.totalRevenue}, campaign=${revenue.campaignRevenue}, flow=${revenue.flowRevenue}`)
         return {
           storeId: store.id,
           storeName: store.store_name || "Loja sem nome",
@@ -79,7 +81,7 @@ async function processChunk(
           flowRevenue: revenue.flowRevenue,
         }
       } catch (err) {
-        log.warn(`Failed to fetch revenue for store ${store.id}:`, err)
+        log.warn(`[DEBUG] FAILED "${store.store_name}" (${store.id}):`, err)
         return {
           storeId: store.id,
           storeName: store.store_name || "Loja sem nome",
@@ -141,6 +143,20 @@ export async function GET(request: NextRequest) {
 
     const clientNameMap = new Map(orgClients!.map((c) => [c.id, c.name]))
 
+    // Count ALL stores (with and without Klaviyo) for debug
+    const { data: allStoresCount } = await admin
+      .from("client_stores")
+      .select("id, store_name, klaviyo_private_key, klaviyo_api_key, is_active, client_id")
+      .in("client_id", clientIds)
+
+    log.info(`[DEBUG] Org ${orgId}: ${clientIds.length} clients, ${allStoresCount?.length || 0} total stores`)
+    for (const s of allStoresCount || []) {
+      const hasPrivate = !!s.klaviyo_private_key
+      const hasApi = !!s.klaviyo_api_key
+      const client = clientNameMap.get(s.client_id) || "?"
+      log.info(`[DEBUG] Store "${s.store_name}" (${client}): active=${s.is_active}, klaviyo_private_key=${hasPrivate}, klaviyo_api_key=${hasApi}`)
+    }
+
     const { data: stores, error: storesError } = await admin
       .from("client_stores")
       .select("id, store_name, client_id")
@@ -152,6 +168,8 @@ export async function GET(request: NextRequest) {
       log.error("Error fetching stores:", storesError)
       throw storesError
     }
+
+    log.info(`[DEBUG] Stores passing Klaviyo filter: ${stores?.length || 0}`)
 
     // Filtrar por store_ids se fornecido (dashboard operacional do agente)
     let filteredStores = stores || []

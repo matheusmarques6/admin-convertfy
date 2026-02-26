@@ -54,7 +54,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatCurrency, getInitials, getHealthScoreColor } from "@/lib/utils"
 import { clientService } from "@/lib/services"
-import { usePermission } from "@/lib/permissions/hooks"
+import { usePermissions } from "@/lib/hooks/use-permissions"
 import { useAuthStore } from "@/lib/store"
 import { toast } from "@/lib/hooks/use-toast"
 import type { Client, Contract, User } from "@/types"
@@ -117,8 +117,9 @@ export function ClientsTable({ clients, totalCount, currentPage }: ClientsTableP
   const totalPages = Math.ceil(totalCount / pageSize)
   const router = useRouter()
   const { user } = useAuthStore()
-  const canDelete = usePermission("clients.delete")
-  const canEdit = usePermission("clients.edit")
+  const { permissions } = usePermissions()
+  const canDelete = permissions?.isAdmin || permissions?.isOrgOwner
+  const canEdit = permissions?.isAdmin || permissions?.isOrgOwner
   const [deleteClient, setDeleteClient] = useState<ClientWithRelations | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const [clientsStatus, setClientsStatus] = useState<Record<string, ClientStatus>>({})

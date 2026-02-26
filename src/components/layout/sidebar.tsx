@@ -69,13 +69,13 @@ const NAV_GROUPS = [
 
 const navigation: NavItem[] = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard, group: "principal" },
-  { name: "Clientes", href: "/clients", icon: Users, group: "crm", requiredFeatures: ["create_clients"] },
+  { name: "Clientes", href: "/clients", icon: Users, group: "crm", requiredFeatures: ["create_clients", "onboarding_control"] },
   { name: "Lojas", href: "/stores", icon: Store, group: "crm", requiresStoreAccess: true },
   { name: "Onboarding", href: "/onboarding", icon: Rocket, group: "crm", requiredFeatures: ["onboarding_control", "onboarding_view"] },
   { name: "Pipeline", href: "/pipeline", icon: Kanban, group: "crm", requiredFeatures: ["request_control", "request_execute"] },
-  { name: "Campanhas", href: "/campaigns", icon: CalendarDays, group: "marketing", requiredFeatures: ["campaign_control", "campaign_view"] },
+  { name: "Campanhas", href: "/campaigns", icon: CalendarDays, group: "marketing", requiredFeatures: ["campaign_control", "campaign_view", "campaign_copy"] },
   { name: "Automações", href: "/automations", icon: Zap, group: "marketing", requiredFeatures: ["campaign_control"] },
-  { name: "Board", href: "/board", icon: ClipboardList, group: "operacional", requiredFeatures: ["request_control", "request_execute"] },
+  { name: "Board", href: "/board", icon: ClipboardList, group: "operacional", requiredFeatures: ["request_control", "request_execute", "calendar_control"] },
   { name: "Reuniões", href: "/meetings", icon: Calendar, group: "operacional", requiredFeatures: ["calendar_control"] },
 
   { name: "Financeiro", href: "/financial", icon: DollarSign, group: "operacional", requiredFeatures: ["view_financial"] },

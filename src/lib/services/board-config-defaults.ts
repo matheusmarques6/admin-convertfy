@@ -63,8 +63,8 @@ export const BOARD_CONFIG_DEFAULTS: Record<OrgRole, BoardConfigDefaults> = {
     show_personal_events: true,
   },
   designer: {
-    show_onboarding_tasks: false,
-    show_meeting_tasks: false,
+    show_onboarding_tasks: true,
+    show_meeting_tasks: true,
     show_campaign_tasks: true,
     show_feedback_tasks: false,
     show_report_tasks: false,
@@ -74,9 +74,9 @@ export const BOARD_CONFIG_DEFAULTS: Record<OrgRole, BoardConfigDefaults> = {
     show_personal_events: true,
   },
   developer: {
-    show_onboarding_tasks: false,
-    show_meeting_tasks: false,
-    show_campaign_tasks: false,
+    show_onboarding_tasks: true,
+    show_meeting_tasks: true,
+    show_campaign_tasks: true,
     show_feedback_tasks: false,
     show_report_tasks: false,
     show_contract_tasks: false,

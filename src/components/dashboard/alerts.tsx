@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { formatDateTime } from "@/lib/utils"
+import { usePermissions } from "@/lib/hooks/use-permissions"
 import type { Meeting, DashboardAlert } from "@/types"
 import type { LucideIcon } from "lucide-react"
 
@@ -23,7 +24,23 @@ const ALERT_ICONS: Record<string, LucideIcon> = {
   report_pending: Clock,
 }
 
+// Alert types that require specific features
+const ALERT_FEATURE_MAP: Record<string, string> = {
+  payment_overdue: "view_financial",
+  report_pending: "view_reports",
+}
+
 export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps) {
+  const { permissions, hasFeature } = usePermissions()
+
+  // Filter alerts based on user features
+  const filteredAlerts = alerts.filter((alert) => {
+    const requiredFeature = ALERT_FEATURE_MAP[alert.type]
+    if (!requiredFeature) return true
+    if (permissions?.isAdmin || permissions?.isOrgOwner) return true
+    return hasFeature(requiredFeature)
+  })
+
   const getSeverityColor = (severity: "high" | "medium" | "low") => {
     switch (severity) {
       case "high":
@@ -35,7 +52,7 @@ export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps)
     }
   }
 
-  const totalAlerts = alerts.length
+  const totalAlerts = filteredAlerts.length
 
   return (
     <div className="rounded-xl border border-border bg-card">
@@ -53,9 +70,9 @@ export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps)
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Alerts */}
-        {alerts.length > 0 ? (
+        {filteredAlerts.length > 0 ? (
           <div className="space-y-3">
-            {alerts.map((alert) => {
+            {filteredAlerts.map((alert) => {
               const Icon = ALERT_ICONS[alert.type] || Clock
               return (
                 <div

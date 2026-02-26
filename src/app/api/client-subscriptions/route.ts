@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
+import { requireFeature } from "@/lib/api/check-permission"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("ClientSubscriptions")
@@ -9,7 +10,8 @@ const log = logger.child("ClientSubscriptions")
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
-    await requireAuth(supabase)
+    const user = await requireAuth(supabase)
+    await requireFeature(supabase, user.id, "view_financial")
 
     const body = await request.json()
     const { client_id, name, value, cycle, payment_method, status, start_date, next_due_date, notes } = body
@@ -52,7 +54,8 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const supabase = await createClient()
-    await requireAuth(supabase)
+    const user = await requireAuth(supabase)
+    await requireFeature(supabase, user.id, "view_financial")
 
     const id = request.nextUrl.searchParams.get("id")
 
@@ -78,7 +81,8 @@ export async function DELETE(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const supabase = await createClient()
-    await requireAuth(supabase)
+    const user = await requireAuth(supabase)
+    await requireFeature(supabase, user.id, "view_financial")
 
     const body = await request.json()
     const { id } = body

@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
+import { requireFeature } from "@/lib/api/check-permission"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("ClientReports")
@@ -25,6 +26,7 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
     const user = await requireAuth(supabase)
+    await requireFeature(supabase, user.id, "view_reports")
     const orgId = await resolveOrgId(supabase, user.id)
 
     const body = await request.json()
@@ -63,6 +65,7 @@ export async function PUT(request: NextRequest) {
   try {
     const supabase = await createClient()
     const user = await requireAuth(supabase)
+    await requireFeature(supabase, user.id, "view_reports")
     const orgId = await resolveOrgId(supabase, user.id)
 
     const body = await request.json()
@@ -94,6 +97,7 @@ export async function DELETE(request: NextRequest) {
   try {
     const supabase = await createClient()
     const user = await requireAuth(supabase)
+    await requireFeature(supabase, user.id, "view_reports")
     const orgId = await resolveOrgId(supabase, user.id)
 
     const id = request.nextUrl.searchParams.get("id")
