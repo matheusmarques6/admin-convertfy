@@ -13,7 +13,6 @@ import {
   BarChart3,
   Zap,
   PenLine,
-  Construction,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PermissionGate } from "@/components/permission-gate"
