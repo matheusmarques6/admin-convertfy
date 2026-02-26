@@ -165,7 +165,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
       const supabase = createClient()
       const { data, error } = await supabase
         .from("client_stores")
-        .select("*")
+        .select("id, store_name, store_url, platform, currency, is_active, created_at, shopify_store_domain, shopify_access_token, klaviyo_public_key, klaviyo_private_key, klaviyo_api_key, klaviyo_list_id, ga4_property_id, ga4_credentials")
         .eq("client_id", clientId)
         .order("created_at", { ascending: false })
 

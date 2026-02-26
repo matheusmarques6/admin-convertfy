@@ -11,10 +11,15 @@ import { PagePermissionWrapper } from "@/components/page-permission-wrapper"
 
 export const dynamic = "force-dynamic"
 
-async function getClients() {
+const PAGE_SIZE = 50
+
+async function getClients(page: number = 1) {
   const supabase = await createClient()
 
-  const { data: clients, error } = await supabase
+  const from = (page - 1) * PAGE_SIZE
+  const to = from + PAGE_SIZE - 1
+
+  const { data: clients, error, count } = await supabase
     .from("clients")
     .select(`
       *,
@@ -35,15 +40,16 @@ async function getClients() {
         platform,
         is_active
       )
-    `)
+    `, { count: 'exact' })
     .order("created_at", { ascending: false })
+    .range(from, to)
 
   if (error) {
     console.error("Error fetching clients:", error)
-    return []
+    return { clients: [], totalCount: 0 }
   }
 
-  return clients || []
+  return { clients: clients || [], totalCount: count || 0 }
 }
 
 function TableSkeleton() {
@@ -55,8 +61,14 @@ function TableSkeleton() {
   )
 }
 
-export default async function ClientsPage() {
-  const clients = await getClients()
+interface PageProps {
+  searchParams: Promise<{ page?: string }>
+}
+
+export default async function ClientsPage({ searchParams }: PageProps) {
+  const params = await searchParams
+  const page = Number(params.page) || 1
+  const { clients, totalCount } = await getClients(page)
 
   return (
     <PagePermissionWrapper requiredFeatures={["create_clients"]}>
@@ -82,7 +94,7 @@ export default async function ClientsPage() {
 
       {/* Table */}
       <Suspense fallback={<TableSkeleton />}>
-        <ClientsTable clients={clients} />
+        <ClientsTable clients={clients} totalCount={totalCount} currentPage={page} />
       </Suspense>
     </div>
     </PagePermissionWrapper>

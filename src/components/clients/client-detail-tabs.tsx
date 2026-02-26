@@ -33,40 +33,50 @@ export function ClientDetailTabs({ client }: ClientDetailTabsProps) {
       </TabsList>
 
       <TabsContent value="overview">
-        <ClientPerformanceProvider
-          clientId={client.id}
-          onNavigateToStores={() => setActiveTab("stores")}
-        >
-          <div className="space-y-6">
-            <ClientPerformanceKPIs />
-            <ClientOverview client={client} />
-            <ClientPerformanceTables />
-          </div>
-        </ClientPerformanceProvider>
+        {activeTab === "overview" && (
+          <ClientPerformanceProvider
+            clientId={client.id}
+            onNavigateToStores={() => setActiveTab("stores")}
+          >
+            <div className="space-y-6">
+              <ClientPerformanceKPIs />
+              <ClientOverview client={client} />
+              <ClientPerformanceTables />
+            </div>
+          </ClientPerformanceProvider>
+        )}
       </TabsContent>
 
       <TabsContent value="stores">
-        <ClientStores clientId={client.id} clientName={client.name} />
+        {activeTab === "stores" && (
+          <ClientStores clientId={client.id} clientName={client.name} />
+        )}
       </TabsContent>
 
       <TabsContent value="financial">
-        <div className="space-y-6">
-          <ClientFinancial clientId={client.id} clientName={client.name} />
-          <ClientContracts clientId={client.id} />
-        </div>
+        {activeTab === "financial" && (
+          <div className="space-y-6">
+            <ClientFinancial clientId={client.id} clientName={client.name} />
+            <ClientContracts clientId={client.id} />
+          </div>
+        )}
       </TabsContent>
 
       <TabsContent value="timeline">
-        <div className="space-y-6">
-          <ClientTimeline clientId={client.id} />
-          <ClientMeetings clientId={client.id} />
-        </div>
+        {activeTab === "timeline" && (
+          <div className="space-y-6">
+            <ClientTimeline clientId={client.id} />
+            <ClientMeetings clientId={client.id} />
+          </div>
+        )}
       </TabsContent>
 
       <TabsContent value="config">
-        <div className="space-y-6">
-          <ClientPortalUsers clientId={client.id} clientName={client.name} />
-        </div>
+        {activeTab === "config" && (
+          <div className="space-y-6">
+            <ClientPortalUsers clientId={client.id} clientName={client.name} />
+          </div>
+        )}
       </TabsContent>
     </Tabs>
   )

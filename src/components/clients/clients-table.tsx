@@ -77,6 +77,8 @@ interface ClientWithRelations extends Client {
 
 interface ClientsTableProps {
   clients: ClientWithRelations[]
+  totalCount: number
+  currentPage: number
 }
 
 interface ClientStatus {
@@ -110,7 +112,9 @@ const cycleLabels: Record<string, string> = {
   YEARLY: "Anual",
 }
 
-export function ClientsTable({ clients }: ClientsTableProps) {
+export function ClientsTable({ clients, totalCount, currentPage }: ClientsTableProps) {
+  const pageSize = 50
+  const totalPages = Math.ceil(totalCount / pageSize)
   const router = useRouter()
   const { user } = useAuthStore()
   const canDelete = usePermission("clients.delete")
@@ -118,7 +122,7 @@ export function ClientsTable({ clients }: ClientsTableProps) {
   const [deleteClient, setDeleteClient] = useState<ClientWithRelations | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const [clientsStatus, setClientsStatus] = useState<Record<string, ClientStatus>>({})
-  const [isLoadingStatus, setIsLoadingStatus] = useState(true)
+  const [isLoadingStatus, setIsLoadingStatus] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [loadError, setLoadError] = useState(false)
 
@@ -152,6 +156,7 @@ export function ClientsTable({ clients }: ClientsTableProps) {
     if (isManualRefresh) {
       setIsRefreshing(true)
     }
+    setIsLoadingStatus(true)
     setLoadError(false)
 
     // Retry logic with exponential backoff
@@ -200,14 +205,8 @@ export function ClientsTable({ clients }: ClientsTableProps) {
     const cached = getCachedStatus()
     if (cached) {
       setClientsStatus(cached)
-      setIsLoadingStatus(false)
     }
   }, [])
-
-  // Fetch fresh data
-  useEffect(() => {
-    loadClientsStatus()
-  }, [loadClientsStatus])
 
   const handleManualRefresh = () => {
     loadClientsStatus(true)
@@ -270,9 +269,10 @@ export function ClientsTable({ clients }: ClientsTableProps) {
               <TableHead>
                 <div className="flex items-center gap-2">
                   Pagamento
-                  {(isLoadingStatus || isRefreshing) && (
-                    <RefreshCw className="h-3 w-3 animate-spin text-muted-foreground" />
-                  )}
+                  <Button variant="ghost" size="sm" onClick={handleManualRefresh} disabled={isLoadingStatus || isRefreshing}>
+                    <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+                    Atualizar
+                  </Button>
                   {loadError && !isLoadingStatus && (
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -391,7 +391,7 @@ export function ClientsTable({ clients }: ClientsTableProps) {
                       </div>
                     ) : (
                       <span className="text-xs text-muted-foreground">
-                        Sem vínculo Asaas
+                        —
                       </span>
                     )}
                   </TableCell>
@@ -513,6 +513,36 @@ export function ClientsTable({ clients }: ClientsTableProps) {
           </TableBody>
         </Table>
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between px-4 py-3">
+          <p className="text-sm text-muted-foreground">
+            Mostrando {((currentPage - 1) * pageSize) + 1} a {Math.min(currentPage * pageSize, totalCount)} de {totalCount} clientes
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={currentPage <= 1}
+              onClick={() => router.push(`/clients?page=${currentPage - 1}`)}
+            >
+              Anterior
+            </Button>
+            <span className="text-sm text-muted-foreground">
+              Página {currentPage} de {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={currentPage >= totalPages}
+              onClick={() => router.push(`/clients?page=${currentPage + 1}`)}
+            >
+              Próxima
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={!!deleteClient} onOpenChange={() => setDeleteClient(null)}>

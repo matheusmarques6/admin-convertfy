@@ -73,7 +73,7 @@ export function ClientOverview({ client }: ClientOverviewProps) {
       const supabase = createClient()
       const [contractsRes, invoicesRes, meetingsRes] = await Promise.all([
         supabase.from("contracts").select("*").eq("client_id", client.id).eq("status", "active").limit(1),
-        supabase.from("invoices").select("amount, status").eq("client_id", client.id).limit(200),
+        supabase.from("invoices").select("amount, status").eq("client_id", client.id).limit(20),
         supabase.from("meetings").select("*").eq("client_id", client.id).eq("status", "scheduled").gt("scheduled_at", new Date().toISOString()).order("scheduled_at", { ascending: true }).limit(1),
       ])
       setActiveContract(contractsRes.data?.[0] || null)
