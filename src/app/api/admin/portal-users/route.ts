@@ -74,22 +74,36 @@ export async function POST(request: NextRequest) {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
     const redirectTo = `${appUrl}/portal/auth/callback`
 
-    // Create auth user via invite (sends email automatically)
-    const { data: authUser, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(
-      body.email,
-      {
-        redirectTo,
-        data: {
-          name: body.name,
-          is_portal_user: true,
-          client_id: body.client_id,
-        },
-      }
-    )
+    // Check if email already exists in auth.users
+    const { data: existingAuthUsers } = await adminClient.auth.admin.listUsers()
+    const existingAuthUser = existingAuthUsers?.users?.find(u => u.email === body.email)
 
-    if (inviteError) {
-      log.error("Invite user failed", { error: inviteError.message })
-      throw new AppError("Erro ao criar conta: " + inviteError.message, 500)
+    let authUserId: string
+
+    if (existingAuthUser) {
+      // User already exists in auth, reuse their ID
+      authUserId = existingAuthUser.id
+      log.info("Reusing existing auth user", { email: body.email, authUserId })
+    } else {
+      // Create new auth user via invite (sends email automatically)
+      const { data: authUser, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(
+        body.email,
+        {
+          redirectTo,
+          data: {
+            name: body.name,
+            is_portal_user: true,
+            client_id: body.client_id,
+          },
+        }
+      )
+
+      if (inviteError) {
+        log.error("Invite user failed", { error: inviteError.message })
+        throw new AppError("Erro ao criar conta: " + inviteError.message, 500)
+      }
+
+      authUserId = authUser.user.id
     }
 
     // Create portal user record
@@ -106,7 +120,7 @@ export async function POST(request: NextRequest) {
       .from("client_portal_users")
       .insert({
         client_id: body.client_id,
-        auth_user_id: authUser.user.id,
+        auth_user_id: authUserId,
         email: body.email,
         name: body.name,
         phone: body.phone || null,
@@ -125,7 +139,9 @@ export async function POST(request: NextRequest) {
 
     if (insertError) {
       log.error("Portal user insert failed, rolling back auth user", { error: insertError.message })
-      await adminClient.auth.admin.deleteUser(authUser.user.id)
+      if (!existingAuthUser) {
+        await adminClient.auth.admin.deleteUser(authUserId)
+      }
       throw new AppError("Erro ao criar usuário do portal", 500)
     }
 
