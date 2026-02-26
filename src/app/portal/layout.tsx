@@ -18,6 +18,7 @@ import {
   ChevronUp,
   ChevronsUpDown,
   Plus,
+  Crosshair,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -61,6 +62,7 @@ const navigation = [
   { name: "Análise", href: "/portal/analytics", icon: BarChart3 },
   { name: "Campanhas", href: "/portal/campaigns", icon: Send },
   { name: "Flows", href: "/portal/flows", icon: GitBranch },
+  { name: "Rastreamento", href: "/portal/tracking", icon: Crosshair },
   { name: "Faturas", href: "/portal/invoices", icon: FileText },
 ]
 
