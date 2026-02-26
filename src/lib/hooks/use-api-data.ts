@@ -19,7 +19,14 @@ async function apiFetcher<T = unknown>(url: string): Promise<T> {
   const res = await fetch(url)
   if (!res.ok) {
     const text = await res.text()
-    throw new Error(text || `Request failed: ${res.status}`)
+    // Try to extract a human-readable error message from JSON responses
+    try {
+      const json = JSON.parse(text)
+      throw new Error(json.error || json.message || `Request failed: ${res.status}`)
+    } catch (parseError) {
+      if (parseError instanceof Error && parseError.message !== text) throw parseError
+      throw new Error(text || `Request failed: ${res.status}`)
+    }
   }
   return res.json()
 }

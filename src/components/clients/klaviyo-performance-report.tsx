@@ -410,12 +410,14 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
 
   // Error State
   if (error || !reportData) {
+    const err = error as Error | string | undefined
+    const errorMessage = err instanceof Error ? err.message : typeof err === "string" ? err : "Não foi possível carregar os dados do relatório."
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-6">
         <XCircle className="w-16 h-16 text-destructive" />
-        <div className="text-center">
+        <div className="text-center max-w-md">
           <h3 className="text-lg font-semibold text-foreground">Erro ao Carregar</h3>
-          <p className="text-sm text-muted-foreground">{error}</p>
+          <p className="text-sm text-muted-foreground">{errorMessage}</p>
         </div>
         <Button onClick={() => { mutateKlaviyo(); mutateShopify() }}><RefreshCw className="w-4 h-4 mr-2" />Tentar Novamente</Button>
       </div>

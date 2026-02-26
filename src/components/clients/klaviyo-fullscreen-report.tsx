@@ -341,12 +341,14 @@ export function KlaviyoFullscreenReport({ storeId, storeName, period }: KlaviyoF
 
   // Error State
   if (error || !reportData) {
+    const err = error as Error | string | undefined
+    const errorMessage = err instanceof Error ? err.message : typeof err === "string" ? err : "Não foi possível carregar os dados do relatório."
     return (
       <div className="min-h-screen bg-card flex flex-col items-center justify-center gap-6">
         <XCircle className="w-16 h-16 text-destructive" />
-        <div className="text-center">
+        <div className="text-center max-w-md">
           <h3 className="text-lg font-semibold text-foreground">Erro ao Carregar</h3>
-          <p className="text-sm text-muted-foreground">{error}</p>
+          <p className="text-sm text-muted-foreground">{errorMessage}</p>
         </div>
         <div className="flex gap-3">
           <Button variant="outline" onClick={() => router.back()}>
