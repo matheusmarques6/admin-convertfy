@@ -63,3 +63,4 @@ logs/
 
 # AIOS framework core (large, external)
 .aios-core/
+supabase/.temp/
