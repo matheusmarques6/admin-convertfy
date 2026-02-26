@@ -109,7 +109,7 @@ export function CopyPipelineBoard() {
       const json = await res.json()
       setItems(json.data || [])
     } catch {
-      toast.error("Erro ao carregar pipeline de copys")
+      toast({ variant: "destructive", title: "Erro ao carregar pipeline de copys" })
     } finally {
       setLoading(false)
     }
@@ -159,12 +159,12 @@ export function CopyPipelineBoard() {
         throw new Error(err.error || "Erro ao atualizar status")
       }
 
-      toast.success(`Status atualizado para: ${nextStatus.replace(/_/g, " ")}`)
+      toast({ title: `Status atualizado para: ${nextStatus.replace(/_/g, " ")}` })
       setActionItem(null)
       setActionNotes("")
       fetchPipeline()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao atualizar")
+      toast({ variant: "destructive", title: err instanceof Error ? err.message : "Erro ao atualizar" })
     } finally {
       setAdvancing(false)
     }
@@ -185,12 +185,12 @@ export function CopyPipelineBoard() {
         throw new Error(err.error || "Erro ao atribuir")
       }
 
-      toast.success(`Membro atribuído com sucesso`)
+      toast({ title: "Membro atribuído com sucesso" })
       setAssignDialogItem(null)
       setSelectedMember("")
       fetchPipeline()
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao atribuir")
+      toast({ variant: "destructive", title: err instanceof Error ? err.message : "Erro ao atribuir" })
     }
   }
 
