@@ -284,3 +284,60 @@ Lote 5 (Cleanup)         -> Nice-to-have. Fazer por último.
 ---
 
 *Gerado por Quinn (QA Agent) — 2026-02-18*
+
+---
+---
+
+# QA Fix Request — Dashboard Cards (2026-02-26)
+
+**Data:** 2026-02-26
+**Revisor:** Quinn (QA Agent)
+**Gate Decision:** CONCERNS → Fix Required
+
+---
+
+## CRITICAL
+
+### C1: Cache key missing `store_ids` - Data contamination
+- **Arquivo:** `src/app/api/dashboard/total-revenue/route.ts:108`
+- **Problema:** Cache key não inclui `store_ids`. Dashboard operacional (com filtro) contamina cache do dashboard principal.
+- **Fix:** Incluir `filterStoreIds` na cache key.
+
+---
+
+## HIGH
+
+### H1: Duplicate API calls - Top Stores + Worst Performers
+- **Arquivos:** `src/components/dashboard/top-stores-card.tsx`, `src/components/dashboard/worst-performers-card.tsx`
+- **Problema:** Ambos fazem fetch independente ao mesmo endpoint lento. 2 chamadas duplicadas por page load.
+- **Fix:** Extrair hook compartilhado `useStoreRevenue(period)` que deduplicata chamadas.
+
+### H2: Incorrect maxRevenue in worst-performers
+- **Arquivo:** `src/components/dashboard/worst-performers-card.tsx:45`
+- **Problema:** `maxRevenue` usa último elemento. Barras relativas entre si, não representam magnitude real.
+- **Fix:** Usar `stores[0]?.totalRevenue` (primeiro = maior entre os bottom).
+
+### H3: Sort mutates props
+- **Arquivo:** `src/components/dashboard/week-calendar-preview.tsx`
+- **Problema:** `.sort()` muta array de props diretamente.
+- **Fix:** Usar `[...array].sort()`.
+
+### H4: N+1 queries for alert client names
+- **Arquivo:** `src/app/(dashboard)/dashboard/page.tsx:90-128`
+- **Problema:** 4 queries sequenciais extras para buscar nomes de clientes em alertas.
+- **Fix:** Usar join do Supabase: `select("id, plan_name, end_date, client:clients(id, name)")`.
+
+---
+
+## MEDIUM (Document Only)
+
+- M1: Timezone sensitivity em `board-preview.tsx` (due_date comparison)
+- M2: Sem error state visível em top-stores/worst-performers
+- M3: "Próximos a vencer" inclui itens já vencidos em `onboarding-preview.tsx`
+- M4: `useCountUp` não cancela RAF no unmount em `total-revenue-banner.tsx`
+- M5: Sem error handling no `getDashboardData()` em `dashboard/page.tsx`
+- M6: Seleciona colunas de credenciais desnecessariamente em `total-revenue/route.ts`
+
+---
+
+*Gerado por Quinn (QA Agent) — 2026-02-26*

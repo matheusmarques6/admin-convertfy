@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
-import Link from "next/link"
 import { format } from "date-fns"
 import { TrendingUp, RefreshCw, Megaphone, Workflow, Store } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -159,8 +158,6 @@ export function TotalRevenueBanner({ storeIds }: TotalRevenueBannerProps = {}) {
     )
   }
 
-  const maxRevenue = data?.topStores[0]?.totalRevenue || 1
-
   return (
     <div className="rounded-xl border border-white/10 bg-gradient-to-br from-[#0a1628] via-[#0f2035] to-[#0a2540] shadow-lg shadow-black/20">
       <div className="p-6 space-y-6">
@@ -240,40 +237,6 @@ export function TotalRevenueBanner({ storeIds }: TotalRevenueBannerProps = {}) {
           </div>
         </div>
 
-        {/* Top 5 stores */}
-        {data?.topStores && data.topStores.length > 0 && (
-          <div className="space-y-3">
-            <p className="text-xs font-semibold uppercase tracking-wider text-white/40">Top Lojas</p>
-            <div className="space-y-2.5">
-              {data.topStores.map((store) => {
-                const widthPercent = Math.max((store.totalRevenue / maxRevenue) * 100, 4)
-                return (
-                  <Link
-                    key={store.storeId}
-                    href={`/stores/${store.storeId}`}
-                    className="block group"
-                  >
-                    <div className="flex items-center justify-between text-sm mb-1.5">
-                      <span className="truncate max-w-[60%] text-white/80 group-hover:text-[#05AFF2] transition-colors">
-                        {store.storeName}
-                        <span className="text-white/40 ml-1.5 text-xs">
-                          ({store.clientName})
-                        </span>
-                      </span>
-                      <span className="font-medium tabular-nums text-white">{formatCurrency(store.totalRevenue)}</span>
-                    </div>
-                    <div className="h-2 rounded-full bg-white/10 overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-gradient-to-r from-[#0284C7] to-[#05AFF2] transition-all duration-500"
-                        style={{ width: `${widthPercent}%` }}
-                      />
-                    </div>
-                  </Link>
-                )
-              })}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   )

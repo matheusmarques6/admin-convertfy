@@ -30,6 +30,7 @@ interface TotalRevenueResponse {
   storesCount: number
   storesWithRevenue: number
   topStores: StoreRevenue[]
+  bottomStores: StoreRevenue[]
   cachedAt: string
 }
 
@@ -103,8 +104,9 @@ export async function GET(request: NextRequest) {
     const storeIdsParam = request.nextUrl.searchParams.get("store_ids")
     const filterStoreIds = storeIdsParam ? storeIdsParam.split(",").filter(Boolean) : null
 
-    // Cache key includes user ID to prevent cross-tenant data leakage
-    const cacheKey = `${user.id}:${period}${customStartDate ? `:${customStartDate}:${customEndDate}` : ""}`
+    // Cache key includes user ID + store_ids to prevent cross-tenant/cross-filter data leakage
+    const storeIdsSuffix = filterStoreIds ? `:s=${filterStoreIds.sort().join(",")}` : ""
+    const cacheKey = `${user.id}:${period}${customStartDate ? `:${customStartDate}:${customEndDate}` : ""}${storeIdsSuffix}`
     const cached = revenueCache.get(cacheKey)
     if (cached && (Date.now() - cached.timestamp) < CACHE_TTL) {
       return successResponse(request, cached.data)
@@ -131,6 +133,7 @@ export async function GET(request: NextRequest) {
         storesCount: 0,
         storesWithRevenue: 0,
         topStores: [],
+        bottomStores: [],
         cachedAt: new Date().toISOString(),
       }
       return successResponse(request, emptyResult)
@@ -165,6 +168,7 @@ export async function GET(request: NextRequest) {
         storesCount: 0,
         storesWithRevenue: 0,
         topStores: [],
+        bottomStores: [],
         cachedAt: new Date().toISOString(),
       }
       return successResponse(request, emptyResult)
@@ -185,11 +189,18 @@ export async function GET(request: NextRequest) {
     const flowRevenue = allResults.reduce((sum, s) => sum + s.flowRevenue, 0)
     const storesWithRevenue = allResults.filter((s) => s.totalRevenue > 0).length
 
-    // Top 5 stores by revenue
-    const topStores = allResults
+    // Sort by revenue descending
+    const sortedByRevenue = allResults
       .filter((s) => s.totalRevenue > 0)
       .sort((a, b) => b.totalRevenue - a.totalRevenue)
-      .slice(0, 5)
+
+    // Top 5 stores by revenue
+    const topStores = sortedByRevenue.slice(0, 5)
+
+    // Bottom 5 stores by revenue (lowest first)
+    const bottomStores = sortedByRevenue.length > 5
+      ? [...sortedByRevenue].reverse().slice(0, 5)
+      : []
 
     const result: TotalRevenueResponse = {
       period,
@@ -199,6 +210,7 @@ export async function GET(request: NextRequest) {
       storesCount: filteredStores.length,
       storesWithRevenue,
       topStores,
+      bottomStores,
       cachedAt: new Date().toISOString(),
     }
 
