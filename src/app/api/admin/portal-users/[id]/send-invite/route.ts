@@ -57,17 +57,28 @@ export async function POST(
     const redirectTo = `${appUrl}/portal/auth/callback`
 
     // Delete existing auth user by email using SQL function (reliable, no pagination)
+    log.info("Deleting auth user by email via RPC", { email: portalUser.email })
     const { error: rpcError } = await adminClient.rpc("delete_auth_user_by_email", {
       target_email: portalUser.email,
     })
     if (rpcError) {
-      log.warn("RPC delete_auth_user_by_email failed, trying SDK fallback", { error: rpcError.message })
+      log.warn("RPC delete_auth_user_by_email failed, trying SDK fallback", {
+        error: rpcError.message,
+        code: rpcError.code,
+        details: rpcError.details,
+      })
       // Fallback: try deleting by saved auth_user_id
       if (portalUser.auth_user_id) {
-        await adminClient.auth.admin.deleteUser(portalUser.auth_user_id).catch(() => {})
+        const { error: delError } = await adminClient.auth.admin.deleteUser(portalUser.auth_user_id)
+        if (delError) {
+          log.warn("SDK deleteUser also failed", { error: delError.message })
+        }
       }
+    } else {
+      log.info("Auth user deleted successfully via RPC")
     }
 
+    log.info("Sending invite email", { email: portalUser.email, redirectTo })
     const { data: authData, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(
       portalUser.email,
       {
@@ -79,12 +90,21 @@ export async function POST(
       }
     )
 
-    if (inviteError || !authData?.user) {
-      log.error("Failed to send invite", inviteError)
+    if (inviteError) {
+      log.error("inviteUserByEmail failed", {
+        message: inviteError.message,
+        status: inviteError.status,
+        name: inviteError.name,
+      })
       throw new AppError(
-        `Erro ao enviar convite: ${inviteError?.message || "Erro desconhecido"}`,
+        `Erro ao enviar convite: ${inviteError.message}`,
         500
       )
+    }
+
+    if (!authData?.user) {
+      log.error("inviteUserByEmail returned no user data", { authData })
+      throw new AppError("Erro ao enviar convite: resposta inesperada do servidor de autenticação", 500)
     }
 
     // Update portal user with new auth_user_id
