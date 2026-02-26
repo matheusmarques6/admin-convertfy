@@ -4,7 +4,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ChargesManager } from "@/components/financial/charges-manager"
 import { SubscriptionsManager } from "@/components/financial/subscriptions-manager"
 import { WiseReconciliation } from "@/components/financial/wise-reconciliation"
-import { DollarSign, Repeat, Wallet } from "lucide-react"
+import { BillingMetrics } from "@/components/dashboard/billing-metrics"
+import { FinancialCharts } from "@/components/dashboard/financial-charts"
+import { BarChart3, DollarSign, Repeat, Wallet } from "lucide-react"
 import { PermissionGate } from "@/components/permission-gate"
 
 export default function FinancialPage() {
@@ -17,8 +19,12 @@ export default function FinancialPage() {
       </p>
 
       {/* Tabs */}
-      <Tabs defaultValue="charges">
+      <Tabs defaultValue="analysis">
         <TabsList>
+          <TabsTrigger value="analysis" className="gap-2">
+            <BarChart3 className="h-4 w-4" />
+            Análise
+          </TabsTrigger>
           <TabsTrigger value="charges" className="gap-2">
             <DollarSign className="h-4 w-4" />
             Cobranças
@@ -32,6 +38,11 @@ export default function FinancialPage() {
             Wise
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="analysis" className="mt-6 space-y-6">
+          <BillingMetrics />
+          <FinancialCharts />
+        </TabsContent>
 
         <TabsContent value="charges" className="mt-6">
           <ChargesManager />

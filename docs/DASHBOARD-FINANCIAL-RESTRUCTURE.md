@@ -302,12 +302,12 @@ DEPOIS:
 
 ---
 
-## 9. Decisões Pendentes (para o PO/PM)
+## 9. Decisões Definidas
 
-1. **Permissões:** Todos os admin/owner devem ter `view_financial` automaticamente? (BillingMetrics e DashboardCharts que antes estavam na dashboard agora exigem `view_financial`)
-2. **DashboardCharts tabs Pipeline/Clientes:** Manter no financeiro ou são dados de CRM que deveriam ficar na dashboard?
-3. **Renomear componentes?** Ex: `DashboardCharts` → `FinancialCharts`
-4. **Dashboard pós-mudança:** Adicionar novos cards operacionais (ex: tarefas pendentes, onboardings ativos) para preencher o espaço?
+1. **Permissões:** Acesso restrito a **Admin/Owner** apenas. Eles já possuem `view_financial` por padrão.
+2. **DashboardCharts tabs Pipeline/Clientes:** **Mover tudo junto** para o financeiro (Receita + Pipeline + Clientes ficam na aba Análise).
+3. **Renomear componentes:** **Sim.** `DashboardCharts` → `FinancialCharts` (`charts.tsx` → `financial-charts.tsx`).
+4. **Dashboard pós-mudança:** Discutir novos cards operacionais **após** a migração ser concluída com sucesso.
 
 ---
 

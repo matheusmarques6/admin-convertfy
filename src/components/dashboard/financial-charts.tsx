@@ -42,7 +42,7 @@ interface PipelineData {
   [key: string]: string | number
 }
 
-interface DashboardChartsProps {
+interface FinancialChartsProps {
   revenueData?: Array<{ month: string; receita: number; [key: string]: string | number }>
   clientsData?: ClientsData[]
   pipelineData?: PipelineData[]
@@ -57,11 +57,11 @@ interface FinancialData {
   newDeals: { count: number; pipelineValue: number }
 }
 
-export function DashboardCharts({
+export function FinancialCharts({
   revenueData = [],
   clientsData = [],
   pipelineData = []
-}: DashboardChartsProps) {
+}: FinancialChartsProps) {
   const hasClientsData = clientsData.some((d) => d.value > 0)
   const hasPipelineData = pipelineData.length > 0
 
