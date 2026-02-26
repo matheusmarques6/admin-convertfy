@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { errorResponse } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
+
 // GET - Get current portal user info (if logged in user is a portal user)
 export async function GET(request: NextRequest) {
   try {

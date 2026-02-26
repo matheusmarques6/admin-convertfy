@@ -6,6 +6,7 @@ import type { Client, ClientStore } from "./client"
 export type TaskType = "onboarding" | "campaign" | "request" | "general" | "meeting" | "deadline"
 export type TaskStatus = "pending" | "in_progress" | "blocked" | "review" | "completed" | "cancelled"
 export type TaskPriority = "low" | "medium" | "high" | "urgent"
+export type TaskSourceType = "manual" | "auto_onboarding" | "auto_meeting" | "auto_campaign" | "auto_feedback" | "auto_report" | "auto_contract"
 
 export interface Task {
   id: string
@@ -19,6 +20,8 @@ export interface Task {
   client_id?: string
   store_id?: string
   campaign_batch_id?: string
+  source_type?: TaskSourceType
+  source_id?: string
   due_date?: string
   started_at?: string
   completed_at?: string

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { errorResponse, requireRole } from "@/lib/api/errors"
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+
 // POST - Set up database tables
 export async function POST(request: NextRequest) {
   const limited = checkRateLimit(request, "setup:database", RATE_LIMITS.migration)

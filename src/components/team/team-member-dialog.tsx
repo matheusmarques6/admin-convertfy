@@ -24,6 +24,8 @@ import {
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "@/lib/hooks/use-toast"
+import { AgentBoardConfig, type BoardConfigState } from "./agent-board-config"
+
 import type { FeatureCatalog, MemberWithDetails, Organization, OrgRole } from "@/types"
 
 interface StoreWithClient {
@@ -97,6 +99,8 @@ export function TeamMemberDialog({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [selectedFeatures, setSelectedFeatures] = useState<string[]>([])
   const [selectedStores, setSelectedStores] = useState<string[]>([])
+  const [boardConfig, setBoardConfig] = useState<BoardConfigState | null>(null)
+  const [boardConfigLoading, setBoardConfigLoading] = useState(false)
   const [activeTab, setActiveTab] = useState("info")
   const [tempPassword, setTempPassword] = useState<string | null>(null)
 
@@ -129,6 +133,8 @@ export function TeamMemberDialog({
         setSelectedFeatures(member.enabled_features || [])
         // Load store access for editing
         loadMemberStoreAccess(member.id)
+        // Load board config
+        loadBoardConfig(member.id)
       } else {
         reset({
           email: "",
@@ -139,6 +145,7 @@ export function TeamMemberDialog({
         })
         setSelectedFeatures([])
         setSelectedStores([])
+        setBoardConfig(null)
         setTempPassword(null)
       }
       setActiveTab("info")
@@ -158,6 +165,37 @@ export function TeamMemberDialog({
         title: "Erro ao carregar acessos",
         description: "Não foi possível carregar os acessos às lojas deste membro.",
       })
+    }
+  }
+
+  async function loadBoardConfig(memberId: string) {
+    setBoardConfigLoading(true)
+    try {
+      const response = await fetch(`/api/team/board-config?org_member_id=${memberId}`)
+      if (response.ok) {
+        const data = await response.json()
+        setBoardConfig(data.config)
+      }
+    } catch {
+      // Silently fail — defaults will be used
+    } finally {
+      setBoardConfigLoading(false)
+    }
+  }
+
+  async function saveBoardConfig(memberId: string) {
+    if (!boardConfig) return
+    try {
+      await fetch("/api/team/board-config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          org_member_id: memberId,
+          ...boardConfig,
+        }),
+      })
+    } catch {
+      // Non-blocking: board config save failure shouldn't block member save
     }
   }
 
@@ -249,6 +287,14 @@ export function TeamMemberDialog({
         throw new Error(result.error || "Erro ao salvar")
       }
 
+      // Save board config if changed
+      if (boardConfig) {
+        const memberId = isEditing ? member.id : result.member?.id
+        if (memberId) {
+          await saveBoardConfig(memberId)
+        }
+      }
+
       // Check if a temp password was returned (new user created)
       if (result.temp_password) {
         setTempPassword(result.temp_password)
@@ -321,10 +367,11 @@ export function TeamMemberDialog({
         ) : (
         <form onSubmit={handleSubmit(onSubmit)} className="flex-1 overflow-hidden flex flex-col">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 overflow-hidden flex flex-col">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="info">Informações</TabsTrigger>
               <TabsTrigger value="features">Features</TabsTrigger>
               <TabsTrigger value="stores">Lojas</TabsTrigger>
+              <TabsTrigger value="board">Board</TabsTrigger>
             </TabsList>
 
             <div className="flex-1 overflow-y-auto py-4">
@@ -519,6 +566,16 @@ export function TeamMemberDialog({
                     </div>
                   </>
                 )}
+              </TabsContent>
+
+              <TabsContent value="board" className="mt-0">
+                <AgentBoardConfig
+                  orgMemberId={member?.id || ""}
+                  role={selectedRole as OrgRole}
+                  value={boardConfig}
+                  onChange={setBoardConfig}
+                  isLoading={boardConfigLoading}
+                />
               </TabsContent>
             </div>
           </Tabs>

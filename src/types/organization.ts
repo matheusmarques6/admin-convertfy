@@ -96,3 +96,37 @@ export interface AgentStoreAccessFormData {
   can_manage_reports?: boolean
   notes?: string
 }
+
+// Board Config per Agent
+export type BoardCalendarViewMode = "daily" | "weekly" | "monthly"
+
+export interface BoardConfig {
+  id: string
+  org_member_id: string
+  org_id: string
+  show_onboarding_tasks: boolean
+  show_meeting_tasks: boolean
+  show_campaign_tasks: boolean
+  show_feedback_tasks: boolean
+  show_report_tasks: boolean
+  show_contract_tasks: boolean
+  show_manual_tasks: boolean
+  calendar_view_mode: BoardCalendarViewMode
+  show_personal_events: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface BoardConfigFormData {
+  org_member_id: string
+  org_id: string
+  show_onboarding_tasks: boolean
+  show_meeting_tasks: boolean
+  show_campaign_tasks: boolean
+  show_feedback_tasks: boolean
+  show_report_tasks: boolean
+  show_contract_tasks: boolean
+  show_manual_tasks: boolean
+  calendar_view_mode: BoardCalendarViewMode
+  show_personal_events: boolean
+}

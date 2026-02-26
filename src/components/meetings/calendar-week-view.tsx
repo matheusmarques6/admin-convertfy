@@ -14,7 +14,6 @@ import {
 } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { Video, ExternalLink } from "lucide-react"
-// Badge not currently used
 import { cn } from "@/lib/utils"
 import type { Meeting, MeetingStatus } from "@/types"
 

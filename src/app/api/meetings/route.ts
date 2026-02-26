@@ -3,6 +3,7 @@ import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
+import { TaskAutomationService } from "@/lib/services/task-automation.service"
 
 const log = logger.child("Meetings")
 
@@ -298,6 +299,51 @@ export async function POST(request: NextRequest) {
       client: transformClient(Array.isArray(meeting.client) ? meeting.client[0] : meeting.client),
       user: Array.isArray(meeting.user) ? meeting.user[0] : meeting.user,
       participants: [],
+    }
+
+    // Auto-create board tasks for participants (non-blocking)
+    {
+      const orgId = await resolveOrgId(supabase, user.id)
+      // Collect org_member participant IDs
+      const orgMemberParticipantIds: string[] = []
+      const allParticipants = body.participants || []
+      for (const p of allParticipants) {
+        if (p.type === "org_member" && p.id) {
+          orgMemberParticipantIds.push(p.id)
+        } else if (p.type === "profile" && p.id) {
+          // Resolve profile to org_member
+          const { data: om } = await adminClient
+            .from("org_members")
+            .select("id")
+            .eq("profile_id", p.id)
+            .eq("org_id", orgId)
+            .eq("is_active", true)
+            .single()
+          if (om) orgMemberParticipantIds.push(om.id)
+        }
+      }
+      // Also include creator's org_member
+      const { data: creatorMember } = await adminClient
+        .from("org_members")
+        .select("id")
+        .eq("profile_id", user.id)
+        .eq("org_id", orgId)
+        .eq("is_active", true)
+        .single()
+      if (creatorMember && !orgMemberParticipantIds.includes(creatorMember.id)) {
+        orgMemberParticipantIds.push(creatorMember.id)
+      }
+
+      if (orgMemberParticipantIds.length > 0) {
+        TaskAutomationService.onMeetingCreated({
+          meetingId: meeting.id,
+          title: body.title,
+          scheduledAt: body.scheduled_at,
+          clientId: body.client_id,
+          participantOrgMemberIds: orgMemberParticipantIds,
+          orgId,
+        }).catch((err) => log.error("Erro ao criar auto-task de reunião", { err }))
+      }
     }
 
     return successResponse(request, { meeting: transformedMeeting, message: "Reunião agendada com sucesso" }, { status: 201 })

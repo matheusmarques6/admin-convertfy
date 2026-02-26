@@ -3,6 +3,7 @@ import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
+import { TaskAutomationService } from "@/lib/services/task-automation.service"
 
 const log = logger.child("Onboarding")
 
@@ -192,6 +193,29 @@ export async function POST(request: NextRequest) {
       `)
       .eq("id", onboarding.id)
       .single()
+
+    // Auto-create board task for assigned agent (non-blocking)
+    if (onboarding.assigned_to) {
+      const storeName = completeOnboarding?.store
+        ? (Array.isArray(completeOnboarding.store) ? completeOnboarding.store[0] : completeOnboarding.store)?.store_name
+        : "Nova loja"
+      // Resolve org_id from the assigned member
+      const { data: assigneeMember } = await adminClient
+        .from("org_members")
+        .select("org_id")
+        .eq("id", onboarding.assigned_to)
+        .single()
+      if (assigneeMember?.org_id) {
+        TaskAutomationService.onOnboardingStarted({
+          onboardingId: onboarding.id,
+          storeName: storeName || "Nova loja",
+          clientId: body.client_id,
+          storeId: body.store_id,
+          assignedTo: onboarding.assigned_to,
+          orgId: assigneeMember.org_id,
+        }).catch((err) => log.error("Erro ao criar auto-task de onboarding", { err }))
+      }
+    }
 
     return successResponse(request, { onboarding: completeOnboarding, message: "Onboarding iniciado com sucesso" }, { status: 201 })
   } catch (error) {

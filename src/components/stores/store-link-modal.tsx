@@ -71,6 +71,7 @@ export function StoreLinkModal({
           `/api/clients/search?q=${encodeURIComponent(query)}`
         )
         const data = await res.json()
+        console.log("[StoreLinkModal] search response:", { status: res.status, data })
         if (data.clients) {
           setClients(data.clients)
         }

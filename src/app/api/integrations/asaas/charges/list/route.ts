@@ -4,6 +4,7 @@ import { createAsaasService } from "@/lib/integrations/asaas"
 import type { AsaasPaymentStatus } from "@/lib/integrations/types"
 import { decryptCredentialsJson } from "@/lib/crypto"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
+
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()

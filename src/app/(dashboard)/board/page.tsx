@@ -5,12 +5,21 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { PagePermissionWrapper } from "@/components/page-permission-wrapper"
 import { KANBAN_FETCH_STATUSES } from "@/lib/constants/board"
 import { logger } from "@/lib/logger"
+import { getDefaultsForRole } from "@/lib/services/board-config-defaults"
+import type { OrgRole, TaskSourceType } from "@/types"
 
 const log = logger.child("BoardPage")
 
 export const dynamic = "force-dynamic"
 
-async function resolveOrgId() {
+interface ResolvedUser {
+  orgId: string
+  userId: string
+  orgMemberId: string
+  role: OrgRole
+}
+
+async function resolveCurrentUser(): Promise<ResolvedUser | null> {
   const supabase = await createClient()
   const adminClient = createAdminClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -18,18 +27,62 @@ async function resolveOrgId() {
 
   const { data: currentMember } = await adminClient
     .from("org_members")
-    .select("org_id")
+    .select("id, org_id, role")
     .eq("profile_id", user.id)
     .eq("is_active", true)
     .limit(1)
     .single()
 
-  return currentMember?.org_id || null
+  if (!currentMember?.org_id) return null
+
+  return {
+    orgId: currentMember.org_id,
+    userId: user.id,
+    orgMemberId: currentMember.id,
+    role: currentMember.role as OrgRole,
+  }
 }
 
-async function getTasks(orgId: string) {
+/**
+ * Busca a board_config do membro ou retorna defaults da role.
+ * Retorna os source_types permitidos para filtrar tasks.
+ */
+async function getAllowedSourceTypes(orgMemberId: string, role: OrgRole): Promise<TaskSourceType[]> {
   const adminClient = createAdminClient()
 
+  const { data: config } = await adminClient
+    .from("board_config")
+    .select("*")
+    .eq("org_member_id", orgMemberId)
+    .single()
+
+  const effectiveConfig = config ?? getDefaultsForRole(role)
+
+  const allowed: TaskSourceType[] = ["manual"] // manual tasks always show
+
+  const mapping: [string, TaskSourceType][] = [
+    ["show_onboarding_tasks", "auto_onboarding"],
+    ["show_meeting_tasks", "auto_meeting"],
+    ["show_campaign_tasks", "auto_campaign"],
+    ["show_feedback_tasks", "auto_feedback"],
+    ["show_report_tasks", "auto_report"],
+    ["show_contract_tasks", "auto_contract"],
+  ]
+
+  for (const [configKey, sourceType] of mapping) {
+    if ((effectiveConfig as Record<string, unknown>)[configKey]) {
+      allowed.push(sourceType)
+    }
+  }
+
+  return allowed
+}
+
+async function getTasks(orgId: string, allowedSourceTypes: TaskSourceType[], orgMemberId: string) {
+  const adminClient = createAdminClient()
+
+  // Fetch tasks that match allowed source types OR are assigned to the current member
+  // This ensures the user always sees their own assigned tasks regardless of config
   const { data: tasks, error } = await adminClient
     .from("tasks")
     .select(`
@@ -45,6 +98,7 @@ async function getTasks(orgId: string) {
     `)
     .eq("org_id", orgId)
     .in("status", KANBAN_FETCH_STATUSES)
+    .or(`source_type.in.(${allowedSourceTypes.join(",")}),assignee_id.eq.${orgMemberId}`)
     .order("position", { ascending: true })
 
   if (error) {
@@ -258,8 +312,8 @@ function BoardSkeleton() {
 }
 
 export default async function BoardPage() {
-  const orgId = await resolveOrgId()
-  if (!orgId) {
+  const currentUser = await resolveCurrentUser()
+  if (!currentUser) {
     return (
       <div className="flex items-center justify-center h-64">
         <p className="text-muted-foreground">Acesso negado — organização não encontrada.</p>
@@ -267,8 +321,11 @@ export default async function BoardPage() {
     )
   }
 
+  const { orgId, orgMemberId, role } = currentUser
+  const allowedSourceTypes = await getAllowedSourceTypes(orgMemberId, role)
+
   const [tasks, members, clients, stores, meetings] = await Promise.all([
-    getTasks(orgId),
+    getTasks(orgId, allowedSourceTypes, orgMemberId),
     getTeamMembers(),
     getClients(orgId),
     getStores(orgId),

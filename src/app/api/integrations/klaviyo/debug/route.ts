@@ -158,10 +158,44 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Test metric-aggregates endpoint
+    await sleep(1500)
+    let metricAggResult: unknown = "NOT_TESTED"
+    try {
+      const aggBody = {
+        data: {
+          type: "metric-aggregate",
+          attributes: {
+            metric_id: "RuR2Vf",
+            measurements: ["value", "count"],
+            filter: [
+              `greater-or-equal(datetime,${startStr}T00:00:00)`,
+              `less-than(datetime,${endStr}T23:59:59)`,
+            ],
+            timezone: "America/Sao_Paulo",
+          },
+        },
+      }
+      const aggRes = await fetch(`${KLAVIYO_API_URL}/metric-aggregates/`, {
+        method: "POST",
+        headers: postHeaders,
+        body: JSON.stringify(aggBody),
+      })
+      const aggText = await aggRes.text()
+      metricAggResult = {
+        status: aggRes.status,
+        body: aggText.slice(0, 1000),
+        requestBody: aggBody,
+      }
+    } catch (e) {
+      metricAggResult = { error: String(e) }
+    }
+
     return NextResponse.json({
       timestamp: new Date().toISOString(),
       revision: KLAVIYO_REVISION,
       storeName: creds.store_name,
+      metricAggregatesTest: metricAggResult,
       totalTested: allStats.length,
       validCount: validStats.length,
       invalidCount: invalidStats.length,

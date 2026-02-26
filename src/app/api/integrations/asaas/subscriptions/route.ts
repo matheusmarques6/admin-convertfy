@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAsaasService } from "@/lib/integrations/asaas"
 import { decryptCredentialsJson } from "@/lib/crypto"
 import { errorResponse, successResponse, requireAuth, AppError, ValidationError } from "@/lib/api/errors"
+
 // GET - Get subscriptions for a client
 export async function GET(request: NextRequest) {
   try {

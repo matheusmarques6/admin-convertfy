@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { errorResponse, successResponse, AppError } from "@/lib/api/errors"
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { CampaignFormData } from "@/types"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
+import { TaskAutomationService } from "@/lib/services/task-automation.service"
 
 const log = logger.child("Campaigns")
 
@@ -120,6 +121,30 @@ export async function PUT(
     if (error) {
       log.error("[Campaigns] Error updating campaign:", error)
       throw new AppError("Erro ao atualizar campanha", 500)
+    }
+
+    // Auto-create board task when campaign is scheduled (non-blocking)
+    if (body.status === "scheduled" && campaign) {
+      const adminClient = createAdminClient()
+      const store = Array.isArray(campaign.store) ? campaign.store[0] : campaign.store
+      // Resolve org_id from the user
+      const { data: userMember } = await adminClient
+        .from("org_members")
+        .select("org_id")
+        .eq("profile_id", user.id)
+        .eq("is_active", true)
+        .single()
+      if (userMember?.org_id) {
+        TaskAutomationService.onCampaignScheduled({
+          campaignId: id,
+          campaignName: campaign.name || body.name || "Campanha",
+          storeName: store?.store_name || "Loja",
+          scheduledDate: campaign.scheduled_date || body.scheduled_date || "",
+          clientId: campaign.client_id,
+          storeId: campaign.store_id,
+          orgId: userMember.org_id,
+        }).catch((err) => log.error("Erro ao criar auto-task de campanha", { err }))
+      }
     }
 
     return successResponse(request, { campaign })
