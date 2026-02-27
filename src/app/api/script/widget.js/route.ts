@@ -37,10 +37,6 @@ function getWidgetScript(storeId: string): string {
   // HTML escape to prevent XSS
   function esc(s){if(!s)return"";return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;")}
 
-  // Detect mode: inline if #convertfy-tracking exists, else floating
-  var inlineContainer=document.getElementById("convertfy-tracking");
-  var isInline=!!inlineContainer;
-
   // CSS
   var pc=cfg.primary_color;
   function injectStyles(){
@@ -179,9 +175,15 @@ function getWidgetScript(storeId: string): string {
     if(input)input.addEventListener("keypress",function(e){if(e.key==="Enter")doSearch(input,results)});
   }
 
-  function initInline(){
-    inlineContainer.innerHTML='<div class="cvfy-widget cvfy-inline">'+buildWidgetHTML(false)+'</div>';
-    bindSearch(inlineContainer);
+  function initInline(container){
+    if(!container){
+      container=document.createElement("div");
+      container.id="convertfy-tracking";
+      var main=document.querySelector("main")||document.querySelector(".main-content")||document.querySelector("#MainContent")||document.body;
+      main.appendChild(container);
+    }
+    container.innerHTML='<div class="cvfy-widget cvfy-inline">'+buildWidgetHTML(false)+'</div>';
+    bindSearch(container);
   }
 
   function initFloating(){
@@ -204,10 +206,17 @@ function getWidgetScript(storeId: string): string {
     bindSearch(overlay);
   }
 
-  // Fetch config then initialize
+  // Detect mode and initialize
   function init(){
+    var inlineContainer=document.getElementById("convertfy-tracking");
+    var defaultPaths=["/pages/rastreamento","/pages/tracking","/pages/rastrear","/pages/track"];
+    var trackingPaths=cfg.tracking_page_paths||defaultPaths;
+    var pathLower=window.location.pathname.toLowerCase();
+    var isInlineByPath=trackingPaths.some(function(p){return pathLower.indexOf(p)!==-1});
+    var isInline=!!inlineContainer||isInlineByPath;
+
     injectStyles();
-    if(isInline)initInline();
+    if(isInline)initInline(inlineContainer);
     else initFloating();
   }
 
@@ -224,6 +233,7 @@ function getWidgetScript(storeId: string): string {
         if(c.hide_carrier!==undefined)cfg.hide_carrier=c.hide_carrier;
         if(c.show_estimated_delivery!==undefined)cfg.show_estimated_delivery=c.show_estimated_delivery;
         if(c.show_carrier_logo!==undefined)cfg.show_carrier_logo=c.show_carrier_logo;
+        if(c.tracking_page_paths)cfg.tracking_page_paths=c.tracking_page_paths;
       }
       if(data.store_name)cfg.store_name=data.store_name;
       init();
