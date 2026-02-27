@@ -235,14 +235,18 @@ export default function PortalIntegrationsPage() {
           ? { success: true, message: data.account ? `Conectado: ${data.account}` : "Conexão OK!" }
           : { success: false, message: data.error || "Falha na autenticação" })
       } else if (dialogType === "tracking") {
-        if (!seventeenTrackKey) {
-          toast({ variant: "destructive", title: "Preencha a API Key do 17track" })
-          return
-        }
+        // Use typed key if available, otherwise let backend fetch from DB
+        let storeId: string | null = null
+        try { storeId = localStorage.getItem("portal_active_store") } catch { /* ignore */ }
+
         const res = await fetch("/api/integrations/tracking/test", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ carrier_id: "seventeen_track", api_key: seventeenTrackKey }),
+          body: JSON.stringify({
+            carrier_id: "seventeen_track",
+            api_key: seventeenTrackKey || undefined,
+            store_id: storeId,
+          }),
         })
         const data = await res.json()
         setTestResult(data.success
@@ -327,12 +331,18 @@ export default function PortalIntegrationsPage() {
     setCarrierTestResult(null)
 
     try {
+      // Send store_id so the backend can fetch saved keys from DB
+      let storeId: string | null = null
+      try { storeId = localStorage.getItem("portal_active_store") } catch { /* ignore */ }
+
       const res = await fetch("/api/integrations/tracking/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           carrier_id: testId,
-          api_key: apiKey || (testId !== "cainiao" ? carrierKeyInput : undefined),
+          store_id: storeId,
+          // Only send api_key if user typed one in the dialog (new key to test)
+          api_key: apiKey || (testId !== "cainiao" && carrierKeyInput ? carrierKeyInput : undefined),
         }),
       })
       const data = await res.json()
@@ -344,7 +354,7 @@ export default function PortalIntegrationsPage() {
     } catch {
       setCarrierTestResult({
         success: false,
-        message: "Erro de rede ao testar conex\u00e3o",
+        message: "Erro de rede ao testar conexão",
       })
     } finally {
       setTestingCarrier(null)

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { createAdminClient } from "@/lib/supabase/server"
+import { decrypt } from "@/lib/crypto"
 import { logger } from "@/lib/logger"
 import { trackViaCainiao, trackViaTrackingMore, trackViaPostNL } from "@/lib/tracking/carriers"
 
@@ -31,21 +33,79 @@ interface TestResult {
   }
 }
 
+/**
+ * Resolve the API key for a carrier: use provided key, or fetch from DB via store_id
+ */
+async function resolveApiKey(
+  carrierId: string,
+  apiKey?: string,
+  storeId?: string
+): Promise<string | undefined> {
+  // If key was provided directly, use it
+  if (apiKey) return apiKey
+
+  // If no store_id, can't look up from DB
+  if (!storeId) return undefined
+
+  try {
+    const adminClient = createAdminClient()
+    const { data: trackingStore } = await adminClient
+      .from("tracking_stores")
+      .select("seventeen_track_api_key, carrier_api_keys")
+      .eq("client_store_id", storeId)
+      .single()
+
+    if (!trackingStore) return undefined
+
+    // For 17track, check the dedicated column
+    if (carrierId === "seventeen_track") {
+      if (trackingStore.seventeen_track_api_key) {
+        try {
+          return decrypt(trackingStore.seventeen_track_api_key)
+        } catch {
+          log.warn("Failed to decrypt seventeen_track_api_key")
+        }
+      }
+      return undefined
+    }
+
+    // For other carriers, check carrier_api_keys JSON
+    const carrierKeys = (trackingStore.carrier_api_keys as Record<string, string>) || {}
+    const storedKey = carrierKeys[carrierId]
+
+    if (typeof storedKey === "string" && storedKey.startsWith("enc::")) {
+      try {
+        return decrypt(storedKey)
+      } catch {
+        log.warn(`Failed to decrypt ${carrierId} key`)
+      }
+    }
+
+    return undefined
+  } catch (error) {
+    log.warn("Error resolving API key from DB", { carrierId, error })
+    return undefined
+  }
+}
+
 export async function POST(request: NextRequest) {
   const origin = request.headers.get("origin")
 
   try {
     const body = await request.json()
-    const { carrier_id, api_key, tracking_number } = body
+    const { carrier_id, api_key, tracking_number, store_id } = body
 
     if (!carrier_id) {
       return NextResponse.json(
-        { success: false, error: "carrier_id \u00e9 obrigat\u00f3rio" },
+        { success: false, error: "carrier_id é obrigatório" },
         { status: 400, headers: corsHeaders(origin) }
       )
     }
 
-    log.info("Testing tracking carrier", { carrier_id, hasApiKey: !!api_key, hasTrackingNumber: !!tracking_number })
+    log.info("Testing tracking carrier", { carrier_id, hasApiKey: !!api_key, hasStoreId: !!store_id, hasTrackingNumber: !!tracking_number })
+
+    // Resolve the actual API key (from request or from DB)
+    const resolvedKey = await resolveApiKey(carrier_id, api_key, store_id)
 
     let result: TestResult
 
@@ -54,13 +114,13 @@ export async function POST(request: NextRequest) {
         result = await testCainiao(tracking_number)
         break
       case "trackingmore":
-        result = await testTrackingMore(api_key, tracking_number)
+        result = await testTrackingMore(resolvedKey, tracking_number)
         break
       case "postnl":
-        result = await testPostNL(api_key, tracking_number)
+        result = await testPostNL(resolvedKey, tracking_number)
         break
       case "seventeen_track":
-        result = await testSeventeenTrack(api_key)
+        result = await testSeventeenTrack(resolvedKey)
         break
       default:
         return NextResponse.json(
@@ -73,7 +133,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     log.error("Error testing tracking carrier:", error)
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : "Erro ao testar conex\u00e3o" },
+      { success: false, error: error instanceof Error ? error.message : "Erro ao testar conexão" },
       { status: 500, headers: corsHeaders(origin) }
     )
   }
