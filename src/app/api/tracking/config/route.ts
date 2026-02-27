@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { checkRateLimit } from "@/lib/rate-limit"
-import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("TrackingConfigPublic")
@@ -21,8 +20,16 @@ const DEFAULT_CONFIG = {
   language: "pt-BR",
 }
 
-export async function OPTIONS(request: NextRequest) {
-  return handleCorsPreFlight(request)
+/** Public CORS — these endpoints are called from merchant storefronts */
+const PUBLIC_CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Max-Age": "86400",
+}
+
+export async function OPTIONS() {
+  return NextResponse.json({}, { headers: PUBLIC_CORS })
 }
 
 /**
@@ -34,15 +41,13 @@ export async function GET(request: NextRequest) {
   const limited = checkRateLimit(request, "tracking:config", CONFIG_RATE_LIMIT)
   if (limited) return limited
 
-  const origin = request.headers.get("origin")
-
   try {
     const storeParam = request.nextUrl.searchParams.get("store")?.trim()
 
     if (!storeParam) {
       return NextResponse.json(
         { error: "store parameter is required" },
-        { status: 400, headers: corsHeaders(origin) }
+        { status: 400, headers: PUBLIC_CORS }
       )
     }
 
@@ -77,7 +82,7 @@ export async function GET(request: NextRequest) {
     if (!trackingStore) {
       return NextResponse.json(
         { config: DEFAULT_CONFIG },
-        { headers: corsHeaders(origin) }
+        { headers: PUBLIC_CORS }
       )
     }
 
@@ -91,7 +96,7 @@ export async function GET(request: NextRequest) {
       },
       {
         headers: {
-          ...corsHeaders(origin),
+          ...PUBLIC_CORS,
           "Cache-Control": "public, max-age=300",
         },
       }
@@ -100,7 +105,7 @@ export async function GET(request: NextRequest) {
     log.error("Config endpoint error", error)
     return NextResponse.json(
       { error: "Erro interno" },
-      { status: 500, headers: corsHeaders(origin) }
+      { status: 500, headers: PUBLIC_CORS }
     )
   }
 }

@@ -1,13 +1,20 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { checkRateLimit } from "@/lib/rate-limit"
-import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
 import { OrderLookupService, OrderLookupResult } from "@/lib/services/order-lookup.service"
 
 const log = logger.child("TrackingLookup")
 
 const LOOKUP_RATE_LIMIT = { limit: 20, windowSeconds: 60 }
+
+/** Public CORS — this endpoint is called from merchant storefronts */
+const PUBLIC_CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Max-Age": "86400",
+}
 
 function getClientIp(request: NextRequest): string {
   return (
@@ -80,15 +87,13 @@ function mapLookupResults(lookupResults: OrderLookupResult[]): Array<{
     })
 }
 
-export async function OPTIONS(request: NextRequest) {
-  return handleCorsPreFlight(request)
+export async function OPTIONS() {
+  return NextResponse.json({}, { headers: PUBLIC_CORS })
 }
 
 export async function GET(request: NextRequest) {
   const limited = checkRateLimit(request, "tracking:lookup", LOOKUP_RATE_LIMIT)
   if (limited) return limited
-
-  const origin = request.headers.get("origin")
 
   try {
     const query = request.nextUrl.searchParams.get("q")?.trim()
@@ -97,7 +102,7 @@ export async function GET(request: NextRequest) {
     if (!query || query.length < 3) {
       return NextResponse.json(
         { error: "Query deve ter pelo menos 3 caracteres" },
-        { status: 400, headers: corsHeaders(origin) }
+        { status: 400, headers: PUBLIC_CORS }
       )
     }
 
@@ -253,13 +258,13 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(
       { results, query, found: results.length > 0 },
-      { headers: corsHeaders(origin) }
+      { headers: PUBLIC_CORS }
     )
   } catch (error) {
     log.error("Lookup error", error)
     return NextResponse.json(
       { error: "Erro interno" },
-      { status: 500, headers: corsHeaders(origin) }
+      { status: 500, headers: PUBLIC_CORS }
     )
   }
 }
