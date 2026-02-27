@@ -108,51 +108,129 @@ async function callGetTrackInfo(
 
 /**
  * Call 17track register API
+ * Returns true if at least one number was accepted
  */
 async function callRegister(
+  trackingNumbers: string[],
+  apiKey: string
+): Promise<boolean> {
+  const body = trackingNumbers.map((num) => ({ number: num }))
+
+  try {
+    const response = await fetch(`${SEVENTEEN_TRACK_API_BASE}/register`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "17token": apiKey,
+      },
+      body: JSON.stringify(body),
+    })
+
+    if (!response.ok) {
+      log.error("17track register failed", { status: response.status })
+      return false
+    }
+
+    const data = await response.json()
+    const accepted = data?.data?.accepted || []
+    const rejected = data?.data?.rejected || []
+    log.info("17track register result", {
+      accepted: accepted.length,
+      rejected: rejected.length,
+    })
+    return accepted.length > 0
+  } catch (error) {
+    log.error("17track register error", error)
+    return false
+  }
+}
+
+/**
+ * Call 17track retrack API to force re-fetch from carrier
+ */
+async function callRetrack(
   trackingNumbers: string[],
   apiKey: string
 ): Promise<void> {
   const body = trackingNumbers.map((num) => ({ number: num }))
 
-  const response = await fetch(`${SEVENTEEN_TRACK_API_BASE}/register`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "17token": apiKey,
-    },
-    body: JSON.stringify(body),
-  })
+  try {
+    const response = await fetch(`${SEVENTEEN_TRACK_API_BASE}/retrack`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "17token": apiKey,
+      },
+      body: JSON.stringify(body),
+    })
 
-  if (!response.ok) {
-    log.error("17track register failed", { status: response.status })
+    if (!response.ok) {
+      log.warn("17track retrack failed", { status: response.status })
+    }
+  } catch (error) {
+    log.warn("17track retrack error", error)
   }
 }
 
 /**
+ * Check if results contain real tracking data (not just pending/empty)
+ */
+function hasRealTrackingData(results: TrackingResult[]): boolean {
+  return results.some(
+    (r) => r.status !== "pending" || r.events.length > 0 || r.last_event !== ""
+  )
+}
+
+/**
  * Real 17track API integration
- * Strategy: try gettrackinfo first (already registered numbers),
- * then register + retry, then fallback to pending with detected carrier.
+ *
+ * Strategy:
+ * 1. Try gettrackinfo (for already-registered numbers with data)
+ * 2. If no real data: register (new) + retrack (existing) to trigger fetch
+ * 3. Wait and retry gettrackinfo
+ * 4. Return best available data or pending fallback
  */
 async function trackReal(
   trackingNumbers: string[],
   apiKey: string
 ): Promise<TrackingResult[]> {
-  // Step 1: Try gettrackinfo first (works for already-registered numbers)
+  // Step 1: Try gettrackinfo first
   let results = await callGetTrackInfo(trackingNumbers, apiKey)
-  if (results.length > 0) return results
 
-  // Step 2: Register numbers with 17track (starts tracking)
-  await callRegister(trackingNumbers, apiKey)
+  // If we got real data (not just pending/empty), return immediately
+  if (results.length > 0 && hasRealTrackingData(results)) {
+    return results
+  }
 
-  // Step 3: Wait 3s for 17track to fetch data from carrier
-  await new Promise((resolve) => setTimeout(resolve, 3000))
+  // Step 2: Register new numbers + retrack existing pending ones
+  // Run both in parallel - register handles new numbers, retrack handles existing
+  await Promise.all([
+    callRegister(trackingNumbers, apiKey),
+    callRetrack(trackingNumbers, apiKey),
+  ])
+
+  // Step 3: Wait 5s for 17track to fetch data from carrier
+  await new Promise((resolve) => setTimeout(resolve, 5000))
 
   // Step 4: Retry gettrackinfo
   results = await callGetTrackInfo(trackingNumbers, apiKey)
-  if (results.length > 0) return results
+  if (results.length > 0 && hasRealTrackingData(results)) {
+    return results
+  }
 
-  // Step 5: Return pending results with locally detected carrier
+  // Step 5: Second retry after 5 more seconds
+  await new Promise((resolve) => setTimeout(resolve, 5000))
+  results = await callGetTrackInfo(trackingNumbers, apiKey)
+  if (results.length > 0 && hasRealTrackingData(results)) {
+    return results
+  }
+
+  // Step 6: Return whatever 17track gave us (even if pending, it has carrier info)
+  if (results.length > 0) {
+    return results
+  }
+
+  // Step 7: Absolute fallback with locally detected carrier
   return trackingNumbers.map((num) => {
     const carrier = detectCarrier(num)
     return {
