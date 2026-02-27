@@ -28,11 +28,18 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { store_id, email } = body
+    const { store_id, domain, email } = body
 
-    if (!store_id || !email) {
+    if (!email) {
       return NextResponse.json(
-        { error: "store_id e email são obrigatórios" },
+        { error: "email é obrigatório" },
+        { status: 400, headers: publicCorsHeaders() }
+      )
+    }
+
+    if (!store_id && !domain) {
+      return NextResponse.json(
+        { error: "store_id ou domain é obrigatório" },
         { status: 400, headers: publicCorsHeaders() }
       )
     }
@@ -45,12 +52,25 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Validate store exists and tracking is enabled
     const supabase = createAdminClient()
+
+    // Resolve store_id from domain if needed
+    let resolvedStoreId = store_id
+    if (!resolvedStoreId && domain) {
+      resolvedStoreId = await resolveStoreByDomain(supabase, domain)
+      if (!resolvedStoreId) {
+        return NextResponse.json(
+          { error: "Loja não encontrada para este domínio" },
+          { status: 404, headers: publicCorsHeaders() }
+        )
+      }
+    }
+
+    // Validate store exists and tracking is enabled
     const { data: config } = await supabase
       .from("tracking_config")
       .select("seventeen_track_api_key, enabled")
-      .eq("store_id", store_id)
+      .eq("store_id", resolvedStoreId)
       .single()
 
     if (!config || !config.enabled) {
@@ -62,7 +82,7 @@ export async function POST(request: NextRequest) {
 
     // Lookup orders via chain: Shopify → Klaviyo → Cache
     const lookupService = new OrderLookupService()
-    const orders = await lookupService.findByEmail(store_id, email)
+    const orders = await lookupService.findByEmail(resolvedStoreId, email)
 
     if (orders.length === 0) {
       return NextResponse.json(
@@ -114,4 +134,31 @@ export async function POST(request: NextRequest) {
       { status: 500, headers: publicCorsHeaders() }
     )
   }
+}
+
+async function resolveStoreByDomain(
+  supabase: ReturnType<typeof createAdminClient>,
+  domain: string
+): Promise<string | null> {
+  const cleanDomain = domain.toLowerCase().replace(/^www\./, "")
+
+  const { data: byUrl } = await supabase
+    .from("client_stores")
+    .select("id")
+    .or(`store_url.ilike.%${cleanDomain}%,url.ilike.%${cleanDomain}%`)
+    .limit(1)
+    .single()
+
+  if (byUrl) return byUrl.id
+
+  const { data: byShopify } = await supabase
+    .from("client_stores")
+    .select("id")
+    .ilike("shopify_store_domain", `%${cleanDomain}%`)
+    .limit(1)
+    .single()
+
+  if (byShopify) return byShopify.id
+
+  return null
 }

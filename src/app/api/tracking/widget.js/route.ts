@@ -23,14 +23,12 @@ function getWidgetScript(): string {
   // ==========================================
 
   var SCRIPT = document.currentScript;
-  var STORE_ID = SCRIPT && SCRIPT.getAttribute("data-store-id");
+  var STORE_ID = (SCRIPT && SCRIPT.getAttribute("data-store-id")) ||
+                 (window.ConvertfyTracking && window.ConvertfyTracking.storeId) ||
+                 null;
   var BASE_URL = SCRIPT ? SCRIPT.src.replace("/api/tracking/widget.js", "") : "";
   var CONTAINER_ID = "convertfy-tracking";
-
-  if (!STORE_ID) {
-    console.error("[Convertfy Tracking] data-store-id ausente no script tag.");
-    return;
-  }
+  var CURRENT_DOMAIN = window.location.hostname.replace(/^www\\./, "");
 
   // ==========================================
   // Default Config
@@ -157,6 +155,10 @@ function getWidgetScript(): string {
 
     // Load config then render
     fetchConfig(function(cfg) {
+      if (!STORE_ID) {
+        shadow.innerHTML = '<div style="padding:20px;text-align:center;color:#ef4444;font-family:sans-serif;">Loja não encontrada. Verifique a configuração do widget.</div>';
+        return;
+      }
       var config = Object.assign({}, DEFAULT_CONFIG, cfg || {});
       var style = document.createElement("style");
       style.textContent = buildCSS(config);
@@ -177,9 +179,18 @@ function getWidgetScript(): string {
   }
 
   function fetchConfig(cb) {
-    fetch(BASE_URL + "/api/tracking/config?store_id=" + encodeURIComponent(STORE_ID))
+    var param = STORE_ID
+      ? "store_id=" + encodeURIComponent(STORE_ID)
+      : "domain=" + encodeURIComponent(CURRENT_DOMAIN);
+
+    fetch(BASE_URL + "/api/tracking/config?" + param)
       .then(function(r) { return r.ok ? r.json() : null; })
-      .then(function(d) { cb(d && d.widget_config ? d.widget_config : null); })
+      .then(function(d) {
+        if (d && d.store_id && !STORE_ID) {
+          STORE_ID = d.store_id;
+        }
+        cb(d && d.widget_config ? d.widget_config : null);
+      })
       .catch(function() { cb(null); });
   }
 
