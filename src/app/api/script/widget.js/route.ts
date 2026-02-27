@@ -220,6 +220,16 @@ function getWidgetScript(storeId: string): string {
     else initFloating();
   }
 
+  // Backward-compat: read window.ConvertfyTracking if present (legacy snippet)
+  var legacy=window.ConvertfyTracking;
+  if(legacy){
+    if(legacy.primaryColor)cfg.primary_color=legacy.primaryColor;
+    if(legacy.accentColor)cfg.accent_color=legacy.accentColor;
+    if(legacy.lang)cfg.language=legacy.lang;
+    if(legacy.hideCarrier!==undefined)cfg.hide_carrier=legacy.hideCarrier;
+    if(legacy.storeId&&!STORE_ID)STORE_ID=legacy.storeId;
+  }
+
   // Load remote config, then init
   fetch(CONFIG_URL)
     .then(function(r){return r.json()})

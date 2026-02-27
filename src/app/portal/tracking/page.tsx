@@ -273,24 +273,7 @@ export default function PortalTrackingDashboard() {
   const storeParam = selectedStoreId || "YOUR_STORE_ID"
 
   const widgetScript = `<!-- Convertfy Tracking Widget -->
-<script>
-  window.ConvertfyTracking = {
-    storeId: "${storeParam}",
-    primaryColor: "${config.primary_color}",
-    accentColor: "${config.accent_color}",
-    iconColor: "${config.icon_color}",
-    type: "${config.plugin_type}",
-    lang: "${config.language}",
-    hideCarrier: ${config.hide_carrier},
-    hideRedirect: ${config.hide_redirect}
-  };
-  (function() {
-    var s = document.createElement('script');
-    s.src = '${baseUrl}/tracking/widget.js';
-    s.async = true;
-    document.head.appendChild(s);
-  })();
-</script>
+<script src="${baseUrl}/api/script/widget.js?store=${storeParam}" async></script>
 <div id="convertfy-tracking"></div>`
 
   const iframeEmbed = `<iframe

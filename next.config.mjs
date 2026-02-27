@@ -20,6 +20,15 @@ const nextConfig = {
     ],
   },
 
+  async rewrites() {
+    return [
+      {
+        source: "/tracking/widget.js",
+        destination: "/api/script/widget.js",
+      },
+    ];
+  },
+
   async headers() {
     return [
       {
