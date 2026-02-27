@@ -19,6 +19,24 @@ const SAMPLE_TRACKING_NUMBERS: Record<string, string[]> = {
   ],
 }
 
+// Tradução de status para português
+const STATUS_PT: Record<string, string> = {
+  pending: "Pendente",
+  in_transit: "Em trânsito",
+  delivered: "Entregue",
+  pick_up: "Retirada",
+  out_for_delivery: "Saiu para entrega",
+  undelivered: "Não entregue",
+  expired: "Expirado",
+  alert: "Alerta",
+  unknown: "Desconhecido",
+}
+
+function translateStatus(status?: string): string {
+  if (!status) return "Desconhecido"
+  return STATUS_PT[status] || status
+}
+
 interface TestResult {
   success: boolean
   carrier: string
@@ -34,7 +52,8 @@ interface TestResult {
 }
 
 /**
- * Resolve the API key for a carrier: use provided key, or fetch from DB via store_id
+ * Resolve the API key for a carrier: use provided key, or fetch from DB via store_id.
+ * Uses decrypt() which handles the enc:v1: prefix automatically.
  */
 async function resolveApiKey(
   carrierId: string,
@@ -63,27 +82,31 @@ async function resolveApiKey(
         try {
           return decrypt(trackingStore.seventeen_track_api_key)
         } catch {
-          log.warn("Failed to decrypt seventeen_track_api_key")
+          log.warn("Falha ao descriptografar seventeen_track_api_key")
         }
       }
       return undefined
     }
 
     // For other carriers, check carrier_api_keys JSON
-    const carrierKeys = (trackingStore.carrier_api_keys as Record<string, string>) || {}
+    const carrierKeys = (trackingStore.carrier_api_keys as Record<string, unknown>) || {}
     const storedKey = carrierKeys[carrierId]
 
-    if (typeof storedKey === "string" && storedKey.startsWith("enc::")) {
+    // Boolean keys (like cainiao: true) don't need decryption
+    if (typeof storedKey === "boolean") return undefined
+
+    if (typeof storedKey === "string" && storedKey) {
       try {
+        // decrypt() handles both encrypted (enc:v1:...) and plain text values
         return decrypt(storedKey)
       } catch {
-        log.warn(`Failed to decrypt ${carrierId} key`)
+        log.warn(`Falha ao descriptografar chave do ${carrierId}`)
       }
     }
 
     return undefined
   } catch (error) {
-    log.warn("Error resolving API key from DB", { carrierId, error })
+    log.warn("Erro ao buscar chave da API no banco", { carrierId, error })
     return undefined
   }
 }
@@ -102,7 +125,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    log.info("Testing tracking carrier", { carrier_id, hasApiKey: !!api_key, hasStoreId: !!store_id, hasTrackingNumber: !!tracking_number })
+    log.info("Testando transportadora", { carrier_id, hasApiKey: !!api_key, hasStoreId: !!store_id, hasTrackingNumber: !!tracking_number })
 
     // Resolve the actual API key (from request or from DB)
     const resolvedKey = await resolveApiKey(carrier_id, api_key, store_id)
@@ -131,7 +154,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(result, { headers: corsHeaders(origin) })
   } catch (error) {
-    log.error("Error testing tracking carrier:", error)
+    log.error("Erro ao testar transportadora:", error)
     return NextResponse.json(
       { success: false, error: error instanceof Error ? error.message : "Erro ao testar conexão" },
       { status: 500, headers: corsHeaders(origin) }
@@ -148,7 +171,6 @@ async function testCainiao(trackingNumber?: string): Promise<TestResult> {
     const startTime = Date.now()
 
     try {
-      // First test: can we reach the Cainiao API at all?
       const response = await fetch("https://global.cainiao.com/global/detail.json", {
         method: "POST",
         headers: {
@@ -172,21 +194,19 @@ async function testCainiao(trackingNumber?: string): Promise<TestResult> {
 
       const data = await response.json()
 
-      // Even if we don't get tracking data, the API responding means connectivity works
       if (data?.module) {
         const cainiaoModule = data.module[0]
 
         if (cainiaoModule?.detailList && cainiaoModule.detailList.length > 0) {
-          // Found real tracking data
           const result = await trackViaCainiao(num)
           return {
             success: true,
             carrier: "Cainiao",
-            message: `Conex\u00e3o OK! Rastreamento encontrado com ${result?.events?.length || 0} evento(s)`,
+            message: `Conexão OK! Rastreamento encontrado com ${result?.events?.length || 0} evento(s).`,
             details: {
               tracking_number: num,
               carrier_detected: result?.carrier_name || cainiaoModule.carrierName || "Cainiao",
-              status: result?.status || "unknown",
+              status: translateStatus(result?.status || "unknown"),
               events_count: result?.events?.length || 0,
               last_event: result?.last_event || undefined,
               response_time_ms: responseTime,
@@ -194,13 +214,12 @@ async function testCainiao(trackingNumber?: string): Promise<TestResult> {
           }
         }
 
-        // API responded but no data for this number
         return {
           success: true,
           carrier: "Cainiao",
           message: trackingNumber
-            ? `Conex\u00e3o OK! API respondeu mas n\u00e3o encontrou dados para "${num}". Verifique se o c\u00f3digo est\u00e1 correto.`
-            : `Conex\u00e3o OK! API Cainiao est\u00e1 acess\u00edvel e respondendo (${responseTime}ms).`,
+            ? `Conexão OK! A API respondeu mas não encontrou dados para "${num}". Verifique se o código está correto.`
+            : `Conexão OK! API Cainiao está acessível e respondendo (${responseTime}ms).`,
           details: {
             tracking_number: num,
             response_time_ms: responseTime,
@@ -208,11 +227,10 @@ async function testCainiao(trackingNumber?: string): Promise<TestResult> {
         }
       }
 
-      // API responded with something unexpected
       return {
         success: true,
         carrier: "Cainiao",
-        message: `Conex\u00e3o OK! API Cainiao respondeu em ${responseTime}ms.`,
+        message: `Conexão OK! API Cainiao respondeu em ${responseTime}ms.`,
         details: { response_time_ms: responseTime },
       }
     } catch (error) {
@@ -222,13 +240,12 @@ async function testCainiao(trackingNumber?: string): Promise<TestResult> {
         return {
           success: false,
           carrier: "Cainiao",
-          message: "Timeout: API Cainiao n\u00e3o respondeu em 15 segundos",
+          message: "Tempo esgotado: API Cainiao não respondeu em 15 segundos. Tente novamente.",
           details: { response_time_ms: responseTime },
         }
       }
 
-      // Network error - continue to next sample number
-      log.warn("Cainiao test failed for number", { num, error })
+      log.warn("Falha no teste Cainiao", { num, error })
       continue
     }
   }
@@ -236,7 +253,7 @@ async function testCainiao(trackingNumber?: string): Promise<TestResult> {
   return {
     success: false,
     carrier: "Cainiao",
-    message: "N\u00e3o foi poss\u00edvel conectar \u00e0 API Cainiao. Verifique sua conex\u00e3o de rede.",
+    message: "Não foi possível conectar à API Cainiao. Verifique sua conexão de rede e tente novamente.",
   }
 }
 
@@ -245,14 +262,13 @@ async function testTrackingMore(apiKey?: string, trackingNumber?: string): Promi
     return {
       success: false,
       carrier: "TrackingMore",
-      message: "API Key \u00e9 obrigat\u00f3ria para testar o TrackingMore",
+      message: "API Key é obrigatória para testar o TrackingMore. Configure a chave primeiro.",
     }
   }
 
   const startTime = Date.now()
 
   try {
-    // Test by detecting courier for a known number
     const testNumber = trackingNumber || "LP00228026498498"
     const result = await trackViaTrackingMore(testNumber, apiKey)
     const responseTime = Date.now() - startTime
@@ -261,11 +277,11 @@ async function testTrackingMore(apiKey?: string, trackingNumber?: string): Promi
       return {
         success: true,
         carrier: "TrackingMore",
-        message: `Conex\u00e3o OK! API Key v\u00e1lida. ${result.events.length} evento(s) encontrado(s).`,
+        message: `Conexão OK! API Key válida. ${result.events.length} evento(s) encontrado(s).`,
         details: {
           tracking_number: testNumber,
           carrier_detected: result.carrier_name || undefined,
-          status: result.status,
+          status: translateStatus(result.status),
           events_count: result.events.length,
           last_event: result.last_event || undefined,
           response_time_ms: responseTime,
@@ -274,7 +290,6 @@ async function testTrackingMore(apiKey?: string, trackingNumber?: string): Promi
     }
 
     // API responded but no tracking - key might still be valid
-    // Try a simple detect call
     const detectResponse = await fetch("https://api.trackingmore.com/v4/couriers/detect", {
       method: "POST",
       headers: {
@@ -293,7 +308,7 @@ async function testTrackingMore(apiKey?: string, trackingNumber?: string): Promi
         return {
           success: true,
           carrier: "TrackingMore",
-          message: `Conex\u00e3o OK! API Key v\u00e1lida. Detec\u00e7\u00e3o de transportadora funcionando.`,
+          message: "Conexão OK! API Key válida. Detecção de transportadora funcionando.",
           details: { response_time_ms: detectTime },
         }
       }
@@ -303,7 +318,16 @@ async function testTrackingMore(apiKey?: string, trackingNumber?: string): Promi
       return {
         success: false,
         carrier: "TrackingMore",
-        message: "API Key inv\u00e1lida. Verifique sua chave no painel do TrackingMore.",
+        message: "API Key inválida. Verifique sua chave no painel do TrackingMore.",
+        details: { response_time_ms: detectTime },
+      }
+    }
+
+    if (detectResponse.status === 429) {
+      return {
+        success: false,
+        carrier: "TrackingMore",
+        message: "Limite de requisições atingido. Aguarde alguns minutos e tente novamente.",
         details: { response_time_ms: detectTime },
       }
     }
@@ -311,15 +335,25 @@ async function testTrackingMore(apiKey?: string, trackingNumber?: string): Promi
     return {
       success: false,
       carrier: "TrackingMore",
-      message: `API retornou status ${detectResponse.status}. Verifique sua API Key.`,
+      message: `A API retornou status ${detectResponse.status}. Verifique sua API Key.`,
       details: { response_time_ms: detectTime },
     }
   } catch (error) {
     const responseTime = Date.now() - startTime
+
+    if (error instanceof DOMException && error.name === "TimeoutError") {
+      return {
+        success: false,
+        carrier: "TrackingMore",
+        message: "Tempo esgotado: API TrackingMore não respondeu em 15 segundos. Tente novamente.",
+        details: { response_time_ms: responseTime },
+      }
+    }
+
     return {
       success: false,
       carrier: "TrackingMore",
-      message: error instanceof Error ? error.message : "Erro ao conectar ao TrackingMore",
+      message: error instanceof Error ? error.message : "Erro ao conectar ao TrackingMore. Verifique sua conexão.",
       details: { response_time_ms: responseTime },
     }
   }
@@ -330,19 +364,75 @@ async function testPostNL(apiKey?: string, trackingNumber?: string): Promise<Tes
     return {
       success: false,
       carrier: "PostNL",
-      message: "API Key \u00e9 obrigat\u00f3ria para testar o PostNL",
-    }
-  }
-
-  if (!trackingNumber) {
-    return {
-      success: false,
-      carrier: "PostNL",
-      message: "Informe um n\u00famero de rastreio PostNL para testar (ex: 3STEST123456789)",
+      message: "API Key é obrigatória para testar o PostNL. Configure a chave primeiro.",
     }
   }
 
   const startTime = Date.now()
+
+  // Se não tem tracking number, tentar validar a chave com uma chamada simples
+  if (!trackingNumber) {
+    try {
+      // Testar com um número fictício para validar a API key
+      const response = await fetch(
+        `https://api.postnl.nl/shipment/v2/status/barcode/3STEST000000000?detail=false`,
+        {
+          method: "GET",
+          headers: {
+            apikey: apiKey,
+            Accept: "application/json",
+          },
+          signal: AbortSignal.timeout(15000),
+        }
+      )
+
+      const responseTime = Date.now() - startTime
+
+      if (response.status === 401) {
+        return {
+          success: false,
+          carrier: "PostNL",
+          message: "API Key inválida. Verifique sua chave no portal PostNL Developer.",
+          details: { response_time_ms: responseTime },
+        }
+      }
+
+      // 200 or 400/404 means the key is valid (just no data for test number)
+      if (response.ok || response.status === 400 || response.status === 404) {
+        return {
+          success: true,
+          carrier: "PostNL",
+          message: `Conexão OK! API Key válida (${responseTime}ms). Para testar o rastreamento completo, informe um número de rastreio PostNL.`,
+          details: { response_time_ms: responseTime },
+        }
+      }
+
+      return {
+        success: false,
+        carrier: "PostNL",
+        message: `A API retornou status ${response.status}. Verifique sua API Key.`,
+        details: { response_time_ms: responseTime },
+      }
+    } catch (error) {
+      const responseTime = Date.now() - startTime
+
+      if (error instanceof DOMException && error.name === "TimeoutError") {
+        return {
+          success: false,
+          carrier: "PostNL",
+          message: "Tempo esgotado: API PostNL não respondeu em 15 segundos. Tente novamente.",
+          details: { response_time_ms: responseTime },
+        }
+      }
+
+      return {
+        success: false,
+        carrier: "PostNL",
+        message: error instanceof Error ? error.message : "Erro ao conectar ao PostNL. Verifique sua conexão.",
+        details: { response_time_ms: responseTime },
+      }
+    }
+  }
 
   try {
     const result = await trackViaPostNL(trackingNumber, apiKey)
@@ -352,10 +442,10 @@ async function testPostNL(apiKey?: string, trackingNumber?: string): Promise<Tes
       return {
         success: true,
         carrier: "PostNL",
-        message: `Conex\u00e3o OK! ${result.events.length} evento(s) encontrado(s).`,
+        message: `Conexão OK! ${result.events.length} evento(s) encontrado(s).`,
         details: {
           tracking_number: trackingNumber,
-          status: result.status,
+          status: translateStatus(result.status),
           events_count: result.events.length,
           last_event: result.last_event || undefined,
           response_time_ms: responseTime,
@@ -366,15 +456,25 @@ async function testPostNL(apiKey?: string, trackingNumber?: string): Promise<Tes
     return {
       success: false,
       carrier: "PostNL",
-      message: "API Key pode ser inv\u00e1lida ou n\u00famero de rastreio n\u00e3o encontrado.",
+      message: "API Key pode ser inválida ou número de rastreio não encontrado. Verifique os dados.",
       details: { response_time_ms: responseTime },
     }
   } catch (error) {
     const responseTime = Date.now() - startTime
+
+    if (error instanceof DOMException && error.name === "TimeoutError") {
+      return {
+        success: false,
+        carrier: "PostNL",
+        message: "Tempo esgotado: API PostNL não respondeu em 15 segundos. Tente novamente.",
+        details: { response_time_ms: responseTime },
+      }
+    }
+
     return {
       success: false,
       carrier: "PostNL",
-      message: error instanceof Error ? error.message : "Erro ao conectar ao PostNL",
+      message: error instanceof Error ? error.message : "Erro ao conectar ao PostNL. Verifique sua conexão.",
       details: { response_time_ms: responseTime },
     }
   }
@@ -385,14 +485,13 @@ async function testSeventeenTrack(apiKey?: string): Promise<TestResult> {
     return {
       success: false,
       carrier: "17track",
-      message: "API Key \u00e9 obrigat\u00f3ria para testar o 17track",
+      message: "API Key é obrigatória para testar o 17track. Configure a chave primeiro.",
     }
   }
 
   const startTime = Date.now()
 
   try {
-    // Test the API key by registering a known tracking number
     const response = await fetch("https://api.17track.net/track/v2.2/gettrackinfo", {
       method: "POST",
       headers: {
@@ -409,7 +508,7 @@ async function testSeventeenTrack(apiKey?: string): Promise<TestResult> {
       return {
         success: false,
         carrier: "17track",
-        message: "API Key inv\u00e1lida. Verifique sua chave em 17track.net/apiuser.",
+        message: "API Key inválida. Verifique sua chave em 17track.net/apiuser.",
         details: { response_time_ms: responseTime },
       }
     }
@@ -422,7 +521,7 @@ async function testSeventeenTrack(apiKey?: string): Promise<TestResult> {
         return {
           success: true,
           carrier: "17track",
-          message: `Conex\u00e3o OK! API Key v\u00e1lida (${responseTime}ms).`,
+          message: `Conexão OK! API Key válida (${responseTime}ms).`,
           details: { response_time_ms: responseTime },
         }
       }
@@ -432,7 +531,7 @@ async function testSeventeenTrack(apiKey?: string): Promise<TestResult> {
         return {
           success: false,
           carrier: "17track",
-          message: "API Key inv\u00e1lida ou expirada.",
+          message: "API Key inválida ou expirada. Gere uma nova chave em 17track.net/apiuser.",
           details: { response_time_ms: responseTime },
         }
       }
@@ -440,7 +539,16 @@ async function testSeventeenTrack(apiKey?: string): Promise<TestResult> {
       return {
         success: true,
         carrier: "17track",
-        message: `Conex\u00e3o OK! API respondeu em ${responseTime}ms.`,
+        message: `Conexão OK! API respondeu em ${responseTime}ms.`,
+        details: { response_time_ms: responseTime },
+      }
+    }
+
+    if (response.status === 429) {
+      return {
+        success: false,
+        carrier: "17track",
+        message: "Limite de requisições atingido. Aguarde alguns minutos e tente novamente.",
         details: { response_time_ms: responseTime },
       }
     }
@@ -448,15 +556,25 @@ async function testSeventeenTrack(apiKey?: string): Promise<TestResult> {
     return {
       success: false,
       carrier: "17track",
-      message: `API retornou status ${response.status}`,
+      message: `A API retornou status ${response.status}. Verifique sua API Key.`,
       details: { response_time_ms: responseTime },
     }
   } catch (error) {
     const responseTime = Date.now() - startTime
+
+    if (error instanceof DOMException && error.name === "TimeoutError") {
+      return {
+        success: false,
+        carrier: "17track",
+        message: "Tempo esgotado: API 17track não respondeu em 15 segundos. Tente novamente.",
+        details: { response_time_ms: responseTime },
+      }
+    }
+
     return {
       success: false,
       carrier: "17track",
-      message: error instanceof Error ? error.message : "Erro ao conectar ao 17track",
+      message: error instanceof Error ? error.message : "Erro ao conectar ao 17track. Verifique sua conexão.",
       details: { response_time_ms: responseTime },
     }
   }
