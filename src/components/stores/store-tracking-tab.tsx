@@ -157,7 +157,7 @@ export function StoreTrackingTab({ storeId }: StoreTrackingTabProps) {
 
   function handleCopySnippet() {
     const origin = typeof window !== "undefined" ? window.location.origin : "https://app.convertfy.com.br"
-    const snippet = `<div id="convertfy-tracking"></div>\n<script src="${origin}/api/tracking/widget.js"></script>`
+    const snippet = `<div id="convertfy-tracking"></div>\n<script src="${origin}/api/script/widget.js"></script>`
     navigator.clipboard.writeText(snippet)
     setCopied(true)
     toast({ title: "Snippet copiado!" })
@@ -294,7 +294,7 @@ export function StoreTrackingTab({ storeId }: StoreTrackingTabProps) {
               <div className="relative">
                 <pre className="bg-muted p-4 rounded-lg text-xs overflow-x-auto whitespace-pre-wrap break-all">
 {`<div id="convertfy-tracking"></div>
-<script src="${origin}/api/tracking/widget.js"></script>`}
+<script src="${origin}/api/script/widget.js"></script>`}
                 </pre>
                 <Button
                   size="sm"
@@ -360,7 +360,7 @@ export function StoreTrackingTab({ storeId }: StoreTrackingTabProps) {
             <Card className="rounded-xl overflow-hidden">
               <CardContent className="p-0">
                 <iframe
-                  srcDoc={`<!DOCTYPE html><html><body style="margin:0;padding:16px;font-family:sans-serif;"><div id="convertfy-tracking"></div><script src="${origin}/api/tracking/widget.js" data-store-id="${storeId}"></script></body></html>`}
+                  srcDoc={`<!DOCTYPE html><html><body style="margin:0;padding:16px;font-family:sans-serif;"><div id="convertfy-tracking"></div><script src="${origin}/api/script/widget.js" data-store-id="${storeId}"></script></body></html>`}
                   className="w-full border-0"
                   style={{ height: 400 }}
                   title="Widget Preview"
