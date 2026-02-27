@@ -22,10 +22,12 @@ import {
   ExternalLink,
   FileCode,
   Eye,
+  EyeOff,
   ListOrdered,
   Settings2,
   Download,
   Info,
+  KeyRound,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -162,6 +164,8 @@ export default function PortalTrackingPage() {
   const [language, setLanguage] = useState("pt-BR")
   const [copied, setCopied] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [apiKey, setApiKey] = useState("")
+  const [showApiKey, setShowApiKey] = useState(false)
 
   // Active tab
   const [activeTab, setActiveTab] = useState("overview")
@@ -272,16 +276,27 @@ export default function PortalTrackingPage() {
     if (!store?.client_store_id) return
     setSaving(true)
     try {
+      const payload: Record<string, unknown> = {
+        client_store_id: store.client_store_id,
+        widget_config: { primaryColor: activeColor, language },
+      }
+      // Only send API key if user entered a new one
+      if (apiKey.trim()) {
+        payload.seventeen_track_api_key = apiKey.trim()
+      }
       const res = await fetch("/api/portal/tracking", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          client_store_id: store.client_store_id,
-          widget_config: { primaryColor: activeColor, language },
-        }),
+        body: JSON.stringify(payload),
       })
       if (!res.ok) throw new Error("Erro ao salvar")
       toast({ title: "Configuração salva com sucesso!" })
+      // Clear the input and refresh to update has_17track_key status
+      if (apiKey.trim()) {
+        setApiKey("")
+        setShowApiKey(false)
+        fetchStoreData()
+      }
     } catch {
       toast({ variant: "destructive", title: "Erro ao salvar configuração" })
     } finally {
@@ -831,6 +846,55 @@ export default function PortalTrackingPage() {
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+              </div>
+
+              {/* 17track API Key */}
+              <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 overflow-hidden">
+                <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-700/30">
+                  <h3 className="text-[15px] font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                    <KeyRound className="h-4 w-4 text-primary" />
+                    Chave API 17track
+                  </h3>
+                </div>
+                <div className="p-5 space-y-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-[12px] text-slate-500 dark:text-slate-400">
+                      {store.has_17track_key ? "Chave configurada — insira uma nova para substituir" : "Insira sua chave API do 17track"}
+                    </Label>
+                    <div className="flex gap-2 items-center">
+                      <div className="relative flex-1">
+                        <Input
+                          type={showApiKey ? "text" : "password"}
+                          placeholder={store.has_17track_key ? "••••••••••••••••" : "Cole sua API key aqui"}
+                          value={apiKey}
+                          onChange={(e) => setApiKey(e.target.value)}
+                          className="h-10 pr-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 font-mono text-sm"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowApiKey(!showApiKey)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                        >
+                          {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  {store.has_17track_key && (
+                    <div className="flex items-center gap-1.5">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                      <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">Chave API configurada</span>
+                    </div>
+                  )}
+                  {!store.has_17track_key && (
+                    <p className="text-[11px] text-amber-600 dark:text-amber-400 leading-relaxed">
+                      Sem a chave API, o rastreamento em tempo real não funcionará. Obtenha sua chave em{" "}
+                      <a href="https://api.17track.net" target="_blank" rel="noopener noreferrer" className="underline font-medium">
+                        api.17track.net
+                      </a>
+                    </p>
+                  )}
                 </div>
               </div>
 
