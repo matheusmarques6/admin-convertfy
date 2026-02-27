@@ -273,18 +273,17 @@ export default function PortalTrackingDashboard() {
   const storeParam = selectedStoreId || "YOUR_STORE_ID"
 
   const widgetScript = `<!-- Convertfy Tracking Widget -->
-<script src="${baseUrl}/api/script/widget.js?store=${storeParam}" async></script>
-<div id="convertfy-tracking"></div>`
+<script src="${baseUrl}/api/script/widget.js?store=${storeParam}" async></script>`
 
   const iframeEmbed = `<iframe
-  src="${baseUrl}/tracking/embed?store=${storeParam}&primary=${encodeURIComponent(config.primary_color)}&accent=${encodeURIComponent(config.accent_color)}&icon=${encodeURIComponent(config.icon_color)}&type=${config.plugin_type}&lang=${config.language}"
+  src="${baseUrl}/tracking/embed?store=${storeParam}"
   width="100%"
   height="600"
   frameborder="0"
   style="border:none;border-radius:12px;"
 ></iframe>`
 
-  const directLink = `${baseUrl}/tracking/${storeParam}`
+  const directLink = `${baseUrl}/tracking/embed?store=${storeParam}`
 
   // =================== Render ===================
 
@@ -890,7 +889,7 @@ export default function PortalTrackingDashboard() {
                         <span className="text-[10px] font-medium bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 px-2 py-0.5 rounded-full">Recomendado</span>
                       </div>
                     </div>
-                    <p className="text-xs text-slate-500 mb-3 ml-11">Cole no HTML da página. Cores, tipo e idioma são aplicados automaticamente.</p>
+                    <p className="text-xs text-slate-500 mb-3 ml-11">Cole no theme.liquid (antes de &lt;/body&gt;). Detecta automaticamente modo inline ou flutuante pela URL.</p>
                     <div className="relative ml-11">
                       <pre className="bg-slate-50 dark:bg-[#0d1117] rounded-lg p-4 text-[11px] font-mono text-slate-600 dark:text-slate-400 overflow-x-auto border border-slate-200 dark:border-slate-700/40 leading-relaxed">{widgetScript}</pre>
                       <Button variant="outline" size="sm" className="absolute top-2 right-2 h-7 text-[11px]" onClick={() => copyToClipboard(widgetScript, "w")}>
@@ -945,10 +944,10 @@ export default function PortalTrackingDashboard() {
                   <div className="space-y-4">
                     {[
                       "Configure o plugin na aba \"Plugin de Rastreamento\" (cores, tipo, idioma).",
-                      "Copie o código acima (Widget JS ou iFrame).",
-                      "Na sua plataforma, crie ou acesse a página de rastreio.",
-                      "Incorpore o HTML (busque \"HTML personalizado\" ou \"<>\" no editor).",
-                      "Salve e publique. O widget aparece com suas configurações.",
+                      "Cole o script no theme.liquid (antes de </body>). Funciona em todas as páginas.",
+                      "Crie uma página em branco chamada \"Rastreamento\" (URL: /pages/rastreamento).",
+                      "O widget aparece inline nessa página e como botão flutuante nas demais.",
+                      "Alternativa: use o iFrame ou Link Direto para plataformas sem suporte a scripts.",
                     ].map((text, i) => (
                       <div key={i} className="flex items-start gap-3">
                         <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold flex-shrink-0" style={{ color: config.primary_color }}>{i + 1}</div>
@@ -957,7 +956,7 @@ export default function PortalTrackingDashboard() {
                     ))}
                   </div>
                   <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-lg p-4 mt-5">
-                    <p className="text-xs text-amber-700 dark:text-amber-400"><strong>Nota:</strong> Plataformas como Nuvemshop podem não aceitar scripts. Use iFrame ou o Link Direto.</p>
+                    <p className="text-xs text-amber-700 dark:text-amber-400"><strong>Nota:</strong> Na Shopify, cole o script no theme.liquid. Para plataformas que não aceitam scripts (ex: Nuvemshop), use iFrame ou Link Direto.</p>
                   </div>
                 </div>
               </div>
