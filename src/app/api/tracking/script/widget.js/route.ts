@@ -675,7 +675,290 @@ export async function GET(request: NextRequest) {
       s = s.charAt(0).toUpperCase() + s.slice(1);
     }
 
+    // Translate to selected language
+    s = translateEvent(s);
+
     return s;
+  }
+
+  /**
+   * Dictionary of common tracking event phrases in English → target language.
+   * Used to translate raw API events to the user's language.
+   */
+  var EVENT_TRANSLATIONS = {
+    'pt-BR': {
+      // Departure / Export
+      'departed from export warehouse': 'Saiu do armazém de exportação',
+      'departed from facility': 'Saiu da unidade de distribuição',
+      'departed from origin': 'Saiu do país de origem',
+      'departed country of origin': 'Saiu do país de origem',
+      'left origin country': 'Saiu do país de origem',
+      'leaving the operating center': 'Saindo do centro de operações',
+      'export customs cleared': 'Liberado pela alfândega de exportação',
+      'customs clearance completed': 'Desembaraço aduaneiro concluído',
+      'export clearance success': 'Liberação de exportação concluída',
+      'export clearance completed': 'Liberação de exportação concluída',
+      'handed over to carrier': 'Entregue à transportadora',
+      'handed over to airline': 'Entregue à companhia aérea',
+      'hand over to airline': 'Entregue à companhia aérea',
+      'dispatched to overseas': 'Despachado para o exterior',
+      'shipment dispatched': 'Encomenda despachada',
+      'shipment departed': 'Encomenda partiu',
+      'departed': 'Partiu',
+
+      // Arrival / Import
+      'arrived at destination country': 'Chegou ao país de destino',
+      'arrived at destination': 'Chegou ao destino',
+      'arrived in destination country': 'Chegou ao país de destino',
+      'arrived at local facility': 'Chegou à unidade local',
+      'arrived at sorting center': 'Chegou ao centro de triagem',
+      'arrived at hub': 'Chegou ao centro de distribuição',
+      'arrived at customs': 'Chegou à alfândega',
+      'arrived at the destination country': 'Chegou ao país de destino',
+      'import customs clearance completed': 'Desembaraço de importação concluído',
+      'import customs cleared': 'Liberado pela alfândega de importação',
+      'customs clearance': 'Desembaraço aduaneiro',
+      'cleared customs': 'Liberado pela alfândega',
+      'import clearance success': 'Liberação de importação concluída',
+      'customs released': 'Liberado pela alfândega',
+      'inbound to customs': 'Encaminhado para alfândega',
+      'held at customs': 'Retido na alfândega',
+      'received by customs': 'Recebido pela alfândega',
+
+      // Transit
+      'in transit': 'Em trânsito',
+      'in transit to destination': 'Em trânsito para o destino',
+      'in transit to next facility': 'Em trânsito para a próxima unidade',
+      'package in transit': 'Pacote em trânsito',
+      'shipment in transit': 'Encomenda em trânsito',
+      'en route to destination': 'A caminho do destino',
+      'forwarded': 'Encaminhado',
+      'forwarded to destination': 'Encaminhado ao destino',
+      'onforwarded': 'Encaminhado',
+      'transferred to carrier': 'Transferido para transportadora',
+      'on its way': 'A caminho',
+
+      // Delivery
+      'delivered': 'Entregue',
+      'delivered to recipient': 'Entregue ao destinatário',
+      'delivered successfully': 'Entregue com sucesso',
+      'signed for': 'Assinado por',
+      'signed by': 'Assinado por',
+      'package delivered': 'Pacote entregue',
+      'shipment delivered': 'Encomenda entregue',
+      'out for delivery': 'Saiu para entrega',
+      'with delivery courier': 'Com o entregador',
+      'delivery attempted': 'Tentativa de entrega',
+      'delivery attempt failed': 'Tentativa de entrega falhou',
+      'ready for pickup': 'Pronto para retirada',
+      'available for pickup': 'Disponível para retirada',
+      'waiting for pickup': 'Aguardando retirada',
+
+      // Origin / Posting
+      'shipment information received': 'Informações do envio recebidas',
+      'information received': 'Informações recebidas',
+      'order information received': 'Informações do pedido recebidas',
+      'posting/collection': 'Postagem/Coleta',
+      'accepted by carrier': 'Aceito pela transportadora',
+      'picked up': 'Coletado',
+      'package received': 'Pacote recebido',
+      'shipment picked up': 'Encomenda coletada',
+      'collected': 'Coletado',
+      'received at origin': 'Recebido na origem',
+      'received at warehouse': 'Recebido no armazém',
+      'received package': 'Pacote recebido',
+
+      // Flight
+      'flight departure': 'Partida do voo',
+      'flight arrived': 'Voo chegou',
+      'in flight': 'Em voo',
+      'airline departure': 'Partida aérea',
+
+      // Exceptions
+      'exception': 'Exceção',
+      'returned to sender': 'Devolvido ao remetente',
+      'undeliverable': 'Não entregável',
+      'address issue': 'Problema com endereço',
+      'held for payment': 'Retido para pagamento',
+      'awaiting payment': 'Aguardando pagamento',
+      'pending customs clearance': 'Aguardando desembaraço aduaneiro',
+      'tax to be paid': 'Imposto a pagar',
+
+      // Processing
+      'processing': 'Processando',
+      'processed through facility': 'Processado na unidade',
+      'processed': 'Processado',
+      'sorting': 'Em triagem',
+      'sorting complete': 'Triagem concluída',
+      'item processed': 'Item processado',
+    },
+    es: {
+      'departed from export warehouse': 'Salió del almacén de exportación',
+      'departed from facility': 'Salió de la instalación',
+      'export customs cleared': 'Despacho de aduana completado',
+      'customs clearance completed': 'Despacho aduanero completado',
+      'arrived at destination country': 'Llegó al país de destino',
+      'arrived at destination': 'Llegó al destino',
+      'import customs clearance completed': 'Despacho de importación completado',
+      'in transit': 'En tránsito',
+      'in transit to destination': 'En tránsito hacia el destino',
+      'delivered': 'Entregado',
+      'delivered to recipient': 'Entregado al destinatario',
+      'out for delivery': 'En reparto',
+      'shipment information received': 'Información de envío recibida',
+      'information received': 'Información recibida',
+      'handed over to carrier': 'Entregado al transportista',
+      'cleared customs': 'Liberado de aduana',
+      'ready for pickup': 'Listo para recoger',
+      'forwarded': 'Reexpedido',
+      'departed': 'Partió',
+      'arrived at sorting center': 'Llegó al centro de clasificación',
+      'flight departure': 'Salida de vuelo',
+      'flight arrived': 'Vuelo llegó',
+      'delivery attempted': 'Intento de entrega',
+      'signed for': 'Firmado por',
+      'picked up': 'Recogido',
+      'processing': 'Procesando',
+      'exception': 'Excepción',
+      'returned to sender': 'Devuelto al remitente',
+    },
+    fr: {
+      'departed from export warehouse': "Parti de l'entrepôt d'exportation",
+      'departed from facility': "Parti de l'installation",
+      'export customs cleared': "Dédouanement d'exportation terminé",
+      'customs clearance completed': 'Dédouanement terminé',
+      'arrived at destination country': 'Arrivé dans le pays de destination',
+      'arrived at destination': 'Arrivé à destination',
+      'import customs clearance completed': "Dédouanement d'importation terminé",
+      'in transit': 'En transit',
+      'in transit to destination': 'En transit vers la destination',
+      'delivered': 'Livré',
+      'delivered to recipient': 'Livré au destinataire',
+      'out for delivery': 'En cours de livraison',
+      'shipment information received': "Informations d'expédition reçues",
+      'information received': 'Informations reçues',
+      'handed over to carrier': 'Remis au transporteur',
+      'cleared customs': 'Dédouané',
+      'ready for pickup': 'Prêt pour le retrait',
+      'forwarded': 'Réexpédié',
+      'departed': 'Parti',
+      'arrived at sorting center': 'Arrivé au centre de tri',
+      'flight departure': 'Départ du vol',
+      'delivery attempted': 'Tentative de livraison',
+      'signed for': 'Signé par',
+      'picked up': 'Récupéré',
+      'processing': 'Traitement',
+      'exception': 'Exception',
+      'returned to sender': "Retourné à l'expéditeur",
+    },
+    de: {
+      'departed from export warehouse': 'Vom Exportlager abgereist',
+      'departed from facility': 'Von der Einrichtung abgereist',
+      'export customs cleared': 'Exportzollabfertigung abgeschlossen',
+      'customs clearance completed': 'Zollabfertigung abgeschlossen',
+      'arrived at destination country': 'Im Zielland angekommen',
+      'arrived at destination': 'Am Ziel angekommen',
+      'import customs clearance completed': 'Importzollabfertigung abgeschlossen',
+      'in transit': 'Unterwegs',
+      'in transit to destination': 'Unterwegs zum Ziel',
+      'delivered': 'Zugestellt',
+      'delivered to recipient': 'An Empfänger zugestellt',
+      'out for delivery': 'In Zustellung',
+      'shipment information received': 'Sendungsinformationen empfangen',
+      'information received': 'Informationen empfangen',
+      'handed over to carrier': 'An Spediteur übergeben',
+      'cleared customs': 'Zollfreigabe erteilt',
+      'ready for pickup': 'Abholbereit',
+      'forwarded': 'Weitergeleitet',
+      'departed': 'Abgereist',
+      'arrived at sorting center': 'Im Sortierzentrum angekommen',
+      'flight departure': 'Flugabfahrt',
+      'delivery attempted': 'Zustellversuch',
+      'signed for': 'Unterschrieben von',
+      'picked up': 'Abgeholt',
+      'processing': 'Verarbeitung',
+      'exception': 'Ausnahme',
+      'returned to sender': 'An Absender zurückgesendet',
+    },
+    it: {
+      'departed from export warehouse': "Partito dal magazzino d'esportazione",
+      'departed from facility': "Partito dall'impianto",
+      'export customs cleared': 'Sdoganamento export completato',
+      'customs clearance completed': 'Sdoganamento completato',
+      'arrived at destination country': 'Arrivato nel paese di destinazione',
+      'arrived at destination': 'Arrivato a destinazione',
+      'import customs clearance completed': 'Sdoganamento import completato',
+      'in transit': 'In transito',
+      'in transit to destination': 'In transito verso la destinazione',
+      'delivered': 'Consegnato',
+      'delivered to recipient': 'Consegnato al destinatario',
+      'out for delivery': 'In consegna',
+      'shipment information received': 'Informazioni spedizione ricevute',
+      'information received': 'Informazioni ricevute',
+      'handed over to carrier': 'Consegnato al corriere',
+      'cleared customs': 'Sdoganato',
+      'ready for pickup': 'Pronto per il ritiro',
+      'forwarded': 'Rispedito',
+      'departed': 'Partito',
+      'arrived at sorting center': 'Arrivato al centro di smistamento',
+      'flight departure': 'Partenza volo',
+      'delivery attempted': 'Tentativo di consegna',
+      'signed for': 'Firmato da',
+      'picked up': 'Ritirato',
+      'processing': 'Elaborazione',
+      'exception': 'Eccezione',
+      'returned to sender': 'Restituito al mittente',
+    }
+  };
+
+  /**
+   * Translate a tracking event description to the selected language.
+   * Uses fuzzy matching: tries exact, then lowercase, then partial match.
+   */
+  function translateEvent(desc) {
+    if (!desc) return '';
+    // Skip translation if already in the right language or language is English
+    if (lang === 'en') return desc;
+
+    var dict = EVENT_TRANSLATIONS[lang] || EVENT_TRANSLATIONS['pt-BR'];
+    if (!dict) return desc;
+
+    var lower = desc.toLowerCase().trim();
+
+    // 1. Exact match (case-insensitive)
+    if (dict[lower]) return dict[lower];
+
+    // 2. Try removing trailing periods, commas
+    var cleaned = lower.replace(/[.,;:!]+$/, '').trim();
+    if (dict[cleaned]) return dict[cleaned];
+
+    // 3. Partial match - find the longest matching key in the description
+    var bestMatch = '';
+    var bestTranslation = '';
+    var keys = Object.keys(dict);
+    for (var ki = 0; ki < keys.length; ki++) {
+      var key = keys[ki];
+      if (lower.indexOf(key) !== -1 && key.length > bestMatch.length) {
+        bestMatch = key;
+        bestTranslation = dict[key];
+      }
+    }
+
+    if (bestMatch && bestTranslation) {
+      // Replace the matched part with translation, keep the rest
+      var matchIndex = lower.indexOf(bestMatch);
+      var before = desc.substring(0, matchIndex).trim();
+      var after = desc.substring(matchIndex + bestMatch.length).trim();
+
+      // If the match IS the whole string (or nearly), just return translation
+      if (!before && !after) return bestTranslation;
+      if (before && !after) return before + ' - ' + bestTranslation;
+      if (!before && after) return bestTranslation + ' - ' + after;
+      return bestTranslation;
+    }
+
+    // 4. No match found, return original
+    return desc;
   }
 
   /**
@@ -697,7 +980,7 @@ export async function GET(request: NextRequest) {
     var statusLabel = getStatusLabel(normalizedStatus);
     var stepIndex = sc.step;
 
-    // Clean the detail text
+    // Clean and translate the detail text
     var detail = cleanDescription(data.status_detail || data.last_event || '', '');
 
     var html = '<div class="ct-result">';
