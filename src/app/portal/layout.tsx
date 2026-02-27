@@ -163,9 +163,9 @@ export default function PortalLayout({
           const storesRes = await fetch("/api/portal/stores")
           if (storesRes.ok) {
             const storesData = await storesRes.json()
-            const storeList = (storesData.stores || []).map((s: { id: string; name: string; platform: string }) => ({
+            const storeList = (storesData.stores || []).map((s: { id: string; store_name?: string; name?: string; platform: string }) => ({
               id: s.id,
-              name: s.name,
+              name: s.store_name || s.name || "Sem nome",
               platform: s.platform,
             }))
             setStores(storeList)
