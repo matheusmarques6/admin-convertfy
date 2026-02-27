@@ -19,7 +19,7 @@ import {
   ChevronsUpDown,
   Plus,
   Package,
-  ChevronDown,
+  Plug,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -63,15 +63,9 @@ const navigation = [
   { name: "Análise", href: "/portal/analytics", icon: BarChart3 },
   { name: "Campanhas", href: "/portal/campaigns", icon: Send },
   { name: "Flows", href: "/portal/flows", icon: GitBranch },
+  { name: "Integrações", href: "/portal/integrations", icon: Plug },
+  { name: "Rastreamento", href: "/portal/tracking", icon: Package },
   { name: "Faturas", href: "/portal/invoices", icon: FileText },
-]
-
-// Tracking sub-navigation
-const trackingNav = [
-  { name: "Dashboard", href: "/portal/tracking" },
-  { name: "Pedidos", href: "/portal/tracking/orders" },
-  { name: "Integrações", href: "/portal/tracking/integrations" },
-  { name: "Script", href: "/portal/tracking/script" },
 ]
 
 function getInitials(name: string): string {
@@ -100,9 +94,6 @@ export default function PortalLayout({
     logo_url: null,
     primary_color: "#3b82f6",
   })
-  const [trackingExpanded, setTrackingExpanded] = useState(pathname.startsWith("/portal/tracking"))
-  const isTrackingActive = pathname.startsWith("/portal/tracking")
-
   // Check authentication using browser Supabase client
   useEffect(() => {
     const checkAuth = async () => {
@@ -253,6 +244,7 @@ export default function PortalLayout({
   const getPageTitle = () => {
     const navItem = navigation.find(item => pathname === item.href || pathname.startsWith(item.href + "/"))
     if (navItem) return navItem.name
+    if (pathname.startsWith("/portal/integrations")) return "Integrações"
     if (pathname.startsWith("/portal/tracking")) return "Rastreamento"
     if (pathname.startsWith("/portal/settings")) return "Configurações"
     if (pathname.startsWith("/portal/invoices")) return "Faturas"
@@ -283,49 +275,6 @@ export default function PortalLayout({
         )
       })}
 
-      {/* Tracking Section with sub-items */}
-      <div>
-        <button
-          onClick={() => setTrackingExpanded(!trackingExpanded)}
-          className={cn(
-            "flex items-center justify-between w-full px-3 py-2.5 rounded-lg text-[13px] font-medium transition-all duration-200",
-            isTrackingActive
-              ? "bg-white/10 text-white"
-              : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.06]"
-          )}
-        >
-          <div className="flex items-center gap-3">
-            <Package className="h-[18px] w-[18px]" />
-            Rastreamento
-          </div>
-          <ChevronDown className={cn(
-            "h-3.5 w-3.5 transition-transform duration-200",
-            trackingExpanded && "rotate-180"
-          )} />
-        </button>
-        {trackingExpanded && (
-          <div className="mt-1 ml-[30px] space-y-0.5">
-            {trackingNav.map((item) => {
-              const isActive = pathname === item.href
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={onLinkClick}
-                  className={cn(
-                    "block px-3 py-2 rounded-lg text-[12px] font-medium transition-all duration-200",
-                    isActive
-                      ? "text-white bg-white/[0.08]"
-                      : "text-slate-500 hover:text-slate-300 hover:bg-white/[0.04]"
-                  )}
-                >
-                  {item.name}
-                </Link>
-              )
-            })}
-          </div>
-        )}
-      </div>
     </div>
   )
 

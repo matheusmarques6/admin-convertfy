@@ -9,7 +9,6 @@ import {
   Clock,
   AlertCircle,
   RefreshCw,
-  Settings,
   Code2,
   ShoppingBag,
   ArrowRight,
@@ -249,7 +248,7 @@ export default function PortalTrackingDashboard() {
                   {/* Actions */}
                   {!store.tracking_active && store.shopify_connected && (
                     <Link
-                      href="/portal/tracking/integrations"
+                      href="/portal/integrations"
                       className="flex items-center justify-center gap-2 w-full py-2.5 px-4 rounded-lg bg-primary hover:bg-primary/85 text-white text-sm font-medium transition-colors shadow-sm"
                     >
                       Ativar Rastreamento
@@ -274,7 +273,7 @@ export default function PortalTrackingDashboard() {
 
       {/* Quick Links */}
       {hasAnyTracking && (
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2">
           <Link
             href="/portal/tracking/orders"
             className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 p-5 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow group"
@@ -291,21 +290,6 @@ export default function PortalTrackingDashboard() {
           </Link>
 
           <Link
-            href="/portal/tracking/integrations"
-            className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 p-5 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow group"
-          >
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-8 h-8 rounded-lg bg-purple-50 dark:bg-purple-500/10 flex items-center justify-center">
-                <Settings className="h-4 w-4 text-purple-600" />
-              </div>
-              <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">Integrações</span>
-            </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Configure Shopify webhooks e 17track API
-            </p>
-          </Link>
-
-          <Link
             href="/portal/tracking/script"
             className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 p-5 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow group"
           >
@@ -313,7 +297,7 @@ export default function PortalTrackingDashboard() {
               <div className="w-8 h-8 rounded-lg bg-cyan-50 dark:bg-cyan-500/10 flex items-center justify-center">
                 <Code2 className="h-4 w-4 text-cyan-600" />
               </div>
-              <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">Script</span>
+              <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">Script do Widget</span>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400">
               Gere o código para instalar o widget na sua loja
