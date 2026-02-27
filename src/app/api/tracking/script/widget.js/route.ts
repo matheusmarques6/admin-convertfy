@@ -317,10 +317,11 @@ export async function GET(request: NextRequest) {
     '.ct-status-detail { font-size:13px; color:#64748b; }',
 
     /* Info grid */
-    '.ct-info-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:1px; background:#f1f5f9; border-top:1px solid #f1f5f9; border-bottom:1px solid #f1f5f9; }',
-    '.ct-info-item { background:#fff; padding:14px 28px; }',
+    '.ct-info-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:1px; background:#f1f5f9; border-top:1px solid #f1f5f9; border-bottom:1px solid #f1f5f9; }',
+    '.ct-info-item { background:#fff; padding:14px 24px; }',
     '.ct-info-label { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; color:#94a3b8; margin-bottom:4px; }',
-    '.ct-info-value { font-size:14px; font-weight:500; color:#1e293b; word-break:break-all; }',
+    '.ct-info-value { font-size:13px; font-weight:500; color:#1e293b; word-break:break-all; }',
+    '.ct-mono { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; letter-spacing:0.5px; }',
 
     /* Progress stepper */
     '.ct-progress { padding:28px 28px 12px; }',
@@ -329,28 +330,34 @@ export async function GET(request: NextRequest) {
     '.ct-progress-dot { width:14px; height:14px; border-radius:50%; background:#e2e8f0; border:2px solid #fff; box-shadow:0 0 0 2px #e2e8f0; transition:all .3s; margin-bottom:8px; }',
     '.ct-progress-dot.active { background:'+color+'; box-shadow:0 0 0 2px '+color+',0 0 0 5px rgba('+colorRgb+',0.15); }',
     '.ct-progress-dot.completed { background:'+color+'; box-shadow:0 0 0 2px '+color+'; }',
-    '.ct-progress-label { font-size:10px; color:#94a3b8; text-align:center; line-height:1.3; max-width:72px; }',
-    '.ct-progress-label.active { color:'+color+'; font-weight:600; }',
+    '.ct-progress-label { font-size:10px; color:#94a3b8; text-align:center; line-height:1.3; max-width:72px; transition:color .3s; }',
+    '.ct-progress-label.active { color:#334155; font-weight:600; }',
     '.ct-progress-line { position:absolute; top:7px; left:0; right:0; height:2px; background:#e2e8f0; z-index:0; }',
     '.ct-progress-line-fill { height:100%; background:'+color+'; transition:width .5s ease; }',
 
     /* Timeline */
-    '.ct-timeline-section { padding:20px 28px 28px; }',
-    '.ct-timeline-title { font-size:14px; font-weight:600; color:#334155; margin-bottom:16px; display:flex; align-items:center; gap:8px; }',
+    '.ct-timeline-section { padding:24px 28px 28px; }',
+    '.ct-timeline-title { font-size:14px; font-weight:600; color:#334155; margin-bottom:20px; display:flex; align-items:center; gap:8px; }',
     '.ct-timeline-title svg { width:16px; height:16px; stroke:'+color+'; fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }',
-    '.ct-timeline { position:relative; padding-left:28px; }',
-    '.ct-timeline::before { content:""; position:absolute; left:8px; top:6px; bottom:6px; width:2px; background:#e2e8f0; border-radius:1px; }',
-    '.ct-event { position:relative; padding-bottom:20px; }',
-    '.ct-event:last-child { padding-bottom:0; }',
-    '.ct-event-dot { position:absolute; left:-24px; top:5px; width:10px; height:10px; border-radius:50%; background:#cbd5e1; border:2px solid #fff; }',
-    '.ct-event:first-child .ct-event-dot { width:12px; height:12px; left:-25px; top:4px; background:'+color+'; box-shadow:0 0 0 3px rgba('+colorRgb+',0.15); }',
-    '.ct-event-desc { font-size:14px; color:#1e293b; line-height:1.5; font-weight:500; }',
-    '.ct-event:not(:first-child) .ct-event-desc { color:#475569; font-weight:400; }',
-    '.ct-event-meta { display:flex; align-items:center; gap:6px; margin-top:4px; flex-wrap:wrap; }',
-    '.ct-event-date { font-size:12px; color:#94a3b8; }',
+    '.ct-event-count { font-weight:400; color:#94a3b8; font-size:13px; }',
+
+    /* Date group header */
+    '.ct-date-group { font-size:12px; font-weight:600; color:#64748b; text-transform:capitalize; padding:12px 0 8px 40px; border-top:1px solid #f1f5f9; margin-top:4px; }',
+    '.ct-date-group:first-child { border-top:none; margin-top:0; padding-top:0; }',
+
+    /* Event row */
+    '.ct-event { display:flex; align-items:flex-start; gap:12px; padding:8px 0; position:relative; }',
+    '.ct-event-latest { background:rgba('+colorRgb+',0.03); margin:0 -12px; padding:10px 12px; border-radius:10px; }',
+    '.ct-event-dot-wrap { width:28px; display:flex; justify-content:center; flex-shrink:0; padding-top:3px; }',
+    '.ct-event-dot { width:10px; height:10px; border-radius:50%; background:#cbd5e1; }',
+    '.ct-dot-active { width:12px; height:12px; background:'+color+'; box-shadow:0 0 0 3px rgba('+colorRgb+',0.15); }',
+    '.ct-event-body { flex:1; min-width:0; }',
+    '.ct-event-desc { font-size:13px; color:#334155; line-height:1.5; }',
+    '.ct-event-latest .ct-event-desc { font-weight:600; color:#0f172a; }',
+    '.ct-event-meta { display:flex; align-items:center; gap:8px; margin-top:3px; flex-wrap:wrap; }',
+    '.ct-event-time { font-size:12px; color:#94a3b8; font-weight:500; min-width:44px; }',
     '.ct-event-loc { font-size:12px; color:#94a3b8; display:flex; align-items:center; gap:3px; }',
     '.ct-event-loc svg { width:12px; height:12px; stroke:#94a3b8; fill:none; stroke-width:2; }',
-    '.ct-event-sep { font-size:12px; color:#cbd5e1; }',
 
     /* Empty / Error state */
     '.ct-empty { text-align:center; padding:48px 24px; }',
@@ -379,7 +386,8 @@ export async function GET(request: NextRequest) {
     '  .ct-status-header { padding:20px; }',
     '  .ct-info-grid { grid-template-columns:1fr 1fr; }',
     '  .ct-info-item { padding:12px 20px; }',
-    '  .ct-timeline-section { padding:16px 20px 24px; }',
+    '  .ct-timeline-section { padding:16px 16px 24px; }',
+    '  .ct-date-group { padding-left:36px; }',
     '  .ct-progress { padding:20px 20px 8px; }',
     '  .ct-progress-label { font-size:9px; max-width:56px; }',
     '  .ct-result { border-radius:14px; }',
@@ -607,6 +615,33 @@ export async function GET(request: NextRequest) {
   }
 
   /* ========== RENDER RESULT ========== */
+  function formatDateShort(dateStr) {
+    if (!dateStr) return '';
+    try {
+      var d = new Date(dateStr);
+      if (isNaN(d.getTime())) return '';
+      return d.toLocaleDateString(lang, { day:'2-digit', month:'short' });
+    } catch(e) { return ''; }
+  }
+
+  function formatTime(dateStr) {
+    if (!dateStr) return '';
+    try {
+      var d = new Date(dateStr);
+      if (isNaN(d.getTime())) return '';
+      return d.toLocaleTimeString(lang, { hour:'2-digit', minute:'2-digit' });
+    } catch(e) { return ''; }
+  }
+
+  function getDateKey(dateStr) {
+    if (!dateStr) return '';
+    try {
+      var d = new Date(dateStr);
+      if (isNaN(d.getTime())) return '';
+      return d.toLocaleDateString(lang, { weekday:'long', day:'2-digit', month:'long', year:'numeric' });
+    } catch(e) { return ''; }
+  }
+
   function renderResult(data) {
     var resultDiv = shadow.getElementById('ctResult');
     if (!resultDiv) return;
@@ -614,27 +649,39 @@ export async function GET(request: NextRequest) {
     var sc = STATUS_CONFIG[data.status] || STATUS_CONFIG.pending;
     var statusLabel = t['status_' + data.status] || data.status || t.status_pending;
     var stepIndex = sc.step;
+    var detail = data.status_detail || data.last_event || '';
 
     var html = '<div class="ct-result">';
 
-    /* Status header */
+    /* ── Status header ── */
     html += '<div class="ct-status-header">';
     html += '<div class="ct-status-badge" style="background:' + sc.bg + '">';
     html += '<svg viewBox="0 0 24 24" stroke="' + sc.fg + '">' + getStatusIcon(data.status) + '</svg>';
     html += '</div>';
     html += '<div class="ct-status-info">';
     html += '<div class="ct-status-label" style="color:' + sc.fg + '">' + escapeHtml(statusLabel) + '</div>';
-    if (data.status_detail) html += '<div class="ct-status-detail">' + escapeHtml(data.status_detail) + '</div>';
+    if (detail) html += '<div class="ct-status-detail">' + escapeHtml(detail) + '</div>';
     html += '</div></div>';
 
-    /* Info grid */
+    /* ── Progress stepper ── */
+    html += '<div class="ct-progress">';
+    html += '<div class="ct-progress-bar">';
+    html += '<div class="ct-progress-line"><div class="ct-progress-line-fill" style="width:' + (stepIndex / (PROGRESS_STEPS.length - 1) * 100) + '%"></div></div>';
+    for (var pi = 0; pi < PROGRESS_STEPS.length; pi++) {
+      var dotCls = pi < stepIndex ? 'completed' : (pi === stepIndex ? 'active' : '');
+      var lblCls = pi <= stepIndex ? 'active' : '';
+      var stepLabel = t['status_' + PROGRESS_STEPS[pi].key] || '';
+      html += '<div class="ct-progress-step">';
+      html += '<div class="ct-progress-dot ' + dotCls + '"></div>';
+      if (stepLabel) html += '<span class="ct-progress-label ' + lblCls + '">' + escapeHtml(stepLabel) + '</span>';
+      html += '</div>';
+    }
+    html += '</div></div>';
+
+    /* ── Info grid ── */
     html += '<div class="ct-info-grid">';
-    if (data.tracking_number) {
-      html += '<div class="ct-info-item"><div class="ct-info-label">' + escapeHtml(t.tracking_number) + '</div><div class="ct-info-value">' + escapeHtml(data.tracking_number) + '</div></div>';
-    }
-    if (data.carrier_name) {
-      html += '<div class="ct-info-item"><div class="ct-info-label">' + escapeHtml(t.carrier) + '</div><div class="ct-info-value">' + escapeHtml(data.carrier_name) + '</div></div>';
-    }
+    html += '<div class="ct-info-item"><div class="ct-info-label">' + escapeHtml(t.tracking_number) + '</div><div class="ct-info-value ct-mono">' + escapeHtml(data.tracking_number || '') + '</div></div>';
+    html += '<div class="ct-info-item"><div class="ct-info-label">' + escapeHtml(t.carrier) + '</div><div class="ct-info-value">' + escapeHtml(data.carrier_name || '—') + '</div></div>';
     if (data.order_name) {
       html += '<div class="ct-info-item"><div class="ct-info-label">' + escapeHtml(t.order) + '</div><div class="ct-info-value">' + escapeHtml(data.order_name) + '</div></div>';
     }
@@ -646,57 +693,43 @@ export async function GET(request: NextRequest) {
     }
     html += '</div>';
 
-    /* Progress stepper */
-    html += '<div class="ct-progress">';
-    html += '<div class="ct-progress-bar">';
-    html += '<div class="ct-progress-line"><div class="ct-progress-line-fill" style="width:' + (stepIndex / (PROGRESS_STEPS.length - 1) * 100) + '%"></div></div>';
-    for (var pi = 0; pi < PROGRESS_STEPS.length; pi++) {
-      var dotCls = pi < stepIndex ? 'completed' : (pi === stepIndex ? 'active' : '');
-      var lblCls = pi === stepIndex ? 'active' : '';
-      var stepLabel = t['status_' + PROGRESS_STEPS[pi].key] || '';
-      html += '<div class="ct-progress-step">';
-      html += '<div class="ct-progress-dot ' + dotCls + '"></div>';
-      if (stepLabel) html += '<span class="ct-progress-label ' + lblCls + '">' + escapeHtml(stepLabel) + '</span>';
-      html += '</div>';
-    }
-    html += '</div></div>';
-
-    /* Timeline */
+    /* ── Timeline grouped by date ── */
     if (data.events && data.events.length > 0) {
       html += '<div class="ct-timeline-section">';
-      html += '<div class="ct-timeline-title">';
-      html += svgIcon('clock');
-      html += escapeHtml(t.tracking_history);
-      html += '</div>';
-      html += '<div class="ct-timeline">';
+      html += '<div class="ct-timeline-title">' + svgIcon('clock') + escapeHtml(t.tracking_history) + ' <span class="ct-event-count">(' + data.events.length + ')</span></div>';
+
+      var lastDateKey = '';
       for (var ei = 0; ei < data.events.length; ei++) {
         var evt = data.events[ei];
-        html += '<div class="ct-event">';
-        html += '<div class="ct-event-dot"></div>';
+        var dateKey = getDateKey(evt.date);
+
+        /* Date group header */
+        if (dateKey && dateKey !== lastDateKey) {
+          html += '<div class="ct-date-group">' + escapeHtml(dateKey) + '</div>';
+          lastDateKey = dateKey;
+        }
+
+        var isFirst = ei === 0;
+        html += '<div class="ct-event' + (isFirst ? ' ct-event-latest' : '') + '">';
+        html += '<div class="ct-event-dot-wrap"><div class="ct-event-dot' + (isFirst ? ' ct-dot-active' : '') + '"></div></div>';
+        html += '<div class="ct-event-body">';
         html += '<div class="ct-event-desc">' + escapeHtml(evt.description) + '</div>';
         html += '<div class="ct-event-meta">';
-        if (evt.date) html += '<span class="ct-event-date">' + formatDate(evt.date) + '</span>';
-        if (evt.date && evt.location) html += '<span class="ct-event-sep">&middot;</span>';
+        if (evt.date) html += '<span class="ct-event-time">' + formatTime(evt.date) + '</span>';
         if (evt.location) html += '<span class="ct-event-loc">' + svgIcon('mapPin') + escapeHtml(evt.location) + '</span>';
         html += '</div>';
-        html += '</div>';
+        html += '</div></div>';
       }
-      html += '</div></div>';
+
+      html += '</div>';
     }
 
     /* New search button */
-    html += '<button class="ct-new-search" id="ctNewSearch">';
-    html += svgIcon('refresh');
-    html += escapeHtml(t.new_search);
-    html += '</button>';
-
+    html += '<button class="ct-new-search" id="ctNewSearch">' + svgIcon('refresh') + escapeHtml(t.new_search) + '</button>';
     html += '</div>';
 
     resultDiv.innerHTML = html;
-
-    shadow.getElementById('ctNewSearch').addEventListener('click', function() {
-      renderSearch();
-    });
+    shadow.getElementById('ctNewSearch').addEventListener('click', function() { renderSearch(); });
   }
 
   /* ========== INIT ========== */
@@ -707,7 +740,7 @@ export async function GET(request: NextRequest) {
   return new NextResponse(script, {
     headers: {
       "Content-Type": "application/javascript; charset=utf-8",
-      "Cache-Control": "public, max-age=3600",
+      "Cache-Control": "public, max-age=300",
       "Access-Control-Allow-Origin": "*",
     },
   })

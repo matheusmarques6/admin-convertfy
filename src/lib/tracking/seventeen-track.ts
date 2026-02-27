@@ -39,6 +39,50 @@ function mapStatus(trackStatus: number): string {
 }
 
 /**
+ * Infer status from tracking events when 17track returns pending/not-found
+ * but there are clearly real tracking events present.
+ */
+function inferStatusFromEvents(events: TrackingEvent[]): string {
+  if (events.length === 0) return "pending"
+
+  const latest = events[0].description.toLowerCase()
+
+  // Delivered
+  if (
+    latest.includes("delivered") ||
+    latest.includes("entregue") ||
+    latest.includes("signed")
+  ) {
+    return "delivered"
+  }
+
+  // Out for delivery
+  if (
+    latest.includes("out for delivery") ||
+    latest.includes("saiu para entrega") ||
+    latest.includes("em rota de entrega")
+  ) {
+    return "out_for_delivery"
+  }
+
+  // Pick up / ready
+  if (
+    latest.includes("ready for pickup") ||
+    latest.includes("disponivel para retirada") ||
+    latest.includes("aguardando retirada")
+  ) {
+    return "pick_up"
+  }
+
+  // If there are events at all, it's at least in transit
+  if (events.length >= 1) {
+    return "in_transit"
+  }
+
+  return "pending"
+}
+
+/**
  * Parse 17track gettrackinfo response into TrackingResult[]
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -64,14 +108,21 @@ function parseTrackInfoResponse(data: any): TrackingResult[] {
         }))
     )
 
+    let status = mapStatus(latestStatus.status)
+
+    // If 17track says pending but events clearly show otherwise, infer the real status
+    if (status === "pending" && events.length > 0) {
+      status = inferStatusFromEvents(events)
+    }
+
     results.push({
       tracking_number: item.number,
       carrier_code: trackInfo.carrier?.code || "",
       carrier_name: trackInfo.carrier?.name || "",
-      status: mapStatus(latestStatus.status),
-      status_detail: latestStatus.sub_status_descr || "",
-      last_event: latestEvent.description || "",
-      last_event_at: latestEvent.time_iso || null,
+      status,
+      status_detail: latestStatus.sub_status_descr || latestEvent.description || "",
+      last_event: latestEvent.description || (events.length > 0 ? events[0].description : ""),
+      last_event_at: latestEvent.time_iso || (events.length > 0 ? events[0].date : null),
       estimated_delivery: trackInfo.time_metrics?.estimated_delivery_date?.from || null,
       events,
     })
