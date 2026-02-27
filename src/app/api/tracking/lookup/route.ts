@@ -6,6 +6,24 @@ import { logger } from "@/lib/logger"
 
 const log = logger.child("TrackingLookup")
 
+/** CORS headers for public endpoint (called from any store domain) */
+const PUBLIC_CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Max-Age": "86400",
+}
+
+/** OPTIONS - Handle preflight for CORS */
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: PUBLIC_CORS })
+}
+
+/** Helper to return JSON with public CORS headers */
+function respond(data: unknown, status = 200) {
+  return NextResponse.json(data, { status, headers: PUBLIC_CORS })
+}
+
 /**
  * POST - Public lookup for order tracking
  * No auth required - used by public page and widget
@@ -16,10 +34,7 @@ export async function POST(request: NextRequest) {
     const { tracking_number, order_number, email, store_id } = body
 
     if (!tracking_number && !order_number) {
-      return NextResponse.json(
-        { error: "Informe o número de rastreio ou número do pedido" },
-        { status: 400 }
-      )
+      return respond({ error: "Informe o número de rastreio ou número do pedido" }, 400)
     }
 
     const adminClient = createAdminClient()
@@ -125,7 +140,7 @@ export async function POST(request: NextRequest) {
                   .eq("id", code.tracking_order_id)
               }
 
-              return NextResponse.json({
+              return respond({
                 found: true,
                 tracking: {
                   tracking_number: result.tracking_number,
@@ -147,7 +162,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Return cached data
-        return NextResponse.json({
+        return respond({
           found: true,
           tracking: {
             tracking_number: code.tracking_number,
@@ -168,7 +183,7 @@ export async function POST(request: NextRequest) {
       try {
         const results = await trackPackages([tracking_number], seventeenTrackKey)
         if (results.length > 0 && results[0].status !== "pending") {
-          return NextResponse.json({
+          return respond({
             found: true,
             tracking: {
               tracking_number: results[0].tracking_number,
@@ -232,7 +247,7 @@ export async function POST(request: NextRequest) {
       })
 
       if (orders && orders.length > 0) {
-        return NextResponse.json({
+        return respond({
           found: true,
           orders: orders.map((order) => ({
             order_name: order.order_name,
@@ -254,9 +269,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ found: false })
+    return respond({ found: false })
   } catch (error) {
     log.error("Lookup error:", error)
-    return NextResponse.json({ error: "Erro interno" }, { status: 500 })
+    return respond({ error: "Erro interno" }, 500)
   }
 }
