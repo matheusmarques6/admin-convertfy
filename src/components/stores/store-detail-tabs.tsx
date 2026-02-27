@@ -15,6 +15,7 @@ import {
   BookOpen,
   FileText,
   AlertTriangle,
+  Package,
 } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -26,6 +27,7 @@ import { useKlaviyoCampaigns, useKlaviyoFlows } from "@/lib/hooks/use-api-data"
 import { StoreBriefingTab } from "@/components/stores/store-briefing-tab"
 import { StoreFormTab } from "@/components/stores/store-form-tab"
 import { StoreAlertsTab } from "@/components/stores/store-alerts-tab"
+import { StoreTrackingTab } from "@/components/stores/store-tracking-tab"
 import { StorePerformanceKPIs } from "@/components/stores/store-performance-kpis"
 import { StorePerformanceTables } from "@/components/stores/store-performance-tables"
 import { DateRangePicker } from "@/components/ui/date-range-picker"
@@ -188,6 +190,10 @@ export function StoreDetailTabs({
               {activeAlertsCount}
             </span>
           )}
+        </TabsTrigger>
+        <TabsTrigger value="rastreio">
+          <Package className="h-4 w-4 mr-2" />
+          Rastreio
         </TabsTrigger>
         <TabsTrigger value="settings">
           <Settings className="h-4 w-4 mr-2" />
@@ -416,6 +422,11 @@ export function StoreDetailTabs({
       {/* Alerts */}
       <TabsContent value="alerts">
         <StoreAlertsTab storeId={storeId} storeName={storeName} />
+      </TabsContent>
+
+      {/* Rastreio */}
+      <TabsContent value="rastreio">
+        <StoreTrackingTab storeId={storeId} />
       </TabsContent>
 
       {/* Settings */}

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { requireAnyFeature } from "@/lib/api/check-permission"
 
@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
 
     const adminClient = createAdminClient()
 
-    // Get user's org
+    // Get user's org - must belong to an org
     const { data: orgMember } = await adminClient
       .from("org_members")
       .select("org_id")
@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
       .single()
 
     if (!orgMember) {
-      return successResponse(request, [])
+      throw new AppError("Membro da organização não encontrado", 403)
     }
 
     let query = adminClient

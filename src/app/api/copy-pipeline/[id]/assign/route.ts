@@ -2,6 +2,14 @@ import { NextRequest } from "next/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { requireAnyFeature } from "@/lib/api/check-permission"
+import { handleCorsPreFlight } from "@/lib/cors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("CopyPipeline")
+
+export async function OPTIONS(request: NextRequest) {
+  return handleCorsPreFlight(request)
+}
 
 // POST - Assign a team member to design or implementation
 export async function POST(
@@ -26,10 +34,22 @@ export async function POST(
 
     const adminClient = createAdminClient()
 
-    // Verify pipeline exists
+    // Get org member for org isolation check
+    const { data: orgMember } = await adminClient
+      .from("org_members")
+      .select("id, org_id")
+      .eq("profile_id", user.id)
+      .eq("is_active", true)
+      .single()
+
+    if (!orgMember) {
+      throw new AppError("Membro da organização não encontrado", 403)
+    }
+
+    // Verify pipeline exists and belongs to user's org
     const { data: pipeline } = await adminClient
       .from("copy_pipeline")
-      .select("id, status")
+      .select("id, status, org_id")
       .eq("id", id)
       .single()
 
@@ -37,11 +57,16 @@ export async function POST(
       throw new AppError("Pipeline não encontrado", 404)
     }
 
-    // Verify member exists and is active
+    if (pipeline.org_id !== orgMember.org_id) {
+      throw new AppError("Acesso negado", 403)
+    }
+
+    // Verify member exists, is active, AND belongs to the same org
     const { data: member } = await adminClient
       .from("org_members")
       .select("id, display_name, role")
       .eq("id", member_id)
+      .eq("org_id", orgMember.org_id)
       .eq("is_active", true)
       .single()
 
@@ -65,6 +90,13 @@ export async function POST(
     if (error) {
       throw error
     }
+
+    log.info("Pipeline member assigned", {
+      pipeline_id: id,
+      member_id,
+      role,
+      by: orgMember.id,
+    })
 
     return successResponse(request, updated)
   } catch (error) {

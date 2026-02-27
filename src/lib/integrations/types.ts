@@ -208,9 +208,19 @@ export interface ShopifyShop {
   plan_name: string
 }
 
+export interface ShopifyFulfillment {
+  id: number
+  status: string
+  tracking_number: string | null
+  tracking_company: string | null
+  tracking_url: string | null
+  created_at: string
+}
+
 export interface ShopifyOrder {
   id: number
   order_number: number
+  name?: string
   email: string
   created_at: string
   updated_at: string
@@ -222,6 +232,7 @@ export interface ShopifyOrder {
   fulfillment_status: "fulfilled" | "partial" | null
   customer: ShopifyCustomer
   line_items: ShopifyLineItem[]
+  fulfillments?: ShopifyFulfillment[]
 }
 
 export interface ShopifyCustomer {

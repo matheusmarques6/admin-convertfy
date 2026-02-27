@@ -50,6 +50,33 @@ export class ShopifyService {
     return response.json()
   }
 
+  private async requestRaw(
+    endpoint: string,
+    options: RequestInit = {}
+  ): Promise<Response> {
+    const url = endpoint.startsWith("http")
+      ? endpoint
+      : `${this.baseUrl}${endpoint}`
+
+    const response = await fetchWithRetry(url, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Access-Token": this.accessToken,
+        ...options.headers,
+      },
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}))
+      throw new Error(
+        error.errors || `Shopify API error: ${response.status}`
+      )
+    }
+
+    return response
+  }
+
   // Test connection
   async testConnection(): Promise<{ success: boolean; error?: string }> {
     try {
@@ -92,6 +119,77 @@ export class ShopifyService {
     const endpoint = query ? `/orders.json?${query}` : "/orders.json"
 
     const response = await this.request<{ orders: ShopifyOrder[] }>(endpoint)
+    return response.orders
+  }
+
+  // All orders with cursor-based pagination (for sync)
+  async listAllOrders(params?: {
+    status?: "open" | "closed" | "cancelled" | "any"
+    fulfillment_status?: "fulfilled" | "unfulfilled" | "partial"
+    created_at_min?: string
+    created_at_max?: string
+    maxPages?: number
+  }): Promise<ShopifyOrder[]> {
+    const queryParams = new URLSearchParams({ limit: "250" })
+    if (params?.status) queryParams.set("status", params.status)
+    if (params?.fulfillment_status) queryParams.set("fulfillment_status", params.fulfillment_status)
+    if (params?.created_at_min) queryParams.set("created_at_min", params.created_at_min)
+    if (params?.created_at_max) queryParams.set("created_at_max", params.created_at_max)
+
+    const allOrders: ShopifyOrder[] = []
+    const maxPages = params?.maxPages || 20 // Safety limit
+    let nextUrl: string | null = `/orders.json?${queryParams.toString()}`
+    let page = 0
+
+    while (nextUrl && page < maxPages) {
+      const response = await this.requestRaw(nextUrl)
+      const data = await response.json()
+      allOrders.push(...(data.orders || []))
+      page++
+
+      // Parse Link header for next page
+      const linkHeader = response.headers.get("link")
+      nextUrl = this.parseNextPageUrl(linkHeader)
+
+      // Rate limit: 500ms between paginated requests
+      if (nextUrl) {
+        await new Promise((resolve) => setTimeout(resolve, 500))
+      }
+    }
+
+    return allOrders
+  }
+
+  private parseNextPageUrl(linkHeader: string | null): string | null {
+    if (!linkHeader) return null
+
+    const links = linkHeader.split(",")
+    for (const link of links) {
+      const parts = link.split(";")
+      if (parts.length === 2 && parts[1].trim() === 'rel="next"') {
+        const url = parts[0].trim().slice(1, -1) // Remove < >
+        return url
+      }
+    }
+    return null
+  }
+
+  // Orders by customer email (for tracking lookup)
+  async getOrdersByEmail(email: string, limit = 10): Promise<ShopifyOrder[]> {
+    // Shopify REST API doesn't support email filter directly on orders
+    // We search customers first, then get their orders
+    const customers = await this.searchCustomers(`email:${email}`)
+    if (customers.length === 0) return []
+
+    const customer = customers[0]
+    const queryParams = new URLSearchParams({
+      status: "any",
+      limit: limit.toString(),
+    })
+
+    const response = await this.request<{ orders: ShopifyOrder[] }>(
+      `/customers/${customer.id}/orders.json?${queryParams.toString()}`
+    )
     return response.orders
   }
 

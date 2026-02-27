@@ -68,7 +68,8 @@ export function rateLimit(
 export function checkRateLimit(
   request: NextRequest,
   keyPrefix: string,
-  options: RateLimitOptions
+  options: RateLimitOptions,
+  extraHeaders?: Record<string, string>
 ): Response | null {
   const result = rateLimit(request, keyPrefix, options)
   if (!result.allowed) {
@@ -79,6 +80,7 @@ export function checkRateLimit(
         headers: {
           "Content-Type": "application/json",
           "Retry-After": String(Math.ceil((result.resetAt - Date.now()) / 1000)),
+          ...extraHeaders,
         },
       }
     )
@@ -100,4 +102,8 @@ export const RATE_LIMITS = {
   publicForm: { limit: 3, windowSeconds: 3600 },
   /** Public file upload: 10 requests per hour */
   publicUpload: { limit: 10, windowSeconds: 3600 },
+  /** Public tracking by code: 10 requests per minute */
+  trackingByCode: { limit: 10, windowSeconds: 60 },
+  /** Public tracking by email: 6 requests per minute */
+  trackingByEmail: { limit: 6, windowSeconds: 60 },
 } as const

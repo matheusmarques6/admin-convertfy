@@ -58,6 +58,7 @@ interface OrgMember {
 const PIPELINE_COLUMNS = [
   { key: "pending_approval", label: "Aguardando Aprovação", icon: Clock, color: "text-yellow-500" },
   { key: "approved", label: "Aprovado", icon: CheckCircle2, color: "text-green-500" },
+  { key: "generating", label: "Gerando Copy", icon: Sparkles, color: "text-indigo-500" },
   { key: "pending_design", label: "Aguardando Design", icon: Paintbrush, color: "text-blue-500" },
   { key: "in_design", label: "Em Design", icon: Paintbrush, color: "text-blue-600" },
   { key: "pending_implementation", label: "Aguardando Impl.", icon: Rocket, color: "text-purple-500" },
@@ -81,7 +82,8 @@ const STATUS_ADVANCE_FEATURE: Record<string, string[]> = {
 // Next status for each status
 const NEXT_STATUS: Record<string, string> = {
   pending_approval: "approved",
-  approved: "pending_design",
+  approved: "pending_design", // Skip generating (N8N future)
+  generating: "pending_design",
   pending_design: "in_design",
   in_design: "pending_implementation",
   pending_implementation: "implementing",
