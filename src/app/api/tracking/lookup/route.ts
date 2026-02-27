@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
-import { trackPackages } from "@/lib/tracking/seventeen-track"
+import { trackPackages, detectCarrier } from "@/lib/tracking/seventeen-track"
 import { decrypt } from "@/lib/crypto"
 import { logger } from "@/lib/logger"
 
@@ -202,6 +202,24 @@ export async function POST(request: NextRequest) {
       } catch (error) {
         log.error("Error querying 17track:", error)
       }
+
+      // Fallback: detect carrier locally and return pending status
+      const carrier = detectCarrier(tracking_number)
+      return respond({
+        found: true,
+        tracking: {
+          tracking_number,
+          carrier_code: carrier.code,
+          carrier_name: carrier.name,
+          status: "pending",
+          status_detail: "Aguardando informações da transportadora",
+          last_event: "",
+          last_event_at: null,
+          estimated_delivery: null,
+          events: [],
+          order_name: "",
+        },
+      })
     }
 
     // Search by order number

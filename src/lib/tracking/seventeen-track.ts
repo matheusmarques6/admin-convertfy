@@ -39,47 +39,13 @@ function mapStatus(trackStatus: number): string {
 }
 
 /**
- * Real 17track API integration
+ * Parse 17track gettrackinfo response into TrackingResult[]
  */
-async function trackReal(
-  trackingNumbers: string[],
-  apiKey: string
-): Promise<TrackingResult[]> {
-  const body = trackingNumbers.map((num) => ({ number: num }))
-
-  const response = await fetch(`${SEVENTEEN_TRACK_API_BASE}/register`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "17token": apiKey,
-    },
-    body: JSON.stringify(body),
-  })
-
-  if (!response.ok) {
-    log.error("17track register failed", { status: response.status })
-    throw new Error(`17track API error: ${response.status}`)
-  }
-
-  // After registering, fetch track info
-  const trackResponse = await fetch(`${SEVENTEEN_TRACK_API_BASE}/gettrackinfo`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "17token": apiKey,
-    },
-    body: JSON.stringify(body),
-  })
-
-  if (!trackResponse.ok) {
-    log.error("17track gettrackinfo failed", { status: trackResponse.status })
-    throw new Error(`17track API error: ${trackResponse.status}`)
-  }
-
-  const data = await trackResponse.json()
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function parseTrackInfoResponse(data: any): TrackingResult[] {
   const results: TrackingResult[] = []
-
   const accepted = data?.data?.accepted || []
+
   for (const item of accepted) {
     const trackInfo = item.track_info || {}
     const latestStatus = trackInfo.latest_status || {}
@@ -112,6 +78,95 @@ async function trackReal(
   }
 
   return results
+}
+
+/**
+ * Call 17track gettrackinfo API
+ */
+async function callGetTrackInfo(
+  trackingNumbers: string[],
+  apiKey: string
+): Promise<TrackingResult[]> {
+  const body = trackingNumbers.map((num) => ({ number: num }))
+
+  const response = await fetch(`${SEVENTEEN_TRACK_API_BASE}/gettrackinfo`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "17token": apiKey,
+    },
+    body: JSON.stringify(body),
+  })
+
+  if (!response.ok) {
+    log.error("17track gettrackinfo failed", { status: response.status })
+    return []
+  }
+
+  return parseTrackInfoResponse(await response.json())
+}
+
+/**
+ * Call 17track register API
+ */
+async function callRegister(
+  trackingNumbers: string[],
+  apiKey: string
+): Promise<void> {
+  const body = trackingNumbers.map((num) => ({ number: num }))
+
+  const response = await fetch(`${SEVENTEEN_TRACK_API_BASE}/register`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "17token": apiKey,
+    },
+    body: JSON.stringify(body),
+  })
+
+  if (!response.ok) {
+    log.error("17track register failed", { status: response.status })
+  }
+}
+
+/**
+ * Real 17track API integration
+ * Strategy: try gettrackinfo first (already registered numbers),
+ * then register + retry, then fallback to pending with detected carrier.
+ */
+async function trackReal(
+  trackingNumbers: string[],
+  apiKey: string
+): Promise<TrackingResult[]> {
+  // Step 1: Try gettrackinfo first (works for already-registered numbers)
+  let results = await callGetTrackInfo(trackingNumbers, apiKey)
+  if (results.length > 0) return results
+
+  // Step 2: Register numbers with 17track (starts tracking)
+  await callRegister(trackingNumbers, apiKey)
+
+  // Step 3: Wait 3s for 17track to fetch data from carrier
+  await new Promise((resolve) => setTimeout(resolve, 3000))
+
+  // Step 4: Retry gettrackinfo
+  results = await callGetTrackInfo(trackingNumbers, apiKey)
+  if (results.length > 0) return results
+
+  // Step 5: Return pending results with locally detected carrier
+  return trackingNumbers.map((num) => {
+    const carrier = detectCarrier(num)
+    return {
+      tracking_number: num,
+      carrier_code: carrier.code,
+      carrier_name: carrier.name,
+      status: "pending",
+      status_detail: "Aguardando informações da transportadora",
+      last_event: "",
+      last_event_at: null,
+      estimated_delivery: null,
+      events: [],
+    }
+  })
 }
 
 /**
