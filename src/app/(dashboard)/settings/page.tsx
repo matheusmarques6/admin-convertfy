@@ -6,6 +6,9 @@ import {
   Palette,
   Key,
   Users,
+  Tag,
+  Layers,
+  Plug,
   Mail,
 } from "lucide-react"
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -61,10 +64,33 @@ const settingsGroups = [
     title: "Personalização",
     items: [
       {
+        title: "Campos Personalizados",
+        description: "Crie campos extras para clientes e deals",
+        href: "/settings/custom-fields",
+        icon: Layers,
+      },
+      {
+        title: "Tags",
+        description: "Gerencie as tags do sistema",
+        href: "/settings/tags",
+        icon: Tag,
+      },
+      {
         title: "Templates de Email",
         description: "Crie e edite templates de email",
         href: "/settings/email-templates",
         icon: Mail,
+      },
+    ],
+  },
+  {
+    title: "Integrações",
+    items: [
+      {
+        title: "APIs e Integrações",
+        description: "Conecte com Asaas, Meta, Google, Klaviyo e mais",
+        href: "/settings/integrations",
+        icon: Plug,
       },
     ],
   },

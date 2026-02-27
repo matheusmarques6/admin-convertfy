@@ -493,7 +493,13 @@ export function OnboardingKanban() {
   return (
     <>
       {/* Header */}
-      <div className="flex items-center justify-end mb-6">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h2 className="text-2xl font-bold">Onboarding de Clientes</h2>
+          <p className="text-muted-foreground">
+            {onboardings.filter((o) => o.status !== "completed").length} clientes em onboarding
+          </p>
+        </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={fetchOnboardings}>
             <RefreshCw className="h-4 w-4 mr-2" />
