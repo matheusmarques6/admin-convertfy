@@ -3,34 +3,13 @@ import { errorResponse, successResponse, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
 import { encrypt } from "@/lib/crypto"
+import { getPortalUser } from "@/lib/portal/auth"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("PortalStores")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
-}
-
-
-
-
-
-/**
- * Helper: get authenticated portal user with client_id
- */
-async function getPortalUser(supabase: Awaited<ReturnType<typeof createClient>>) {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-
-  const adminClient = createAdminClient()
-  const { data: portalUser } = await adminClient
-    .from("client_portal_users")
-    .select("client_id, permissions")
-    .eq("auth_user_id", user.id)
-    .eq("is_active", true)
-    .single()
-
-  return portalUser
 }
 
 // GET - Get stores list for portal user

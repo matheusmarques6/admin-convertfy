@@ -190,8 +190,8 @@ export default function PortalTrackingPage() {
             <Code2 className="h-5 w-5 text-cyan-600" />
           </div>
           <div className="flex-1 min-w-0">
-            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Script do Widget</h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400">Instalar widget na loja</p>
+            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Script de Rastreamento</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Configurar e instalar na loja</p>
           </div>
           <ArrowRight className="h-4 w-4 text-slate-400 flex-shrink-0" />
         </Link>

@@ -2,27 +2,13 @@ import { NextRequest } from "next/server"
 import { errorResponse, successResponse, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
+import { getPortalUser } from "@/lib/portal/auth"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("PortalTrackingOrders")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
-}
-
-async function getPortalUser(supabase: Awaited<ReturnType<typeof createClient>>) {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-
-  const adminClient = createAdminClient()
-  const { data: portalUser } = await adminClient
-    .from("client_portal_users")
-    .select("client_id, permissions")
-    .eq("auth_user_id", user.id)
-    .eq("is_active", true)
-    .single()
-
-  return portalUser
 }
 
 /**
@@ -59,10 +45,15 @@ export async function GET(request: NextRequest) {
 
     const clientStoreIds = clientStores.map((s) => s.id)
 
+    // If filtering by specific store, narrow down the client store IDs
+    const storeIdsToQuery = storeId && clientStoreIds.includes(storeId)
+      ? [storeId]
+      : clientStoreIds
+
     const { data: trackingStores } = await adminClient
       .from("tracking_stores")
-      .select("id")
-      .in("client_store_id", clientStoreIds)
+      .select("id, client_store_id")
+      .in("client_store_id", storeIdsToQuery)
 
     if (!trackingStores || trackingStores.length === 0) {
       return successResponse(request, { orders: [], total: 0, page, limit })
@@ -93,16 +84,6 @@ export async function GET(request: NextRequest) {
       .in("tracking_store_id", trackingStoreIds)
       .order("order_created_at", { ascending: false })
       .range(offset, offset + limit - 1)
-
-    if (storeId) {
-      // Filter by specific store
-      const storeTrackingIds = trackingStores
-        .filter((_, i) => clientStoreIds[i] === storeId)
-        .map((s) => s.id)
-      if (storeTrackingIds.length > 0) {
-        query = query.in("tracking_store_id", storeTrackingIds)
-      }
-    }
 
     if (search) {
       query = query.or(
