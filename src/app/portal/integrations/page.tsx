@@ -17,6 +17,7 @@ import {
   Truck,
   Globe,
   Save,
+  Zap,
 } from "lucide-react"
 import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -143,6 +144,21 @@ export default function PortalIntegrationsPage() {
   const [carrierKeyInput, setCarrierKeyInput] = useState("")
   const [savingCarrier, setSavingCarrier] = useState(false)
 
+  // Carrier test state
+  const [testingCarrier, setTestingCarrier] = useState<string | null>(null)
+  const [carrierTestResult, setCarrierTestResult] = useState<{
+    success: boolean
+    message: string
+    details?: {
+      tracking_number?: string
+      carrier_detected?: string
+      status?: string
+      events_count?: number
+      last_event?: string
+      response_time_ms?: number
+    }
+  } | null>(null)
+
   const fetchData = useCallback(async () => {
     try {
       let storeId: string | null = null
@@ -218,6 +234,20 @@ export default function PortalIntegrationsPage() {
         setTestResult(data.success
           ? { success: true, message: data.account ? `Conectado: ${data.account}` : "Conexão OK!" }
           : { success: false, message: data.error || "Falha na autenticação" })
+      } else if (dialogType === "tracking") {
+        if (!seventeenTrackKey) {
+          toast({ variant: "destructive", title: "Preencha a API Key do 17track" })
+          return
+        }
+        const res = await fetch("/api/integrations/tracking/test", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ carrier_id: "seventeen_track", api_key: seventeenTrackKey }),
+        })
+        const data = await res.json()
+        setTestResult(data.success
+          ? { success: true, message: data.message || "Conexão OK!" }
+          : { success: false, message: data.message || data.error || "Falha na autenticação" })
       }
     } catch {
       setTestResult({ success: false, message: "Erro ao testar conexão" })
@@ -285,7 +315,40 @@ export default function PortalIntegrationsPage() {
     setActiveCarrier(carrier)
     setCarrierKeyInput("")
     setShowPassword(false)
+    setCarrierTestResult(null)
     setCarrierDialogOpen(true)
+  }
+
+  async function handleTestCarrier(carrierId?: string, apiKey?: string) {
+    const testId = carrierId || activeCarrier?.id
+    if (!testId) return
+
+    setTestingCarrier(testId)
+    setCarrierTestResult(null)
+
+    try {
+      const res = await fetch("/api/integrations/tracking/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          carrier_id: testId,
+          api_key: apiKey || (testId !== "cainiao" ? carrierKeyInput : undefined),
+        }),
+      })
+      const data = await res.json()
+      setCarrierTestResult({
+        success: data.success,
+        message: data.message || data.error || "Resultado desconhecido",
+        details: data.details,
+      })
+    } catch {
+      setCarrierTestResult({
+        success: false,
+        message: "Erro de rede ao testar conex\u00e3o",
+      })
+    } finally {
+      setTestingCarrier(null)
+    }
   }
 
   async function handleSaveCarrierKey() {
@@ -637,24 +700,44 @@ export default function PortalIntegrationsPage() {
                   </div>
                 </div>
 
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => openCarrierDialog(carrier)}
-                  className="w-full text-xs border-slate-200/80 dark:border-slate-700/40 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/[0.06]"
-                >
-                  {carrier.isFree ? (
-                    <>
-                      <Globe className="h-3 w-3 mr-1.5" />
-                      {isConfigured ? "Ativo (Gratuito)" : "Ativar (Gratuito)"}
-                    </>
-                  ) : (
-                    <>
-                      <Key className="h-3 w-3 mr-1.5" />
-                      {isConfigured ? "Editar API Key" : "Configurar API Key"}
-                    </>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openCarrierDialog(carrier)}
+                    className="flex-1 text-xs border-slate-200/80 dark:border-slate-700/40 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/[0.06]"
+                  >
+                    {carrier.isFree ? (
+                      <>
+                        <Globe className="h-3 w-3 mr-1.5" />
+                        {isConfigured ? "Ativo" : "Ativar"}
+                      </>
+                    ) : (
+                      <>
+                        <Key className="h-3 w-3 mr-1.5" />
+                        {isConfigured ? "Editar" : "Config."}
+                      </>
+                    )}
+                  </Button>
+                  {(carrier.isFree || isConfigured) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleTestCarrier(carrier.id)}
+                      disabled={testingCarrier === carrier.id}
+                      className="text-xs border-slate-200/80 dark:border-slate-700/40 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/[0.06]"
+                    >
+                      {testingCarrier === carrier.id ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <Zap className="h-3 w-3" />
+                      )}
+                    </Button>
                   )}
-                </Button>
+                </div>
+                {testingCarrier === carrier.id && (
+                  <p className="text-[10px] text-slate-400 mt-1 text-center">Testando...</p>
+                )}
               </div>
             )
           })}
@@ -749,9 +832,50 @@ export default function PortalIntegrationsPage() {
             )}
           </div>
 
+          {/* Test Result in Dialog */}
+          {carrierTestResult && (
+            <div className={`rounded-lg border p-3 ${carrierTestResult.success
+              ? "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/30"
+              : "bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/30"
+            }`}>
+              <div className={`flex items-center gap-2 text-sm font-medium ${carrierTestResult.success ? "text-emerald-700 dark:text-emerald-400" : "text-red-700 dark:text-red-400"}`}>
+                {carrierTestResult.success ? <CheckCircle2 className="h-4 w-4 flex-shrink-0" /> : <AlertCircle className="h-4 w-4 flex-shrink-0" />}
+                {carrierTestResult.message}
+              </div>
+              {carrierTestResult.details && (
+                <div className="mt-2 space-y-1">
+                  {carrierTestResult.details.carrier_detected && (
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Transportadora: <span className="font-medium text-slate-700 dark:text-slate-300">{carrierTestResult.details.carrier_detected}</span></p>
+                  )}
+                  {carrierTestResult.details.status && (
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Status: <span className="font-medium text-slate-700 dark:text-slate-300">{carrierTestResult.details.status}</span></p>
+                  )}
+                  {carrierTestResult.details.events_count !== undefined && (
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Eventos: <span className="font-medium text-slate-700 dark:text-slate-300">{carrierTestResult.details.events_count}</span></p>
+                  )}
+                  {carrierTestResult.details.last_event && (
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Último evento: <span className="font-medium text-slate-700 dark:text-slate-300">{carrierTestResult.details.last_event}</span></p>
+                  )}
+                  {carrierTestResult.details.response_time_ms !== undefined && (
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Tempo de resposta: <span className="font-medium text-slate-700 dark:text-slate-300">{carrierTestResult.details.response_time_ms}ms</span></p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setCarrierDialogOpen(false)} className="border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
               Cancelar
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => handleTestCarrier()}
+              disabled={testingCarrier !== null || savingCarrier}
+              className="border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]"
+            >
+              {testingCarrier ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Zap className="h-4 w-4 mr-2" />}
+              Testar Conexão
             </Button>
             <Button
               onClick={handleSaveCarrierKey}
@@ -898,17 +1022,15 @@ export default function PortalIntegrationsPage() {
             <Button variant="outline" onClick={() => setDialogOpen(false)} className="border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
               Cancelar
             </Button>
-            {dialogType !== "tracking" && (
-              <Button
-                variant="outline"
-                onClick={handleTestConnection}
-                disabled={testing || saving}
-                className="border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]"
-              >
-                {testing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Key className="h-4 w-4 mr-2" />}
-                Testar Conexão
-              </Button>
-            )}
+            <Button
+              variant="outline"
+              onClick={handleTestConnection}
+              disabled={testing || saving}
+              className="border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]"
+            >
+              {testing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Zap className="h-4 w-4 mr-2" />}
+              Testar Conexão
+            </Button>
             <Button
               onClick={handleSave}
               disabled={saving || testing}
