@@ -97,13 +97,13 @@ export async function trackViaCainiao(trackingNumber: string): Promise<TrackingR
     }
 
     const data = await response.json()
-    const module = data?.module?.[0]
+    const cainiaoModule = data?.module?.[0]
 
-    if (!module || !module.detailList || module.detailList.length === 0) {
+    if (!cainiaoModule || !cainiaoModule.detailList || cainiaoModule.detailList.length === 0) {
       return null
     }
 
-    const events: TrackingEvent[] = module.detailList.map((evt: CainiaoEvent) => ({
+    const events: TrackingEvent[] = cainiaoModule.detailList.map((evt: CainiaoEvent) => ({
       date: evt.time || "",
       description: evt.standerdDesc || evt.desc || "",
       location: [evt.city, evt.country].filter(Boolean).join(", "),
@@ -111,12 +111,12 @@ export async function trackViaCainiao(trackingNumber: string): Promise<TrackingR
     }))
 
     const latestEvent = events[0]
-    const status = inferCainiaoStatus(module.status || module.latestStatus, events)
+    const status = inferCainiaoStatus(cainiaoModule.status || cainiaoModule.latestStatus, events)
 
     return {
       tracking_number: trackingNumber,
-      carrier_code: module.carrierCode || module.cpCode || "",
-      carrier_name: module.carrierName || module.cpName || "Cainiao",
+      carrier_code: cainiaoModule.carrierCode || cainiaoModule.cpCode || "",
+      carrier_name: cainiaoModule.carrierName || cainiaoModule.cpName || "Cainiao",
       status,
       status_detail: latestEvent?.description || "",
       last_event: latestEvent?.description || "",

@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
 
     let trackingStoreId: string | null = null
     let seventeenTrackKey: string | null = null
-    let carrierKeys: Record<string, string | boolean> = { cainiao: true }
+    const carrierKeys: Record<string, string | boolean> = { cainiao: true }
 
     // If store_id provided, use it to find tracking store
     if (store_id) {
