@@ -273,8 +273,8 @@ export async function PUT(request: NextRequest) {
           .insert(trackingData)
 
         if (insertError) {
-          log.error("Error creating tracking store:", insertError)
-          throw new AppError("Erro ao ativar rastreamento", 500)
+          log.error("Error creating tracking store:", insertError, JSON.stringify(insertError))
+          throw new AppError(`Erro ao ativar rastreamento: ${insertError.message}`, 500)
         }
       }
 
