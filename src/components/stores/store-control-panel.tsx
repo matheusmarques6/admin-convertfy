@@ -23,6 +23,7 @@ import {
   Plus,
   Link2,
   Unlink,
+  Trash2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -42,6 +43,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import {
   Select,
   SelectContent,
@@ -165,6 +176,8 @@ export function StoreControlPanel() {
   const [isQuickStoreDialogOpen, setIsQuickStoreDialogOpen] = useState(false)
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false)
   const [isUnlinkDialogOpen, setIsUnlinkDialogOpen] = useState(false)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Form states
@@ -349,6 +362,44 @@ export function StoreControlPanel() {
       })
     } finally {
       setIsSubmitting(false)
+    }
+  }
+
+  // Delete store
+  const handleDeleteStore = async () => {
+    if (!selectedStore) return
+
+    setIsDeleting(true)
+    try {
+      const res = await fetch(`/api/client-stores/${selectedStore.id}`, {
+        method: 'DELETE',
+      })
+      const data = await res.json()
+
+      if (res.ok && data.success) {
+        toast({
+          title: 'Loja excluída!',
+          description: `"${selectedStore.store_name}" foi removida com sucesso`,
+        })
+        setIsDeleteDialogOpen(false)
+        setSelectedStore(null)
+        fetchStores()
+      } else {
+        toast({
+          title: 'Erro ao excluir',
+          description: data.error || 'Não foi possível excluir a loja',
+          variant: 'destructive',
+        })
+      }
+    } catch (error) {
+      console.error('Error deleting store:', error)
+      toast({
+        title: 'Erro de conexão',
+        description: 'Não foi possível excluir a loja',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsDeleting(false)
     }
   }
 
@@ -768,6 +819,17 @@ export function StoreControlPanel() {
                                   Desvincular
                                 </DropdownMenuItem>
                               )}
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setSelectedStore(store)
+                                  setIsDeleteDialogOpen(true)
+                                }}
+                                className="text-destructive focus:text-destructive"
+                              >
+                                <Trash2 className="w-4 h-4 mr-2" />
+                                Excluir Loja
+                              </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </div>
@@ -1096,6 +1158,44 @@ export function StoreControlPanel() {
           onSuccess={fetchStores}
         />
       )}
+
+      {/* Delete Store Confirmation Dialog */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={(open) => {
+        if (!open) {
+          setIsDeleteDialogOpen(false)
+          if (!isDeleting) setSelectedStore(null)
+        }
+      }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir loja</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir a loja <strong>&quot;{selectedStore?.store_name}&quot;</strong>?
+              Esta ação é irreversível e removerá todos os dados associados, incluindo alertas, briefings, dados de onboarding e acessos configurados.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); handleDeleteStore() }}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Excluindo...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Excluir
+                </>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { StoreDetailTabs } from "@/components/stores/store-detail-tabs"
 import { StoreLinkBadge } from "@/components/stores/store-link-badge"
 import { StoreLinkActions } from "@/components/stores/store-link-actions"
+import { StoreDeleteAction } from "@/components/stores/store-delete-action"
 
 export const dynamic = "force-dynamic"
 
@@ -158,13 +159,19 @@ export default async function StoreDetailPage({
             </div>
           </div>
         </div>
-        <StoreLinkActions
-          storeId={store.id}
-          storeName={store.store_name}
-          orgId={store.org_id || ""}
-          clientId={store.client_id}
-          clientName={clientName}
-        />
+        <div className="flex items-center gap-2">
+          <StoreLinkActions
+            storeId={store.id}
+            storeName={store.store_name}
+            orgId={store.org_id || ""}
+            clientId={store.client_id}
+            clientName={clientName}
+          />
+          <StoreDeleteAction
+            storeId={store.id}
+            storeName={store.store_name}
+          />
+        </div>
       </div>
 
       {/* Tabs */}
