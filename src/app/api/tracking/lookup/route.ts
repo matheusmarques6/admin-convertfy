@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
           estimated_delivery,
           tracking_events,
           tracking_order_id,
-          tracking_orders!inner (
+          tracking_orders (
             order_name,
             customer_name,
             shopify_order_number
@@ -182,7 +182,7 @@ export async function POST(request: NextRequest) {
       // Not in our DB - try 17track directly
       try {
         const results = await trackPackages([tracking_number], seventeenTrackKey)
-        if (results.length > 0 && results[0].status !== "pending") {
+        if (results.length > 0) {
           return respond({
             found: true,
             tracking: {
