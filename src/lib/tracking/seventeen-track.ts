@@ -115,48 +115,8 @@ async function trackReal(
 }
 
 /**
- * Mock tracking service for development
- */
-function trackMock(trackingNumbers: string[]): TrackingResult[] {
-  const now = new Date()
-  const yesterday = new Date(now.getTime() - 86400000)
-  const twoDaysAgo = new Date(now.getTime() - 172800000)
-  const threeDaysAgo = new Date(now.getTime() - 259200000)
-
-  return trackingNumbers.map((num) => ({
-    tracking_number: num,
-    carrier_code: "correios",
-    carrier_name: "Correios",
-    status: "in_transit",
-    status_detail: "Objeto em trânsito - por favor aguarde",
-    last_event: "Objeto em trânsito - de Unidade de Tratamento em CURITIBA/PR para Unidade de Distribuição em SÃO PAULO/SP",
-    last_event_at: yesterday.toISOString(),
-    estimated_delivery: new Date(now.getTime() + 172800000).toISOString(),
-    events: [
-      {
-        date: yesterday.toISOString(),
-        description: "Objeto em trânsito - de Unidade de Tratamento em CURITIBA/PR para Unidade de Distribuição em SÃO PAULO/SP",
-        location: "CURITIBA / PR",
-        status: "in_transit",
-      },
-      {
-        date: twoDaysAgo.toISOString(),
-        description: "Objeto postado após o horário limite da unidade",
-        location: "CURITIBA / PR",
-        status: "in_transit",
-      },
-      {
-        date: threeDaysAgo.toISOString(),
-        description: "Objeto postado",
-        location: "CURITIBA / PR",
-        status: "pick_up",
-      },
-    ],
-  }))
-}
-
-/**
- * Main tracking function - uses real API if key is available, mock otherwise
+ * Main tracking function - uses real 17track API
+ * Requires a valid API key (per-store or global env)
  */
 export async function trackPackages(
   trackingNumbers: string[],
@@ -166,17 +126,12 @@ export async function trackPackages(
 
   const key = apiKey || process.env.SEVENTEEN_TRACK_API_KEY
 
-  if (key) {
-    try {
-      return await trackReal(trackingNumbers, key)
-    } catch (error) {
-      log.error("17track real API failed, falling back to mock", { error })
-      return trackMock(trackingNumbers)
-    }
+  if (!key) {
+    log.warn("No 17track API key configured – cannot track packages")
+    return []
   }
 
-  log.info("Using mock tracking service (no SEVENTEEN_TRACK_API_KEY)")
-  return trackMock(trackingNumbers)
+  return await trackReal(trackingNumbers, key)
 }
 
 /**

@@ -120,13 +120,13 @@ const LANGUAGES = [
   { value: "it", label: "Italiano" },
 ]
 
-const PREVIEW_TITLES: Record<string, { title: string; subtitle: string; btn: string }> = {
-  "pt-BR": { title: "Rastreie seu pedido", subtitle: "Insira o código de rastreamento para acompanhar sua entrega", btn: "Rastrear" },
-  en: { title: "Track your order", subtitle: "Enter the tracking code to follow your delivery", btn: "Track" },
-  es: { title: "Rastrea tu pedido", subtitle: "Ingresa el código de seguimiento para rastrear tu envío", btn: "Rastrear" },
-  fr: { title: "Suivez votre commande", subtitle: "Entrez le code de suivi pour suivre votre livraison", btn: "Suivre" },
-  de: { title: "Verfolgen Sie Ihre Bestellung", subtitle: "Geben Sie die Sendungsnummer ein", btn: "Verfolgen" },
-  it: { title: "Traccia il tuo ordine", subtitle: "Inserisci il codice di tracciamento per seguire la tua consegna", btn: "Traccia" },
+const PREVIEW_TITLES: Record<string, { title: string; subtitle: string; btn: string; byOrder: string; byTracking: string; email: string; order: string; tracking: string; or: string }> = {
+  "pt-BR": { title: "Rastreie seu pedido", subtitle: "Acompanhe o status da sua entrega em tempo real", btn: "Rastrear", byOrder: "Buscar por pedido", byTracking: "Buscar por codigo", email: "E-mail", order: "Numero do pedido", tracking: "Codigo de rastreamento", or: "ou" },
+  en: { title: "Track your order", subtitle: "Follow your delivery status in real time", btn: "Track", byOrder: "Search by order", byTracking: "Search by tracking code", email: "Email", order: "Order number", tracking: "Tracking code", or: "or" },
+  es: { title: "Rastrea tu pedido", subtitle: "Sigue el estado de tu envio en tiempo real", btn: "Rastrear", byOrder: "Buscar por pedido", byTracking: "Buscar por codigo", email: "E-mail", order: "Numero del pedido", tracking: "Codigo de seguimiento", or: "o" },
+  fr: { title: "Suivez votre commande", subtitle: "Suivez le statut de votre livraison en temps reel", btn: "Suivre", byOrder: "Rechercher par commande", byTracking: "Rechercher par code", email: "E-mail", order: "Numero de commande", tracking: "Code de suivi", or: "ou" },
+  de: { title: "Verfolgen Sie Ihre Bestellung", subtitle: "Verfolgen Sie den Status Ihrer Lieferung in Echtzeit", btn: "Verfolgen", byOrder: "Nach Bestellung suchen", byTracking: "Nach Sendungsnummer suchen", email: "E-mail", order: "Bestellnummer", tracking: "Sendungsnummer", or: "oder" },
+  it: { title: "Traccia il tuo ordine", subtitle: "Segui lo stato della tua consegna in tempo reale", btn: "Traccia", byOrder: "Cerca per ordine", byTracking: "Cerca per codice", email: "E-mail", order: "Numero ordine", tracking: "Codice di tracciamento", or: "o" },
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────────
@@ -859,40 +859,69 @@ export default function PortalTrackingPage() {
                   </span>
                 </div>
                 <div className="p-6">
-                  <div className="bg-slate-50 dark:bg-[#1A1F2E] rounded-xl border border-slate-200/50 dark:border-slate-700/30 p-8">
-                    <div className="max-w-[400px] mx-auto">
-                      {/* Search icon */}
-                      <div
-                        className="w-14 h-14 rounded-xl mx-auto mb-5 flex items-center justify-center"
-                        style={{ backgroundColor: activeColor + "14" }}
-                      >
-                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke={activeColor} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-                          <circle cx="12" cy="10" r="3" />
-                        </svg>
-                      </div>
-                      {/* Title */}
-                      <h4 className="text-center text-lg font-bold text-slate-800 dark:text-slate-100 mb-1.5">
-                        {preview.title}
-                      </h4>
-                      <p className="text-center text-xs text-slate-400 dark:text-slate-500 mb-6 max-w-[280px] mx-auto">
-                        {preview.subtitle}
-                      </p>
-                      {/* Mock input */}
-                      <div className="flex gap-2.5">
-                        <div className="flex-1 h-12 bg-white dark:bg-[#151922] border border-slate-200 dark:border-slate-600/40 rounded-xl" />
-                        <div
-                          className="h-12 px-5 rounded-xl flex items-center"
-                          style={{ backgroundColor: activeColor }}
-                        >
-                          <span className="text-white text-sm font-semibold">
-                            {preview.btn}
-                          </span>
+                  <div className="bg-slate-50 dark:bg-[#1A1F2E] rounded-xl border border-slate-200/50 dark:border-slate-700/30 p-5">
+                    {/* Title */}
+                    <h4 className="text-center text-base font-bold text-slate-800 dark:text-slate-100 mb-0.5">
+                      {preview.title}
+                    </h4>
+                    <p className="text-center text-[11px] text-slate-400 dark:text-slate-500 mb-5">
+                      {preview.subtitle}
+                    </p>
+                    {/* Two-column cards */}
+                    <div className="grid grid-cols-[1fr_auto_1fr] gap-0 items-stretch">
+                      {/* Left: Search by order */}
+                      <div className="bg-white dark:bg-[#151922] rounded-lg border border-slate-200/80 dark:border-slate-700/40 p-3.5">
+                        <div className="flex items-center gap-2 mb-3">
+                          <div className="w-7 h-7 rounded-md flex items-center justify-center" style={{ backgroundColor: activeColor + "14" }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={activeColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" /><polyline points="22,6 12,13 2,6" />
+                            </svg>
+                          </div>
+                          <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">{preview.byOrder}</span>
+                        </div>
+                        <div className="space-y-2">
+                          <div>
+                            <span className="text-[10px] text-slate-500 dark:text-slate-400 block mb-1">{preview.email}</span>
+                            <div className="h-8 bg-slate-50 dark:bg-[#1A1F2E] border border-slate-200 dark:border-slate-600/40 rounded-lg" />
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-slate-500 dark:text-slate-400 block mb-1">{preview.order}</span>
+                            <div className="h-8 bg-slate-50 dark:bg-[#1A1F2E] border border-slate-200 dark:border-slate-600/40 rounded-lg" />
+                          </div>
+                          <div className="h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: activeColor }}>
+                            <span className="text-white text-[11px] font-semibold">{preview.btn}</span>
+                          </div>
                         </div>
                       </div>
-                      {/* Powered by */}
-                      <p className="text-center text-[10px] text-slate-300 dark:text-slate-600 mt-6">Powered by Convertfy</p>
+                      {/* OR separator */}
+                      <div className="flex items-center justify-center px-3">
+                        <div className="w-7 h-7 rounded-full bg-white dark:bg-[#151922] border border-slate-200 dark:border-slate-600/40 flex items-center justify-center">
+                          <span className="text-[10px] font-semibold text-slate-400">{preview.or}</span>
+                        </div>
+                      </div>
+                      {/* Right: Search by tracking */}
+                      <div className="bg-white dark:bg-[#151922] rounded-lg border border-slate-200/80 dark:border-slate-700/40 p-3.5 flex flex-col">
+                        <div className="flex items-center gap-2 mb-3">
+                          <div className="w-7 h-7 rounded-md flex items-center justify-center" style={{ backgroundColor: activeColor + "14" }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={activeColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <rect x="1" y="3" width="15" height="13" /><polygon points="16 8 20 8 23 11 23 16 16 16 16 8" /><circle cx="5.5" cy="18.5" r="2.5" /><circle cx="18.5" cy="18.5" r="2.5" />
+                            </svg>
+                          </div>
+                          <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">{preview.byTracking}</span>
+                        </div>
+                        <div className="space-y-2 flex-1 flex flex-col">
+                          <div>
+                            <span className="text-[10px] text-slate-500 dark:text-slate-400 block mb-1">{preview.tracking}</span>
+                            <div className="h-8 bg-slate-50 dark:bg-[#1A1F2E] border border-slate-200 dark:border-slate-600/40 rounded-lg" />
+                          </div>
+                          <div className="mt-auto h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: activeColor }}>
+                            <span className="text-white text-[11px] font-semibold">{preview.btn}</span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
+                    {/* Powered by */}
+                    <p className="text-center text-[9px] text-slate-300 dark:text-slate-600 mt-4">Powered by Convertfy</p>
                   </div>
                 </div>
               </div>
