@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
+import { requireStoreAccess } from "@/lib/api/require-store-access"
 import { encrypt, encryptCredentialsJson } from "@/lib/crypto"
 import { logger } from "@/lib/logger"
 
@@ -124,7 +125,7 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const supabase = await createClient()
-    await requireAuth(supabase)
+    const user = await requireAuth(supabase)
 
     const body = await request.json()
     const { store_id, ga4_credentials, ...fields } = body
@@ -132,6 +133,9 @@ export async function PUT(request: NextRequest) {
     if (!store_id) {
       throw new AppError("store_id is required", 400)
     }
+
+    // Validate user has access to this store (multi-tenant isolation)
+    await requireStoreAccess(store_id, user.id)
 
     const updates = processFields(fields)
 

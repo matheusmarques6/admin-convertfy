@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createAdminClient } from "@/lib/supabase/server"
-import { errorResponse } from "@/lib/api/errors"
+import { createClient } from "@/lib/supabase/server"
+import { errorResponse, requireAuth } from "@/lib/api/errors"
+import { requireStoreAccess } from "@/lib/api/require-store-access"
+import { getStoreCredentials } from "@/lib/services/credentials.service"
 import { KLAVIYO_API_URL, KLAVIYO_REVISION } from "@/lib/integrations/klaviyo/client"
 import { findPlacedOrderMetric } from "@/lib/integrations/klaviyo/metrics"
-import { decryptStoreCredentials } from "@/lib/crypto"
 
 /**
  * GET /api/integrations/klaviyo/debug-agg?store_id=XXX
@@ -13,26 +14,22 @@ import { decryptStoreCredentials } from "@/lib/crypto"
  */
 export async function GET(request: NextRequest) {
   try {
+    const supabase = await createClient()
+    const user = await requireAuth(supabase)
+
     const storeId = request.nextUrl.searchParams.get("store_id")
     if (!storeId) {
       return NextResponse.json({ error: "store_id required" }, { status: 400 })
     }
 
-    const adminClient = createAdminClient()
-    const { data: rawStore, error: storeErr } = await adminClient
-      .from("client_stores")
-      .select("id, store_name, klaviyo_api_key, klaviyo_private_key")
-      .eq("id", storeId)
-      .single()
+    // Validate user has access to this store (multi-tenant isolation)
+    const storeAccess = await requireStoreAccess(storeId, user.id)
 
-    if (storeErr || !rawStore) {
-      return NextResponse.json({ error: "Store not found", storeId, dbError: storeErr?.message }, { status: 404 })
-    }
-
-    const store = decryptStoreCredentials(rawStore)
-    const apiKey = store.klaviyo_private_key || store.klaviyo_api_key
+    // Use centralized credentials service (decrypts automatically)
+    const credentials = await getStoreCredentials(storeId, storeAccess.orgId)
+    const apiKey = credentials.klaviyo_private_key || credentials.klaviyo_api_key
     if (!apiKey) {
-      return NextResponse.json({ error: "No API key", storeName: rawStore.store_name }, { status: 400 })
+      return NextResponse.json({ error: "No API key", storeName: storeAccess.storeName }, { status: 400 })
     }
 
     const headers = {

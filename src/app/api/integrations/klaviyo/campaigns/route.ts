@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { requireAuth, errorResponse } from "@/lib/api/errors"
+import { requireStoreAccess } from "@/lib/api/require-store-access"
 import { getStoreCredentials } from "@/lib/services/credentials.service"
 import { logger } from "@/lib/logger"
 
@@ -256,7 +257,7 @@ async function getCampaignMetrics(
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    await requireAuth(supabase)
+    const user = await requireAuth(supabase)
 
     const searchParams = request.nextUrl.searchParams
     const storeId = searchParams.get("store_id")
@@ -269,19 +270,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "store_id é obrigatório" }, { status: 400, headers: corsHeaders(request.headers.get("origin")) })
     }
 
-    // Get store display info using admin client (RLS on client_stores
-    // may block access depending on org membership; auth is already
-    // verified by requireAuth above)
-    const adminClient = createAdminClient()
-    const { data: store, error: storeError } = await adminClient
-      .from("client_stores")
-      .select("store_name")
-      .eq("id", storeId)
-      .single()
-
-    if (storeError || !store) {
-      return NextResponse.json({ error: "Loja não encontrada" }, { status: 404, headers: corsHeaders(request.headers.get("origin")) })
-    }
+    // Validate user has access to this store (multi-tenant isolation)
+    const store = await requireStoreAccess(storeId, user.id)
 
     // Get decrypted credentials via credentials service
     const credentials = await getStoreCredentials(storeId)
@@ -293,7 +283,7 @@ export async function GET(request: NextRequest) {
       }, { headers: corsHeaders(request.headers.get("origin")) })
     }
 
-    log.info("[Klaviyo Campaigns] Starting fetch for store:", store.store_name)
+    log.info("[Klaviyo Campaigns] Starting fetch for store:", store.storeName)
 
     // Get account info for timezone
     const accountInfo = await getAccountInfo(apiKey)
@@ -413,6 +403,7 @@ export async function GET(request: NextRequest) {
 
     // Cache metrics in database
     try {
+      const adminClient = createAdminClient()
       const sentCampaigns = campaignsWithMetrics.filter(c => c.status === 'sent')
       if (sentCampaigns.length > 0) {
         const { error: upsertError } = await adminClient

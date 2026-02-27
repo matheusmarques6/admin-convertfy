@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError, ForbiddenError } from "@/lib/api/errors"
+import { requireStoreAccess } from "@/lib/api/require-store-access"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("ClientStoreDelete")
@@ -19,18 +20,10 @@ export async function DELETE(
       throw new AppError("store_id é obrigatório", 400)
     }
 
+    // Validate user has access to this store (multi-tenant isolation)
+    const store = await requireStoreAccess(storeId, user.id)
+
     const adminClient = createAdminClient()
-
-    // Verify store exists
-    const { data: store, error: storeError } = await adminClient
-      .from("client_stores")
-      .select("id, store_name, client_id, org_id")
-      .eq("id", storeId)
-      .single()
-
-    if (storeError || !store) {
-      throw new AppError("Loja não encontrada", 404)
-    }
 
     // Authorization: must be admin OR have can_edit access on this store
     const { data: profile } = await supabase
@@ -76,14 +69,14 @@ export async function DELETE(
 
     log.info("Store deleted", {
       store_id: storeId,
-      store_name: store.store_name,
-      client_id: store.client_id,
+      store_name: store.storeName,
+      client_id: store.clientId,
       deleted_by: user.id,
     })
 
     return successResponse(request, {
       success: true,
-      message: `Loja "${store.store_name}" excluída com sucesso`,
+      message: `Loja "${store.storeName}" excluída com sucesso`,
     })
   } catch (error) {
     return errorResponse(request, error, "ClientStoreDelete")

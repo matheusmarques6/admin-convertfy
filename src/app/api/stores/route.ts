@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { errorResponse, AppError } from "@/lib/api/errors"
+import { resolveOrgId } from "@/lib/api/resolve-org"
 import { createClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
@@ -25,6 +26,9 @@ export async function GET(request: NextRequest) {
       throw new AppError("Não autorizado", 401)
     }
 
+    // Defense-in-depth: filter by org_id (RLS already protects, but explicit is safer)
+    const orgId = await resolveOrgId(user.id)
+
     const searchParams = request.nextUrl.searchParams
     const clientId = searchParams.get("client_id")
     const activeOnly = searchParams.get("active") === "true"
@@ -48,6 +52,7 @@ export async function GET(request: NextRequest) {
         shopify_store_domain,
         client:clients(id, name, company, email)
       `)
+      .eq("org_id", orgId)
       .order("store_name")
 
     if (clientId) {

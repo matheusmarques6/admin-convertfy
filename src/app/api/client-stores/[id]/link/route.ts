@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError, ForbiddenError } from "@/lib/api/errors"
+import { requireStoreAccess } from "@/lib/api/require-store-access"
 import { storeLinkSchema } from "@/lib/schemas/store.schemas"
 import { logActivity } from "@/lib/events/publisher"
 import { logger } from "@/lib/logger"
@@ -21,9 +22,12 @@ export async function PATCH(
     const body = await request.json()
     const { client_id: newClientId } = storeLinkSchema.parse(body)
 
+    // Validate user has access to this store (multi-tenant isolation)
+    const storeAccess = await requireStoreAccess(storeId, user.id)
+
     const adminClient = createAdminClient()
 
-    // Fetch current store data (before update)
+    // Fetch current store data (before update) for previous_client_id
     const { data: store, error: storeError } = await adminClient
       .from("client_stores")
       .select("id, store_name, client_id, org_id")

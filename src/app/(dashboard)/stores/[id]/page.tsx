@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
-import { createAdminClient } from "@/lib/supabase/server"
+import { createAdminClient, createClient } from "@/lib/supabase/server"
+import { resolveOrgId } from "@/lib/api/resolve-org"
 import { getStoreIntegrationStatus } from "@/lib/services/credentials.service"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -105,10 +106,21 @@ export default async function StoreDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const store = await getStore(id)
 
-  if (!store) {
-    notFound()
+  // Validate user has access to this store's org
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) notFound()
+
+  const store = await getStore(id)
+  if (!store) notFound()
+
+  // Multi-tenant isolation: verify store belongs to user's org
+  if (store.org_id) {
+    const userOrgId = await resolveOrgId(user.id)
+    if (store.org_id !== userOrgId) {
+      notFound()
+    }
   }
 
   const integrationStatus = store.integrationStatus

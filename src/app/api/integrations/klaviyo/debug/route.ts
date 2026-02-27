@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
+import { requireStoreAccess } from "@/lib/api/require-store-access"
 import { corsHeaders } from "@/lib/cors"
 import { getStoreCredentials } from "@/lib/services/credentials.service"
 import { KLAVIYO_API_URL, KLAVIYO_REVISION } from "@/lib/integrations/klaviyo/client"
@@ -15,12 +16,15 @@ import { KLAVIYO_API_URL, KLAVIYO_REVISION } from "@/lib/integrations/klaviyo/cl
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    await requireAuth(supabase)
+    const user = await requireAuth(supabase)
 
     const storeId = request.nextUrl.searchParams.get("store_id")
     if (!storeId) {
       throw new AppError("store_id é obrigatório", 400)
     }
+
+    // Validate user has access to this store (multi-tenant isolation)
+    await requireStoreAccess(storeId, user.id)
 
     const creds = await getStoreCredentials(storeId)
     const apiKey = creds.klaviyo_private_key || creds.klaviyo_api_key

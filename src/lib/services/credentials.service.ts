@@ -65,15 +65,23 @@ export interface IntegrationStatus {
 /**
  * Get decrypted credentials for a store.
  * Uses admin client to bypass RLS.
+ *
+ * @param storeId - The store UUID
+ * @param orgId - Optional org_id to validate store belongs to this org (defense-in-depth)
  */
-export async function getStoreCredentials(storeId: string): Promise<StoreCredentials & { store_name: string; client_id: string | null }> {
+export async function getStoreCredentials(storeId: string, orgId?: string): Promise<StoreCredentials & { store_name: string; client_id: string | null }> {
   const adminClient = createAdminClient()
 
-  const { data: store, error } = await adminClient
+  let query = adminClient
     .from("client_stores")
     .select("*")
     .eq("id", storeId)
-    .single()
+
+  if (orgId) {
+    query = query.eq("org_id", orgId)
+  }
+
+  const { data: store, error } = await query.single()
 
   if (error || !store) {
     log.error("Store not found", { storeId, error })

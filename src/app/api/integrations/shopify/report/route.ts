@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
+import { requireStoreAccess } from "@/lib/api/require-store-access"
 import { createClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
 import { getCache, setCache } from "@/lib/cache"
@@ -13,7 +14,7 @@ export async function OPTIONS(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    await requireAuth(supabase)
+    const user = await requireAuth(supabase)
 
     const searchParams = request.nextUrl.searchParams
     const storeId = searchParams.get("store_id")
@@ -24,6 +25,9 @@ export async function GET(request: NextRequest) {
     if (!storeId) {
       throw new AppError("store_id é obrigatório", 400)
     }
+
+    // Validate user has access to this store (multi-tenant isolation)
+    await requireStoreAccess(storeId, user.id)
 
     // Check cache first (skip if force_refresh)
     const forceRefresh = searchParams.get("force_refresh") === "true"

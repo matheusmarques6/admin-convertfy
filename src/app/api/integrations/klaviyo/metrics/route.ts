@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
+import { requireStoreAccess } from "@/lib/api/require-store-access"
 import { getStoreCredentials } from "@/lib/services/credentials.service"
 import { klaviyoRequest } from "@/lib/integrations/klaviyo"
 import { handleCorsPreFlight } from "@/lib/cors"
@@ -66,7 +67,7 @@ interface KlaviyoCampaignResponse {
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    await requireAuth(supabase)
+    const user = await requireAuth(supabase)
 
     const searchParams = request.nextUrl.searchParams
     const storeId = searchParams.get("store_id")
@@ -74,6 +75,9 @@ export async function GET(request: NextRequest) {
     if (!storeId) {
       throw new AppError("store_id é obrigatório", 400)
     }
+
+    // Validate user has access to this store (multi-tenant isolation)
+    await requireStoreAccess(storeId, user.id)
 
     const storeData = await getStoreCredentials(storeId)
     const apiKey = storeData.klaviyo_private_key || storeData.klaviyo_api_key

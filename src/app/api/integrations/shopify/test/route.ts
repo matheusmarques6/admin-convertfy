@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
+import { createClient } from "@/lib/supabase/server"
+import { requireAuth } from "@/lib/api/errors"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
 
@@ -34,6 +36,9 @@ function normalizeShopifyDomain(domain: string): string {
 
 export async function POST(request: NextRequest) {
   try {
+    const supabase = await createClient()
+    await requireAuth(supabase)
+
     const body = await request.json()
     const { store_domain, access_token } = body
 

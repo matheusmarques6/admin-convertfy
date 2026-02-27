@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { resolveOrgId } from "@/lib/api/resolve-org"
 import { logger } from "@/lib/logger"
 import { getKlaviyoRevenueForStore } from "@/lib/integrations/klaviyo/report-summary"
 import { getShopifyReportForStore } from "@/lib/integrations/shopify/report"
@@ -56,12 +57,20 @@ interface StoreWithResults {
 export async function GET(request: Request) {
   try {
     const supabase = await createClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json({ success: false, error: 'Não autorizado' }, { status: 401 })
+    }
+
+    // Defense-in-depth: filter by org_id
+    const orgId = await resolveOrgId(user.id)
+
     const { searchParams } = new URL(request.url)
     const activeOnly = searchParams.get('active_only') !== 'false'
     const skipCache = searchParams.get('fresh') === 'true'
 
-    // Check cache (10 min TTL)
-    const cacheKey = `stores-control:${activeOnly}`
+    // Check cache (10 min TTL) - scoped by org
+    const cacheKey = `stores-control:${orgId}:${activeOnly}`
     const cached = storesCache.get(cacheKey)
     if (!skipCache && cached && (Date.now() - cached.timestamp) < CACHE_TTL) {
       return NextResponse.json({ success: true, ...cached.data })
@@ -95,6 +104,7 @@ export async function GET(request: Request) {
           name
         )
       `)
+      .eq('org_id', orgId)
       .order('store_name')
 
     if (activeOnly) {

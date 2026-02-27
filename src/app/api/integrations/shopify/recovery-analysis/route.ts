@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
+import { requireStoreAccess } from "@/lib/api/require-store-access"
 import { createClient } from "@/lib/supabase/server"
 import { getStoreCredentials } from "@/lib/services/credentials.service"
 import {
@@ -19,7 +20,7 @@ interface RecoveryRequest {
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
-    await requireAuth(supabase)
+    const user = await requireAuth(supabase)
 
     const body = (await request.json()) as RecoveryRequest
 
@@ -29,6 +30,9 @@ export async function POST(request: NextRequest) {
     if (!body.date_range?.start || !body.date_range?.end) {
       throw new AppError("date_range (start/end) é obrigatório", 400)
     }
+
+    // Validate user has access to this store (multi-tenant isolation)
+    await requireStoreAccess(body.store_id, user.id)
 
     const discountCodes = (body.discount_codes || []).map((c) => c.toUpperCase().trim())
     const utmSources = (body.utm_sources || []).map((s) => s.toLowerCase().trim())
