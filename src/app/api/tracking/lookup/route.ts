@@ -137,7 +137,7 @@ export async function POST(request: NextRequest) {
                   last_event_at: result.last_event_at,
                   estimated_delivery: result.estimated_delivery,
                   events: result.events,
-                  order_name: (code.tracking_orders as Record<string, string>)?.order_name || "",
+                  order_name: (code.tracking_orders as unknown as { order_name: string })?.order_name || "",
                 },
               })
             }
@@ -159,7 +159,7 @@ export async function POST(request: NextRequest) {
             last_event_at: code.last_event_at,
             estimated_delivery: code.estimated_delivery,
             events: code.tracking_events || [],
-            order_name: (code.tracking_orders as Record<string, string>)?.order_name || "",
+            order_name: (code.tracking_orders as unknown as { order_name: string })?.order_name || "",
           },
         })
       }
