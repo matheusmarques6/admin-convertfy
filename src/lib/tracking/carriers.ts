@@ -121,7 +121,7 @@ export async function trackViaCainiao(trackingNumber: string): Promise<TrackingR
       status_detail: latestEvent?.description || "",
       last_event: latestEvent?.description || "",
       last_event_at: latestEvent?.date || null,
-      estimated_delivery: module.daysRemainingTip || null,
+      estimated_delivery: cainiaoModule.daysRemainingTip || null,
       events,
     }
   } catch (error) {
