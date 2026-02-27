@@ -342,24 +342,37 @@ function getWidgetScript(storeId: string): string {
     if(legacy.storeId&&!STORE_ID)STORE_ID=legacy.storeId;
   }
 
+  function applyConfig(c){
+    if(c.primary_color)cfg.primary_color=c.primary_color;
+    if(c.accent_color)cfg.accent_color=c.accent_color;
+    if(c.icon_color)cfg.icon_color=c.icon_color;
+    if(c.language)cfg.language=c.language;
+    if(c.plugin_type)cfg.plugin_type=c.plugin_type;
+    if(c.not_found_message)cfg.not_found_message=c.not_found_message;
+    if(c.hide_carrier!==undefined)cfg.hide_carrier=c.hide_carrier;
+    if(c.hide_redirect!==undefined)cfg.hide_redirect=c.hide_redirect;
+    if(c.show_estimated_delivery!==undefined)cfg.show_estimated_delivery=c.show_estimated_delivery;
+    if(c.show_carrier_logo!==undefined)cfg.show_carrier_logo=c.show_carrier_logo;
+    if(c.blocked_words!==undefined)cfg.blocked_words=c.blocked_words;
+  }
+
+  // Allow live config updates from parent (portal preview via postMessage)
+  window.__convertfy_rerender=function(newCfg){
+    if(newCfg)applyConfig(newCfg);
+    init();
+  };
+  window.addEventListener("message",function(e){
+    if(e.data&&e.data.type==="convertfy:config"){
+      applyConfig(e.data.config);
+      init();
+    }
+  });
+
   // Load remote config, then init
   fetch(CONFIG_URL)
     .then(function(r){return r.json()})
     .then(function(data){
-      if(data.config){
-        var c=data.config;
-        if(c.primary_color)cfg.primary_color=c.primary_color;
-        if(c.accent_color)cfg.accent_color=c.accent_color;
-        if(c.icon_color)cfg.icon_color=c.icon_color;
-        if(c.language)cfg.language=c.language;
-        if(c.plugin_type)cfg.plugin_type=c.plugin_type;
-        if(c.not_found_message)cfg.not_found_message=c.not_found_message;
-        if(c.hide_carrier!==undefined)cfg.hide_carrier=c.hide_carrier;
-        if(c.hide_redirect!==undefined)cfg.hide_redirect=c.hide_redirect;
-        if(c.show_estimated_delivery!==undefined)cfg.show_estimated_delivery=c.show_estimated_delivery;
-        if(c.show_carrier_logo!==undefined)cfg.show_carrier_logo=c.show_carrier_logo;
-        if(c.blocked_words)cfg.blocked_words=c.blocked_words;
-      }
+      if(data.config)applyConfig(data.config);
       if(data.store_name)cfg.store_name=data.store_name;
       init();
     })

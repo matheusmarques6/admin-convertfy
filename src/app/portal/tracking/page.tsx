@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import Link from "next/link"
 import {
   Package,
@@ -22,16 +22,6 @@ import {
   Loader2,
   ExternalLink,
   Globe,
-  ShieldCheck,
-  Box,
-  MapPin,
-  ClipboardCheck,
-  Plane,
-  Home,
-  Calendar,
-  Mail,
-  Hash,
-  Sparkles,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -50,8 +40,6 @@ import { AnimatedContainer, AnimatedItem } from "@/components/ui/animated-contai
 import { TRACKING_STATUS_LABELS } from "@/types/tracking"
 import type { TrackingStatus } from "@/types/tracking"
 import {
-  getTrackingTranslations,
-  getTimelineStepLabel,
   SUPPORTED_LANGUAGES,
 } from "@/lib/translations/tracking"
 
@@ -144,25 +132,6 @@ const DEFAULT_CONFIG: PluginConfig = {
   language: "pt-BR",
 }
 
-const TIMELINE_STEP_KEYS_COMPLETE = [
-  { key: "order_placed", icon: ClipboardCheck },
-  { key: "confirmed", icon: CheckCircle2 },
-  { key: "preparing", icon: Box },
-  { key: "shipped", icon: Package },
-  { key: "in_transit", icon: Truck },
-  { key: "customs", icon: ShieldCheck },
-  { key: "local_transit", icon: MapPin },
-  { key: "out_for_delivery", icon: Plane },
-  { key: "delivered", icon: Home },
-]
-
-const TIMELINE_STEP_KEYS_BASIC = [
-  { key: "order_placed", icon: ClipboardCheck },
-  { key: "shipped", icon: Package },
-  { key: "in_transit", icon: Truck },
-  { key: "out_for_delivery", icon: Plane },
-  { key: "delivered", icon: Home },
-]
 
 // =================== Helpers ===================
 
@@ -177,6 +146,61 @@ function formatCurrency(value: number | null, currency = "BRL") {
 }
 
 type TabKey = "dashboard" | "plugin" | "embed"
+
+// =================== Widget Preview Iframe ===================
+
+function WidgetPreviewIframe({ storeId, config }: { storeId: string | null; config: PluginConfig }) {
+  const iframeRef = useRef<HTMLIFrameElement>(null)
+  const readyRef = useRef(false)
+
+  const embedUrl = storeId
+    ? `/tracking/embed?store=${encodeURIComponent(storeId)}`
+    : null
+
+  // Send config to iframe whenever config changes
+  useEffect(() => {
+    function sendConfig() {
+      if (iframeRef.current?.contentWindow && readyRef.current) {
+        iframeRef.current.contentWindow.postMessage(
+          { type: "convertfy:config", config },
+          "*"
+        )
+      }
+    }
+
+    function onMessage(e: MessageEvent) {
+      if (e.data?.type === "convertfy:ready") {
+        readyRef.current = true
+        sendConfig()
+      }
+    }
+
+    window.addEventListener("message", onMessage)
+    sendConfig()
+
+    return () => window.removeEventListener("message", onMessage)
+  }, [config])
+
+  if (!embedUrl) {
+    return (
+      <div className="flex items-center justify-center h-[400px] text-sm text-slate-400">
+        Selecione uma loja para visualizar o preview
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-xl border border-slate-200 dark:border-slate-700/40 overflow-hidden bg-white">
+      <iframe
+        ref={iframeRef}
+        src={embedUrl}
+        className="w-full border-0"
+        style={{ height: 600, minHeight: 400 }}
+        title="Widget Preview"
+      />
+    </div>
+  )
+}
 
 // =================== Component ===================
 
@@ -196,9 +220,6 @@ export default function PortalTrackingDashboard() {
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null)
   const [savingConfig, setSavingConfig] = useState(false)
   const [configSaved, setConfigSaved] = useState(false)
-
-  // Translation for preview/script only
-  const pt = getTrackingTranslations(config.language)
 
   // =================== Data Fetching ===================
 
@@ -340,16 +361,6 @@ export default function PortalTrackingDashboard() {
     { key: "dashboard" as TabKey, label: "Dashboard", icon: BarChart3 },
     { key: "plugin" as TabKey, label: "Plugin de Rastreamento", icon: Settings2 },
     { key: "embed" as TabKey, label: "Instalação", icon: Code2 },
-  ]
-
-  const timelineStepKeys = config.plugin_type === "basic" ? TIMELINE_STEP_KEYS_BASIC : TIMELINE_STEP_KEYS_COMPLETE
-  const previewActiveStep = config.plugin_type === "basic" ? 2 : 4
-
-  // Preview mock events (translated)
-  const previewEvents = [
-    { status: "in_transit", desc: pt.inTransitToDestination, location: "São Paulo, SP", date: "26 Fev 2026, 14:30", isCurrent: true },
-    { status: "shipped", desc: pt.stepShipped, location: "Curitiba, PR", date: "24 Fev 2026, 09:15", isCurrent: false },
-    { status: "confirmed", desc: pt.stepConfirmed, location: "", date: "23 Fev 2026, 18:00", isCurrent: false },
   ]
 
   return (
@@ -640,7 +651,7 @@ export default function PortalTrackingDashboard() {
                 </div>
               </div>
 
-              {/* =================== LIVE PREVIEW - iumy style =================== */}
+              {/* =================== LIVE PREVIEW (real widget via iframe) =================== */}
               <div className="lg:col-span-3">
                 <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm overflow-hidden sticky top-6">
                   <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-700/30 flex items-center justify-between">
@@ -649,7 +660,7 @@ export default function PortalTrackingDashboard() {
                         <Eye className="h-4 w-4 text-primary" />
                         Preview ao Vivo
                       </h3>
-                      <p className="text-[11px] text-slate-400 mt-0.5">Assim seus clientes verão o rastreamento</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">Exatamente como seus clientes verão</p>
                     </div>
                     <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 rounded-full px-2.5 py-1">
                       <Globe className="h-3 w-3 text-slate-400" />
@@ -657,184 +668,8 @@ export default function PortalTrackingDashboard() {
                     </div>
                   </div>
 
-                  <div className="p-5">
-                    <div className="bg-slate-50 dark:bg-[#0d1117] rounded-2xl border border-slate-200 dark:border-slate-700/40 overflow-hidden shadow-inner">
-                      {/* === Header Banner with gradient === */}
-                      <div className="relative overflow-hidden" style={{ background: `linear-gradient(135deg, ${config.primary_color}, ${config.accent_color})` }}>
-                        <div className="absolute inset-0 opacity-10" style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.4'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E\")" }} />
-                        <div className="relative px-6 py-8 text-center">
-                          <div className="w-14 h-14 rounded-2xl mx-auto mb-3 flex items-center justify-center bg-white/20 backdrop-blur-sm shadow-lg">
-                            <Package className="h-7 w-7 text-white" style={{ filter: `drop-shadow(0 0 4px ${config.icon_color}60)` }} />
-                          </div>
-                          <h4 className="text-lg font-bold text-white">
-                            {pt.trackYourOrder}
-                          </h4>
-                          <p className="text-xs text-white/70 mt-1">
-                            {pt.enterTrackingNumber}
-                          </p>
-                          {/* Search Tabs */}
-                          <div className="flex items-center justify-center gap-4 mt-4 mb-3">
-                            {[
-                              { icon: Hash, label: pt.tableTracking || "Rastreio" },
-                              { icon: Mail, label: "Email" },
-                            ].map((tab, idx) => (
-                              <button key={idx} className={`flex items-center gap-1.5 text-[11px] font-medium pb-1 border-b-2 transition-all ${idx === 0 ? "text-white border-white" : "text-white/50 border-transparent"}`}>
-                                <tab.icon className="h-3 w-3" />
-                                {tab.label}
-                              </button>
-                            ))}
-                          </div>
-                          <div className="flex gap-2 max-w-md mx-auto">
-                            <div className="relative flex-1">
-                              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                              <Input
-                                placeholder={pt.examplePlaceholder}
-                                className="h-12 pl-10 bg-white dark:bg-[#151922] border-0 shadow-lg text-sm rounded-xl"
-                                disabled
-                              />
-                            </div>
-                            <Button className="h-12 px-6 text-white shadow-lg rounded-xl font-semibold" style={{ backgroundColor: config.accent_color }} disabled>
-                              <Search className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* === Order Result Card === */}
-                      <div className="p-5 space-y-4">
-                        {/* Order Info Card */}
-                        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200 dark:border-slate-700/40 shadow-sm overflow-hidden">
-                          {/* Order Header */}
-                          <div className="px-5 py-4 flex items-center justify-between" style={{ borderBottom: `2px solid ${config.primary_color}15` }}>
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${config.icon_color}15` }}>
-                                <Package className="h-5 w-5" style={{ color: config.icon_color }} />
-                              </div>
-                              <div>
-                                <p className="text-sm font-bold text-slate-800 dark:text-slate-100">{pt.tableOrder || "Pedido"} #1234</p>
-                                {!config.hide_carrier && (
-                                  <p className="text-[11px] text-slate-400 flex items-center gap-1">
-                                    <Truck className="h-3 w-3" /> Correios - BR123456789BR
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold text-white shadow-sm" style={{ backgroundColor: config.accent_color }}>
-                                <Truck className="h-3 w-3" />
-                                {pt.statusInTransit || "Em Trânsito"}
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* Delivery Info */}
-                          {config.show_estimated_delivery && (
-                            <div className="px-5 py-3 bg-slate-50/50 dark:bg-slate-800/30 flex items-center justify-between">
-                              <div className="flex items-center gap-2 text-slate-500">
-                                <Calendar className="h-3.5 w-3.5" />
-                                <span className="text-[11px]">{pt.forecast || "Previsão"}: <strong className="text-slate-700 dark:text-slate-200">28 Fev 2026</strong></span>
-                              </div>
-                              <div className="flex items-center gap-2 text-slate-500">
-                                <MapPin className="h-3.5 w-3.5" />
-                                <span className="text-[11px]">São Paulo, SP</span>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Horizontal Progress Timeline */}
-                          <div className="px-5 py-5">
-                            <div className="relative">
-                              {/* Background track */}
-                              <div className="absolute top-[14px] left-[14px] right-[14px] h-[3px] bg-slate-200 dark:bg-slate-700 rounded-full" />
-                              {/* Active track */}
-                              <div
-                                className="absolute top-[14px] left-[14px] h-[3px] rounded-full transition-all duration-700 ease-out"
-                                style={{
-                                  backgroundColor: config.primary_color,
-                                  width: `calc(${(previewActiveStep / (timelineStepKeys.length - 1)) * 100}% - 28px)`,
-                                }}
-                              />
-
-                              <div className="relative flex justify-between">
-                                {timelineStepKeys.map((step, i) => {
-                                  const isActive = i <= previewActiveStep
-                                  const isCurrent = i === previewActiveStep
-                                  const StepIcon = step.icon
-                                  return (
-                                    <div key={step.key} className="flex flex-col items-center z-10" style={{ width: `${100 / timelineStepKeys.length}%` }}>
-                                      <div
-                                        className="w-[30px] h-[30px] rounded-full flex items-center justify-center transition-all duration-300"
-                                        style={{
-                                          backgroundColor: isActive ? config.primary_color : "#e2e8f0",
-                                          color: isActive ? "white" : "#94a3b8",
-                                          boxShadow: isCurrent ? `0 0 0 4px ${config.primary_color}30` : "none",
-                                          transform: isCurrent ? "scale(1.1)" : "scale(1)",
-                                        }}
-                                      >
-                                        <StepIcon className="h-3.5 w-3.5" />
-                                      </div>
-                                      <p className={`text-[8px] mt-1.5 text-center font-medium leading-tight max-w-[60px] ${
-                                        isCurrent ? "font-bold" : isActive ? "text-slate-600 dark:text-slate-300" : "text-slate-400"
-                                      }`} style={isCurrent ? { color: config.primary_color } : undefined}>
-                                        {getTimelineStepLabel(step.key, config.language)}
-                                      </p>
-                                    </div>
-                                  )
-                                })}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Vertical Events Timeline */}
-                        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200 dark:border-slate-700/40 shadow-sm px-5 py-4">
-                          <h5 className="text-[12px] font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wider mb-4">{pt.recentOrders ? "Histórico" : "Histórico"}</h5>
-                          <div className="space-y-0">
-                            {previewEvents.map((evt, i) => (
-                              <div key={i} className="flex gap-3">
-                                {/* Dot + line */}
-                                <div className="flex flex-col items-center">
-                                  <div
-                                    className="w-3 h-3 rounded-full flex-shrink-0"
-                                    style={{
-                                      backgroundColor: evt.isCurrent ? config.accent_color : "#cbd5e1",
-                                      boxShadow: evt.isCurrent ? `0 0 0 4px ${config.accent_color}25` : "none",
-                                    }}
-                                  />
-                                  {i < previewEvents.length - 1 && (
-                                    <div className="w-[2px] flex-1 min-h-[32px] bg-slate-200 dark:bg-slate-700 my-1" />
-                                  )}
-                                </div>
-                                {/* Content */}
-                                <div className="pb-4 -mt-0.5 flex-1">
-                                  <p className={`text-[12px] font-medium ${evt.isCurrent ? "text-slate-800 dark:text-slate-100" : "text-slate-500 dark:text-slate-400"}`}>
-                                    {evt.desc}
-                                  </p>
-                                  <p className="text-[10px] text-slate-400 mt-0.5">
-                                    {evt.location && <span>{evt.location} &middot; </span>}
-                                    {evt.date}
-                                  </p>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Carrier + Powered by */}
-                        <div className="flex items-center justify-between px-1">
-                          {!config.hide_redirect && (
-                            <a className="text-[10px] font-medium flex items-center gap-1" style={{ color: config.accent_color }}>
-                              <ExternalLink className="h-3 w-3" />
-                              {pt.viewAtCarrier || "Ver no site da transportadora"}
-                            </a>
-                          )}
-                          <p className="text-[9px] text-slate-400 flex items-center gap-1 ml-auto">
-                            <Sparkles className="h-3 w-3" />
-                            Powered by Convertfy + 17track
-                          </p>
-                        </div>
-                      </div>
-                    </div>
+                  <div className="p-4">
+                    <WidgetPreviewIframe storeId={selectedStoreId} config={config} />
                   </div>
                 </div>
               </div>

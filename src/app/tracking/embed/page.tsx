@@ -8,7 +8,6 @@ const DOMAIN = process.env.NEXT_PUBLIC_TRACKING_DOMAIN || process.env.NEXT_PUBLI
 function EmbedWidget() {
   const params = useSearchParams()
   const store = params.get("store") || ""
-  const containerRef = useRef<HTMLDivElement>(null)
   const loaded = useRef(false)
 
   useEffect(() => {
@@ -20,16 +19,18 @@ function EmbedWidget() {
     script.async = true
     document.body.appendChild(script)
 
+    // Notify parent when widget is ready
+    script.onload = () => {
+      window.parent?.postMessage({ type: "convertfy:ready" }, "*")
+    }
+
     return () => {
       script.remove()
     }
   }, [store])
 
   return (
-    <div
-      ref={containerRef}
-      style={{ minHeight: "100vh", background: "transparent", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}
-    >
+    <div style={{ minHeight: "100vh", background: "transparent", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
       <div id="convertfy-tracking" />
     </div>
   )
