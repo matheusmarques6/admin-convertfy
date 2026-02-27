@@ -100,6 +100,8 @@ export default function PortalLayout({
     logo_url: null,
     primary_color: "#3b82f6",
   })
+  const [trackingExpanded, setTrackingExpanded] = useState(pathname.startsWith("/portal/tracking"))
+  const isTrackingActive = pathname.startsWith("/portal/tracking")
 
   // Check authentication using browser Supabase client
   useEffect(() => {
@@ -257,10 +259,6 @@ export default function PortalLayout({
     if (pathname.startsWith("/portal/stores")) return "Lojas"
     return "Portal"
   }
-
-  // Track if tracking section is expanded
-  const [trackingExpanded, setTrackingExpanded] = useState(pathname.startsWith("/portal/tracking"))
-  const isTrackingActive = pathname.startsWith("/portal/tracking")
 
   // Sidebar content shared between desktop and mobile
   const SidebarNav = ({ onLinkClick }: { onLinkClick?: () => void }) => (

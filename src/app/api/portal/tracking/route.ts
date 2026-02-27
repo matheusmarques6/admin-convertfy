@@ -2,7 +2,7 @@ import { NextRequest } from "next/server"
 import { errorResponse, successResponse, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
-import { encrypt, decrypt } from "@/lib/crypto"
+import { encrypt } from "@/lib/crypto"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("PortalTracking")

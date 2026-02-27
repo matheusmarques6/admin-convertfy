@@ -180,7 +180,6 @@ async function handleFulfillment(
     .single()
 
   const carrierName = fulfillment.tracking_company || ""
-  const trackingUrl = fulfillment.tracking_url || ""
 
   const codeData = {
     tracking_order_id: order.id,

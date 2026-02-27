@@ -96,8 +96,6 @@ export default function PortalTrackingScriptPage() {
     }
   }
 
-  const selectedStore = stores.find((s) => s.client_store_id === selectedStoreId)
-
   // Generate the dynamic script code
   const scriptCode = useMemo(() => {
     if (!selectedStoreId) return ""
