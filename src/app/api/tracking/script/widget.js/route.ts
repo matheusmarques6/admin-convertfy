@@ -642,21 +642,70 @@ export async function GET(request: NextRequest) {
     } catch(e) { return ''; }
   }
 
+  /**
+   * Clean and humanize event descriptions from 17track.
+   * Removes location prefix, fixes common patterns, capitalizes.
+   */
+  function cleanDescription(desc, evtLocation) {
+    if (!desc) return '';
+    var s = desc;
+
+    // Remove location prefix like "Hangzhou, " or "CN, " if it matches the event location
+    if (evtLocation) {
+      var locLower = evtLocation.toLowerCase().trim();
+      var sLower = s.toLowerCase();
+      // Check if description starts with location + comma
+      if (sLower.indexOf(locLower + ',') === 0) {
+        s = s.substring(evtLocation.length + 1).trim();
+      } else if (sLower.indexOf(locLower + ' -') === 0) {
+        s = s.substring(evtLocation.length + 2).trim();
+      }
+    }
+
+    // Remove generic 2-3 letter country codes at the start "XX, " or "XXX, "
+    s = s.replace(/^[A-Z]{2,3},\\s*/i, '');
+
+    // Fix common 17track typos and ugly patterns
+    s = s.replace(/onforwarded/gi, 'forwarded');
+    s = s.replace(/\\[.*?\\]/g, ''); // Remove brackets like [Hangzhou]
+    s = s.trim();
+
+    // Capitalize first letter
+    if (s.length > 0) {
+      s = s.charAt(0).toUpperCase() + s.slice(1);
+    }
+
+    return s;
+  }
+
+  /**
+   * Get the translated status label with robust fallback.
+   * Always returns a visible string even if translation is missing.
+   */
+  function getStatusLabel(status) {
+    if (!status) return t.status_pending;
+    var key = 'status_' + status.toLowerCase().replace(/[^a-z_]/g, '');
+    return t[key] || t.status_pending;
+  }
+
   function renderResult(data) {
     var resultDiv = shadow.getElementById('ctResult');
     if (!resultDiv) return;
 
-    var sc = STATUS_CONFIG[data.status] || STATUS_CONFIG.pending;
-    var statusLabel = t['status_' + data.status] || data.status || t.status_pending;
+    var normalizedStatus = (data.status || 'pending').toLowerCase().replace(/[^a-z_]/g, '');
+    var sc = STATUS_CONFIG[normalizedStatus] || STATUS_CONFIG.pending;
+    var statusLabel = getStatusLabel(normalizedStatus);
     var stepIndex = sc.step;
-    var detail = data.status_detail || data.last_event || '';
+
+    // Clean the detail text
+    var detail = cleanDescription(data.status_detail || data.last_event || '', '');
 
     var html = '<div class="ct-result">';
 
     /* ── Status header ── */
     html += '<div class="ct-status-header">';
     html += '<div class="ct-status-badge" style="background:' + sc.bg + '">';
-    html += '<svg viewBox="0 0 24 24" stroke="' + sc.fg + '">' + getStatusIcon(data.status) + '</svg>';
+    html += '<svg viewBox="0 0 24 24" stroke="' + sc.fg + '">' + getStatusIcon(normalizedStatus) + '</svg>';
     html += '</div>';
     html += '<div class="ct-status-info">';
     html += '<div class="ct-status-label" style="color:' + sc.fg + '">' + escapeHtml(statusLabel) + '</div>';
@@ -702,6 +751,7 @@ export async function GET(request: NextRequest) {
       for (var ei = 0; ei < data.events.length; ei++) {
         var evt = data.events[ei];
         var dateKey = getDateKey(evt.date);
+        var cleanedDesc = cleanDescription(evt.description, evt.location);
 
         /* Date group header */
         if (dateKey && dateKey !== lastDateKey) {
@@ -713,7 +763,7 @@ export async function GET(request: NextRequest) {
         html += '<div class="ct-event' + (isFirst ? ' ct-event-latest' : '') + '">';
         html += '<div class="ct-event-dot-wrap"><div class="ct-event-dot' + (isFirst ? ' ct-dot-active' : '') + '"></div></div>';
         html += '<div class="ct-event-body">';
-        html += '<div class="ct-event-desc">' + escapeHtml(evt.description) + '</div>';
+        html += '<div class="ct-event-desc">' + escapeHtml(cleanedDesc) + '</div>';
         html += '<div class="ct-event-meta">';
         if (evt.date) html += '<span class="ct-event-time">' + formatTime(evt.date) + '</span>';
         if (evt.location) html += '<span class="ct-event-loc">' + svgIcon('mapPin') + escapeHtml(evt.location) + '</span>';
