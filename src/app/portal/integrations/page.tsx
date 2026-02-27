@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import Link from "next/link"
 import {
   ShoppingBag,
   Mail,
@@ -11,7 +12,10 @@ import {
   Eye,
   EyeOff,
   Settings,
+  Key,
+  ArrowRight,
 } from "lucide-react"
+import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -40,7 +44,7 @@ interface StoreInfo {
   shopify_store_domain: string
 }
 
-type IntegrationType = "shopify" | "klaviyo" | "tracking"
+type IntegrationType = "shopify" | "klaviyo"
 
 export default function PortalIntegrationsPage() {
   const [loading, setLoading] = useState(true)
@@ -48,13 +52,14 @@ export default function PortalIntegrationsPage() {
   const [store, setStore] = useState<StoreInfo | null>(null)
   const [integrations, setIntegrations] = useState<IntegrationData | null>(null)
 
-  // Dialog
+  // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false)
   const [dialogType, setDialogType] = useState<IntegrationType | null>(null)
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
 
-  // Fields
+  // Form fields
   const [shopifyDomain, setShopifyDomain] = useState("")
   const [shopifyToken, setShopifyToken] = useState("")
   const [klaviyoKey, setKlaviyoKey] = useState("")
@@ -90,6 +95,7 @@ export default function PortalIntegrationsPage() {
   function openDialog(type: IntegrationType) {
     setDialogType(type)
     setShowPassword(false)
+    setTestResult(null)
     if (type === "shopify") {
       setShopifyDomain(store?.shopify_store_domain || "")
       setShopifyToken("")
@@ -103,6 +109,7 @@ export default function PortalIntegrationsPage() {
   async function handleTestConnection() {
     if (!dialogType) return
     setTesting(true)
+    setTestResult(null)
     try {
       if (dialogType === "shopify") {
         if (!shopifyDomain || !shopifyToken) {
@@ -115,9 +122,9 @@ export default function PortalIntegrationsPage() {
           body: JSON.stringify({ store_domain: shopifyDomain, access_token: shopifyToken }),
         })
         const data = await res.json()
-        toast(data.success
-          ? { title: "Conexão OK!", description: data.shop?.name ? `Loja: ${data.shop.name}` : "Conectado" }
-          : { variant: "destructive", title: "Falha", description: data.error || "Verifique suas credenciais" })
+        setTestResult(data.success
+          ? { success: true, message: data.shop?.name ? `Conectado: ${data.shop.name}` : "Conexão OK!" }
+          : { success: false, message: data.error || "Falha na conexão" })
       } else if (dialogType === "klaviyo") {
         if (!klaviyoKey) {
           toast({ variant: "destructive", title: "Preencha a Private API Key" })
@@ -129,12 +136,12 @@ export default function PortalIntegrationsPage() {
           body: JSON.stringify({ api_key: klaviyoKey }),
         })
         const data = await res.json()
-        toast(data.success
-          ? { title: "Conexão OK!", description: data.account ? `Conta: ${data.account}` : "Conectado" }
-          : { variant: "destructive", title: "Falha", description: data.error || "Verifique suas credenciais" })
+        setTestResult(data.success
+          ? { success: true, message: data.account ? `Conectado: ${data.account}` : "Conexão OK!" }
+          : { success: false, message: data.error || "Falha na autenticação" })
       }
     } catch {
-      toast({ variant: "destructive", title: "Erro ao testar conexão" })
+      setTestResult({ success: false, message: "Erro ao testar conexão" })
     } finally {
       setTesting(false)
     }
@@ -142,20 +149,27 @@ export default function PortalIntegrationsPage() {
 
   async function handleSave() {
     if (!dialogType || !store) return
+
+    // Validate before setting saving state
+    if (dialogType === "shopify" && !shopifyToken) {
+      toast({ variant: "destructive", title: "Preencha o Access Token" })
+      return
+    }
+    if (dialogType === "klaviyo" && !klaviyoKey) {
+      toast({ variant: "destructive", title: "Preencha a Private API Key" })
+      return
+    }
+
     setSaving(true)
     try {
       const payload: Record<string, unknown> = { store_id: store.id, integration_type: dialogType }
 
       if (dialogType === "shopify") {
-        if (!shopifyToken) { toast({ variant: "destructive", title: "Preencha o Access Token" }); return }
         if (shopifyDomain) payload.shopify_store_domain = shopifyDomain
         payload.shopify_access_token = shopifyToken
       } else if (dialogType === "klaviyo") {
-        if (!klaviyoKey) { toast({ variant: "destructive", title: "Preencha a Private API Key" }); return }
         payload.klaviyo_private_key = klaviyoKey
         if (klaviyoPublicKey) payload.klaviyo_public_key = klaviyoPublicKey
-      } else if (dialogType === "tracking") {
-        payload.activate_tracking = true
       }
 
       const res = await fetch("/api/portal/integrations", {
@@ -166,7 +180,7 @@ export default function PortalIntegrationsPage() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Erro ao salvar")
 
-      toast({ title: "Salvo com sucesso!" })
+      toast({ title: "Credenciais salvas com sucesso!" })
       setDialogOpen(false)
       fetchData()
     } catch (err) {
@@ -190,7 +204,7 @@ export default function PortalIntegrationsPage() {
       toast({ title: "Rastreamento ativado!" })
       fetchData()
     } catch (err) {
-      toast({ variant: "destructive", title: "Erro ao ativar", description: err instanceof Error ? err.message : "Tente novamente" })
+      toast({ variant: "destructive", title: "Erro ao ativar rastreamento", description: err instanceof Error ? err.message : "Tente novamente" })
     } finally {
       setSaving(false)
     }
@@ -198,210 +212,277 @@ export default function PortalIntegrationsPage() {
 
   if (loading) {
     return (
-      <div className="max-w-[900px] mx-auto space-y-4">
-        <Skeleton className="h-7 w-48 bg-slate-200 dark:bg-slate-700" />
-        {[1, 2, 3].map((i) => (
-          <Skeleton key={i} className="h-20 bg-white dark:bg-[#151922] rounded-xl border border-slate-100 dark:border-slate-700/30" />
-        ))}
+      <div className="space-y-6">
+        <div>
+          <Skeleton className="h-8 w-48 mb-2" />
+          <Skeleton className="h-4 w-64" />
+        </div>
+        <div className="grid gap-6 md:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-52" />
+          ))}
+        </div>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[50vh]">
-        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200 dark:border-slate-700/40 p-8 text-center max-w-sm shadow-sm">
-          <AlertCircle className="h-10 w-10 text-red-500 mx-auto mb-3" />
-          <p className="text-sm text-slate-600 dark:text-slate-300 mb-4">{error}</p>
-          <Button onClick={fetchData} size="sm" className="bg-primary hover:bg-primary/85 text-white">Tentar novamente</Button>
-        </div>
+      <div className="flex flex-col items-center justify-center min-h-[400px] text-center">
+        <AlertCircle className="h-12 w-12 text-red-600 mb-4" />
+        <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-100 mb-2">Erro ao carregar</h2>
+        <p className="text-slate-500 dark:text-slate-400 mb-4">{error}</p>
+        <Button onClick={fetchData} className="bg-primary hover:bg-primary/85 text-white shadow-sm">Tentar novamente</Button>
       </div>
     )
   }
 
-  const rows = [
-    {
-      type: "shopify" as IntegrationType,
-      icon: ShoppingBag,
-      iconBg: "bg-[#96BF48]/10",
-      iconColor: "text-[#96BF48]",
-      name: "Shopify",
-      subtitle: integrations?.shopify.connected ? (integrations.shopify.domain || "Conectado") : "Loja e-commerce",
-      connected: integrations?.shopify.connected || false,
-    },
-    {
-      type: "klaviyo" as IntegrationType,
-      icon: Mail,
-      iconBg: "bg-violet-500/10",
-      iconColor: "text-violet-500",
-      name: "Klaviyo",
-      subtitle: integrations?.klaviyo.connected ? "API Key configurada" : "Email marketing",
-      connected: integrations?.klaviyo.connected || false,
-    },
-    {
-      type: "tracking" as IntegrationType,
-      icon: Package,
-      iconBg: "bg-blue-500/10",
-      iconColor: "text-blue-500",
-      name: "Rastreamento (17track)",
-      subtitle: integrations?.tracking.active ? "Ativo" : "Rastreamento de pedidos",
-      connected: integrations?.tracking.active || false,
-    },
-  ]
-
   return (
-    <div className="max-w-[900px] mx-auto space-y-6">
+    <div className="space-y-6">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Integrações</h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+        <p className="text-slate-500 dark:text-slate-400">
           Gerencie as conexões da loja <strong className="text-slate-700 dark:text-slate-200">{store?.store_name}</strong>
         </p>
       </div>
 
-      {/* Integration List */}
-      <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 divide-y divide-slate-100 dark:divide-slate-700/30">
-        {rows.map((row) => {
-          const Icon = row.icon
-          return (
-            <div key={row.type} className="flex items-center justify-between px-6 py-4">
-              <div className="flex items-center gap-4">
-                <div className={`w-10 h-10 rounded-lg ${row.iconBg} flex items-center justify-center flex-shrink-0`}>
-                  <Icon className={`h-5 w-5 ${row.iconColor}`} />
+      {/* Integration Cards */}
+      <div className="grid gap-6 md:grid-cols-3">
+        {/* Shopify Card */}
+        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20">
+          <CardHeader className="pb-3">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-lg bg-[#96BF48]/10 flex items-center justify-center">
+                  <ShoppingBag className="h-6 w-6 text-[#96BF48]" />
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">{row.name}</h3>
-                    {row.connected ? (
-                      <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">
-                        <CheckCircle2 className="h-2.5 w-2.5" />
-                        Conectado
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
-                        Desconectado
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{row.subtitle}</p>
+                  <CardTitle className="text-lg text-slate-800 dark:text-slate-100">Shopify</CardTitle>
+                  <CardDescription className="text-slate-500 dark:text-slate-400">Loja e-commerce</CardDescription>
                 </div>
               </div>
+              {integrations?.shopify.connected ? (
+                <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/30">
+                  Conectado
+                </span>
+              ) : (
+                <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/30">
+                  Não conectado
+                </span>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2 mb-4">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-500 dark:text-slate-400">Domínio</span>
+                <span className="text-slate-700 dark:text-slate-200 text-xs font-mono truncate max-w-[180px]">
+                  {integrations?.shopify.domain || "—"}
+                </span>
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => openDialog("shopify")}
+              className="w-full border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]"
+            >
+              <Settings className="h-4 w-4 mr-2" />
+              {integrations?.shopify.connected ? "Editar" : "Conectar"}
+            </Button>
+          </CardContent>
+        </div>
 
-              <div>
-                {row.type === "tracking" ? (
-                  row.connected ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => openDialog("tracking")}
-                      className="border-slate-200/80 dark:border-slate-700/40 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]"
-                    >
-                      <Settings className="h-3.5 w-3.5 mr-1.5" />
-                      Configurar
-                    </Button>
-                  ) : integrations?.shopify.connected ? (
-                    <Button
-                      size="sm"
-                      onClick={handleActivateTracking}
-                      disabled={saving}
-                      className="bg-primary hover:bg-primary/85 text-white shadow-sm"
-                    >
-                      {saving && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
-                      Ativar
-                    </Button>
-                  ) : (
-                    <span className="text-xs text-slate-400 dark:text-slate-500">Conecte a Shopify</span>
-                  )
+        {/* Klaviyo Card */}
+        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20">
+          <CardHeader className="pb-3">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-lg bg-violet-500/10 flex items-center justify-center">
+                  <Mail className="h-6 w-6 text-violet-500" />
+                </div>
+                <div>
+                  <CardTitle className="text-lg text-slate-800 dark:text-slate-100">Klaviyo</CardTitle>
+                  <CardDescription className="text-slate-500 dark:text-slate-400">Email marketing</CardDescription>
+                </div>
+              </div>
+              {integrations?.klaviyo.connected ? (
+                <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/30">
+                  Conectado
+                </span>
+              ) : (
+                <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/30">
+                  Não conectado
+                </span>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2 mb-4">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-500 dark:text-slate-400">Private Key</span>
+                {integrations?.klaviyo.connected ? (
+                  <span className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
+                    <CheckCircle2 className="h-3 w-3" /> Configurada
+                  </span>
                 ) : (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => openDialog(row.type)}
-                    className="border-slate-200/80 dark:border-slate-700/40 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]"
-                  >
-                    <Settings className="h-3.5 w-3.5 mr-1.5" />
-                    {row.connected ? "Editar" : "Conectar"}
-                  </Button>
+                  <span className="text-xs text-slate-400">—</span>
+                )}
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-500 dark:text-slate-400">Public Key</span>
+                {integrations?.klaviyo.has_public_key ? (
+                  <span className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
+                    <CheckCircle2 className="h-3 w-3" /> Configurada
+                  </span>
+                ) : (
+                  <span className="text-xs text-slate-400">—</span>
                 )}
               </div>
             </div>
-          )
-        })}
+            <Button
+              variant="outline"
+              onClick={() => openDialog("klaviyo")}
+              className="w-full border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]"
+            >
+              <Settings className="h-4 w-4 mr-2" />
+              {integrations?.klaviyo.connected ? "Editar" : "Conectar"}
+            </Button>
+          </CardContent>
+        </div>
+
+        {/* Rastreamento Card */}
+        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20">
+          <CardHeader className="pb-3">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-lg bg-blue-500/10 flex items-center justify-center">
+                  <Package className="h-6 w-6 text-blue-500" />
+                </div>
+                <div>
+                  <CardTitle className="text-lg text-slate-800 dark:text-slate-100">Rastreamento</CardTitle>
+                  <CardDescription className="text-slate-500 dark:text-slate-400">17track</CardDescription>
+                </div>
+              </div>
+              {integrations?.tracking.active ? (
+                <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/30">
+                  Ativo
+                </span>
+              ) : (
+                <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/30">
+                  Inativo
+                </span>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2 mb-4">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-500 dark:text-slate-400">Chave API</span>
+                <span className="text-xs text-slate-500 dark:text-slate-400">Gerenciada pela Convertfy</span>
+              </div>
+            </div>
+            {integrations?.tracking.active ? (
+              <Button asChild className="w-full bg-primary hover:bg-primary/85 text-white shadow-sm">
+                <Link href="/portal/tracking">
+                  Ver Rastreamento
+                  <ArrowRight className="h-4 w-4 ml-2" />
+                </Link>
+              </Button>
+            ) : integrations?.shopify.connected ? (
+              <Button
+                onClick={handleActivateTracking}
+                disabled={saving}
+                className="w-full bg-primary hover:bg-primary/85 text-white shadow-sm"
+              >
+                {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                Ativar Rastreamento
+              </Button>
+            ) : (
+              <p className="text-xs text-slate-400 dark:text-slate-500 text-center py-2">
+                Conecte a Shopify para ativar o rastreamento
+              </p>
+            )}
+          </CardContent>
+        </div>
       </div>
 
       {/* Info */}
       <p className="text-xs text-slate-400 dark:text-slate-500 text-center">
-        As credenciais são criptografadas e sincronizadas com o painel admin da Convertfy.
+        As credenciais são criptografadas e sincronizadas com o painel admin.
       </p>
 
-      {/* Dialog */}
+      {/* Credentials Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-md bg-white dark:bg-[#151922] border-slate-200/80 dark:border-slate-700/40">
+        <DialogContent className="sm:max-w-lg bg-white dark:bg-[#151922] border-slate-200/80 dark:border-slate-700/40">
           <DialogHeader>
             <DialogTitle className="text-slate-800 dark:text-slate-100">
-              {dialogType === "shopify" && "Shopify"}
-              {dialogType === "klaviyo" && "Klaviyo"}
-              {dialogType === "tracking" && "Rastreamento"}
+              {dialogType === "shopify" ? "Configurar Shopify" : "Configurar Klaviyo"}
             </DialogTitle>
             <DialogDescription className="text-slate-500 dark:text-slate-400">
-              {dialogType === "shopify" && "Credenciais da API Admin da Shopify"}
-              {dialogType === "klaviyo" && "Chave de acesso da API do Klaviyo"}
-              {dialogType === "tracking" && "Configuração do rastreamento de pedidos"}
+              {store?.store_name} &mdash; {dialogType === "shopify"
+                ? "Credenciais da API Admin da Shopify"
+                : "Chaves de acesso da API do Klaviyo"}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-2">
+          <div className="space-y-4 py-4">
             {dialogType === "shopify" && (
               <>
-                <div className="space-y-1.5">
+                <div className="space-y-2">
                   <Label className="text-[13px] font-medium text-slate-700 dark:text-slate-200">Domínio da Loja</Label>
                   <Input
                     placeholder="minhaloja.myshopify.com"
                     value={shopifyDomain}
                     onChange={(e) => setShopifyDomain(e.target.value)}
-                    className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40"
+                    className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100"
                   />
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Domínio .myshopify.com da sua loja
+                  </p>
                 </div>
-                <div className="space-y-1.5">
-                  <Label className="text-[13px] font-medium text-slate-700 dark:text-slate-200">
-                    Access Token <span className="text-red-500">*</span>
-                  </Label>
+                <div className="space-y-2">
+                  <Label className="text-[13px] font-medium text-slate-700 dark:text-slate-200">Admin API Access Token</Label>
                   <div className="relative">
                     <Input
                       type={showPassword ? "text" : "password"}
                       placeholder="shpat_xxxxxxxxxxxxxxxx"
                       value={shopifyToken}
                       onChange={(e) => setShopifyToken(e.target.value)}
-                      className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 pr-10"
+                      className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 pr-10"
                     />
                     <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
                       {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                   </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Settings &rarr; Apps &rarr; Develop apps &rarr; Create app &rarr; Admin API access token
+                  </p>
                 </div>
               </>
             )}
 
             {dialogType === "klaviyo" && (
               <>
-                <div className="space-y-1.5">
-                  <Label className="text-[13px] font-medium text-slate-700 dark:text-slate-200">
-                    Private API Key <span className="text-red-500">*</span>
-                  </Label>
+                <div className="space-y-2">
+                  <Label className="text-[13px] font-medium text-slate-700 dark:text-slate-200">Private API Key</Label>
                   <div className="relative">
                     <Input
                       type={showPassword ? "text" : "password"}
                       placeholder="pk_xxxxxxxxxxxxxxxxxxxxxxxx"
                       value={klaviyoKey}
                       onChange={(e) => setKlaviyoKey(e.target.value)}
-                      className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 pr-10"
+                      className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 pr-10"
                     />
                     <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
                       {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                   </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Klaviyo &rarr; Settings &rarr; API Keys &rarr; Create Private API Key
+                  </p>
                 </div>
-                <div className="space-y-1.5">
+                <div className="space-y-2">
                   <Label className="text-[13px] font-medium text-slate-700 dark:text-slate-200">
                     Public Key <span className="text-slate-400 text-xs">(opcional)</span>
                   </Label>
@@ -409,35 +490,41 @@ export default function PortalIntegrationsPage() {
                     placeholder="RkXkAb"
                     value={klaviyoPublicKey}
                     onChange={(e) => setKlaviyoPublicKey(e.target.value)}
-                    className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40"
+                    className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100"
                   />
                 </div>
               </>
             )}
 
-            {dialogType === "tracking" && (
-              <div className="flex items-start gap-3 py-2 px-4 rounded-lg bg-blue-50/50 dark:bg-blue-500/5 border border-blue-100 dark:border-blue-500/10">
-                <Package className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
-                <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-                  A chave 17track é gerenciada pela Convertfy. Ao salvar, o rastreamento será ativado para esta loja.
-                </p>
+            {/* Test Result */}
+            {testResult && (
+              <div className={`flex items-center gap-2 text-sm ${testResult.success ? "text-emerald-600" : "text-red-600"}`}>
+                {testResult.success ? <CheckCircle2 className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
+                {testResult.message}
               </div>
             )}
           </div>
 
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setDialogOpen(false)} className="border-slate-200/80 dark:border-slate-700/40 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogOpen(false)} className="border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
               Cancelar
             </Button>
-            {dialogType !== "tracking" && (
-              <Button variant="outline" onClick={handleTestConnection} disabled={testing || saving} className="border-slate-200/80 dark:border-slate-700/40 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
-                {testing ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : null}
-                Testar
-              </Button>
-            )}
-            <Button onClick={handleSave} disabled={saving || testing} className="bg-primary hover:bg-primary/85 text-white shadow-sm">
-              {saving ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : null}
-              Salvar
+            <Button
+              variant="outline"
+              onClick={handleTestConnection}
+              disabled={testing || saving}
+              className="border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]"
+            >
+              {testing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Key className="h-4 w-4 mr-2" />}
+              Testar Conexão
+            </Button>
+            <Button
+              onClick={handleSave}
+              disabled={saving || testing}
+              className="bg-primary hover:bg-primary/85 text-white shadow-sm"
+            >
+              {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Salvar Credenciais
             </Button>
           </DialogFooter>
         </DialogContent>

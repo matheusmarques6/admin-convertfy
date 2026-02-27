@@ -137,32 +137,32 @@ export default function PortalTrackingPage() {
 
       {/* KPIs */}
       <div className="grid grid-cols-3 gap-4">
-        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20">
-          <div className="flex items-center gap-2 mb-2">
+        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-4 shadow-sm dark:shadow-slate-900/20 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200">
+          <div className="flex items-center gap-2 mb-3">
             <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center">
               <Package className="h-3.5 w-3.5 text-blue-600" />
             </div>
             <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Total</span>
           </div>
-          <p className="text-2xl font-bold text-slate-800 dark:text-slate-100">{stats.orders}</p>
+          <p className="text-xl font-bold text-slate-800 dark:text-slate-100">{stats.orders}</p>
         </div>
-        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20">
-          <div className="flex items-center gap-2 mb-2">
+        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-4 shadow-sm dark:shadow-slate-900/20 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200">
+          <div className="flex items-center gap-2 mb-3">
             <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center">
               <Truck className="h-3.5 w-3.5 text-amber-600" />
             </div>
             <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Em trânsito</span>
           </div>
-          <p className="text-2xl font-bold text-amber-600">{inTransit}</p>
+          <p className="text-xl font-bold text-amber-600">{inTransit}</p>
         </div>
-        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20">
-          <div className="flex items-center gap-2 mb-2">
+        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-4 shadow-sm dark:shadow-slate-900/20 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200">
+          <div className="flex items-center gap-2 mb-3">
             <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center">
               <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
             </div>
             <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Entregues</span>
           </div>
-          <p className="text-2xl font-bold text-emerald-600">{stats.delivered}</p>
+          <p className="text-xl font-bold text-emerald-600">{stats.delivered}</p>
         </div>
       </div>
 
