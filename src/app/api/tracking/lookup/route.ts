@@ -25,28 +25,7 @@ function getClientIp(request: NextRequest): string {
 }
 
 /** Map OrderLookupResult[] to the widget-compatible format */
-function mapLookupResults(lookupResults: OrderLookupResult[]): Array<{
-  order: {
-    id: string
-    order_name: string | null
-    customer_name: string | null
-    customer_email: string | null
-    order_created_at: string | null
-    shipped_at: string | null
-    delivered_at: string | null
-    total_price: number | null
-    currency: string
-  }
-  tracking: Array<{
-    id: string
-    tracking_number: string
-    carrier_name: string | null
-    status: string
-    status_detail: string | null
-    last_event: string | null
-    tracking_events: unknown[]
-  }>
-}> {
+function mapLookupResults(lookupResults: OrderLookupResult[]) {
   return lookupResults
     .filter((r) => r.found && r.order)
     .map((r) => {
@@ -69,6 +48,8 @@ function mapLookupResults(lookupResults: OrderLookupResult[]): Array<{
           delivered_at: o.fulfillment_status === "fulfilled" ? o.order_date : null,
           total_price: parseFloat(o.total_price) || null,
           currency: o.currency,
+          line_items: [] as unknown[],
+          shipping_address: {} as Record<string, string>,
         },
         tracking: o.tracking_code
           ? [
@@ -79,7 +60,8 @@ function mapLookupResults(lookupResults: OrderLookupResult[]): Array<{
                 status,
                 status_detail: null,
                 last_event: null,
-                tracking_events: [],
+                tracking_events: [] as unknown[],
+                estimated_delivery: null as string | null,
               },
             ]
           : [],
@@ -125,6 +107,8 @@ export async function GET(request: NextRequest) {
         delivered_at: string | null
         total_price: number | null
         currency: string
+        line_items: unknown[]
+        shipping_address: Record<string, string>
       }
       tracking: Array<{
         id: string
@@ -134,6 +118,7 @@ export async function GET(request: NextRequest) {
         status_detail: string | null
         last_event: string | null
         tracking_events: unknown[]
+        estimated_delivery: string | null
       }>
     }
 
@@ -184,7 +169,7 @@ export async function GET(request: NextRequest) {
       if (results.length === 0) {
         const { data: orders } = await admin
           .from("tracking_orders")
-          .select("id, order_name, customer_name, customer_email, order_created_at, shipped_at, delivered_at, total_price, currency")
+          .select("id, order_name, customer_name, customer_email, order_created_at, shipped_at, delivered_at, total_price, currency, line_items, shipping_address")
           .ilike("customer_email", cleanQuery)
           .order("order_created_at", { ascending: false })
           .limit(10)
@@ -193,7 +178,7 @@ export async function GET(request: NextRequest) {
           for (const order of orders) {
             const { data: codes } = await admin
               .from("tracking_codes")
-              .select("id, tracking_number, carrier_name, status, status_detail, last_event, tracking_events")
+              .select("id, tracking_number, carrier_name, status, status_detail, last_event, tracking_events, estimated_delivery")
               .eq("tracking_order_id", order.id)
 
             results.push({ order, tracking: codes || [] })
@@ -203,7 +188,7 @@ export async function GET(request: NextRequest) {
     } else if (isOrderNumber) {
       const { data: orders } = await admin
         .from("tracking_orders")
-        .select("id, order_name, customer_name, customer_email, order_created_at, shipped_at, delivered_at, total_price, currency")
+        .select("id, order_name, customer_name, customer_email, order_created_at, shipped_at, delivered_at, total_price, currency, line_items, shipping_address")
         .or(`shopify_order_number.eq.${cleanQuery},order_name.ilike.%${cleanQuery}%`)
         .order("order_created_at", { ascending: false })
         .limit(10)
@@ -212,7 +197,7 @@ export async function GET(request: NextRequest) {
         for (const order of orders) {
           const { data: codes } = await admin
             .from("tracking_codes")
-            .select("id, tracking_number, carrier_name, status, status_detail, last_event, tracking_events")
+            .select("id, tracking_number, carrier_name, status, status_detail, last_event, tracking_events, estimated_delivery")
             .eq("tracking_order_id", order.id)
 
           results.push({ order, tracking: codes || [] })
@@ -221,7 +206,7 @@ export async function GET(request: NextRequest) {
     } else {
       const { data: codes } = await admin
         .from("tracking_codes")
-        .select("id, tracking_number, carrier_name, status, status_detail, last_event, tracking_events, tracking_order_id")
+        .select("id, tracking_number, carrier_name, status, status_detail, last_event, tracking_events, estimated_delivery, tracking_order_id")
         .ilike("tracking_number", `%${query}%`)
         .limit(5)
 
@@ -229,7 +214,7 @@ export async function GET(request: NextRequest) {
         for (const code of codes) {
           const { data: order } = await admin
             .from("tracking_orders")
-            .select("id, order_name, customer_name, customer_email, order_created_at, shipped_at, delivered_at, total_price, currency")
+            .select("id, order_name, customer_name, customer_email, order_created_at, shipped_at, delivered_at, total_price, currency, line_items, shipping_address")
             .eq("id", code.tracking_order_id)
             .single()
 

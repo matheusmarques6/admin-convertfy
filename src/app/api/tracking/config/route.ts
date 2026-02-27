@@ -87,12 +87,8 @@ export async function GET(request: NextRequest) {
     }
 
     const widgetConfig = trackingStore.widget_config as Record<string, unknown> | null
+    // Merge saved config over defaults — all fields pass through to widget
     const config: Record<string, unknown> = widgetConfig ? { ...DEFAULT_CONFIG, ...widgetConfig } : { ...DEFAULT_CONFIG }
-
-    // Pass tracking_page_paths to widget if configured
-    if (widgetConfig?.tracking_page_paths) {
-      config.tracking_page_paths = widgetConfig.tracking_page_paths
-    }
 
     return NextResponse.json(
       {

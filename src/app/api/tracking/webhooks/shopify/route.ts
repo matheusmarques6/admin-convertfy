@@ -89,6 +89,31 @@ async function handleOrder(
 ) {
   const shopifyOrderId = String(order.id)
 
+  // Extract line items for rich widget display
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const lineItems = (order.line_items || []).map((item: any) => ({
+    title: item.title || "",
+    quantity: item.quantity || 1,
+    price: item.price || "0",
+    image_url: item.image?.src || null,
+    product_id: item.product_id || null,
+    variant_id: item.variant_id || null,
+    sku: item.sku || null,
+  }))
+
+  // Extract shipping address
+  const shippingAddr = order.shipping_address
+    ? {
+        first_name: order.shipping_address.first_name || "",
+        last_name: order.shipping_address.last_name || "",
+        address1: order.shipping_address.address1 || "",
+        city: order.shipping_address.city || "",
+        province: order.shipping_address.province || "",
+        country: order.shipping_address.country || "",
+        zip: order.shipping_address.zip || "",
+      }
+    : {}
+
   // Upsert order
   const orderData = {
     tracking_store_id: trackingStore.id,
@@ -106,6 +131,8 @@ async function handleOrder(
     total_price: parseFloat(order.total_price) || 0,
     currency: order.currency || "BRL",
     order_created_at: order.created_at,
+    line_items: lineItems,
+    shipping_address: shippingAddr,
   }
 
   // Check if order exists
