@@ -8,7 +8,8 @@ function getWidgetScript(storeId: string): string {
   window.__convertfy_tracking_loaded=true;
 
   var STORE_ID="${storeId}";
-  var API_BASE="${DOMAIN}/api/tracking";
+  var SCRIPT_ORIGIN=(function(){try{var s=document.querySelector('script[src*="widget.js"]');if(s&&s.src){var u=new URL(s.src);return u.origin}return"${DOMAIN}"}catch(e){return"${DOMAIN}"}})();
+  var API_BASE=SCRIPT_ORIGIN+"/api/tracking";
   var LOOKUP=API_BASE+"/lookup";
   var CONFIG_URL=API_BASE+"/config?store="+STORE_ID;
 
