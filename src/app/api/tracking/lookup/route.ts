@@ -91,6 +91,46 @@ export async function GET(request: NextRequest) {
     const admin = createAdminClient()
     const ip = getClientIp(request)
 
+    // Resolve storeParam → tracking_store_id (required for data isolation)
+    let trackingStoreId: string | null = null
+    let clientStoreId: string | null = null
+
+    if (storeParam) {
+      // Try as tracking_store_id first
+      const { data: tsCheck } = await admin
+        .from("tracking_stores")
+        .select("id, client_store_id")
+        .eq("id", storeParam)
+        .eq("is_active", true)
+        .single()
+
+      if (tsCheck) {
+        trackingStoreId = tsCheck.id
+        clientStoreId = tsCheck.client_store_id
+      } else {
+        // Try as client_store_id → resolve to tracking_store_id
+        const { data: byClientStore } = await admin
+          .from("tracking_stores")
+          .select("id, client_store_id")
+          .eq("client_store_id", storeParam)
+          .eq("is_active", true)
+          .limit(1)
+          .single()
+
+        if (byClientStore) {
+          trackingStoreId = byClientStore.id
+          clientStoreId = byClientStore.client_store_id
+        }
+      }
+    }
+
+    if (!trackingStoreId) {
+      return NextResponse.json(
+        { error: "Store not found or inactive" },
+        { status: 400, headers: PUBLIC_CORS }
+      )
+    }
+
     // Determine search type
     const isEmail = query.includes("@")
     const isOrderNumber = query.startsWith("#") || /^\d{3,6}$/.test(query)
@@ -125,34 +165,7 @@ export async function GET(request: NextRequest) {
     let results: WidgetResult[] = []
 
     if (isEmail) {
-      // Resolve storeId: store param can be client_store_id or tracking_store_id
-      let clientStoreId: string | null = null
-
-      if (storeParam) {
-        // Try as client_store_id first
-        const { data: csCheck } = await admin
-          .from("client_stores")
-          .select("id")
-          .eq("id", storeParam)
-          .single()
-
-        if (csCheck) {
-          clientStoreId = csCheck.id
-        } else {
-          // Try as tracking_store_id → resolve to client_store_id
-          const { data: tsCheck } = await admin
-            .from("tracking_stores")
-            .select("client_store_id")
-            .eq("id", storeParam)
-            .single()
-
-          if (tsCheck?.client_store_id) {
-            clientStoreId = tsCheck.client_store_id
-          }
-        }
-      }
-
-      // Use OrderLookupService cascade if we have a storeId
+      // Use OrderLookupService cascade if we have a clientStoreId
       if (clientStoreId) {
         try {
           const lookupService = new OrderLookupService()
@@ -165,11 +178,12 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      // Fallback to local Supabase search if cascade returned nothing or failed
+      // Fallback to local Supabase search — scoped to this store
       if (results.length === 0) {
         const { data: orders } = await admin
           .from("tracking_orders")
           .select("id, order_name, customer_name, customer_email, order_created_at, shipped_at, delivered_at, total_price, currency, line_items, shipping_address")
+          .eq("tracking_store_id", trackingStoreId)
           .ilike("customer_email", cleanQuery)
           .order("order_created_at", { ascending: false })
           .limit(10)
@@ -189,6 +203,7 @@ export async function GET(request: NextRequest) {
       const { data: orders } = await admin
         .from("tracking_orders")
         .select("id, order_name, customer_name, customer_email, order_created_at, shipped_at, delivered_at, total_price, currency, line_items, shipping_address")
+        .eq("tracking_store_id", trackingStoreId)
         .or(`shopify_order_number.eq.${cleanQuery},order_name.ilike.%${cleanQuery}%`)
         .order("order_created_at", { ascending: false })
         .limit(10)
@@ -207,6 +222,7 @@ export async function GET(request: NextRequest) {
       const { data: codes } = await admin
         .from("tracking_codes")
         .select("id, tracking_number, carrier_name, status, status_detail, last_event, tracking_events, estimated_delivery, tracking_order_id")
+        .eq("tracking_store_id", trackingStoreId)
         .ilike("tracking_number", `%${query}%`)
         .limit(5)
 
@@ -231,6 +247,7 @@ export async function GET(request: NextRequest) {
       await admin
         .from("tracking_lookups")
         .insert({
+          tracking_store_id: trackingStoreId,
           tracking_number: !isEmail && !isOrderNumber ? query : null,
           order_number: isOrderNumber ? cleanQuery : null,
           customer_email: isEmail ? cleanQuery : null,
