@@ -150,14 +150,6 @@ function getWidgetScript(storeId: string): string {
     // Estimated delivery
     '.cvfy-forecast{display:flex;align-items:center;gap:6px;padding:12px 24px;background:#f0fdf4;border-bottom:1px solid #e5e7eb;font-size:13px;color:#065f46;font-weight:500}'+
     '.cvfy-forecast svg{width:16px;height:16px}'+
-    // Floating button
-    '#cvfy-track-btn{position:fixed;bottom:20px;right:20px;z-index:99999;background:'+pc+';color:#fff;border:none;border-radius:50px;padding:12px 20px;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,0.2);transition:all .2s;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;display:flex;align-items:center;gap:8px}'+
-    '#cvfy-track-btn:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(0,0,0,0.3)}'+
-    '#cvfy-track-btn svg{width:18px;height:18px}'+
-    '#cvfy-track-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:100000;display:none;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}'+
-    '#cvfy-track-overlay.open{display:flex}'+
-    '#cvfy-track-modal{background:#fff;border-radius:16px;width:90%;max-width:560px;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);animation:cvfySlideUp .3s ease}'+
-    '@keyframes cvfySlideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}'+
     '@media(max-width:640px){.cvfy-search-grid{grid-template-columns:1fr}.cvfy-step-label{font-size:8px;max-width:50px}.cvfy-step-dot{width:28px;height:28px}.cvfy-step-dot svg{width:12px;height:12px}.cvfy-items .cvfy-item-img{width:36px;height:36px}}';
     document.head.appendChild(s);
   }
@@ -175,9 +167,8 @@ function getWidgetScript(storeId: string): string {
     delivered:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>'
   };
 
-  function buildSearchHTML(showClose){
+  function buildSearchHTML(){
     return '<div class="cvfy-card">'+
-      (showClose?'<div style="display:flex;justify-content:flex-end;padding:12px 16px 0"><button style="background:none;border:none;cursor:pointer;font-size:20px;color:#6b7280;line-height:1" data-cvfy-close>&times;</button></div>':'')+
       '<div class="cvfy-card-header"><h2>'+esc(t("title"))+'</h2></div>'+
       '<div class="cvfy-search-grid">'+
         '<div class="cvfy-field"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg><input data-cvfy-input data-type="email" placeholder="'+esc(t("ph_email"))+'" /></div>'+
@@ -325,49 +316,17 @@ function getWidgetScript(storeId: string): string {
     }
   }
 
-  function initInline(container){
+  function init(){
+    var container=document.getElementById("convertfy-tracking");
     if(!container){
       container=document.createElement("div");
       container.id="convertfy-tracking";
       var main=document.querySelector("main")||document.querySelector(".main-content")||document.querySelector("#MainContent")||document.body;
       main.appendChild(container);
     }
-    container.innerHTML='<div class="cvfy-w">'+buildSearchHTML(false)+'</div>';
-    bindSearch(container);
-  }
-
-  function initFloating(){
-    var btn=document.createElement("button");
-    btn.id="cvfy-track-btn";
-    btn.innerHTML=trackingIcon+' '+t("title");
-    document.body.appendChild(btn);
-
-    var overlay=document.createElement("div");
-    overlay.id="cvfy-track-overlay";
-    overlay.innerHTML='<div id="cvfy-track-modal"><div class="cvfy-w">'+buildSearchHTML(true)+'</div></div>';
-    document.body.appendChild(overlay);
-
-    function open(){overlay.classList.add("open")}
-    function close(){overlay.classList.remove("open")}
-
-    btn.addEventListener("click",open);
-    var closeBtn=overlay.querySelector("[data-cvfy-close]");
-    if(closeBtn)closeBtn.addEventListener("click",close);
-    overlay.addEventListener("click",function(e){if(e.target===overlay)close()});
-    bindSearch(overlay);
-  }
-
-  function init(){
-    var inlineContainer=document.getElementById("convertfy-tracking");
-    var defaultPaths=["/pages/rastreamento","/pages/tracking","/pages/rastrear","/pages/track"];
-    var trackingPaths=cfg.tracking_page_paths||defaultPaths;
-    var pathLower=window.location.pathname.toLowerCase();
-    var isInlineByPath=trackingPaths.some(function(p){return pathLower.indexOf(p)!==-1});
-    var isInline=!!inlineContainer||isInlineByPath;
-
     injectStyles();
-    if(isInline)initInline(inlineContainer);
-    else initFloating();
+    container.innerHTML='<div class="cvfy-w">'+buildSearchHTML()+'</div>';
+    bindSearch(container);
   }
 
   // Backward-compat: read window.ConvertfyTracking if present (legacy snippet)
@@ -400,7 +359,6 @@ function getWidgetScript(storeId: string): string {
         if(c.show_estimated_delivery!==undefined)cfg.show_estimated_delivery=c.show_estimated_delivery;
         if(c.show_carrier_logo!==undefined)cfg.show_carrier_logo=c.show_carrier_logo;
         if(c.blocked_words)cfg.blocked_words=c.blocked_words;
-        if(c.tracking_page_paths)cfg.tracking_page_paths=c.tracking_page_paths;
       }
       if(data.store_name)cfg.store_name=data.store_name;
       init();
