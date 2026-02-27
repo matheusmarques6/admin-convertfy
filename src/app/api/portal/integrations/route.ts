@@ -126,6 +126,7 @@ export async function PUT(request: NextRequest) {
       // Tracking fields
       activate_tracking,
       widget_config,
+      seventeen_track_api_key,
     } = body
 
     if (!store_id || !integration_type) {
@@ -237,6 +238,10 @@ export async function PUT(request: NextRequest) {
 
       if (widget_config) {
         trackingData.widget_config = widget_config
+      }
+
+      if (seventeen_track_api_key) {
+        trackingData.seventeen_track_api_key = encrypt(seventeen_track_api_key)
       }
 
       if (existing) {

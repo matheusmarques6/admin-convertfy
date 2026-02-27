@@ -44,7 +44,7 @@ interface StoreInfo {
   shopify_store_domain: string
 }
 
-type IntegrationType = "shopify" | "klaviyo"
+type IntegrationType = "shopify" | "klaviyo" | "tracking"
 
 export default function PortalIntegrationsPage() {
   const [loading, setLoading] = useState(true)
@@ -64,6 +64,7 @@ export default function PortalIntegrationsPage() {
   const [shopifyToken, setShopifyToken] = useState("")
   const [klaviyoKey, setKlaviyoKey] = useState("")
   const [klaviyoPublicKey, setKlaviyoPublicKey] = useState("")
+  const [seventeenTrackKey, setSeventeenTrackKey] = useState("")
   const [showPassword, setShowPassword] = useState(false)
 
   const fetchData = useCallback(async () => {
@@ -102,6 +103,8 @@ export default function PortalIntegrationsPage() {
     } else if (type === "klaviyo") {
       setKlaviyoKey("")
       setKlaviyoPublicKey("")
+    } else if (type === "tracking") {
+      setSeventeenTrackKey("")
     }
     setDialogOpen(true)
   }
@@ -159,6 +162,10 @@ export default function PortalIntegrationsPage() {
       toast({ variant: "destructive", title: "Preencha a Private API Key" })
       return
     }
+    if (dialogType === "tracking" && !seventeenTrackKey) {
+      toast({ variant: "destructive", title: "Preencha a API Key do 17track" })
+      return
+    }
 
     setSaving(true)
     try {
@@ -170,6 +177,9 @@ export default function PortalIntegrationsPage() {
       } else if (dialogType === "klaviyo") {
         payload.klaviyo_private_key = klaviyoKey
         if (klaviyoPublicKey) payload.klaviyo_public_key = klaviyoPublicKey
+      } else if (dialogType === "tracking") {
+        payload.seventeen_track_api_key = seventeenTrackKey
+        payload.activate_tracking = true
       }
 
       const res = await fetch("/api/portal/integrations", {
@@ -379,30 +389,48 @@ export default function PortalIntegrationsPage() {
             <div className="space-y-2 mb-4">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-slate-500 dark:text-slate-400">Chave API</span>
-                <span className="text-xs text-slate-500 dark:text-slate-400">Gerenciada pela Convertfy</span>
+                {integrations?.tracking.has_17track_key ? (
+                  <span className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
+                    <CheckCircle2 className="h-3 w-3" /> Configurada
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+                    <AlertCircle className="h-3 w-3" /> Não configurada
+                  </span>
+                )}
               </div>
             </div>
-            {integrations?.tracking.active ? (
-              <Button asChild className="w-full bg-primary hover:bg-primary/85 text-white shadow-sm">
-                <Link href="/portal/tracking">
-                  Ver Rastreamento
-                  <ArrowRight className="h-4 w-4 ml-2" />
-                </Link>
-              </Button>
-            ) : integrations?.shopify.connected ? (
+            <div className="space-y-2">
               <Button
-                onClick={handleActivateTracking}
-                disabled={saving}
-                className="w-full bg-primary hover:bg-primary/85 text-white shadow-sm"
+                variant="outline"
+                onClick={() => openDialog("tracking")}
+                className="w-full border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]"
               >
-                {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                Ativar Rastreamento
+                <Settings className="h-4 w-4 mr-2" />
+                {integrations?.tracking.has_17track_key ? "Editar Chave API" : "Configurar API Key"}
               </Button>
-            ) : (
-              <p className="text-xs text-slate-400 dark:text-slate-500 text-center py-2">
-                Conecte a Shopify para ativar o rastreamento
-              </p>
-            )}
+              {integrations?.tracking.active ? (
+                <Button asChild className="w-full bg-primary hover:bg-primary/85 text-white shadow-sm">
+                  <Link href="/portal/tracking">
+                    Ver Rastreamento
+                    <ArrowRight className="h-4 w-4 ml-2" />
+                  </Link>
+                </Button>
+              ) : integrations?.shopify.connected ? (
+                <Button
+                  onClick={handleActivateTracking}
+                  disabled={saving}
+                  className="w-full bg-primary hover:bg-primary/85 text-white shadow-sm"
+                >
+                  {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  Ativar Rastreamento
+                </Button>
+              ) : (
+                <p className="text-xs text-slate-400 dark:text-slate-500 text-center py-2">
+                  Conecte a Shopify para ativar o rastreamento
+                </p>
+              )}
+            </div>
           </CardContent>
         </div>
       </div>
@@ -417,12 +445,14 @@ export default function PortalIntegrationsPage() {
         <DialogContent className="sm:max-w-lg bg-white dark:bg-[#151922] border-slate-200/80 dark:border-slate-700/40">
           <DialogHeader>
             <DialogTitle className="text-slate-800 dark:text-slate-100">
-              {dialogType === "shopify" ? "Configurar Shopify" : "Configurar Klaviyo"}
+              {dialogType === "shopify" ? "Configurar Shopify" : dialogType === "klaviyo" ? "Configurar Klaviyo" : "Configurar 17track"}
             </DialogTitle>
             <DialogDescription className="text-slate-500 dark:text-slate-400">
               {store?.store_name} &mdash; {dialogType === "shopify"
                 ? "Credenciais da API Admin da Shopify"
-                : "Chaves de acesso da API do Klaviyo"}
+                : dialogType === "klaviyo"
+                ? "Chaves de acesso da API do Klaviyo"
+                : "Chave de acesso da API do 17track para rastreamento"}
             </DialogDescription>
           </DialogHeader>
 
@@ -496,6 +526,39 @@ export default function PortalIntegrationsPage() {
               </>
             )}
 
+            {dialogType === "tracking" && (
+              <>
+                <div className="space-y-2">
+                  <Label className="text-[13px] font-medium text-slate-700 dark:text-slate-200">17track API Key</Label>
+                  <div className="relative">
+                    <Input
+                      type={showPassword ? "text" : "password"}
+                      placeholder="Sua chave de API do 17track"
+                      value={seventeenTrackKey}
+                      onChange={(e) => setSeventeenTrackKey(e.target.value)}
+                      className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 pr-10"
+                    />
+                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Acesse{" "}
+                    <a href="https://www.17track.net/en/apiuser" target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">
+                      17track.net/apiuser
+                    </a>
+                    {" "}&rarr; Copie sua API Key
+                  </p>
+                </div>
+                {integrations?.tracking.has_17track_key && (
+                  <div className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
+                    <CheckCircle2 className="h-4 w-4" />
+                    Chave API já configurada. Preencha acima para substituir.
+                  </div>
+                )}
+              </>
+            )}
+
             {/* Test Result */}
             {testResult && (
               <div className={`flex items-center gap-2 text-sm ${testResult.success ? "text-emerald-600" : "text-red-600"}`}>
@@ -509,22 +572,24 @@ export default function PortalIntegrationsPage() {
             <Button variant="outline" onClick={() => setDialogOpen(false)} className="border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
               Cancelar
             </Button>
-            <Button
-              variant="outline"
-              onClick={handleTestConnection}
-              disabled={testing || saving}
-              className="border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]"
-            >
-              {testing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Key className="h-4 w-4 mr-2" />}
-              Testar Conexão
-            </Button>
+            {dialogType !== "tracking" && (
+              <Button
+                variant="outline"
+                onClick={handleTestConnection}
+                disabled={testing || saving}
+                className="border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]"
+              >
+                {testing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Key className="h-4 w-4 mr-2" />}
+                Testar Conexão
+              </Button>
+            )}
             <Button
               onClick={handleSave}
               disabled={saving || testing}
               className="bg-primary hover:bg-primary/85 text-white shadow-sm"
             >
               {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Salvar Credenciais
+              {dialogType === "tracking" ? "Salvar API Key" : "Salvar Credenciais"}
             </Button>
           </DialogFooter>
         </DialogContent>
