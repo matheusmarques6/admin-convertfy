@@ -32,20 +32,25 @@ DROP POLICY IF EXISTS "Users can manage reports" ON reports;
 -- ============================================================================
 
 -- client_stores: proper org-scoped policies
-CREATE POLICY IF NOT EXISTS "Org members can view client_stores"
+-- DROP first to make this migration idempotent, then CREATE
+DROP POLICY IF EXISTS "Org members can view client_stores" ON client_stores;
+CREATE POLICY "Org members can view client_stores"
   ON client_stores FOR SELECT TO authenticated
   USING (is_admin() OR can_access_store(id));
 
-CREATE POLICY IF NOT EXISTS "Org members can update client_stores"
+DROP POLICY IF EXISTS "Org members can update client_stores" ON client_stores;
+CREATE POLICY "Org members can update client_stores"
   ON client_stores FOR UPDATE TO authenticated
   USING (is_admin() OR can_access_store(id))
   WITH CHECK (is_admin() OR can_access_store(id));
 
-CREATE POLICY IF NOT EXISTS "Admins can delete client_stores"
+DROP POLICY IF EXISTS "Admins can delete client_stores" ON client_stores;
+CREATE POLICY "Admins can delete client_stores"
   ON client_stores FOR DELETE TO authenticated
   USING (is_admin());
 
-CREATE POLICY IF NOT EXISTS "Org members can insert client_stores"
+DROP POLICY IF EXISTS "Org members can insert client_stores" ON client_stores;
+CREATE POLICY "Org members can insert client_stores"
   ON client_stores FOR INSERT TO authenticated
   WITH CHECK (
     is_admin()
@@ -54,7 +59,8 @@ CREATE POLICY IF NOT EXISTS "Org members can insert client_stores"
   );
 
 -- clients: proper org-scoped policy
-CREATE POLICY IF NOT EXISTS "Org members can view clients"
+DROP POLICY IF EXISTS "Org members can view clients" ON clients;
+CREATE POLICY "Org members can view clients"
   ON clients FOR SELECT TO authenticated
   USING (is_admin() OR id IN (SELECT accessible_client_ids()));
 
