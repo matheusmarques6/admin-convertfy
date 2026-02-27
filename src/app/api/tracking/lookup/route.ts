@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { checkRateLimit } from "@/lib/rate-limit"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
+import { OrderLookupService, OrderLookupResult } from "@/lib/services/order-lookup.service"
 
 const log = logger.child("TrackingLookup")
 
@@ -14,6 +15,69 @@ function getClientIp(request: NextRequest): string {
     request.headers.get("x-real-ip") ||
     "unknown"
   )
+}
+
+/** Map OrderLookupResult[] to the widget-compatible format */
+function mapLookupResults(lookupResults: OrderLookupResult[]): Array<{
+  order: {
+    id: string
+    order_name: string | null
+    customer_name: string | null
+    customer_email: string | null
+    order_created_at: string | null
+    shipped_at: string | null
+    delivered_at: string | null
+    total_price: number | null
+    currency: string
+  }
+  tracking: Array<{
+    id: string
+    tracking_number: string
+    carrier_name: string | null
+    status: string
+    status_detail: string | null
+    last_event: string | null
+    tracking_events: unknown[]
+  }>
+}> {
+  return lookupResults
+    .filter((r) => r.found && r.order)
+    .map((r) => {
+      const o = r.order!
+      const fulfillmentToStatus: Record<string, string> = {
+        fulfilled: "delivered",
+        unfulfilled: "pending",
+        partial: "in_transit",
+      }
+      const status = fulfillmentToStatus[o.fulfillment_status] || "pending"
+
+      return {
+        order: {
+          id: `${r.source}-${o.order_number}`,
+          order_name: o.order_number,
+          customer_name: o.customer_name,
+          customer_email: null,
+          order_created_at: o.order_date,
+          shipped_at: o.fulfillment_status === "fulfilled" ? o.order_date : null,
+          delivered_at: o.fulfillment_status === "fulfilled" ? o.order_date : null,
+          total_price: parseFloat(o.total_price) || null,
+          currency: o.currency,
+        },
+        tracking: o.tracking_code
+          ? [
+              {
+                id: `${r.source}-${o.tracking_code}`,
+                tracking_number: o.tracking_code,
+                carrier_name: o.carrier,
+                status,
+                status_detail: null,
+                last_event: null,
+                tracking_events: [],
+              },
+            ]
+          : [],
+      }
+    })
 }
 
 export async function OPTIONS(request: NextRequest) {
@@ -28,6 +92,8 @@ export async function GET(request: NextRequest) {
 
   try {
     const query = request.nextUrl.searchParams.get("q")?.trim()
+    const storeParam = request.nextUrl.searchParams.get("store")?.trim()
+
     if (!query || query.length < 3) {
       return NextResponse.json(
         { error: "Query deve ter pelo menos 3 caracteres" },
@@ -43,7 +109,7 @@ export async function GET(request: NextRequest) {
     const isOrderNumber = query.startsWith("#") || /^\d{3,6}$/.test(query)
     const cleanQuery = query.replace(/^#/, "")
 
-    const results: Array<{
+    type WidgetResult = {
       order: {
         id: string
         order_name: string | null
@@ -64,24 +130,69 @@ export async function GET(request: NextRequest) {
         last_event: string | null
         tracking_events: unknown[]
       }>
-    }> = []
+    }
+
+    let results: WidgetResult[] = []
 
     if (isEmail) {
-      const { data: orders } = await admin
-        .from("tracking_orders")
-        .select("id, order_name, customer_name, customer_email, order_created_at, shipped_at, delivered_at, total_price, currency")
-        .ilike("customer_email", cleanQuery)
-        .order("order_created_at", { ascending: false })
-        .limit(10)
+      // Resolve storeId: store param can be client_store_id or tracking_store_id
+      let clientStoreId: string | null = null
 
-      if (orders) {
-        for (const order of orders) {
-          const { data: codes } = await admin
-            .from("tracking_codes")
-            .select("id, tracking_number, carrier_name, status, status_detail, last_event, tracking_events")
-            .eq("tracking_order_id", order.id)
+      if (storeParam) {
+        // Try as client_store_id first
+        const { data: csCheck } = await admin
+          .from("client_stores")
+          .select("id")
+          .eq("id", storeParam)
+          .single()
 
-          results.push({ order, tracking: codes || [] })
+        if (csCheck) {
+          clientStoreId = csCheck.id
+        } else {
+          // Try as tracking_store_id → resolve to client_store_id
+          const { data: tsCheck } = await admin
+            .from("tracking_stores")
+            .select("client_store_id")
+            .eq("id", storeParam)
+            .single()
+
+          if (tsCheck?.client_store_id) {
+            clientStoreId = tsCheck.client_store_id
+          }
+        }
+      }
+
+      // Use OrderLookupService cascade if we have a storeId
+      if (clientStoreId) {
+        try {
+          const lookupService = new OrderLookupService()
+          const lookupResults = await lookupService.findByEmail(clientStoreId, cleanQuery)
+          results = mapLookupResults(lookupResults)
+        } catch (err) {
+          log.warn("OrderLookupService failed, falling back to local", {
+            error: err instanceof Error ? err.message : String(err),
+          })
+        }
+      }
+
+      // Fallback to local Supabase search if cascade returned nothing or failed
+      if (results.length === 0) {
+        const { data: orders } = await admin
+          .from("tracking_orders")
+          .select("id, order_name, customer_name, customer_email, order_created_at, shipped_at, delivered_at, total_price, currency")
+          .ilike("customer_email", cleanQuery)
+          .order("order_created_at", { ascending: false })
+          .limit(10)
+
+        if (orders) {
+          for (const order of orders) {
+            const { data: codes } = await admin
+              .from("tracking_codes")
+              .select("id, tracking_number, carrier_name, status, status_detail, last_event, tracking_events")
+              .eq("tracking_order_id", order.id)
+
+            results.push({ order, tracking: codes || [] })
+          }
         }
       }
     } else if (isOrderNumber) {

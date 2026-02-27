@@ -7,6 +7,8 @@ import {
   Check,
   Eye,
   Settings,
+  Layout,
+  MessageSquare,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -28,12 +30,15 @@ interface TrackingStore {
   shop_name: string | null
 }
 
+type SnippetMode = "inline" | "floating"
+
 export default function PortalTrackingScriptPage() {
   const [stores, setStores] = useState<TrackingStore[]>([])
   const [selectedStore, setSelectedStore] = useState<string>("")
-  const [copied, setCopied] = useState(false)
+  const [copiedSnippet, setCopiedSnippet] = useState<string | null>(null)
+  const [snippetMode, setSnippetMode] = useState<SnippetMode>("inline")
   const [config, setConfig] = useState({
-    primaryColor: "#05AFF2",
+    primaryColor: "#6366F1",
     position: "bottom-right",
     language: "pt",
   })
@@ -51,12 +56,21 @@ export default function PortalTrackingScriptPage() {
       .catch(() => {})
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const scriptCode = `<script src="${DOMAIN}/api/script/widget.js?store=${selectedStore}" async></script>`
+  const scriptTag = `<script src="${DOMAIN}/api/script/widget.js?store=${selectedStore}" async></script>`
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(scriptCode)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+  const inlineSnippet = `<!-- Convertfy Tracking Widget (Inline) -->
+<div id="convertfy-tracking"></div>
+${scriptTag}`
+
+  const floatingSnippet = `<!-- Convertfy Tracking Widget (Floating) -->
+${scriptTag}`
+
+  const currentSnippet = snippetMode === "inline" ? inlineSnippet : floatingSnippet
+
+  const handleCopy = (snippet: string, label: string) => {
+    navigator.clipboard.writeText(snippet)
+    setCopiedSnippet(label)
+    setTimeout(() => setCopiedSnippet(null), 2000)
   }
 
   return (
@@ -96,19 +110,53 @@ export default function PortalTrackingScriptPage() {
                   </Select>
                 </div>
 
+                {/* Mode selector */}
+                <div className="space-y-2">
+                  <Label>Modo de exibição</Label>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setSnippetMode("inline")}
+                      className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border text-sm font-medium transition-all ${
+                        snippetMode === "inline"
+                          ? "border-primary bg-primary/5 text-primary"
+                          : "border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-slate-300"
+                      }`}
+                    >
+                      <Layout className="h-4 w-4" />
+                      Inline (página dedicada)
+                    </button>
+                    <button
+                      onClick={() => setSnippetMode("floating")}
+                      className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border text-sm font-medium transition-all ${
+                        snippetMode === "floating"
+                          ? "border-primary bg-primary/5 text-primary"
+                          : "border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-slate-300"
+                      }`}
+                    >
+                      <MessageSquare className="h-4 w-4" />
+                      Flutuante (botão + modal)
+                    </button>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {snippetMode === "inline"
+                      ? "Renderiza o widget dentro de um div na sua página de rastreamento customizada."
+                      : "Exibe um botão flutuante no canto da tela que abre um modal de busca."}
+                  </p>
+                </div>
+
                 <div className="space-y-2">
                   <Label>Copie e cole no HTML da sua loja</Label>
                   <div className="relative">
-                    <pre className="bg-slate-900 text-slate-100 rounded-lg p-4 pr-12 text-sm font-mono overflow-x-auto">
-                      {scriptCode}
+                    <pre className="bg-slate-900 text-slate-100 rounded-lg p-4 pr-12 text-sm font-mono overflow-x-auto whitespace-pre-wrap">
+                      {currentSnippet}
                     </pre>
                     <Button
                       variant="ghost"
                       size="icon"
                       className="absolute top-2 right-2 h-8 w-8 text-slate-400 hover:text-white hover:bg-white/10"
-                      onClick={handleCopy}
+                      onClick={() => handleCopy(currentSnippet, snippetMode)}
                     >
-                      {copied ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
+                      {copiedSnippet === snippetMode ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
                     </Button>
                   </div>
                 </div>
@@ -129,51 +177,90 @@ export default function PortalTrackingScriptPage() {
               <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">Preview do Widget</h2>
             </div>
 
-            <div className="relative bg-slate-50 dark:bg-[#0d1117] rounded-xl border border-slate-200 dark:border-slate-700/40 min-h-[300px] flex items-end justify-end p-6">
-              {/* Simulated widget button */}
-              <div className="flex flex-col items-end gap-3">
-                {/* Preview of the modal */}
-                <div className="bg-white dark:bg-[#1a1f2e] rounded-2xl shadow-2xl w-[320px] border border-slate-200 dark:border-slate-700/40 overflow-hidden">
-                  <div className="p-4 border-b border-slate-100 dark:border-slate-700/40 flex items-center justify-between">
-                    <h3 className="font-semibold text-sm text-slate-800 dark:text-slate-100">Rastrear Pedido</h3>
-                    <button className="text-slate-400 text-lg">&times;</button>
+            {snippetMode === "inline" ? (
+              /* Inline preview */
+              <div className="relative bg-slate-50 dark:bg-[#0d1117] rounded-xl border border-slate-200 dark:border-slate-700/40 p-6">
+                <div className="bg-white dark:bg-[#1a1f2e] rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700/40 overflow-hidden max-w-lg mx-auto">
+                  <div className="p-5 border-b border-slate-100 dark:border-slate-700/40 flex items-center gap-3">
+                    <div
+                      className="w-10 h-10 rounded-xl flex items-center justify-center"
+                      style={{ background: config.primaryColor + "15", color: config.primaryColor }}
+                    >
+                      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                        <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+                        <line x1="12" y1="22.08" x2="12" y2="12" />
+                      </svg>
+                    </div>
+                    <h3 className="font-bold text-base text-slate-800 dark:text-slate-100">Rastrear Pedido</h3>
                   </div>
-                  <div className="p-4">
+                  <div className="p-5">
                     <div className="flex gap-2 mb-4">
                       <input
-                        className="flex-1 px-3 py-2 text-xs border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+                        className="flex-1 px-3 py-2.5 text-sm border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300"
                         placeholder="Código de rastreio, nº pedido ou email"
                         readOnly
                       />
-                      <button className="px-3 py-2 text-xs font-semibold rounded-lg text-white" style={{ background: config.primaryColor }}>
+                      <button className="px-4 py-2.5 text-sm font-semibold rounded-lg text-white" style={{ background: config.primaryColor }}>
                         Buscar
                       </button>
                     </div>
-                    <div className="text-center py-6">
-                      <p className="text-xs text-slate-400 dark:text-slate-500">
+                    <div className="text-center py-8">
+                      <p className="text-sm text-slate-400 dark:text-slate-500">
                         Digite para buscar seu pedido
                       </p>
                     </div>
                   </div>
-                  <div className="px-4 py-2 border-t border-slate-100 dark:border-slate-700/40 text-center">
+                  <div className="px-5 py-3 border-t border-slate-100 dark:border-slate-700/40 text-center">
                     <span className="text-[10px] text-slate-400">Powered by Convertfy</span>
                   </div>
                 </div>
-
-                {/* Floating button */}
-                <button
-                  className="flex items-center gap-2 px-5 py-3 rounded-full text-white text-sm font-semibold shadow-lg"
-                  style={{ background: config.primaryColor }}
-                >
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-                    <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
-                    <line x1="12" y1="22.08" x2="12" y2="12" />
-                  </svg>
-                  Rastrear Pedido
-                </button>
               </div>
-            </div>
+            ) : (
+              /* Floating preview */
+              <div className="relative bg-slate-50 dark:bg-[#0d1117] rounded-xl border border-slate-200 dark:border-slate-700/40 min-h-[300px] flex items-end justify-end p-6">
+                <div className="flex flex-col items-end gap-3">
+                  <div className="bg-white dark:bg-[#1a1f2e] rounded-2xl shadow-2xl w-[320px] border border-slate-200 dark:border-slate-700/40 overflow-hidden">
+                    <div className="p-4 border-b border-slate-100 dark:border-slate-700/40 flex items-center justify-between">
+                      <h3 className="font-semibold text-sm text-slate-800 dark:text-slate-100">Rastrear Pedido</h3>
+                      <button className="text-slate-400 text-lg">&times;</button>
+                    </div>
+                    <div className="p-4">
+                      <div className="flex gap-2 mb-4">
+                        <input
+                          className="flex-1 px-3 py-2 text-xs border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+                          placeholder="Código de rastreio, nº pedido ou email"
+                          readOnly
+                        />
+                        <button className="px-3 py-2 text-xs font-semibold rounded-lg text-white" style={{ background: config.primaryColor }}>
+                          Buscar
+                        </button>
+                      </div>
+                      <div className="text-center py-6">
+                        <p className="text-xs text-slate-400 dark:text-slate-500">
+                          Digite para buscar seu pedido
+                        </p>
+                      </div>
+                    </div>
+                    <div className="px-4 py-2 border-t border-slate-100 dark:border-slate-700/40 text-center">
+                      <span className="text-[10px] text-slate-400">Powered by Convertfy</span>
+                    </div>
+                  </div>
+
+                  <button
+                    className="flex items-center gap-2 px-5 py-3 rounded-full text-white text-sm font-semibold shadow-lg"
+                    style={{ background: config.primaryColor }}
+                  >
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                      <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+                      <line x1="12" y1="22.08" x2="12" y2="12" />
+                    </svg>
+                    Rastrear Pedido
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </AnimatedItem>
 
@@ -204,7 +291,7 @@ export default function PortalTrackingScriptPage() {
               </div>
 
               <div className="space-y-2">
-                <Label>Posição</Label>
+                <Label>Posição (modo flutuante)</Label>
                 <Select value={config.position} onValueChange={(v) => setConfig({ ...config, position: v })}>
                   <SelectTrigger className="bg-white dark:bg-[#0d1117] border-slate-200 dark:border-slate-700/40">
                     <SelectValue />
@@ -212,7 +299,6 @@ export default function PortalTrackingScriptPage() {
                   <SelectContent>
                     <SelectItem value="bottom-right">Inferior Direito</SelectItem>
                     <SelectItem value="bottom-left">Inferior Esquerdo</SelectItem>
-                    <SelectItem value="inline">Inline (embed)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -239,28 +325,49 @@ export default function PortalTrackingScriptPage() {
           <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-6 shadow-sm space-y-4">
             <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100">Como instalar na Shopify</h2>
 
-            <ol className="space-y-3 text-sm text-slate-600 dark:text-slate-400">
-              <li className="flex gap-3">
-                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center">1</span>
-                <span>Acesse o <strong className="text-slate-800 dark:text-slate-200">Shopify Admin</strong> da sua loja</span>
-              </li>
-              <li className="flex gap-3">
-                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center">2</span>
-                <span>Vá em <strong className="text-slate-800 dark:text-slate-200">Online Store → Themes → Edit code</strong></span>
-              </li>
-              <li className="flex gap-3">
-                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center">3</span>
-                <span>Abra o arquivo <strong className="text-slate-800 dark:text-slate-200">theme.liquid</strong></span>
-              </li>
-              <li className="flex gap-3">
-                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center">4</span>
-                <span>Cole o snippet <strong className="text-slate-800 dark:text-slate-200">antes da tag {`</body>`}</strong></span>
-              </li>
-              <li className="flex gap-3">
-                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center">5</span>
-                <span>Salve e pronto! O widget aparecerá na sua loja</span>
-              </li>
-            </ol>
+            {snippetMode === "inline" ? (
+              <ol className="space-y-3 text-sm text-slate-600 dark:text-slate-400">
+                <li className="flex gap-3">
+                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center">1</span>
+                  <span>Crie uma <strong className="text-slate-800 dark:text-slate-200">página customizada</strong> no Shopify Admin (Online Store → Pages)</span>
+                </li>
+                <li className="flex gap-3">
+                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center">2</span>
+                  <span>No editor da página, alterne para modo <strong className="text-slate-800 dark:text-slate-200">HTML</strong> (ícone {`<>`})</span>
+                </li>
+                <li className="flex gap-3">
+                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center">3</span>
+                  <span>Cole o snippet completo (div + script) no conteúdo da página</span>
+                </li>
+                <li className="flex gap-3">
+                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center">4</span>
+                  <span>Salve a página e adicione ao <strong className="text-slate-800 dark:text-slate-200">menu de navegação</strong> como &quot;Rastrear Pedido&quot;</span>
+                </li>
+              </ol>
+            ) : (
+              <ol className="space-y-3 text-sm text-slate-600 dark:text-slate-400">
+                <li className="flex gap-3">
+                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center">1</span>
+                  <span>Acesse o <strong className="text-slate-800 dark:text-slate-200">Shopify Admin</strong> da sua loja</span>
+                </li>
+                <li className="flex gap-3">
+                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center">2</span>
+                  <span>Vá em <strong className="text-slate-800 dark:text-slate-200">Online Store → Themes → Edit code</strong></span>
+                </li>
+                <li className="flex gap-3">
+                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center">3</span>
+                  <span>Abra o arquivo <strong className="text-slate-800 dark:text-slate-200">theme.liquid</strong></span>
+                </li>
+                <li className="flex gap-3">
+                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center">4</span>
+                  <span>Cole o snippet <strong className="text-slate-800 dark:text-slate-200">antes da tag {`</body>`}</strong></span>
+                </li>
+                <li className="flex gap-3">
+                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center">5</span>
+                  <span>Salve e pronto! O botão flutuante aparecerá em todas as páginas</span>
+                </li>
+              </ol>
+            )}
           </div>
         </AnimatedItem>
       </AnimatedContainer>
