@@ -18,6 +18,8 @@ import {
   ChevronUp,
   ChevronsUpDown,
   Plus,
+  Package,
+  Plug,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -61,6 +63,8 @@ const navigation = [
   { name: "Análise", href: "/portal/analytics", icon: BarChart3 },
   { name: "Campanhas", href: "/portal/campaigns", icon: Send },
   { name: "Flows", href: "/portal/flows", icon: GitBranch },
+  { name: "Integrações", href: "/portal/integrations", icon: Plug },
+  { name: "Rastreamento", href: "/portal/tracking", icon: Package },
   { name: "Faturas", href: "/portal/invoices", icon: FileText },
 ]
 
@@ -90,7 +94,6 @@ export default function PortalLayout({
     logo_url: null,
     primary_color: "#3b82f6",
   })
-
   // Check authentication using browser Supabase client
   useEffect(() => {
     const checkAuth = async () => {
@@ -241,6 +244,8 @@ export default function PortalLayout({
   const getPageTitle = () => {
     const navItem = navigation.find(item => pathname === item.href || pathname.startsWith(item.href + "/"))
     if (navItem) return navItem.name
+    if (pathname.startsWith("/portal/integrations")) return "Integrações"
+    if (pathname.startsWith("/portal/tracking")) return "Rastreamento"
     if (pathname.startsWith("/portal/settings")) return "Configurações"
     if (pathname.startsWith("/portal/invoices")) return "Faturas"
     if (pathname.startsWith("/portal/stores")) return "Lojas"
@@ -269,6 +274,7 @@ export default function PortalLayout({
           </Link>
         )
       })}
+
     </div>
   )
 

@@ -128,6 +128,7 @@ export async function GET(request: Request) {
     // Fetch Klaviyo revenue in chunks of 5 (same approach as /api/dashboard/total-revenue)
     // This avoids rate limiting on the Klaviyo API
     const klaviyoStores = (stores || []).filter((s) => !!s.klaviyo_private_key)
+    log.info(`Klaviyo revenue: ${klaviyoStores.length}/${(stores || []).length} stores have klaviyo_private_key`)
     const revenueMap = new Map<string, KlaviyoStoreRevenue>()
 
     const CHUNK_SIZE = 5

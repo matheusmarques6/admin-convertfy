@@ -6,7 +6,6 @@ import { getStoreIntegrationStatus } from "@/lib/services/credentials.service"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { StoreDetailTabs } from "@/components/stores/store-detail-tabs"
-import { StoreLinkBadge } from "@/components/stores/store-link-badge"
 import { StoreLinkActions } from "@/components/stores/store-link-actions"
 import { StoreDeleteAction } from "@/components/stores/store-delete-action"
 
@@ -151,10 +150,6 @@ export default async function StoreDetailPage({
               ) : (
                 <span>Loja Avulsa — Sem cliente vinculado</span>
               )}
-              <StoreLinkBadge
-                clientId={store.client_id}
-                clientName={clientName}
-              />
               <span>{connectedCount} integração(ões) conectada(s)</span>
             </div>
           </div>

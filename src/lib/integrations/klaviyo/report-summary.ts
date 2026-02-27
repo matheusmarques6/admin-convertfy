@@ -47,6 +47,7 @@ export async function getKlaviyoRevenueForStore(
     const apiKey = storeData.klaviyo_private_key || storeData.klaviyo_api_key
 
     if (!apiKey) {
+      log.warn(`Store ${storeId}: no Klaviyo API key found after decryption`)
       return { totalRevenue: 0, campaignRevenue: 0, flowRevenue: 0 }
     }
 
@@ -96,6 +97,10 @@ export async function getKlaviyoRevenueForStore(
       }),
     ])
 
+    if (!campaignReport && !flowReport) {
+      log.warn(`Store ${storeId}: both Klaviyo report requests returned null (API error or rate limit)`)
+    }
+
     // Sum up revenue from campaign results
     let campaignRevenue = 0
     const campaignResults = campaignReport?.data?.attributes?.results || []
@@ -109,6 +114,8 @@ export async function getKlaviyoRevenueForStore(
     for (const r of flowResults) {
       flowRevenue += Number(r.statistics?.conversion_value) || 0
     }
+
+    log.info(`Store ${storeId}: campaign=$${campaignRevenue}, flow=$${flowRevenue}`)
 
     return {
       totalRevenue: campaignRevenue + flowRevenue,

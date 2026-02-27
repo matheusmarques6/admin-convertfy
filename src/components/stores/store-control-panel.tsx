@@ -65,7 +65,6 @@ import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/lib/hooks/use-toast"
 import { QuickStoreForm } from "@/components/stores/quick-store-form"
-import { StoreLinkBadge } from "@/components/stores/store-link-badge"
 import { StoreLinkModal } from "@/components/stores/store-link-modal"
 import { StoreUnlinkDialog } from "@/components/stores/store-unlink-dialog"
 
@@ -658,7 +657,6 @@ export function StoreControlPanel() {
                             <p className="text-sm text-muted-foreground">{store.client_name || 'Sem cliente'}</p>
                           </div>
                           <div className="flex gap-1 ml-2">
-                            <StoreLinkBadge clientId={store.client_id} clientName={store.client_name} />
                             {store.has_shopify && (
                               <Badge variant="outline" className="text-[10px] border-success/30 text-success">Shopify</Badge>
                             )}

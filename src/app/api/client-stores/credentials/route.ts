@@ -20,6 +20,7 @@ const PLAIN_FIELDS = [
   "store_url",
   "platform",
   "currency",
+  "client_id",
   "shopify_store_domain",
   "klaviyo_list_id",
   "ga4_property_id",
