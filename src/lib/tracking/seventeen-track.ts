@@ -299,23 +299,69 @@ async function trackReal(
 }
 
 /**
- * Main tracking function - uses real 17track API
- * Requires a valid API key (per-store or global env)
+ * Track packages via 17track only (used as a provider in multi-carrier system)
+ */
+export async function track17trackOnly(
+  trackingNumbers: string[],
+  apiKey: string
+): Promise<TrackingResult[]> {
+  return await trackReal(trackingNumbers, apiKey)
+}
+
+/**
+ * Main tracking function - multi-provider with 17track fallback
+ * Tries: Carrier-specific → Cainiao (free) → 17track → TrackingMore → fallback
  */
 export async function trackPackages(
   trackingNumbers: string[],
-  apiKey?: string | null
+  apiKey?: string | null,
+  carrierKeys?: Record<string, string | boolean>
 ): Promise<TrackingResult[]> {
   if (!trackingNumbers.length) return []
 
   const key = apiKey || process.env.SEVENTEEN_TRACK_API_KEY
+  const keys: import("./carriers").CarrierKeys = {
+    seventeen_track: key || undefined,
+    trackingmore: (carrierKeys?.trackingmore as string) || undefined,
+    postnl: (carrierKeys?.postnl as string) || undefined,
+    cainiao: carrierKeys?.cainiao !== false,
+  }
 
-  if (!key) {
-    log.warn("No 17track API key configured – cannot track packages")
+  const hasAnyKey = keys.seventeen_track || keys.trackingmore || keys.cainiao
+
+  if (!hasAnyKey) {
+    log.warn("No tracking API keys configured – cannot track packages")
     return []
   }
 
-  return await trackReal(trackingNumbers, key)
+  // Use multi-provider tracking for each number
+  const { trackWithBestProvider, detectCarrierProvider } = await import("./carriers")
+
+  const results: TrackingResult[] = []
+
+  for (const num of trackingNumbers) {
+    const result = await trackWithBestProvider(num, keys, track17trackOnly)
+
+    if (result) {
+      results.push(result)
+    } else {
+      // Absolute fallback with detected carrier info
+      const carrier = detectCarrierProvider(num)
+      results.push({
+        tracking_number: num,
+        carrier_code: carrier.code,
+        carrier_name: carrier.name,
+        status: "pending",
+        status_detail: "Aguardando informações da transportadora",
+        last_event: "",
+        last_event_at: null,
+        estimated_delivery: null,
+        events: [],
+      })
+    }
+  }
+
+  return results
 }
 
 /**

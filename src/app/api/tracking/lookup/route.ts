@@ -43,12 +43,13 @@ export async function POST(request: NextRequest) {
 
     let trackingStoreId: string | null = null
     let seventeenTrackKey: string | null = null
+    let carrierKeys: Record<string, string | boolean> = { cainiao: true }
 
     // If store_id provided, use it to find tracking store
     if (store_id) {
       const { data: trackingStore } = await adminClient
         .from("tracking_stores")
-        .select("id, seventeen_track_api_key")
+        .select("id, seventeen_track_api_key, carrier_api_keys")
         .eq("client_store_id", store_id)
         .eq("is_active", true)
         .single()
@@ -60,6 +61,19 @@ export async function POST(request: NextRequest) {
             seventeenTrackKey = decrypt(trackingStore.seventeen_track_api_key)
           } catch {
             // Use global key
+          }
+        }
+        // Decrypt carrier-specific API keys
+        const storedKeys = (trackingStore.carrier_api_keys as Record<string, string>) || {}
+        for (const [carrier, encKey] of Object.entries(storedKeys)) {
+          if (typeof encKey === "string" && encKey.startsWith("enc::")) {
+            try {
+              carrierKeys[carrier] = decrypt(encKey)
+            } catch {
+              log.warn(`Failed to decrypt ${carrier} key`)
+            }
+          } else if (typeof encKey === "boolean") {
+            carrierKeys[carrier] = encKey
           }
         }
       }
@@ -113,7 +127,7 @@ export async function POST(request: NextRequest) {
 
         if (shouldRefresh && code.status !== "delivered") {
           try {
-            const results = await trackPackages([tracking_number], seventeenTrackKey)
+            const results = await trackPackages([tracking_number], seventeenTrackKey, carrierKeys)
             if (results.length > 0) {
               const result = results[0]
               // Update the tracking code with fresh data
@@ -181,7 +195,7 @@ export async function POST(request: NextRequest) {
 
       // Not in our DB - try 17track directly
       try {
-        const results = await trackPackages([tracking_number], seventeenTrackKey)
+        const results = await trackPackages([tracking_number], seventeenTrackKey, carrierKeys)
         if (results.length > 0) {
           return respond({
             found: true,

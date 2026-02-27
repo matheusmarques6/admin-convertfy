@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
     // Check tracking store config
     const { data: trackingStore } = await adminClient
       .from("tracking_stores")
-      .select("id, is_active, seventeen_track_api_key, widget_config, last_sync_at")
+      .select("id, is_active, seventeen_track_api_key, carrier_api_keys, widget_config, last_sync_at")
       .eq("client_store_id", storeId)
       .single()
 
@@ -90,6 +90,11 @@ export async function GET(request: NextRequest) {
           active: trackingStore?.is_active || false,
           tracking_store_id: trackingStore?.id || null,
           has_17track_key: !!trackingStore?.seventeen_track_api_key,
+          carrier_keys: Object.fromEntries(
+            Object.entries((trackingStore?.carrier_api_keys as Record<string, unknown>) || {}).map(
+              ([k, v]) => [k, typeof v === "boolean" ? v : !!v]
+            )
+          ),
           widget_config: trackingStore?.widget_config || null,
           last_sync_at: trackingStore?.last_sync_at || null,
         },
@@ -127,6 +132,8 @@ export async function PUT(request: NextRequest) {
       activate_tracking,
       widget_config,
       seventeen_track_api_key,
+      // Carrier-specific keys
+      carrier_api_keys,
     } = body
 
     if (!store_id || !integration_type) {
@@ -242,6 +249,33 @@ export async function PUT(request: NextRequest) {
 
       if (seventeen_track_api_key) {
         trackingData.seventeen_track_api_key = encrypt(seventeen_track_api_key)
+      }
+
+      // Handle carrier-specific API keys
+      if (carrier_api_keys && typeof carrier_api_keys === "object") {
+        // Get existing carrier keys
+        let existingKeys: Record<string, unknown> = {}
+        if (existing) {
+          const { data: existingStore } = await adminClient
+            .from("tracking_stores")
+            .select("carrier_api_keys")
+            .eq("id", existing.id)
+            .single()
+          existingKeys = (existingStore?.carrier_api_keys as Record<string, unknown>) || {}
+        }
+
+        // Encrypt and merge new keys
+        const mergedKeys = { ...existingKeys }
+        for (const [carrier, value] of Object.entries(carrier_api_keys as Record<string, unknown>)) {
+          if (typeof value === "string" && value.trim()) {
+            mergedKeys[carrier] = encrypt(value as string)
+          } else if (typeof value === "boolean") {
+            mergedKeys[carrier] = value
+          } else if (value === null || value === "") {
+            delete mergedKeys[carrier]
+          }
+        }
+        trackingData.carrier_api_keys = mergedKeys
       }
 
       if (existing) {

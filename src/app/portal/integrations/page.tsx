@@ -14,6 +14,9 @@ import {
   Settings,
   Key,
   ArrowRight,
+  Truck,
+  Globe,
+  Save,
 } from "lucide-react"
 import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -33,8 +36,75 @@ import { toast } from "@/lib/hooks/use-toast"
 interface IntegrationData {
   shopify: { connected: boolean; domain: string; connected_at: string | null }
   klaviyo: { connected: boolean; has_public_key: boolean; connected_at: string | null }
-  tracking: { active: boolean; tracking_store_id: string | null; has_17track_key: boolean; widget_config: Record<string, unknown> | null; last_sync_at: string | null }
+  tracking: {
+    active: boolean
+    tracking_store_id: string | null
+    has_17track_key: boolean
+    carrier_keys: Record<string, boolean>
+    widget_config: Record<string, unknown> | null
+    last_sync_at: string | null
+  }
 }
+
+interface CarrierConfig {
+  id: string
+  name: string
+  description: string
+  icon: string
+  color: string
+  keyPlaceholder: string
+  helpText: string
+  helpUrl?: string
+  isFree?: boolean
+  covers: string[]
+}
+
+const CARRIERS: CarrierConfig[] = [
+  {
+    id: "seventeen_track",
+    name: "17track",
+    description: "Agregador universal",
+    icon: "17",
+    color: "bg-orange-500/10 text-orange-500",
+    keyPlaceholder: "Sua API Key do 17track",
+    helpText: "17track.net/apiuser",
+    helpUrl: "https://www.17track.net/en/apiuser",
+    covers: ["Todos os 2800+ transportadoras"],
+  },
+  {
+    id: "trackingmore",
+    name: "TrackingMore",
+    description: "Alternativa econômica",
+    icon: "TM",
+    color: "bg-blue-500/10 text-blue-500",
+    keyPlaceholder: "Sua API Key do TrackingMore",
+    helpText: "trackingmore.com/docs",
+    helpUrl: "https://www.trackingmore.com/docs/trackingmore/d5ac362fc3cda-api-quick-start-guide",
+    covers: ["Wanb Express", "Yanwen", "SDH Express", "China Post", "PostNL", "+1500"],
+  },
+  {
+    id: "cainiao",
+    name: "Cainiao",
+    description: "Transportadoras chinesas (gratuito)",
+    icon: "CN",
+    color: "bg-red-500/10 text-red-500",
+    keyPlaceholder: "",
+    helpText: "Rastreamento gratuito via Cainiao Global",
+    isFree: true,
+    covers: ["Wanb Express", "Yanwen", "SDH Express", "China Post", "AliExpress"],
+  },
+  {
+    id: "postnl",
+    name: "PostNL",
+    description: "Correios Holanda",
+    icon: "NL",
+    color: "bg-amber-500/10 text-amber-500",
+    keyPlaceholder: "Sua API Key do PostNL",
+    helpText: "developer.postnl.nl",
+    helpUrl: "https://developer.postnl.nl",
+    covers: ["PostNL International", "PostNL Domestic"],
+  },
+]
 
 interface StoreInfo {
   id: string
@@ -66,6 +136,12 @@ export default function PortalIntegrationsPage() {
   const [klaviyoPublicKey, setKlaviyoPublicKey] = useState("")
   const [seventeenTrackKey, setSeventeenTrackKey] = useState("")
   const [showPassword, setShowPassword] = useState(false)
+
+  // Carrier dialog state
+  const [carrierDialogOpen, setCarrierDialogOpen] = useState(false)
+  const [activeCarrier, setActiveCarrier] = useState<CarrierConfig | null>(null)
+  const [carrierKeyInput, setCarrierKeyInput] = useState("")
+  const [savingCarrier, setSavingCarrier] = useState(false)
 
   const fetchData = useCallback(async () => {
     try {
@@ -197,6 +273,77 @@ export default function PortalIntegrationsPage() {
       toast({ variant: "destructive", title: "Erro ao salvar", description: err instanceof Error ? err.message : "Tente novamente" })
     } finally {
       setSaving(false)
+    }
+  }
+
+  function openCarrierDialog(carrier: CarrierConfig) {
+    // For 17track, use the existing tracking dialog
+    if (carrier.id === "seventeen_track") {
+      openDialog("tracking")
+      return
+    }
+    setActiveCarrier(carrier)
+    setCarrierKeyInput("")
+    setShowPassword(false)
+    setCarrierDialogOpen(true)
+  }
+
+  async function handleSaveCarrierKey() {
+    if (!activeCarrier || !store) return
+
+    // For Cainiao (free), toggle it
+    if (activeCarrier.isFree) {
+      setSavingCarrier(true)
+      try {
+        const res = await fetch("/api/portal/integrations", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            store_id: store.id,
+            integration_type: "tracking",
+            activate_tracking: true,
+            carrier_api_keys: { [activeCarrier.id]: true },
+          }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error || "Erro ao salvar")
+        toast({ title: `${activeCarrier.name} ativado com sucesso!` })
+        setCarrierDialogOpen(false)
+        fetchData()
+      } catch (err) {
+        toast({ variant: "destructive", title: "Erro", description: err instanceof Error ? err.message : "Tente novamente" })
+      } finally {
+        setSavingCarrier(false)
+      }
+      return
+    }
+
+    if (!carrierKeyInput.trim()) {
+      toast({ variant: "destructive", title: `Preencha a API Key do ${activeCarrier.name}` })
+      return
+    }
+
+    setSavingCarrier(true)
+    try {
+      const res = await fetch("/api/portal/integrations", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          store_id: store.id,
+          integration_type: "tracking",
+          activate_tracking: true,
+          carrier_api_keys: { [activeCarrier.id]: carrierKeyInput },
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Erro ao salvar")
+      toast({ title: `API Key do ${activeCarrier.name} salva com sucesso!` })
+      setCarrierDialogOpen(false)
+      fetchData()
+    } catch (err) {
+      toast({ variant: "destructive", title: "Erro ao salvar", description: err instanceof Error ? err.message : "Tente novamente" })
+    } finally {
+      setSavingCarrier(false)
     }
   }
 
@@ -435,10 +582,189 @@ export default function PortalIntegrationsPage() {
         </div>
       </div>
 
+      {/* Transportadoras Section */}
+      <div>
+        <div className="flex items-center gap-2 mb-4">
+          <Truck className="h-5 w-5 text-slate-500 dark:text-slate-400" />
+          <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Transportadoras</h2>
+        </div>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
+          Configure as APIs de rastreamento. O sistema tenta primeiro as transportadoras diretas (gratuitas), depois os agregadores (17track / TrackingMore).
+        </p>
+
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {CARRIERS.map((carrier) => {
+            const isConfigured = carrier.id === "seventeen_track"
+              ? integrations?.tracking.has_17track_key
+              : carrier.isFree
+              ? true
+              : integrations?.tracking.carrier_keys?.[carrier.id]
+
+            return (
+              <div
+                key={carrier.id}
+                className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 p-4"
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-lg ${carrier.color} flex items-center justify-center text-sm font-bold`}>
+                      {carrier.icon}
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">{carrier.name}</h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">{carrier.description}</p>
+                    </div>
+                  </div>
+                  {isConfigured ? (
+                    <CheckCircle2 className="h-4 w-4 text-emerald-500 flex-shrink-0 mt-1" />
+                  ) : (
+                    <AlertCircle className="h-4 w-4 text-slate-300 dark:text-slate-600 flex-shrink-0 mt-1" />
+                  )}
+                </div>
+
+                <div className="mb-3">
+                  <div className="flex flex-wrap gap-1">
+                    {carrier.covers.slice(0, 3).map((name) => (
+                      <span key={name} className="inline-flex items-center rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] text-slate-600 dark:text-slate-400">
+                        {name}
+                      </span>
+                    ))}
+                    {carrier.covers.length > 3 && (
+                      <span className="inline-flex items-center rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] text-slate-600 dark:text-slate-400">
+                        +{carrier.covers.length - 3}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => openCarrierDialog(carrier)}
+                  className="w-full text-xs border-slate-200/80 dark:border-slate-700/40 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/[0.06]"
+                >
+                  {carrier.isFree ? (
+                    <>
+                      <Globe className="h-3 w-3 mr-1.5" />
+                      {isConfigured ? "Ativo (Gratuito)" : "Ativar (Gratuito)"}
+                    </>
+                  ) : (
+                    <>
+                      <Key className="h-3 w-3 mr-1.5" />
+                      {isConfigured ? "Editar API Key" : "Configurar API Key"}
+                    </>
+                  )}
+                </Button>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
       {/* Info */}
       <p className="text-xs text-slate-400 dark:text-slate-500 text-center">
         As credenciais são criptografadas e sincronizadas com o painel admin.
       </p>
+
+      {/* Carrier Key Dialog */}
+      <Dialog open={carrierDialogOpen} onOpenChange={setCarrierDialogOpen}>
+        <DialogContent className="sm:max-w-md bg-white dark:bg-[#151922] border-slate-200/80 dark:border-slate-700/40">
+          <DialogHeader>
+            <DialogTitle className="text-slate-800 dark:text-slate-100">
+              Configurar {activeCarrier?.name}
+            </DialogTitle>
+            <DialogDescription className="text-slate-500 dark:text-slate-400">
+              {activeCarrier?.isFree
+                ? `${activeCarrier.name} oferece rastreamento gratuito para transportadoras chinesas.`
+                : `Configure a API Key do ${activeCarrier?.name} para rastreamento direto.`}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {activeCarrier?.isFree ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
+                  <CheckCircle2 className="h-4 w-4" />
+                  Nenhuma chave necessária - rastreamento gratuito
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  O {activeCarrier.name} será usado automaticamente para rastrear pacotes de transportadoras chinesas antes de consultar o 17track ou TrackingMore, economizando chamadas de API.
+                </p>
+                <div className="mt-2">
+                  <p className="text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">Transportadoras cobertas:</p>
+                  <div className="flex flex-wrap gap-1">
+                    {activeCarrier.covers.map((name) => (
+                      <span key={name} className="inline-flex items-center rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] text-slate-600 dark:text-slate-400">
+                        {name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label className="text-[13px] font-medium text-slate-700 dark:text-slate-200">
+                  {activeCarrier?.name} API Key
+                </Label>
+                <div className="relative">
+                  <Input
+                    type={showPassword ? "text" : "password"}
+                    placeholder={activeCarrier?.keyPlaceholder}
+                    value={carrierKeyInput}
+                    onChange={(e) => setCarrierKeyInput(e.target.value)}
+                    className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 pr-10"
+                  />
+                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                {activeCarrier?.helpUrl ? (
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Acesse{" "}
+                    <a href={activeCarrier.helpUrl} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">
+                      {activeCarrier.helpText}
+                    </a>
+                    {" "}para obter sua API Key
+                  </p>
+                ) : (
+                  <p className="text-xs text-slate-500 dark:text-slate-400">{activeCarrier?.helpText}</p>
+                )}
+                {integrations?.tracking.carrier_keys?.[activeCarrier?.id || ""] && (
+                  <div className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
+                    <CheckCircle2 className="h-4 w-4" />
+                    API Key já configurada. Preencha acima para substituir.
+                  </div>
+                )}
+                <div className="mt-2">
+                  <p className="text-xs font-medium text-slate-600 dark:text-slate-300 mb-1">Transportadoras cobertas:</p>
+                  <div className="flex flex-wrap gap-1">
+                    {activeCarrier?.covers.map((name) => (
+                      <span key={name} className="inline-flex items-center rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] text-slate-600 dark:text-slate-400">
+                        {name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCarrierDialogOpen(false)} className="border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleSaveCarrierKey}
+              disabled={savingCarrier}
+              className="bg-primary hover:bg-primary/85 text-white shadow-sm"
+            >
+              {savingCarrier && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              <Save className="h-4 w-4 mr-2" />
+              {activeCarrier?.isFree ? "Ativar" : "Salvar API Key"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Credentials Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
