@@ -695,6 +695,44 @@ export async function GET(request: NextRequest) {
             })
           })
 
+          // Aggregate UTM mediums
+          const utmMediumMap = new Map<string, { medium: string; orders: number; revenue: number }>()
+          shopifyDataList.forEach((s) => {
+            ((s.utmConversions?.byMedium || []) as Array<Record<string, unknown>>).forEach((u) => {
+              const medium = (u.medium as string) || ''
+              const existing = utmMediumMap.get(medium)
+              if (existing) {
+                existing.orders += (u.orders as number) || 0
+                existing.revenue += (u.revenue as number) || 0
+              } else {
+                utmMediumMap.set(medium, {
+                  medium,
+                  orders: (u.orders as number) || 0,
+                  revenue: (u.revenue as number) || 0,
+                })
+              }
+            })
+          })
+
+          // Aggregate UTM campaigns
+          const utmCampaignMap = new Map<string, { campaign: string; orders: number; revenue: number }>()
+          shopifyDataList.forEach((s) => {
+            ((s.utmConversions?.byCampaign || []) as Array<Record<string, unknown>>).forEach((u) => {
+              const campaign = (u.campaign as string) || ''
+              const existing = utmCampaignMap.get(campaign)
+              if (existing) {
+                existing.orders += (u.orders as number) || 0
+                existing.revenue += (u.revenue as number) || 0
+              } else {
+                utmCampaignMap.set(campaign, {
+                  campaign,
+                  orders: (u.orders as number) || 0,
+                  revenue: (u.revenue as number) || 0,
+                })
+              }
+            })
+          })
+
           // Aggregate Top Customers
           const customerMap = new Map<string, {
             email: string
@@ -755,8 +793,8 @@ export async function GET(request: NextRequest) {
               totalOrdersWithUtm,
               utmTrackingRate: paidOrders > 0 ? (totalOrdersWithUtm / paidOrders) * 100 : 0,
               bySource: Array.from(utmSourceMap.values()).sort((a, b) => b.revenue - a.revenue).slice(0, 10),
-              byMedium: [],
-              byCampaign: [],
+              byMedium: Array.from(utmMediumMap.values()).sort((a, b) => b.revenue - a.revenue).slice(0, 10),
+              byCampaign: Array.from(utmCampaignMap.values()).sort((a, b) => b.revenue - a.revenue).slice(0, 10),
             },
           }
         }

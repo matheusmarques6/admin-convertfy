@@ -233,6 +233,11 @@ export interface ShopifyOrder {
   customer: ShopifyCustomer
   line_items: ShopifyLineItem[]
   fulfillments?: ShopifyFulfillment[]
+  landing_site?: string | null
+  referring_site?: string | null
+  source_name?: string
+  tags?: string
+  discount_codes?: Array<{ code: string; amount: string; type: string }>
 }
 
 export interface ShopifyCustomer {

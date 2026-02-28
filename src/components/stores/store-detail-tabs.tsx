@@ -16,6 +16,7 @@ import {
   FileText,
   AlertTriangle,
   Package,
+  Link2,
 } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -28,6 +29,7 @@ import { StoreBriefingTab } from "@/components/stores/store-briefing-tab"
 import { StoreFormTab } from "@/components/stores/store-form-tab"
 import { StoreAlertsTab } from "@/components/stores/store-alerts-tab"
 import { StoreTrackingTab } from "@/components/stores/store-tracking-tab"
+import { StoreUtmTab } from "@/components/stores/store-utm-tab"
 import { StorePerformanceKPIs } from "@/components/stores/store-performance-kpis"
 import { StorePerformanceTables } from "@/components/stores/store-performance-tables"
 import { StoreLinkModal } from "@/components/stores/store-link-modal"
@@ -150,6 +152,7 @@ export function StoreDetailTabs({
   }, [storeId])
 
   const klaviyoConnected = integrationStatus.klaviyo?.connected || false
+  const shopifyConnected = integrationStatus?.shopify?.connected ?? false
 
   const {
     data: campaignsData,
@@ -186,6 +189,10 @@ export function StoreDetailTabs({
         <TabsTrigger value="report" disabled={!klaviyoConnected}>
           <BarChart3 className="h-4 w-4 mr-2" />
           Relatório
+        </TabsTrigger>
+        <TabsTrigger value="utm" disabled={!shopifyConnected}>
+          <Link2 className="h-4 w-4 mr-2" />
+          UTM
         </TabsTrigger>
         <TabsTrigger value="form">
           <FileText className="h-4 w-4 mr-2" />
@@ -382,6 +389,11 @@ export function StoreDetailTabs({
       {/* Report */}
       <TabsContent value="report">
         <KlaviyoPerformanceReport storeId={storeId} storeName={storeName} />
+      </TabsContent>
+
+      {/* UTM */}
+      <TabsContent value="utm">
+        <StoreUtmTab storeId={storeId} storeUrl={storeUrl} period={period} customDates={customDates} />
       </TabsContent>
 
       {/* Formulário */}
