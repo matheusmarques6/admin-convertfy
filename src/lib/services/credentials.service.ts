@@ -53,13 +53,25 @@ export interface StoreCredentials {
   google_calendar_credentials?: Record<string, string>
 }
 
+export type IntegrationConnectionStatus = "not_configured" | "pending_validation" | "connected" | "error"
+
+export interface IntegrationStatusEntry {
+  connected: boolean
+  configured?: boolean
+  status?: IntegrationConnectionStatus
+  connected_at?: string
+  validated_at?: string | null
+  error?: string | null
+  hasReportingAccess?: boolean
+}
+
 export interface IntegrationStatus {
-  shopify?: { connected: boolean; connected_at?: string }
-  klaviyo?: { connected: boolean; connected_at?: string }
-  meta?: { connected: boolean; connected_at?: string }
-  google_ads?: { connected: boolean; connected_at?: string }
-  google_calendar?: { connected: boolean; connected_at?: string }
-  ga4?: { connected: boolean; connected_at?: string }
+  shopify?: IntegrationStatusEntry
+  klaviyo?: IntegrationStatusEntry
+  meta?: IntegrationStatusEntry
+  google_ads?: IntegrationStatusEntry
+  google_calendar?: IntegrationStatusEntry
+  ga4?: IntegrationStatusEntry
 }
 
 /**
@@ -177,7 +189,51 @@ export async function updateStoreCredentials(
 }
 
 /**
+ * Derive integration connection status from credential + validation fields.
+ */
+function deriveStatus(
+  hasCredential: boolean,
+  validatedAt: string | null | undefined,
+  validationError: string | null | undefined
+): IntegrationStatusEntry {
+  if (!hasCredential) {
+    return {
+      connected: false,
+      configured: false,
+      status: "not_configured",
+    }
+  }
+
+  if (validationError) {
+    return {
+      connected: false,
+      configured: true,
+      status: "error",
+      validated_at: validatedAt,
+      error: validationError,
+    }
+  }
+
+  if (validatedAt) {
+    return {
+      connected: true,
+      configured: true,
+      status: "connected",
+      validated_at: validatedAt,
+    }
+  }
+
+  // Credential exists but never validated (legacy data)
+  return {
+    connected: false,
+    configured: true,
+    status: "pending_validation",
+  }
+}
+
+/**
  * Get the integration status for a store.
+ * Uses real validation fields (validated_at, validation_error) for Shopify/Klaviyo.
  */
 export async function getStoreIntegrationStatus(storeId: string): Promise<IntegrationStatus> {
   const adminClient = createAdminClient()
@@ -187,8 +243,12 @@ export async function getStoreIntegrationStatus(storeId: string): Promise<Integr
     .select(`
       integration_status,
       shopify_access_token,
+      shopify_validated_at,
+      shopify_validation_error,
       klaviyo_api_key,
       klaviyo_private_key,
+      klaviyo_validated_at,
+      klaviyo_validation_error,
       ga4_credentials,
       meta_access_token
     `)
@@ -199,15 +259,23 @@ export async function getStoreIntegrationStatus(storeId: string): Promise<Integr
     throw new NotFoundError("Store")
   }
 
-  // If integration_status exists, use it; otherwise infer from credentials
+  // For backward compatibility, still read saved integration_status for non-validated integrations
   const saved = (store.integration_status as IntegrationStatus) || {}
 
   return {
-    shopify: saved.shopify || { connected: !!store.shopify_access_token },
-    klaviyo: saved.klaviyo || { connected: !!(store.klaviyo_api_key || store.klaviyo_private_key) },
-    ga4: saved.ga4 || { connected: !!store.ga4_credentials },
-    meta: saved.meta || { connected: !!store.meta_access_token },
-    google_ads: saved.google_ads || { connected: false },
-    google_calendar: saved.google_calendar || { connected: false },
+    shopify: deriveStatus(
+      !!store.shopify_access_token,
+      store.shopify_validated_at,
+      store.shopify_validation_error
+    ),
+    klaviyo: deriveStatus(
+      !!(store.klaviyo_api_key || store.klaviyo_private_key),
+      store.klaviyo_validated_at,
+      store.klaviyo_validation_error
+    ),
+    ga4: saved.ga4 || { connected: !!store.ga4_credentials, status: store.ga4_credentials ? "connected" : "not_configured" },
+    meta: saved.meta || { connected: !!store.meta_access_token, status: store.meta_access_token ? "connected" : "not_configured" },
+    google_ads: saved.google_ads || { connected: false, status: "not_configured" },
+    google_calendar: saved.google_calendar || { connected: false, status: "not_configured" },
   }
 }

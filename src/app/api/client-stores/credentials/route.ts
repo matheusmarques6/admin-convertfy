@@ -3,6 +3,8 @@ import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { requireStoreAccess } from "@/lib/api/require-store-access"
 import { encrypt, encryptCredentialsJson } from "@/lib/crypto"
+import { validateShopifyCredentials, validateKlaviyoCredentials } from "@/lib/services/credential-validator.service"
+import type { ValidationResult } from "@/lib/services/credential-validator.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("ClientStoresCredentials")
@@ -45,6 +47,45 @@ function processFields(fields: Record<string, any>): Record<string, any> {
     }
   }
   return processed
+}
+
+/**
+ * Run credential validation using plain-text values from the request body.
+ * Returns validation results and the fields to persist in the database.
+ */
+async function runCredentialValidation(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  body: Record<string, any>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  storeData: Record<string, any>
+): Promise<{
+  shopify?: ValidationResult
+  klaviyo?: ValidationResult
+}> {
+  const results: { shopify?: ValidationResult; klaviyo?: ValidationResult } = {}
+
+  // Validate Shopify if credentials are present in body
+  const shopifyDomain = body.shopify_store_domain
+  const shopifyToken = body.shopify_access_token
+  if (shopifyDomain && shopifyToken) {
+    log.info("Validating Shopify credentials...")
+    const shopifyResult = await validateShopifyCredentials(shopifyDomain, shopifyToken)
+    results.shopify = shopifyResult
+    storeData.shopify_validated_at = shopifyResult.tested_at
+    storeData.shopify_validation_error = shopifyResult.valid ? null : shopifyResult.error
+  }
+
+  // Validate Klaviyo if credentials are present in body
+  const klaviyoKey = body.klaviyo_private_key || body.klaviyo_api_key
+  if (klaviyoKey) {
+    log.info("Validating Klaviyo credentials...")
+    const klaviyoResult = await validateKlaviyoCredentials(klaviyoKey)
+    results.klaviyo = klaviyoResult
+    storeData.klaviyo_validated_at = klaviyoResult.tested_at
+    storeData.klaviyo_validation_error = klaviyoResult.valid ? null : klaviyoResult.error
+  }
+
+  return results
 }
 
 // POST - Create new store with encrypted credentials
@@ -90,6 +131,9 @@ export async function POST(request: NextRequest) {
       storeData.ga4_credentials = encryptCredentialsJson(ga4_credentials)
     }
 
+    // Validate credentials BEFORE inserting (using plain-text values from body)
+    const validationResults = await runCredentialValidation(fields, storeData)
+
     const { data, error } = await supabase
       .from("client_stores")
       .insert(storeData)
@@ -115,7 +159,7 @@ export async function POST(request: NextRequest) {
     }
 
     log.info("Store created", { store_id: data.id, client_id: client_id || null, standalone: !client_id })
-    return successResponse(request, { success: true, store: data })
+    return successResponse(request, { success: true, store: data, validation_results: validationResults })
   } catch (error) {
     return errorResponse(request, error, "ClientStoresCredentials")
   }
@@ -148,6 +192,9 @@ export async function PUT(request: NextRequest) {
       return successResponse(request, { success: true, message: "No fields to update" })
     }
 
+    // Validate credentials if they are being updated (using plain-text values from body)
+    const validationResults = await runCredentialValidation(fields, updates)
+
     const { data, error } = await supabase
       .from("client_stores")
       .update(updates)
@@ -158,8 +205,9 @@ export async function PUT(request: NextRequest) {
     if (error) throw error
 
     log.info("Store updated", { store_id, fields: Object.keys(updates) })
-    return successResponse(request, { success: true, store: data })
+    return successResponse(request, { success: true, store: data, validation_results: validationResults })
   } catch (error) {
     return errorResponse(request, error, "ClientStoresCredentials")
   }
 }
+

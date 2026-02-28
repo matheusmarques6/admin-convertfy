@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { StoreDetailTabs } from "@/components/stores/store-detail-tabs"
 import { StoreLinkActions } from "@/components/stores/store-link-actions"
 import { StoreDeleteAction } from "@/components/stores/store-delete-action"
+import { StoreUnlinkedBanner } from "@/components/stores/store-unlinked-banner"
 
 export const dynamic = "force-dynamic"
 
@@ -54,14 +55,15 @@ async function getStore(id: string) {
     return null
   }
 
-  // Get integration status from centralized service (infers from credentials if field is null)
-  let integrationStatus: Record<string, { connected: boolean; connected_at?: string }> = {}
+  // Get integration status from centralized service (uses real validation fields)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let integrationStatus: Record<string, any> = {}
   try {
     const status = await getStoreIntegrationStatus(id)
     // Convert typed IntegrationStatus to Record for the component
     integrationStatus = Object.fromEntries(
       Object.entries(status).filter(([, v]) => v !== undefined)
-    ) as Record<string, { connected: boolean; connected_at?: string }>
+    )
   } catch (err) {
     console.error("[StoreDetail] Error fetching integration status (non-critical):", err)
   }
@@ -130,6 +132,15 @@ export default async function StoreDetailPage({
 
   return (
     <div className="space-y-6">
+      {/* Warning banner for unlinked stores */}
+      {!store.client_id && (
+        <StoreUnlinkedBanner
+          storeId={store.id}
+          storeName={store.store_name}
+          orgId={store.org_id || ""}
+        />
+      )}
+
       {/* Header */}
       <div className="flex items-start justify-between">
         <div className="flex items-start gap-4">

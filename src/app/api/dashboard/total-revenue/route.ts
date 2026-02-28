@@ -55,7 +55,7 @@ async function resolveOrgId(
 interface StoreInput {
   id: string
   store_name: string
-  client_id: string
+  client_id: string | null
 }
 
 async function processChunk(
@@ -67,7 +67,9 @@ async function processChunk(
 ): Promise<StoreRevenue[]> {
   return Promise.all(
     stores.map(async (store) => {
-      const clientName = clientNameMap.get(store.client_id) || "Cliente"
+      const clientName = store.client_id
+          ? (clientNameMap.get(store.client_id) || "Cliente desconhecido")
+          : store.store_name || "Loja avulsa"
       try {
         log.info(`[DEBUG] Fetching revenue for "${store.store_name}" (${store.id})...`)
         const revenue = await getKlaviyoRevenueForStore(store.id, period, customStartDate, customEndDate)
@@ -117,52 +119,39 @@ export async function GET(request: NextRequest) {
     // Resolve org for tenant isolation
     const orgId = await resolveOrgId(supabase, user.id)
 
-    // Fetch clients in user's org, then their stores with Klaviyo keys
+    // Fetch stores directly by org_id (includes stores with AND without client_id)
     const admin = createAdminClient()
-    const { data: orgClients } = await admin
-      .from("clients")
-      .select("id, name")
-      .eq("org_id", orgId)
 
-    const clientIds = orgClients?.map((c) => c.id) || []
+    const [
+      { data: stores, error: storesError },
+      { data: orgClients },
+      { data: allStoresDebug },
+    ] = await Promise.all([
+      admin
+        .from("client_stores")
+        .select("id, store_name, client_id")
+        .or("klaviyo_private_key.not.is.null,klaviyo_api_key.not.is.null")
+        .eq("is_active", true)
+        .eq("org_id", orgId),
+      admin
+        .from("clients")
+        .select("id, name")
+        .eq("org_id", orgId),
+      admin
+        .from("client_stores")
+        .select("id, store_name, klaviyo_private_key, klaviyo_api_key, is_active, client_id")
+        .eq("org_id", orgId),
+    ])
 
-    if (clientIds.length === 0) {
-      const emptyResult: TotalRevenueResponse = {
-        period,
-        totalRevenue: 0,
-        campaignRevenue: 0,
-        flowRevenue: 0,
-        storesCount: 0,
-        storesWithRevenue: 0,
-        topStores: [],
-        bottomStores: [],
-        cachedAt: new Date().toISOString(),
-      }
-      return successResponse(request, emptyResult)
-    }
+    const clientNameMap = new Map(orgClients?.map((c) => [c.id, c.name]) || [])
 
-    const clientNameMap = new Map(orgClients!.map((c) => [c.id, c.name]))
-
-    // Count ALL stores (with and without Klaviyo) for debug
-    const { data: allStoresCount } = await admin
-      .from("client_stores")
-      .select("id, store_name, klaviyo_private_key, klaviyo_api_key, is_active, client_id")
-      .in("client_id", clientIds)
-
-    log.info(`[DEBUG] Org ${orgId}: ${clientIds.length} clients, ${allStoresCount?.length || 0} total stores`)
-    for (const s of allStoresCount || []) {
+    log.info(`[DEBUG] Org ${orgId}: ${orgClients?.length || 0} clients, ${allStoresDebug?.length || 0} total stores`)
+    for (const s of allStoresDebug || []) {
       const hasPrivate = !!s.klaviyo_private_key
       const hasApi = !!s.klaviyo_api_key
-      const client = clientNameMap.get(s.client_id) || "?"
+      const client = s.client_id ? (clientNameMap.get(s.client_id) || "?") : "(avulsa)"
       log.info(`[DEBUG] Store "${s.store_name}" (${client}): active=${s.is_active}, klaviyo_private_key=${hasPrivate}, klaviyo_api_key=${hasApi}`)
     }
-
-    const { data: stores, error: storesError } = await admin
-      .from("client_stores")
-      .select("id, store_name, client_id")
-      .or("klaviyo_private_key.not.is.null,klaviyo_api_key.not.is.null")
-      .eq("is_active", true)
-      .in("client_id", clientIds)
 
     if (storesError) {
       log.error("Error fetching stores:", storesError)

@@ -657,6 +657,20 @@ export function StoreControlPanel() {
                             <p className="text-sm text-muted-foreground">{store.client_name || 'Sem cliente'}</p>
                           </div>
                           <div className="flex gap-1 ml-2">
+                            {!store.client_id && (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] border-yellow-500/50 text-yellow-600 dark:text-yellow-400 cursor-pointer hover:bg-yellow-500/10 transition-colors"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setSelectedStore(store)
+                                  setIsLinkModalOpen(true)
+                                }}
+                              >
+                                <AlertTriangle className="h-3 w-3 mr-1" />
+                                Sem cliente vinculado
+                              </Badge>
+                            )}
                             {store.has_shopify && (
                               <Badge variant="outline" className="text-[10px] border-success/30 text-success">Shopify</Badge>
                             )}

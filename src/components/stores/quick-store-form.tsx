@@ -36,9 +36,10 @@ interface ClientOption {
 interface QuickStoreFormProps {
   onSuccess: () => void
   onCancel: () => void
+  defaultClientId?: string
 }
 
-export function QuickStoreForm({ onSuccess, onCancel }: QuickStoreFormProps) {
+export function QuickStoreForm({ onSuccess, onCancel, defaultClientId }: QuickStoreFormProps) {
   const { toast } = useToast()
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -67,6 +68,27 @@ export function QuickStoreForm({ onSuccess, onCancel }: QuickStoreFormProps) {
   })
 
   const platformValue = watch("platform")
+
+  // Auto-select client when defaultClientId is provided
+  useEffect(() => {
+    if (!defaultClientId) return
+
+    async function fetchDefaultClient() {
+      try {
+        const res = await fetch(`/api/clients/search?q=&id=${encodeURIComponent(defaultClientId!)}`)
+        const data = await res.json()
+        if (data.clients && data.clients.length > 0) {
+          const client = data.clients[0]
+          setSelectedClient(client)
+          setValue("client_id", client.id)
+        }
+      } catch {
+        // Silently fail — user can still search manually
+      }
+    }
+
+    fetchDefaultClient()
+  }, [defaultClientId, setValue])
 
   // Cleanup debounce on unmount
   useEffect(() => {

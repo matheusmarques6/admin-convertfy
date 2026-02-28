@@ -488,7 +488,14 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-semibold">Lojas do Cliente</h3>
+          <h3 className="text-lg font-semibold">
+            Lojas do Cliente
+            {stores.length > 0 && (
+              <span className="ml-2 text-sm font-normal text-muted-foreground">
+                ({stores.length} {stores.length === 1 ? "loja vinculada" : "lojas vinculadas"})
+              </span>
+            )}
+          </h3>
           <p className="text-sm text-muted-foreground">
             Configure as lojas e integrações Klaviyo de {clientName}
           </p>
@@ -504,9 +511,9 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Store className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium">Nenhuma loja cadastrada</h3>
+            <h3 className="text-lg font-medium">Nenhuma loja vinculada</h3>
             <p className="text-muted-foreground text-center mt-1">
-              Adicione as lojas deste cliente para configurar integrações
+              Adicione uma loja para {clientName} configurar integrações e acompanhar resultados
             </p>
             <div className="flex gap-2 mt-4">
               <Button onClick={() => openDialog()}>

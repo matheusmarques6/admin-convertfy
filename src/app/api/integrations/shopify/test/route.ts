@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { requireAuth } from "@/lib/api/errors"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { normalizeShopifyDomain } from "@/lib/services/credential-validator.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("IntegrationsShopifyTest")
@@ -10,28 +11,26 @@ export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
 }
 
-// CORS headers helper
-
-
-// Handle OPTIONS preflight requests
-
-
-// Helper to normalize Shopify domain
-function normalizeShopifyDomain(domain: string): string {
-  // Remove protocol and trailing slashes
-  let clean = domain
-    .trim()
-    .replace(/^https?:\/\//, "")
-    .replace(/\/$/, "")
-
-  // If it doesn't contain .myshopify.com, add it
-  if (!clean.includes(".myshopify.com")) {
-    // Remove any other domain suffixes if present
-    clean = clean.replace(/\.(com|com\.br|net|org|store|shop)$/i, "")
-    clean = `${clean}.myshopify.com`
+/**
+ * Persist Shopify validation result in client_stores.
+ */
+async function persistShopifyValidation(
+  storeId: string,
+  testedAt: string,
+  validationError: string | null
+) {
+  try {
+    const adminClient = createAdminClient()
+    await adminClient
+      .from("client_stores")
+      .update({
+        shopify_validated_at: testedAt,
+        shopify_validation_error: validationError,
+      })
+      .eq("id", storeId)
+  } catch (err) {
+    log.error("Failed to persist Shopify validation result", { storeId, error: err })
   }
-
-  return clean
 }
 
 export async function POST(request: NextRequest) {
@@ -40,7 +39,7 @@ export async function POST(request: NextRequest) {
     await requireAuth(supabase)
 
     const body = await request.json()
-    const { store_domain, access_token } = body
+    const { store_domain, access_token, store_id } = body
 
     if (!store_domain || !access_token) {
       return NextResponse.json(
@@ -51,6 +50,7 @@ export async function POST(request: NextRequest) {
 
     // Normalize the domain to ensure it's in the correct format
     const cleanDomain = normalizeShopifyDomain(store_domain)
+    const testedAt = new Date().toISOString()
 
     log.debug("Testing Shopify connection:", {
       originalDomain: store_domain,
@@ -85,6 +85,11 @@ export async function POST(request: NextRequest) {
 
           log.debug("Shopify connection successful:", shop.name)
 
+          // Persist validation success
+          if (store_id) {
+            await persistShopifyValidation(store_id, testedAt, null)
+          }
+
           return NextResponse.json(
             {
               success: true,
@@ -108,10 +113,17 @@ export async function POST(request: NextRequest) {
 
         // If it's a 401 or 403, the token is wrong - don't try other versions
         if (response.status === 401 || response.status === 403) {
+          const errorMsg = "Access Token inválido ou sem permissões necessárias"
+
+          // Persist validation failure
+          if (store_id) {
+            await persistShopifyValidation(store_id, testedAt, errorMsg)
+          }
+
           return NextResponse.json(
             {
               success: false,
-              error: "Access Token inválido ou sem permissões necessárias. Verifique se o token tem permissão para ler dados da loja (read_products, read_orders, read_customers).",
+              error: `${errorMsg}. Verifique se o token tem permissão para ler dados da loja (read_products, read_orders, read_customers).`,
               details: {
                 domain: cleanDomain,
                 status: response.status,
@@ -123,6 +135,13 @@ export async function POST(request: NextRequest) {
 
         // If it's a 404 on first try, the domain might be wrong
         if (response.status === 404 && apiVersion === apiVersions[0]) {
+          const errorMsg = `Loja não encontrada: ${cleanDomain}`
+
+          // Persist validation failure
+          if (store_id) {
+            await persistShopifyValidation(store_id, testedAt, errorMsg)
+          }
+
           return NextResponse.json(
             {
               success: false,
@@ -144,10 +163,15 @@ export async function POST(request: NextRequest) {
     }
 
     // If we get here, all versions failed
+    const errorMsg = `Erro na API Shopify: ${responseStatus || "conexão falhou"}`
+    if (store_id) {
+      await persistShopifyValidation(store_id, testedAt, errorMsg)
+    }
+
     return NextResponse.json(
       {
         success: false,
-        error: `Erro na API Shopify: ${responseStatus || "conexão falhou"}`,
+        error: errorMsg,
         details: lastError,
       },
       { status: responseStatus || 500, headers: corsHeaders(request.headers.get("origin")) }

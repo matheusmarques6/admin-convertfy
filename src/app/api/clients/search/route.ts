@@ -31,22 +31,44 @@ export async function GET(request: NextRequest) {
 
     const searchParams = request.nextUrl.searchParams
     const query = searchParams.get("q") || ""
+    const clientId = searchParams.get("id") || ""
+
+    const adminClient = createAdminClient()
+    const orgId = await resolveOrgId(adminClient, user.id)
+
+    // Fetch by ID — used for pre-selecting a client (e.g. defaultClientId in QuickStoreForm)
+    if (clientId) {
+      log.info("Fetching client by ID", { clientId, orgId })
+      const { data: clients, error } = await adminClient
+        .from("clients")
+        .select("id, name, email, company")
+        .eq("org_id", orgId)
+        .eq("id", clientId)
+        .limit(1)
+
+      if (error) {
+        log.error("Error fetching client by ID", { error: error.message })
+        throw new AppError("Erro ao buscar cliente", 500)
+      }
+
+      return successResponse(request, { clients: clients || [] })
+    }
 
     if (query.length < 2) {
       return successResponse(request, { clients: [] })
     }
 
-    const adminClient = createAdminClient()
-    const orgId = await resolveOrgId(adminClient, user.id)
-
     log.info("Searching clients", { query, orgId, userId: user.id })
+
+    // Escape special SQL LIKE characters to prevent wildcard injection
+    const escapedQuery = query.replace(/[%_\\]/g, "\\$&")
 
     // Search clients by name, email, or company using ilike
     const { data: clients, error } = await adminClient
       .from("clients")
       .select("id, name, email, company")
       .eq("org_id", orgId)
-      .or(`name.ilike.%${query}%,email.ilike.%${query}%,company.ilike.%${query}%`)
+      .or(`name.ilike.%${escapedQuery}%,email.ilike.%${escapedQuery}%,company.ilike.%${escapedQuery}%`)
       .order("name")
       .limit(20)
 
