@@ -105,6 +105,22 @@ export async function POST(request: NextRequest) {
     if (client_id) {
       // Fluxo existente: loja vinculada a cliente
       storeData.client_id = client_id
+
+      // Buscar org_id do cliente para garantir visibilidade na pagina /stores
+      const adminClient = createAdminClient()
+      const { data: client, error: clientLookupError } = await adminClient
+        .from("clients")
+        .select("org_id")
+        .eq("id", client_id)
+        .single()
+
+      if (clientLookupError) {
+        console.warn(`[client-stores] Failed to lookup client org_id for client_id=${client_id}:`, clientLookupError.message)
+      }
+
+      if (client?.org_id) {
+        storeData.org_id = client.org_id
+      }
     } else {
       // Fluxo novo: loja avulsa (sem cliente)
       // org_id sera preenchido pelo trigger set_store_org_id() no banco
