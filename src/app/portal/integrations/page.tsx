@@ -3,9 +3,6 @@
 import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
 import {
-  ShoppingBag,
-  Mail,
-  Package,
   CheckCircle2,
   AlertCircle,
   Loader2,
@@ -255,7 +252,8 @@ export default function PortalIntegrationsPage() {
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-lg bg-[#96BF48]/10 flex items-center justify-center">
-                  <ShoppingBag className="h-6 w-6 text-[#96BF48]" />
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="/images/integrations/shopify.svg" alt="Shopify" className="h-7 w-7" />
                 </div>
                 <div>
                   <CardTitle className="text-lg text-slate-800 dark:text-slate-100">Shopify</CardTitle>
@@ -299,7 +297,8 @@ export default function PortalIntegrationsPage() {
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-lg bg-violet-500/10 flex items-center justify-center">
-                  <Mail className="h-6 w-6 text-violet-500" />
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="/images/integrations/klaviyo.svg" alt="Klaviyo" className="h-6 w-6" />
                 </div>
                 <div>
                   <CardTitle className="text-lg text-slate-800 dark:text-slate-100">Klaviyo</CardTitle>
@@ -357,7 +356,8 @@ export default function PortalIntegrationsPage() {
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-lg bg-blue-500/10 flex items-center justify-center">
-                  <Package className="h-6 w-6 text-blue-500" />
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="/images/integrations/17track.svg" alt="17track" className="h-6 w-6" />
                 </div>
                 <div>
                   <CardTitle className="text-lg text-slate-800 dark:text-slate-100">Rastreamento</CardTitle>
