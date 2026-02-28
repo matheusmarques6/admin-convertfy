@@ -14,9 +14,9 @@ import {
   klaviyoRequest,
   getCurrencySymbol,
   parseDateRangeInTimezone,
-  getAccountInfo,
   getTimezoneOffset,
-  findPlacedOrderMetric,
+  getCachedAccountInfo,
+  getCachedPlacedOrderMetric,
 } from "@/lib/integrations/klaviyo"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 
@@ -839,7 +839,7 @@ export async function GET(request: NextRequest) {
     log.info("[Klaviyo] Period:", period)
 
     // Get account info first (need timezone for correct date range calculation)
-    const accountInfo = await getAccountInfo(apiKey)
+    const accountInfo = await getCachedAccountInfo(apiKey, store.orgId)
     if (!accountInfo.orgName) {
       return NextResponse.json({
         success: false,
@@ -859,7 +859,7 @@ export async function GET(request: NextRequest) {
     await sleep(500)
 
     // Find Placed Order metric - with diagnostic logging
-    let metricId = await findPlacedOrderMetric(apiKey)
+    let metricId = await getCachedPlacedOrderMetric(apiKey, store.orgId)
 
     // If findPlacedOrderMetric failed, try direct fetch as fallback (debug endpoint style)
     if (!metricId) {

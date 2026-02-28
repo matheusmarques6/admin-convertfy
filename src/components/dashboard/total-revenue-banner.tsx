@@ -1,8 +1,9 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useRef } from "react"
+import useSWR from "swr"
 import { format } from "date-fns"
-import { TrendingUp, RefreshCw, Megaphone, Workflow, Store } from "lucide-react"
+import { TrendingUp, RefreshCw, Megaphone, Workflow, Store, AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Select,
@@ -14,6 +15,9 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { DateRangePicker } from "@/components/ui/date-range-picker"
 import { formatCurrency, cn } from "@/lib/utils"
+import { TimeAgo } from "@/components/ui/time-ago"
+import { PARTIAL_DATA_TOOLTIP } from "@/components/ui/sync-status-badge"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 interface StoreRevenue {
   storeId: string
@@ -32,6 +36,8 @@ interface TotalRevenueData {
   storesCount: number
   storesWithRevenue: number
   topStores: StoreRevenue[]
+  hasPartialData?: boolean
+  lastFetchedAt?: string | null
   cachedAt: string
 }
 
@@ -68,46 +74,43 @@ interface TotalRevenueBannerProps {
   storeIds?: string[]
 }
 
+const fetcher = (url: string) => fetch(url).then(res => {
+  if (!res.ok) throw new Error("Erro ao carregar revenue")
+  return res.json()
+})
+
 export function TotalRevenueBanner({ storeIds }: TotalRevenueBannerProps = {}) {
   const [period, setPeriod] = useState("30d")
   const [customStart, setCustomStart] = useState<Date | undefined>()
   const [customEnd, setCustomEnd] = useState<Date | undefined>()
-  const [data, setData] = useState<TotalRevenueData | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
 
-  const loadData = useCallback(async (p: string, startDate?: Date, endDate?: Date) => {
-    setIsLoading(true)
-    try {
-      let url = `/api/dashboard/total-revenue?period=${p}`
-      if (p === "custom" && startDate && endDate) {
-        url += `&start_date=${format(startDate, "yyyy-MM-dd")}&end_date=${format(endDate, "yyyy-MM-dd")}`
-      }
-      if (storeIds && storeIds.length > 0) {
-        url += `&store_ids=${storeIds.join(",")}`
-      }
-      const response = await fetch(url)
-      if (response.ok) {
-        const result = await response.json()
-        setData(result)
-      }
-    } catch (err) {
-      console.error("Error loading total revenue:", err)
-    } finally {
-      setIsLoading(false)
+  // Build SWR key from current state
+  const swrKey = (() => {
+    let url = `/api/dashboard/total-revenue?period=${period}`
+    if (period === "custom" && customStart && customEnd) {
+      url += `&start_date=${format(customStart, "yyyy-MM-dd")}&end_date=${format(customEnd, "yyyy-MM-dd")}`
+    } else if (period === "custom") {
+      return null // Don't fetch until dates are selected
     }
-  }, [storeIds])
+    if (storeIds && storeIds.length > 0) {
+      url += `&store_ids=${storeIds.join(",")}`
+    }
+    return url
+  })()
 
-  useEffect(() => {
-    if (period !== "custom") {
-      loadData(period)
+  const { data, error, isLoading, isValidating, mutate } = useSWR<TotalRevenueData>(
+    swrKey,
+    fetcher,
+    {
+      revalidateOnFocus: false,
+      dedupingInterval: 60000,
     }
-  }, [period, loadData])
+  )
 
   const handleCustomDateApply = (start: Date, end: Date) => {
     setCustomStart(start)
     setCustomEnd(end)
     setPeriod("custom")
-    loadData("custom", start, end)
   }
 
   const animatedTotal = useCountUp(data?.totalRevenue || 0)
@@ -136,6 +139,27 @@ export function TotalRevenueBanner({ storeIds }: TotalRevenueBannerProps = {}) {
               <Skeleton key={i} className="h-8 w-full rounded-lg" />
             ))}
           </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Error state (only show when no stale data available)
+  if (error && !data) {
+    return (
+      <div className="rounded-xl border border-border bg-card p-6">
+        <div className="flex flex-col items-center justify-center py-8">
+          <div className="rounded-xl bg-muted p-3 mb-4">
+            <Store className="h-8 w-8 text-muted-foreground" />
+          </div>
+          <h3 className="text-base font-semibold text-foreground">Erro ao carregar receita</h3>
+          <p className="text-sm text-muted-foreground text-center mt-1.5 max-w-xs">
+            Tente novamente em alguns instantes
+          </p>
+          <Button variant="outline" size="sm" className="mt-3" onClick={() => mutate()}>
+            <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+            Tentar novamente
+          </Button>
         </div>
       </div>
     )
@@ -197,10 +221,10 @@ export function TotalRevenueBanner({ storeIds }: TotalRevenueBannerProps = {}) {
               variant="ghost"
               size="icon"
               className="h-9 w-9 rounded-lg text-white/70 hover:text-white hover:bg-white/10"
-              onClick={() => loadData(period, customStart, customEnd)}
-              disabled={isLoading}
+              onClick={() => mutate()}
+              disabled={isValidating}
             >
-              <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} />
+              <RefreshCw className={cn("h-4 w-4", isValidating && "animate-spin")} />
             </Button>
           </div>
         </div>
@@ -210,9 +234,27 @@ export function TotalRevenueBanner({ storeIds }: TotalRevenueBannerProps = {}) {
           <p className="text-3xl md:text-4xl font-bold tracking-tight text-[#05AFF2]">
             {formatCurrency(animatedTotal)}
           </p>
-          <p className="mt-1.5 text-sm text-white/50">
-            {data?.storesWithRevenue || 0} de {data?.storesCount || 0} lojas geraram receita
-          </p>
+          <div className="mt-1.5 flex items-center gap-3 flex-wrap">
+            <p className="text-sm text-white/50">
+              {data?.storesWithRevenue || 0} de {data?.storesCount || 0} lojas geraram receita
+            </p>
+            {data?.hasPartialData && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex items-center gap-1 text-xs text-yellow-400">
+                      <AlertTriangle className="h-3 w-3" />
+                      Dados parciais
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>{PARTIAL_DATA_TOOLTIP}</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+            {data?.lastFetchedAt && (
+              <TimeAgo date={data.lastFetchedAt} className="text-xs text-white/40" />
+            )}
+          </div>
         </div>
 
         {/* Breakdown: campaigns vs flows */}

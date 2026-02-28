@@ -63,7 +63,7 @@ export async function GET(
     // Verify user has access to this client (RLS or portal user)
     const { data: client, error: clientError } = await supabase
       .from("clients")
-      .select("id")
+      .select("id, org_id")
       .eq("id", clientId)
       .single()
 
@@ -234,7 +234,8 @@ export async function GET(
     const hasShopifyData = totals.shopifyRevenue > 0
     if (hasKlaviyoData || hasShopifyData) {
       const cachePeriodKey = period === "custom" && customStartDate ? `${period}:${customStartDate}:${customEndDate}` : period
-      setCache(adminClient, clientId, "client_performance", cachePeriodKey, responseData as unknown as Record<string, unknown>).catch(() => {})
+      const clientOrgId = client?.org_id ?? undefined
+      setCache(adminClient, clientId, "client_performance", cachePeriodKey, responseData as unknown as Record<string, unknown>, clientOrgId).catch(() => {})
     } else {
       log.info("[ClientPerformance] Skipping cache save — no meaningful data (klaviyo or shopify)")
     }

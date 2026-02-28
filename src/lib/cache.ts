@@ -19,6 +19,7 @@ const CACHE_TTL: Record<string, Record<string, number>> = {
   asaas_payments: { "7d": 10, "15d": 15, "30d": 30, "90d": 60, all: 60 },
   asaas_billing: { "7d": 10, "15d": 15, "30d": 30, "90d": 60, all: 60 },
   client_performance: { today: 30, yesterday: 60, "7d": 120, "15d": 180, "30d": 240 },
+  klaviyo_metadata: { account_info: 30, placed_order_metric: 30 },
 }
 
 // How long (in minutes) expired cache entries are still usable as fallback
@@ -134,7 +135,8 @@ export async function setCache(
   storeId: string,
   cacheType: string,
   period: string,
-  data: Record<string, unknown>
+  data: Record<string, unknown>,
+  orgId?: string
 ): Promise<void> {
   const ttlMinutes = getTTLMinutes(cacheType, period)
   const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000).toISOString()
@@ -148,6 +150,7 @@ export async function setCache(
         data: { ...data, _cacheVersion: CACHE_VERSION },
         created_at: new Date().toISOString(),
         expires_at: expiresAt,
+        ...(orgId && { org_id: orgId }),
       },
       { onConflict: "store_id,cache_type,period" }
     )

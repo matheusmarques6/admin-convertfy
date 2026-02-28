@@ -13,9 +13,9 @@ import {
   klaviyoRequest,
   parseDateRange,
   formatDateStr,
-  getAccountInfo,
   getTimezoneOffset,
-  findPlacedOrderMetric,
+  getCachedAccountInfo,
+  getCachedPlacedOrderMetric,
 } from "@/lib/integrations/klaviyo"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 
@@ -286,7 +286,7 @@ export async function GET(request: NextRequest) {
     log.info("[Klaviyo Campaigns] Starting fetch for store:", store.storeName)
 
     // Get account info for timezone
-    const accountInfo = await getAccountInfo(apiKey)
+    const accountInfo = await getCachedAccountInfo(apiKey, store.orgId)
     const timezoneOffset = getTimezoneOffset(accountInfo.timezone)
 
     // Calculate date range
@@ -297,7 +297,7 @@ export async function GET(request: NextRequest) {
     // Fetch data sequentially to avoid Klaviyo rate limiting
     const campaigns = await getAllCampaigns(apiKey)
     await sleep(350)
-    const metricId = await findPlacedOrderMetric(apiKey)
+    const metricId = await getCachedPlacedOrderMetric(apiKey, store.orgId)
 
     // Get metrics if we have the metric ID
     let campaignMetrics = new Map()

@@ -10,8 +10,8 @@
 import {
   klaviyoRequest,
   KlaviyoRateLimitError,
-  getAccountInfo,
-  findPlacedOrderMetric,
+  getCachedAccountInfo,
+  getCachedPlacedOrderMetric,
   getTimezoneOffset,
   parseDateRangeInTimezone,
   KLAVIYO_API_URL,
@@ -248,7 +248,7 @@ export async function fetchKlaviyoPerformance(
   customStartDate?: string | null,
   customEndDate?: string | null,
 ): Promise<KlaviyoPerformanceData> {
-  const accountInfo = await getAccountInfo(apiKey)
+  const accountInfo = await getCachedAccountInfo(apiKey)
   const timezone = accountInfo?.timezone || "America/Sao_Paulo"
   const tzOffset = getTimezoneOffset(timezone)
 
@@ -273,7 +273,7 @@ export async function fetchKlaviyoPerformance(
   log.info(`[KlaviyoPerf] Metric-agg filter: ${startDate}T00:00:00 to ${finalEndDate}T23:59:59 (tz param: ${timezone})`)
   log.info(`[KlaviyoPerf] Report timeframe: ${startISO} to ${endISO}`)
 
-  const placedOrderMetric = await findPlacedOrderMetric(apiKey)
+  const placedOrderMetric = await getCachedPlacedOrderMetric(apiKey)
   if (!placedOrderMetric) {
     log.warn("No Placed Order metric found - cannot fetch revenue data")
     return emptyPerformanceData()

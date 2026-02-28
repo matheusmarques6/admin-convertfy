@@ -39,6 +39,8 @@ COMMENT ON FUNCTION is_org_member() IS 'Verifica se usuário é membro ativo de 
 -- =============================================
 -- FUNÇÃO: É owner da organização?
 -- =============================================
+-- TODO(epic-8/C2): Esta função não filtra por org_id — retorna TRUE para owner de QUALQUER org.
+-- Quando multi-org for implementado, refatorar para is_org_owner(p_org_id UUID).
 CREATE OR REPLACE FUNCTION is_org_owner()
 RETURNS BOOLEAN AS $$
 BEGIN
@@ -51,7 +53,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER STABLE;
 
-COMMENT ON FUNCTION is_org_owner() IS 'Verifica se usuário é owner de alguma org';
+COMMENT ON FUNCTION is_org_owner() IS 'Verifica se usuário é owner de alguma org (sem filtro de org_id - ver TODO epic-8/C2)';
 
 -- =============================================
 -- FUNÇÃO: Retorna org_member_id do usuário atual

@@ -1,17 +1,10 @@
 import { NextRequest } from "next/server"
-import { createClient, createAdminClient } from "@/lib/supabase/server"
-import { requireAuth, successResponse, errorResponse, AppError } from "@/lib/api/errors"
-import { getKlaviyoRevenueForStore } from "@/lib/integrations/klaviyo/report-summary"
+import { createClient } from "@/lib/supabase/server"
+import { requireAuth, successResponse, errorResponse } from "@/lib/api/errors"
+import { resolveOrgId } from "@/lib/api/resolve-org"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("TotalRevenue")
-
-// Cache: keyed by period, TTL 10 minutes
-const revenueCache = new Map<string, {
-  data: TotalRevenueResponse
-  timestamp: number
-}>()
-const CACHE_TTL = 10 * 60 * 1000
 
 interface StoreRevenue {
   storeId: string
@@ -31,142 +24,59 @@ interface TotalRevenueResponse {
   storesWithRevenue: number
   topStores: StoreRevenue[]
   bottomStores: StoreRevenue[]
+  storeBreakdown: StoreRevenue[]
+  hasPartialData: boolean
+  lastFetchedAt: string | null
   cachedAt: string
 }
 
-async function resolveOrgId(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  userId: string,
-): Promise<string> {
-  const { data: orgMember } = await supabase
-    .from("org_members")
-    .select("org_id")
-    .eq("profile_id", userId)
-    .eq("is_active", true)
-    .limit(1)
-    .single()
-
-  if (!orgMember?.org_id) {
-    throw new AppError("Acesso negado", 403)
-  }
-  return orgMember.org_id
-}
-
-interface StoreInput {
-  id: string
-  store_name: string
-  client_id: string | null
-}
-
-async function processChunk(
-  stores: StoreInput[],
-  period: string,
-  clientNameMap: Map<string, string>,
-  customStartDate?: string | null,
-  customEndDate?: string | null,
-): Promise<StoreRevenue[]> {
-  return Promise.all(
-    stores.map(async (store) => {
-      const clientName = store.client_id
-          ? (clientNameMap.get(store.client_id) || "Cliente desconhecido")
-          : store.store_name || "Loja avulsa"
-      try {
-        log.info(`[DEBUG] Fetching revenue for "${store.store_name}" (${store.id})...`)
-        const revenue = await getKlaviyoRevenueForStore(store.id, period, customStartDate, customEndDate)
-        log.info(`[DEBUG] "${store.store_name}": total=${revenue.totalRevenue}, campaign=${revenue.campaignRevenue}, flow=${revenue.flowRevenue}`)
-        return {
-          storeId: store.id,
-          storeName: store.store_name || "Loja sem nome",
-          clientName,
-          totalRevenue: revenue.totalRevenue,
-          campaignRevenue: revenue.campaignRevenue,
-          flowRevenue: revenue.flowRevenue,
-        }
-      } catch (err) {
-        log.warn(`[DEBUG] FAILED "${store.store_name}" (${store.id}):`, err)
-        return {
-          storeId: store.id,
-          storeName: store.store_name || "Loja sem nome",
-          clientName,
-          totalRevenue: 0,
-          campaignRevenue: 0,
-          flowRevenue: 0,
-        }
-      }
-    })
-  )
-}
-
 export async function GET(request: NextRequest) {
+  const startTime = Date.now()
   try {
     const supabase = await createClient()
     const user = await requireAuth(supabase)
 
     const period = request.nextUrl.searchParams.get("period") || "30d"
-    const customStartDate = request.nextUrl.searchParams.get("start_date")
-    const customEndDate = request.nextUrl.searchParams.get("end_date")
     const storeIdsParam = request.nextUrl.searchParams.get("store_ids")
     const filterStoreIds = storeIdsParam ? storeIdsParam.split(",").filter(Boolean) : null
 
-    // Cache key includes user ID + store_ids to prevent cross-tenant/cross-filter data leakage
-    const storeIdsSuffix = filterStoreIds ? `:s=${filterStoreIds.sort().join(",")}` : ""
-    const cacheKey = `${user.id}:${period}${customStartDate ? `:${customStartDate}:${customEndDate}` : ""}${storeIdsSuffix}`
-    const cached = revenueCache.get(cacheKey)
-    if (cached && (Date.now() - cached.timestamp) < CACHE_TTL) {
-      return successResponse(request, cached.data)
-    }
-
     // Resolve org for tenant isolation
-    const orgId = await resolveOrgId(supabase, user.id)
+    const orgId = await resolveOrgId(user.id)
 
-    // Fetch stores directly by org_id (includes stores with AND without client_id)
-    const admin = createAdminClient()
+    // ONE SINGLE QUERY — replaces 120+ API calls
+    let query = supabase
+      .from("store_revenue_summary")
+      .select(`
+        store_id,
+        klaviyo_total_revenue,
+        klaviyo_campaign_revenue,
+        klaviyo_flow_revenue,
+        shopify_total_revenue,
+        sync_status,
+        fetched_at,
+        client_stores!inner(id, store_name, client_id, clients(name))
+      `)
+      .eq("period_label", period)
+      .eq("org_id", orgId)
+      .gt("expires_at", new Date().toISOString())
 
-    const [
-      { data: stores, error: storesError },
-      { data: orgClients },
-      { data: allStoresDebug },
-    ] = await Promise.all([
-      admin
-        .from("client_stores")
-        .select("id, store_name, client_id")
-        .or("klaviyo_private_key.not.is.null,klaviyo_api_key.not.is.null")
-        .eq("is_active", true)
-        .eq("org_id", orgId),
-      admin
-        .from("clients")
-        .select("id, name")
-        .eq("org_id", orgId),
-      admin
-        .from("client_stores")
-        .select("id, store_name, klaviyo_private_key, klaviyo_api_key, is_active, client_id")
-        .eq("org_id", orgId),
-    ])
-
-    const clientNameMap = new Map(orgClients?.map((c) => [c.id, c.name]) || [])
-
-    log.info(`[DEBUG] Org ${orgId}: ${orgClients?.length || 0} clients, ${allStoresDebug?.length || 0} total stores`)
-    for (const s of allStoresDebug || []) {
-      const hasPrivate = !!s.klaviyo_private_key
-      const hasApi = !!s.klaviyo_api_key
-      const client = s.client_id ? (clientNameMap.get(s.client_id) || "?") : "(avulsa)"
-      log.info(`[DEBUG] Store "${s.store_name}" (${client}): active=${s.is_active}, klaviyo_private_key=${hasPrivate}, klaviyo_api_key=${hasApi}`)
-    }
-
-    if (storesError) {
-      log.error("Error fetching stores:", storesError)
-      throw storesError
-    }
-
-    log.info(`[DEBUG] Stores passing Klaviyo filter: ${stores?.length || 0}`)
-
-    // Filtrar por store_ids se fornecido (dashboard operacional do agente)
-    let filteredStores = stores || []
+    // Apply store_ids filter at DB level if provided
     if (filterStoreIds && filterStoreIds.length > 0) {
-      filteredStores = filteredStores.filter(s => filterStoreIds.includes(s.id))
+      query = query.in("store_id", filterStoreIds)
     }
 
-    if (filteredStores.length === 0) {
+    const { data: summaries, error } = await query
+
+    if (error) {
+      log.error("Error fetching revenue summaries:", error)
+      throw error
+    }
+
+    const rows = summaries || []
+
+    if (rows.length === 0) {
+      const elapsed = Date.now() - startTime
+      log.info(`[Revenue] period=${period} stores=0 time=${elapsed}ms source=cache`)
       const emptyResult: TotalRevenueResponse = {
         period,
         totalRevenue: 0,
@@ -176,56 +86,81 @@ export async function GET(request: NextRequest) {
         storesWithRevenue: 0,
         topStores: [],
         bottomStores: [],
+        storeBreakdown: [],
+        hasPartialData: false,
+        lastFetchedAt: null,
         cachedAt: new Date().toISOString(),
       }
-      return successResponse(request, emptyResult)
+      const response = successResponse(request, emptyResult)
+      response.headers.set("X-Response-Time", `${elapsed}ms`)
+      return response
     }
 
-    // Process stores in chunks of 2 to avoid Klaviyo rate limiting
-    // Each store makes 2-4 API calls (account info + metric search + 2 reports)
-    const CHUNK_SIZE = 2
-    const allResults: StoreRevenue[] = []
-    for (let i = 0; i < filteredStores.length; i += CHUNK_SIZE) {
-      const chunk = filteredStores.slice(i, i + CHUNK_SIZE)
-      const chunkResults = await processChunk(chunk as StoreInput[], period, clientNameMap, customStartDate, customEndDate)
-      allResults.push(...chunkResults)
-    }
+    // Build store breakdown
+    const storeBreakdown: StoreRevenue[] = rows.map((s) => {
+      const storeData = s.client_stores as unknown as {
+        id: string
+        store_name: string
+        client_id: string | null
+        clients: { name: string } | null
+      }
+      return {
+        storeId: s.store_id,
+        storeName: storeData.store_name || "Loja sem nome",
+        clientName: storeData.client_id
+          ? (storeData.clients?.name || "Cliente desconhecido")
+          : storeData.store_name || "Loja avulsa",
+        totalRevenue: Number(s.klaviyo_total_revenue),
+        campaignRevenue: Number(s.klaviyo_campaign_revenue),
+        flowRevenue: Number(s.klaviyo_flow_revenue),
+      }
+    })
 
-    // Aggregate
-    const totalRevenue = allResults.reduce((sum, s) => sum + s.totalRevenue, 0)
-    const campaignRevenue = allResults.reduce((sum, s) => sum + s.campaignRevenue, 0)
-    const flowRevenue = allResults.reduce((sum, s) => sum + s.flowRevenue, 0)
-    const storesWithRevenue = allResults.filter((s) => s.totalRevenue > 0).length
+    // Aggregate totals
+    const totalRevenue = storeBreakdown.reduce((sum, s) => sum + s.totalRevenue, 0)
+    const campaignRevenue = storeBreakdown.reduce((sum, s) => sum + s.campaignRevenue, 0)
+    const flowRevenue = storeBreakdown.reduce((sum, s) => sum + s.flowRevenue, 0)
+    const storesWithRevenue = storeBreakdown.filter((s) => s.totalRevenue > 0).length
 
     // Sort by revenue descending
-    const sortedByRevenue = allResults
-      .filter((s) => s.totalRevenue > 0)
-      .sort((a, b) => b.totalRevenue - a.totalRevenue)
-
-    // Top 5 stores by revenue
-    const topStores = sortedByRevenue.slice(0, 5)
-
-    // Bottom 5 stores by revenue (lowest first)
-    const bottomStores = sortedByRevenue.length > 5
-      ? [...sortedByRevenue].reverse().slice(0, 5)
+    const sorted = [...storeBreakdown].sort((a, b) => b.totalRevenue - a.totalRevenue)
+    const topStores = sorted.filter(s => s.totalRevenue > 0).slice(0, 5)
+    const bottomStores = sorted.filter(s => s.totalRevenue > 0).length > 5
+      ? [...sorted.filter(s => s.totalRevenue > 0)].reverse().slice(0, 5)
       : []
+
+    const hasPartialData = rows.some(
+      (s) => s.sync_status === "error" || s.sync_status === "partial"
+    )
+
+    // Oldest fetched_at across all stores (worst-case freshness)
+    const lastFetchedAt = rows.reduce((oldest: string | null, s) => {
+      if (!s.fetched_at) return oldest
+      if (!oldest) return s.fetched_at as string
+      return new Date(s.fetched_at as string) < new Date(oldest) ? s.fetched_at as string : oldest
+    }, null)
+
+    const elapsed = Date.now() - startTime
+    log.info(`[Revenue] period=${period} stores=${rows.length} time=${elapsed}ms source=cache`)
 
     const result: TotalRevenueResponse = {
       period,
       totalRevenue,
       campaignRevenue,
       flowRevenue,
-      storesCount: filteredStores.length,
+      storesCount: rows.length,
       storesWithRevenue,
       topStores,
       bottomStores,
+      storeBreakdown,
+      hasPartialData,
+      lastFetchedAt,
       cachedAt: new Date().toISOString(),
     }
 
-    // Cache result
-    revenueCache.set(cacheKey, { data: result, timestamp: Date.now() })
-
-    return successResponse(request, result)
+    const response = successResponse(request, result)
+    response.headers.set("X-Response-Time", `${elapsed}ms`)
+    return response
   } catch (error) {
     return errorResponse(request, error, "TotalRevenue GET")
   }

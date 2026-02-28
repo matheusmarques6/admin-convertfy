@@ -8,8 +8,9 @@
 import { getStoreCredentials } from "@/lib/services/credentials.service"
 import { logger } from "@/lib/logger"
 import { klaviyoRequest, parseDateRange, formatDateStr } from "./client"
-import { getAccountInfo, getTimezoneOffset } from "./account"
-import { findPlacedOrderMetric } from "./metrics"
+import { getTimezoneOffset } from "./account"
+import { getCachedAccountInfo } from "./cached-metadata"
+import { getCachedPlacedOrderMetric } from "./cached-metadata"
 
 const log = logger.child("KlaviyoReportSummary")
 
@@ -56,16 +57,16 @@ export async function getKlaviyoRevenueForStore(
     const startDateStr = formatDateStr(startDate)
     const endDateStr = formatDateStr(endDate)
 
-    // Get timezone for correct date alignment
-    const accountInfo = await getAccountInfo(apiKey)
+    // Get timezone for correct date alignment (DB-cached, avoids API call on cold start)
+    const accountInfo = await getCachedAccountInfo(apiKey)
     const timezone = accountInfo?.timezone || "America/Sao_Paulo"
     const tzOffset = getTimezoneOffset(timezone)
 
     const startISO = `${startDateStr}T00:00:00${tzOffset}`
     const endISO = `${endDateStr}T23:59:59${tzOffset}`
 
-    // Find Placed Order metric for conversion revenue
-    const placedOrderMetric = await findPlacedOrderMetric(apiKey)
+    // Find Placed Order metric for conversion revenue (DB-cached)
+    const placedOrderMetric = await getCachedPlacedOrderMetric(apiKey)
 
     const reportAttributes = {
       statistics: ["conversion_value"],

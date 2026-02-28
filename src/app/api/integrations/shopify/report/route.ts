@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Validate user has access to this store (multi-tenant isolation)
-    await requireStoreAccess(storeId, user.id)
+    const { orgId } = await requireStoreAccess(storeId, user.id)
 
     // Check cache first (skip if force_refresh)
     const forceRefresh = searchParams.get("force_refresh") === "true"
@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
     })
 
     // Save to cache for future requests
-    await setCache(supabase, storeId, "shopify", period, reportData as unknown as Record<string, unknown>)
+    await setCache(supabase, storeId, "shopify", period, reportData as unknown as Record<string, unknown>, orgId)
 
     return NextResponse.json(reportData)
   } catch (error) {

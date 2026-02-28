@@ -2,20 +2,10 @@ import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { logger } from "@/lib/logger"
-import { getKlaviyoRevenueForStore } from "@/lib/integrations/klaviyo/report-summary"
-import { getShopifyReportForStore } from "@/lib/integrations/shopify/report"
 import { paginationSchema } from "@/lib/schemas/common"
 import { z } from "zod"
 
 const log = logger.child("StoresControl")
-
-// Revenue cache: keyed by storeId, TTL 10 minutes
-const revenueCache = new Map<string, {
-  klaviyo: { totalRevenue: number; campaignRevenue: number; flowRevenue: number } | null
-  shopify: number | null
-  timestamp: number
-}>()
-const CACHE_TTL = 10 * 60 * 1000
 
 // Schema for this endpoint's query params
 const storeControlQuerySchema = paginationSchema.extend({
@@ -61,6 +51,8 @@ interface StoreWithResults {
   last_call_source: 'feedback' | 'meeting' | null
   has_shopify: boolean
   has_klaviyo: boolean
+  fetched_at: string | null
+  sync_status: string
 }
 
 // Raw store row from Supabase query
@@ -131,6 +123,7 @@ function sanitizeSearch(input: string): string {
 }
 
 export async function GET(request: Request) {
+  const startTime = Date.now()
   try {
     const supabase = await createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -154,8 +147,6 @@ export async function GET(request: Request) {
 
     // Existing params
     const activeOnly = searchParams.get('active_only') !== 'false'
-    const skipCache = searchParams.get('fresh') === 'true'
-
     // ==============================
     // Summary + Link Counts (global, lightweight query - no API calls)
     // ==============================
@@ -165,18 +156,18 @@ export async function GET(request: Request) {
       .eq("org_id", orgId)
       .eq("is_active", true)
 
-    // Also fetch meetings for summary computation (harmonize with enrichment)
-    const { data: meetingsDataForSummary } = await supabase
+    // Fetch last completed meeting per client ONCE (reused by summary + enrichment)
+    const { data: meetingsData } = await supabase
       .from('meetings')
       .select('client_id, scheduled_at')
       .eq('status', 'completed')
       .order('scheduled_at', { ascending: false })
 
-    const lastMeetingByClientSummary = new Map<string, string>()
-    if (meetingsDataForSummary) {
-      for (const m of meetingsDataForSummary) {
-        if (!lastMeetingByClientSummary.has(m.client_id)) {
-          lastMeetingByClientSummary.set(m.client_id, m.scheduled_at)
+    const lastMeetingByClient = new Map<string, string>()
+    if (meetingsData) {
+      for (const m of meetingsData) {
+        if (!lastMeetingByClient.has(m.client_id)) {
+          lastMeetingByClient.set(m.client_id, m.scheduled_at)
         }
       }
     }
@@ -201,7 +192,7 @@ export async function GET(request: Request) {
       // If status is 'never' but has a last_call (meeting), promote to overdue
       if (finalStatus === 'never') {
         const hasLastCall = store.last_feedback_date ||
-          (store.client_id && lastMeetingByClientSummary.has(store.client_id))
+          (store.client_id && lastMeetingByClient.has(store.client_id))
         if (hasLastCall) {
           finalStatus = 'overdue'
         }
@@ -283,27 +274,12 @@ export async function GET(request: Request) {
     // Dual flow: with/without statusFilter
     // ==============================
 
-    // Fetch last completed meeting per client (shared by both flows)
-    const { data: meetingsData } = await supabase
-      .from('meetings')
-      .select('client_id, scheduled_at')
-      .eq('status', 'completed')
-      .order('scheduled_at', { ascending: false })
-
-    const lastMeetingByClient = new Map<string, string>()
-    if (meetingsData) {
-      for (const m of meetingsData) {
-        if (!lastMeetingByClient.has(m.client_id)) {
-          lastMeetingByClient.set(m.client_id, m.scheduled_at)
-        }
-      }
-    }
-
     // Helper: enrich a single store row into StoreWithResults
     const enrichStore = (
       store: StoreRow,
       revenueMap: Map<string, KlaviyoStoreRevenue>,
       shopifyRevenueMap: Map<string, number>,
+      syncMetaMap: Map<string, { fetchedAt: string | null; syncStatus: string }>,
     ): StoreWithResults => {
       const clientData = store.clients
       const profileData = store.profiles
@@ -405,95 +381,51 @@ export async function GET(request: Request) {
         last_call_source: lastCallSource,
         has_shopify: hasShopify,
         has_klaviyo: hasKlaviyo,
+        fetched_at: syncMetaMap.get(store.id)?.fetchedAt ?? null,
+        sync_status: syncMetaMap.get(store.id)?.syncStatus ?? 'pending',
       }
     }
 
-    // Helper: fetch revenue for a set of stores (only page stores)
+    // Helper: fetch revenue from store_revenue_summary (one DB query, zero API calls)
     const fetchRevenue = async (storesToFetch: StoreRow[]) => {
       const revenueMap = new Map<string, KlaviyoStoreRevenue>()
       const shopifyRevenueMap = new Map<string, number>()
-      const CHUNK_SIZE = 5
+      const syncMetaMap = new Map<string, { fetchedAt: string | null; syncStatus: string }>()
 
-      // Klaviyo revenue
-      const klaviyoStores = storesToFetch.filter((s) => !!s.klaviyo_private_key)
-      log.info(`Klaviyo revenue: ${klaviyoStores.length}/${storesToFetch.length} stores have klaviyo_private_key`)
+      const storeIds = storesToFetch.map(s => s.id)
+      if (storeIds.length === 0) return { revenueMap, shopifyRevenueMap, syncMetaMap }
 
-      for (let i = 0; i < klaviyoStores.length; i += CHUNK_SIZE) {
-        const chunk = klaviyoStores.slice(i, i + CHUNK_SIZE)
-        const chunkResults = await Promise.all(
-          chunk.map(async (store) => {
-            // Check per-store cache
-            if (!skipCache) {
-              const cached = revenueCache.get(store.id)
-              if (cached && (Date.now() - cached.timestamp) < CACHE_TTL && cached.klaviyo) {
-                return {
-                  storeId: store.id,
-                  totalRevenue: cached.klaviyo.totalRevenue,
-                  campaignRevenue: cached.klaviyo.campaignRevenue,
-                  flowRevenue: cached.klaviyo.flowRevenue,
-                }
-              }
-            }
+      const { data: revenueData, error: revError } = await supabase
+        .from("store_revenue_summary")
+        .select("store_id, klaviyo_total_revenue, klaviyo_campaign_revenue, klaviyo_flow_revenue, shopify_total_revenue, sync_status, fetched_at")
+        .eq("period_label", "30d")
+        .eq("org_id", orgId)
+        .in("store_id", storeIds)
+        .gt("expires_at", new Date().toISOString())
 
-            try {
-              const revenue = await getKlaviyoRevenueForStore(store.id, '30d')
-              // Cache per-store
-              const existing = revenueCache.get(store.id) || { klaviyo: null, shopify: null, timestamp: 0 }
-              revenueCache.set(store.id, {
-                ...existing,
-                klaviyo: { totalRevenue: revenue.totalRevenue, campaignRevenue: revenue.campaignRevenue, flowRevenue: revenue.flowRevenue },
-                timestamp: Date.now(),
-              })
-              return {
-                storeId: store.id,
-                totalRevenue: revenue.totalRevenue,
-                campaignRevenue: revenue.campaignRevenue,
-                flowRevenue: revenue.flowRevenue,
-              }
-            } catch (err) {
-              log.warn(`Failed to fetch Klaviyo revenue for store ${store.id}:`, err)
-              return { storeId: store.id, totalRevenue: -1, campaignRevenue: 0, flowRevenue: 0 }
-            }
-          })
-        )
-        for (const result of chunkResults) {
-          revenueMap.set(result.storeId, result)
-        }
+      if (revError) {
+        log.warn("Error fetching revenue summaries:", revError)
+        return { revenueMap, shopifyRevenueMap, syncMetaMap }
       }
 
-      // Shopify revenue
-      const shopifyStores = storesToFetch.filter((s) => !!s.shopify_access_token)
-      for (let i = 0; i < shopifyStores.length; i += CHUNK_SIZE) {
-        const chunk = shopifyStores.slice(i, i + CHUNK_SIZE)
-        const chunkResults = await Promise.all(
-          chunk.map(async (store) => {
-            // Check per-store cache
-            if (!skipCache) {
-              const cached = revenueCache.get(store.id)
-              if (cached && (Date.now() - cached.timestamp) < CACHE_TTL && cached.shopify !== null) {
-                return { storeId: store.id, totalRevenue: cached.shopify }
-              }
-            }
-
-            try {
-              const report = await getShopifyReportForStore(store.id, '30d')
-              const totalRevenue = report.summary?.totalRevenue ?? 0
-              // Cache per-store
-              const existing = revenueCache.get(store.id) || { klaviyo: null, shopify: null, timestamp: 0 }
-              revenueCache.set(store.id, { ...existing, shopify: totalRevenue, timestamp: Date.now() })
-              return { storeId: store.id, totalRevenue }
-            } catch (err) {
-              log.warn(`Failed to fetch Shopify revenue for store ${store.id}:`, err)
-              return { storeId: store.id, totalRevenue: -1 }
-            }
-          })
-        )
-        for (const result of chunkResults) {
-          shopifyRevenueMap.set(result.storeId, result.totalRevenue)
+      for (const r of revenueData || []) {
+        revenueMap.set(r.store_id, {
+          storeId: r.store_id,
+          totalRevenue: r.sync_status === "error" ? -1 : Number(r.klaviyo_total_revenue),
+          campaignRevenue: Number(r.klaviyo_campaign_revenue),
+          flowRevenue: Number(r.klaviyo_flow_revenue),
+        })
+        const shopifyRev = Number(r.shopify_total_revenue)
+        if (shopifyRev > 0) {
+          shopifyRevenueMap.set(r.store_id, shopifyRev)
         }
+        syncMetaMap.set(r.store_id, {
+          fetchedAt: r.fetched_at as string | null,
+          syncStatus: r.sync_status as string,
+        })
       }
 
-      return { revenueMap, shopifyRevenueMap }
+      return { revenueMap, shopifyRevenueMap, syncMetaMap }
     }
 
     if (statusFilter) {
@@ -547,18 +479,20 @@ export async function GET(request: Request) {
       const pagedStoreRows = pagedItems.map(item => item.store)
 
       // Revenue fetch only for paged stores
-      const { revenueMap, shopifyRevenueMap } = await fetchRevenue(pagedStoreRows)
+      const { revenueMap, shopifyRevenueMap, syncMetaMap } = await fetchRevenue(pagedStoreRows)
 
       // Enrich
       const enrichedStores = pagedItems.map(item => {
-        const enriched = enrichStore(item.store, revenueMap, shopifyRevenueMap)
+        const enriched = enrichStore(item.store, revenueMap, shopifyRevenueMap, syncMetaMap)
         // Override status with pre-computed value to ensure consistency
         enriched.feedback_status = item.feedbackStatus
         enriched.days_until_feedback = item.daysUntilFeedback
         return enriched
       })
 
-      return NextResponse.json({
+      const elapsed = Date.now() - startTime
+      log.info(`[StoresControl] stores=${enrichedStores.length} time=${elapsed}ms source=cache filter=status`)
+      const response = NextResponse.json({
         success: true,
         stores: enrichedStores,
         summary,
@@ -572,6 +506,8 @@ export async function GET(request: Request) {
           },
         }),
       })
+      response.headers.set("X-Response-Time", `${elapsed}ms`)
+      return response
     } else {
       // ==============================
       // Flow WITHOUT statusFilter: use Supabase .range()
@@ -604,11 +540,11 @@ export async function GET(request: Request) {
 
       // Revenue fetch only for page stores
       const storeRows = (stores || []) as unknown as StoreRow[]
-      const { revenueMap, shopifyRevenueMap } = await fetchRevenue(storeRows)
+      const { revenueMap, shopifyRevenueMap, syncMetaMap } = await fetchRevenue(storeRows)
 
       // Enrich + sort
       const enrichedStores = storeRows.map(store =>
-        enrichStore(store, revenueMap, shopifyRevenueMap)
+        enrichStore(store, revenueMap, shopifyRevenueMap, syncMetaMap)
       )
 
       // Sort by status priority (in-memory, within the page)
@@ -621,7 +557,9 @@ export async function GET(request: Request) {
         return 0
       })
 
-      return NextResponse.json({
+      const elapsed = Date.now() - startTime
+      log.info(`[StoresControl] stores=${enrichedStores.length} time=${elapsed}ms source=cache`)
+      const response = NextResponse.json({
         success: true,
         stores: enrichedStores,
         summary,
@@ -635,6 +573,8 @@ export async function GET(request: Request) {
           },
         }),
       })
+      response.headers.set("X-Response-Time", `${elapsed}ms`)
+      return response
     }
   } catch (error) {
     log.error('Error in stores control API:', error)

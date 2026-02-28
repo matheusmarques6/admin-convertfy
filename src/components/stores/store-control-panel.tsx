@@ -66,6 +66,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/lib/hooks/use-toast"
+import { TimeAgo } from "@/components/ui/time-ago"
+import { SyncStatusBadge } from "@/components/ui/sync-status-badge"
 import { QuickStoreForm } from "@/components/stores/quick-store-form"
 import { StoreLinkModal } from "@/components/stores/store-link-modal"
 import { StoreUnlinkDialog } from "@/components/stores/store-unlink-dialog"
@@ -97,6 +99,8 @@ interface StoreData {
   last_call_source: 'feedback' | 'meeting' | null
   has_shopify: boolean
   has_klaviyo: boolean
+  fetched_at: string | null
+  sync_status: string
 }
 
 interface Summary {
@@ -780,10 +784,14 @@ export function StoreControlPanel() {
                             <span className="text-xs text-warning">Erro ao carregar</span>
                           </div>
                         ) : (
-                          <div className="flex flex-col items-center">
+                          <div className="flex flex-col items-center gap-0.5">
                             <span className={`text-lg font-bold ${store.klaviyo_revenue_30d > 0 ? 'text-success' : 'text-muted-foreground'}`}>
                               {formatCurrency(store.klaviyo_revenue_30d)}
                             </span>
+                            <div className="flex items-center gap-1.5">
+                              <SyncStatusBadge status={store.sync_status} compact />
+                              <TimeAgo date={store.fetched_at} className="text-[10px] text-muted-foreground/60" />
+                            </div>
                           </div>
                         )}
                       </td>

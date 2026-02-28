@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/cron/sync-reports",
-      "schedule": "0 */2 * * *"
+      "schedule": "*/30 * * * *"
     },
     {
       "path": "/api/cron/store-alerts-check",
