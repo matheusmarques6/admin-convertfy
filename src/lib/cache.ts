@@ -4,7 +4,7 @@ import { logger } from "@/lib/logger"
 const log = logger.child("Cache")
 
 // Bump this version to invalidate all cached data when calculation logic changes
-export const CACHE_VERSION = 4
+export const CACHE_VERSION = 5
 
 // TTL in minutes per cache type and period
 // Klaviyo TTLs are longer because:

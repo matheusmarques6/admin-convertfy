@@ -417,9 +417,9 @@ export async function GET(request: NextRequest) {
         storeRevenue: perf.storeRevenue,
         storeOrders: perf.storeOrders,
         recoveryRate: perf.recoveryRate,
-        totalLeads: 0,
-        engagedLeads: 0,
-        engagementRate: 0,
+        totalLeads: perf.totalLeads,
+        engagedLeads: perf.engagedLeads,
+        engagementRate: perf.engagementRate,
         totalRevenue,
         campaignRevenue: perf.campaignRevenue,
         flowRevenue: perf.flowRevenue,
@@ -577,9 +577,9 @@ export async function GET(request: NextRequest) {
             storeRevenue: klaviyoDataList.reduce((sum, k) => sum + (k.storeRevenue || 0), 0),
             storeOrders: klaviyoDataList.reduce((sum, k) => sum + (k.storeOrders || 0), 0),
             recoveryRate: 0, // Recalculated below
-            totalLeads: 0,
-            engagedLeads: 0,
-            engagementRate: 0,
+            totalLeads: klaviyoDataList.reduce((sum, k) => sum + (k.totalLeads || 0), 0),
+            engagedLeads: klaviyoDataList.reduce((sum, k) => sum + (k.engagedLeads || 0), 0),
+            engagementRate: 0, // Recalculated below
             totalRevenue: klaviyoDataList.reduce((sum, k) => sum + (k.totalRevenue || 0), 0),
             campaignRevenue: klaviyoDataList.reduce((sum, k) => sum + (k.campaignRevenue || 0), 0),
             flowRevenue: klaviyoDataList.reduce((sum, k) => sum + (k.flowRevenue || 0), 0),
@@ -622,6 +622,13 @@ export async function GET(request: NextRequest) {
           if (aggStoreRevenue > 0) {
             (response.klaviyo as Record<string, unknown>).recoveryRate =
               (totalKlaviyoRevenue / aggStoreRevenue) * 100
+          }
+          // Recalculate engagement rate from aggregated totals
+          const aggTotalLeads = (response.klaviyo as Record<string, unknown>).totalLeads as number
+          const aggEngagedLeads = (response.klaviyo as Record<string, unknown>).engagedLeads as number
+          if (aggTotalLeads > 0) {
+            (response.klaviyo as Record<string, unknown>).engagementRate =
+              (aggEngagedLeads / aggTotalLeads) * 100
           }
         }
 
