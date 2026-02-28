@@ -33,6 +33,7 @@ interface TrackingData {
   estimated_delivery: string | null
   events: TrackingEvent[]
   order_name?: string
+  shop_domain?: string
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: React.ElementType; bg: string }> = {
@@ -274,9 +275,14 @@ export default function PublicTrackingPage() {
 
       {/* Footer */}
       <div className="text-center py-8">
-        <p className="text-xs text-slate-400 dark:text-slate-500">
+        <a
+          href={`https://convertfy.me/?utm_source=track&utm_medium=referral&utm_campaign=powered_by${result?.shop_domain ? `&utm_content=${encodeURIComponent(result.shop_domain)}` : ""}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-slate-400 dark:text-slate-500 hover:text-slate-500 dark:hover:text-slate-400 transition-colors"
+        >
           Powered by Convertfy
-        </p>
+        </a>
       </div>
     </div>
   )

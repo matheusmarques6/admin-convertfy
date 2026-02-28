@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { trackPackages, detectCarrier } from "@/lib/tracking/seventeen-track"
 import { decrypt } from "@/lib/crypto"
+import { translateTrackingResult } from "@/lib/tracking/translate-events"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("TrackingLookup")
@@ -64,13 +65,14 @@ export async function POST(request: NextRequest) {
           }
         }
         // Decrypt carrier-specific API keys
-        const storedKeys = (trackingStore.carrier_api_keys as Record<string, string>) || {}
+        const storedKeys = (trackingStore.carrier_api_keys as Record<string, unknown>) || {}
         for (const [carrier, encKey] of Object.entries(storedKeys)) {
-          if (typeof encKey === "string" && encKey.startsWith("enc::")) {
+          if (typeof encKey === "string" && encKey) {
             try {
+              // decrypt() handles enc:v1: prefix automatically
               carrierKeys[carrier] = decrypt(encKey)
             } catch {
-              log.warn(`Failed to decrypt ${carrier} key`)
+              log.warn(`Falha ao descriptografar chave do ${carrier}`)
             }
           } else if (typeof encKey === "boolean") {
             carrierKeys[carrier] = encKey
@@ -99,7 +101,10 @@ export async function POST(request: NextRequest) {
           tracking_orders (
             order_name,
             customer_name,
-            shopify_order_number
+            shopify_order_number,
+            tracking_stores (
+              shop_domain
+            )
           )
         `)
         .eq("tracking_number", tracking_number)
@@ -119,6 +124,16 @@ export async function POST(request: NextRequest) {
 
       if (codes && codes.length > 0) {
         const code = codes[0]
+        // Extract shop_domain from nested join for UTM links
+        const trackingOrders = code.tracking_orders as unknown as {
+          order_name?: string
+          tracking_stores?: { shop_domain?: string } | Array<{ shop_domain?: string }>
+        }
+        const orderName = trackingOrders?.order_name || ""
+        const storesData = trackingOrders?.tracking_stores
+        const shopDomain = Array.isArray(storesData)
+          ? storesData[0]?.shop_domain || ""
+          : storesData?.shop_domain || ""
 
         // If events are empty or stale, try to fetch from 17track
         const events = code.tracking_events as Array<Record<string, unknown>>
@@ -156,7 +171,7 @@ export async function POST(request: NextRequest) {
 
               return respond({
                 found: true,
-                tracking: {
+                tracking: translateTrackingResult({
                   tracking_number: result.tracking_number,
                   carrier_code: result.carrier_code || code.carrier_code,
                   carrier_name: result.carrier_name || code.carrier_name,
@@ -166,8 +181,9 @@ export async function POST(request: NextRequest) {
                   last_event_at: result.last_event_at,
                   estimated_delivery: result.estimated_delivery,
                   events: result.events,
-                  order_name: (code.tracking_orders as unknown as { order_name: string })?.order_name || "",
-                },
+                  order_name: orderName,
+                  shop_domain: shopDomain,
+                }),
               })
             }
           } catch (error) {
@@ -175,10 +191,10 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // Return cached data
+        // Return cached data (translated)
         return respond({
           found: true,
-          tracking: {
+          tracking: translateTrackingResult({
             tracking_number: code.tracking_number,
             carrier_code: code.carrier_code,
             carrier_name: code.carrier_name,
@@ -187,9 +203,9 @@ export async function POST(request: NextRequest) {
             last_event: code.last_event,
             last_event_at: code.last_event_at,
             estimated_delivery: code.estimated_delivery,
-            events: code.tracking_events || [],
+            events: (code.tracking_events || []) as Array<{ date: string; description: string; location?: string; status?: string }>,
             order_name: (code.tracking_orders as unknown as { order_name: string })?.order_name || "",
-          },
+          }),
         })
       }
 
@@ -199,7 +215,7 @@ export async function POST(request: NextRequest) {
         if (results.length > 0) {
           return respond({
             found: true,
-            tracking: {
+            tracking: translateTrackingResult({
               tracking_number: results[0].tracking_number,
               carrier_code: results[0].carrier_code,
               carrier_name: results[0].carrier_name,
@@ -210,7 +226,7 @@ export async function POST(request: NextRequest) {
               estimated_delivery: results[0].estimated_delivery,
               events: results[0].events,
               order_name: "",
-            },
+            }),
           })
         }
       } catch (error) {
@@ -285,16 +301,16 @@ export async function POST(request: NextRequest) {
             order_name: order.order_name,
             customer_name: order.customer_name,
             fulfillment_status: order.fulfillment_status,
-            tracking_codes: (order.tracking_codes || []).map((code: Record<string, unknown>) => ({
-              tracking_number: code.tracking_number,
-              carrier_code: code.carrier_code,
-              carrier_name: code.carrier_name,
-              status: code.status,
-              status_detail: code.status_detail,
-              last_event: code.last_event,
-              last_event_at: code.last_event_at,
-              estimated_delivery: code.estimated_delivery,
-              events: code.tracking_events || [],
+            tracking_codes: (order.tracking_codes || []).map((code: Record<string, unknown>) => translateTrackingResult({
+              tracking_number: code.tracking_number as string,
+              carrier_code: code.carrier_code as string,
+              carrier_name: code.carrier_name as string,
+              status: code.status as string,
+              status_detail: code.status_detail as string,
+              last_event: code.last_event as string,
+              last_event_at: code.last_event_at as string | null,
+              estimated_delivery: code.estimated_delivery as string | null,
+              events: (code.tracking_events || []) as Array<{ date: string; description: string; location?: string; status?: string }>,
             })),
           })),
         })

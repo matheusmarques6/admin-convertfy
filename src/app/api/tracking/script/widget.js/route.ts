@@ -477,7 +477,7 @@ export async function GET(request: NextRequest) {
       '</div>' +
 
       '<div id="ctResult"></div>' +
-      '<div class="ct-footer"><a href="https://convertfy.com.br" target="_blank" rel="noopener">' + escapeHtml(t.powered_by) + '</a></div>';
+      '<div class="ct-footer"><a href="https://convertfy.me/?utm_source=track&utm_medium=widget&utm_campaign=powered_by&utm_content=' + encodeURIComponent(window.location.hostname) + '" target="_blank" rel="noopener">' + escapeHtml(t.powered_by) + '</a></div>';
 
     /* Bind order form */
     var formOrder = shadow.getElementById('ctFormOrder');
