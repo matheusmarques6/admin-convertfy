@@ -26,7 +26,7 @@ export async function POST(
       .eq("id", user.id)
       .single()
 
-    if (!profile || !["admin", "manager"].includes(profile.role)) {
+    if (!profile || !["admin", "manager", "coo"].includes(profile.role)) {
       throw new AppError("Acesso negado", 403)
     }
 

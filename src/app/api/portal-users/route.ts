@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
       throw new AppError("Profile not found", 403)
     }
 
-    if (!["admin", "manager", "cs"].includes(profile.role)) {
+    if (!["admin", "manager", "coo", "cs"].includes(profile.role)) {
       throw new AppError("Access denied. You don't have permission to create portal users.", 403)
     }
 
@@ -205,7 +205,7 @@ export async function DELETE(request: NextRequest) {
       .eq("id", user.id)
       .single()
 
-    if (!profile || !["admin", "manager", "cs"].includes(profile.role)) {
+    if (!profile || !["admin", "manager", "coo", "cs"].includes(profile.role)) {
       throw new AppError("Access denied", 403)
     }
 
@@ -270,7 +270,7 @@ export async function PATCH(request: NextRequest) {
       .eq("id", user.id)
       .single()
 
-    if (!profile || !["admin", "manager", "cs"].includes(profile.role)) {
+    if (!profile || !["admin", "manager", "coo", "cs"].includes(profile.role)) {
       throw new AppError("Access denied", 403)
     }
 
