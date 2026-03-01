@@ -43,6 +43,7 @@ export async function GET(request: NextRequest) {
         is_active,
         created_at,
         client_id,
+        currency,
         language,
         feedback_frequency,
         last_feedback_date,
@@ -50,6 +51,13 @@ export async function GET(request: NextRequest) {
         last_feedback_by,
         feedback_notes,
         shopify_store_domain,
+        shopify_access_token,
+        klaviyo_public_key,
+        klaviyo_private_key,
+        klaviyo_api_key,
+        klaviyo_list_id,
+        ga4_property_id,
+        ga4_credentials,
         client:clients(id, name, company, email)
       `)
       .eq("org_id", orgId)
@@ -70,8 +78,25 @@ export async function GET(request: NextRequest) {
       throw new AppError("Erro ao buscar lojas", 500)
     }
 
+    // Sanitize: remove encrypted credentials, compute boolean flags
+    const sanitizedStores = (stores || []).map((store) => {
+      const {
+        shopify_access_token,
+        klaviyo_private_key,
+        klaviyo_api_key,
+        ga4_credentials,
+        ...rest
+      } = store
+      return {
+        ...rest,
+        has_shopify_credentials: !!shopify_access_token,
+        has_klaviyo_credentials: !!(klaviyo_private_key || klaviyo_api_key),
+        has_ga4_credentials: !!ga4_credentials,
+      }
+    })
+
     return NextResponse.json(
-      { stores: stores || [] },
+      { stores: sanitizedStores },
       { headers: corsHeaders(request.headers.get("origin")) }
     )
   } catch (error) {

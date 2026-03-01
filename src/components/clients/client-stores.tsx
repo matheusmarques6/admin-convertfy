@@ -13,7 +13,6 @@ import {
   Loader2,
   Check,
   X,
-  RefreshCw,
   Database,
   BarChart3,
   FileJson,
@@ -42,34 +41,27 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { toast } from "@/lib/hooks/use-toast"
-import { createClient } from "@/lib/supabase/client"
 
 interface ClientStore {
   id: string
-  // Database uses store_name and store_url
   store_name: string
   store_url?: string
   platform?: string
   currency?: string
-  // Generic credentials (from original table)
-  api_key?: string
-  api_secret?: string
-  access_token?: string
-  // Shopify credentials
-  shopify_store_domain?: string
-  shopify_api_key?: string
-  shopify_api_secret?: string
-  shopify_access_token?: string
-  // Klaviyo credentials
-  klaviyo_public_key?: string  // Site ID / Public API Key
-  klaviyo_private_key?: string // Private API Key
-  klaviyo_list_id?: string
-  klaviyo_api_key?: string
-  // Google Analytics credentials
-  ga4_property_id?: string
-  ga4_credentials?: Record<string, unknown>
   is_active: boolean
   created_at: string
+  client_id?: string
+  shopify_store_domain?: string
+  // Non-sensitive integration fields
+  klaviyo_public_key?: string
+  klaviyo_list_id?: string
+  ga4_property_id?: string
+  // Server-computed credential flags (no encrypted data exposed)
+  has_shopify_credentials?: boolean
+  has_klaviyo_credentials?: boolean
+  has_ga4_credentials?: boolean
+  // Client relation
+  client?: { id: string; name: string; company?: string; email?: string }
 }
 
 interface ClientStoresProps {
@@ -81,35 +73,38 @@ interface ClientStoresProps {
  * Auto-mark onboarding step as completed when credentials are saved.
  * Uses the existing steps API which handles adminClient, timestamps, and progress recalculation.
  * Fails silently — saving the store should never fail because of onboarding.
+ *
+ * TODO: Migrate auxiliary queries to a dedicated server-side endpoint
+ * (e.g. POST /api/onboarding/auto-complete) that receives client_id + step_name
+ * and handles the lookup + update entirely server-side. Currently the lookup
+ * queries use fetch to API routes as a workaround to avoid browser Supabase.
  */
 async function markOnboardingStepCompleted(
   clientId: string,
   stepName: string
 ) {
   try {
-    const supabase = createClient()
-
-    // Find active onboarding for this client
-    const { data: onboarding } = await supabase
-      .from("client_onboardings")
-      .select("id")
-      .eq("client_id", clientId)
-      .in("status", ["in_progress", "not_started"])
-      .limit(1)
-      .single()
-
+    // Find active onboarding for this client via API
+    // Try in_progress first, then not_started
+    let onboarding = null
+    for (const status of ["in_progress", "not_started"]) {
+      const onbRes = await fetch(`/api/onboarding?client_id=${clientId}&status=${status}`)
+      if (!onbRes.ok) continue
+      const onbData = await onbRes.json()
+      if (onbData.onboardings?.[0]) {
+        onboarding = onbData.onboardings[0]
+        break
+      }
+    }
     if (!onboarding) return
 
-    // Find the step that matches by name
-    const { data: step } = await supabase
-      .from("client_onboarding_steps")
-      .select("id, status")
-      .eq("onboarding_id", onboarding.id)
-      .eq("name", stepName)
-      .neq("status", "completed")
-      .limit(1)
-      .single()
-
+    // Find the step that matches by name via API
+    const stepsRes = await fetch(`/api/onboarding/${onboarding.id}/steps`)
+    if (!stepsRes.ok) return
+    const stepsData = await stepsRes.json()
+    const step = stepsData.steps?.find(
+      (s: { name: string; status: string }) => s.name === stepName && s.status !== "completed"
+    )
     if (!step) return // Already completed or doesn't exist
 
     // Mark as completed via existing API (handles adminClient + progress recalc)
@@ -134,8 +129,8 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
   const [deleteStore, setDeleteStore] = useState<ClientStore | null>(null)
   const [editStore, setEditStore] = useState<ClientStore | null>(null)
   const [isSaving, setIsSaving] = useState(false)
-  const [testingKlaviyo, setTestingKlaviyo] = useState<string | null>(null)
-  const [testingShopify, setTestingShopify] = useState<string | null>(null)
+  // Test connection buttons removed — credentials are no longer sent to the browser.
+  // Connection testing is available via the edit dialog (re-enter credentials) or store detail page.
 
   const [form, setForm] = useState({
     name: "",
@@ -162,19 +157,21 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
   async function loadStores() {
     setIsLoading(true)
     try {
-      const supabase = createClient()
-      const { data, error } = await supabase
-        .from("client_stores")
-        .select("id, store_name, store_url, platform, currency, is_active, created_at, shopify_store_domain, shopify_access_token, klaviyo_public_key, klaviyo_private_key, klaviyo_api_key, klaviyo_list_id, ga4_property_id, ga4_credentials")
-        .eq("client_id", clientId)
-        .order("created_at", { ascending: false })
-
-      if (error) throw error
+      const res = await fetch(`/api/stores?client_id=${clientId}`)
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || `Erro ao carregar lojas (${res.status})`)
+      }
+      const { stores: data } = await res.json()
       setStores(data || [])
     } catch (error) {
       console.error("Error loading stores:", error)
-      // If table doesn't exist, just show empty
-      setStores([])
+      toast({
+        variant: "destructive",
+        title: "Erro ao carregar lojas",
+        description: error instanceof Error ? error.message : "Erro desconhecido",
+      })
+      // Do NOT reset to [] — keep previous state to avoid false empty state
     } finally {
       setIsLoading(false)
     }
@@ -187,24 +184,20 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
       const platformCapitalized = store.platform
         ? store.platform.charAt(0).toUpperCase() + store.platform.slice(1)
         : "Shopify"
-      // Don't pre-fill encrypted credential fields — they show as enc:v1:...
-      // User must re-enter credentials when editing. Non-sensitive fields are safe.
-      const isEncrypted = (val?: string) => val?.startsWith("enc:v1:") ?? false
+      // Credentials are NOT returned by the API (sanitized server-side).
+      // Pre-fill only non-sensitive fields. User must re-enter credentials when editing.
       setForm({
         name: store.store_name,
         url: store.store_url || "",
         platform: platformCapitalized,
         currency: store.currency || "BRL",
-        // Shopify - domain is safe, token may be encrypted
         shopify_store_domain: store.shopify_store_domain || "",
-        shopify_access_token: isEncrypted(store.shopify_access_token) ? "" : (store.shopify_access_token || ""),
-        // Klaviyo - public key may be encrypted, private key likely encrypted
-        klaviyo_public_key: isEncrypted(store.klaviyo_public_key) ? "" : (store.klaviyo_public_key || ""),
-        klaviyo_private_key: isEncrypted(store.klaviyo_private_key || store.klaviyo_api_key) ? "" : (store.klaviyo_private_key || store.klaviyo_api_key || ""),
+        shopify_access_token: "",
+        klaviyo_public_key: store.klaviyo_public_key || "",
+        klaviyo_private_key: "",
         klaviyo_list_id: store.klaviyo_list_id || "",
-        // Google Analytics
         ga4_property_id: store.ga4_property_id || "",
-        ga4_credentials_json: store.ga4_credentials ? JSON.stringify(store.ga4_credentials, null, 2) : "",
+        ga4_credentials_json: "",
       })
     } else {
       setEditStore(null)
@@ -326,126 +319,26 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
     if (!deleteStore) return
 
     try {
-      const supabase = createClient()
-      const { error } = await supabase
-        .from("client_stores")
-        .delete()
-        .eq("id", deleteStore.id)
-
-      if (error) throw error
+      const res = await fetch(`/api/client-stores/${deleteStore.id}`, {
+        method: "DELETE",
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || "Erro ao remover loja")
+      }
 
       toast({ title: "Loja removida!" })
       setDeleteStore(null)
       loadStores()
-    } catch {
+    } catch (error) {
       toast({
         variant: "destructive",
         title: "Erro ao remover",
-        description: "Não foi possível remover a loja",
+        description: error instanceof Error ? error.message : "Não foi possível remover a loja",
       })
     }
   }
 
-  function isCredentialEncrypted(value?: string) {
-    return value?.startsWith("enc:v1:") ?? false
-  }
-
-  async function testKlaviyoConnection(store: ClientStore) {
-    const apiKey = store.klaviyo_private_key || store.klaviyo_api_key
-    if (!apiKey || isCredentialEncrypted(apiKey)) {
-      toast({
-        variant: "destructive",
-        title: "Teste via edição",
-        description: "Edite a loja e re-insira a Private Key para testar a conexão",
-      })
-      return
-    }
-
-    setTestingKlaviyo(store.id)
-    try {
-      const response = await fetch("/api/integrations/klaviyo/test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ api_key: apiKey }),
-      })
-
-      const data = await response.json()
-
-      if (data.success) {
-        toast({
-          title: "Conexão bem sucedida!",
-          description: data.account ? `Conectado a: ${data.account}` : "A API do Klaviyo está funcionando corretamente",
-        })
-      } else {
-        throw new Error(data.error || "Falha na conexão")
-      }
-    } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "Erro na conexão",
-        description: error instanceof Error ? error.message : "Verifique se a Private API Key está correta",
-      })
-    } finally {
-      setTestingKlaviyo(null)
-    }
-  }
-
-  async function testShopifyConnection(store: ClientStore) {
-    if (!store.shopify_store_domain || !store.shopify_access_token) {
-      toast({
-        variant: "destructive",
-        title: "Credenciais não configuradas",
-        description: "Configure o domínio e o Access Token da Shopify primeiro",
-      })
-      return
-    }
-
-    if (isCredentialEncrypted(store.shopify_access_token)) {
-      toast({
-        variant: "destructive",
-        title: "Teste via edição",
-        description: "Edite a loja e re-insira o Access Token para testar a conexão",
-      })
-      return
-    }
-
-    setTestingShopify(store.id)
-    try {
-      const response = await fetch("/api/integrations/shopify/test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          store_domain: store.shopify_store_domain,
-          access_token: store.shopify_access_token,
-        }),
-      })
-
-      const data = await response.json()
-
-      if (data.success) {
-        toast({
-          title: "Conexão Shopify bem sucedida!",
-          description: data.shop?.name
-            ? `Conectado a: ${data.shop.name} (${data.shop.currency})`
-            : "A API da Shopify está funcionando corretamente",
-        })
-      } else {
-        const errorMsg = data.error || "Falha na conexão"
-        const details = data.details?.domain
-          ? ` (Domínio: ${data.details.domain})`
-          : ""
-        throw new Error(errorMsg + details)
-      }
-    } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "Erro na conexão Shopify",
-        description: error instanceof Error ? error.message : "Verifique as credenciais da Shopify",
-      })
-    } finally {
-      setTestingShopify(null)
-    }
-  }
 
   async function checkDatabaseStatus() {
     try {
@@ -572,7 +465,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
                         <Store className="h-4 w-4 text-success" />
                         <span className="text-sm font-medium">Shopify</span>
                       </div>
-                      {store.shopify_access_token ? (
+                      {store.has_shopify_credentials ? (
                         <Badge variant="success" className="flex items-center gap-1">
                           <Check className="h-3 w-3" />
                           Configurado
@@ -594,21 +487,6 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
                         Moeda: {store.currency}
                       </div>
                     )}
-                    {store.shopify_access_token && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => testShopifyConnection(store)}
-                        disabled={testingShopify === store.id}
-                      >
-                        {testingShopify === store.id ? (
-                          <Loader2 className="mr-2 h-3 w-3 animate-spin" />
-                        ) : (
-                          <RefreshCw className="mr-2 h-3 w-3" />
-                        )}
-                        Testar Conexão
-                      </Button>
-                    )}
                   </div>
                 )}
 
@@ -619,7 +497,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
                       <Key className="h-4 w-4 text-primary" />
                       <span className="text-sm font-medium">Klaviyo</span>
                     </div>
-                    {(store.klaviyo_private_key || store.klaviyo_api_key) ? (
+                    {store.has_klaviyo_credentials ? (
                       <Badge variant="success" className="flex items-center gap-1">
                         <Check className="h-3 w-3" />
                         Configurado
@@ -631,11 +509,11 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
                       </Badge>
                     )}
                   </div>
-                  {(store.klaviyo_private_key || store.klaviyo_api_key) && (
+                  {store.has_klaviyo_credentials && (
                     <>
                       {store.klaviyo_public_key && (
                         <div className="text-xs text-muted-foreground">
-                          Site ID: {store.klaviyo_public_key.startsWith("enc:v1:") ? "••••••" : store.klaviyo_public_key}
+                          Site ID: {store.klaviyo_public_key}
                         </div>
                       )}
                       <div className="text-xs text-muted-foreground">
@@ -646,19 +524,6 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
                           List ID: {store.klaviyo_list_id}
                         </div>
                       )}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => testKlaviyoConnection(store)}
-                        disabled={testingKlaviyo === store.id}
-                      >
-                        {testingKlaviyo === store.id ? (
-                          <Loader2 className="mr-2 h-3 w-3 animate-spin" />
-                        ) : (
-                          <RefreshCw className="mr-2 h-3 w-3" />
-                        )}
-                        Testar Conexão
-                      </Button>
                     </>
                   )}
                 </div>
