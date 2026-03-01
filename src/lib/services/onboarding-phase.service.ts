@@ -253,8 +253,8 @@ export class OnboardingPhaseService {
       .eq("enabled", true)
 
     if (!approvers?.length) {
-      // Fallback: notify owners and managers
-      await notificationService.notifyByRole(["owner", "manager"], {
+      // Fallback: notify owners, managers, and COOs
+      await notificationService.notifyByRole(["owner", "manager", "coo"], {
         title: `Novo formulário de onboarding para aprovação`,
         body: `${onboarding.client?.name} (${onboarding.store?.store_name}) aguarda aprovação`,
         type: "warning",

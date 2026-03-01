@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
       .eq("enabled", true)
       .maybeSingle()
 
-    const hasPermission = !!feature || ["owner", "manager"].includes(orgMember.role)
+    const hasPermission = !!feature || ["owner", "manager", "coo"].includes(orgMember.role)
 
     if (!hasPermission) {
       throw new AppError("Sem permissão para visualizar aprovações", 403)
