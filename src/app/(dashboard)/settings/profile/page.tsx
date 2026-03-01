@@ -352,12 +352,15 @@ export default function ProfilePage() {
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={uploadingAvatar}
-                  className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer disabled:cursor-wait"
+                  className="absolute inset-0 flex flex-col items-center justify-center rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer disabled:cursor-wait"
                 >
                   {uploadingAvatar ? (
                     <Loader2 className="h-6 w-6 text-white animate-spin" />
                   ) : (
-                    <Camera className="h-6 w-6 text-white" />
+                    <>
+                      <Camera className="h-5 w-5 text-white" />
+                      <span className="text-xs text-white mt-1">Alterar foto</span>
+                    </>
                   )}
                 </button>
 

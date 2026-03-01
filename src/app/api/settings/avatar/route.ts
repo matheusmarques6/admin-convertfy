@@ -86,7 +86,10 @@ export async function POST(request: NextRequest) {
     const filesToRemove = otherExts.map((e) => `${user.id}/avatar.${e}`)
 
     if (filesToRemove.length > 0) {
-      await supabase.storage.from(BUCKET).remove(filesToRemove)
+      const { error: removeError } = await supabase.storage.from(BUCKET).remove(filesToRemove)
+      if (removeError) {
+        log.warn("Failed to remove old avatar files:", removeError)
+      }
     }
 
     // Upload (upsert overwrites previous same-extension file)
@@ -104,17 +107,15 @@ export async function POST(request: NextRequest) {
       throw new AppError("Erro ao fazer upload do avatar", 500)
     }
 
-    // Get public URL with cache-bust param
+    // Get public URL (clean, without cache-bust)
     const { data: { publicUrl } } = supabase.storage
       .from(BUCKET)
       .getPublicUrl(path)
 
-    const avatarUrl = `${publicUrl}?t=${Date.now()}`
-
-    // Update profiles.avatar_url
+    // Store clean URL in database
     const { error: updateError } = await supabase
       .from("profiles")
-      .update({ avatar_url: avatarUrl, updated_at: new Date().toISOString() })
+      .update({ avatar_url: publicUrl, updated_at: new Date().toISOString() })
       .eq("id", user.id)
 
     if (updateError) {
@@ -122,7 +123,8 @@ export async function POST(request: NextRequest) {
       throw new AppError("Erro ao atualizar perfil", 500)
     }
 
-    return successResponse(request, { avatar_url: avatarUrl })
+    // Return URL with cache-bust param for immediate client refresh
+    return successResponse(request, { avatar_url: `${publicUrl}?t=${Date.now()}` })
   } catch (error) {
     return errorResponse(request, error, "AvatarUpload")
   }
@@ -142,7 +144,10 @@ export async function DELETE(request: NextRequest) {
       (ext) => `${user.id}/avatar.${ext}`
     )
 
-    await supabase.storage.from(BUCKET).remove(filesToRemove)
+    const { error: removeError } = await supabase.storage.from(BUCKET).remove(filesToRemove)
+    if (removeError) {
+      log.warn("Failed to remove avatar files from storage:", removeError)
+    }
 
     // Set avatar_url to null
     const { error: updateError } = await supabase
