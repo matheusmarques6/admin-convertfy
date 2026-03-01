@@ -222,7 +222,11 @@ async function syncStoreForPeriod(
         },
       },
     }),
-    fetchStoreRevenueFromMetricAggregates(apiKey, metricId, startDateStr, endDateStr, timezone),
+    fetchStoreRevenueFromMetricAggregates(apiKey, metricId, startDateStr, endDateStr, timezone)
+      .catch((err) => {
+        log.warn(`[Cron] metric-aggregates failed for ${store.store_name}/${period}:`, err)
+        return { storeRevenue: 0, storeOrders: 0 }
+      }),
   ])
 
   // Track revenue for store_revenue_summary
