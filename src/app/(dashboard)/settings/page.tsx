@@ -12,8 +12,23 @@ import {
   Mail,
 } from "lucide-react"
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { createClient } from "@/lib/supabase/server"
+import { type LucideIcon } from "lucide-react"
 
-const settingsGroups = [
+interface SettingItem {
+  title: string
+  description: string
+  href: string
+  icon: LucideIcon
+}
+
+interface SettingGroup {
+  title: string
+  items: SettingItem[]
+  adminOnly?: boolean
+}
+
+const settingsGroups: SettingGroup[] = [
   {
     title: "Conta",
     items: [
@@ -45,6 +60,7 @@ const settingsGroups = [
   },
   {
     title: "Equipe",
+    adminOnly: true,
     items: [
       {
         title: "Usuários",
@@ -62,6 +78,7 @@ const settingsGroups = [
   },
   {
     title: "Personalização",
+    adminOnly: true,
     items: [
       {
         title: "Campos Personalizados",
@@ -96,7 +113,38 @@ const settingsGroups = [
   },
 ]
 
-export default function SettingsPage() {
+export default async function SettingsPage() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  let isAdmin = false
+  if (user) {
+    // Check profile role (super_admin/admin)
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single()
+
+    if (profile?.role === "super_admin" || profile?.role === "admin") {
+      isAdmin = true
+    } else {
+      // Check org membership role (owner/admin)
+      const { data: membership } = await supabase
+        .from("org_members")
+        .select("role")
+        .eq("profile_id", user.id)
+        .eq("is_active", true)
+        .single()
+
+      isAdmin = membership?.role === "owner" || membership?.role === "admin"
+    }
+  }
+
+  const visibleGroups = settingsGroups.filter(
+    (group) => !group.adminOnly || isAdmin
+  )
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -105,7 +153,7 @@ export default function SettingsPage() {
       </p>
 
       {/* Settings Groups */}
-      {settingsGroups.map((group) => (
+      {visibleGroups.map((group) => (
         <div key={group.title} className="space-y-4">
           <h2 className="text-lg font-semibold">{group.title}</h2>
           <div className="grid gap-4 md:grid-cols-2">

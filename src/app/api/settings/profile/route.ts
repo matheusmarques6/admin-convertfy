@@ -97,6 +97,16 @@ export async function PUT(request: NextRequest) {
       throw new AppError("Erro ao atualizar perfil", 500)
     }
 
+    // Activity logging (fire-and-forget)
+    supabase.from("activities").insert({
+      user_id: user.id,
+      type: "user_updated",
+      description: `Perfil atualizado`,
+      metadata: { action: "profile_updated", fields_changed: Object.keys(updateData).filter((k) => k !== "updated_at") },
+    }).then(({ error: actErr }) => {
+      if (actErr) log.warn("Failed to log profile update activity:", actErr)
+    })
+
     return successResponse(request, { success: true }, { message: "Perfil atualizado com sucesso" })
   } catch (error) {
     return errorResponse(request, error, "AdminSettings")

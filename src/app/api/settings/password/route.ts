@@ -4,6 +4,9 @@ import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api
 import { createClient } from "@/lib/supabase/server"
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { changePassword, MIN_PASSWORD_LENGTH } from "@/lib/services/auth.service"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("AdminSettingsPassword")
 
 const passwordChangeSchema = z
   .object({
@@ -43,6 +46,16 @@ export async function PUT(request: NextRequest) {
       parsed.data.currentPassword,
       parsed.data.newPassword
     )
+
+    // Activity logging (fire-and-forget)
+    supabase.from("activities").insert({
+      user_id: user.id,
+      type: "user_updated",
+      description: `Senha alterada`,
+      metadata: { action: "password_changed" },
+    }).then(({ error: actErr }) => {
+      if (actErr) log.warn("Failed to log password change activity:", actErr)
+    })
 
     return successResponse(request, { success: true }, { message: "Senha alterada com sucesso" })
   } catch (error) {

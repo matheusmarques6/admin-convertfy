@@ -1,10 +1,19 @@
 import { NextRequest, NextResponse } from "next/server"
+import { z } from "zod"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("PortalSettings")
+
+const portalProfileSchema = z.object({
+  name: z
+    .string()
+    .min(2, "Nome deve ter pelo menos 2 caracteres")
+    .max(100, "Nome deve ter no máximo 100 caracteres"),
+  phone: z.string().max(20).optional().nullable(),
+})
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -91,14 +100,21 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { name, phone } = body
+    const parsed = portalProfileSchema.safeParse(body)
+
+    if (!parsed.success) {
+      throw new AppError(
+        parsed.error.issues[0]?.message || "Dados inválidos",
+        400
+      )
+    }
 
     // Update profile
     const { error } = await supabase
       .from("client_portal_users")
       .update({
-        name,
-        phone,
+        name: parsed.data.name,
+        phone: parsed.data.phone ?? null,
         updated_at: new Date().toISOString(),
       })
       .eq("id", portalUser.id)

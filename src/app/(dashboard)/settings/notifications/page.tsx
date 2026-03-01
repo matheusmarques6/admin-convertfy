@@ -105,8 +105,8 @@ export default function NotificationsPage() {
             const key = `email_${cat}` as keyof Preferences
             return (
               <div key={key} className="flex items-center justify-between">
-                <Label>{prefLabels[cat]}</Label>
-                <Switch checked={prefs[key]} onCheckedChange={() => togglePref(key)} />
+                <Label htmlFor={key}>{prefLabels[cat]}</Label>
+                <Switch id={key} checked={prefs[key]} onCheckedChange={() => togglePref(key)} aria-label={`Ativar ou desativar notificação de ${prefLabels[cat]}`} />
               </div>
             )
           })}
@@ -123,8 +123,8 @@ export default function NotificationsPage() {
             const key = `push_${cat}` as keyof Preferences
             return (
               <div key={key} className="flex items-center justify-between">
-                <Label>{prefLabels[cat]}</Label>
-                <Switch checked={prefs[key]} onCheckedChange={() => togglePref(key)} />
+                <Label htmlFor={key}>{prefLabels[cat]}</Label>
+                <Switch id={key} checked={prefs[key]} onCheckedChange={() => togglePref(key)} aria-label={`Ativar ou desativar notificação push de ${prefLabels[cat]}`} />
               </div>
             )
           })}
