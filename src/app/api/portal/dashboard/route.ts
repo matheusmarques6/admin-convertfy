@@ -67,6 +67,9 @@ interface CachedRevenueSummary {
   klaviyo_total_revenue: number
   klaviyo_campaign_revenue: number
   klaviyo_flow_revenue: number
+  total_leads: number
+  engaged_leads: number
+  engagement_rate: number
   period_start: string
   period_end: string
   fetched_at: string
@@ -176,9 +179,9 @@ function mapCacheToPortalKlaviyo(cached: CachedKlaviyoData) {
     storeRevenue: 0,         // Not cached (metric-aggregates), kept for compat
     storeOrders: 0,          // Not cached, kept for compat
     recoveryRate: 0,         // Requires storeRevenue
-    totalLeads: 0,           // Story 8.17
-    engagedLeads: 0,         // Story 8.17
-    engagementRate: 0,       // Story 8.17
+    totalLeads: cached.summary.total_leads || 0,
+    engagedLeads: cached.summary.engaged_leads || 0,
+    engagementRate: cached.summary.engagement_rate || 0,
     totalRevenue,
     campaignRevenue,
     flowRevenue,
@@ -608,9 +611,13 @@ export async function GET(request: NextRequest) {
             storeRevenue: 0,
             storeOrders: 0,
             recoveryRate: 0,
-            totalLeads: 0,           // Story 8.17
-            engagedLeads: 0,         // Story 8.17
-            engagementRate: 0,       // Story 8.17
+            totalLeads: klaviyoDataList.reduce((sum, k) => sum + (k.totalLeads || 0), 0),
+            engagedLeads: klaviyoDataList.reduce((sum, k) => sum + (k.engagedLeads || 0), 0),
+            engagementRate: (() => {
+              const aggTotalLeads = klaviyoDataList.reduce((sum, k) => sum + (k.totalLeads || 0), 0)
+              const aggEngagedLeads = klaviyoDataList.reduce((sum, k) => sum + (k.engagedLeads || 0), 0)
+              return aggTotalLeads > 0 ? (aggEngagedLeads / aggTotalLeads) * 100 : 0
+            })(),
             totalRevenue: aggTotalRevenue,
             campaignRevenue: aggCampaignRevenue,
             flowRevenue: aggFlowRevenue,

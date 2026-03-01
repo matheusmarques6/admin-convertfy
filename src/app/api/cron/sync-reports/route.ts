@@ -362,6 +362,97 @@ async function fetchCampaignNames(apiKey: string): Promise<Map<string, { name: s
 }
 
 // ==============================
+// Fetch audience metrics (lists + segments) — ONCE per store
+// ==============================
+
+type AudienceListResp = {
+  data: Array<{ id: string; attributes: { profile_count?: number } }>
+  links?: { next?: string }
+}
+
+type AudienceSegResp = {
+  data: Array<{ id: string; attributes: { name: string; profile_count?: number } }>
+  links?: { next?: string }
+}
+
+type AudienceDetailResp = {
+  data: { attributes: { profile_count?: number } }
+}
+
+async function fetchAudienceForStore(apiKey: string): Promise<{
+  totalLeads: number
+  engagedLeads: number
+  engagementRate: number
+}> {
+  // 1. Fetch all lists, find largest by profile count
+  const allLists: Array<{ id: string; profileCount: number }> = []
+  let listPage: string | null = "/lists/"
+  while (listPage) {
+    const resp: AudienceListResp | null = await klaviyoRequest<AudienceListResp>(apiKey, listPage)
+    if (!resp?.data) break
+    for (const l of resp.data) {
+      allLists.push({ id: l.id, profileCount: l.attributes.profile_count || 0 })
+    }
+    listPage = resp.links?.next ? resp.links.next.replace(KLAVIYO_API_URL, "") : null
+    if (listPage) await sleep(500)
+  }
+
+  // Individual fetch for lists with 0 count (API quirk: collection endpoint may not return count)
+  const allListsZero = allLists.length > 0 && allLists.every(l => l.profileCount === 0)
+  if (allListsZero) {
+    for (const list of allLists.slice(0, 5)) {
+      const detail: AudienceDetailResp | null = await klaviyoRequest<AudienceDetailResp>(apiKey, `/lists/${list.id}/?additional-fields[list]=profile_count`)
+      if (detail?.data?.attributes?.profile_count) {
+        list.profileCount = detail.data.attributes.profile_count
+      }
+      await sleep(500)
+    }
+  }
+
+  const largestList = allLists.reduce(
+    (max, l) => (l.profileCount > max.profileCount ? l : max),
+    { id: "", profileCount: 0 },
+  )
+  const totalLeads = largestList.profileCount
+
+  // 2. Fetch segments, find "Engaged" segment
+  const allSegments: Array<{ id: string; name: string; profileCount: number }> = []
+  let segPage: string | null = "/segments/"
+  while (segPage) {
+    const resp: AudienceSegResp | null = await klaviyoRequest<AudienceSegResp>(apiKey, segPage)
+    if (!resp?.data) break
+    for (const s of resp.data) {
+      allSegments.push({ id: s.id, name: s.attributes.name, profileCount: s.attributes.profile_count || 0 })
+    }
+    segPage = resp.links?.next ? resp.links.next.replace(KLAVIYO_API_URL, "") : null
+    if (segPage) await sleep(500)
+  }
+
+  // Find engaged segment: prefer "Engaged 90d" / "Engajados 90d", fallback to any "engaged"
+  const engagedSegment = allSegments.find(s => {
+    const name = s.name.toLowerCase()
+    return (name.includes("engaged") || name.includes("engajados")) && name.includes("90")
+  }) || allSegments.find(s => {
+    const name = s.name.toLowerCase()
+    return name.includes("engaged") || name.includes("engajados")
+  })
+
+  // Individual fetch if engaged segment has 0 count
+  if (engagedSegment && engagedSegment.profileCount === 0) {
+    const detail: AudienceDetailResp | null = await klaviyoRequest<AudienceDetailResp>(apiKey, `/segments/${engagedSegment.id}/?additional-fields[segment]=profile_count`)
+    if (detail?.data?.attributes?.profile_count) {
+      engagedSegment.profileCount = detail.data.attributes.profile_count
+    }
+    await sleep(500)
+  }
+
+  const engagedLeads = engagedSegment?.profileCount || 0
+  const engagementRate = totalLeads > 0 ? (engagedLeads / totalLeads) * 100 : 0
+
+  return { totalLeads, engagedLeads, engagementRate: Math.round(engagementRate * 100) / 100 }
+}
+
+// ==============================
 // Full sync for one store across all periods
 // ==============================
 
@@ -398,6 +489,16 @@ async function syncStore(
     fetchCampaignNames(apiKey),
   ])
 
+  // Fetch audience metrics ONCE per store (not per period — audience is a snapshot)
+  let audience = { totalLeads: 0, engagedLeads: 0, engagementRate: 0 }
+  try {
+    audience = await fetchAudienceForStore(apiKey)
+    log.info(`[Cron] ${store.store_name}: audience totalLeads=${audience.totalLeads} engagedLeads=${audience.engagedLeads} rate=${audience.engagementRate}%`)
+  } catch (err) {
+    log.warn(`[Cron] Failed to fetch audience for ${store.store_name}:`, err)
+    // Continue with 0s — audience is optional
+  }
+
   // Sync each period
   for (const period of periods) {
     if (Date.now() - startTime > MAX_DURATION_MS) {
@@ -424,6 +525,9 @@ async function syncStore(
             klaviyo_campaign_revenue: result.campaignRevenue,
             klaviyo_flow_revenue: result.flowRevenue,
             shopify_total_revenue: 0,
+            total_leads: audience.totalLeads,
+            engaged_leads: audience.engagedLeads,
+            engagement_rate: audience.engagementRate,
             sync_status: result.status,
             sync_error: null,
             expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
