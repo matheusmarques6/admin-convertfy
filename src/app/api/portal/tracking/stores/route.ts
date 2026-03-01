@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { successResponse, errorResponse, AppError } from "@/lib/api/errors"
+import { encrypt } from "@/lib/crypto"
 import { handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
 
@@ -139,7 +140,7 @@ export async function POST(request: NextRequest) {
       await admin
         .from("tracking_stores")
         .update({
-          shopify_access_token: access_token,
+          shopify_access_token: encrypt(access_token),
           shop_name: shop_name || domain,
           is_active: true,
           updated_at: new Date().toISOString(),
@@ -159,7 +160,7 @@ export async function POST(request: NextRequest) {
         org_id: orgId,
         shop_domain: domain,
         shop_name: shop_name || domain,
-        shopify_access_token: access_token,
+        shopify_access_token: encrypt(access_token),
         webhook_secret: webhookSecret,
         is_active: true,
       })

@@ -34,7 +34,7 @@ export async function POST(
     // Check permission: user must have onboarding_approve feature
     const { data: orgMember } = await adminClient
       .from("org_members")
-      .select("id, role, profile_id")
+      .select("id, role, profile_id, org_id")
       .eq("profile_id", user.id)
       .eq("is_active", true)
       .single()
@@ -68,6 +68,19 @@ export async function POST(
 
     if (!onboarding) {
       throw new AppError("Onboarding não encontrado", 404)
+    }
+
+    // Verify onboarding belongs to the same org as the authenticated user
+    if (onboarding.store_id) {
+      const { data: store } = await adminClient
+        .from("client_stores")
+        .select("org_id")
+        .eq("id", onboarding.store_id)
+        .single()
+
+      if (store?.org_id && store.org_id !== orgMember.org_id) {
+        throw new AppError("Você não tem permissão para este onboarding", 403)
+      }
     }
 
     if (onboarding.current_phase !== "pending_approval" && onboarding.status !== "pending_approval") {

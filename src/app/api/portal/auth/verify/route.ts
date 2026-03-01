@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { errorResponse, AppError } from "@/lib/api/errors"
-import { createAdminClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
 
@@ -10,21 +10,28 @@ export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
 }
 
-
-
-
-
 // POST - Verify if user is a portal user
 export async function POST(request: NextRequest) {
   try {
-    // Use admin client to bypass RLS
+    // Authenticate: verify the caller has a valid session
+    const supabase = await createClient()
+    const { data: { user: authUser }, error: authError } = await supabase.auth.getUser()
+
+    if (authError || !authUser) {
+      throw new AppError("Não autenticado", 401)
+    }
+
     const adminClient = createAdminClient()
     const body = await request.json()
-
     const { userId } = body
 
     if (!userId) {
       throw new AppError("User ID é obrigatório", 400)
+    }
+
+    // Ensure the userId in the body matches the authenticated session
+    if (userId !== authUser.id) {
+      throw new AppError("User ID não corresponde à sessão autenticada", 403)
     }
 
     // Check if this is a portal user

@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, AppError } from "@/lib/api/errors"
-import { decrypt } from "@/lib/crypto"
+import { decrypt, encrypt } from "@/lib/crypto"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("PortalTrackingConfig")
@@ -90,7 +90,7 @@ async function autoProvisionTrackingStore(
         org_id: shopifyStore.org_id,
         shop_domain: shopDomain,
         shop_name: shopifyStore.store_name || shopDomain,
-        shopify_access_token: accessToken || null,
+        shopify_access_token: accessToken ? encrypt(accessToken) : null,
         webhook_secret: webhookSecret,
         is_active: true,
       })

@@ -94,7 +94,7 @@ async function ensureTrackingStores(
         org_id: shopifyStore.org_id,
         shop_domain: shopDomain,
         shop_name: shopifyStore.store_name || shopDomain,
-        shopify_access_token: accessToken || null,
+        shopify_access_token: accessToken ? encrypt(accessToken) : null,
         webhook_secret: webhookSecret,
         is_active: true,
       })
