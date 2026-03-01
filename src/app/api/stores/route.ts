@@ -35,31 +35,7 @@ export async function GET(request: NextRequest) {
 
     let query = supabase
       .from("client_stores")
-      .select(`
-        id,
-        store_name,
-        platform,
-        store_url,
-        is_active,
-        created_at,
-        client_id,
-        currency,
-        language,
-        feedback_frequency,
-        last_feedback_date,
-        next_feedback_date,
-        last_feedback_by,
-        feedback_notes,
-        shopify_store_domain,
-        shopify_access_token,
-        klaviyo_public_key,
-        klaviyo_private_key,
-        klaviyo_api_key,
-        klaviyo_list_id,
-        ga4_property_id,
-        ga4_credentials,
-        client:clients(id, name, company, email)
-      `)
+      .select(`*, client:clients(id, name, company, email)`)
       .eq("org_id", orgId)
       .order("store_name")
 
@@ -74,24 +50,36 @@ export async function GET(request: NextRequest) {
     const { data: stores, error } = await query
 
     if (error) {
-      log.error("[Stores] Error fetching stores:", error)
-      throw new AppError("Erro ao buscar lojas", 500)
+      log.error("[Stores] Error fetching stores:", { message: error.message, details: error.details, hint: error.hint })
+      throw new AppError(`Erro ao buscar lojas: ${error.message}`, 500)
     }
 
     // Sanitize: remove encrypted credentials, compute boolean flags
-    const sanitizedStores = (stores || []).map((store) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sanitizedStores = (stores || []).map((store: any) => {
+      const has_shopify_credentials = !!store.shopify_access_token
+      const has_klaviyo_credentials = !!(store.klaviyo_private_key || store.klaviyo_api_key)
+      const has_ga4_credentials = !!store.ga4_credentials
+
+      // Remove encrypted credential values — never expose enc:v1:... to browser
       const {
-        shopify_access_token,
-        klaviyo_private_key,
-        klaviyo_api_key,
-        ga4_credentials,
+        shopify_access_token: _s,
+        shopify_api_key: _sk,
+        shopify_api_secret: _ss,
+        klaviyo_private_key: _kp,
+        klaviyo_api_key: _ka,
+        ga4_credentials: _g,
+        meta_access_token: _m,
+        google_ads_credentials: _ga,
+        google_calendar_credentials: _gc,
         ...rest
       } = store
+
       return {
         ...rest,
-        has_shopify_credentials: !!shopify_access_token,
-        has_klaviyo_credentials: !!(klaviyo_private_key || klaviyo_api_key),
-        has_ga4_credentials: !!ga4_credentials,
+        has_shopify_credentials,
+        has_klaviyo_credentials,
+        has_ga4_credentials,
       }
     })
 
