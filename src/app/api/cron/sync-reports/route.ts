@@ -6,8 +6,7 @@ import { logger } from "@/lib/logger"
 import { getStoreCredentials } from "@/lib/services/credentials.service"
 import {
   klaviyoRequest,
-  parseDateRange,
-  formatDateStr,
+  parseDateRangeInTimezone,
   getTimezoneOffset,
   getCachedAccountInfo,
   getCachedPlacedOrderMetric,
@@ -94,14 +93,13 @@ async function syncStoreForPeriod(
   supabase: SupabaseClient,
   // Pre-fetched data shared across periods:
   apiKey: string,
+  timezone: string,
   timezoneOffset: string,
   metricId: string,
   flowNames: Map<string, { name: string; status: string; trigger_type: string }>,
   campNames: Map<string, { name: string; status: string; send_time: string | null; channel: string; subject: string | null }>,
-): Promise<{ status: "ok" | "skipped"; campaignRevenue: number; flowRevenue: number; startDate: Date; endDate: Date }> {
-  const { startDate, endDate } = parseDateRange(period, null, null)
-  const startDateStr = formatDateStr(startDate)
-  const endDateStr = formatDateStr(endDate)
+): Promise<{ status: "ok" | "skipped"; campaignRevenue: number; flowRevenue: number; startDateStr: string; endDateStr: string }> {
+  const { startDateStr, endDateStr } = parseDateRangeInTimezone(period, timezone)
   const timeframe = {
     start: `${startDateStr}T00:00:00${timezoneOffset}`,
     end: `${endDateStr}T23:59:59${timezoneOffset}`,
@@ -302,7 +300,7 @@ async function syncStoreForPeriod(
     log.info(`[Cron] ${store.store_name}/${period}: ${campRows.length} campaign metrics`)
   }
 
-  return { status: "ok", campaignRevenue: totalCampaignRevenue, flowRevenue: totalFlowRevenue, startDate, endDate }
+  return { status: "ok", campaignRevenue: totalCampaignRevenue, flowRevenue: totalFlowRevenue, startDateStr, endDateStr }
 }
 
 // ==============================
@@ -408,7 +406,7 @@ async function syncStore(
     }
 
     try {
-      const result = await syncStoreForPeriod(store, period, supabase, apiKey, timezoneOffset, metricId, flowNames, campNames)
+      const result = await syncStoreForPeriod(store, period, supabase, apiKey, accountInfo.timezone, timezoneOffset, metricId, flowNames, campNames)
       results.push({ storeId: store.id, storeName: store.store_name, period, status: result.status, campaignRevenue: result.campaignRevenue, flowRevenue: result.flowRevenue })
 
       // Upsert store_revenue_summary (only if store has org_id)
@@ -420,8 +418,8 @@ async function syncStore(
             store_id: store.id,
             org_id: store.org_id,
             period_label: period,
-            period_start: result.startDate.toISOString(),
-            period_end: result.endDate.toISOString(),
+            period_start: result.startDateStr,
+            period_end: result.endDateStr,
             klaviyo_total_revenue: totalKlaviyoRevenue,
             klaviyo_campaign_revenue: result.campaignRevenue,
             klaviyo_flow_revenue: result.flowRevenue,
@@ -439,7 +437,7 @@ async function syncStore(
 
       // Upsert error status in store_revenue_summary
       if (store.org_id) {
-        const { startDate, endDate } = parseDateRange(period, null, null)
+        const { startDateStr: errStartDate, endDateStr: errEndDate } = parseDateRangeInTimezone(period, accountInfo.timezone)
         try {
           await supabase
             .from("store_revenue_summary")
@@ -447,8 +445,8 @@ async function syncStore(
               store_id: store.id,
               org_id: store.org_id,
               period_label: period,
-              period_start: startDate.toISOString(),
-              period_end: endDate.toISOString(),
+              period_start: errStartDate,
+              period_end: errEndDate,
               klaviyo_total_revenue: 0,
               klaviyo_campaign_revenue: 0,
               klaviyo_flow_revenue: 0,

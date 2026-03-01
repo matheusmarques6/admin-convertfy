@@ -18,9 +18,14 @@ import {
   getCachedPlacedOrderMetric,
 } from "@/lib/integrations/klaviyo"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import type { SupabaseClient } from "@supabase/supabase-js"
 
 export const maxDuration = 300
 export const dynamic = 'force-dynamic'
+
+// Cache-first configuration
+const CACHED_PERIODS = new Set(["7d", "15d", "30d", "90d"])
+const CACHE_MAX_AGE_MS = 2 * 60 * 60 * 1000 // 2 hours (matches cron interval)
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -254,6 +259,132 @@ async function getCampaignMetrics(
   return campaignMetrics
 }
 
+// Read campaigns from cache (klaviyo_campaign_metrics table)
+async function readCampaignsFromCache(
+  storeId: string,
+  periodStart: string,
+  periodEnd: string,
+  statusFilter: string | null,
+  supabase: SupabaseClient
+) {
+  const { data: rows, error } = await supabase
+    .from("klaviyo_campaign_metrics")
+    .select("*")
+    .eq("store_id", storeId)
+    .eq("period_start", periodStart)
+    .eq("period_end", periodEnd)
+    .order("fetched_at", { ascending: false })
+
+  if (error || !rows || rows.length === 0) return null
+
+  // Check freshness
+  const latestFetchedAt = new Date(rows[0].fetched_at)
+  if (Date.now() - latestFetchedAt.getTime() > CACHE_MAX_AGE_MS) return null
+
+  // Map cached rows to response format
+  let campaigns = rows.map((r: Record<string, unknown>) => ({
+    id: r.campaign_id as string,
+    name: r.campaign_name as string,
+    status: r.campaign_status as string,
+    sendTime: (r.send_time as string) || null,
+    createdAt: "", // not stored in cache
+    channel: (r.channel as string) || "email",
+    subject: (r.subject as string) || null,
+    recipients: (r.recipients as number) || 0,
+    delivered: (r.delivered as number) || 0,
+    deliveryRate: (r.delivery_rate as number) || 0,
+    opened: (r.opened as number) || 0,
+    openRate: (r.open_rate as number) || 0,
+    clicked: (r.clicked as number) || 0,
+    clickRate: (r.click_rate as number) || 0,
+    clickToOpenRate: (r.click_to_open_rate as number) || 0,
+    conversions: (r.conversions as number) || 0,
+    conversionRate: (r.conversion_rate as number) || 0,
+    conversionValue: (r.conversion_value as number) || 0,
+    revenuePerRecipient: (r.revenue_per_recipient as number) || 0,
+    averageOrderValue: (r.average_order_value as number) || 0,
+    bounced: (r.bounced as number) || 0,
+    bounceRate: (r.bounce_rate as number) || 0,
+    unsubscribed: (r.unsubscribed as number) || 0,
+    unsubscribeRate: (r.unsubscribe_rate as number) || 0,
+    spamComplaintRate: (r.spam_complaint_rate as number) || (r.spam_complaints as number) || 0,
+    revenue: (r.conversion_value as number) || 0,
+  }))
+
+  // Apply status filter if provided
+  if (statusFilter) {
+    campaigns = campaigns.filter((c: { status: string }) => c.status === statusFilter)
+  }
+
+  // Sort by send time (most recent first) for sent campaigns, or by revenue
+  campaigns.sort((a: { sendTime: string | null; conversionValue: number }, b: { sendTime: string | null; conversionValue: number }) => {
+    if (a.sendTime && b.sendTime) {
+      return new Date(b.sendTime).getTime() - new Date(a.sendTime).getTime()
+    }
+    return b.conversionValue - a.conversionValue
+  })
+
+  // Calculate summary totals
+  const totals = campaigns.reduce(
+    (acc: Record<string, number>, campaign: Record<string, unknown>) => ({
+      totalCampaigns: acc.totalCampaigns + 1,
+      sentCampaigns: acc.sentCampaigns + (campaign.status === "sent" ? 1 : 0),
+      scheduledCampaigns: acc.scheduledCampaigns + (campaign.status === "scheduled" ? 1 : 0),
+      draftCampaigns: acc.draftCampaigns + (campaign.status === "draft" ? 1 : 0),
+      cancelledCampaigns: acc.cancelledCampaigns + (campaign.status === "cancelled" ? 1 : 0),
+      emailCampaigns: acc.emailCampaigns + (campaign.channel === "email" ? 1 : 0),
+      smsCampaigns: acc.smsCampaigns + (campaign.channel === "sms" ? 1 : 0),
+      totalRecipients: acc.totalRecipients + (campaign.recipients as number),
+      totalDelivered: acc.totalDelivered + (campaign.delivered as number),
+      totalOpened: acc.totalOpened + (campaign.opened as number),
+      totalClicked: acc.totalClicked + (campaign.clicked as number),
+      totalConversions: acc.totalConversions + (campaign.conversions as number),
+      totalRevenue: acc.totalRevenue + (campaign.conversionValue as number),
+      totalBounced: acc.totalBounced + (campaign.bounced as number),
+      totalUnsubscribed: acc.totalUnsubscribed + (campaign.unsubscribed as number),
+      totalSpamComplaintRate: acc.totalSpamComplaintRate + (campaign.spamComplaintRate as number),
+    }),
+    {
+      totalCampaigns: 0,
+      sentCampaigns: 0,
+      scheduledCampaigns: 0,
+      draftCampaigns: 0,
+      cancelledCampaigns: 0,
+      emailCampaigns: 0,
+      smsCampaigns: 0,
+      totalRecipients: 0,
+      totalDelivered: 0,
+      totalOpened: 0,
+      totalClicked: 0,
+      totalConversions: 0,
+      totalRevenue: 0,
+      totalBounced: 0,
+      totalUnsubscribed: 0,
+      totalSpamComplaintRate: 0,
+    }
+  )
+
+  const avgOpenRate = totals.totalDelivered > 0 ? (totals.totalOpened / totals.totalDelivered) * 100 : 0
+  const avgClickRate = totals.totalDelivered > 0 ? (totals.totalClicked / totals.totalDelivered) * 100 : 0
+  const avgConversionRate = totals.totalDelivered > 0 ? (totals.totalConversions / totals.totalDelivered) * 100 : 0
+  const avgBounceRate = totals.totalRecipients > 0 ? (totals.totalBounced / totals.totalRecipients) * 100 : 0
+
+  return {
+    fetchedAt: rows[0].fetched_at as string,
+    summary: {
+      ...totals,
+      avgOpenRate: Math.round(avgOpenRate * 100) / 100,
+      avgClickRate: Math.round(avgClickRate * 100) / 100,
+      avgConversionRate: Math.round(avgConversionRate * 100) / 100,
+      avgBounceRate: Math.round(avgBounceRate * 100) / 100,
+      revenuePerRecipient: totals.totalRecipients > 0
+        ? Math.round((totals.totalRevenue / totals.totalRecipients) * 100) / 100
+        : 0,
+    },
+    campaigns,
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
@@ -265,6 +396,7 @@ export async function GET(request: NextRequest) {
     const customStartDate = searchParams.get("start_date")
     const customEndDate = searchParams.get("end_date")
     const statusFilter = searchParams.get("status") // 'sent', 'scheduled', 'draft', 'cancelled'
+    const forceRefresh = searchParams.get("force_refresh") === "true"
 
     if (!storeId) {
       return NextResponse.json({ error: "store_id é obrigatório" }, { status: 400, headers: corsHeaders(request.headers.get("origin")) })
@@ -283,16 +415,43 @@ export async function GET(request: NextRequest) {
       }, { headers: corsHeaders(request.headers.get("origin")) })
     }
 
-    log.info("[Klaviyo Campaigns] Starting fetch for store:", store.storeName)
-
-    // Get account info for timezone
-    const accountInfo = await getCachedAccountInfo(apiKey, store.orgId)
-    const timezoneOffset = getTimezoneOffset(accountInfo.timezone)
-
     // Calculate date range
     const { startDate, endDate } = parseDateRange(period, customStartDate, customEndDate)
     const startDateStr = formatDateStr(startDate)
     const endDateStr = formatDateStr(endDate)
+
+    // Cache-first: try reading from cache for standard periods
+    const isCustomPeriod = period === "custom" || !CACHED_PERIODS.has(period)
+    if (!forceRefresh && !isCustomPeriod) {
+      try {
+        const adminClient = createAdminClient()
+        const cached = await readCampaignsFromCache(storeId, startDateStr, endDateStr, statusFilter, adminClient)
+        if (cached) {
+          log.info(`[Klaviyo Campaigns] Serving from cache for store: ${store.storeName} period: ${period}`)
+          return NextResponse.json({
+            success: true,
+            period: {
+              start: startDateStr,
+              end: endDateStr,
+              label: period,
+            },
+            fromCache: true,
+            fetchedAt: cached.fetchedAt,
+            currency: "BRL",
+            summary: cached.summary,
+            campaigns: cached.campaigns,
+          }, { headers: corsHeaders(request.headers.get("origin")) })
+        }
+      } catch (cacheReadError) {
+        log.error("[Klaviyo Campaigns] Cache read error, falling through to live fetch:", cacheReadError)
+      }
+    }
+
+    log.info("[Klaviyo Campaigns] Starting live fetch for store:", store.storeName)
+
+    // Get account info for timezone
+    const accountInfo = await getCachedAccountInfo(apiKey, store.orgId)
+    const timezoneOffset = getTimezoneOffset(accountInfo.timezone)
 
     // Fetch data sequentially to avoid Klaviyo rate limiting
     const campaigns = await getAllCampaigns(apiKey)
@@ -457,6 +616,8 @@ export async function GET(request: NextRequest) {
         end: endDateStr,
         label: period
       },
+      fromCache: false,
+      fetchedAt: new Date().toISOString(),
       currency: accountInfo.currency,
       summary: {
         ...totals,
