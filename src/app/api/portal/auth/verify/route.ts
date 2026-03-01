@@ -74,6 +74,7 @@ export async function POST(request: NextRequest) {
           id: portalUser.id,
           name: portalUser.name,
           email: portalUser.email,
+          avatar_url: portalUser.avatar_url || null,
           clientName: portalUser.client?.name || portalUser.client?.company || "",
           clientId: portalUser.client_id,
         },

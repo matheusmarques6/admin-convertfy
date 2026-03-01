@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
     // Get portal user
     const { data: portalUser } = await supabase
       .from("client_portal_users")
-      .select("id, name, email, phone, client_id")
+      .select("id, name, email, phone, avatar_url, client_id")
       .eq("auth_user_id", user.id)
       .eq("is_active", true)
       .single()
@@ -65,6 +65,7 @@ export async function GET(request: NextRequest) {
           name: portalUser.name,
           email: portalUser.email,
           phone: portalUser.phone,
+          avatar_url: portalUser.avatar_url,
         },
         notifications: notifications || defaultNotifications,
       },
