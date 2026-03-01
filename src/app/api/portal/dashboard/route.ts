@@ -357,6 +357,7 @@ async function liveFetchKlaviyoForPortal(
     const accountInfo = await getCachedAccountInfo(apiKey)
     const metricId = await getCachedPlacedOrderMetric(apiKey)
     if (!metricId) {
+      log.warn(`[Portal LiveFetch] No Placed Order metric found for store ${store.id} — skipping live fetch. Check Klaviyo API key validity.`)
       await releaseLiveFetch(supabase, store.id, fetchKey, "failed")
       return null
     }
@@ -747,10 +748,21 @@ export async function GET(request: NextRequest) {
               response.isRefreshing = false
               response.lastFetchedAt = new Date().toISOString()
             } else {
-              response.dataStatus = "loading" satisfies DataStatus
-              response.isRefreshing = true
-              response.source = "cache"
-              response.lastFetchedAt = null
+              // Live fetch failed/timed out — try stale cache as last resort
+              const staleFallback = await fetchKlaviyoFromCache(selectedStore.id, period, adminClient)
+              if (staleFallback.data) {
+                log.info(`[Portal] Live fetch failed, using stale cache for store ${selectedStore.id} period ${period}`)
+                response.klaviyo = mapCacheToPortalKlaviyo(staleFallback.data)
+                response.dataStatus = "stale" satisfies DataStatus
+                response.source = "stale-cache"
+                response.isRefreshing = true
+                response.lastFetchedAt = staleFallback.fetchedAt
+              } else {
+                response.dataStatus = "loading" satisfies DataStatus
+                response.isRefreshing = true
+                response.source = "cache"
+                response.lastFetchedAt = null
+              }
             }
           } else {
             // LIVE_ONLY period — always try live fetch
@@ -923,6 +935,8 @@ export async function GET(request: NextRequest) {
           }, null)
         } else if (hasKlaviyoStores) {
           // Stores exist but all caches empty and no live results
+          // fetchKlaviyoFromCache already reads without expires_at filter (stale allowed),
+          // so if we got here, there is truly no data at all
           response.dataStatus = "loading" satisfies DataStatus
           response.isRefreshing = true
           response.source = "cache"

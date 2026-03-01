@@ -4,7 +4,7 @@ import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { requireAuth, successResponse, errorResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { logger } from "@/lib/logger"
-import { isCachedPeriod, type DataStatus, type DataStatusMeta } from "@/lib/shared/data-status"
+import { type DataStatus, type DataStatusMeta } from "@/lib/shared/data-status"
 import {
   syncKlaviyoForPeriod,
   fetchFlowNames,
@@ -243,6 +243,7 @@ async function liveFetchForStores(
       const accountInfo = await getCachedAccountInfo(apiKey, store.org_id ?? undefined)
       const metricId = await getCachedPlacedOrderMetric(apiKey, store.org_id ?? undefined)
       if (!metricId) {
+        log.warn(`[LiveFetch] No Placed Order metric found for store ${store.store_name} (${store.id}) — skipping live fetch. Check Klaviyo API key validity.`)
         await releaseLiveFetch(adminSupabase, store.id, fetchKey, "failed")
         continue
       }
@@ -387,61 +388,8 @@ export async function GET(request: NextRequest) {
         return response
       }
 
-      // Cache MISS + cached period (cron handles these) -- return "loading"
-      if (isCachedPeriod(period)) {
-        const { count: klaviyoStoresCount } = await supabase
-          .from("client_stores")
-          .select("id", { count: "exact", head: true })
-          .eq("org_id", orgId)
-          .not("klaviyo_private_key", "is", null)
-
-        const elapsed = Date.now() - startTime
-
-        if (klaviyoStoresCount && klaviyoStoresCount > 0) {
-          log.info("[CacheStrategy]", {
-            endpoint: "total-revenue",
-            period,
-            storesCount: klaviyoStoresCount,
-            cacheHits: 0,
-            cacheMisses: klaviyoStoresCount,
-            liveFetches: 0,
-            source: "cache",
-            elapsed: `${elapsed}ms`,
-          })
-          const result = emptyResponse(period, klaviyoStoresCount, {
-            dataStatus: "loading",
-            lastFetchedAt: null,
-            isRefreshing: false,
-            source: "cache",
-          })
-          const response = successResponse(request, result)
-          response.headers.set("X-Response-Time", `${elapsed}ms`)
-          return response
-        }
-
-        // No stores with Klaviyo
-        log.info("[CacheStrategy]", {
-          endpoint: "total-revenue",
-          period,
-          storesCount: 0,
-          cacheHits: 0,
-          cacheMisses: 0,
-          liveFetches: 0,
-          source: "cache",
-          elapsed: `${elapsed}ms`,
-        })
-        const result = emptyResponse(period, 0, {
-          dataStatus: "empty",
-          lastFetchedAt: null,
-          isRefreshing: false,
-          source: "cache",
-        })
-        const response = successResponse(request, result)
-        response.headers.set("X-Response-Time", `${elapsed}ms`)
-        return response
-      }
-
-      // Cache MISS + LIVE_ONLY period -- fall through to live fetch below
+      // Cache MISS (any period) -- fall through to live fetch below
+      log.info(`[CacheStrategy] Cache MISS for period=${period}, falling through to live fetch`)
     }
 
     // ── Step 2: Live fetch (force_refresh or LIVE_ONLY period) ───────────

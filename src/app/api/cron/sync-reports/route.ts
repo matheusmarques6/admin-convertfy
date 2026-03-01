@@ -96,10 +96,6 @@ async function syncStore(
 ): Promise<CronSyncResult[]> {
   const results: CronSyncResult[] = []
 
-  if (!store.org_id) {
-    log.warn(`[Cron] Store ${store.store_name} (${store.id}) has no org_id — revenue summary will be skipped`)
-  }
-
   const credentials = await getStoreCredentials(store.id)
   const apiKey = credentials.klaviyo_private_key || credentials.klaviyo_api_key
   if (!apiKey) {
@@ -176,46 +172,44 @@ async function syncStore(
           flowRevenue: result.data.flowRevenue,
         })
 
-        // Upsert store_revenue_summary (only if store has org_id)
-        if (store.org_id) {
-          const totalKlaviyoRevenue = result.data.campaignRevenue + result.data.flowRevenue
-          await supabase
-            .from("store_revenue_summary")
-            .upsert({
-              store_id: store.id,
-              org_id: store.org_id,
-              period_label: period,
-              period_start: result.data.startDateStr,
-              period_end: result.data.endDateStr,
-              klaviyo_total_revenue: totalKlaviyoRevenue,
-              klaviyo_campaign_revenue: result.data.campaignRevenue,
-              klaviyo_flow_revenue: result.data.flowRevenue,
-              store_total_revenue: result.data.storeRevenue,
-              store_orders: result.data.storeOrders,
-              total_leads: audience.totalLeads,
-              engaged_leads: audience.engagedLeads,
-              engagement_rate: audience.engagementRate,
-              sync_status: "ok",
-              sync_error: null,
-              expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
-              fetched_at: new Date().toISOString(),
-            }, { onConflict: "store_id,period_label" })
-        }
+        // Upsert store_revenue_summary (org_id can be null)
+        const totalKlaviyoRevenue = result.data.campaignRevenue + result.data.flowRevenue
+        await supabase
+          .from("store_revenue_summary")
+          .upsert({
+            store_id: store.id,
+            org_id: store.org_id || null,
+            period_label: period,
+            period_start: result.data.startDateStr,
+            period_end: result.data.endDateStr,
+            klaviyo_total_revenue: totalKlaviyoRevenue,
+            klaviyo_campaign_revenue: result.data.campaignRevenue,
+            klaviyo_flow_revenue: result.data.flowRevenue,
+            store_total_revenue: result.data.storeRevenue,
+            store_orders: result.data.storeOrders,
+            total_leads: audience.totalLeads,
+            engaged_leads: audience.engagedLeads,
+            engagement_rate: audience.engagementRate,
+            sync_status: "ok",
+            sync_error: null,
+            expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
+            fetched_at: new Date().toISOString(),
+          }, { onConflict: "store_id,period_label" })
       } else {
         // Service returned failure
         const msg = result.error || "Sync service returned failure"
         log.warn(`[Cron] Sync failed for ${store.store_name}/${period}: ${msg}`)
         results.push({ storeId: store.id, storeName: store.store_name, period, status: "error", error: msg })
 
-        // Upsert error status in store_revenue_summary
-        if (store.org_id) {
+        // Upsert error status in store_revenue_summary (org_id can be null)
+        {
           const { startDateStr: errStartDate, endDateStr: errEndDate } = parseDateRangeInTimezone(period, accountInfo.timezone)
           try {
             await supabase
               .from("store_revenue_summary")
               .upsert({
                 store_id: store.id,
-                org_id: store.org_id,
+                org_id: store.org_id || null,
                 period_label: period,
                 period_start: errStartDate,
                 period_end: errEndDate,
@@ -236,15 +230,15 @@ async function syncStore(
       log.warn(`[Cron] Error syncing ${store.store_name}/${period}:`, err)
       results.push({ storeId: store.id, storeName: store.store_name, period, status: "error", error: msg })
 
-      // Upsert error status in store_revenue_summary
-      if (store.org_id) {
+      // Upsert error status in store_revenue_summary (org_id can be null)
+      {
         const { startDateStr: errStartDate, endDateStr: errEndDate } = parseDateRangeInTimezone(period, accountInfo.timezone)
         try {
           await supabase
             .from("store_revenue_summary")
             .upsert({
               store_id: store.id,
-              org_id: store.org_id,
+              org_id: store.org_id || null,
               period_label: period,
               period_start: errStartDate,
               period_end: errEndDate,
@@ -319,6 +313,7 @@ export async function GET(request: NextRequest) {
         .from("client_stores")
         .select("id, store_name, org_id")
         .not("klaviyo_private_key", "is", null)
+        .not("org_id", "is", null)
 
       if (storesError || !stores) {
         log.error("[Cron] Failed to fetch stores:", storesError)

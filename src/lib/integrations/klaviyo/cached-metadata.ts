@@ -8,8 +8,11 @@
 
 import { createAdminClient } from "@/lib/supabase/server"
 import { getCache, setCache } from "@/lib/cache"
+import { logger } from "@/lib/logger"
 import { getAccountInfo, type KlaviyoAccountInfo } from "./account"
 import { findPlacedOrderMetric } from "./metrics"
+
+const log = logger.child("CachedMetadata")
 
 /**
  * Derive a short, non-sensitive cache key from a Klaviyo API key.
@@ -65,7 +68,17 @@ export async function getCachedPlacedOrderMetric(
     // DB cache unavailable — fall through to API
   }
 
-  const metricId = await findPlacedOrderMetric(apiKey)
+  let metricId: string | null = null
+  try {
+    metricId = await findPlacedOrderMetric(apiKey)
+  } catch (err) {
+    log.warn(`[PlacedOrderMetric] Klaviyo API call failed for key ...${apiKey.slice(-4)}:`, err)
+    return null
+  }
+
+  if (!metricId) {
+    log.warn(`[PlacedOrderMetric] Klaviyo API returned no Placed Order metric for key ...${apiKey.slice(-4)}. This blocks all revenue fetching.`)
+  }
 
   // Save to DB cache in background
   setCache(supabase, storeKey, "klaviyo_metadata", "placed_order_metric", { metricId } as unknown as Record<string, unknown>, orgId).catch(() => {})

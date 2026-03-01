@@ -40,6 +40,9 @@ export async function upsertSyncResults(
   }
 
   // Upsert revenue summary
+  // NOTE: Audience fields (total_leads, engaged_leads, engagement_rate) are
+  // intentionally excluded here. They are only set by the cron job which fetches
+  // audience data. Including them here would overwrite cron-populated values with zeros.
   await supabase
     .from("store_revenue_summary")
     .upsert({
