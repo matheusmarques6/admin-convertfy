@@ -11,7 +11,7 @@ const profileUpdateSchema = z.object({
     .string()
     .min(2, "Nome deve ter pelo menos 2 caracteres")
     .max(100, "Nome deve ter no máximo 100 caracteres"),
-  // phone: will be added after Story 9.3 migration creates the column
+  phone: z.string().max(20).optional().nullable(),
 })
 
 // GET - Get current user profile
@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     // Fetch profile
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("id, name, email, avatar_url, role")
+      .select("id, name, email, avatar_url, role, phone")
       .eq("id", user.id)
       .single()
 
@@ -45,6 +45,7 @@ export async function GET(request: NextRequest) {
         id: profile.id,
         name: profile.name,
         email: profile.email,
+        phone: profile.phone,
         avatar_url: profile.avatar_url,
         role: profile.role,
       },
@@ -77,11 +78,13 @@ export async function PUT(request: NextRequest) {
       )
     }
 
-    // WHITELIST: only name is updatable on profiles table
-    // phone will be added in Story 9.3 migration
+    // WHITELIST: only name and phone are updatable
     const updateData: Record<string, unknown> = {
       name: parsed.data.name,
       updated_at: new Date().toISOString(),
+    }
+    if (parsed.data.phone !== undefined) {
+      updateData.phone = parsed.data.phone
     }
 
     const { error: updateError } = await supabase

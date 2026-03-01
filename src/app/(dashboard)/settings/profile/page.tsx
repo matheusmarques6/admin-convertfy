@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import {
   User,
   Mail,
+  Phone,
   Save,
   Loader2,
   ArrowLeft,
@@ -24,6 +25,7 @@ interface ProfileData {
   id: string
   name: string
   email: string
+  phone: string | null
   avatar_url: string | null
   role: string
 }
@@ -40,6 +42,7 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [originalName, setOriginalName] = useState("")
+  const [originalPhone, setOriginalPhone] = useState<string | null>(null)
   const { toast } = useToast()
 
   // Password state
@@ -63,6 +66,7 @@ export default function ProfilePage() {
       setProfile(data.profile)
       setOrgData(data.organization)
       setOriginalName(data.profile.name)
+      setOriginalPhone(data.profile.phone)
     } catch {
       toast({
         variant: "destructive",
@@ -90,7 +94,7 @@ export default function ProfilePage() {
       const response = await fetch("/api/settings/profile", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: profile.name.trim() }),
+        body: JSON.stringify({ name: profile.name.trim(), phone: profile.phone || null }),
       })
 
       if (!response.ok) {
@@ -99,6 +103,7 @@ export default function ProfilePage() {
       }
 
       setOriginalName(profile.name.trim())
+      setOriginalPhone(profile.phone || null)
       toast({
         title: "Salvo!",
         description: "Perfil atualizado com sucesso.",
@@ -170,7 +175,7 @@ export default function ProfilePage() {
     }
   }
 
-  const hasChanges = profile?.name !== originalName
+  const hasChanges = profile?.name !== originalName || (profile?.phone ?? null) !== originalPhone
 
   if (loading) {
     return (
@@ -239,6 +244,24 @@ export default function ProfilePage() {
               <p id="email-help" className="text-xs text-muted-foreground">
                 Para alteração de email, entre em contato com o suporte
               </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="phone">Telefone</Label>
+              <div className="relative">
+                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="phone"
+                  value={profile?.phone || ""}
+                  onChange={(e) =>
+                    setProfile((prev) =>
+                      prev ? { ...prev, phone: e.target.value } : null
+                    )
+                  }
+                  placeholder="(11) 99999-9999"
+                  className="pl-10"
+                />
+              </div>
             </div>
 
             <Button
