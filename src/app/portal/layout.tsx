@@ -196,6 +196,16 @@ export default function PortalLayout({
     checkAuth()
   }, [pathname])
 
+  // Listen for avatar changes from settings page to keep sidebar in sync
+  useEffect(() => {
+    const handleAvatarChanged = (e: Event) => {
+      const detail = (e as CustomEvent<{ avatar_url: string | null }>).detail
+      setUser((prev) => prev ? { ...prev, avatar_url: detail.avatar_url } : null)
+    }
+    window.addEventListener("portal-avatar-changed", handleAvatarChanged)
+    return () => window.removeEventListener("portal-avatar-changed", handleAvatarChanged)
+  }, [])
+
   const handleLogout = async () => {
     try {
       const supabase = createClient()

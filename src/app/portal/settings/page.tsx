@@ -129,6 +129,7 @@ export default function PortalSettingsPage() {
       URL.revokeObjectURL(previewUrl)
       setAvatarPreview(null)
       setSuccess("Foto atualizada")
+      window.dispatchEvent(new CustomEvent("portal-avatar-changed", { detail: { avatar_url: data.avatar_url } }))
     } catch (err) {
       URL.revokeObjectURL(previewUrl)
       setAvatarPreview(null)
@@ -152,6 +153,7 @@ export default function PortalSettingsPage() {
       setProfile((prev) => prev ? { ...prev, avatar_url: null } : null)
       setAvatarPreview(null)
       setSuccess("Foto removida")
+      window.dispatchEvent(new CustomEvent("portal-avatar-changed", { detail: { avatar_url: null } }))
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao remover foto")
     } finally {
@@ -314,6 +316,7 @@ export default function PortalSettingsPage() {
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={uploadingAvatar}
+                  aria-label="Alterar foto de perfil"
                   className="absolute inset-0 flex flex-col items-center justify-center rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer disabled:cursor-wait"
                 >
                   {uploadingAvatar ? (
@@ -333,6 +336,7 @@ export default function PortalSettingsPage() {
                     disabled={removingAvatar}
                     className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center rounded-full bg-red-500 text-white shadow-sm hover:bg-red-600 transition-colors"
                     title="Remover foto"
+                    aria-label="Remover foto de perfil"
                   >
                     {removingAvatar ? (
                       <Loader2 className="h-2.5 w-2.5 animate-spin" />

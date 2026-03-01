@@ -3,46 +3,16 @@ import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api
 import { createClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
+import {
+  AVATAR_BUCKET as BUCKET,
+  AVATAR_MAX_SIZE as MAX_SIZE,
+  AVATAR_ALLOWED_TYPES as ALLOWED_TYPES,
+  type AvatarMimeType,
+  validateMagicBytes,
+  getAvatarExtension as getExtension,
+} from "@/lib/avatar-validation"
 
 const log = logger.child("PortalAvatarUpload")
-
-const BUCKET = "avatars"
-const MAX_SIZE = 2 * 1024 * 1024 // 2MB
-const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"] as const
-
-const MAGIC_BYTES: Record<string, { bytes: number[]; offset?: number }> = {
-  "image/jpeg": { bytes: [0xff, 0xd8, 0xff] },
-  "image/png": { bytes: [0x89, 0x50, 0x4e, 0x47] },
-  "image/webp": { bytes: [0x52, 0x49, 0x46, 0x46] },
-}
-
-const WEBP_SIGNATURE = [0x57, 0x45, 0x42, 0x50]
-
-function validateMagicBytes(buffer: Buffer, mimeType: string): boolean {
-  const spec = MAGIC_BYTES[mimeType]
-  if (!spec) return false
-  const offset = spec.offset ?? 0
-  if (buffer.length < offset + spec.bytes.length) return false
-  for (let i = 0; i < spec.bytes.length; i++) {
-    if (buffer[offset + i] !== spec.bytes[i]) return false
-  }
-  if (mimeType === "image/webp") {
-    if (buffer.length < 12) return false
-    for (let i = 0; i < WEBP_SIGNATURE.length; i++) {
-      if (buffer[8 + i] !== WEBP_SIGNATURE[i]) return false
-    }
-  }
-  return true
-}
-
-function getExtension(mimeType: string): string {
-  switch (mimeType) {
-    case "image/jpeg": return "jpg"
-    case "image/png": return "png"
-    case "image/webp": return "webp"
-    default: return "jpg"
-  }
-}
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -85,7 +55,7 @@ export async function POST(request: NextRequest) {
       throw new AppError("Arquivo muito grande. Máximo 2MB", 400)
     }
 
-    if (!ALLOWED_TYPES.includes(file.type as typeof ALLOWED_TYPES[number])) {
+    if (!ALLOWED_TYPES.includes(file.type as AvatarMimeType)) {
       throw new AppError("Formato não suportado. Use JPG, PNG ou WebP", 400)
     }
 
