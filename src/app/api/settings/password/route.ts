@@ -48,14 +48,16 @@ export async function PUT(request: NextRequest) {
     )
 
     // Activity logging (fire-and-forget)
-    supabase.from("activities").insert({
-      user_id: user.id,
-      type: "user_updated",
-      description: `Senha alterada`,
-      metadata: { action: "password_changed" },
-    }).then(({ error: actErr }) => {
-      if (actErr) log.warn("Failed to log password change activity:", actErr)
-    })
+    Promise.resolve(
+      supabase.from("activities").insert({
+        user_id: user.id,
+        type: "user_updated",
+        description: `Senha alterada`,
+        metadata: { action: "password_changed" },
+      }).then(({ error: actErr }) => {
+        if (actErr) log.warn("Failed to log password change activity:", actErr)
+      })
+    ).catch(() => {})
 
     return successResponse(request, { success: true }, { message: "Senha alterada com sucesso" })
   } catch (error) {

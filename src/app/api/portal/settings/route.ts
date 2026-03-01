@@ -13,7 +13,7 @@ const portalProfileSchema = z.object({
     .min(2, "Nome deve ter pelo menos 2 caracteres")
     .max(100, "Nome deve ter no máximo 100 caracteres"),
   phone: z.string().max(20).optional().nullable(),
-})
+}).strict()
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)

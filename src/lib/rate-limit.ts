@@ -5,6 +5,7 @@ interface RateLimitEntry {
   resetAt: number
 }
 
+// Note: In-memory store resets on cold start. Consider Redis/Supabase for persistent rate limiting in serverless.
 const store = new Map<string, RateLimitEntry>()
 
 // Clean expired entries every 5 minutes
