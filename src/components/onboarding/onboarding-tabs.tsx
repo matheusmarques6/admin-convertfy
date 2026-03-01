@@ -332,14 +332,14 @@ export function OnboardingTabs() {
                     <div className="flex items-center gap-2">
                       <Input
                         readOnly
-                        value={`${typeof window !== "undefined" ? window.location.origin : ""}/portal/onboarding/wizard`}
+                        value={`${typeof window !== "undefined" ? window.location.origin : ""}/public/onboarding`}
                         className="text-xs bg-muted/50"
                       />
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => {
-                          const link = `${window.location.origin}/portal/onboarding/wizard`
+                          const link = `${window.location.origin}/public/onboarding`
                           navigator.clipboard.writeText(link)
                           toast({ title: "Link copiado!", description: "O link do portal foi copiado para a área de transferência." })
                         }}
@@ -348,7 +348,7 @@ export function OnboardingTabs() {
                       </Button>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1.5">
-                      O cliente acessa este link para preencher o formulário. Você pode editar todos os campos abaixo.
+                      Envie este link público para o cliente preencher o formulário de onboarding.
                     </p>
                   </div>
                 </CardContent>
@@ -364,7 +364,7 @@ export function OnboardingTabs() {
                   key={`${selectedClientId}-${formKey}`}
                   storeId={selectedClient.store_id || (formInitialData as { store?: { id?: string } } | null)?.store?.id || undefined}
                   clientId={selectedClient.id}
-                  initialData={formInitialData as { store?: Record<string, unknown> | null; onboarding_data?: Record<string, unknown> | null } | undefined}
+                  initialData={formInitialData as { store?: Record<string, unknown> | null; onboarding_data?: Record<string, unknown> | null; client?: Record<string, unknown> | null } | undefined}
                   onSave={handleFormSaved}
                 />
               ) : null}
