@@ -176,6 +176,16 @@ export async function POST(request: NextRequest) {
         }
 
         if (store_id) {
+          // Verify store belongs to this client
+          const { data: ownedStore } = await adminClient
+            .from("client_stores")
+            .select("id")
+            .eq("id", store_id)
+            .eq("client_id", portalUser.client_id)
+            .single()
+
+          if (!ownedStore) throw new AppError("Loja não encontrada", 404)
+
           // Update existing store
           await adminClient
             .from("client_stores")
@@ -202,6 +212,16 @@ export async function POST(request: NextRequest) {
 
         if (!store_id) throw new AppError("store_id é obrigatório", 400)
 
+        // Verify store belongs to this client
+        const { data: ownedStore3 } = await adminClient
+          .from("client_stores")
+          .select("id")
+          .eq("id", store_id)
+          .eq("client_id", portalUser.client_id)
+          .single()
+
+        if (!ownedStore3) throw new AppError("Loja não encontrada", 404)
+
         await adminClient
           .from("client_stores")
           .update({
@@ -219,6 +239,16 @@ export async function POST(request: NextRequest) {
 
         if (!store_id) throw new AppError("store_id é obrigatório", 400)
         if (!private_key) throw new AppError("private_key é obrigatório", 400)
+
+        // Verify store belongs to this client
+        const { data: ownedStore4 } = await adminClient
+          .from("client_stores")
+          .select("id")
+          .eq("id", store_id)
+          .eq("client_id", portalUser.client_id)
+          .single()
+
+        if (!ownedStore4) throw new AppError("Loja não encontrada", 404)
 
         // Test the key first
         const testRes = await fetch("https://a.klaviyo.com/api/accounts/", {
