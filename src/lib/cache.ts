@@ -7,13 +7,8 @@ const log = logger.child("Cache")
 export const CACHE_VERSION = 5
 
 // TTL in minutes per cache type and period
-// Klaviyo TTLs are longer because:
-// 1. Reporting data doesn't change frequently (campaigns/flows processed in batches)
-// 2. Klaviyo has strict rate limits (~1 req/s for reports, 75 req/min general)
-// 3. With many stores, frequent cache misses cause 429 storms
-// NOTE: klaviyo_perf removed in Story 8.18 — portal now reads from cron-cached tables
+// NOTE: klaviyo and klaviyo_perf removed in Story 8.18 — portal now reads from cron-cached tables
 const CACHE_TTL: Record<string, Record<string, number>> = {
-  klaviyo: { "7d": 120, "15d": 180, "30d": 240, "90d": 360, all: 360 },
   shopify: { "7d": 15, "15d": 20, "30d": 30, "90d": 60, all: 60 },
   ga4: { "7d": 15, "15d": 20, "30d": 30, "90d": 60, all: 60 },
   asaas_payments: { "7d": 10, "15d": 15, "30d": 30, "90d": 60, all: 60 },
@@ -26,10 +21,9 @@ const CACHE_TTL: Record<string, Record<string, number>> = {
 // when a fresh fetch fails (e.g. rate limited). This prevents showing empty data
 // when Klaviyo rate limits us.
 const STALE_GRACE_MINUTES: Record<string, number> = {
-  klaviyo: 1440,         // 24 hours
-  klaviyo_perf: 1440,    // 24 hours
+  klaviyo_perf: 1440,      // 24 hours — used by clients/[id]/performance
   client_performance: 720, // 12 hours
-  shopify: 360,          // 6 hours
+  shopify: 360,            // 6 hours
 }
 
 function getTTLMinutes(cacheType: string, period: string): number {
