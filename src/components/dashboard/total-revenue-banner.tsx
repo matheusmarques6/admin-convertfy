@@ -39,6 +39,7 @@ interface TotalRevenueData {
   hasPartialData?: boolean
   lastFetchedAt?: string | null
   cachedAt: string
+  dataStatus?: "ready" | "syncing"
 }
 
 function useCountUp(target: number, duration = 1200): number {
@@ -98,12 +99,17 @@ export function TotalRevenueBanner({ storeIds }: TotalRevenueBannerProps = {}) {
     return url
   })()
 
+  const [isSyncing, setIsSyncing] = useState(false)
+
   const { data, error, isLoading, isValidating, mutate } = useSWR<TotalRevenueData>(
     swrKey,
     fetcher,
     {
       revalidateOnFocus: false,
       dedupingInterval: 60000,
+      // Poll every 30s when syncing, otherwise disable polling
+      refreshInterval: isSyncing ? 30000 : 0,
+      onSuccess: (d) => setIsSyncing(d?.dataStatus === "syncing"),
     }
   )
 
@@ -160,6 +166,26 @@ export function TotalRevenueBanner({ storeIds }: TotalRevenueBannerProps = {}) {
             <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
             Tentar novamente
           </Button>
+        </div>
+      </div>
+    )
+  }
+
+  // Syncing state — cache is empty but stores with Klaviyo exist
+  if (data && data.dataStatus === "syncing" && data.storesCount > 0) {
+    return (
+      <div className="rounded-xl border border-border bg-card p-6">
+        <div className="flex flex-col items-center justify-center py-8">
+          <div className="rounded-xl bg-muted p-3 mb-4">
+            <RefreshCw className="h-8 w-8 text-muted-foreground animate-spin" />
+          </div>
+          <h3 className="text-base font-semibold text-foreground">
+            Dados sendo sincronizados...
+          </h3>
+          <p className="text-sm text-muted-foreground text-center mt-1.5 max-w-xs">
+            {data.storesCount} {data.storesCount === 1 ? "loja" : "lojas"} com Klaviyo {data.storesCount === 1 ? "encontrada" : "encontradas"}.
+            O primeiro sync pode levar alguns minutos.
+          </p>
         </div>
       </div>
     )

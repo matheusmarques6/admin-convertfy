@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { requireAuth, successResponse, errorResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
@@ -28,6 +28,7 @@ interface TotalRevenueResponse {
   hasPartialData: boolean
   lastFetchedAt: string | null
   cachedAt: string
+  dataStatus?: "ready" | "syncing"
 }
 
 export async function GET(request: NextRequest) {
@@ -67,7 +68,15 @@ export async function GET(request: NextRequest) {
 
     const { data: summaries, error } = await query
 
+    // Handle table-not-exists (Postgres 42P01)
     if (error) {
+      if (error.code === "42P01") {
+        log.warn("[Revenue] store_revenue_summary table does not exist yet")
+        return NextResponse.json(
+          { success: false, error: "Revenue cache not available", dataStatus: "unavailable" },
+          { status: 503, headers: { "Retry-After": "300" } }
+        )
+      }
       log.error("Error fetching revenue summaries:", error)
       throw error
     }
@@ -75,7 +84,39 @@ export async function GET(request: NextRequest) {
     const rows = summaries || []
 
     if (rows.length === 0) {
+      // Check if user actually has stores with Klaviyo credentials
+      const { count: klaviyoStoresCount } = await supabase
+        .from("client_stores")
+        .select("id", { count: "exact", head: true })
+        .eq("org_id", orgId)
+        .not("klaviyo_private_key", "is", null)
+
       const elapsed = Date.now() - startTime
+
+      if (klaviyoStoresCount && klaviyoStoresCount > 0) {
+        // Stores exist but cache is empty — syncing state
+        log.info(`[Revenue] period=${period} stores=${klaviyoStoresCount} time=${elapsed}ms source=cache status=syncing`)
+        const syncingResult: TotalRevenueResponse = {
+          period,
+          totalRevenue: 0,
+          campaignRevenue: 0,
+          flowRevenue: 0,
+          storesCount: klaviyoStoresCount,
+          storesWithRevenue: 0,
+          topStores: [],
+          bottomStores: [],
+          storeBreakdown: [],
+          hasPartialData: false,
+          lastFetchedAt: null,
+          cachedAt: new Date().toISOString(),
+          dataStatus: "syncing",
+        }
+        const response = successResponse(request, syncingResult)
+        response.headers.set("X-Response-Time", `${elapsed}ms`)
+        return response
+      }
+
+      // Genuinely no stores with Klaviyo
       log.info(`[Revenue] period=${period} stores=0 time=${elapsed}ms source=cache`)
       const emptyResult: TotalRevenueResponse = {
         period,

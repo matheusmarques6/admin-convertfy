@@ -47,6 +47,11 @@ export function TopStoresCard() {
           <div className="space-y-3">
             {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-10 w-full rounded-lg" />)}
           </div>
+        ) : data?.dataStatus === "syncing" ? (
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground text-center py-2">Sincronizando...</p>
+            {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-10 w-full rounded-lg" />)}
+          </div>
         ) : stores.length === 0 ? (
           <p className="text-xs text-muted-foreground text-center py-4">Nenhuma loja com receita no período</p>
         ) : (

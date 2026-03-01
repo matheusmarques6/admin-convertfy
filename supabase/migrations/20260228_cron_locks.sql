@@ -23,4 +23,5 @@ ON CONFLICT (lock_name) DO NOTHING;
 ALTER TABLE cron_locks ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "service_cron_locks_all" ON cron_locks
-  FOR ALL USING (true) WITH CHECK (true);
+  FOR ALL TO service_role
+  USING (true) WITH CHECK (true);

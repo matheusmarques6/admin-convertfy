@@ -19,6 +19,7 @@ interface RevenueData {
   flowRevenue: number
   storesCount: number
   storesWithRevenue: number
+  dataStatus?: "ready" | "syncing"
 }
 
 // Module-level deduplication: shared across all hook instances
@@ -63,6 +64,16 @@ export function useStoreRevenue(period: string) {
     loadData(period)
     return () => { mountedRef.current = false }
   }, [period, loadData])
+
+  // Auto-poll every 30s when syncing, stop when data arrives
+  useEffect(() => {
+    if (data?.dataStatus !== "syncing") return
+    const interval = setInterval(() => {
+      inflight.delete(period)
+      loadData(period)
+    }, 30000)
+    return () => clearInterval(interval)
+  }, [data?.dataStatus, period, loadData])
 
   const refresh = useCallback(() => {
     inflight.delete(period)
