@@ -71,7 +71,7 @@ export default function PortalLoginPage() {
       try {
         const wizardRes = await fetch("/api/portal/onboarding/wizard")
         const wizardData = await wizardRes.json()
-        if (wizardRes.ok && wizardData.data && !wizardData.data.wizardComplete) {
+        if (wizardRes.ok && wizardData.data && !wizardData.data.wizardComplete && !wizardData.data.hasApprovedOnboarding) {
           const steps = wizardData.steps
           if (steps && (!steps.personalInfo?.complete || !steps.storeData?.complete || !steps.klaviyoKeys?.complete)) {
             window.location.href = "/portal/onboarding/wizard"

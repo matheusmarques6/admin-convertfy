@@ -3,7 +3,6 @@ import { errorResponse, successResponse, AppError } from "@/lib/api/errors"
 import { createAdminClient } from "@/lib/supabase/server"
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { publicOnboardingSchema } from "@/lib/schemas/public-onboarding.schema"
-import { portalAccountService } from "@/lib/services/portal-account.service"
 import { onboardingPhaseService } from "@/lib/services/onboarding-phase.service"
 import { logger } from "@/lib/logger"
 
@@ -135,25 +134,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 4. Create portal account (sends invite email via Supabase)
-    try {
-      await portalAccountService.createPortalAccount({
-        clientId: client.id,
-        email: data.email,
-        name: data.name,
-      })
-    } catch (error) {
-      log.error("Failed to create portal account", error)
-      // Rollback store and client
-      await adminClient.from("client_stores").delete().eq("id", store.id)
-      await adminClient.from("clients").delete().eq("id", client.id)
-      throw new AppError(
-        error instanceof Error ? error.message : "Erro ao criar conta de acesso",
-        500
-      )
-    }
-
-    // 5. Create onboarding with pending_approval status
+    // 4. Create onboarding with pending_approval status
     const { data: template } = await adminClient
       .from("onboarding_templates")
       .select("*, steps:onboarding_template_steps(*)")
@@ -202,7 +183,7 @@ export async function POST(request: NextRequest) {
       await adminClient.from("client_onboarding_steps").insert(steps)
     }
 
-    // 6. Notify approvers (via phase service side effects)
+    // 5. Notify approvers (via phase service side effects)
     try {
       await onboardingPhaseService.transition({
         onboardingId: onboarding.id,
@@ -224,7 +205,7 @@ export async function POST(request: NextRequest) {
 
     return successResponse(
       request,
-      { message: "Formulário enviado com sucesso! Verifique seu email para acessar o portal." },
+      { message: "Formulário enviado com sucesso! Sua solicitação está em análise." },
       { status: 201 }
     )
   } catch (error) {

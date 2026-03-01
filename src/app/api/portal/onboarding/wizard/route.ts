@@ -47,6 +47,17 @@ export async function GET(request: NextRequest) {
       .eq("client_id", portalUser.client_id)
       .eq("is_active", true)
 
+    // Check if client has an approved onboarding (skip wizard)
+    const { data: approvedOnboarding } = await adminClient
+      .from("client_onboardings")
+      .select("id")
+      .eq("client_id", portalUser.client_id)
+      .in("current_phase", ["generating_copies", "design", "implementation", "completed"])
+      .limit(1)
+      .maybeSingle()
+
+    const hasApprovedOnboarding = !!approvedOnboarding
+
     // Determine completed steps
     const step1Complete = !!(client?.cpf_cnpj && portalUser?.name)
     const store = stores?.[0]
@@ -55,7 +66,8 @@ export async function GET(request: NextRequest) {
     const step4Complete = !!(store?.klaviyo_private_key || store?.klaviyo_api_key)
 
     return successResponse(request, {
-      wizardComplete: step1Complete && step2Complete && step3Complete && step4Complete,
+      wizardComplete: hasApprovedOnboarding || (step1Complete && step2Complete && step3Complete && step4Complete),
+      hasApprovedOnboarding,
       steps: {
         personalInfo: { complete: step1Complete },
         storeData: { complete: step2Complete },

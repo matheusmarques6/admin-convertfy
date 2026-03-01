@@ -3,6 +3,8 @@ import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
 import { onboardingPhaseService } from "@/lib/services/onboarding-phase.service"
+import { portalAccountService } from "@/lib/services/portal-account.service"
+import { n8nTriggerService } from "@/lib/services/n8n-trigger.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("OnboardingApproval")
@@ -51,7 +53,7 @@ export async function POST(
       .maybeSingle()
 
     // Allow owners/managers even without explicit feature
-    const hasPermission = !!feature || ["owner", "manager"].includes(orgMember.role)
+    const hasPermission = !!feature || ["owner", "manager", "coo"].includes(orgMember.role)
 
     if (!hasPermission) {
       throw new AppError("Você não tem permissão para aprovar onboardings", 403)
@@ -103,6 +105,36 @@ export async function POST(
 
       if (!result.success) {
         throw new AppError(result.error || "Erro ao aprovar onboarding", 500)
+      }
+
+      // Create portal account for the client (sends invite email)
+      const { data: clientData } = await adminClient
+        .from("clients")
+        .select("id, name, email")
+        .eq("id", onboarding.client_id)
+        .single()
+
+      if (clientData?.email) {
+        // Idempotency: check if portal user already exists
+        const { data: existingPortalUser } = await adminClient
+          .from("client_portal_users")
+          .select("id")
+          .eq("client_id", clientData.id)
+          .maybeSingle()
+
+        if (!existingPortalUser) {
+          try {
+            await portalAccountService.createPortalAccount({
+              clientId: clientData.id,
+              email: clientData.email,
+              name: clientData.name,
+            })
+            log.info(`Portal account created for client ${clientData.id}`)
+          } catch (portalError) {
+            // Non-blocking: approval continues even if portal account creation fails
+            log.error("Failed to create portal account on approval (non-blocking)", portalError)
+          }
+        }
       }
 
       // Create copy_pipeline entry (Story 3.5.5)
@@ -164,6 +196,7 @@ export async function POST(
         .single()
 
       if (client) {
+        // Try in-app notification if portal user exists
         const { notificationService } = await import("@/lib/services/notification.service")
         const { data: portalUser } = await adminClient
           .from("client_portal_users")
@@ -171,7 +204,7 @@ export async function POST(
           .eq("client_id", onboarding.client_id)
           .eq("is_active", true)
           .limit(1)
-          .single()
+          .maybeSingle()
 
         if (portalUser?.auth_user_id) {
           await notificationService.create({
@@ -182,6 +215,17 @@ export async function POST(
             link: "/portal/onboarding",
           })
         }
+
+        // Always send email via N8N (works even without portal account)
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+        await n8nTriggerService.triggerClientNotification({
+          email: client.email,
+          client_name: client.name,
+          phase: body.action === "rejected" ? "rejected" : "revision_requested",
+          phase_label: body.action === "rejected" ? "Cadastro Rejeitado" : "Revisão Solicitada",
+          message: body.comments || "Por favor, revise seu cadastro e faça os ajustes necessários.",
+          portal_url: `${appUrl}/portal/onboarding`,
+        })
       }
 
       const actionLabel = body.action === "rejected" ? "rejeitado" : "revisão solicitada"

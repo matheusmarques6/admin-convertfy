@@ -216,8 +216,8 @@ export class OnboardingPhaseService {
         await this.notifyClient(onboarding, "completed",
           "Seu onboarding foi concluído com sucesso! Sua loja está pronta para operar.")
 
-        // Notify CS team
-        await notificationService.notifyByRole(["support"], {
+        // Notify COO + Admin
+        await notificationService.notifyByRole(["coo", "admin"], {
           title: `Onboarding concluído: ${onboarding.client?.company || onboarding.client?.name}`,
           body: `Onboarding finalizado para ${onboarding.store?.store_name}. Cliente agora ativo.`,
           type: "success",

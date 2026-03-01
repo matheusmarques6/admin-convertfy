@@ -1,5 +1,5 @@
 // User Types
-export type UserRole = "admin" | "manager" | "sdr" | "closer" | "cs" | "financial"
+export type UserRole = "admin" | "manager" | "coo" | "sdr" | "closer" | "cs" | "financial"
 
 export interface User {
   id: string
@@ -724,7 +724,7 @@ export interface CalendarCampaign {
 // Organization & Agent Types
 // ===========================================
 
-export type OrgRole = "owner" | "manager" | "coordinator" | "copywriter" | "designer" | "developer" | "support" | "analyst"
+export type OrgRole = "owner" | "manager" | "coo" | "coordinator" | "copywriter" | "designer" | "developer" | "support" | "analyst"
 export type OrgType = "internal" | "agency" | "partner"
 
 export interface Organization {

@@ -40,6 +40,17 @@ export const BOARD_CONFIG_DEFAULTS: Record<OrgRole, BoardConfigDefaults> = {
     calendar_view_mode: "monthly",
     show_personal_events: true,
   },
+  coo: {
+    show_onboarding_tasks: true,
+    show_meeting_tasks: true,
+    show_campaign_tasks: true,
+    show_feedback_tasks: true,
+    show_report_tasks: true,
+    show_contract_tasks: true,
+    show_manual_tasks: true,
+    calendar_view_mode: "monthly",
+    show_personal_events: true,
+  },
   coordinator: {
     show_onboarding_tasks: true,
     show_meeting_tasks: true,

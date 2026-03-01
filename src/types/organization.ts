@@ -2,7 +2,7 @@ import type { User } from "./user"
 import type { ClientStore } from "./client"
 
 // Organization & Agent Types
-export type OrgRole = "owner" | "manager" | "coordinator" | "copywriter" | "designer" | "developer" | "support" | "analyst"
+export type OrgRole = "owner" | "manager" | "coo" | "coordinator" | "copywriter" | "designer" | "developer" | "support" | "analyst"
 export type OrgType = "internal" | "agency" | "partner"
 
 export interface Organization {

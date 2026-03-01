@@ -79,6 +79,18 @@ export const rolePermissions: Record<UserRole, Permission[]> = {
     'pipeline.view', 'pipeline.manage',
   ],
 
+  coo: [
+    'clients.view', 'clients.create', 'clients.edit', 'clients.delete',
+    'deals.view', 'deals.create', 'deals.edit', 'deals.delete',
+    'meetings.view', 'meetings.create', 'meetings.edit', 'meetings.delete',
+    'reports.view', 'reports.create', 'reports.edit',
+    'financial.view',
+    'automations.view', 'automations.manage',
+    'settings.view',
+    'users.view',
+    'pipeline.view', 'pipeline.manage',
+  ],
+
   sdr: [
     'clients.view',
     'deals.view', 'deals.create', 'deals.edit',
@@ -154,17 +166,17 @@ export function canManage(role: UserRole | undefined, resource: string): boolean
  * Route access configuration by role
  */
 export const routeAccess: Record<string, UserRole[]> = {
-  '/dashboard': ['admin', 'manager', 'sdr', 'closer', 'cs', 'financial'],
-  '/clients': ['admin', 'manager', 'sdr', 'closer', 'cs', 'financial'],
-  '/clients/new': ['admin', 'manager'],
-  '/pipeline': ['admin', 'manager', 'sdr', 'closer', 'cs'],
-  '/meetings': ['admin', 'manager', 'sdr', 'closer', 'cs'],
-  '/reports': ['admin', 'manager', 'cs', 'financial'],
-  '/financial': ['admin', 'manager', 'financial'],
-  '/automations': ['admin', 'manager'],
-  '/settings': ['admin', 'manager'],
+  '/dashboard': ['admin', 'manager', 'coo', 'sdr', 'closer', 'cs', 'financial'],
+  '/clients': ['admin', 'manager', 'coo', 'sdr', 'closer', 'cs', 'financial'],
+  '/clients/new': ['admin', 'manager', 'coo'],
+  '/pipeline': ['admin', 'manager', 'coo', 'sdr', 'closer', 'cs'],
+  '/meetings': ['admin', 'manager', 'coo', 'sdr', 'closer', 'cs'],
+  '/reports': ['admin', 'manager', 'coo', 'cs', 'financial'],
+  '/financial': ['admin', 'manager', 'coo', 'financial'],
+  '/automations': ['admin', 'manager', 'coo'],
+  '/settings': ['admin', 'manager', 'coo'],
   '/settings/users': ['admin'],
-  '/tools': ['admin', 'manager', 'sdr', 'closer', 'cs'],
+  '/tools': ['admin', 'manager', 'coo', 'sdr', 'closer', 'cs'],
 };
 
 /**
