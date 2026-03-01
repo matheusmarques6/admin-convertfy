@@ -6,9 +6,27 @@ import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
 import { decryptStoreCredentials } from "@/lib/crypto"
 import { CACHE_VERSION } from "@/lib/cache"
-import { parseDateRangeInTimezone } from "@/lib/integrations/klaviyo"
+import { parseDateRangeInTimezone, getTimezoneOffset } from "@/lib/integrations/klaviyo"
+import { isCachedPeriod } from "@/lib/shared/data-status"
+import type { DataStatus } from "@/lib/shared/data-status"
+import { syncShopifyForStore } from "@/lib/services/shopify-sync.service"
+import {
+  syncKlaviyoForPeriod,
+  fetchFlowNames,
+  fetchCampaignNames,
+  type KlaviyoSyncData,
+} from "@/lib/services/klaviyo-sync.service"
+import { tryAcquireLiveFetch, releaseLiveFetch, getFetchKey } from "@/lib/services/fetch-cooldown.service"
+import { upsertSyncResults } from "@/lib/services/sync-persistence.service"
+import { getStoreCredentials } from "@/lib/services/credentials.service"
+import {
+  getCachedAccountInfo,
+  getCachedPlacedOrderMetric,
+} from "@/lib/integrations/klaviyo/cached-metadata"
 
 const log = logger.child("PortalDashboard")
+
+const PORTAL_LIVE_FETCH_TIMEOUT_MS = 15_000
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -67,7 +85,8 @@ interface CachedRevenueSummary {
   klaviyo_total_revenue: number
   klaviyo_campaign_revenue: number
   klaviyo_flow_revenue: number
-  shopify_total_revenue: number
+  store_total_revenue: number
+  store_orders: number
   total_leads: number
   engaged_leads: number
   engagement_rate: number
@@ -83,14 +102,20 @@ interface CachedKlaviyoData {
   flows: CachedFlowRow[]
 }
 
-// ─── fetchKlaviyoFromCache: reads from 3 cached tables ─────────────────────
+// ─── fetchKlaviyoFromCache: reads from 3 cached tables (with stale detection) ─
+
+interface KlaviyoCacheResult {
+  data: CachedKlaviyoData | null
+  isStale: boolean
+  fetchedAt: string | null
+}
 
 async function fetchKlaviyoFromCache(
   storeId: string,
   period: string,
   supabase: SupabaseClient,
-): Promise<CachedKlaviyoData | null> {
-  // 1. Get revenue summary to find period dates
+): Promise<KlaviyoCacheResult> {
+  // 1. Get revenue summary (no expires_at filter — we want stale data too)
   const { data: summary, error: summaryError } = await supabase
     .from("store_revenue_summary")
     .select("*")
@@ -100,8 +125,10 @@ async function fetchKlaviyoFromCache(
 
   if (summaryError || !summary) {
     log.debug(`[CacheRead] No revenue summary for store ${storeId} period ${period}`)
-    return null
+    return { data: null, isStale: false, fetchedAt: null }
   }
+
+  const isStale = new Date(summary.expires_at) < new Date()
 
   // 2. Get campaign + flow detail in parallel using the same period window
   const [campaignsResult, flowsResult] = await Promise.all([
@@ -122,9 +149,13 @@ async function fetchKlaviyoFromCache(
   ])
 
   return {
-    summary: summary as CachedRevenueSummary,
-    campaigns: (campaignsResult.data || []) as CachedCampaignRow[],
-    flows: (flowsResult.data || []) as CachedFlowRow[],
+    data: {
+      summary: summary as CachedRevenueSummary,
+      campaigns: (campaignsResult.data || []) as CachedCampaignRow[],
+      flows: (flowsResult.data || []) as CachedFlowRow[],
+    },
+    isStale,
+    fetchedAt: summary.fetched_at || null,
   }
 }
 
@@ -176,11 +207,11 @@ function mapCacheToPortalKlaviyo(cached: CachedKlaviyoData) {
     return bTime - aTime
   })
 
-  const storeRev = cached.summary.shopify_total_revenue || 0
+  const storeRev = cached.summary.store_total_revenue || 0
 
   return {
     storeRevenue: storeRev,
-    storeOrders: 0,
+    storeOrders: cached.summary.store_orders || 0,
     recoveryRate: storeRev > 0 ? (totalRevenue / storeRev) * 100 : 0,
     totalLeads: cached.summary.total_leads || 0,
     engagedLeads: cached.summary.engaged_leads || 0,
@@ -231,8 +262,154 @@ function mapCacheToPortalKlaviyo(cached: CachedKlaviyoData) {
   }
 }
 
+interface PortalStoreInfo {
+  id: string
+  org_id?: string | null
+  store_name?: string
+  klaviyo_private_key?: string | null
+  klaviyo_api_key?: string | null
+  shopify_access_token?: string | null
+  shopify_store_domain?: string | null
+}
+
+// ─── buildCachedKlaviyoData: convert sync data to CachedKlaviyoData format ──
+
+function buildCachedKlaviyoData(
+  syncData: KlaviyoSyncData,
+  _storeId: string,
+  _period: string,
+): CachedKlaviyoData {
+  return {
+    summary: {
+      klaviyo_total_revenue: syncData.campaignRevenue + syncData.flowRevenue,
+      klaviyo_campaign_revenue: syncData.campaignRevenue,
+      klaviyo_flow_revenue: syncData.flowRevenue,
+      store_total_revenue: syncData.storeRevenue,
+      store_orders: syncData.storeOrders,
+      total_leads: 0,
+      engaged_leads: 0,
+      engagement_rate: 0,
+      period_start: syncData.startDateStr,
+      period_end: syncData.endDateStr,
+      fetched_at: new Date().toISOString(),
+      sync_status: "ok",
+    },
+    campaigns: syncData.campRows.map(row => ({
+      campaign_id: row.campaign_id,
+      campaign_name: row.campaign_name,
+      campaign_status: row.campaign_status,
+      send_time: row.send_time,
+      recipients: row.recipients,
+      delivered: row.delivered,
+      opened: row.opened,
+      open_rate: row.open_rate,
+      clicked: row.clicked,
+      click_rate: row.click_rate,
+      click_to_open_rate: row.click_to_open_rate,
+      conversion_value: row.conversion_value,
+      bounce_rate: row.bounce_rate,
+      bounced: row.bounced,
+      unsubscribe_rate: row.unsubscribe_rate,
+      unsubscribed: row.unsubscribed,
+    })),
+    flows: syncData.flowRows.map(row => ({
+      flow_id: row.flow_id,
+      flow_name: row.flow_name,
+      flow_status: row.flow_status,
+      recipients: row.recipients,
+      delivered: row.delivered,
+      opened: row.opened,
+      open_rate: row.open_rate,
+      clicked: row.clicked,
+      click_rate: row.click_rate,
+      click_to_open_rate: row.click_to_open_rate,
+      conversion_value: row.conversion_value,
+      bounce_rate: row.bounce_rate,
+      bounced: row.bounced,
+      unsubscribe_rate: row.unsubscribe_rate,
+      unsubscribed: row.unsubscribed,
+    })),
+  }
+}
+
+// ─── liveFetchKlaviyoForPortal: auto-fallback with cooldown ─────────────────
+
+async function liveFetchKlaviyoForPortal(
+  store: PortalStoreInfo,
+  period: string,
+  supabase: SupabaseClient,
+): Promise<CachedKlaviyoData | null> {
+  const fetchKey = getFetchKey(period)
+  const canFetch = await tryAcquireLiveFetch(supabase, store.id, fetchKey, "portal-fallback")
+
+  if (!canFetch) {
+    return null
+  }
+
+  try {
+    const credentials = await getStoreCredentials(store.id)
+    const apiKey = credentials.klaviyo_private_key || credentials.klaviyo_api_key
+    if (!apiKey) {
+      await releaseLiveFetch(supabase, store.id, fetchKey, "failed")
+      return null
+    }
+
+    const accountInfo = await getCachedAccountInfo(apiKey)
+    const metricId = await getCachedPlacedOrderMetric(apiKey)
+    if (!metricId) {
+      await releaseLiveFetch(supabase, store.id, fetchKey, "failed")
+      return null
+    }
+
+    const [flowNames, campNames] = await Promise.all([
+      fetchFlowNames(apiKey),
+      fetchCampaignNames(apiKey),
+    ])
+
+    const syncResult = await syncKlaviyoForPeriod({
+      storeId: store.id,
+      orgId: store.org_id || null,
+      apiKey,
+      timezone: accountInfo.timezone,
+      timezoneOffset: getTimezoneOffset(accountInfo.timezone),
+      metricId,
+      period,
+      flowNames,
+      campNames,
+    })
+
+    if (syncResult.success && syncResult.data) {
+      await upsertSyncResults(supabase, store, syncResult.data, period)
+      await releaseLiveFetch(supabase, store.id, fetchKey, "completed")
+      return buildCachedKlaviyoData(syncResult.data, store.id, period)
+    }
+
+    await releaseLiveFetch(supabase, store.id, fetchKey, "failed")
+    return null
+  } catch (err) {
+    await releaseLiveFetch(supabase, store.id, fetchKey, "failed")
+    log.error(`[Portal LiveFetch] Error for store ${store.id}:`, err)
+    return null
+  }
+}
+
+// ─── withTimeout: wrap a promise with a timeout ─────────────────────────────
+
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+): Promise<T | null> {
+  const timeoutPromise = new Promise<null>((resolve) => {
+    setTimeout(() => resolve(null), timeoutMs)
+  })
+  // Note: Promise.race does not cancel the losing promise.
+  // On Vercel serverless, the in-flight work continues until the platform kills the function.
+  return Promise.race([promise, timeoutPromise])
+}
+
 // GET - Get portal dashboard data
 export async function GET(request: NextRequest) {
+  const startTime = Date.now()
   try {
     const supabase = await createClient()
     const adminClient = createAdminClient()
@@ -278,7 +455,7 @@ export async function GET(request: NextRequest) {
 
       adminClient
         .from("client_stores")
-        .select("id, store_name, platform, store_url, is_active, klaviyo_private_key, klaviyo_api_key, shopify_access_token, shopify_store_domain")
+        .select("id, store_name, platform, store_url, is_active, org_id, klaviyo_private_key, klaviyo_api_key, shopify_access_token, shopify_store_domain")
         .eq("client_id", clientId)
         .eq("is_active", true)
         .order("store_name"),
@@ -444,30 +621,28 @@ export async function GET(request: NextRequest) {
 
     // ─── Helper: Fetch Shopify data for a store ─────────────────────────────────
 
-    const baseUrl = request.nextUrl.origin
-    const cookieHeader = request.headers.get("cookie") || ""
-
     const fetchShopifyData = async (store: typeof stores[0]): Promise<Record<string, unknown> | null> => {
-      const hasShopify = !!(store.shopify_access_token && store.shopify_store_domain)
-      if (!hasShopify) return null
+      if (!(store.shopify_access_token && store.shopify_store_domain)) return null
 
       const cached = await getCachedShopifyData(store.id)
       if (cached) return cached
 
+      // Use cooldown to prevent duplicate Shopify fetches
+      const shopifyFetchKey = `shopify_${period}`
+      const canFetch = await tryAcquireLiveFetch(adminClient, store.id, shopifyFetchKey, "portal-shopify")
+      if (!canFetch) return null
+
       try {
-        const shopifyResponse = await fetch(
-          `${baseUrl}/api/integrations/shopify/report?store_id=${store.id}&period=${period}`,
-          { headers: { Cookie: cookieHeader } }
-        )
-        if (shopifyResponse.ok) {
-          const data = await shopifyResponse.json()
-          if (data.success && data.connected) {
-            saveShopifyToCache(store.id, data)
-            return data
-          }
+        const result = await syncShopifyForStore(store.id, period)
+        if (result.success && result.data) {
+          saveShopifyToCache(store.id, result.data as unknown as Record<string, unknown>)
+          await releaseLiveFetch(adminClient, store.id, shopifyFetchKey, "completed")
+          return result.data as unknown as Record<string, unknown>
         }
+        await releaseLiveFetch(adminClient, store.id, shopifyFetchKey, "failed")
       } catch (error) {
-        log.error(`[Portal] Shopify fetch error for store ${store.id}:`, error)
+        await releaseLiveFetch(adminClient, store.id, shopifyFetchKey, "failed")
+        log.error(`[Portal] Shopify error for store ${store.id}:`, error)
       }
       return null
     }
@@ -541,18 +716,66 @@ export async function GET(request: NextRequest) {
           response.shopify = mapShopifyData(shopifyData)
         }
 
-        // Klaviyo: read from cache tables (zero API calls)
+        // Klaviyo: read from cache tables, auto-fallback to live fetch if empty
         const hasKlaviyo = !!(selectedStore.klaviyo_private_key || selectedStore.klaviyo_api_key)
         if (hasKlaviyo) {
-          const cachedKlaviyo = await fetchKlaviyoFromCache(selectedStore.id, period, adminClient)
-          if (cachedKlaviyo) {
-            response.klaviyo = mapCacheToPortalKlaviyo(cachedKlaviyo)
-            response.dataStatus = "ready"
-            response.lastFetchedAt = cachedKlaviyo.summary.fetched_at || null
+          const cacheResult = await fetchKlaviyoFromCache(selectedStore.id, period, adminClient)
+
+          if (cacheResult.data) {
+            // Cache HIT (fresh or stale)
+            response.klaviyo = mapCacheToPortalKlaviyo(cacheResult.data)
+            response.dataStatus = (cacheResult.isStale ? "stale" : "ready") satisfies DataStatus
+            response.lastFetchedAt = cacheResult.fetchedAt
+            response.isRefreshing = false
+            response.source = cacheResult.isStale ? "stale-cache" : "cache"
+          } else if (isCachedPeriod(period)) {
+            // Cache MISS for a cached period — try live fallback with timeout
+            const storeInfo: PortalStoreInfo = {
+              id: selectedStore.id,
+              org_id: (selectedStore as Record<string, unknown>).org_id as string | null ?? null,
+              klaviyo_private_key: selectedStore.klaviyo_private_key,
+              klaviyo_api_key: selectedStore.klaviyo_api_key,
+            }
+            const liveResult = await withTimeout(
+              liveFetchKlaviyoForPortal(storeInfo, period, adminClient),
+              PORTAL_LIVE_FETCH_TIMEOUT_MS,
+            )
+            if (liveResult) {
+              response.klaviyo = mapCacheToPortalKlaviyo(liveResult)
+              response.dataStatus = "ready" satisfies DataStatus
+              response.source = "live"
+              response.isRefreshing = false
+              response.lastFetchedAt = new Date().toISOString()
+            } else {
+              response.dataStatus = "loading" satisfies DataStatus
+              response.isRefreshing = true
+              response.source = "cache"
+              response.lastFetchedAt = null
+            }
           } else {
-            // Cache empty — store never synced yet
-            response.dataStatus = "syncing"
-            response.lastFetchedAt = null
+            // LIVE_ONLY period — always try live fetch
+            const storeInfo: PortalStoreInfo = {
+              id: selectedStore.id,
+              org_id: (selectedStore as Record<string, unknown>).org_id as string | null ?? null,
+              klaviyo_private_key: selectedStore.klaviyo_private_key,
+              klaviyo_api_key: selectedStore.klaviyo_api_key,
+            }
+            const liveResult = await withTimeout(
+              liveFetchKlaviyoForPortal(storeInfo, period, adminClient),
+              PORTAL_LIVE_FETCH_TIMEOUT_MS,
+            )
+            if (liveResult) {
+              response.klaviyo = mapCacheToPortalKlaviyo(liveResult)
+              response.dataStatus = "ready" satisfies DataStatus
+              response.source = "live"
+              response.isRefreshing = false
+              response.lastFetchedAt = new Date().toISOString()
+            } else {
+              response.dataStatus = "empty" satisfies DataStatus
+              response.source = "live"
+              response.isRefreshing = false
+              response.lastFetchedAt = null
+            }
           }
         }
       }
@@ -565,7 +788,7 @@ export async function GET(request: NextRequest) {
       if (storesWithIntegrations.length > 0) {
         // Fetch Klaviyo cached data for all stores in parallel (DB reads, no rate limits)
         const klaviyoCachePromises = storesWithKlaviyo.map(store =>
-          fetchKlaviyoFromCache(store.id, period, adminClient).then(data => ({ storeId: store.id, data }))
+          fetchKlaviyoFromCache(store.id, period, adminClient).then(result => ({ store, result }))
         )
 
         // Fetch Shopify data for all stores in parallel
@@ -574,15 +797,45 @@ export async function GET(request: NextRequest) {
           fetchShopifyData(store).then(data => ({ storeId: store.id, data }))
         )
 
-        const [klaviyoResults, shopifyResults] = await Promise.all([
+        const [klaviyoCacheResults, shopifyResults] = await Promise.all([
           Promise.all(klaviyoCachePromises),
           Promise.all(shopifyPromises),
         ])
 
-        // Aggregate Klaviyo data from cache (storeRevenue comes from Klaviyo metric-aggregates via cache)
-        const klaviyoDataList = klaviyoResults
-          .filter(r => r.data !== null)
-          .map(r => mapCacheToPortalKlaviyo(r.data!))
+        // Separate stores with cache from stores without
+        const withCache = klaviyoCacheResults.filter(r => r.result.data !== null)
+        const withoutCache = klaviyoCacheResults.filter(r => r.result.data === null)
+
+        // Live fetch for stores WITHOUT cache (max 5, sequential for rate limits)
+        const liveFetchedData: CachedKlaviyoData[] = []
+        if (withoutCache.length > 0 && withoutCache.length <= 5) {
+          const liveFetchPromise = (async () => {
+            for (const { store } of withoutCache) {
+              const storeInfo: PortalStoreInfo = {
+                id: store.id,
+                org_id: (store as Record<string, unknown>).org_id as string | null ?? null,
+                klaviyo_private_key: store.klaviyo_private_key,
+                klaviyo_api_key: store.klaviyo_api_key,
+              }
+              const liveData = await liveFetchKlaviyoForPortal(storeInfo, period, adminClient)
+              if (liveData) {
+                liveFetchedData.push(liveData)
+              }
+            }
+          })()
+
+          await withTimeout(liveFetchPromise, PORTAL_LIVE_FETCH_TIMEOUT_MS)
+        }
+
+        // Merge cache + live data
+        const klaviyoDataList = [
+          ...withCache.map(r => mapCacheToPortalKlaviyo(r.result.data!)),
+          ...liveFetchedData.map(d => mapCacheToPortalKlaviyo(d)),
+        ]
+
+        // Determine aggregate data status
+        const hasStaleCache = withCache.some(r => r.result.isStale)
+        const hasPartialLive = withoutCache.length > 0 && liveFetchedData.length < withoutCache.length
 
         if (klaviyoDataList.length > 0) {
           // Aggregate flows from all stores
@@ -610,10 +863,11 @@ export async function GET(request: NextRequest) {
           const aggCampaignRevenue = klaviyoDataList.reduce((sum, k) => sum + (k.campaignRevenue || 0), 0)
           const aggFlowRevenue = klaviyoDataList.reduce((sum, k) => sum + (k.flowRevenue || 0), 0)
           const aggStoreRevenue = klaviyoDataList.reduce((sum, k) => sum + (k.storeRevenue || 0), 0)
+          const aggStoreOrders = klaviyoDataList.reduce((sum, k) => sum + (k.storeOrders || 0), 0)
 
           response.klaviyo = {
             storeRevenue: aggStoreRevenue,
-            storeOrders: 0,
+            storeOrders: aggStoreOrders,
             recoveryRate: aggStoreRevenue > 0 ? (aggTotalRevenue / aggStoreRevenue) * 100 : 0,
             totalLeads: klaviyoDataList.reduce((sum, k) => sum + (k.totalLeads || 0), 0),
             engagedLeads: klaviyoDataList.reduce((sum, k) => sum + (k.engagedLeads || 0), 0),
@@ -652,10 +906,26 @@ export async function GET(request: NextRequest) {
             topFlows: topFlowsAggregated,
           }
 
-          response.dataStatus = "ready"
+          if (hasStaleCache || hasPartialLive) {
+            response.dataStatus = "stale" satisfies DataStatus
+            response.source = hasStaleCache ? "stale-cache" : "live"
+            response.isRefreshing = hasPartialLive
+          } else {
+            response.dataStatus = "ready" satisfies DataStatus
+            response.source = liveFetchedData.length > 0 ? "live" : "cache"
+            response.isRefreshing = false
+          }
+          // Use earliest fetchedAt from cache results
+          response.lastFetchedAt = withCache.reduce<string | null>((oldest, r) => {
+            if (!r.result.fetchedAt) return oldest
+            if (!oldest) return r.result.fetchedAt
+            return new Date(r.result.fetchedAt) < new Date(oldest) ? r.result.fetchedAt : oldest
+          }, null)
         } else if (hasKlaviyoStores) {
-          // Stores exist but cache is empty — still syncing
-          response.dataStatus = "syncing"
+          // Stores exist but all caches empty and no live results
+          response.dataStatus = "loading" satisfies DataStatus
+          response.isRefreshing = true
+          response.source = "cache"
           response.lastFetchedAt = null
         }
 
@@ -836,6 +1106,22 @@ export async function GET(request: NextRequest) {
         }
       }
     }
+
+    // Structured observability logging
+    log.info("[CacheStrategy]", {
+      endpoint: "portal-dashboard",
+      period,
+      storesCount: stores.length,
+      cacheHits: storeId && storeId !== "all"
+        ? (response.source === "cache" || response.source === "stale-cache" ? 1 : 0)
+        : (response.source === "cache" || response.source === "stale-cache" ? storesWithKlaviyo.length : 0),
+      cacheMisses: storeId && storeId !== "all"
+        ? (response.source === "live" || response.source === "loading" ? 1 : 0)
+        : (response.source === "live" ? storesWithKlaviyo.length : 0),
+      liveFetches: response.source === "live" ? 1 : 0,
+      source: (response.source as string) || "unknown",
+      elapsed: `${Date.now() - startTime}ms`,
+    })
 
     // Log activity
     try {

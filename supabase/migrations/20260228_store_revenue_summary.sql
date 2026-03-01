@@ -22,8 +22,8 @@ CREATE TABLE IF NOT EXISTS store_revenue_summary (
   klaviyo_campaign_revenue  NUMERIC(15, 2) NOT NULL DEFAULT 0,
   klaviyo_flow_revenue      NUMERIC(15, 2) NOT NULL DEFAULT 0,
 
-  -- Revenue Shopify (ground truth — placeholder por ora)
-  shopify_total_revenue     NUMERIC(15, 2) NOT NULL DEFAULT 0,
+  -- Store revenue from Klaviyo metric-aggregates (Placed Order)
+  store_total_revenue       NUMERIC(15, 2) NOT NULL DEFAULT 0,
 
   -- Controle de qualidade do sync
   sync_status    VARCHAR(20)  NOT NULL DEFAULT 'pending'
@@ -47,8 +47,8 @@ CREATE TABLE IF NOT EXISTS store_revenue_summary (
     AND klaviyo_campaign_revenue >= 0
     AND klaviyo_flow_revenue >= 0
   ),
-  CONSTRAINT shopify_revenue_non_negative CHECK (
-    shopify_total_revenue >= 0
+  CONSTRAINT store_revenue_non_negative CHECK (
+    store_total_revenue >= 0
   ),
 
   PRIMARY KEY (store_id, period_label)

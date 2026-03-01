@@ -70,7 +70,7 @@ BEGIN
     store_id, org_id, period_label,
     period_start, period_end,
     klaviyo_total_revenue, klaviyo_campaign_revenue, klaviyo_flow_revenue,
-    shopify_total_revenue, sync_status, sync_error,
+    store_total_revenue, sync_status, sync_error,
     expires_at, fetched_at
   )
   SELECT

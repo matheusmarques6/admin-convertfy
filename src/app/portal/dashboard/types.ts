@@ -147,4 +147,8 @@ export interface DashboardData {
     end: string
   }
   lastUpdated: string
+  dataStatus?: "loading" | "stale" | "ready" | "error" | "empty" | "syncing"
+  lastFetchedAt?: string | null
+  isRefreshing?: boolean
+  source?: "cache" | "live" | "stale-cache"
 }

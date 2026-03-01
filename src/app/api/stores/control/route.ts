@@ -397,7 +397,7 @@ export async function GET(request: Request) {
 
       const { data: revenueData, error: revError } = await supabase
         .from("store_revenue_summary")
-        .select("store_id, klaviyo_total_revenue, klaviyo_campaign_revenue, klaviyo_flow_revenue, shopify_total_revenue, sync_status, fetched_at")
+        .select("store_id, klaviyo_total_revenue, klaviyo_campaign_revenue, klaviyo_flow_revenue, store_total_revenue, sync_status, fetched_at")
         .eq("period_label", "30d")
         .eq("org_id", orgId)
         .in("store_id", storeIds)
@@ -415,7 +415,7 @@ export async function GET(request: Request) {
           campaignRevenue: Number(r.klaviyo_campaign_revenue),
           flowRevenue: Number(r.klaviyo_flow_revenue),
         })
-        const shopifyRev = Number(r.shopify_total_revenue)
+        const shopifyRev = Number(r.store_total_revenue)
         if (shopifyRev > 0) {
           shopifyRevenueMap.set(r.store_id, shopifyRev)
         }

@@ -14,10 +14,14 @@ import {
 } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { DateRangePicker } from "@/components/ui/date-range-picker"
-import { formatCurrency, cn } from "@/lib/utils"
+import { formatCurrency } from "@/lib/utils"
 import { TimeAgo } from "@/components/ui/time-ago"
 import { PARTIAL_DATA_TOOLTIP } from "@/components/ui/sync-status-badge"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { DataStatusBanner } from "@/components/ui/data-status-banner"
+import { RefreshButton } from "@/components/ui/refresh-button"
+import { useDataStatus } from "@/hooks/use-data-status"
+import type { DataStatus } from "@/lib/shared/data-status"
 
 interface StoreRevenue {
   storeId: string
@@ -39,7 +43,9 @@ interface TotalRevenueData {
   hasPartialData?: boolean
   lastFetchedAt?: string | null
   cachedAt: string
-  dataStatus?: "ready" | "syncing"
+  dataStatus?: DataStatus
+  isRefreshing?: boolean
+  source?: "cache" | "live" | "stale-cache"
 }
 
 function useCountUp(target: number, duration = 1200): number {
@@ -107,11 +113,20 @@ export function TotalRevenueBanner({ storeIds }: TotalRevenueBannerProps = {}) {
     {
       revalidateOnFocus: false,
       dedupingInterval: 60000,
-      // Poll every 30s when syncing, otherwise disable polling
+      // Poll every 30s when syncing/loading, otherwise disable polling
       refreshInterval: isSyncing ? 30000 : 0,
-      onSuccess: (d) => setIsSyncing(d?.dataStatus === "syncing"),
+      onSuccess: (d) => setIsSyncing(
+        d?.dataStatus === "syncing" || d?.dataStatus === "loading" || d?.isRefreshing === true
+      ),
     }
   )
+
+  const dataStatusMeta = useDataStatus(data ? {
+    dataStatus: data.dataStatus ?? "ready",
+    lastFetchedAt: data.lastFetchedAt ?? null,
+    isRefreshing: data.isRefreshing ?? isValidating,
+    source: data.source ?? "cache",
+  } : undefined)
 
   const handleCustomDateApply = (start: Date, end: Date) => {
     setCustomStart(start)
@@ -243,17 +258,30 @@ export function TotalRevenueBanner({ storeIds }: TotalRevenueBannerProps = {}) {
               endDate={customEnd}
               onApply={handleCustomDateApply}
             />
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9 rounded-lg text-white/70 hover:text-white hover:bg-white/10"
-              onClick={() => mutate()}
-              disabled={isValidating}
-            >
-              <RefreshCw className={cn("h-4 w-4", isValidating && "animate-spin")} />
-            </Button>
+            <RefreshButton
+              onRefresh={() => {
+                // Re-fetch with force_refresh to bypass cache
+                const separator = swrKey?.includes("?") ? "&" : "?"
+                mutate(
+                  fetch(`${swrKey}${separator}force_refresh=true`)
+                    .then(r => r.ok ? r.json() : Promise.reject(new Error("Refresh failed")))
+                )
+              }}
+              isRefreshing={dataStatusMeta.isRefreshing || isValidating}
+              lastFetchedAt={dataStatusMeta.lastFetchedAt}
+              size="md"
+              className="rounded-lg border-white/15 bg-white/10 text-white/70 hover:text-white hover:bg-white/15"
+            />
           </div>
         </div>
+
+        {/* Data status banner — force dark-friendly colors inside the always-dark container */}
+        <DataStatusBanner
+          status={data?.dataStatus}
+          lastFetchedAt={data?.lastFetchedAt}
+          isRefreshing={data?.isRefreshing ?? isValidating}
+          className="rounded-lg !bg-white/10 !text-white/80"
+        />
 
         {/* Main number */}
         <div>

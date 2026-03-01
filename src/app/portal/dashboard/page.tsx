@@ -30,6 +30,7 @@ import { ListHealthCard } from "./list-health-card"
 import { LastSendCard } from "./last-send-card"
 import { TopFlowCard } from "./top-flow-card"
 import { AnimatedContainer, AnimatedItem } from "@/components/ui/animated-container"
+import { DataStatusBanner } from "@/components/ui/data-status-banner"
 import type { DashboardData } from "./types"
 
 export default function PortalDashboardPage() {
@@ -168,6 +169,13 @@ export default function PortalDashboardPage() {
           </Button>
         </div>
       </div>
+
+      {/* Data status banner (no refresh button for portal) */}
+      <DataStatusBanner
+        status={data.dataStatus}
+        lastFetchedAt={data.lastFetchedAt}
+        isRefreshing={data.isRefreshing}
+      />
 
       <AnimatedContainer className="space-y-6">
         {/* Hero: Financial Summary */}
