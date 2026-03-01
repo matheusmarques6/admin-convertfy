@@ -400,6 +400,10 @@ export async function syncKlaviyoForPeriod(
       end: `${endDateStr}T23:59:59${timezoneOffset}`,
     }
 
+    // Convert date strings to ISO timestamps for TIMESTAMPTZ columns
+    const periodStartISO = new Date(`${startDateStr}T00:00:00Z`).toISOString()
+    const periodEndISO = new Date(`${endDateStr}T23:59:59.999Z`).toISOString()
+
     // Fetch flow + campaign reports + store revenue in parallel
     await sleep(MIN_REQUEST_INTERVAL)
     const [flowResponse, campaignResponse, metricAggResult] = await Promise.all([
@@ -439,7 +443,7 @@ export async function syncKlaviyoForPeriod(
                 "click_to_open_rate", "clicks", "clicks_unique", "conversion_rate",
                 "conversion_uniques", "conversion_value", "conversions", "delivered",
                 "delivery_rate", "opens", "opens_unique", "recipients",
-                "revenue_per_recipient", "spam_complaint_rate", "unsubscribe_rate", "unsubscribes",
+                "revenue_per_recipient", "spam_complaints", "unsubscribe_rate", "unsubscribes",
               ],
             },
           },
@@ -504,8 +508,8 @@ export async function syncKlaviyoForPeriod(
           flow_name: flowNames.get(flowId)?.name || "Unknown",
           flow_status: flowNames.get(flowId)?.status || "unknown",
           trigger_type: flowNames.get(flowId)?.trigger_type || "unknown",
-          period_start: startDateStr,
-          period_end: endDateStr,
+          period_start: periodStartISO,
+          period_end: periodEndISO,
           recipients: m.recipients,
           delivered: m.delivered,
           delivery_rate: m.delivery_rate,
@@ -547,6 +551,7 @@ export async function syncKlaviyoForPeriod(
           conversion_value: (ex.conversion_value || 0) + (s.conversion_value || 0),
           bounced: (ex.bounced || 0) + (s.bounced || 0),
           unsubscribed: (ex.unsubscribed || 0) + (s.unsubscribes || 0),
+          spam_complaints: (ex.spam_complaints || 0) + (s.spam_complaints || 0),
           // Rates recalculated after aggregation loop
           delivery_rate: 0,
           open_rate: 0,
@@ -557,7 +562,6 @@ export async function syncKlaviyoForPeriod(
           conversion_rate: 0,
           revenue_per_recipient: 0,
           average_order_value: 0,
-          spam_complaint_rate: s.spam_complaint_rate ?? ex.spam_complaint_rate ?? 0,
         })
       }
 
@@ -572,7 +576,7 @@ export async function syncKlaviyoForPeriod(
         m.conversion_rate = m.delivered > 0 ? (m.conversions / m.delivered) * 100 : 0
         m.revenue_per_recipient = m.recipients > 0 ? m.conversion_value / m.recipients : 0
         m.average_order_value = m.conversions > 0 ? m.conversion_value / m.conversions : 0
-        // spam_complaint_rate kept as-is (weighted value from Klaviyo, no count available)
+        // spam_complaints is a count, kept as aggregated sum
       }
 
       const fetchedAt = new Date().toISOString()
@@ -589,8 +593,8 @@ export async function syncKlaviyoForPeriod(
           send_time: info?.send_time || null,
           subject: info?.subject || null,
           channel: info?.channel || "email",
-          period_start: startDateStr,
-          period_end: endDateStr,
+          period_start: periodStartISO,
+          period_end: periodEndISO,
           recipients: m.recipients,
           delivered: m.delivered,
           delivery_rate: m.delivery_rate,
@@ -608,7 +612,7 @@ export async function syncKlaviyoForPeriod(
           bounce_rate: m.bounce_rate,
           unsubscribed: m.unsubscribed,
           unsubscribe_rate: m.unsubscribe_rate,
-          spam_complaints: m.spam_complaint_rate,
+          spam_complaints: m.spam_complaints,
           fetched_at: fetchedAt,
         })
       }
@@ -628,8 +632,8 @@ export async function syncKlaviyoForPeriod(
         flowRevenue: totalFlowRevenue,
         storeRevenue,
         storeOrders,
-        startDateStr,
-        endDateStr,
+        startDateStr: periodStartISO,
+        endDateStr: periodEndISO,
         flowRows,
         campRows,
       },

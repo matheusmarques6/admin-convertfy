@@ -24,6 +24,7 @@ export async function upsertSyncResults(
   store: StoreInfo,
   data: KlaviyoSyncData,
   period: string,
+  audience?: { totalLeads: number; engagedLeads: number; engagementRate: number },
 ): Promise<void> {
   // Upsert flow metrics
   if (data.flowRows.length > 0) {
@@ -40,9 +41,8 @@ export async function upsertSyncResults(
   }
 
   // Upsert revenue summary
-  // NOTE: Audience fields (total_leads, engaged_leads, engagement_rate) are
-  // intentionally excluded here. They are only set by the cron job which fetches
-  // audience data. Including them here would overwrite cron-populated values with zeros.
+  // Audience fields are only included when explicitly passed (e.g. from cron job).
+  // Portal live-fetch calls omit audience to avoid overwriting cron-populated values.
   await supabase
     .from("store_revenue_summary")
     .upsert({
@@ -60,5 +60,10 @@ export async function upsertSyncResults(
       sync_error: null,
       expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
       fetched_at: new Date().toISOString(),
+      ...(audience ? {
+        total_leads: audience.totalLeads,
+        engaged_leads: audience.engagedLeads,
+        engagement_rate: audience.engagementRate,
+      } : {}),
     }, { onConflict: "store_id,period_label" })
 }

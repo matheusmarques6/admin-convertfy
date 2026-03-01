@@ -56,6 +56,8 @@ interface CachedCampaignRow {
   clicked: number
   click_rate: number
   click_to_open_rate: number
+  conversions: number
+  conversion_rate: number
   conversion_value: number
   bounce_rate: number
   bounced: number
@@ -74,6 +76,8 @@ interface CachedFlowRow {
   clicked: number
   click_rate: number
   click_to_open_rate: number
+  conversions: number
+  conversion_rate: number
   conversion_value: number
   bounce_rate: number
   bounced: number
@@ -177,6 +181,9 @@ function mapCacheToPortalKlaviyo(cached: CachedKlaviyoData) {
   const totalFlowClicked = flows.reduce((s, f) => s + (f.clicked || 0), 0)
   const totalClicked = totalCampClicked + totalFlowClicked
 
+  const totalConversions = campaigns.reduce((s, c) => s + (c.conversions || 0), 0)
+    + flows.reduce((s, f) => s + (f.conversions || 0), 0)
+
   const totalCampBounced = campaigns.reduce((s, c) => s + (c.bounced || 0), 0)
   const totalFlowBounced = flows.reduce((s, f) => s + (f.bounced || 0), 0)
   const totalBounced = totalCampBounced + totalFlowBounced
@@ -227,7 +234,8 @@ function mapCacheToPortalKlaviyo(cached: CachedKlaviyoData) {
     openRate: totalDelivered > 0 ? (totalOpened / totalDelivered) * 100 : 0,
     clickRate: totalDelivered > 0 ? (totalClicked / totalDelivered) * 100 : 0,
     clickToOpenRate: totalOpened > 0 ? (totalClicked / totalOpened) * 100 : 0,
-    conversionRate: 0,
+    conversions: totalConversions,
+    conversionRate: totalDelivered > 0 ? (totalConversions / totalDelivered) * 100 : 0,
     unsubscribeRate: weightedUnsubscribeRate,
     bounceRate: weightedBounceRate,
     bounces: totalBounced,
@@ -306,6 +314,8 @@ function buildCachedKlaviyoData(
       clicked: row.clicked,
       click_rate: row.click_rate,
       click_to_open_rate: row.click_to_open_rate,
+      conversions: row.conversions,
+      conversion_rate: row.conversion_rate,
       conversion_value: row.conversion_value,
       bounce_rate: row.bounce_rate,
       bounced: row.bounced,
@@ -323,6 +333,8 @@ function buildCachedKlaviyoData(
       clicked: row.clicked,
       click_rate: row.click_rate,
       click_to_open_rate: row.click_to_open_rate,
+      conversions: row.conversions,
+      conversion_rate: row.conversion_rate,
       conversion_value: row.conversion_value,
       bounce_rate: row.bounce_rate,
       bounced: row.bounced,
@@ -382,7 +394,10 @@ async function liveFetchKlaviyoForPortal(
     if (syncResult.success && syncResult.data) {
       await upsertSyncResults(supabase, store, syncResult.data, period)
       await releaseLiveFetch(supabase, store.id, fetchKey, "completed")
-      return buildCachedKlaviyoData(syncResult.data, store.id, period)
+      // Re-read from cache after upsert to include audience data populated by cron
+      // (buildCachedKlaviyoData would return total_leads=0 since live fetch skips audience)
+      const freshCache = await fetchKlaviyoFromCache(store.id, period, supabase)
+      return freshCache.data || buildCachedKlaviyoData(syncResult.data, store.id, period)
     }
 
     await releaseLiveFetch(supabase, store.id, fetchKey, "failed")
@@ -876,6 +891,7 @@ export async function GET(request: NextRequest) {
           const aggFlowRevenue = klaviyoDataList.reduce((sum, k) => sum + (k.flowRevenue || 0), 0)
           const aggStoreRevenue = klaviyoDataList.reduce((sum, k) => sum + (k.storeRevenue || 0), 0)
           const aggStoreOrders = klaviyoDataList.reduce((sum, k) => sum + (k.storeOrders || 0), 0)
+          const aggConversions = klaviyoDataList.reduce((sum, k) => sum + (k.conversions || 0), 0)
 
           response.klaviyo = {
             storeRevenue: aggStoreRevenue,
@@ -899,7 +915,7 @@ export async function GET(request: NextRequest) {
             openRate: totalDelivered > 0 ? (totalOpened / totalDelivered) * 100 : 0,
             clickRate: totalDelivered > 0 ? (totalClicked / totalDelivered) * 100 : 0,
             clickToOpenRate: totalOpened > 0 ? (totalClicked / totalOpened) * 100 : 0,
-            conversionRate: 0,
+            conversionRate: totalDelivered > 0 ? (aggConversions / totalDelivered) * 100 : 0,
             unsubscribeRate: klaviyoDataList.length > 0
               ? klaviyoDataList.reduce((sum, k) => sum + (k.unsubscribeRate || 0), 0) / klaviyoDataList.length
               : 0,

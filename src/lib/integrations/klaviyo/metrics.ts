@@ -42,12 +42,20 @@ export async function findPlacedOrderMetric(apiKey: string): Promise<string | nu
   let nextPage: string | null = "/metrics/"
   let pageCount = 0
   const maxPages = 20
+  let apiCallFailed = false
 
   while (nextPage && pageCount < maxPages) {
     type MetricsPage = { data: KlaviyoMetric[]; links?: { next?: string } }
     const response: MetricsPage | null = await klaviyoRequest<MetricsPage>(apiKey, nextPage)
 
-    if (!response?.data) break
+    if (!response) {
+      // API error (429, timeout, auth error) — do NOT cache null
+      log.warn("[PlacedOrderMetric] API call failed, not caching null result")
+      apiCallFailed = true
+      break
+    }
+
+    if (!response.data || response.data.length === 0) break
 
     allMetrics.push(...response.data)
     pageCount++
@@ -66,6 +74,12 @@ export async function findPlacedOrderMetric(apiKey: string): Promise<string | nu
     nextPage = nextLink.includes("://") ? nextLink.replace(/^https?:\/\/[^/]+\/api/, "") : nextLink
   }
 
+  if (apiCallFailed) {
+    // Return null but do NOT cache — next call will retry the API
+    return null
+  }
+
+  // Metric genuinely not found after scanning all pages — cache the null result
   log.info(`Total metrics scanned: ${allMetrics.length} (${pageCount} pages) - No Placed Order metric found`)
   metricIdCache.set(apiKey, { id: null, timestamp: Date.now() })
   return null
