@@ -60,13 +60,18 @@ export async function POST(request: NextRequest) {
     // Verify portal user
     const { data: portalUser } = await supabase
       .from("client_portal_users")
-      .select("id")
+      .select("id, permissions")
       .eq("auth_user_id", user.id)
       .eq("is_active", true)
       .single()
 
     if (!portalUser) {
       throw new AppError("Não autorizado", 401)
+    }
+
+    const permissions = portalUser.permissions as { edit_profile?: boolean }
+    if (!permissions?.edit_profile) {
+      throw new AppError("Sem permissão", 403)
     }
 
     const formData = await request.formData()
@@ -147,13 +152,18 @@ export async function DELETE(request: NextRequest) {
 
     const { data: portalUser } = await supabase
       .from("client_portal_users")
-      .select("id")
+      .select("id, permissions")
       .eq("auth_user_id", user.id)
       .eq("is_active", true)
       .single()
 
     if (!portalUser) {
       throw new AppError("Não autorizado", 401)
+    }
+
+    const permissions = portalUser.permissions as { edit_profile?: boolean }
+    if (!permissions?.edit_profile) {
+      throw new AppError("Sem permissão", 403)
     }
 
     const filesToRemove = ["jpg", "png", "webp"].map(
