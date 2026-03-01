@@ -84,6 +84,78 @@ async function releaseSyncLock(supabase: SupabaseClient): Promise<void> {
 }
 
 // ==============================
+// Fetch store revenue from Klaviyo metric-aggregates (Placed Order)
+// ==============================
+
+async function fetchStoreRevenueFromMetricAggregates(
+  apiKey: string,
+  metricId: string,
+  startDateStr: string,
+  endDateStr: string,
+  timezone: string,
+): Promise<{ storeRevenue: number; storeOrders: number }> {
+  const pad2 = (n: number) => String(n).padStart(2, "0")
+  const nextDay = new Date(`${endDateStr}T12:00:00`)
+  nextDay.setDate(nextDay.getDate() + 1)
+  const nextDayStr = `${nextDay.getFullYear()}-${pad2(nextDay.getMonth() + 1)}-${pad2(nextDay.getDate())}`
+
+  const metricAgg = await klaviyoRequest<{
+    data: {
+      attributes: {
+        dates: string[]
+        data: Array<{
+          measurements: Record<string, number[]>
+        }>
+      }
+    }
+  }>(apiKey, "/metric-aggregates/", {
+    method: "POST",
+    body: {
+      data: {
+        type: "metric-aggregate",
+        attributes: {
+          metric_id: metricId,
+          measurements: ["sum_value", "count"],
+          interval: "day",
+          page_size: 500,
+          filter: [
+            `greater-or-equal(datetime,${startDateStr}T00:00:00)`,
+            `less-than(datetime,${nextDayStr}T00:00:00)`,
+          ],
+          timezone,
+        },
+      },
+    },
+  })
+
+  // Klaviyo returns an extra bucket for the day BEFORE the requested start date — skip it
+  const aggDates = metricAgg?.data?.attributes?.dates || []
+  const aggData = metricAgg?.data?.attributes?.data || []
+  const startThreshold = new Date(`${startDateStr}T00:00:00Z`).getTime()
+
+  let storeRevenue = 0
+  let storeOrders = 0
+
+  for (const row of aggData) {
+    const m = row.measurements || {}
+    const sumValues = Array.isArray(m.sum_value) ? m.sum_value : [m.sum_value || 0]
+    const countValues = Array.isArray(m.count) ? m.count : [m.count || 0]
+
+    for (let i = 0; i < sumValues.length; i++) {
+      if (aggDates[i]) {
+        const bucketTime = new Date(aggDates[i]).getTime()
+        if (bucketTime < startThreshold) continue
+      }
+      storeRevenue += Number(sumValues[i]) || 0
+      storeOrders += Number(countValues[i]) || 0
+    }
+  }
+
+  log.info(`[Cron] metric-aggregates: storeRevenue=${storeRevenue.toFixed(2)}, storeOrders=${storeOrders}, timezone=${timezone}, buckets=${aggDates.length}`)
+  return { storeRevenue, storeOrders }
+}
+
+// ==============================
 // Core sync logic for one store + one period
 // ==============================
 
@@ -98,16 +170,16 @@ async function syncStoreForPeriod(
   metricId: string,
   flowNames: Map<string, { name: string; status: string; trigger_type: string }>,
   campNames: Map<string, { name: string; status: string; send_time: string | null; channel: string; subject: string | null }>,
-): Promise<{ status: "ok" | "skipped"; campaignRevenue: number; flowRevenue: number; startDateStr: string; endDateStr: string }> {
+): Promise<{ status: "ok" | "skipped"; campaignRevenue: number; flowRevenue: number; storeRevenue: number; storeOrders: number; startDateStr: string; endDateStr: string }> {
   const { startDateStr, endDateStr } = parseDateRangeInTimezone(period, timezone)
   const timeframe = {
     start: `${startDateStr}T00:00:00${timezoneOffset}`,
     end: `${endDateStr}T23:59:59${timezoneOffset}`,
   }
 
-  // Fetch flow + campaign reports in parallel (only 2 calls per period)
+  // Fetch flow + campaign reports + store revenue in parallel
   await sleep(MIN_REQUEST_INTERVAL)
-  const [flowResponse, campaignResponse] = await Promise.all([
+  const [flowResponse, campaignResponse, metricAggResult] = await Promise.all([
     klaviyoRequest<{
       data: { attributes: { results: Array<{ groupings: { flow_id: string; send_channel: string; flow_message_id: string }; statistics: Record<string, number | undefined> }> } }
     }>(apiKey, "/flow-values-reports/", {
@@ -150,6 +222,7 @@ async function syncStoreForPeriod(
         },
       },
     }),
+    fetchStoreRevenueFromMetricAggregates(apiKey, metricId, startDateStr, endDateStr, timezone),
   ])
 
   // Track revenue for store_revenue_summary
@@ -166,22 +239,36 @@ async function syncStoreForPeriod(
       flowAgg.set(fid, {
         recipients: (ex.recipients || 0) + (s.recipients || 0),
         delivered: (ex.delivered || 0) + (s.delivered || 0),
-        delivery_rate: s.delivery_rate ?? ex.delivery_rate ?? 0,
-        opened: (ex.opened || 0) + (s.opens_unique || 0),
-        open_rate: s.click_to_open_rate ?? ex.open_rate ?? 0,
-        clicked: (ex.clicked || 0) + (s.clicks_unique || 0),
-        click_rate: s.click_rate ?? ex.click_rate ?? 0,
-        click_to_open_rate: s.click_to_open_rate ?? ex.click_to_open_rate ?? 0,
+        opened: (ex.opened || 0) + (s.opens || 0),
+        clicked: (ex.clicked || 0) + (s.clicks || 0),
         conversions: (ex.conversions || 0) + (s.conversions || 0),
-        conversion_rate: s.conversion_rate ?? ex.conversion_rate ?? 0,
         conversion_value: (ex.conversion_value || 0) + (s.conversion_value || 0),
-        revenue_per_recipient: s.revenue_per_recipient ?? ex.revenue_per_recipient ?? 0,
-        average_order_value: s.average_order_value ?? ex.average_order_value ?? 0,
-        bounced: ex.bounced || 0,
-        bounce_rate: s.bounce_rate ?? ex.bounce_rate ?? 0,
-        unsubscribed: ex.unsubscribed || 0,
-        unsubscribe_rate: s.unsubscribe_rate ?? ex.unsubscribe_rate ?? 0,
+        bounced: (ex.bounced || 0) + (s.bounced || 0),
+        unsubscribed: (ex.unsubscribed || 0) + (s.unsubscribes || 0),
+        // Rates recalculated after aggregation loop
+        delivery_rate: 0,
+        open_rate: 0,
+        click_rate: 0,
+        click_to_open_rate: 0,
+        bounce_rate: 0,
+        unsubscribe_rate: 0,
+        conversion_rate: 0,
+        revenue_per_recipient: 0,
+        average_order_value: 0,
       })
+    }
+
+    // Recalculate rates from aggregated counts
+    for (const [, m] of flowAgg) {
+      m.delivery_rate = m.recipients > 0 ? (m.delivered / m.recipients) * 100 : 0
+      m.open_rate = m.delivered > 0 ? (m.opened / m.delivered) * 100 : 0
+      m.click_rate = m.delivered > 0 ? (m.clicked / m.delivered) * 100 : 0
+      m.click_to_open_rate = m.opened > 0 ? (m.clicked / m.opened) * 100 : 0
+      m.bounce_rate = m.recipients > 0 ? (m.bounced / m.recipients) * 100 : 0
+      m.unsubscribe_rate = m.delivered > 0 ? (m.unsubscribed / m.delivered) * 100 : 0
+      m.conversion_rate = m.delivered > 0 ? (m.conversions / m.delivered) * 100 : 0
+      m.revenue_per_recipient = m.recipients > 0 ? m.conversion_value / m.recipients : 0
+      m.average_order_value = m.conversions > 0 ? m.conversion_value / m.conversions : 0
     }
 
     const flowRows = Array.from(flowAgg.entries()).map(([flowId, m]) => ({
@@ -232,23 +319,38 @@ async function syncStoreForPeriod(
       campAgg.set(cid, {
         recipients: (ex.recipients || 0) + (s.recipients || 0),
         delivered: (ex.delivered || 0) + (s.delivered || 0),
-        delivery_rate: s.delivery_rate ?? ex.delivery_rate ?? 0,
-        opened: (ex.opened || 0) + (s.opens_unique || 0),
-        open_rate: s.click_to_open_rate ?? ex.open_rate ?? 0,
-        clicked: (ex.clicked || 0) + (s.clicks_unique || 0),
-        click_rate: s.click_rate ?? ex.click_rate ?? 0,
-        click_to_open_rate: s.click_to_open_rate ?? ex.click_to_open_rate ?? 0,
+        opened: (ex.opened || 0) + (s.opens || 0),
+        clicked: (ex.clicked || 0) + (s.clicks || 0),
         conversions: (ex.conversions || 0) + (s.conversions || 0),
-        conversion_rate: s.conversion_rate ?? ex.conversion_rate ?? 0,
         conversion_value: (ex.conversion_value || 0) + (s.conversion_value || 0),
-        revenue_per_recipient: s.revenue_per_recipient ?? ex.revenue_per_recipient ?? 0,
-        average_order_value: s.average_order_value ?? ex.average_order_value ?? 0,
         bounced: (ex.bounced || 0) + (s.bounced || 0),
-        bounce_rate: s.bounce_rate ?? ex.bounce_rate ?? 0,
         unsubscribed: (ex.unsubscribed || 0) + (s.unsubscribes || 0),
-        unsubscribe_rate: s.unsubscribe_rate ?? ex.unsubscribe_rate ?? 0,
+        // Rates recalculated after aggregation loop
+        delivery_rate: 0,
+        open_rate: 0,
+        click_rate: 0,
+        click_to_open_rate: 0,
+        bounce_rate: 0,
+        unsubscribe_rate: 0,
+        conversion_rate: 0,
+        revenue_per_recipient: 0,
+        average_order_value: 0,
         spam_complaint_rate: s.spam_complaint_rate ?? ex.spam_complaint_rate ?? 0,
       })
+    }
+
+    // Recalculate rates from aggregated counts
+    for (const [, m] of campAgg) {
+      m.delivery_rate = m.recipients > 0 ? (m.delivered / m.recipients) * 100 : 0
+      m.open_rate = m.delivered > 0 ? (m.opened / m.delivered) * 100 : 0
+      m.click_rate = m.delivered > 0 ? (m.clicked / m.delivered) * 100 : 0
+      m.click_to_open_rate = m.opened > 0 ? (m.clicked / m.opened) * 100 : 0
+      m.bounce_rate = m.recipients > 0 ? (m.bounced / m.recipients) * 100 : 0
+      m.unsubscribe_rate = m.delivered > 0 ? (m.unsubscribed / m.delivered) * 100 : 0
+      m.conversion_rate = m.delivered > 0 ? (m.conversions / m.delivered) * 100 : 0
+      m.revenue_per_recipient = m.recipients > 0 ? m.conversion_value / m.recipients : 0
+      m.average_order_value = m.conversions > 0 ? m.conversion_value / m.conversions : 0
+      // spam_complaint_rate kept as-is (weighted value from Klaviyo, no count available)
     }
 
     const campRows = Array.from(campAgg.entries())
@@ -300,7 +402,15 @@ async function syncStoreForPeriod(
     log.info(`[Cron] ${store.store_name}/${period}: ${campRows.length} campaign metrics`)
   }
 
-  return { status: "ok", campaignRevenue: totalCampaignRevenue, flowRevenue: totalFlowRevenue, startDateStr, endDateStr }
+  return {
+    status: "ok",
+    campaignRevenue: totalCampaignRevenue,
+    flowRevenue: totalFlowRevenue,
+    storeRevenue: metricAggResult.storeRevenue,
+    storeOrders: metricAggResult.storeOrders,
+    startDateStr,
+    endDateStr,
+  }
 }
 
 // ==============================
@@ -524,7 +634,7 @@ async function syncStore(
             klaviyo_total_revenue: totalKlaviyoRevenue,
             klaviyo_campaign_revenue: result.campaignRevenue,
             klaviyo_flow_revenue: result.flowRevenue,
-            shopify_total_revenue: 0,
+            shopify_total_revenue: result.storeRevenue,
             total_leads: audience.totalLeads,
             engaged_leads: audience.engagedLeads,
             engagement_rate: audience.engagementRate,

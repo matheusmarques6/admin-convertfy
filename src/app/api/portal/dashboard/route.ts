@@ -67,6 +67,7 @@ interface CachedRevenueSummary {
   klaviyo_total_revenue: number
   klaviyo_campaign_revenue: number
   klaviyo_flow_revenue: number
+  shopify_total_revenue: number
   total_leads: number
   engaged_leads: number
   engagement_rate: number
@@ -175,10 +176,12 @@ function mapCacheToPortalKlaviyo(cached: CachedKlaviyoData) {
     return bTime - aTime
   })
 
+  const storeRev = cached.summary.shopify_total_revenue || 0
+
   return {
-    storeRevenue: 0,         // Not cached (metric-aggregates), kept for compat
-    storeOrders: 0,          // Not cached, kept for compat
-    recoveryRate: 0,         // Requires storeRevenue
+    storeRevenue: storeRev,
+    storeOrders: 0,
+    recoveryRate: storeRev > 0 ? (totalRevenue / storeRev) * 100 : 0,
     totalLeads: cached.summary.total_leads || 0,
     engagedLeads: cached.summary.engaged_leads || 0,
     engagementRate: cached.summary.engagement_rate || 0,
@@ -532,6 +535,12 @@ export async function GET(request: NextRequest) {
           platform: selectedStore.platform,
         }
 
+        // Shopify: keep HTTP call with dashboard_cache
+        const shopifyData = await fetchShopifyData(selectedStore)
+        if (shopifyData) {
+          response.shopify = mapShopifyData(shopifyData)
+        }
+
         // Klaviyo: read from cache tables (zero API calls)
         const hasKlaviyo = !!(selectedStore.klaviyo_private_key || selectedStore.klaviyo_api_key)
         if (hasKlaviyo) {
@@ -545,12 +554,6 @@ export async function GET(request: NextRequest) {
             response.dataStatus = "syncing"
             response.lastFetchedAt = null
           }
-        }
-
-        // Shopify: keep HTTP call with dashboard_cache
-        const shopifyData = await fetchShopifyData(selectedStore)
-        if (shopifyData) {
-          response.shopify = mapShopifyData(shopifyData)
         }
       }
     } else {
@@ -576,7 +579,7 @@ export async function GET(request: NextRequest) {
           Promise.all(shopifyPromises),
         ])
 
-        // Aggregate Klaviyo data from cache
+        // Aggregate Klaviyo data from cache (storeRevenue comes from Klaviyo metric-aggregates via cache)
         const klaviyoDataList = klaviyoResults
           .filter(r => r.data !== null)
           .map(r => mapCacheToPortalKlaviyo(r.data!))
@@ -606,11 +609,12 @@ export async function GET(request: NextRequest) {
           const aggTotalRevenue = klaviyoDataList.reduce((sum, k) => sum + (k.totalRevenue || 0), 0)
           const aggCampaignRevenue = klaviyoDataList.reduce((sum, k) => sum + (k.campaignRevenue || 0), 0)
           const aggFlowRevenue = klaviyoDataList.reduce((sum, k) => sum + (k.flowRevenue || 0), 0)
+          const aggStoreRevenue = klaviyoDataList.reduce((sum, k) => sum + (k.storeRevenue || 0), 0)
 
           response.klaviyo = {
-            storeRevenue: 0,
+            storeRevenue: aggStoreRevenue,
             storeOrders: 0,
-            recoveryRate: 0,
+            recoveryRate: aggStoreRevenue > 0 ? (aggTotalRevenue / aggStoreRevenue) * 100 : 0,
             totalLeads: klaviyoDataList.reduce((sum, k) => sum + (k.totalLeads || 0), 0),
             engagedLeads: klaviyoDataList.reduce((sum, k) => sum + (k.engagedLeads || 0), 0),
             engagementRate: (() => {
@@ -655,7 +659,7 @@ export async function GET(request: NextRequest) {
           response.lastFetchedAt = null
         }
 
-        // Aggregate Shopify data (unchanged logic)
+        // Aggregate Shopify data
         const shopifyDataList = shopifyResults
           .filter(r => r.data !== null)
           .map(r => mapShopifyData(r.data!))
