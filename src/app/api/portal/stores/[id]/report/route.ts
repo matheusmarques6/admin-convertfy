@@ -143,9 +143,10 @@ export async function GET(
         success: true,
         store: {
           id: store.id,
-          name: store.store_name,
+          store_name: store.store_name,
+          store_url: store.store_url,
           platform: store.platform,
-          url: store.store_url,
+          is_active: true,
           hasKlaviyo: !!(store.klaviyo_private_key || store.klaviyo_api_key),
           hasShopify: !!(store.shopify_access_token && store.shopify_store_domain),
         },
@@ -154,13 +155,52 @@ export async function GET(
           ? {
               connected: klaviyoReport.connected,
               account: klaviyoReport.account,
-              overview: klaviyoReport.overview,
-              revenue: klaviyoReport.revenue,
-              engagement: klaviyoReport.engagement,
-              emailPerformance: klaviyoReport.emailPerformance,
-              campaigns: klaviyoReport.campaigns,
-              flows: klaviyoReport.flowPerformance,
-              lists: klaviyoReport.lists?.slice(0, 10),
+              // Flat fields expected by portal page
+              totalLeads: klaviyoReport.overview?.totalSubscribers || 0,
+              engagedLeads: klaviyoReport.engagement?.engagedProfiles || 0,
+              engagementRate: parseFloat(klaviyoReport.engagement?.engagementRate) || 0,
+              totalRevenue: klaviyoReport.revenue?.totalRevenue || 0,
+              campaignRevenue: klaviyoReport.revenue?.campaignRevenue || 0,
+              flowRevenue: klaviyoReport.revenue?.flowRevenue || 0,
+              emailsSent: klaviyoReport.emailPerformance?.delivered || 0,
+              openRate: klaviyoReport.emailPerformance?.openRate || 0,
+              clickRate: klaviyoReport.emailPerformance?.clickRate || 0,
+              conversionRate: klaviyoReport.revenue?.totalOrders && klaviyoReport.emailPerformance?.delivered
+                ? (klaviyoReport.revenue.totalOrders / klaviyoReport.emailPerformance.delivered) * 100
+                : 0,
+              unsubscribeRate: klaviyoReport.emailPerformance?.unsubscribeRate || 0,
+              bounceRate: klaviyoReport.emailPerformance?.bounceRate || 0,
+              delivered: klaviyoReport.emailPerformance?.delivered || 0,
+              lists: (klaviyoReport.lists || []).slice(0, 10).map((l: Record<string, unknown>) => ({
+                name: l.name,
+                count: (l.profileCount as number) || 0,
+              })),
+              recentCampaigns: (
+                (klaviyoReport.campaignPerformance?.campaigns as Record<string, unknown>[]) ||
+                (klaviyoReport.campaigns?.recentCampaigns as Record<string, unknown>[]) ||
+                []
+              ).slice(0, 10).map((c: Record<string, unknown>) => ({
+                id: c.campaignId || c.id,
+                name: c.name,
+                status: c.status || "sent",
+                sentAt: c.sendTime || c.sentAt || null,
+                recipients: c.recipients || 0,
+                delivered: c.delivered || 0,
+                opened: c.opens || c.opened || 0,
+                clicked: c.clicks || c.clicked || 0,
+                revenue: c.revenue || 0,
+                openRate: c.openRate || 0,
+                clickRate: c.clickRate || 0,
+              })),
+              topFlows: ((klaviyoReport.flowPerformance?.flows as Record<string, unknown>[]) || [])
+                .slice(0, 5).map((f: Record<string, unknown>) => ({
+                  id: f.flowId || f.id,
+                  name: f.name,
+                  revenue: f.revenue || 0,
+                  recipients: f.recipients || 0,
+                  openRate: f.openRate || 0,
+                  clickRate: f.clickRate || 0,
+                })),
             }
           : null,
         shopify: shopifyReport
@@ -169,6 +209,19 @@ export async function GET(
               shop: shopifyReport.shop,
               orders: shopifyReport.orders,
               products: shopifyReport.products,
+              // Flat fields expected by portal page
+              totalOrders: shopifyReport.summary?.totalOrders || shopifyReport.orders?.totalOrders || 0,
+              totalRevenue: shopifyReport.summary?.totalRevenue || shopifyReport.orders?.totalRevenue || 0,
+              averageOrderValue: shopifyReport.summary?.averageOrderValue || shopifyReport.orders?.averageOrderValue || 0,
+              recurringCustomerRate: shopifyReport.summary?.recurringCustomerRate || shopifyReport.orders?.recurringCustomerRate || 0,
+              newCustomers: shopifyReport.customers?.newCustomersLast30Days || 0,
+              topProducts: (shopifyReport.bestSellingProducts || shopifyReport.orders?.bestSellingProducts || [])
+                .slice(0, 10)
+                .map((p: Record<string, unknown>) => ({
+                  name: p.title || p.name,
+                  quantity: p.totalQuantity || p.quantity || 0,
+                  revenue: p.totalRevenue || p.revenue || 0,
+                })),
             }
           : null,
         campaigns: (campaigns || []).map((c) => ({

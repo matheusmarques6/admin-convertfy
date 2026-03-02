@@ -80,8 +80,10 @@ export async function getCachedPlacedOrderMetric(
     log.warn(`[PlacedOrderMetric] Klaviyo API returned no Placed Order metric for key ...${apiKey.slice(-4)}. This blocks all revenue fetching.`)
   }
 
-  // Save to DB cache in background
-  setCache(supabase, storeKey, "klaviyo_metadata", "placed_order_metric", { metricId } as unknown as Record<string, unknown>, orgId).catch(() => {})
+  // Only cache in DB when metricId was found — avoid persisting null from API failures
+  if (metricId) {
+    setCache(supabase, storeKey, "klaviyo_metadata", "placed_order_metric", { metricId } as unknown as Record<string, unknown>, orgId).catch(() => {})
+  }
 
   return metricId
 }
