@@ -47,6 +47,24 @@ export class ConflictError extends AppError {
   }
 }
 
+export class EmailConfigError extends AppError {
+  constructor(message = "Serviço de email não configurado") {
+    super(message, 500, "EMAIL_CONFIG_ERROR")
+  }
+}
+
+export class EmailRateLimitError extends AppError {
+  constructor(message = "Rate limit de email excedido") {
+    super(message, 429, "EMAIL_RATE_LIMIT")
+  }
+}
+
+export class EmailDeliveryError extends AppError {
+  constructor(message = "Falha ao entregar email") {
+    super(message, 502, "EMAIL_DELIVERY_ERROR")
+  }
+}
+
 // --- Response Helpers ---
 
 interface ApiErrorResponse {

@@ -5,6 +5,7 @@ import { OrgMemberFormData } from "@/types"
 import { generateTempPassword } from "@/lib/utils/generate-password"
 import { handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
+import { emailService } from "@/lib/email"
 
 const log = logger.child("AdminOrgMembers")
 
@@ -353,6 +354,25 @@ export async function POST(request: NextRequest) {
       await adminClientForCheck
         .from("agent_store_access")
         .insert(accessInserts)
+    }
+
+    // Send welcome email with temp password (non-blocking)
+    if (tempPasswordForResponse && body.email) {
+      try {
+        await emailService.sendWelcomeWithPassword({
+          to: body.email.toLowerCase(),
+          name: body.name || "Usuário",
+          email: body.email.toLowerCase(),
+          tempPassword: tempPasswordForResponse,
+          orgName: member.organization?.name,
+        })
+        log.info("Welcome email sent to new org member", { email: body.email })
+      } catch (emailError) {
+        log.warn("Failed to send welcome email (member was still created)", {
+          email: body.email,
+          error: (emailError as Error).message,
+        })
+      }
     }
 
     // Log activity
