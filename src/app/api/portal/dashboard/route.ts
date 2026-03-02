@@ -20,7 +20,7 @@ import {
 
 const log = logger.child("PortalDashboard")
 
-const PORTAL_LIVE_FETCH_TIMEOUT_MS = 15_000
+const PORTAL_LIVE_FETCH_TIMEOUT_MS = 45_000
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -345,6 +345,7 @@ async function liveFetchKlaviyoForPortal(
   const canFetch = await tryAcquireLiveFetch(supabase, store.id, fetchKey, "portal-fallback")
 
   if (!canFetch) {
+    log.warn(`[Portal LiveFetch] Cooldown active for store ${store.id} key=${fetchKey}, skipping`)
     return null
   }
 
@@ -352,11 +353,16 @@ async function liveFetchKlaviyoForPortal(
     const credentials = await getStoreCredentials(store.id)
     const apiKey = credentials.klaviyo_private_key || credentials.klaviyo_api_key
     if (!apiKey) {
+      log.warn(`[Portal LiveFetch] No API key for store ${store.id}`)
       await releaseLiveFetch(supabase, store.id, fetchKey, "failed")
       return null
     }
 
+    log.info(`[Portal LiveFetch] Starting fetchKlaviyoPerformance for store ${store.id} period=${period}`)
+    const startMs = Date.now()
     const perfData = await fetchKlaviyoPerformance(apiKey, period)
+    const elapsed = Date.now() - startMs
+    log.info(`[Portal LiveFetch] fetchKlaviyoPerformance completed in ${elapsed}ms for store ${store.id}: attributed=${perfData.attributedRevenue}, campaigns=${perfData.recentCampaigns.length}, flows=${perfData.topFlows.length}`)
 
     // Save to cache tables (fire-and-forget)
     const { startDateStr, endDateStr } = parseDateRangeInTimezone(period, "America/Sao_Paulo")
@@ -696,8 +702,10 @@ export async function GET(request: NextRequest) {
 
         // Klaviyo: read from cache tables, auto-fallback to live fetch if empty
         const hasKlaviyo = !!(selectedStore.klaviyo_private_key || selectedStore.klaviyo_api_key)
+        log.info(`[Portal] Single store ${selectedStore.id}: hasKlaviyo=${hasKlaviyo}, period=${period}`)
         if (hasKlaviyo) {
           const cacheResult = await fetchKlaviyoFromCache(selectedStore.id, period, adminClient)
+          log.info(`[Portal] Cache result for store ${selectedStore.id}: hasData=${!!cacheResult.data}, isStale=${cacheResult.isStale}`)
 
           if (cacheResult.data) {
             // Cache HIT (fresh or stale)
@@ -773,6 +781,7 @@ export async function GET(request: NextRequest) {
       const storesWithIntegrations = stores.filter(
         (s) => (s.klaviyo_private_key || s.klaviyo_api_key) || (s.shopify_access_token && s.shopify_store_domain)
       )
+      log.info(`[Portal] All stores mode: total=${stores.length}, withKlaviyo=${storesWithKlaviyo.length}, withIntegrations=${storesWithIntegrations.length}`)
 
       if (storesWithIntegrations.length > 0) {
         // Fetch Klaviyo cached data for all stores in parallel (DB reads, no rate limits)
@@ -794,6 +803,7 @@ export async function GET(request: NextRequest) {
         // Separate stores with cache from stores without
         const withCache = klaviyoCacheResults.filter(r => r.result.data !== null)
         const withoutCache = klaviyoCacheResults.filter(r => r.result.data === null)
+        log.info(`[Portal] Klaviyo cache results: withCache=${withCache.length}, withoutCache=${withoutCache.length}`)
 
         // Live fetch for stores WITHOUT cache (max 5, sequential for rate limits)
         const liveFetchedData: CachedKlaviyoData[] = []
