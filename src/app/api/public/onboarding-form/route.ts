@@ -76,8 +76,8 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (clientError || !client) {
-      log.error("Failed to create client", clientError)
-      throw new AppError("Erro ao criar cadastro", 500)
+      log.error("Failed to create client", { code: clientError?.code, message: clientError?.message, details: clientError?.details, hint: clientError?.hint })
+      throw new AppError(`Erro ao criar cadastro: ${clientError?.message || "unknown"}`, 500)
     }
 
     // 2. Create store
