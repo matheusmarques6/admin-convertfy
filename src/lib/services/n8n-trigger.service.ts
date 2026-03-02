@@ -52,30 +52,42 @@ export class N8nTriggerService {
    */
   async triggerCopyGeneration(params: {
     onboarding_id: string
-    client_name: string
-    store_name: string
-    store_url: string
-    platform: string
-    niche?: string | null
-    target_audience?: string | null
-    price_sensitivity?: string | null
-    briefing_data?: Record<string, unknown>
+    client: {
+      name: string
+      email: string
+      phone?: string | null
+      cpf_cnpj?: string | null
+      company?: string | null
+    }
+    store: {
+      name: string
+      url: string
+      platform: string
+      niche?: string | null
+      country?: string | null
+      language?: string | null
+      target_audience?: string | null
+      free_shipping_type?: string | null
+      shopify_collaborator_code?: string | null
+    }
+    form_data?: {
+      price_sensitivity?: string | null
+      additional_notes?: string | null
+      logo_url?: string | null
+      design_direction_text?: string | null
+      design_direction_file_url?: string | null
+      brand_manual_url?: string | null
+      visual_reference_url?: string | null
+    } | null
     callback_url: string
   }): Promise<TriggerResult> {
     log.info(`Triggering copy generation for onboarding ${params.onboarding_id}`)
 
     return this.sendWebhook("copy-generation", {
       onboarding_id: params.onboarding_id,
-      client_name: params.client_name,
-      store: {
-        name: params.store_name,
-        url: params.store_url,
-        platform: params.platform,
-        niche: params.niche,
-        target_audience: params.target_audience,
-        price_sensitivity: params.price_sensitivity,
-      },
-      briefing_data: params.briefing_data,
+      client: params.client,
+      store: params.store,
+      form_data: params.form_data,
       callback_url: params.callback_url,
       callback_secret: process.env.ONBOARDING_WEBHOOK_SECRET,
     })

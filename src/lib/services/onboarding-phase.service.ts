@@ -159,17 +159,55 @@ export class OnboardingPhaseService {
       }
 
       case "generating_copies": {
-        // Trigger N8N copy generation
+        // Fetch full client + store + form data for N8N
+        const { data: fullClient } = await adminClient
+          .from("clients")
+          .select("id, name, email, phone, cpf_cnpj, company")
+          .eq("id", onboarding.client_id)
+          .single()
+
+        const { data: fullStore } = await adminClient
+          .from("client_stores")
+          .select("id, store_name, store_url, platform, niche, country, language, target_audience, free_shipping_type, shopify_collaborator_code")
+          .eq("id", onboarding.store_id)
+          .single()
+
+        const { data: formData } = await adminClient
+          .from("store_onboarding_data")
+          .select("price_sensitivity, additional_notes, logo_url, design_direction_text, design_direction_file_url, brand_manual_url, visual_reference_url")
+          .eq("store_id", onboarding.store_id)
+          .maybeSingle()
+
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
         await n8nTriggerService.triggerCopyGeneration({
           onboarding_id: onboarding.id,
-          client_name: onboarding.client?.name || "",
-          store_name: onboarding.store?.store_name || "",
-          store_url: onboarding.store?.store_url || "",
-          platform: onboarding.store?.platform || "",
-          niche: onboarding.store?.niche || null,
-          target_audience: onboarding.store?.target_audience || null,
-          price_sensitivity: null,
+          client: {
+            name: fullClient?.name || onboarding.client?.name || "",
+            email: fullClient?.email || "",
+            phone: fullClient?.phone || null,
+            cpf_cnpj: fullClient?.cpf_cnpj || null,
+            company: fullClient?.company || null,
+          },
+          store: {
+            name: fullStore?.store_name || onboarding.store?.store_name || "",
+            url: fullStore?.store_url || onboarding.store?.store_url || "",
+            platform: fullStore?.platform || onboarding.store?.platform || "",
+            niche: fullStore?.niche || null,
+            country: fullStore?.country || null,
+            language: fullStore?.language || null,
+            target_audience: fullStore?.target_audience || null,
+            free_shipping_type: fullStore?.free_shipping_type || null,
+            shopify_collaborator_code: fullStore?.shopify_collaborator_code || null,
+          },
+          form_data: formData ? {
+            price_sensitivity: formData.price_sensitivity || null,
+            additional_notes: formData.additional_notes || null,
+            logo_url: formData.logo_url || null,
+            design_direction_text: formData.design_direction_text || null,
+            design_direction_file_url: formData.design_direction_file_url || null,
+            brand_manual_url: formData.brand_manual_url || null,
+            visual_reference_url: formData.visual_reference_url || null,
+          } : null,
           callback_url: `${appUrl}/api/onboarding/webhook`,
         })
 
