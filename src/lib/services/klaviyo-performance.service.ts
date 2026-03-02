@@ -489,7 +489,7 @@ export async function fetchKlaviyoPerformance(
   const flowNames = new Map<string, { name: string; status: string }>()
 
   if (campAgg.size > 0) {
-    let page: string | null = "/campaigns/?page[size]=100"
+    let page: string | null = "/campaigns/?page[size]=50"
     while (page) {
       const resp: NameListResp | null = await klaviyoRequest<NameListResp>(apiKey, page)
       if (!resp?.data) break
@@ -503,7 +503,7 @@ export async function fetchKlaviyoPerformance(
 
   const archivedFlowIds = new Set<string>()
   if (flowAgg.size > 0) {
-    let page: string | null = "/flows/?page[size]=100"
+    let page: string | null = "/flows/?page[size]=50"
     while (page) {
       const resp: NameListResp | null = await klaviyoRequest<NameListResp>(apiKey, page)
       if (!resp?.data) break
