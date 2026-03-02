@@ -6,23 +6,17 @@ import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
 import { decryptStoreCredentials } from "@/lib/crypto"
 import { CACHE_VERSION } from "@/lib/cache"
-import { parseDateRangeInTimezone, getTimezoneOffset } from "@/lib/integrations/klaviyo"
+import { parseDateRangeInTimezone } from "@/lib/integrations/klaviyo"
 import { isCachedPeriod } from "@/lib/shared/data-status"
 import type { DataStatus } from "@/lib/shared/data-status"
 import { syncShopifyForStore } from "@/lib/services/shopify-sync.service"
-import {
-  syncKlaviyoForPeriod,
-  fetchFlowNames,
-  fetchCampaignNames,
-  type KlaviyoSyncData,
-} from "@/lib/services/klaviyo-sync.service"
 import { tryAcquireLiveFetch, releaseLiveFetch, getFetchKey } from "@/lib/services/fetch-cooldown.service"
-import { upsertSyncResults } from "@/lib/services/sync-persistence.service"
+import { savePerfDataToCache } from "@/lib/services/sync-persistence.service"
 import { getStoreCredentials } from "@/lib/services/credentials.service"
 import {
-  getCachedAccountInfo,
-  getCachedPlacedOrderMetric,
-} from "@/lib/integrations/klaviyo/cached-metadata"
+  fetchKlaviyoPerformance,
+  type KlaviyoPerformanceData,
+} from "@/lib/services/klaviyo-performance.service"
 
 const log = logger.child("PortalDashboard")
 
@@ -280,66 +274,62 @@ interface PortalStoreInfo {
   shopify_store_domain?: string | null
 }
 
-// ─── buildCachedKlaviyoData: convert sync data to CachedKlaviyoData format ──
+// ─── perfDataToCachedKlaviyo: convert KlaviyoPerformanceData to CachedKlaviyoData format ──
 
-function buildCachedKlaviyoData(
-  syncData: KlaviyoSyncData,
-  _storeId: string,
-  _period: string,
-): CachedKlaviyoData {
+function perfDataToCachedKlaviyo(data: KlaviyoPerformanceData): CachedKlaviyoData {
   return {
     summary: {
-      klaviyo_total_revenue: syncData.campaignRevenue + syncData.flowRevenue,
-      klaviyo_campaign_revenue: syncData.campaignRevenue,
-      klaviyo_flow_revenue: syncData.flowRevenue,
-      store_total_revenue: syncData.storeRevenue,
-      store_orders: syncData.storeOrders,
-      total_leads: 0,
-      engaged_leads: 0,
-      engagement_rate: 0,
-      period_start: syncData.startDateStr,
-      period_end: syncData.endDateStr,
+      klaviyo_total_revenue: data.attributedRevenue,
+      klaviyo_campaign_revenue: data.campaignRevenue,
+      klaviyo_flow_revenue: data.flowRevenue,
+      store_total_revenue: data.storeRevenue,
+      store_orders: data.storeOrders,
+      total_leads: data.totalLeads,
+      engaged_leads: data.engagedLeads,
+      engagement_rate: data.engagementRate,
+      period_start: "",
+      period_end: "",
       fetched_at: new Date().toISOString(),
       sync_status: "ok",
     },
-    campaigns: syncData.campRows.map(row => ({
-      campaign_id: row.campaign_id,
-      campaign_name: row.campaign_name,
-      campaign_status: row.campaign_status,
-      send_time: row.send_time,
-      recipients: row.recipients,
-      delivered: row.delivered,
-      opened: row.opened,
-      open_rate: row.open_rate,
-      clicked: row.clicked,
-      click_rate: row.click_rate,
-      click_to_open_rate: row.click_to_open_rate,
-      conversions: row.conversions,
-      conversion_rate: row.conversion_rate,
-      conversion_value: row.conversion_value,
-      bounce_rate: row.bounce_rate,
-      bounced: row.bounced,
-      unsubscribe_rate: row.unsubscribe_rate,
-      unsubscribed: row.unsubscribed,
+    campaigns: data.recentCampaigns.map(c => ({
+      campaign_id: c.campaignId,
+      campaign_name: c.name,
+      campaign_status: "sent",
+      send_time: c.sendTime || null,
+      recipients: c.recipients,
+      delivered: c.delivered,
+      opened: Math.round(c.openRate * c.delivered / 100),
+      open_rate: c.openRate,
+      clicked: Math.round(c.clickRate * c.delivered / 100),
+      click_rate: c.clickRate,
+      click_to_open_rate: 0,
+      conversions: 0,
+      conversion_rate: 0,
+      conversion_value: c.revenue,
+      bounce_rate: 0,
+      bounced: 0,
+      unsubscribe_rate: 0,
+      unsubscribed: 0,
     })),
-    flows: syncData.flowRows.map(row => ({
-      flow_id: row.flow_id,
-      flow_name: row.flow_name,
-      flow_status: row.flow_status,
-      recipients: row.recipients,
-      delivered: row.delivered,
-      opened: row.opened,
-      open_rate: row.open_rate,
-      clicked: row.clicked,
-      click_rate: row.click_rate,
-      click_to_open_rate: row.click_to_open_rate,
-      conversions: row.conversions,
-      conversion_rate: row.conversion_rate,
-      conversion_value: row.conversion_value,
-      bounce_rate: row.bounce_rate,
-      bounced: row.bounced,
-      unsubscribe_rate: row.unsubscribe_rate,
-      unsubscribed: row.unsubscribed,
+    flows: data.topFlows.map(f => ({
+      flow_id: f.flowId,
+      flow_name: f.name,
+      flow_status: f.status,
+      recipients: 0,
+      delivered: f.delivered,
+      opened: Math.round(f.openRate * f.delivered / 100),
+      open_rate: f.openRate,
+      clicked: Math.round(f.clickRate * f.delivered / 100),
+      click_rate: f.clickRate,
+      click_to_open_rate: 0,
+      conversions: 0,
+      conversion_rate: 0,
+      conversion_value: f.revenue,
+      bounce_rate: 0,
+      bounced: 0,
+      unsubscribe_rate: 0,
+      unsubscribed: 0,
     })),
   }
 }
@@ -366,42 +356,14 @@ async function liveFetchKlaviyoForPortal(
       return null
     }
 
-    const accountInfo = await getCachedAccountInfo(apiKey)
-    const metricId = await getCachedPlacedOrderMetric(apiKey)
-    if (!metricId) {
-      log.warn(`[Portal LiveFetch] No Placed Order metric found for store ${store.id} — skipping live fetch. Check Klaviyo API key validity.`)
-      await releaseLiveFetch(supabase, store.id, fetchKey, "failed")
-      return null
-    }
+    const perfData = await fetchKlaviyoPerformance(apiKey, period)
 
-    const [flowNames, campNames] = await Promise.all([
-      fetchFlowNames(apiKey),
-      fetchCampaignNames(apiKey),
-    ])
+    // Save to cache tables (fire-and-forget)
+    const { startDateStr, endDateStr } = parseDateRangeInTimezone(period, "America/Sao_Paulo")
+    savePerfDataToCache(supabase, store.id, store.org_id || null, period, perfData, startDateStr, endDateStr).catch(() => {})
 
-    const syncResult = await syncKlaviyoForPeriod({
-      storeId: store.id,
-      orgId: store.org_id || null,
-      apiKey,
-      timezone: accountInfo.timezone,
-      timezoneOffset: getTimezoneOffset(accountInfo.timezone),
-      metricId,
-      period,
-      flowNames,
-      campNames,
-    })
-
-    if (syncResult.success && syncResult.data) {
-      await upsertSyncResults(supabase, store, syncResult.data, period)
-      await releaseLiveFetch(supabase, store.id, fetchKey, "completed")
-      // Re-read from cache after upsert to include audience data populated by cron
-      // (buildCachedKlaviyoData would return total_leads=0 since live fetch skips audience)
-      const freshCache = await fetchKlaviyoFromCache(store.id, period, supabase)
-      return freshCache.data || buildCachedKlaviyoData(syncResult.data, store.id, period)
-    }
-
-    await releaseLiveFetch(supabase, store.id, fetchKey, "failed")
-    return null
+    await releaseLiveFetch(supabase, store.id, fetchKey, "completed")
+    return perfDataToCachedKlaviyo(perfData)
   } catch (err) {
     await releaseLiveFetch(supabase, store.id, fetchKey, "failed")
     log.error(`[Portal LiveFetch] Error for store ${store.id}:`, err)

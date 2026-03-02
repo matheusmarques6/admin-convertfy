@@ -5,20 +5,10 @@ import { requireAuth, successResponse, errorResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { logger } from "@/lib/logger"
 import { type DataStatus, type DataStatusMeta } from "@/lib/shared/data-status"
-import {
-  syncKlaviyoForPeriod,
-  fetchFlowNames,
-  fetchCampaignNames,
-  type KlaviyoSyncData,
-} from "@/lib/services/klaviyo-sync.service"
-import { tryAcquireLiveFetch, releaseLiveFetch, getFetchKey } from "@/lib/services/fetch-cooldown.service"
-import { upsertSyncResults } from "@/lib/services/sync-persistence.service"
+import { fetchKlaviyoPerformance } from "@/lib/services/klaviyo-performance.service"
+import { savePerfDataToCache } from "@/lib/services/sync-persistence.service"
 import { getStoreCredentials } from "@/lib/services/credentials.service"
-import {
-  getCachedAccountInfo,
-  getCachedPlacedOrderMetric,
-  getTimezoneOffset,
-} from "@/lib/integrations/klaviyo"
+import { parseDateRange, formatDateStr } from "@/lib/integrations/klaviyo"
 
 const log = logger.child("TotalRevenue")
 
@@ -162,52 +152,7 @@ function emptyResponse(
   }
 }
 
-// ── Build StoreRevenue from sync result ────────────────────────────────────
-
-function buildSummaryFromSync(store: StoreRow, data: KlaviyoSyncData): StoreRevenue {
-  return {
-    storeId: store.id,
-    storeName: store.store_name || "Loja sem nome",
-    clientName: store.client_id
-      ? (store.clients?.name || "Cliente desconhecido")
-      : store.store_name || "Loja avulsa",
-    totalRevenue: data.campaignRevenue + data.flowRevenue,
-    campaignRevenue: data.campaignRevenue,
-    flowRevenue: data.flowRevenue,
-  }
-}
-
-// ── Read (possibly stale) cached summary for a store ───────────────────────
-
-async function getCachedSummary(
-  supabase: SupabaseClient,
-  storeId: string,
-  period: string,
-  store: StoreRow,
-): Promise<StoreRevenue | null> {
-  // Read without expires_at filter (allow stale)
-  const { data } = await supabase
-    .from("store_revenue_summary")
-    .select("klaviyo_total_revenue, klaviyo_campaign_revenue, klaviyo_flow_revenue")
-    .eq("store_id", storeId)
-    .eq("period_label", period)
-    .single()
-
-  if (!data) return null
-
-  return {
-    storeId,
-    storeName: store.store_name || "Loja sem nome",
-    clientName: store.client_id
-      ? (store.clients?.name || "Cliente desconhecido")
-      : store.store_name || "Loja avulsa",
-    totalRevenue: Number(data.klaviyo_total_revenue),
-    campaignRevenue: Number(data.klaviyo_campaign_revenue),
-    flowRevenue: Number(data.klaviyo_flow_revenue),
-  }
-}
-
-// ── Live fetch for stores (sequential, with cooldown) ──────────────────────
+// ── Live fetch for stores using fetchKlaviyoPerformance ─────────────────────
 
 async function liveFetchForStores(
   stores: StoreRow[],
@@ -216,70 +161,40 @@ async function liveFetchForStores(
 ): Promise<{ results: StoreRevenue[]; fetchedAt: string | null; hasStale: boolean }> {
   const results: StoreRevenue[] = []
   let fetchedAt: string | null = null
-  let hasStale = false
+
+  const { startDate, endDate } = parseDateRange(period)
+  const startDateStr = formatDateStr(startDate)
+  const endDateStr = formatDateStr(endDate)
 
   for (const store of stores) {
-    const fetchKey = getFetchKey(period)
-    const canFetch = await tryAcquireLiveFetch(adminSupabase, store.id, fetchKey, "admin-fallback")
-
-    if (!canFetch) {
-      // Cooldown active -- try stale cache
-      const cached = await getCachedSummary(adminSupabase, store.id, period, store)
-      if (cached) {
-        results.push(cached)
-        hasStale = true
-      }
-      continue
-    }
-
     try {
       const credentials = await getStoreCredentials(store.id)
       const apiKey = credentials.klaviyo_private_key || credentials.klaviyo_api_key
-      if (!apiKey) {
-        await releaseLiveFetch(adminSupabase, store.id, fetchKey, "failed")
-        continue
-      }
+      if (!apiKey) continue
 
-      const accountInfo = await getCachedAccountInfo(apiKey, store.org_id ?? undefined)
-      const metricId = await getCachedPlacedOrderMetric(apiKey, store.org_id ?? undefined)
-      if (!metricId) {
-        log.warn(`[LiveFetch] No Placed Order metric found for store ${store.store_name} (${store.id}) — skipping live fetch. Check Klaviyo API key validity.`)
-        await releaseLiveFetch(adminSupabase, store.id, fetchKey, "failed")
-        continue
-      }
+      const perfData = await fetchKlaviyoPerformance(apiKey, period)
 
-      const [flowNames, campNames] = await Promise.all([
-        fetchFlowNames(apiKey),
-        fetchCampaignNames(apiKey),
-      ])
-
-      const syncResult = await syncKlaviyoForPeriod({
+      results.push({
         storeId: store.id,
-        orgId: store.org_id,
-        apiKey,
-        timezone: accountInfo.timezone,
-        timezoneOffset: getTimezoneOffset(accountInfo.timezone),
-        metricId,
-        period,
-        flowNames,
-        campNames,
+        storeName: store.store_name || "Loja sem nome",
+        clientName: store.client_id
+          ? (store.clients?.name || "Cliente desconhecido")
+          : store.store_name || "Loja avulsa",
+        totalRevenue: perfData.attributedRevenue,
+        campaignRevenue: perfData.campaignRevenue,
+        flowRevenue: perfData.flowRevenue,
       })
+      fetchedAt = new Date().toISOString()
 
-      if (syncResult.success && syncResult.data) {
-        await upsertSyncResults(adminSupabase, store, syncResult.data, period)
-        results.push(buildSummaryFromSync(store, syncResult.data))
-        fetchedAt = syncResult.fetchedAt
-      }
-
-      await releaseLiveFetch(adminSupabase, store.id, fetchKey, "completed")
+      // Fire-and-forget: save to cache for next request
+      savePerfDataToCache(adminSupabase, store.id, store.org_id, period, perfData, startDateStr, endDateStr).catch(() => {})
     } catch (err) {
-      await releaseLiveFetch(adminSupabase, store.id, fetchKey, "failed")
       log.warn(`[LiveFetch] Error for store ${store.store_name}:`, err)
       // Continue with next store
     }
   }
 
-  return { results, fetchedAt, hasStale }
+  return { results, fetchedAt, hasStale: false }
 }
 
 // ── Wrap live fetch with timeout ───────────────────────────────────────────
@@ -445,7 +360,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Live fetch with 30s timeout
-    const { results: liveResults, fetchedAt, timedOut, hasStale } =
+    const { results: liveResults, fetchedAt, timedOut } =
       await liveFetchWithTimeout(stores, period, adminSupabase)
 
     const elapsed = Date.now() - startTime
@@ -459,7 +374,6 @@ export async function GET(request: NextRequest) {
         cacheHits: 0,
         cacheMisses: stores.length,
         liveFetches: 0,
-        cooldownBlocked: 0,
         source: "live",
         elapsed: `${elapsed}ms`,
         timedOut: true,
@@ -475,7 +389,7 @@ export async function GET(request: NextRequest) {
       return response
     }
 
-    const source = hasStale ? "stale-cache" as const : "live" as const
+    const source = "live" as const
     const dataStatus: DataStatus = timedOut ? "stale" : "ready"
 
     log.info("[CacheStrategy]", {
