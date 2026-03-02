@@ -57,6 +57,8 @@ export async function POST(request: NextRequest) {
       results.klaviyo = klaviyoResult
       dbUpdates.klaviyo_validated_at = klaviyoResult.tested_at
       dbUpdates.klaviyo_validation_error = klaviyoResult.valid ? null : klaviyoResult.error
+      dbUpdates.klaviyo_missing_scopes = klaviyoResult.missingScopes || null
+      dbUpdates.klaviyo_has_reporting_access = klaviyoResult.hasReportingAccess ?? null
     }
 
     // Persist validation results in the database

@@ -15,6 +15,8 @@ export interface ValidationResult {
   valid: boolean
   error?: string
   tested_at: string // ISO 8601
+  missingScopes?: string[]
+  hasReportingAccess?: boolean
 }
 
 /**
@@ -112,6 +114,53 @@ export async function validateShopifyCredentials(
   }
 }
 
+const KLAVIYO_SCOPE_CHECKS: { scope: string; url: string }[] = [
+  { scope: "accounts:read", url: "https://a.klaviyo.com/api/accounts/" },
+  { scope: "campaigns:read", url: "https://a.klaviyo.com/api/campaigns/?page[size]=1" },
+  { scope: "flows:read", url: "https://a.klaviyo.com/api/flows/?page[size]=1" },
+]
+
+/**
+ * Check which Klaviyo scopes are missing by probing each endpoint in parallel.
+ * Returns an array of missing scope names.
+ */
+async function checkKlaviyoScopes(apiKey: string): Promise<string[]> {
+  const results = await Promise.allSettled(
+    KLAVIYO_SCOPE_CHECKS.map(async ({ scope, url }) => {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), VALIDATION_TIMEOUT_MS)
+
+      try {
+        const res = await fetch(url, {
+          method: "GET",
+          headers: {
+            Authorization: `Klaviyo-API-Key ${apiKey}`,
+            revision: "2024-10-15",
+            Accept: "application/json",
+          },
+          signal: controller.signal,
+        })
+
+        clearTimeout(timeout)
+
+        if (res.status === 403) {
+          return scope // missing
+        }
+        // 200 = scope OK, 429 = rate limited (skip)
+        return null
+      } catch {
+        clearTimeout(timeout)
+        log.warn("Klaviyo scope check failed", { scope, url })
+        return null // Timeout or network error — don't report as missing
+      }
+    })
+  )
+
+  return results
+    .filter((r): r is PromiseFulfilledResult<string> => r.status === "fulfilled" && r.value !== null)
+    .map((r) => r.value)
+}
+
 /**
  * Validate Klaviyo credentials by calling GET /api/metrics/?page[size]=1
  * Uses metrics:read scope (minimum scope the app needs) instead of accounts:read.
@@ -144,8 +193,17 @@ export async function validateKlaviyoCredentials(
     clearTimeout(timeout)
 
     if (response.ok) {
-      log.info("Klaviyo credentials valid")
-      return { valid: true, tested_at: testedAt }
+      log.info("Klaviyo credentials valid, checking scopes...")
+      const missingScopes = await checkKlaviyoScopes(apiKey)
+      if (missingScopes.length > 0) {
+        log.warn("Klaviyo missing scopes", { missingScopes })
+      }
+      return {
+        valid: true,
+        tested_at: testedAt,
+        hasReportingAccess: true, // metrics:read confirmed (this endpoint succeeded)
+        missingScopes: missingScopes.length > 0 ? missingScopes : undefined,
+      }
     }
 
     if (response.status === 401) {

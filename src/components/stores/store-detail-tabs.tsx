@@ -46,6 +46,7 @@ interface IntegrationStatusData {
   validated_at?: string | null
   error?: string | null
   hasReportingAccess?: boolean
+  missingScopes?: string[]
 }
 
 interface StoreDetailTabsProps {
@@ -710,6 +711,8 @@ function IntegrationStatusCard({
             status: result.valid ? "connected" as const : "error" as const,
             validated_at: result.tested_at,
             error: result.valid ? null : (result.error || "Erro desconhecido"),
+            hasReportingAccess: result.hasReportingAccess,
+            missingScopes: result.missingScopes,
           },
         }))
       }
@@ -782,7 +785,13 @@ function IntegrationStatusCard({
                       {status.error}
                     </p>
                   )}
-                  {key === "klaviyo" && connectionStatus === "connected" && status?.hasReportingAccess === false && (
+                  {key === "klaviyo" && connectionStatus === "connected" && status?.missingScopes && status.missingScopes.length > 0 && (
+                    <p className="text-xs text-warning flex items-center gap-1 mt-0.5">
+                      <AlertTriangle className="h-3 w-3 flex-shrink-0" />
+                      Scopes faltando: {status.missingScopes.join(", ")}
+                    </p>
+                  )}
+                  {key === "klaviyo" && connectionStatus === "connected" && status?.hasReportingAccess === false && !status?.missingScopes?.length && (
                     <p className="text-xs text-warning flex items-center gap-1 mt-0.5">
                       <AlertTriangle className="h-3 w-3" />
                       Sem acesso a relatórios

@@ -63,6 +63,7 @@ export interface IntegrationStatusEntry {
   validated_at?: string | null
   error?: string | null
   hasReportingAccess?: boolean
+  missingScopes?: string[]
 }
 
 export interface IntegrationStatus {
@@ -249,6 +250,8 @@ export async function getStoreIntegrationStatus(storeId: string): Promise<Integr
       klaviyo_private_key,
       klaviyo_validated_at,
       klaviyo_validation_error,
+      klaviyo_missing_scopes,
+      klaviyo_has_reporting_access,
       ga4_credentials,
       meta_access_token
     `)
@@ -268,11 +271,15 @@ export async function getStoreIntegrationStatus(storeId: string): Promise<Integr
       store.shopify_validated_at,
       store.shopify_validation_error
     ),
-    klaviyo: deriveStatus(
-      !!(store.klaviyo_api_key || store.klaviyo_private_key),
-      store.klaviyo_validated_at,
-      store.klaviyo_validation_error
-    ),
+    klaviyo: {
+      ...deriveStatus(
+        !!(store.klaviyo_api_key || store.klaviyo_private_key),
+        store.klaviyo_validated_at,
+        store.klaviyo_validation_error
+      ),
+      hasReportingAccess: store.klaviyo_has_reporting_access ?? undefined,
+      missingScopes: store.klaviyo_missing_scopes ?? undefined,
+    },
     ga4: saved.ga4 || { connected: !!store.ga4_credentials, status: store.ga4_credentials ? "connected" : "not_configured" },
     meta: saved.meta || { connected: !!store.meta_access_token, status: store.meta_access_token ? "connected" : "not_configured" },
     google_ads: saved.google_ads || { connected: false, status: "not_configured" },
