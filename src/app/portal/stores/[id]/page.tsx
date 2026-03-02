@@ -455,7 +455,8 @@ export default function PortalStoreReportPage({
   const fetchReport = useCallback(async (showRefresh = false) => {
     if (showRefresh) setRefreshing(true)
     try {
-      const response = await fetch(`/api/portal/stores/${id}/report?period=${period}`)
+      const refreshParam = showRefresh ? "&force_refresh=true" : ""
+      const response = await fetch(`/api/portal/stores/${id}/report?period=${period}${refreshParam}`)
       if (!response.ok) {
         throw new Error("Erro ao carregar relatório")
       }
