@@ -240,35 +240,51 @@ export async function POST(request: NextRequest) {
         if (!store_id) throw new AppError("store_id é obrigatório", 400)
         if (!private_key) throw new AppError("private_key é obrigatório", 400)
 
-        // Verify store belongs to this client
+        // Verify store belongs to this client (include integration_status for merge)
         const { data: ownedStore4 } = await adminClient
           .from("client_stores")
-          .select("id")
+          .select("id, integration_status")
           .eq("id", store_id)
           .eq("client_id", portalUser.client_id)
           .single()
 
         if (!ownedStore4) throw new AppError("Loja não encontrada", 404)
 
-        // Test the key first
-        const testRes = await fetch("https://a.klaviyo.com/api/accounts/", {
-          headers: {
-            Authorization: `Klaviyo-API-Key ${private_key}`,
-            revision: "2024-10-15",
-            Accept: "application/json",
-          },
-        })
-
-        if (!testRes.ok) {
-          throw new AppError("Chave da API inválida. Verifique e tente novamente.", 400)
+        // Test the key - use /api/metrics/ which requires metrics:read (minimum scope needed)
+        let testRes: Response
+        try {
+          testRes = await fetch("https://a.klaviyo.com/api/metrics/?page[size]=1", {
+            headers: {
+              Authorization: `Klaviyo-API-Key ${private_key}`,
+              revision: "2024-10-15",
+              Accept: "application/json",
+            },
+          })
+        } catch {
+          throw new AppError("Não foi possível conectar ao Klaviyo. Tente novamente.", 502)
         }
 
-        // Save encrypted key
+        if (testRes.status === 401) {
+          throw new AppError("Chave da API inválida. Verifique e tente novamente.", 400)
+        }
+        if (testRes.status === 403) {
+          throw new AppError(
+            "Chave válida, mas sem permissões necessárias. Crie uma Private API Key com scope 'metrics:read' habilitado.",
+            400
+          )
+        }
+        if (!testRes.ok) {
+          throw new AppError("Erro ao validar chave do Klaviyo. Tente novamente.", 400)
+        }
+
+        // Save encrypted key (merge integration_status to preserve other keys)
+        const currentStatus = (ownedStore4.integration_status as Record<string, unknown>) || {}
         await adminClient
           .from("client_stores")
           .update({
             klaviyo_private_key: encrypt(private_key),
             integration_status: {
+              ...currentStatus,
               klaviyo: { connected: true, connected_at: new Date().toISOString() },
             },
             updated_at: new Date().toISOString(),

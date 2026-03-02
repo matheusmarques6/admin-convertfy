@@ -113,7 +113,8 @@ export async function validateShopifyCredentials(
 }
 
 /**
- * Validate Klaviyo credentials by calling GET /api/accounts/
+ * Validate Klaviyo credentials by calling GET /api/metrics/?page[size]=1
+ * Uses metrics:read scope (minimum scope the app needs) instead of accounts:read.
  */
 export async function validateKlaviyoCredentials(
   apiKey: string
@@ -124,7 +125,7 @@ export async function validateKlaviyoCredentials(
     return { valid: false, error: "API Key é obrigatória", tested_at: testedAt }
   }
 
-  const url = "https://a.klaviyo.com/api/accounts/"
+  const url = "https://a.klaviyo.com/api/metrics/?page[size]=1"
 
   try {
     const controller = new AbortController()
@@ -147,10 +148,18 @@ export async function validateKlaviyoCredentials(
       return { valid: true, tested_at: testedAt }
     }
 
-    if (response.status === 401 || response.status === 403) {
+    if (response.status === 401) {
       return {
         valid: false,
-        error: "API Key inválida ou sem permissões",
+        error: "API Key inválida. Verifique e tente novamente.",
+        tested_at: testedAt,
+      }
+    }
+
+    if (response.status === 403) {
+      return {
+        valid: false,
+        error: "API Key válida, mas sem permissão 'metrics:read'. Verifique os scopes da chave.",
         tested_at: testedAt,
       }
     }
