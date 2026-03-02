@@ -596,10 +596,13 @@ export interface DashboardMetrics {
 
 export interface DashboardAlert {
   id: string
-  type: "payment_overdue" | "contract_expiring" | "health_low" | "meeting_overdue" | "report_pending"
+  type: "payment_overdue" | "contract_expiring" | "health_low" | "meeting_overdue" | "report_pending" | "low_revenue" | "klaviyo_account_error" | "campaign_failure" | "low_recovery_rate"
   title: string
   description: string
   client_id?: string
+  store_id?: string
+  store_name?: string
+  action_url?: string
   severity: "low" | "medium" | "high"
   created_at?: string
 }

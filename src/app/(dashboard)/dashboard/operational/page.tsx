@@ -104,6 +104,7 @@ async function getOperationalData() {
     { data: expiringContracts },
     { data: lowHealthClients },
     { data: overdueCharges },
+    { data: storeAlertsData },
   ] = await Promise.all([
     // Novos clientes (ultimos 30 dias, do escopo do agente)
     supabase
@@ -186,6 +187,15 @@ async function getOperationalData() {
       .eq("status", "overdue")
       .order("due_date", { ascending: true })
       .limit(5),
+
+    // Store alerts (active/acknowledged, scoped to agent's stores)
+    supabase
+      .from("store_alerts")
+      .select("id, store_id, client_id, type, severity, title, message, status, created_at, store:client_stores(store_name), client:clients(name)")
+      .in("store_id", storeIds.length > 0 ? storeIds : ["__none__"])
+      .in("status", ["active", "acknowledged"])
+      .order("created_at", { ascending: false })
+      .limit(10),
   ])
 
   // 5. Calcular metricas
@@ -251,6 +261,48 @@ async function getOperationalData() {
       severity: "low",
     })
   })
+
+  // Store alerts
+  const VALID_ALERT_TYPES: Set<DashboardAlert["type"]> = new Set([
+    "payment_overdue", "contract_expiring", "health_low", "meeting_overdue",
+    "report_pending", "low_revenue", "klaviyo_account_error", "campaign_failure",
+    "low_recovery_rate",
+  ])
+  const severityMap: Record<string, "high" | "medium" | "low"> = {
+    critical: "high",
+    warning: "medium",
+    info: "low",
+  }
+
+  const storeNameMap = new Map<string, string>()
+  storeAccess.forEach(a => {
+    const store = Array.isArray(a.store) ? a.store[0] : a.store
+    if (store?.id && store?.store_name) storeNameMap.set(store.id, store.store_name)
+  })
+
+  storeAlertsData?.forEach((sa) => {
+    if (!VALID_ALERT_TYPES.has(sa.type as DashboardAlert["type"])) return
+    const store = Array.isArray(sa.store) ? sa.store[0] : sa.store
+    const client = Array.isArray(sa.client) ? sa.client[0] : sa.client
+    const storeName = store?.store_name || storeNameMap.get(sa.store_id) || "Loja"
+    const clientName = client?.name || clientNameMap.get(sa.client_id)
+    alerts.push({
+      id: `store-alert-${sa.id}`,
+      type: sa.type as DashboardAlert["type"],
+      title: sa.title,
+      description: clientName ? `${clientName} — ${storeName}: ${sa.message}` : `${storeName}: ${sa.message}`,
+      store_id: sa.store_id,
+      store_name: storeName,
+      client_id: sa.client_id,
+      action_url: `/stores?tab=alerts`,
+      severity: severityMap[sa.severity] || "low",
+      created_at: sa.created_at,
+    })
+  })
+
+  // Sort: high first, then medium, then low
+  const severityOrder: Record<string, number> = { high: 0, medium: 1, low: 2 }
+  alerts.sort((a, b) => (severityOrder[a.severity] ?? 2) - (severityOrder[b.severity] ?? 2))
 
   return {
     storeIds,
