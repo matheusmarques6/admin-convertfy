@@ -160,19 +160,34 @@ export async function updateStoreCredentials(
 
   // Update integration status if key provided
   if (integrationKey) {
-    const { data: current } = await adminClient
-      .from("client_stores")
-      .select("integration_status")
-      .eq("id", storeId)
-      .single()
+    const now = new Date().toISOString()
 
-    const currentStatus = (current?.integration_status as IntegrationStatus) || {}
-    updateData.integration_status = {
-      ...currentStatus,
-      [integrationKey]: {
-        connected: true,
-        connected_at: new Date().toISOString(),
-      },
+    if (integrationKey === "shopify") {
+      // Use individual validation columns for Shopify
+      updateData.shopify_validated_at = now
+      updateData.shopify_validation_error = null
+    } else if (integrationKey === "klaviyo") {
+      // Use individual validation columns for Klaviyo
+      updateData.klaviyo_validated_at = now
+      updateData.klaviyo_validation_error = null
+      updateData.klaviyo_missing_scopes = null
+      updateData.klaviyo_has_reporting_access = null
+    } else {
+      // GA4, Meta, Google Ads/Calendar still use legacy JSON column
+      const { data: current } = await adminClient
+        .from("client_stores")
+        .select("integration_status")
+        .eq("id", storeId)
+        .single()
+
+      const currentStatus = (current?.integration_status as IntegrationStatus) || {}
+      updateData.integration_status = {
+        ...currentStatus,
+        [integrationKey]: {
+          connected: true,
+          connected_at: now,
+        },
+      }
     }
   }
 
@@ -192,7 +207,7 @@ export async function updateStoreCredentials(
 /**
  * Derive integration connection status from credential + validation fields.
  */
-function deriveStatus(
+export function deriveStatus(
   hasCredential: boolean,
   validatedAt: string | null | undefined,
   validationError: string | null | undefined

@@ -39,7 +39,7 @@ async function ensureTrackingStores(
   // Get client_stores for this client
   const { data: clientStores } = await adminClient
     .from("client_stores")
-    .select("id, store_name, shopify_store_domain, shopify_access_token, store_url, org_id, integration_status")
+    .select("id, store_name, shopify_store_domain, shopify_access_token, store_url, org_id")
     .eq("client_id", clientId)
     .eq("is_active", true)
 
@@ -60,10 +60,7 @@ async function ensureTrackingStores(
   // No tracking_stores - try to auto-provision from client_stores with Shopify
   try {
     const shopifyStore = clientStores.find((s) => {
-      const hasToken = !!s.shopify_access_token
-      const hasDomain = !!s.shopify_store_domain
-      const status = s.integration_status as Record<string, { connected?: boolean }> | null
-      return (hasToken && hasDomain) || status?.shopify?.connected
+      return !!s.shopify_access_token && !!s.shopify_store_domain
     })
 
     if (!shopifyStore) return []

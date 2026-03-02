@@ -28,8 +28,8 @@ import {
 import { toast } from "@/lib/hooks/use-toast"
 
 interface IntegrationData {
-  shopify: { connected: boolean; domain: string; connected_at: string | null }
-  klaviyo: { connected: boolean; has_public_key: boolean; connected_at: string | null }
+  shopify: { connected: boolean; status?: string; domain: string; connected_at: string | null; error?: string | null }
+  klaviyo: { connected: boolean; status?: string; has_public_key: boolean; connected_at: string | null; error?: string | null; hasReportingAccess?: boolean; missingScopes?: string[] }
   tracking: { active: boolean; tracking_store_id: string | null; has_17track_key: boolean; widget_config: Record<string, unknown> | null; last_sync_at: string | null }
 }
 

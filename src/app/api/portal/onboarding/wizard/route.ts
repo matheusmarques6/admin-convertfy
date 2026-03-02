@@ -240,10 +240,10 @@ export async function POST(request: NextRequest) {
         if (!store_id) throw new AppError("store_id é obrigatório", 400)
         if (!private_key) throw new AppError("private_key é obrigatório", 400)
 
-        // Verify store belongs to this client (include integration_status for merge)
+        // Verify store belongs to this client
         const { data: ownedStore4 } = await adminClient
           .from("client_stores")
-          .select("id, integration_status")
+          .select("id")
           .eq("id", store_id)
           .eq("client_id", portalUser.client_id)
           .single()
@@ -277,16 +277,16 @@ export async function POST(request: NextRequest) {
           throw new AppError("Erro ao validar chave do Klaviyo. Tente novamente.", 400)
         }
 
-        // Save encrypted key (merge integration_status to preserve other keys)
-        const currentStatus = (ownedStore4.integration_status as Record<string, unknown>) || {}
+        // Save encrypted key — use individual validation columns, not legacy JSON
         await adminClient
           .from("client_stores")
           .update({
             klaviyo_private_key: encrypt(private_key),
-            integration_status: {
-              ...currentStatus,
-              klaviyo: { connected: true, connected_at: new Date().toISOString() },
-            },
+            klaviyo_api_key: encrypt(private_key),
+            klaviyo_validated_at: new Date().toISOString(),
+            klaviyo_validation_error: null,
+            klaviyo_missing_scopes: null,
+            klaviyo_has_reporting_access: true,
             updated_at: new Date().toISOString(),
           })
           .eq("id", store_id)

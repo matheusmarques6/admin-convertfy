@@ -58,6 +58,7 @@ export interface ClientStore {
   target_audience?: string | null
   free_shipping_type?: string | null
   shopify_collaborator_code?: string | null
+  /** @legacy Used only for GA4/Meta/Google integrations. Klaviyo/Shopify now use dedicated validation columns on client_stores. */
   integration_status?: Record<string, { connected: boolean; connected_at?: string }>
   created_at: string
   updated_at?: string

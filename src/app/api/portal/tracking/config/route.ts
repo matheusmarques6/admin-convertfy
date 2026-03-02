@@ -47,18 +47,14 @@ async function autoProvisionTrackingStore(
   try {
     const { data: clientStores } = await adminClient
       .from("client_stores")
-      .select("id, store_name, shopify_store_domain, shopify_access_token, store_url, org_id, platform, integration_status")
+      .select("id, store_name, shopify_store_domain, shopify_access_token, store_url, org_id, platform")
       .eq("client_id", clientId)
       .eq("is_active", true)
 
     if (!clientStores || clientStores.length === 0) return null
 
     const shopifyStore = clientStores.find((s) => {
-      const hasToken = !!s.shopify_access_token
-      const hasDomain = !!s.shopify_store_domain
-      const status = s.integration_status as Record<string, { connected?: boolean }> | null
-      const isConnected = status?.shopify?.connected
-      return (hasToken && hasDomain) || isConnected
+      return !!s.shopify_access_token && !!s.shopify_store_domain
     })
 
     if (!shopifyStore) return null
