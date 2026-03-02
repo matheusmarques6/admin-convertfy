@@ -274,8 +274,6 @@ class KlaviyoMetricsClient {
             "bounce_rate",
             "unsubscribes",
             "unsubscribe_rate",
-            "spam_complaints",
-            "spam_complaint_rate",
             "average_order_value",
             "revenue_per_recipient",
           ],
@@ -631,8 +629,6 @@ export class KlaviyoSyncService {
             bounce_rate: stats.bounce_rate || 0,
             unsubscribed: stats.unsubscribes || 0,
             unsubscribe_rate: stats.unsubscribe_rate || 0,
-            spam_complaints: stats.spam_complaints || 0,
-            spam_rate: stats.spam_complaint_rate || 0,
             synced_at: new Date().toISOString(),
           }
 

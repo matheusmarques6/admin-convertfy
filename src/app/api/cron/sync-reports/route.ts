@@ -278,11 +278,11 @@ export async function GET(request: NextRequest) {
         log.info(`[Cron] Cleaned ${cooldownCleanResult} expired cooldown entries`)
       }
 
-      // Get all stores with Klaviyo credentials
+      // Get all stores with Klaviyo credentials (either field)
       const { data: stores, error: storesError } = await supabase
         .from("client_stores")
         .select("id, store_name, org_id")
-        .not("klaviyo_private_key", "is", null)
+        .or("klaviyo_private_key.not.is.null,klaviyo_api_key.not.is.null")
         .not("org_id", "is", null)
 
       if (storesError || !stores) {

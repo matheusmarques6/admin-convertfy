@@ -25,7 +25,7 @@ export const dynamic = 'force-dynamic'
 
 // Cache-first configuration
 const CACHED_PERIODS = new Set(["7d", "15d", "30d", "90d"])
-const CACHE_MAX_AGE_MS = 2 * 60 * 60 * 1000 // 2 hours (matches cron interval)
+const CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1000 // 6 hours (aligned with cron interval)
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -121,7 +121,6 @@ async function getCampaignMetrics(
     "opens_unique",
     "recipients",
     "revenue_per_recipient",
-    "spam_complaint_rate",
     "unsubscribe_rate",
     "unsubscribes"
   ]
@@ -168,7 +167,6 @@ async function getCampaignMetrics(
             click_to_open_rate?: number
             unsubscribe_rate?: number
             unsubscribes?: number
-            spam_complaint_rate?: number
             average_order_value?: number
             revenue_per_recipient?: number
           }
@@ -200,7 +198,6 @@ async function getCampaignMetrics(
     bounceRate: number
     unsubscribed: number
     unsubscribeRate: number
-    spamComplaintRate: number
   }>()
 
   for (const r of response.data.attributes.results) {
@@ -225,7 +222,6 @@ async function getCampaignMetrics(
       bounceRate: 0,
       unsubscribed: 0,
       unsubscribeRate: 0,
-      spamComplaintRate: 0
     }
 
     const newDelivered = existing.delivered + (stats.delivered || 0)
@@ -252,7 +248,6 @@ async function getCampaignMetrics(
       bounceRate: stats.bounce_rate || existing.bounceRate,
       unsubscribed: existing.unsubscribed + (stats.unsubscribes || 0),
       unsubscribeRate: stats.unsubscribe_rate || existing.unsubscribeRate,
-      spamComplaintRate: stats.spam_complaint_rate || existing.spamComplaintRate
     })
   }
 
@@ -307,7 +302,6 @@ async function readCampaignsFromCache(
     bounceRate: (r.bounce_rate as number) || 0,
     unsubscribed: (r.unsubscribed as number) || 0,
     unsubscribeRate: (r.unsubscribe_rate as number) || 0,
-    spamComplaintRate: (r.spam_complaint_rate as number) || (r.spam_complaints as number) || 0,
     revenue: (r.conversion_value as number) || 0,
   }))
 
@@ -342,7 +336,6 @@ async function readCampaignsFromCache(
       totalRevenue: acc.totalRevenue + (campaign.conversionValue as number),
       totalBounced: acc.totalBounced + (campaign.bounced as number),
       totalUnsubscribed: acc.totalUnsubscribed + (campaign.unsubscribed as number),
-      totalSpamComplaintRate: acc.totalSpamComplaintRate + (campaign.spamComplaintRate as number),
     }),
     {
       totalCampaigns: 0,
@@ -360,7 +353,6 @@ async function readCampaignsFromCache(
       totalRevenue: 0,
       totalBounced: 0,
       totalUnsubscribed: 0,
-      totalSpamComplaintRate: 0,
     }
   )
 
@@ -420,12 +412,16 @@ export async function GET(request: NextRequest) {
     const startDateStr = formatDateStr(startDate)
     const endDateStr = formatDateStr(endDate)
 
+    // Convert date strings to ISO timestamps to match cron-written cache format
+    const periodStartISO = new Date(`${startDateStr}T00:00:00Z`).toISOString()
+    const periodEndISO = new Date(`${endDateStr}T23:59:59.999Z`).toISOString()
+
     // Cache-first: try reading from cache for standard periods
     const isCustomPeriod = period === "custom" || !CACHED_PERIODS.has(period)
     if (!forceRefresh && !isCustomPeriod) {
       try {
         const adminClient = createAdminClient()
-        const cached = await readCampaignsFromCache(storeId, startDateStr, endDateStr, statusFilter, adminClient)
+        const cached = await readCampaignsFromCache(storeId, periodStartISO, periodEndISO, statusFilter, adminClient)
         if (cached) {
           log.info(`[Klaviyo Campaigns] Serving from cache for store: ${store.storeName} period: ${period}`)
           return NextResponse.json({
@@ -486,7 +482,6 @@ export async function GET(request: NextRequest) {
           bounceRate: 0,
           unsubscribed: 0,
           unsubscribeRate: 0,
-          spamComplaintRate: 0
         }
 
         return {
@@ -534,7 +529,6 @@ export async function GET(request: NextRequest) {
       totalRevenue: acc.totalRevenue + campaign.conversionValue,
       totalBounced: acc.totalBounced + campaign.bounced,
       totalUnsubscribed: acc.totalUnsubscribed + campaign.unsubscribed,
-      totalSpamComplaintRate: acc.totalSpamComplaintRate + campaign.spamComplaintRate
     }), {
       totalCampaigns: 0,
       sentCampaigns: 0,
@@ -551,7 +545,6 @@ export async function GET(request: NextRequest) {
       totalRevenue: 0,
       totalBounced: 0,
       totalUnsubscribed: 0,
-      totalSpamComplaintRate: 0
     })
 
     // Calculate average rates
@@ -576,8 +569,8 @@ export async function GET(request: NextRequest) {
               send_time: campaign.sendTime,
               subject: campaign.subject,
               channel: campaign.channel,
-              period_start: startDateStr,
-              period_end: endDateStr,
+              period_start: periodStartISO,
+              period_end: periodEndISO,
               recipients: campaign.recipients,
               delivered: campaign.delivered,
               delivery_rate: campaign.deliveryRate,
@@ -595,7 +588,6 @@ export async function GET(request: NextRequest) {
               bounce_rate: campaign.bounceRate,
               unsubscribed: campaign.unsubscribed,
               unsubscribe_rate: campaign.unsubscribeRate,
-              spam_complaint_rate: campaign.spamComplaintRate,
               fetched_at: new Date().toISOString()
             })),
             { onConflict: 'store_id,campaign_id,period_start,period_end' }

@@ -743,10 +743,11 @@ export async function GET(request: NextRequest) {
                 response.isRefreshing = true
                 response.lastFetchedAt = staleFallback.fetchedAt
               } else {
-                response.dataStatus = "loading" satisfies DataStatus
-                response.isRefreshing = true
+                response.dataStatus = "error" satisfies DataStatus
+                response.isRefreshing = false
                 response.source = "cache"
                 response.lastFetchedAt = null
+                response.klaviyoError = "Dados indisponíveis. O relatório será atualizado em breve pelo sistema."
               }
             }
           } else {
@@ -925,10 +926,11 @@ export async function GET(request: NextRequest) {
           // Stores exist but all caches empty and no live results
           // fetchKlaviyoFromCache already reads without expires_at filter (stale allowed),
           // so if we got here, there is truly no data at all
-          response.dataStatus = "loading" satisfies DataStatus
-          response.isRefreshing = true
+          response.dataStatus = "error" satisfies DataStatus
+          response.isRefreshing = false
           response.source = "cache"
           response.lastFetchedAt = null
+          response.klaviyoError = "Dados indisponíveis. O relatório será atualizado em breve pelo sistema."
         }
 
         // Aggregate Shopify data

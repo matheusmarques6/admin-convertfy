@@ -25,7 +25,7 @@ export const dynamic = 'force-dynamic'
 
 // Cache-first configuration
 const CACHED_PERIODS = new Set(["7d", "15d", "30d", "90d"])
-const CACHE_MAX_AGE_MS = 2 * 60 * 60 * 1000 // 2 hours (matches cron interval)
+const CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1000 // 6 hours (aligned with cron interval)
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -381,12 +381,16 @@ export async function GET(request: NextRequest) {
     const startDateStr = formatDateStr(startDate)
     const endDateStr = formatDateStr(endDate)
 
+    // Convert date strings to ISO timestamps to match cron-written cache format
+    const periodStartISO = new Date(`${startDateStr}T00:00:00Z`).toISOString()
+    const periodEndISO = new Date(`${endDateStr}T23:59:59.999Z`).toISOString()
+
     // Cache-first: try reading from cache for standard periods
     const isCustomPeriod = period === "custom" || !CACHED_PERIODS.has(period)
     if (!forceRefresh && !isCustomPeriod) {
       try {
         const adminClient = createAdminClient()
-        const cached = await readFlowsFromCache(storeId, startDateStr, endDateStr, adminClient)
+        const cached = await readFlowsFromCache(storeId, periodStartISO, periodEndISO, adminClient)
         if (cached) {
           log.info(`[Klaviyo Flows] Serving from cache for store: ${store.storeName} period: ${period}`)
           return NextResponse.json({
@@ -508,8 +512,8 @@ export async function GET(request: NextRequest) {
             flow_name: flow.name,
             flow_status: flow.status,
             trigger_type: flow.triggerType,
-            period_start: startDateStr,
-            period_end: endDateStr,
+            period_start: periodStartISO,
+            period_end: periodEndISO,
             recipients: flow.recipients,
             delivered: flow.delivered,
             delivery_rate: flow.deliveryRate,
