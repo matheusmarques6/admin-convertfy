@@ -125,6 +125,120 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    if (body.type === "briefing_generated") {
+      // N8N generated a briefing via AI — save it to store_briefings
+      const { data: onboarding } = await adminClient
+        .from("client_onboardings")
+        .select("store_id")
+        .eq("id", body.onboarding_id)
+        .single()
+
+      if (!onboarding?.store_id) {
+        throw new AppError("Onboarding ou loja não encontrados", 404)
+      }
+
+      const storeId = onboarding.store_id
+
+      // Archive previous briefing
+      await adminClient
+        .from("store_briefings")
+        .update({ status: "archived" })
+        .eq("store_id", storeId)
+        .eq("status", "current")
+
+      // Get next version
+      const { data: lastBriefing } = await adminClient
+        .from("store_briefings")
+        .select("version")
+        .eq("store_id", storeId)
+        .order("version", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      const nextVersion = (lastBriefing?.version || 0) + 1
+
+      // Insert new briefing from N8N
+      const { error: insertError } = await adminClient
+        .from("store_briefings")
+        .insert({
+          store_id: storeId,
+          briefing_data: body.data,
+          version: nextVersion,
+          generated_at: new Date().toISOString(),
+          generated_by: "n8n",
+          status: "current",
+        })
+
+      if (insertError) {
+        log.error("[Webhook] Error saving briefing", insertError)
+        throw new AppError("Erro ao salvar briefing", 500)
+      }
+
+      log.info(`Briefing saved from N8N for store ${storeId}, version ${nextVersion}`)
+
+      return successResponse(request, {
+        success: true,
+        message: "Briefing salvo com sucesso",
+        store_id: storeId,
+        version: nextVersion,
+      })
+    }
+
+    if (body.type === "drive_folder") {
+      // N8N created Google Drive folder with copies — save the link
+      const driveUrl = body.data?.folder_url || body.data?.url || body.data?.link
+
+      if (!driveUrl) {
+        throw new AppError("folder_url é obrigatório em data", 400)
+      }
+
+      // Validate URL format
+      try {
+        new URL(driveUrl)
+      } catch {
+        throw new AppError("URL do Drive inválida", 400)
+      }
+
+      const { error } = await adminClient
+        .from("client_onboardings")
+        .update({
+          drive_folder_url: driveUrl,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", body.onboarding_id)
+
+      if (error) {
+        log.error("[Webhook] Error saving drive folder", error)
+        throw new AppError("Erro ao salvar link do Drive", 500)
+      }
+
+      // Also transition to design phase if still in generating_copies
+      const { data: currentOnb } = await adminClient
+        .from("client_onboardings")
+        .select("current_phase")
+        .eq("id", body.onboarding_id)
+        .single()
+
+      if (currentOnb?.current_phase === "generating_copies") {
+        const { onboardingPhaseService } = await import("@/lib/services/onboarding-phase.service")
+        await onboardingPhaseService.transition({
+          onboardingId: body.onboarding_id,
+          toPhase: "design",
+          triggeredBy: "n8n_webhook",
+          metadata: { drive_folder_url: driveUrl },
+        }).catch((err: unknown) => {
+          log.warn("[Webhook] Phase transition failed after drive_folder", err)
+        })
+      }
+
+      log.info(`Drive folder saved for onboarding ${body.onboarding_id}`)
+
+      return successResponse(request, {
+        success: true,
+        message: "Link do Drive salvo com sucesso",
+      })
+    }
+
     throw new AppError("Tipo de webhook não suportado", 400)
   } catch (error) {
     return errorResponse(request, error, "OnboardingWebhook")

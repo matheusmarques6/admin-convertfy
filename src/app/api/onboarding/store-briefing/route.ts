@@ -43,6 +43,78 @@ export async function GET(request: NextRequest) {
 }
 
 /**
+ * PATCH /api/onboarding/store-briefing
+ * Update briefing_data (inline editing)
+ * Body: { briefing_id, briefing_data }
+ */
+export async function PATCH(request: NextRequest) {
+  try {
+    const supabase = await createClient()
+    const user = await requireAuth(supabase)
+
+    const body = await request.json()
+
+    if (!body.briefing_id || !body.briefing_data) {
+      throw new AppError("briefing_id e briefing_data são obrigatórios", 400)
+    }
+
+    const adminClient = createAdminClient()
+
+    // Verify user belongs to an org
+    const { data: orgMember } = await adminClient
+      .from("org_members")
+      .select("id, org_id")
+      .eq("profile_id", user.id)
+      .eq("is_active", true)
+      .single()
+
+    if (!orgMember) {
+      throw new AppError("Não autorizado", 403)
+    }
+
+    // Verify briefing exists and belongs to user's org
+    const { data: existing } = await adminClient
+      .from("store_briefings")
+      .select("id, store_id, version, store:client_stores!inner(org_id)")
+      .eq("id", body.briefing_id)
+      .eq("status", "current")
+      .single()
+
+    if (!existing) {
+      throw new AppError("Briefing não encontrado", 404)
+    }
+
+    const storeOrg = (existing.store as unknown as { org_id: string })?.org_id
+    if (storeOrg && storeOrg !== orgMember.org_id) {
+      throw new AppError("Não autorizado para este briefing", 403)
+    }
+
+    // Update the briefing_data
+    const { error } = await adminClient
+      .from("store_briefings")
+      .update({
+        briefing_data: body.briefing_data,
+        generated_by: `edited:${user.id}`,
+      })
+      .eq("id", body.briefing_id)
+
+    if (error) {
+      log.error("Failed to update briefing", error)
+      throw new AppError("Erro ao atualizar briefing", 500)
+    }
+
+    log.info(`Briefing ${body.briefing_id} updated by ${user.id}`)
+
+    return successResponse(request, {
+      success: true,
+      message: "Briefing atualizado com sucesso",
+    })
+  } catch (error) {
+    return errorResponse(request, error, "OnboardingStoreBriefing")
+  }
+}
+
+/**
  * POST /api/onboarding/store-briefing
  * Generate or regenerate briefing
  * Body: { store_id, mode: 'auto' | 'regenerate' }
