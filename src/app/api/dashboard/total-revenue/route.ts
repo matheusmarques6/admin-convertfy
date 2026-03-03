@@ -184,7 +184,7 @@ async function liveFetchWithTimeout(
             }, { onConflict: "store_id,period_label" })
         )
           .then(() => log.info(`[LiveFetch] Cached revenue for ${store.store_name}/${period}`))
-          .catch(() => {})
+          .catch((e) => log.warn(`[LiveFetch] Cache upsert failed for ${store.store_name}:`, e))
       }
 
       collected.push({
@@ -204,7 +204,10 @@ async function liveFetchWithTimeout(
     }
   }
 
-  // Process stores in parallel (max 5 concurrent) using lightweight revenue fetcher
+  // Process stores in parallel (max 5 concurrent) using lightweight revenue fetcher.
+  // withConcurrencyLimit returns void[] here — we intentionally ignore its return value
+  // and use the `collected` side-channel array so partial results survive a timeout.
+  // Array.push is safe from multiple async workers because JS is single-threaded.
   const allDonePromise = withConcurrencyLimit(stores, 5, fetchOneStore)
 
   const timeoutPromise = new Promise<"timeout">((resolve) => {
@@ -362,7 +365,7 @@ export async function GET(request: NextRequest) {
       return response
     }
 
-    // Live fetch with 30s timeout
+    // Live fetch with timeout (returns partial results if some stores complete)
     const { results: liveResults, fetchedAt, timedOut } =
       await liveFetchWithTimeout(stores, period, adminSupabase)
 
@@ -382,7 +385,7 @@ export async function GET(request: NextRequest) {
         timedOut,
       })
       const result = emptyResponse(period, stores.length, {
-        dataStatus: "stale",
+        dataStatus: timedOut ? "stale" : "error",
         lastFetchedAt: null,
         isRefreshing: false,
         source: "live",
