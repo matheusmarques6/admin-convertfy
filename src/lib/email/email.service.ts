@@ -160,7 +160,7 @@ class EmailService {
     loginUrl?: string
     orgName?: string
   }): Promise<SendResult> {
-    const loginUrl = params.loginUrl || `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/login`
+    const loginUrl = params.loginUrl || `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/portal/login`
 
     return this.send({
       to: params.to,

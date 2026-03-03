@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
+import crypto from "crypto"
 import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { emailService } from "@/lib/email/email.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("AdminPortalUsersSendInvite")
@@ -54,7 +56,6 @@ export async function POST(
     }
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
-    const redirectTo = `${appUrl}/portal/auth/callback`
 
     // Delete existing auth user by email using SQL function (reliable, no pagination)
     log.info("Deleting auth user by email via RPC", { email: portalUser.email })
@@ -78,43 +79,60 @@ export async function POST(
       log.info("Auth user deleted successfully via RPC")
     }
 
-    log.info("Sending invite email", { email: portalUser.email, redirectTo })
-    const { data: authData, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(
-      portalUser.email,
-      {
-        redirectTo,
-        data: {
-          name: portalUser.name,
-          is_portal_user: true,
-        },
-      }
-    )
+    // Generate temporary password and create new auth user
+    const tempPassword = crypto.randomBytes(6).toString("base64url")
 
-    if (inviteError) {
-      log.error("inviteUserByEmail failed", {
-        message: inviteError.message,
-        status: inviteError.status,
-        name: inviteError.name,
+    log.info("Creating auth user with temp password", { email: portalUser.email })
+    const { data: authData, error: createError } = await adminClient.auth.admin.createUser({
+      email: portalUser.email,
+      password: tempPassword,
+      email_confirm: true,
+      user_metadata: {
+        name: portalUser.name,
+        is_portal_user: true,
+        client_id: portalUser.client_id,
+      },
+    })
+
+    if (createError || !authData?.user) {
+      log.error("createUser failed", {
+        message: createError?.message,
       })
       throw new AppError(
-        `Erro ao enviar convite: ${inviteError.message}`,
+        `Erro ao recriar conta: ${createError?.message || "Erro desconhecido"}`,
         500
       )
     }
 
-    if (!authData?.user) {
-      log.error("inviteUserByEmail returned no user data", { authData })
-      throw new AppError("Erro ao enviar convite: resposta inesperada do servidor de autenticação", 500)
-    }
-
     // Update portal user with new auth_user_id
-    await adminClient
+    const { error: updateError } = await adminClient
       .from("client_portal_users")
       .update({
         auth_user_id: authData.user.id,
         must_change_password: true,
       })
       .eq("id", id)
+
+    if (updateError) {
+      log.error("Failed to update portal user, rolling back auth user", { error: updateError.message })
+      await adminClient.auth.admin.deleteUser(authData.user.id)
+      throw new AppError("Erro ao atualizar usuário do portal", 500)
+    }
+
+    // Send welcome email via Resend with portal login link
+    try {
+      await emailService.sendWelcomeWithPassword({
+        to: portalUser.email,
+        name: portalUser.name,
+        email: portalUser.email,
+        tempPassword,
+        loginUrl: `${appUrl}/portal/login`,
+      })
+    } catch (emailErr) {
+      log.warn("Failed to send invite email, user recreated anyway", {
+        error: (emailErr as Error).message,
+      })
+    }
 
     // Log activity
     await supabase.from("client_portal_activity").insert({

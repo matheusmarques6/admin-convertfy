@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server"
+import crypto from "crypto"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
 import {
@@ -10,6 +11,7 @@ import {
   AppError,
 } from "@/lib/api/errors"
 import { portalUserCreateSchema } from "@/lib/schemas/common"
+import { emailService } from "@/lib/email/email.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("PortalUsers")
@@ -57,6 +59,17 @@ export async function POST(request: NextRequest) {
     const supabase = await createClient()
     const user = await requireAuth(supabase)
 
+    // Check if user is admin/manager
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single()
+
+    if (!profile || !["admin", "manager", "coo"].includes(profile.role)) {
+      throw new AppError("Acesso negado", 403)
+    }
+
     const body = await parseAndValidate(request, portalUserCreateSchema)
 
     // Check if email already exists
@@ -72,7 +85,6 @@ export async function POST(request: NextRequest) {
 
     const adminClient = createAdminClient()
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
-    const redirectTo = `${appUrl}/portal/auth/callback`
 
     // Delete any existing auth user with this email using SQL function (reliable, no pagination)
     const { error: rpcError } = await adminClient.rpc("delete_auth_user_by_email", {
@@ -82,25 +94,27 @@ export async function POST(request: NextRequest) {
       log.warn("RPC delete_auth_user_by_email failed", { error: rpcError.message })
     }
 
-    // Create auth user via invite (sends email automatically)
-    const { data: authUser, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(
-      body.email,
-      {
-        redirectTo,
-        data: {
-          name: body.name,
-          is_portal_user: true,
-          client_id: body.client_id,
-        },
-      }
-    )
+    // Generate temporary password
+    const tempPassword = crypto.randomBytes(6).toString("base64url")
 
-    if (inviteError) {
-      log.error("Invite user failed", { error: inviteError.message })
-      throw new AppError("Erro ao criar conta: " + inviteError.message, 500)
+    // Create auth user with temp password (email pre-confirmed)
+    const { data: authUser, error: createError } = await adminClient.auth.admin.createUser({
+      email: body.email,
+      password: tempPassword,
+      email_confirm: true,
+      user_metadata: {
+        name: body.name,
+        is_portal_user: true,
+        client_id: body.client_id,
+      },
+    })
+
+    if (createError || !authUser?.user) {
+      log.error("Create user failed", { error: createError?.message })
+      throw new AppError("Erro ao criar conta: " + (createError?.message || "Erro desconhecido"), 500)
     }
 
-    const authUserId = authUser!.user!.id
+    const authUserId = authUser.user.id
 
     // Create portal user record
     const defaultPermissions = {
@@ -137,6 +151,21 @@ export async function POST(request: NextRequest) {
       log.error("Portal user insert failed, rolling back auth user", { error: insertError.message })
       await adminClient.auth.admin.deleteUser(authUserId)
       throw new AppError("Erro ao criar usuário do portal", 500)
+    }
+
+    // Send welcome email via Resend with portal login link
+    try {
+      await emailService.sendWelcomeWithPassword({
+        to: body.email,
+        name: body.name,
+        email: body.email,
+        tempPassword,
+        loginUrl: `${appUrl}/portal/login`,
+      })
+    } catch (emailErr) {
+      log.warn("Failed to send welcome email, user created anyway", {
+        error: (emailErr as Error).message,
+      })
     }
 
     return successResponse(request, {
