@@ -404,6 +404,7 @@ describe("syncKlaviyoForPeriod", () => {
     period: "30d",
     flowNames: new Map([["f1", { name: "Welcome", status: "live", trigger_type: "trigger" }]]),
     campNames: new Map([["c1", { name: "Newsletter", status: "sent", send_time: "2026-02-15T10:00:00Z", channel: "email", subject: "Welcome!" }]]),
+    currency: "BRL",
   }
 
   it("should aggregate flow + campaign + metric data into KlaviyoSyncData", async () => {

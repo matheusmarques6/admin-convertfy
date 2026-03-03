@@ -115,6 +115,8 @@ export interface KlaviyoSyncParams {
   period: string
   flowNames: Map<string, FlowNameInfo>
   campNames: Map<string, CampaignNameInfo>
+  /** ISO 4217 currency from Klaviyo account */
+  currency: string
 }
 
 export interface KlaviyoSyncData {
@@ -126,6 +128,8 @@ export interface KlaviyoSyncData {
   endDateStr: string
   flowRows: FlowMetricRow[]
   campRows: CampaignMetricRow[]
+  /** ISO 4217 currency code from Klaviyo account (e.g. "USD", "BRL") */
+  currency: string
 }
 
 // ── API Response Types (internal) ────────────────────────────────────────────
@@ -391,7 +395,7 @@ export async function fetchStoreRevenueFromMetricAggregates(
 export async function syncKlaviyoForPeriod(
   params: KlaviyoSyncParams,
 ): Promise<SyncResult<KlaviyoSyncData>> {
-  const { apiKey, period, timezone, timezoneOffset, metricId, flowNames, campNames, storeId } = params
+  const { apiKey, period, timezone, timezoneOffset, metricId, flowNames, campNames, storeId, currency } = params
 
   try {
     const { startDateStr, endDateStr } = parseDateRangeInTimezone(period, timezone)
@@ -636,6 +640,7 @@ export async function syncKlaviyoForPeriod(
         endDateStr: periodEndISO,
         flowRows,
         campRows,
+        currency,
       },
       source: "live",
       fetchedAt: new Date().toISOString(),

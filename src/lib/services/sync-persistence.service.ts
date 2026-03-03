@@ -61,6 +61,7 @@ export async function upsertSyncResults(
       klaviyo_flow_revenue: data.flowRevenue,
       store_total_revenue: data.storeRevenue,
       store_orders: data.storeOrders,
+      currency: data.currency || "BRL",
       sync_status: "ok",
       sync_error: null,
       expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),

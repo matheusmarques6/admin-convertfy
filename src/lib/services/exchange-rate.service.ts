@@ -1,0 +1,145 @@
+/**
+ * Exchange Rate Service
+ *
+ * Fetches real-time exchange rates from open.er-api.com (free, no key required).
+ * Uses in-memory cache (1h TTL) + DB fallback via dashboard_cache.
+ * All rates are relative to BRL (1 USD = X BRL).
+ *
+ * API docs: https://www.exchangerate-api.com/docs/free
+ */
+
+import { createAdminClient } from "@/lib/supabase/server"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("ExchangeRate")
+
+const CACHE_TTL_MS = 60 * 60 * 1000 // 1 hour
+const API_URL = "https://open.er-api.com/v6/latest/BRL"
+
+// Global store ID used as key in dashboard_cache for exchange rates
+const GLOBAL_CACHE_KEY = "global_exchange_rates"
+const CACHE_TYPE = "exchange_rates"
+
+interface ExchangeRates {
+  rates: Record<string, number> // e.g. { USD: 0.175, EUR: 0.161, ... } (1 BRL = X foreign)
+  fetchedAt: number
+}
+
+// In-memory L1 cache
+let memoryCache: ExchangeRates | null = null
+
+/**
+ * Convert an amount from a given currency to BRL.
+ *
+ * Example: convertToBRL(100, "USD") when 1 BRL = 0.175 USD → 100 / 0.175 = R$ 571.43
+ */
+export async function convertToBRL(amount: number, currency: string): Promise<number> {
+  if (currency === "BRL" || amount === 0) return amount
+
+  const rates = await getExchangeRates()
+  if (!rates) {
+    log.warn(`[ExchangeRate] No rates available, cannot convert ${currency} to BRL`)
+    return amount // Return unconverted as fallback
+  }
+
+  const rateFromBRL = rates.rates[currency]
+  if (!rateFromBRL || rateFromBRL === 0) {
+    log.warn(`[ExchangeRate] No rate found for ${currency}, returning unconverted`)
+    return amount
+  }
+
+  // rates are "1 BRL = X foreign", so to convert foreign to BRL: amount / rate
+  const converted = amount / rateFromBRL
+  return Math.round(converted * 100) / 100
+}
+
+/**
+ * Get exchange rates (1 BRL = X foreign currency).
+ * Checks: in-memory cache → DB cache → API fetch.
+ */
+async function getExchangeRates(): Promise<ExchangeRates | null> {
+  // L1: In-memory cache
+  if (memoryCache && (Date.now() - memoryCache.fetchedAt) < CACHE_TTL_MS) {
+    return memoryCache
+  }
+
+  // L2: DB cache
+  try {
+    const supabase = createAdminClient()
+    const { data: cached } = await supabase
+      .from("dashboard_cache")
+      .select("data, created_at")
+      .eq("store_id", GLOBAL_CACHE_KEY)
+      .eq("cache_type", CACHE_TYPE)
+      .eq("period", "latest")
+      .gt("expires_at", new Date().toISOString())
+      .single()
+
+    if (cached?.data) {
+      const dbRates = cached.data as unknown as { rates: Record<string, number> }
+      memoryCache = { rates: dbRates.rates, fetchedAt: Date.now() }
+      log.info("[ExchangeRate] Loaded from DB cache")
+      return memoryCache
+    }
+  } catch {
+    // DB cache miss — continue to API
+  }
+
+  // L3: Fetch from API
+  return fetchAndCacheRates()
+}
+
+/**
+ * Fetch rates from the free API and save to both memory and DB.
+ */
+async function fetchAndCacheRates(): Promise<ExchangeRates | null> {
+  try {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 5000)
+
+    const response = await fetch(API_URL, { signal: controller.signal })
+    clearTimeout(timeout)
+
+    if (!response.ok) {
+      log.warn(`[ExchangeRate] API returned ${response.status}`)
+      return memoryCache // Return stale if available
+    }
+
+    const data = await response.json() as {
+      result: string
+      rates: Record<string, number>
+    }
+
+    if (data.result !== "success" || !data.rates) {
+      log.warn("[ExchangeRate] API returned unexpected format")
+      return memoryCache
+    }
+
+    memoryCache = { rates: data.rates, fetchedAt: Date.now() }
+    log.info(`[ExchangeRate] Fetched ${Object.keys(data.rates).length} rates from API`)
+
+    // Save to DB cache (fire-and-forget)
+    try {
+      const supabase = createAdminClient()
+      const expiresAt = new Date(Date.now() + CACHE_TTL_MS).toISOString()
+      await supabase.from("dashboard_cache").upsert(
+        {
+          store_id: GLOBAL_CACHE_KEY,
+          cache_type: CACHE_TYPE,
+          period: "latest",
+          data: { rates: data.rates },
+          created_at: new Date().toISOString(),
+          expires_at: expiresAt,
+        },
+        { onConflict: "store_id,cache_type,period" }
+      )
+    } catch (e) {
+      log.warn("[ExchangeRate] Failed to save to DB cache:", e)
+    }
+
+    return memoryCache
+  } catch (error) {
+    log.error("[ExchangeRate] Failed to fetch rates:", error)
+    return memoryCache // Return stale if available
+  }
+}

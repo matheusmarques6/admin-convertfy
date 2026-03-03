@@ -18,6 +18,8 @@ export interface KlaviyoRevenueSummary {
   totalRevenue: number
   campaignRevenue: number
   flowRevenue: number
+  /** ISO 4217 currency code from Klaviyo account (e.g. "USD", "BRL") */
+  currency: string
 }
 
 interface KlaviyoValuesReport {
@@ -49,7 +51,7 @@ export async function getKlaviyoRevenueForStore(
 
     if (!apiKey) {
       log.warn(`Store ${storeId}: no Klaviyo API key found after decryption`)
-      return { totalRevenue: 0, campaignRevenue: 0, flowRevenue: 0 }
+      return { totalRevenue: 0, campaignRevenue: 0, flowRevenue: 0, currency: "BRL" }
     }
 
     // Calculate date range
@@ -57,9 +59,10 @@ export async function getKlaviyoRevenueForStore(
     const startDateStr = formatDateStr(startDate)
     const endDateStr = formatDateStr(endDate)
 
-    // Get timezone for correct date alignment (DB-cached, avoids API call on cold start)
+    // Get timezone + currency for correct date alignment and currency tracking
     const accountInfo = await getCachedAccountInfo(apiKey)
     const timezone = accountInfo?.timezone || "America/Sao_Paulo"
+    const currency = accountInfo?.currency || "BRL"
     const tzOffset = getTimezoneOffset(timezone)
 
     const startISO = `${startDateStr}T00:00:00${tzOffset}`
@@ -116,15 +119,16 @@ export async function getKlaviyoRevenueForStore(
       flowRevenue += Number(r.statistics?.conversion_value) || 0
     }
 
-    log.info(`Store ${storeId}: campaign=$${campaignRevenue}, flow=$${flowRevenue}`)
+    log.info(`Store ${storeId}: campaign=${currency} ${campaignRevenue}, flow=${currency} ${flowRevenue}`)
 
     return {
       totalRevenue: campaignRevenue + flowRevenue,
       campaignRevenue,
       flowRevenue,
+      currency,
     }
   } catch (error) {
     log.error("Error in getKlaviyoRevenueForStore:", error)
-    return { totalRevenue: 0, campaignRevenue: 0, flowRevenue: 0 }
+    return { totalRevenue: 0, campaignRevenue: 0, flowRevenue: 0, currency: "BRL" }
   }
 }

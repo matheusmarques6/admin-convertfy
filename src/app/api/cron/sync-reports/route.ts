@@ -147,6 +147,7 @@ async function syncStore(
         period,
         flowNames,
         campNames,
+        currency: accountInfo.currency,
       })
 
       if (result.success && result.data) {

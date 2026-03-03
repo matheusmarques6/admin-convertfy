@@ -7,6 +7,7 @@ import { logger } from "@/lib/logger"
 import { type DataStatus, type DataStatusMeta, CACHED_PERIODS } from "@/lib/shared/data-status"
 import { getKlaviyoRevenueForStore } from "@/lib/integrations/klaviyo/report-summary"
 import { withConcurrencyLimit } from "@/lib/integrations/klaviyo/rate-limiter"
+import { convertToBRL } from "@/lib/services/exchange-rate.service"
 
 const log = logger.child("TotalRevenue")
 
@@ -18,9 +19,16 @@ interface StoreRevenue {
   storeId: string
   storeName: string
   clientName: string
+  /** Revenue in the store's original currency */
   totalRevenue: number
   campaignRevenue: number
   flowRevenue: number
+  /** ISO 4217 currency code from Klaviyo account (e.g. "USD", "BRL") */
+  currency: string
+  /** Revenue converted to BRL for aggregation */
+  totalRevenueBRL: number
+  campaignRevenueBRL: number
+  flowRevenueBRL: number
 }
 
 interface TotalRevenueResponse {
@@ -51,33 +59,50 @@ interface StoreRow {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function buildStoreBreakdown(rows: Array<{
+async function buildStoreBreakdown(rows: Array<{
   store_id: string
   klaviyo_total_revenue: number | string
   klaviyo_campaign_revenue: number | string
   klaviyo_flow_revenue: number | string
+  currency?: string | null
   sync_status: string
   fetched_at: string | null
   client_stores: unknown
-}>): StoreRevenue[] {
-  return rows.map((s) => {
+}>): Promise<StoreRevenue[]> {
+  const results = await Promise.all(rows.map(async (s) => {
     const storeData = s.client_stores as unknown as {
       id: string
       store_name: string
       client_id: string | null
       clients: { name: string } | null
     }
+    const currency = s.currency || "BRL"
+    const totalRev = Number(s.klaviyo_total_revenue)
+    const campaignRev = Number(s.klaviyo_campaign_revenue)
+    const flowRev = Number(s.klaviyo_flow_revenue)
+
+    const [totalBRL, campaignBRL, flowBRL] = await Promise.all([
+      convertToBRL(totalRev, currency),
+      convertToBRL(campaignRev, currency),
+      convertToBRL(flowRev, currency),
+    ])
+
     return {
       storeId: s.store_id,
       storeName: storeData.store_name || "Loja sem nome",
       clientName: storeData.client_id
         ? (storeData.clients?.name || "Cliente desconhecido")
         : storeData.store_name || "Loja avulsa",
-      totalRevenue: Number(s.klaviyo_total_revenue),
-      campaignRevenue: Number(s.klaviyo_campaign_revenue),
-      flowRevenue: Number(s.klaviyo_flow_revenue),
+      totalRevenue: totalRev,
+      campaignRevenue: campaignRev,
+      flowRevenue: flowRev,
+      currency,
+      totalRevenueBRL: totalBRL,
+      campaignRevenueBRL: campaignBRL,
+      flowRevenueBRL: flowBRL,
     }
-  })
+  }))
+  return results
 }
 
 function buildResponse(
@@ -86,15 +111,17 @@ function buildResponse(
   rows: Array<{ sync_status: string; fetched_at: string | null }>,
   meta: DataStatusMeta,
 ): EnhancedTotalRevenueResponse {
-  const totalRevenue = storeBreakdown.reduce((sum, s) => sum + s.totalRevenue, 0)
-  const campaignRevenue = storeBreakdown.reduce((sum, s) => sum + s.campaignRevenue, 0)
-  const flowRevenue = storeBreakdown.reduce((sum, s) => sum + s.flowRevenue, 0)
-  const storesWithRevenue = storeBreakdown.filter((s) => s.totalRevenue > 0).length
+  // Aggregate using BRL-converted values so multi-currency stores sum correctly
+  const totalRevenue = storeBreakdown.reduce((sum, s) => sum + s.totalRevenueBRL, 0)
+  const campaignRevenue = storeBreakdown.reduce((sum, s) => sum + s.campaignRevenueBRL, 0)
+  const flowRevenue = storeBreakdown.reduce((sum, s) => sum + s.flowRevenueBRL, 0)
+  const storesWithRevenue = storeBreakdown.filter((s) => s.totalRevenueBRL > 0).length
 
-  const sorted = [...storeBreakdown].sort((a, b) => b.totalRevenue - a.totalRevenue)
-  const topStores = sorted.filter(s => s.totalRevenue > 0).slice(0, 5)
-  const bottomStores = sorted.filter(s => s.totalRevenue > 0).length > 5
-    ? [...sorted.filter(s => s.totalRevenue > 0)].reverse().slice(0, 5)
+  // Sort by BRL value for fair ranking across currencies
+  const sorted = [...storeBreakdown].sort((a, b) => b.totalRevenueBRL - a.totalRevenueBRL)
+  const topStores = sorted.filter(s => s.totalRevenueBRL > 0).slice(0, 5)
+  const bottomStores = sorted.filter(s => s.totalRevenueBRL > 0).length > 5
+    ? [...sorted.filter(s => s.totalRevenueBRL > 0)].reverse().slice(0, 5)
     : []
 
   const hasPartialData = rows.some(
@@ -165,6 +192,13 @@ async function liveFetchWithTimeout(
     try {
       const revenue = await getKlaviyoRevenueForStore(store.id, period)
 
+      // Convert to BRL for aggregation
+      const [totalBRL, campaignBRL, flowBRL] = await Promise.all([
+        convertToBRL(revenue.totalRevenue, revenue.currency),
+        convertToBRL(revenue.campaignRevenue, revenue.currency),
+        convertToBRL(revenue.flowRevenue, revenue.currency),
+      ])
+
       // Fire-and-forget: save revenue to cache for next request
       if (revenue.totalRevenue > 0 && (CACHED_PERIODS as readonly string[]).includes(period)) {
         Promise.resolve(
@@ -177,6 +211,7 @@ async function liveFetchWithTimeout(
               klaviyo_total_revenue: revenue.totalRevenue,
               klaviyo_campaign_revenue: revenue.campaignRevenue,
               klaviyo_flow_revenue: revenue.flowRevenue,
+              currency: revenue.currency,
               sync_status: "ok",
               sync_error: null,
               expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
@@ -196,9 +231,13 @@ async function liveFetchWithTimeout(
         totalRevenue: revenue.totalRevenue,
         campaignRevenue: revenue.campaignRevenue,
         flowRevenue: revenue.flowRevenue,
+        currency: revenue.currency,
+        totalRevenueBRL: totalBRL,
+        campaignRevenueBRL: campaignBRL,
+        flowRevenueBRL: flowBRL,
       })
 
-      log.info(`[LiveFetch] Completed store ${store.store_name}: $${revenue.totalRevenue}`)
+      log.info(`[LiveFetch] Completed store ${store.store_name}: ${revenue.currency} ${revenue.totalRevenue} → BRL ${totalBRL}`)
     } catch (err) {
       log.warn(`[LiveFetch] Error for store ${store.store_name}:`, err)
     }
@@ -254,6 +293,7 @@ export async function GET(request: NextRequest) {
           klaviyo_campaign_revenue,
           klaviyo_flow_revenue,
           store_total_revenue,
+          currency,
           sync_status,
           fetched_at,
           client_stores!inner(id, store_name, client_id, clients(name))
@@ -285,7 +325,7 @@ export async function GET(request: NextRequest) {
 
       if (rows.length > 0) {
         // Cache HIT
-        const storeBreakdown = buildStoreBreakdown(rows)
+        const storeBreakdown = await buildStoreBreakdown(rows)
         const elapsed = Date.now() - startTime
         log.info("[CacheStrategy]", {
           endpoint: "total-revenue",

@@ -25,6 +25,7 @@ const SYNC_DATA: KlaviyoSyncData = {
   flowRevenue: 3000,
   storeRevenue: 12000,
   storeOrders: 150,
+  currency: "BRL",
   startDateStr: "2026-01-01T00:00:00.000Z",
   endDateStr: "2026-01-31T23:59:59.999Z",
   flowRows: [
