@@ -120,19 +120,13 @@ export async function POST(
     }
 
     // Send welcome email via Resend with portal login link
-    try {
-      await emailService.sendWelcomeWithPassword({
-        to: portalUser.email,
-        name: portalUser.name,
-        email: portalUser.email,
-        tempPassword,
-        loginUrl: `${appUrl}/portal/login`,
-      })
-    } catch (emailErr) {
-      log.warn("Failed to send invite email, user recreated anyway", {
-        error: (emailErr as Error).message,
-      })
-    }
+    await emailService.sendWelcomeWithPassword({
+      to: portalUser.email,
+      name: portalUser.name,
+      email: portalUser.email,
+      tempPassword,
+      loginUrl: `${appUrl}/portal/login`,
+    })
 
     // Log activity
     await supabase.from("client_portal_activity").insert({
