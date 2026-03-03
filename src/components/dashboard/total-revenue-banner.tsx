@@ -23,23 +23,28 @@ import { RefreshButton } from "@/components/ui/refresh-button"
 import { useDataStatus } from "@/hooks/use-data-status"
 import type { DataStatus } from "@/lib/shared/data-status"
 
-interface StoreRevenue {
+export interface RevenueStoreItem {
   storeId: string
   storeName: string
   clientName: string
   totalRevenue: number
   campaignRevenue: number
   flowRevenue: number
+  currency?: string
+  totalRevenueBRL?: number
+  campaignRevenueBRL?: number
+  flowRevenueBRL?: number
 }
 
-interface TotalRevenueData {
+export interface TotalRevenueData {
   period: string
   totalRevenue: number
   campaignRevenue: number
   flowRevenue: number
   storesCount: number
   storesWithRevenue: number
-  topStores: StoreRevenue[]
+  topStores: RevenueStoreItem[]
+  bottomStores: RevenueStoreItem[]
   hasPartialData?: boolean
   lastFetchedAt?: string | null
   cachedAt: string
@@ -81,6 +86,7 @@ interface TotalRevenueBannerProps {
   storeIds?: string[]
   period?: string
   onPeriodChange?: (period: string) => void
+  onDataChange?: (data: TotalRevenueData | null) => void
 }
 
 const fetcher = (url: string) => fetch(url).then(res => {
@@ -88,7 +94,7 @@ const fetcher = (url: string) => fetch(url).then(res => {
   return res.json()
 })
 
-export function TotalRevenueBanner({ storeIds, period: controlledPeriod, onPeriodChange }: TotalRevenueBannerProps = {}) {
+export function TotalRevenueBanner({ storeIds, period: controlledPeriod, onPeriodChange, onDataChange }: TotalRevenueBannerProps = {}) {
   const [internalPeriod, setInternalPeriod] = useState("30d")
   const period = controlledPeriod ?? internalPeriod
   const setPeriod = (v: string) => {
@@ -134,6 +140,11 @@ export function TotalRevenueBanner({ storeIds, period: controlledPeriod, onPerio
     isRefreshing: data.isRefreshing ?? isValidating,
     source: data.source ?? "cache",
   } : undefined)
+
+  // Notify parent when data changes (so cards can consume topStores/bottomStores)
+  useEffect(() => {
+    onDataChange?.(data ?? null)
+  }, [data, onDataChange])
 
   const handleCustomDateApply = (start: Date, end: Date) => {
     setCustomStart(start)

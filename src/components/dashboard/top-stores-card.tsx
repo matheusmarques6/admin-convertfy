@@ -1,22 +1,22 @@
 "use client"
 
 import Link from "next/link"
-import { Trophy, RefreshCw } from "lucide-react"
+import { Trophy } from "lucide-react"
 import { CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { formatCurrency, cn } from "@/lib/utils"
-import { useStoreRevenue } from "@/hooks/use-store-revenue"
+import { formatCurrency } from "@/lib/utils"
+import type { RevenueStoreItem } from "./total-revenue-banner"
+import type { DataStatus } from "@/lib/shared/data-status"
 
 interface TopStoresCardProps {
-  period?: string
+  stores?: RevenueStoreItem[]
+  isLoading?: boolean
+  dataStatus?: DataStatus
 }
 
-export function TopStoresCard({ period = "30d" }: TopStoresCardProps) {
-  const { data, isLoading, refresh } = useStoreRevenue(period)
-  const stores = data?.topStores || []
-
-  const maxRevenue = stores[0]?.totalRevenueBRL || 1
+export function TopStoresCard({ stores: storesProp, isLoading, dataStatus }: TopStoresCardProps) {
+  const stores = storesProp || []
+  const maxRevenue = stores[0]?.totalRevenueBRL ?? stores[0]?.totalRevenue ?? 1
 
   return (
     <div className="rounded-xl border border-border bg-card h-full">
@@ -26,9 +26,6 @@ export function TopStoresCard({ period = "30d" }: TopStoresCardProps) {
             <Trophy className="h-4 w-4 text-success" />
             <CardTitle className="text-sm font-semibold">Top Lojas</CardTitle>
           </div>
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={refresh} disabled={isLoading}>
-            <RefreshCw className={cn("h-3.5 w-3.5", isLoading && "animate-spin")} />
-          </Button>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -36,7 +33,7 @@ export function TopStoresCard({ period = "30d" }: TopStoresCardProps) {
           <div className="space-y-3">
             {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-10 w-full rounded-lg" />)}
           </div>
-        ) : data?.dataStatus === "syncing" ? (
+        ) : dataStatus === "syncing" ? (
           <div className="space-y-3">
             <p className="text-xs text-muted-foreground text-center py-2">Sincronizando...</p>
             {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-10 w-full rounded-lg" />)}
@@ -45,7 +42,8 @@ export function TopStoresCard({ period = "30d" }: TopStoresCardProps) {
           <p className="text-xs text-muted-foreground text-center py-4">Nenhuma loja com receita no período</p>
         ) : (
           stores.map((store, i) => {
-            const widthPercent = Math.max(((store.totalRevenueBRL ?? store.totalRevenue) / maxRevenue) * 100, 4)
+            const storeRevBRL = store.totalRevenueBRL ?? store.totalRevenue
+            const widthPercent = Math.max((storeRevBRL / maxRevenue) * 100, 4)
             const curr = store.currency || "BRL"
             return (
               <Link key={store.storeId} href={`/stores/${store.storeId}`} className="block group">

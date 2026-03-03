@@ -1,9 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useCallback, useRef } from "react"
 import { usePermissions } from "@/lib/hooks/use-permissions"
 import { QuickActions } from "./quick-actions"
-import { TotalRevenueBanner } from "./total-revenue-banner"
+import { TotalRevenueBanner, type TotalRevenueData } from "./total-revenue-banner"
 import { BoardPreview } from "./board-preview"
 import { WeekCalendarPreview } from "./week-calendar-preview"
 import { TopStoresCard } from "./top-stores-card"
@@ -72,6 +72,12 @@ interface DashboardLayoutProps {
 export function DashboardLayout({ data, userRole }: DashboardLayoutProps) {
   const { permissions, hasFeature } = usePermissions()
   const [revenuePeriod, setRevenuePeriod] = useState("30d")
+  const [revenueData, setRevenueData] = useState<TotalRevenueData | null>(null)
+  const revenueResolved = useRef(false)
+  const handleRevenueData = useCallback((d: TotalRevenueData | null) => {
+    revenueResolved.current = true
+    setRevenueData(d)
+  }, [])
 
   const isAdminOrOwner = permissions?.isAdmin || permissions?.isOrgOwner
   const canViewReports = isAdminOrOwner || hasFeature("view_reports")
@@ -82,7 +88,7 @@ export function DashboardLayout({ data, userRole }: DashboardLayoutProps) {
       <QuickActions />
 
       {/* Revenue Banner - visible to all (shows store performance metrics) */}
-      <TotalRevenueBanner period={revenuePeriod} onPeriodChange={setRevenuePeriod} />
+      <TotalRevenueBanner period={revenuePeriod} onPeriodChange={setRevenuePeriod} onDataChange={handleRevenueData} />
 
       {/* Main Grid: 2 columns */}
       <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
@@ -93,11 +99,19 @@ export function DashboardLayout({ data, userRole }: DashboardLayoutProps) {
         <WeekCalendarPreview meetings={data.weekMeetings} tasks={data.weekTasks} />
 
         {/* Top Stores - visible to all */}
-        <TopStoresCard period={revenuePeriod} />
+        <TopStoresCard
+          stores={revenueData?.topStores}
+          isLoading={!revenueResolved.current}
+          dataStatus={revenueData?.dataStatus}
+        />
 
         {/* Worst Performers - admin, COO and those with reports access */}
         {(isAdminOrOwner || canViewReports) && (
-          <WorstPerformersCard period={revenuePeriod} />
+          <WorstPerformersCard
+            stores={revenueData?.bottomStores}
+            isLoading={!revenueResolved.current}
+            dataStatus={revenueData?.dataStatus}
+          />
         )}
 
         {/* Onboarding Preview - visible to all, filters by role internally */}
