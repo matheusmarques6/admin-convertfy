@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import { usePermissions } from "@/lib/hooks/use-permissions"
 import { QuickActions } from "./quick-actions"
 import { TotalRevenueBanner } from "./total-revenue-banner"
@@ -70,6 +71,7 @@ interface DashboardLayoutProps {
 
 export function DashboardLayout({ data, userRole }: DashboardLayoutProps) {
   const { permissions, hasFeature } = usePermissions()
+  const [revenuePeriod, setRevenuePeriod] = useState("30d")
 
   const isAdminOrOwner = permissions?.isAdmin || permissions?.isOrgOwner
   const canViewReports = isAdminOrOwner || hasFeature("view_reports")
@@ -80,7 +82,7 @@ export function DashboardLayout({ data, userRole }: DashboardLayoutProps) {
       <QuickActions />
 
       {/* Revenue Banner - visible to all (shows store performance metrics) */}
-      <TotalRevenueBanner />
+      <TotalRevenueBanner period={revenuePeriod} onPeriodChange={setRevenuePeriod} />
 
       {/* Main Grid: 2 columns */}
       <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
@@ -91,11 +93,11 @@ export function DashboardLayout({ data, userRole }: DashboardLayoutProps) {
         <WeekCalendarPreview meetings={data.weekMeetings} tasks={data.weekTasks} />
 
         {/* Top Stores - visible to all */}
-        <TopStoresCard />
+        <TopStoresCard period={revenuePeriod} />
 
         {/* Worst Performers - admin, COO and those with reports access */}
         {(isAdminOrOwner || canViewReports) && (
-          <WorstPerformersCard />
+          <WorstPerformersCard period={revenuePeriod} />
         )}
 
         {/* Onboarding Preview - visible to all, filters by role internally */}

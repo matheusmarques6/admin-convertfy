@@ -9,6 +9,10 @@ interface StoreRevenue {
   totalRevenue: number
   campaignRevenue: number
   flowRevenue: number
+  currency?: string
+  totalRevenueBRL?: number
+  campaignRevenueBRL?: number
+  flowRevenueBRL?: number
 }
 
 interface RevenueData {

@@ -1,21 +1,22 @@
 "use client"
 
-import { useState } from "react"
 import Link from "next/link"
 import { Trophy, RefreshCw } from "lucide-react"
 import { CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatCurrency, cn } from "@/lib/utils"
 import { useStoreRevenue } from "@/hooks/use-store-revenue"
 
-export function TopStoresCard() {
-  const [period, setPeriod] = useState("30d")
+interface TopStoresCardProps {
+  period?: string
+}
+
+export function TopStoresCard({ period = "30d" }: TopStoresCardProps) {
   const { data, isLoading, refresh } = useStoreRevenue(period)
   const stores = data?.topStores || []
 
-  const maxRevenue = stores[0]?.totalRevenue || 1
+  const maxRevenue = stores[0]?.totalRevenueBRL || 1
 
   return (
     <div className="rounded-xl border border-border bg-card h-full">
@@ -25,21 +26,9 @@ export function TopStoresCard() {
             <Trophy className="h-4 w-4 text-success" />
             <CardTitle className="text-sm font-semibold">Top Lojas</CardTitle>
           </div>
-          <div className="flex items-center gap-1.5">
-            <Select value={period} onValueChange={setPeriod}>
-              <SelectTrigger className="h-7 w-20 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="7d">7 dias</SelectItem>
-                <SelectItem value="15d">15 dias</SelectItem>
-                <SelectItem value="30d">30 dias</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={refresh} disabled={isLoading}>
-              <RefreshCw className={cn("h-3.5 w-3.5", isLoading && "animate-spin")} />
-            </Button>
-          </div>
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={refresh} disabled={isLoading}>
+            <RefreshCw className={cn("h-3.5 w-3.5", isLoading && "animate-spin")} />
+          </Button>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -56,7 +45,8 @@ export function TopStoresCard() {
           <p className="text-xs text-muted-foreground text-center py-4">Nenhuma loja com receita no período</p>
         ) : (
           stores.map((store, i) => {
-            const widthPercent = Math.max((store.totalRevenue / maxRevenue) * 100, 4)
+            const widthPercent = Math.max(((store.totalRevenueBRL ?? store.totalRevenue) / maxRevenue) * 100, 4)
+            const curr = store.currency || "BRL"
             return (
               <Link key={store.storeId} href={`/stores/${store.storeId}`} className="block group">
                 <div className="flex items-center justify-between text-xs mb-1">
@@ -64,7 +54,7 @@ export function TopStoresCard() {
                     <span className="text-muted-foreground mr-1.5">{i + 1}.</span>
                     {store.storeName}
                   </span>
-                  <span className="font-medium tabular-nums text-foreground">{formatCurrency(store.totalRevenue)}</span>
+                  <span className="font-medium tabular-nums text-foreground">{formatCurrency(store.totalRevenue, curr)}</span>
                 </div>
                 <div className="h-1.5 rounded-full bg-muted overflow-hidden">
                   <div
@@ -74,7 +64,7 @@ export function TopStoresCard() {
                 </div>
                 {i < 2 && (
                   <p className="text-[10px] text-muted-foreground mt-0.5">
-                    Campaign: {formatCurrency(store.campaignRevenue)} &middot; Flow: {formatCurrency(store.flowRevenue)}
+                    Campaign: {formatCurrency(store.campaignRevenue, curr)} &middot; Flow: {formatCurrency(store.flowRevenue, curr)}
                   </p>
                 )}
               </Link>

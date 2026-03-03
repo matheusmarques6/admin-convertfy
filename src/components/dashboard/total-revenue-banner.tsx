@@ -79,6 +79,8 @@ function useCountUp(target: number, duration = 1200): number {
 
 interface TotalRevenueBannerProps {
   storeIds?: string[]
+  period?: string
+  onPeriodChange?: (period: string) => void
 }
 
 const fetcher = (url: string) => fetch(url).then(res => {
@@ -86,8 +88,13 @@ const fetcher = (url: string) => fetch(url).then(res => {
   return res.json()
 })
 
-export function TotalRevenueBanner({ storeIds }: TotalRevenueBannerProps = {}) {
-  const [period, setPeriod] = useState("30d")
+export function TotalRevenueBanner({ storeIds, period: controlledPeriod, onPeriodChange }: TotalRevenueBannerProps = {}) {
+  const [internalPeriod, setInternalPeriod] = useState("30d")
+  const period = controlledPeriod ?? internalPeriod
+  const setPeriod = (v: string) => {
+    setInternalPeriod(v)
+    onPeriodChange?.(v)
+  }
   const [customStart, setCustomStart] = useState<Date | undefined>()
   const [customEnd, setCustomEnd] = useState<Date | undefined>()
 
