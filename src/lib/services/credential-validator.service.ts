@@ -223,11 +223,12 @@ export async function validateKlaviyoCredentials(
     }
 
     if (response.status === 429) {
-      // Rate limited — credentials might be valid, treat as inconclusive
-      log.warn("Klaviyo validation rate limited")
+      // Rate limited — the key IS valid, just temporarily throttled.
+      // Treating as invalid would cause a persistent false "connection error".
+      log.warn("Klaviyo validation rate limited — treating as valid (key works, just throttled)")
       return {
-        valid: false,
-        error: "Rate limit da API Klaviyo. Tente novamente em alguns minutos",
+        valid: true,
+        error: "API Klaviyo temporariamente limitada (rate limit). Dados podem demorar a carregar.",
         tested_at: testedAt,
       }
     }

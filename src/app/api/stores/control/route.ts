@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { logger } from "@/lib/logger"
 import { paginationSchema } from "@/lib/schemas/common"
 import { z } from "zod"
+import { getKlaviyoRevenueForStore } from "@/lib/integrations/klaviyo/report-summary"
+import { withConcurrencyLimit } from "@/lib/integrations/klaviyo/rate-limiter"
+import { convertToBRL } from "@/lib/services/exchange-rate.service"
 
 const log = logger.child("StoresControl")
 
@@ -422,6 +425,68 @@ export async function GET(request: Request) {
         syncMetaMap.set(r.store_id, {
           fetchedAt: r.fetched_at as string | null,
           syncStatus: r.sync_status as string,
+        })
+      }
+
+      // ── Live fallback for stores with Klaviyo but no cache hit ──
+      const storesWithKlaviyoNoCacheHit = storesToFetch.filter(
+        s => !!s.klaviyo_private_key && !revenueMap.has(s.id)
+      )
+
+      if (storesWithKlaviyoNoCacheHit.length > 0) {
+        log.info(`[LiveFallback] ${storesWithKlaviyoNoCacheHit.length} stores with Klaviyo missing cache, fetching live`)
+        const adminSupabase = createAdminClient()
+
+        await withConcurrencyLimit(storesWithKlaviyoNoCacheHit, 3, async (store) => {
+          try {
+            const revenue = await getKlaviyoRevenueForStore(store.id, "30d")
+
+            // Convert to BRL for display
+            const [totalBRL, campaignBRL, flowBRL] = await Promise.all([
+              convertToBRL(revenue.totalRevenue, revenue.currency),
+              convertToBRL(revenue.campaignRevenue, revenue.currency),
+              convertToBRL(revenue.flowRevenue, revenue.currency),
+            ])
+
+            revenueMap.set(store.id, {
+              storeId: store.id,
+              totalRevenue: totalBRL,
+              campaignRevenue: campaignBRL,
+              flowRevenue: flowBRL,
+            })
+
+            syncMetaMap.set(store.id, {
+              fetchedAt: new Date().toISOString(),
+              syncStatus: "ok",
+            })
+
+            // Fire-and-forget: cache for next request
+            if (revenue.totalRevenue > 0) {
+              Promise.resolve(
+                adminSupabase
+                  .from("store_revenue_summary")
+                  .upsert({
+                    store_id: store.id,
+                    org_id: store.org_id || orgId,
+                    period_label: "30d",
+                    klaviyo_total_revenue: revenue.totalRevenue,
+                    klaviyo_campaign_revenue: revenue.campaignRevenue,
+                    klaviyo_flow_revenue: revenue.flowRevenue,
+                    currency: revenue.currency,
+                    sync_status: "ok",
+                    sync_error: null,
+                    expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
+                    fetched_at: new Date().toISOString(),
+                  }, { onConflict: "store_id,period_label" })
+              )
+                .then(() => log.info(`[LiveFallback] Cached revenue for ${store.store_name}`))
+                .catch((e: unknown) => log.warn(`[LiveFallback] Cache upsert failed for ${store.store_name}:`, e))
+            }
+
+            log.info(`[LiveFallback] ${store.store_name}: ${revenue.currency} ${revenue.totalRevenue} → BRL ${totalBRL}`)
+          } catch (err) {
+            log.warn(`[LiveFallback] Error for store ${store.store_name}:`, err)
+          }
         })
       }
 
