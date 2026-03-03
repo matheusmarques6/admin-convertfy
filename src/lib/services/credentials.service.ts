@@ -17,6 +17,17 @@ import { logger } from "@/lib/logger"
 
 const log = logger.child("CredentialsService")
 
+/**
+ * Supabase OR filter string for stores with Klaviyo credentials.
+ * Used by cron sync-reports and live fetch endpoints to ensure
+ * identical store selection.
+ *
+ * Both klaviyo_private_key (current) and klaviyo_api_key (legacy)
+ * are accepted because getStoreCredentials() handles both.
+ */
+export const KLAVIYO_CREDENTIALS_FILTER =
+  "klaviyo_private_key.not.is.null,klaviyo_api_key.not.is.null"
+
 // Fields that are always encrypted in client_stores
 const ENCRYPTED_FIELDS = [
   "shopify_access_token",

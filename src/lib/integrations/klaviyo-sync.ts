@@ -9,6 +9,7 @@ import { createClient } from "@supabase/supabase-js"
 import { decrypt } from "@/lib/crypto"
 import { logger } from "@/lib/logger"
 import { KLAVIYO_API_URL, KLAVIYO_REVISION, MIN_REQUEST_INTERVAL } from "@/lib/integrations/klaviyo/client"
+import { KLAVIYO_CREDENTIALS_FILTER } from "@/lib/services/credentials.service"
 
 const log = logger.child("KlaviyoSync")
 
@@ -392,7 +393,7 @@ export class KlaviyoSyncService {
           client_id,
           clients (name)
         `)
-        .not("klaviyo_private_key", "is", null)
+        .or(KLAVIYO_CREDENTIALS_FILTER)
         .eq("is_active", true)
 
       if (storesError) {

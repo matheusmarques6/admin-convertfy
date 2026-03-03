@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { errorResponse, requireRole, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
-import { getStoreCredentials } from "@/lib/services/credentials.service"
+import { getStoreCredentials, KLAVIYO_CREDENTIALS_FILTER } from "@/lib/services/credentials.service"
 import { logger } from "@/lib/logger"
 import { KLAVIYO_API_URL, KLAVIYO_REVISION } from "@/lib/integrations/klaviyo/client"
 
@@ -186,8 +186,7 @@ export async function POST(request: NextRequest) {
       .from("client_stores")
       .select("id, store_name")
       .eq("is_active", true)
-      .not("klaviyo_private_key", "is", null)
-      .neq("klaviyo_private_key", "")
+      .or(KLAVIYO_CREDENTIALS_FILTER)
 
     if (storesError) {
       log.error("[SyncAll] Error fetching stores:", storesError)

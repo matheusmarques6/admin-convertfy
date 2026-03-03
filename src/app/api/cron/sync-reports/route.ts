@@ -3,7 +3,7 @@ import { SupabaseClient } from "@supabase/supabase-js"
 import { createAdminClient } from "@/lib/supabase/server"
 import { cleanExpiredCache } from "@/lib/cache"
 import { logger } from "@/lib/logger"
-import { getStoreCredentials } from "@/lib/services/credentials.service"
+import { getStoreCredentials, KLAVIYO_CREDENTIALS_FILTER } from "@/lib/services/credentials.service"
 import {
   parseDateRangeInTimezone,
   getTimezoneOffset,
@@ -283,7 +283,7 @@ export async function GET(request: NextRequest) {
       const { data: stores, error: storesError } = await supabase
         .from("client_stores")
         .select("id, store_name, org_id")
-        .or("klaviyo_private_key.not.is.null,klaviyo_api_key.not.is.null")
+        .or(KLAVIYO_CREDENTIALS_FILTER)
         .not("org_id", "is", null)
 
       if (storesError || !stores) {

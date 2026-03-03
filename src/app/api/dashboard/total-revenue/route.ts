@@ -8,6 +8,7 @@ import { type DataStatus, type DataStatusMeta, CACHED_PERIODS } from "@/lib/shar
 import { getKlaviyoRevenueForStore } from "@/lib/integrations/klaviyo/report-summary"
 import { withConcurrencyLimit } from "@/lib/integrations/klaviyo/rate-limiter"
 import { convertToBRL } from "@/lib/services/exchange-rate.service"
+import { KLAVIYO_CREDENTIALS_FILTER } from "@/lib/services/credentials.service"
 
 const log = logger.child("TotalRevenue")
 
@@ -204,8 +205,8 @@ async function liveFetchWithTimeout(
         convertToBRL(revenue.flowRevenue, revenue.currency),
       ])
 
-      // Fire-and-forget: save revenue to cache for next request
-      if (revenue.totalRevenue > 0 && (CACHED_PERIODS as readonly string[]).includes(period)) {
+      // Fire-and-forget: save revenue to cache for next request (including zero revenue stores)
+      if ((CACHED_PERIODS as readonly string[]).includes(period)) {
         Promise.resolve(
           adminSupabase
             .from("store_revenue_summary")
@@ -223,7 +224,7 @@ async function liveFetchWithTimeout(
               fetched_at: new Date().toISOString(),
             }, { onConflict: "store_id,period_label" })
         )
-          .then(() => log.info(`[LiveFetch] Cached revenue for ${store.store_name}/${period}`))
+          .then(() => log.info(`[LiveFetch] Cached revenue for ${store.store_name}/${period} (${revenue.currency} ${revenue.totalRevenue})`))
           .catch((e) => log.warn(`[LiveFetch] Cache upsert failed for ${store.store_name}:`, e))
       }
 
@@ -369,7 +370,7 @@ export async function GET(request: NextRequest) {
       .from("client_stores")
       .select("id, store_name, org_id, client_id, clients(name)")
       .eq("org_id", orgId)
-      .not("klaviyo_private_key", "is", null)
+      .or(KLAVIYO_CREDENTIALS_FILTER)
 
     if (filterStoreIds && filterStoreIds.length > 0) {
       storeQuery = storeQuery.in("id", filterStoreIds)

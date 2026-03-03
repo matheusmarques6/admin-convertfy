@@ -460,28 +460,26 @@ export async function GET(request: Request) {
               syncStatus: "ok",
             })
 
-            // Fire-and-forget: cache for next request
-            if (revenue.totalRevenue > 0) {
-              Promise.resolve(
-                adminSupabase
-                  .from("store_revenue_summary")
-                  .upsert({
-                    store_id: store.id,
-                    org_id: store.org_id || orgId,
-                    period_label: "30d",
-                    klaviyo_total_revenue: revenue.totalRevenue,
-                    klaviyo_campaign_revenue: revenue.campaignRevenue,
-                    klaviyo_flow_revenue: revenue.flowRevenue,
-                    currency: revenue.currency,
-                    sync_status: "ok",
-                    sync_error: null,
-                    expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
-                    fetched_at: new Date().toISOString(),
-                  }, { onConflict: "store_id,period_label" })
-              )
-                .then(() => log.info(`[LiveFallback] Cached revenue for ${store.store_name}`))
-                .catch((e: unknown) => log.warn(`[LiveFallback] Cache upsert failed for ${store.store_name}:`, e))
-            }
+            // Fire-and-forget: cache for next request (including zero revenue)
+            Promise.resolve(
+              adminSupabase
+                .from("store_revenue_summary")
+                .upsert({
+                  store_id: store.id,
+                  org_id: store.org_id || orgId,
+                  period_label: "30d",
+                  klaviyo_total_revenue: revenue.totalRevenue,
+                  klaviyo_campaign_revenue: revenue.campaignRevenue,
+                  klaviyo_flow_revenue: revenue.flowRevenue,
+                  currency: revenue.currency,
+                  sync_status: "ok",
+                  sync_error: null,
+                  expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
+                  fetched_at: new Date().toISOString(),
+                }, { onConflict: "store_id,period_label" })
+            )
+              .then(() => log.info(`[LiveFallback] Cached revenue for ${store.store_name} (${revenue.currency} ${revenue.totalRevenue})`))
+              .catch((e: unknown) => log.warn(`[LiveFallback] Cache upsert failed for ${store.store_name}:`, e))
 
             log.info(`[LiveFallback] ${store.store_name}: ${revenue.currency} ${revenue.totalRevenue} → BRL ${totalBRL}`)
           } catch (err) {
