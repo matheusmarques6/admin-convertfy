@@ -4,11 +4,9 @@ import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { requireAuth, successResponse, errorResponse } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { logger } from "@/lib/logger"
-import { type DataStatus, type DataStatusMeta } from "@/lib/shared/data-status"
-import { fetchKlaviyoPerformance } from "@/lib/services/klaviyo-performance.service"
-import { savePerfDataToCache } from "@/lib/services/sync-persistence.service"
-import { getStoreCredentials } from "@/lib/services/credentials.service"
-import { parseDateRange, formatDateStr } from "@/lib/integrations/klaviyo"
+import { type DataStatus, type DataStatusMeta, CACHED_PERIODS } from "@/lib/shared/data-status"
+import { getKlaviyoRevenueForStore } from "@/lib/integrations/klaviyo/report-summary"
+import { withConcurrencyLimit } from "@/lib/integrations/klaviyo/rate-limiter"
 
 const log = logger.child("TotalRevenue")
 
@@ -152,47 +150,59 @@ function emptyResponse(
   }
 }
 
-// ── Live fetch for stores using fetchKlaviyoPerformance ─────────────────────
+// ── Live fetch for stores using lightweight revenue-only fetcher ─────────────
 
 async function liveFetchForStores(
   stores: StoreRow[],
   period: string,
   adminSupabase: SupabaseClient,
 ): Promise<{ results: StoreRevenue[]; fetchedAt: string | null; hasStale: boolean }> {
-  const results: StoreRevenue[] = []
-  let fetchedAt: string | null = null
-
-  const { startDate, endDate } = parseDateRange(period)
-  const startDateStr = formatDateStr(startDate)
-  const endDateStr = formatDateStr(endDate)
-
-  for (const store of stores) {
+  // Process stores in parallel (max 3 concurrent) using lightweight revenue fetcher
+  // getKlaviyoRevenueForStore makes only 2-4 API calls vs 27-47 for fetchKlaviyoPerformance
+  const storeResults = await withConcurrencyLimit(stores, 3, async (store) => {
     try {
-      const credentials = await getStoreCredentials(store.id)
-      const apiKey = credentials.klaviyo_private_key || credentials.klaviyo_api_key
-      if (!apiKey) continue
+      const revenue = await getKlaviyoRevenueForStore(store.id, period)
 
-      const perfData = await fetchKlaviyoPerformance(apiKey, period)
+      // Fire-and-forget: save revenue to cache for next request
+      if (revenue.totalRevenue > 0 && (CACHED_PERIODS as readonly string[]).includes(period)) {
+        Promise.resolve(
+          adminSupabase
+            .from("store_revenue_summary")
+            .upsert({
+              store_id: store.id,
+              org_id: store.org_id || null,
+              period_label: period,
+              klaviyo_total_revenue: revenue.totalRevenue,
+              klaviyo_campaign_revenue: revenue.campaignRevenue,
+              klaviyo_flow_revenue: revenue.flowRevenue,
+              sync_status: "ok",
+              sync_error: null,
+              expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
+              fetched_at: new Date().toISOString(),
+            }, { onConflict: "store_id,period_label" })
+        )
+          .then(() => log.info(`[LiveFetch] Cached revenue for ${store.store_name}/${period}`))
+          .catch(() => {})
+      }
 
-      results.push({
+      return {
         storeId: store.id,
         storeName: store.store_name || "Loja sem nome",
         clientName: store.client_id
           ? (store.clients?.name || "Cliente desconhecido")
           : store.store_name || "Loja avulsa",
-        totalRevenue: perfData.attributedRevenue,
-        campaignRevenue: perfData.campaignRevenue,
-        flowRevenue: perfData.flowRevenue,
-      })
-      fetchedAt = new Date().toISOString()
-
-      // Fire-and-forget: save to cache for next request
-      savePerfDataToCache(adminSupabase, store.id, store.org_id, period, perfData, startDateStr, endDateStr).catch(() => {})
+        totalRevenue: revenue.totalRevenue,
+        campaignRevenue: revenue.campaignRevenue,
+        flowRevenue: revenue.flowRevenue,
+      } as StoreRevenue | null
     } catch (err) {
       log.warn(`[LiveFetch] Error for store ${store.store_name}:`, err)
-      // Continue with next store
+      return null
     }
-  }
+  })
+
+  const results = storeResults.filter((r): r is StoreRevenue => r !== null)
+  const fetchedAt = results.length > 0 ? new Date().toISOString() : null
 
   return { results, fetchedAt, hasStale: false }
 }
