@@ -10,7 +10,7 @@ import { withConcurrencyLimit } from "@/lib/integrations/klaviyo/rate-limiter"
 
 const log = logger.child("TotalRevenue")
 
-const LIVE_FETCH_TIMEOUT_MS = 30_000
+const LIVE_FETCH_TIMEOUT_MS = 50_000
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -150,16 +150,18 @@ function emptyResponse(
   }
 }
 
-// ── Live fetch for stores using lightweight revenue-only fetcher ─────────────
+// ── Live fetch with partial results on timeout ────────────────────────────
 
-async function liveFetchForStores(
+async function liveFetchWithTimeout(
   stores: StoreRow[],
   period: string,
   adminSupabase: SupabaseClient,
-): Promise<{ results: StoreRevenue[]; fetchedAt: string | null; hasStale: boolean }> {
-  // Process stores in parallel (max 3 concurrent) using lightweight revenue fetcher
-  // getKlaviyoRevenueForStore makes only 2-4 API calls vs 27-47 for fetchKlaviyoPerformance
-  const storeResults = await withConcurrencyLimit(stores, 3, async (store) => {
+): Promise<{ results: StoreRevenue[]; fetchedAt: string | null; timedOut: boolean; hasStale: boolean }> {
+  // Shared collector: stores push results as they complete.
+  // On timeout, we return whatever has been collected so far instead of nothing.
+  const collected: StoreRevenue[] = []
+
+  async function fetchOneStore(store: StoreRow): Promise<void> {
     try {
       const revenue = await getKlaviyoRevenueForStore(store.id, period)
 
@@ -185,7 +187,7 @@ async function liveFetchForStores(
           .catch(() => {})
       }
 
-      return {
+      collected.push({
         storeId: store.id,
         storeName: store.store_name || "Loja sem nome",
         clientName: store.client_id
@@ -194,42 +196,33 @@ async function liveFetchForStores(
         totalRevenue: revenue.totalRevenue,
         campaignRevenue: revenue.campaignRevenue,
         flowRevenue: revenue.flowRevenue,
-      } as StoreRevenue | null
+      })
+
+      log.info(`[LiveFetch] Completed store ${store.store_name}: $${revenue.totalRevenue}`)
     } catch (err) {
       log.warn(`[LiveFetch] Error for store ${store.store_name}:`, err)
-      return null
     }
-  })
-
-  const results = storeResults.filter((r): r is StoreRevenue => r !== null)
-  const fetchedAt = results.length > 0 ? new Date().toISOString() : null
-
-  return { results, fetchedAt, hasStale: false }
-}
-
-// ── Wrap live fetch with timeout ───────────────────────────────────────────
-
-async function liveFetchWithTimeout(
-  stores: StoreRow[],
-  period: string,
-  adminSupabase: SupabaseClient,
-): Promise<{ results: StoreRevenue[]; fetchedAt: string | null; timedOut: boolean; hasStale: boolean }> {
-  const timeoutPromise = new Promise<null>((resolve) => {
-    setTimeout(() => resolve(null), LIVE_FETCH_TIMEOUT_MS)
-  })
-
-  const fetchPromise = liveFetchForStores(stores, period, adminSupabase)
-
-  // Note: Promise.race does not cancel the losing promise.
-  // On Vercel serverless, the in-flight work continues until the platform kills the function.
-  const result = await Promise.race([fetchPromise, timeoutPromise])
-
-  if (result === null) {
-    log.warn(`[LiveFetch] Timed out after ${LIVE_FETCH_TIMEOUT_MS}ms`)
-    return { results: [], fetchedAt: null, timedOut: true, hasStale: false }
   }
 
-  return { ...result, timedOut: false }
+  // Process stores in parallel (max 5 concurrent) using lightweight revenue fetcher
+  const allDonePromise = withConcurrencyLimit(stores, 5, fetchOneStore)
+
+  const timeoutPromise = new Promise<"timeout">((resolve) => {
+    setTimeout(() => resolve("timeout"), LIVE_FETCH_TIMEOUT_MS)
+  })
+
+  const raceResult = await Promise.race([
+    allDonePromise.then(() => "done" as const),
+    timeoutPromise,
+  ])
+
+  const timedOut = raceResult === "timeout"
+  if (timedOut) {
+    log.warn(`[LiveFetch] Timed out after ${LIVE_FETCH_TIMEOUT_MS}ms — returning ${collected.length}/${stores.length} partial results`)
+  }
+
+  const fetchedAt = collected.length > 0 ? new Date().toISOString() : null
+  return { results: collected, fetchedAt, timedOut, hasStale: timedOut }
 }
 
 // ── GET Handler ────────────────────────────────────────────────────────────
@@ -375,8 +368,8 @@ export async function GET(request: NextRequest) {
 
     const elapsed = Date.now() - startTime
 
-    if (liveResults.length === 0 && timedOut) {
-      // Timed out with no results
+    if (liveResults.length === 0) {
+      // No results at all (timed out or all stores failed)
       log.warn("[CacheStrategy]", {
         endpoint: "total-revenue",
         period,
@@ -386,7 +379,7 @@ export async function GET(request: NextRequest) {
         liveFetches: 0,
         source: "live",
         elapsed: `${elapsed}ms`,
-        timedOut: true,
+        timedOut,
       })
       const result = emptyResponse(period, stores.length, {
         dataStatus: "stale",
@@ -400,6 +393,7 @@ export async function GET(request: NextRequest) {
     }
 
     const source = "live" as const
+    // Partial results (some stores completed, some didn't) still show data
     const dataStatus: DataStatus = timedOut ? "stale" : "ready"
 
     log.info("[CacheStrategy]", {
