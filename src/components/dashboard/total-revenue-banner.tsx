@@ -5,15 +5,8 @@ import useSWR from "swr"
 import { format } from "date-fns"
 import { TrendingUp, RefreshCw, Megaphone, Workflow, Store, AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
-import { DateRangePicker } from "@/components/ui/date-range-picker"
+import { PeriodPicker } from "@/components/ui/period-picker"
 import { formatCurrency } from "@/lib/utils"
 import { TimeAgo } from "@/components/ui/time-ago"
 import { PARTIAL_DATA_TOOLTIP } from "@/components/ui/sync-status-badge"
@@ -146,12 +139,6 @@ export function TotalRevenueBanner({ storeIds, period: controlledPeriod, onPerio
     onDataChange?.(data ?? null)
   }, [data, onDataChange])
 
-  const handleCustomDateApply = (start: Date, end: Date) => {
-    setCustomStart(start)
-    setCustomEnd(end)
-    setPeriod("custom")
-  }
-
   const animatedTotal = useCountUp(data?.totalRevenue || 0)
   const animatedCampaign = useCountUp(data?.campaignRevenue || 0)
   const animatedFlow = useCountUp(data?.flowRevenue || 0)
@@ -256,25 +243,14 @@ export function TotalRevenueBanner({ storeIds, period: controlledPeriod, onPerio
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <Select value={period} onValueChange={(v) => {
-              setPeriod(v)
-              setCustomStart(undefined)
-              setCustomEnd(undefined)
-            }}>
-              <SelectTrigger className="w-28 h-9 rounded-lg border-white/15 bg-white/10 text-white hover:bg-white/15 [&>svg]:text-white/70">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="7d">7 dias</SelectItem>
-                <SelectItem value="15d">15 dias</SelectItem>
-                <SelectItem value="30d">30 dias</SelectItem>
-                <SelectItem value="90d">90 dias</SelectItem>
-              </SelectContent>
-            </Select>
-            <DateRangePicker
-              startDate={customStart}
-              endDate={customEnd}
-              onApply={handleCustomDateApply}
+            <PeriodPicker
+              value={{ period, customStart, customEnd }}
+              onChange={({ period: p, customStart: s, customEnd: e }) => {
+                setPeriod(p)
+                setCustomStart(s)
+                setCustomEnd(e)
+              }}
+              className="border-white/15 bg-white/10 text-white hover:bg-white/15 [&>svg]:text-white/70"
             />
             <RefreshButton
               onRefresh={() => {
