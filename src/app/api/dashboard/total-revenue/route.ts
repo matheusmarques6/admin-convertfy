@@ -183,6 +183,8 @@ async function liveFetchWithTimeout(
   stores: StoreRow[],
   period: string,
   adminSupabase: SupabaseClient,
+  customStartDate?: string | null,
+  customEndDate?: string | null,
 ): Promise<{ results: StoreRevenue[]; fetchedAt: string | null; timedOut: boolean; hasStale: boolean }> {
   // Shared collector: stores push results as they complete.
   // On timeout, we return whatever has been collected so far instead of nothing.
@@ -190,7 +192,10 @@ async function liveFetchWithTimeout(
 
   async function fetchOneStore(store: StoreRow): Promise<void> {
     try {
-      const revenue = await getKlaviyoRevenueForStore(store.id, period)
+      const revenue = await getKlaviyoRevenueForStore(
+        store.id, period,
+        customStartDate || undefined, customEndDate || undefined,
+      )
 
       // Convert to BRL for aggregation
       const [totalBRL, campaignBRL, flowBRL] = await Promise.all([
@@ -279,12 +284,15 @@ export async function GET(request: NextRequest) {
     const storeIdsParam = request.nextUrl.searchParams.get("store_ids")
     const filterStoreIds = storeIdsParam ? storeIdsParam.split(",").filter(Boolean) : null
     const forceRefresh = request.nextUrl.searchParams.get("force_refresh") === "true"
+    const customStartDate = request.nextUrl.searchParams.get("start_date") || null
+    const customEndDate = request.nextUrl.searchParams.get("end_date") || null
 
     // Resolve org for tenant isolation
     const orgId = await resolveOrgId(user.id)
 
-    // ── Step 1: Try cache (skip if force_refresh) ────────────────────────
-    if (!forceRefresh) {
+    // ── Step 1: Try cache (skip if force_refresh or custom date range) ──
+    const isCustomRange = period === "custom" && !!customStartDate && !!customEndDate
+    if (!forceRefresh && !isCustomRange) {
       let query = supabase
         .from("store_revenue_summary")
         .select(`
@@ -407,7 +415,7 @@ export async function GET(request: NextRequest) {
 
     // Live fetch with timeout (returns partial results if some stores complete)
     const { results: liveResults, fetchedAt, timedOut } =
-      await liveFetchWithTimeout(stores, period, adminSupabase)
+      await liveFetchWithTimeout(stores, period, adminSupabase, customStartDate, customEndDate)
 
     const elapsed = Date.now() - startTime
 

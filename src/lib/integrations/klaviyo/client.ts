@@ -188,6 +188,7 @@ export function parseDateRange(
     endDate.setHours(23, 59, 59, 999)
 
     switch (period) {
+      case "1d":
       case "today":
         startDate = new Date(now)
         break
