@@ -38,7 +38,5 @@ export {
 
 export { generateEmailSubjects, generateAdCopy } from './ai.service';
 
-export { emailService } from '@/lib/email';
-
 // Re-export event utilities for convenience
 export { publishEvent, logActivity } from '@/lib/events/publisher';
