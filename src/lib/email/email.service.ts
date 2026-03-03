@@ -1,42 +1,16 @@
 import { Resend } from "resend"
 import { logger } from "@/lib/logger"
 import { createAdminClient } from "@/lib/supabase/server"
+import { EmailConfigError, EmailRateLimitError, EmailDeliveryError } from "@/lib/api/errors"
 import {
   welcomeWithPasswordTemplate,
   passwordResetTemplate,
   testEmailTemplate,
 } from "./templates"
 
+export { EmailConfigError, EmailRateLimitError, EmailDeliveryError }
+
 const log = logger.child("EmailService")
-
-// --- Error Classes ---
-
-export class EmailConfigError extends Error {
-  public statusCode = 500
-  public code = "EMAIL_CONFIG_ERROR"
-  constructor(message = "Serviço de email não configurado") {
-    super(message)
-    this.name = "EmailConfigError"
-  }
-}
-
-export class EmailRateLimitError extends Error {
-  public statusCode = 429
-  public code = "EMAIL_RATE_LIMIT"
-  constructor(message = "Rate limit de email excedido") {
-    super(message)
-    this.name = "EmailRateLimitError"
-  }
-}
-
-export class EmailDeliveryError extends Error {
-  public statusCode = 502
-  public code = "EMAIL_DELIVERY_ERROR"
-  constructor(message = "Falha ao entregar email") {
-    super(message)
-    this.name = "EmailDeliveryError"
-  }
-}
 
 // --- Types ---
 
