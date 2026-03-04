@@ -560,8 +560,8 @@ export default function PortalIntegrationsPage() {
                       </div>
                     </div>
                     {carrier.isFree ? (
-                      <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/30">
-                        Grátis
+                      <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/30">
+                        <CheckCircle2 className="h-3 w-3" /> Ativo
                       </span>
                     ) : hasKey ? (
                       <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/30">
@@ -583,7 +583,10 @@ export default function PortalIntegrationsPage() {
                   </div>
 
                   {carrier.isFree ? (
-                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-auto">{carrier.helpText}</p>
+                    <div className="mt-auto flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 rounded-lg px-3 py-2">
+                      <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                      <span>Ativo automaticamente — sem chave necessária</span>
+                    </div>
                   ) : (
                     <Button
                       variant="outline"
