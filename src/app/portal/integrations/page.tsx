@@ -583,7 +583,7 @@ export default function PortalIntegrationsPage() {
                     className="w-full mt-auto border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]"
                   >
                     <Key className="h-3.5 w-3.5 mr-1.5" />
-                    {hasKey ? "Alterar chave" : "Configurar"}
+                    {carrier.id === "cainiao" ? "Ver detalhes" : hasKey ? "Alterar chave" : "Configurar"}
                   </Button>
                 </div>
               )
