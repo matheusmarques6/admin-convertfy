@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
     // Check tracking store config
     const { data: trackingStore } = await adminClient
       .from("tracking_stores")
-      .select("id, is_active, seventeen_track_api_key, widget_config, last_sync_at")
+      .select("id, is_active, seventeen_track_api_key, carrier_api_keys, widget_config, last_sync_at")
       .eq("client_store_id", storeId)
       .single()
 
@@ -111,6 +111,12 @@ export async function GET(request: NextRequest) {
           active: trackingStore?.is_active || false,
           tracking_store_id: trackingStore?.id || null,
           has_17track_key: !!trackingStore?.seventeen_track_api_key,
+          carrier_keys: {
+            seventeen_track: !!trackingStore?.seventeen_track_api_key,
+            trackingmore: !!(trackingStore?.carrier_api_keys as Record<string, unknown> | null)?.trackingmore,
+            postnl: !!(trackingStore?.carrier_api_keys as Record<string, unknown> | null)?.postnl,
+            cainiao: true,
+          },
           widget_config: trackingStore?.widget_config || null,
           last_sync_at: trackingStore?.last_sync_at || null,
         },
@@ -147,6 +153,9 @@ export async function PUT(request: NextRequest) {
       // Tracking fields
       activate_tracking,
       widget_config,
+      // Carrier fields
+      carrier_id,
+      api_key,
     } = body
 
     if (!store_id || !integration_type) {
@@ -284,6 +293,59 @@ export async function PUT(request: NextRequest) {
         success: true,
         message: existing ? "Rastreamento atualizado" : "Rastreamento ativado",
       })
+    }
+
+    if (integration_type === "carrier") {
+      const VALID_CARRIERS = ["trackingmore", "postnl", "seventeen_track"] as const
+      type ValidCarrier = typeof VALID_CARRIERS[number]
+
+      if (!carrier_id || !VALID_CARRIERS.includes(carrier_id as ValidCarrier)) {
+        throw new AppError("carrier_id inválido", 400)
+      }
+      if (!api_key || String(api_key).trim().length === 0) {
+        throw new AppError("API key não pode ser vazia", 400)
+      }
+
+      // Resolve tracking_store from server-verified store_id (never from body)
+      const { data: trackingStore } = await adminClient
+        .from("tracking_stores")
+        .select("id, carrier_api_keys")
+        .eq("client_store_id", store_id)
+        .single()
+
+      if (!trackingStore) {
+        throw new AppError("Rastreamento não ativado para esta loja", 400)
+      }
+
+      const encryptedKey = encrypt(String(api_key).trim())
+
+      if (carrier_id === "seventeen_track") {
+        const { error: updateError } = await adminClient
+          .from("tracking_stores")
+          .update({ seventeen_track_api_key: encryptedKey })
+          .eq("id", trackingStore.id)
+
+        if (updateError) {
+          log.error("Error updating 17track key:", updateError)
+          throw new AppError("Erro ao salvar chave 17track", 500)
+        }
+      } else {
+        // JSONB merge: fetch current keys, merge, save
+        const currentKeys = (trackingStore.carrier_api_keys ?? {}) as Record<string, string>
+        const updatedKeys = { ...currentKeys, [carrier_id]: encryptedKey }
+
+        const { error: updateError } = await adminClient
+          .from("tracking_stores")
+          .update({ carrier_api_keys: updatedKeys })
+          .eq("id", trackingStore.id)
+
+        if (updateError) {
+          log.error("Error updating carrier key:", updateError)
+          throw new AppError("Erro ao salvar chave do carrier", 500)
+        }
+      }
+
+      return successResponse(request, { success: true, message: "Chave salva com sucesso" })
     }
 
     throw new AppError(`Tipo de integração não suportado: ${integration_type}`, 400)

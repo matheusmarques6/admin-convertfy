@@ -11,6 +11,7 @@ import {
   Settings,
   Key,
   ArrowRight,
+  Truck,
 } from "lucide-react"
 import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -30,7 +31,14 @@ import { toast } from "@/lib/hooks/use-toast"
 interface IntegrationData {
   shopify: { connected: boolean; status?: string; domain: string; connected_at: string | null; error?: string | null }
   klaviyo: { connected: boolean; status?: string; has_public_key: boolean; connected_at: string | null; error?: string | null; hasReportingAccess?: boolean; missingScopes?: string[] }
-  tracking: { active: boolean; tracking_store_id: string | null; has_17track_key: boolean; widget_config: Record<string, unknown> | null; last_sync_at: string | null }
+  tracking: {
+    active: boolean
+    tracking_store_id: string | null
+    has_17track_key: boolean
+    carrier_keys: { seventeen_track: boolean; trackingmore: boolean; postnl: boolean; cainiao: boolean }
+    widget_config: Record<string, unknown> | null
+    last_sync_at: string | null
+  }
 }
 
 interface StoreInfo {
@@ -41,6 +49,65 @@ interface StoreInfo {
   shopify_store_domain: string
 }
 
+interface CarrierConfig {
+  id: string
+  name: string
+  description: string
+  icon: string
+  iconBg: string
+  keyPlaceholder?: string
+  helpText: string
+  helpUrl?: string
+  isFree?: boolean
+  covers: string[]
+}
+
+const CARRIERS: CarrierConfig[] = [
+  {
+    id: "seventeen_track",
+    name: "17track",
+    description: "Agregador universal",
+    icon: "17",
+    iconBg: "bg-orange-500/10 text-orange-600 dark:text-orange-400",
+    keyPlaceholder: "Sua API Key do 17track",
+    helpText: "17track.net/apiuser",
+    helpUrl: "https://www.17track.net/en/apiuser",
+    covers: ["Todos os 2800+ carriers"],
+  },
+  {
+    id: "trackingmore",
+    name: "TrackingMore",
+    description: "Alternativa econômica",
+    icon: "TM",
+    iconBg: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+    keyPlaceholder: "Sua API Key do TrackingMore",
+    helpText: "trackingmore.com/docs",
+    helpUrl: "https://www.trackingmore.com/docs/trackingmore/d5ac362fc3cda-api-quick-start-guide",
+    covers: ["Wanb Express", "Yanwen", "China Post", "PostNL", "+1500"],
+  },
+  {
+    id: "cainiao",
+    name: "Cainiao",
+    description: "Transportadoras chinesas",
+    icon: "CN",
+    iconBg: "bg-red-500/10 text-red-600 dark:text-red-400",
+    helpText: "Rastreamento gratuito via Cainiao Global",
+    isFree: true,
+    covers: ["Wanb Express", "Yanwen", "SDH Express", "AliExpress"],
+  },
+  {
+    id: "postnl",
+    name: "PostNL",
+    description: "Correios Holanda",
+    icon: "NL",
+    iconBg: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+    keyPlaceholder: "Sua API Key do PostNL",
+    helpText: "developer.postnl.nl",
+    helpUrl: "https://developer.postnl.nl",
+    covers: ["PostNL International", "PostNL Domestic"],
+  },
+]
+
 type IntegrationType = "shopify" | "klaviyo"
 
 export default function PortalIntegrationsPage() {
@@ -49,19 +116,26 @@ export default function PortalIntegrationsPage() {
   const [store, setStore] = useState<StoreInfo | null>(null)
   const [integrations, setIntegrations] = useState<IntegrationData | null>(null)
 
-  // Dialog state
+  // Shopify/Klaviyo dialog state
   const [dialogOpen, setDialogOpen] = useState(false)
   const [dialogType, setDialogType] = useState<IntegrationType | null>(null)
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
 
-  // Form fields
+  // Form fields (Shopify/Klaviyo)
   const [shopifyDomain, setShopifyDomain] = useState("")
   const [shopifyToken, setShopifyToken] = useState("")
   const [klaviyoKey, setKlaviyoKey] = useState("")
   const [klaviyoPublicKey, setKlaviyoPublicKey] = useState("")
   const [showPassword, setShowPassword] = useState(false)
+
+  // Carrier dialog state
+  const [carrierDialogOpen, setCarrierDialogOpen] = useState(false)
+  const [activeCarrier, setActiveCarrier] = useState<CarrierConfig | null>(null)
+  const [carrierKeyInput, setCarrierKeyInput] = useState("")
+  const [showCarrierKey, setShowCarrierKey] = useState(false)
+  const [savingCarrier, setSavingCarrier] = useState(false)
 
   const fetchData = useCallback(async () => {
     try {
@@ -101,6 +175,13 @@ export default function PortalIntegrationsPage() {
       setKlaviyoPublicKey("")
     }
     setDialogOpen(true)
+  }
+
+  function openCarrierDialog(carrier: CarrierConfig) {
+    setActiveCarrier(carrier)
+    setCarrierKeyInput("")
+    setShowCarrierKey(false)
+    setCarrierDialogOpen(true)
   }
 
   async function handleTestConnection() {
@@ -147,7 +228,6 @@ export default function PortalIntegrationsPage() {
   async function handleSave() {
     if (!dialogType || !store) return
 
-    // Validate before setting saving state
     if (dialogType === "shopify" && !shopifyToken) {
       toast({ variant: "destructive", title: "Preencha o Access Token" })
       return
@@ -187,6 +267,38 @@ export default function PortalIntegrationsPage() {
     }
   }
 
+  async function handleSaveCarrierKey() {
+    if (!activeCarrier || !store) return
+    if (!carrierKeyInput.trim()) {
+      toast({ variant: "destructive", title: "Preencha a API key" })
+      return
+    }
+
+    setSavingCarrier(true)
+    try {
+      const res = await fetch("/api/portal/integrations", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          store_id: store.id,
+          integration_type: "carrier",
+          carrier_id: activeCarrier.id,
+          api_key: carrierKeyInput.trim(),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Erro ao salvar")
+
+      toast({ title: `Chave ${activeCarrier.name} salva!` })
+      setCarrierDialogOpen(false)
+      fetchData()
+    } catch (err) {
+      toast({ variant: "destructive", title: "Erro ao salvar", description: err instanceof Error ? err.message : "Tente novamente" })
+    } finally {
+      setSavingCarrier(false)
+    }
+  }
+
   async function handleActivateTracking() {
     if (!store) return
     setSaving(true)
@@ -207,6 +319,16 @@ export default function PortalIntegrationsPage() {
     }
   }
 
+  function getCarrierKeyStatus(carrier: CarrierConfig): boolean {
+    if (!integrations?.tracking.carrier_keys) return false
+    const keys = integrations.tracking.carrier_keys
+    if (carrier.id === "seventeen_track") return keys.seventeen_track
+    if (carrier.id === "trackingmore") return keys.trackingmore
+    if (carrier.id === "postnl") return keys.postnl
+    if (carrier.id === "cainiao") return true
+    return false
+  }
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -217,6 +339,12 @@ export default function PortalIntegrationsPage() {
         <div className="grid gap-6 md:grid-cols-3">
           {[1, 2, 3].map((i) => (
             <Skeleton key={i} className="h-52" />
+          ))}
+        </div>
+        <Skeleton className="h-6 w-40" />
+        <div className="grid gap-4 md:grid-cols-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} className="h-44" />
           ))}
         </div>
       </div>
@@ -235,7 +363,7 @@ export default function PortalIntegrationsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Integrações</h1>
@@ -407,12 +535,84 @@ export default function PortalIntegrationsPage() {
         </div>
       </div>
 
+      {/* Transportadoras Section */}
+      {integrations?.tracking.active && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Truck className="h-5 w-5 text-slate-600 dark:text-slate-400" />
+            <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Transportadoras</h2>
+          </div>
+          <p className="text-sm text-slate-500 dark:text-slate-400 -mt-2">
+            Configure APIs adicionais para rastrear mais carriers. O sistema usa automaticamente o melhor provider disponível.
+          </p>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {CARRIERS.map((carrier) => {
+              const hasKey = getCarrierKeyStatus(carrier)
+              return (
+                <div
+                  key={carrier.id}
+                  className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 p-4 flex flex-col gap-3"
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-sm font-bold ${carrier.iconBg}`}>
+                        {carrier.icon}
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{carrier.name}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">{carrier.description}</p>
+                      </div>
+                    </div>
+                    {carrier.isFree ? (
+                      <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/30">
+                        Grátis
+                      </span>
+                    ) : hasKey ? (
+                      <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/30">
+                        <CheckCircle2 className="h-3 w-3" /> Ativo
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700/40">
+                        Inativo
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap gap-1">
+                    {carrier.covers.map((c) => (
+                      <span key={c} className="text-xs bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded px-1.5 py-0.5">
+                        {c}
+                      </span>
+                    ))}
+                  </div>
+
+                  {carrier.isFree ? (
+                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-auto">{carrier.helpText}</p>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openCarrierDialog(carrier)}
+                      className="w-full mt-auto border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]"
+                    >
+                      <Key className="h-3.5 w-3.5 mr-1.5" />
+                      {hasKey ? "Alterar chave" : "Configurar"}
+                    </Button>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Info */}
       <p className="text-xs text-slate-400 dark:text-slate-500 text-center">
         As credenciais são criptografadas e sincronizadas com o painel admin.
       </p>
 
-      {/* Credentials Dialog */}
+      {/* Shopify/Klaviyo Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-lg bg-white dark:bg-[#151922] border-slate-200/80 dark:border-slate-700/40">
           <DialogHeader>
@@ -496,7 +696,6 @@ export default function PortalIntegrationsPage() {
               </>
             )}
 
-            {/* Test Result */}
             {testResult && (
               <div className={`flex items-center gap-2 text-sm ${testResult.success ? "text-emerald-600" : "text-red-600"}`}>
                 {testResult.success ? <CheckCircle2 className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
@@ -525,6 +724,62 @@ export default function PortalIntegrationsPage() {
             >
               {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Salvar Credenciais
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Carrier Dialog */}
+      <Dialog open={carrierDialogOpen} onOpenChange={setCarrierDialogOpen}>
+        <DialogContent className="sm:max-w-md bg-white dark:bg-[#151922] border-slate-200/80 dark:border-slate-700/40">
+          <DialogHeader>
+            <DialogTitle className="text-slate-800 dark:text-slate-100">
+              Configurar {activeCarrier?.name}
+            </DialogTitle>
+            <DialogDescription className="text-slate-500 dark:text-slate-400">
+              {store?.store_name} &mdash; {activeCarrier?.description}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label className="text-[13px] font-medium text-slate-700 dark:text-slate-200">API Key</Label>
+              <div className="relative">
+                <Input
+                  type={showCarrierKey ? "text" : "password"}
+                  placeholder={activeCarrier?.keyPlaceholder || "Sua API Key"}
+                  value={carrierKeyInput}
+                  onChange={(e) => setCarrierKeyInput(e.target.value)}
+                  className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 pr-10"
+                />
+                <button type="button" onClick={() => setShowCarrierKey(!showCarrierKey)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
+                  {showCarrierKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              {activeCarrier?.helpUrl ? (
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Obtenha sua chave em{" "}
+                  <a href={activeCarrier.helpUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                    {activeCarrier.helpText}
+                  </a>
+                </p>
+              ) : (
+                <p className="text-xs text-slate-500 dark:text-slate-400">{activeCarrier?.helpText}</p>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCarrierDialogOpen(false)} className="border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleSaveCarrierKey}
+              disabled={savingCarrier}
+              className="bg-primary hover:bg-primary/85 text-white shadow-sm"
+            >
+              {savingCarrier && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Salvar Chave
             </Button>
           </DialogFooter>
         </DialogContent>
