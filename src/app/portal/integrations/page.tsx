@@ -532,8 +532,7 @@ export default function PortalIntegrationsPage() {
       </div>
 
       {/* Transportadoras Section */}
-      {integrations?.tracking.active && (
-        <div className="space-y-4">
+      <div className="space-y-4">
           <div className="flex items-center gap-2">
             <Truck className="h-5 w-5 text-slate-600 dark:text-slate-400" />
             <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Transportadoras</h2>
@@ -601,7 +600,6 @@ export default function PortalIntegrationsPage() {
             })}
           </div>
         </div>
-      )}
 
       {/* Info */}
       <p className="text-xs text-slate-400 dark:text-slate-500 text-center">
