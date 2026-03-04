@@ -1,21 +1,35 @@
 "use client"
 
+import { useState, useMemo } from "react"
 import Link from "next/link"
 import { Trophy } from "lucide-react"
 import { CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatCurrency } from "@/lib/utils"
+import { StoresListModal } from "./stores-list-modal"
 import type { RevenueStoreItem } from "./total-revenue-banner"
 import type { DataStatus } from "@/lib/shared/data-status"
 
 interface TopStoresCardProps {
   stores?: RevenueStoreItem[]
+  allStores?: RevenueStoreItem[]
   isLoading?: boolean
   dataStatus?: DataStatus
 }
 
-export function TopStoresCard({ stores: storesProp, isLoading, dataStatus }: TopStoresCardProps) {
+export function TopStoresCard({ stores: storesProp, allStores, isLoading, dataStatus }: TopStoresCardProps) {
   const stores = storesProp || []
+  const [modalOpen, setModalOpen] = useState(false)
+
+  const allStoresSorted = useMemo(() => {
+    if (!allStores || allStores.length === 0) return []
+    return [...allStores]
+      .filter(s => (s.totalRevenueBRL ?? s.totalRevenue) > 0)
+      .sort((a, b) => (b.totalRevenueBRL ?? b.totalRevenue) - (a.totalRevenueBRL ?? a.totalRevenue))
+  }, [allStores])
+
+  const showViewAll = allStoresSorted.length > 5
   const maxRevenue = stores[0]?.totalRevenueBRL ?? stores[0]?.totalRevenue ?? 1
 
   return (
@@ -26,6 +40,11 @@ export function TopStoresCard({ stores: storesProp, isLoading, dataStatus }: Top
             <Trophy className="h-4 w-4 text-success" />
             <CardTitle className="text-sm font-semibold">Top Lojas</CardTitle>
           </div>
+          {showViewAll && (
+            <Button variant="ghost" size="sm" className="text-xs h-7 px-2" onClick={() => setModalOpen(true)}>
+              Ver todas ({allStoresSorted.length})
+            </Button>
+          )}
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -70,6 +89,13 @@ export function TopStoresCard({ stores: storesProp, isLoading, dataStatus }: Top
           })
         )}
       </CardContent>
+
+      <StoresListModal
+        stores={allStoresSorted}
+        variant="top"
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+      />
     </div>
   )
 }

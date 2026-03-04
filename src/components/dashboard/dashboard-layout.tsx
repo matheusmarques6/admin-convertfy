@@ -101,6 +101,7 @@ export function DashboardLayout({ data, userRole }: DashboardLayoutProps) {
         {/* Top Stores - visible to all */}
         <TopStoresCard
           stores={revenueData?.topStores}
+          allStores={revenueData?.storeBreakdown}
           isLoading={!revenueResolved.current}
           dataStatus={revenueData?.dataStatus}
         />
@@ -109,6 +110,7 @@ export function DashboardLayout({ data, userRole }: DashboardLayoutProps) {
         {(isAdminOrOwner || canViewReports) && (
           <WorstPerformersCard
             stores={revenueData?.bottomStores}
+            allStores={revenueData?.storeBreakdown}
             isLoading={!revenueResolved.current}
             dataStatus={revenueData?.dataStatus}
           />

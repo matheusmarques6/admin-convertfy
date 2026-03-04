@@ -38,6 +38,7 @@ export interface TotalRevenueData {
   storesWithRevenue: number
   topStores: RevenueStoreItem[]
   bottomStores: RevenueStoreItem[]
+  storeBreakdown?: RevenueStoreItem[]
   hasPartialData?: boolean
   lastFetchedAt?: string | null
   cachedAt: string

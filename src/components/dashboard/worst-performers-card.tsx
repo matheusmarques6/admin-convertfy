@@ -1,21 +1,35 @@
 "use client"
 
+import { useState, useMemo } from "react"
 import Link from "next/link"
 import { TrendingDown } from "lucide-react"
 import { CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatCurrency } from "@/lib/utils"
+import { StoresListModal } from "./stores-list-modal"
 import type { RevenueStoreItem } from "./total-revenue-banner"
 import type { DataStatus } from "@/lib/shared/data-status"
 
 interface WorstPerformersCardProps {
   stores?: RevenueStoreItem[]
+  allStores?: RevenueStoreItem[]
   isLoading?: boolean
   dataStatus?: DataStatus
 }
 
-export function WorstPerformersCard({ stores: storesProp, isLoading, dataStatus }: WorstPerformersCardProps) {
+export function WorstPerformersCard({ stores: storesProp, allStores, isLoading, dataStatus }: WorstPerformersCardProps) {
   const stores = storesProp || []
+  const [modalOpen, setModalOpen] = useState(false)
+
+  const allStoresSorted = useMemo(() => {
+    if (!allStores || allStores.length === 0) return []
+    return [...allStores]
+      .filter(s => (s.totalRevenueBRL ?? s.totalRevenue) > 0)
+      .sort((a, b) => (a.totalRevenueBRL ?? a.totalRevenue) - (b.totalRevenueBRL ?? b.totalRevenue))
+  }, [allStores])
+
+  const showViewAll = allStoresSorted.length > 5
   const maxRevenue = stores[0]?.totalRevenueBRL ?? stores[0]?.totalRevenue ?? 1
 
   return (
@@ -26,6 +40,11 @@ export function WorstPerformersCard({ stores: storesProp, isLoading, dataStatus 
             <TrendingDown className="h-4 w-4 text-destructive" />
             <CardTitle className="text-sm font-semibold">Atenção Necessária</CardTitle>
           </div>
+          {showViewAll && (
+            <Button variant="ghost" size="sm" className="text-xs h-7 px-2" onClick={() => setModalOpen(true)}>
+              Ver todas ({allStoresSorted.length})
+            </Button>
+          )}
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -70,6 +89,13 @@ export function WorstPerformersCard({ stores: storesProp, isLoading, dataStatus 
           })
         )}
       </CardContent>
+
+      <StoresListModal
+        stores={allStoresSorted}
+        variant="bottom"
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+      />
     </div>
   )
 }
