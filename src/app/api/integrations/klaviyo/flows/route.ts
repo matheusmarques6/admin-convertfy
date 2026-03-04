@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { requireAuth, errorResponse } from "@/lib/api/errors"
+import { requireStoreAccess } from "@/lib/api/require-store-access"
 import { getStoreCredentials } from "@/lib/services/credentials.service"
 import { logger } from "@/lib/logger"
 
@@ -12,14 +13,19 @@ import {
   klaviyoRequest,
   parseDateRange,
   formatDateStr,
-  getAccountInfo,
   getTimezoneOffset,
-  findPlacedOrderMetric,
+  getCachedAccountInfo,
+  getCachedPlacedOrderMetric,
 } from "@/lib/integrations/klaviyo"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import type { SupabaseClient } from "@supabase/supabase-js"
 
 export const maxDuration = 300
 export const dynamic = 'force-dynamic'
+
+// Cache-first configuration
+const CACHED_PERIODS = new Set(["7d", "15d", "30d", "90d"])
+const CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1000 // 6 hours (aligned with cron interval)
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -237,34 +243,128 @@ async function getFlowMetrics(
   return flowMetrics
 }
 
+// Read flows from cache (klaviyo_flow_metrics table)
+async function readFlowsFromCache(
+  storeId: string,
+  periodStart: string,
+  periodEnd: string,
+  supabase: SupabaseClient
+) {
+  const { data: rows, error } = await supabase
+    .from("klaviyo_flow_metrics")
+    .select("*")
+    .eq("store_id", storeId)
+    .eq("period_start", periodStart)
+    .eq("period_end", periodEnd)
+    .order("fetched_at", { ascending: false })
+
+  if (error || !rows || rows.length === 0) return null
+
+  // Check freshness: if newest row is older than threshold, cache is stale
+  const latestFetchedAt = new Date(rows[0].fetched_at)
+  if (Date.now() - latestFetchedAt.getTime() > CACHE_MAX_AGE_MS) return null
+
+  // Map cached rows to response format (exclude archived)
+  const flows = rows
+    .filter((r: Record<string, unknown>) => r.flow_status !== "archived")
+    .map((r: Record<string, unknown>) => ({
+      id: r.flow_id as string,
+      name: r.flow_name as string,
+      status: r.flow_status as string,
+      triggerType: r.trigger_type as string,
+      created: "", // not stored in cache
+      recipients: (r.recipients as number) || 0,
+      delivered: (r.delivered as number) || 0,
+      deliveryRate: (r.delivery_rate as number) || 0,
+      opened: (r.opened as number) || 0,
+      openRate: (r.open_rate as number) || 0,
+      clicked: (r.clicked as number) || 0,
+      clickRate: (r.click_rate as number) || 0,
+      clickToOpenRate: (r.click_to_open_rate as number) || 0,
+      conversions: (r.conversions as number) || 0,
+      conversionRate: (r.conversion_rate as number) || 0,
+      conversionValue: (r.conversion_value as number) || 0,
+      revenuePerRecipient: (r.revenue_per_recipient as number) || 0,
+      averageOrderValue: (r.average_order_value as number) || 0,
+      bounced: (r.bounced as number) || 0,
+      bounceRate: (r.bounce_rate as number) || 0,
+      unsubscribed: (r.unsubscribed as number) || 0,
+      unsubscribeRate: (r.unsubscribe_rate as number) || 0,
+      revenue: (r.conversion_value as number) || 0,
+    }))
+    .sort((a: { conversionValue: number }, b: { conversionValue: number }) => b.conversionValue - a.conversionValue)
+
+  // Calculate summary totals
+  const totals = flows.reduce(
+    (acc: Record<string, number>, flow: Record<string, unknown>) => ({
+      totalFlows: acc.totalFlows + 1,
+      liveFlows: acc.liveFlows + (flow.status === "live" ? 1 : 0),
+      draftFlows: acc.draftFlows + (flow.status === "draft" ? 1 : 0),
+      manualFlows: acc.manualFlows + (flow.status === "manual" ? 1 : 0),
+      totalRecipients: acc.totalRecipients + (flow.recipients as number),
+      totalDelivered: acc.totalDelivered + (flow.delivered as number),
+      totalOpened: acc.totalOpened + (flow.opened as number),
+      totalClicked: acc.totalClicked + (flow.clicked as number),
+      totalConversions: acc.totalConversions + (flow.conversions as number),
+      totalRevenue: acc.totalRevenue + (flow.conversionValue as number),
+      totalBounced: acc.totalBounced + (flow.bounced as number),
+      totalUnsubscribed: acc.totalUnsubscribed + (flow.unsubscribed as number),
+    }),
+    {
+      totalFlows: 0,
+      liveFlows: 0,
+      draftFlows: 0,
+      manualFlows: 0,
+      totalRecipients: 0,
+      totalDelivered: 0,
+      totalOpened: 0,
+      totalClicked: 0,
+      totalConversions: 0,
+      totalRevenue: 0,
+      totalBounced: 0,
+      totalUnsubscribed: 0,
+    }
+  )
+
+  const avgOpenRate = totals.totalDelivered > 0 ? (totals.totalOpened / totals.totalDelivered) * 100 : 0
+  const avgClickRate = totals.totalDelivered > 0 ? (totals.totalClicked / totals.totalDelivered) * 100 : 0
+  const avgConversionRate = totals.totalDelivered > 0 ? (totals.totalConversions / totals.totalDelivered) * 100 : 0
+  const avgBounceRate = totals.totalRecipients > 0 ? (totals.totalBounced / totals.totalRecipients) * 100 : 0
+
+  return {
+    fetchedAt: rows[0].fetched_at as string,
+    summary: {
+      ...totals,
+      avgOpenRate: Math.round(avgOpenRate * 100) / 100,
+      avgClickRate: Math.round(avgClickRate * 100) / 100,
+      avgConversionRate: Math.round(avgConversionRate * 100) / 100,
+      avgBounceRate: Math.round(avgBounceRate * 100) / 100,
+      revenuePerRecipient: totals.totalRecipients > 0
+        ? Math.round((totals.totalRevenue / totals.totalRecipients) * 100) / 100
+        : 0,
+    },
+    flows,
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    await requireAuth(supabase)
+    const user = await requireAuth(supabase)
 
     const searchParams = request.nextUrl.searchParams
     const storeId = searchParams.get("store_id")
     const period = searchParams.get("period") || "30d"
     const customStartDate = searchParams.get("start_date")
     const customEndDate = searchParams.get("end_date")
+    const forceRefresh = searchParams.get("force_refresh") === "true"
 
     if (!storeId) {
       return NextResponse.json({ error: "store_id é obrigatório" }, { status: 400, headers: corsHeaders(request.headers.get("origin")) })
     }
 
-    // Get store display info using admin client (RLS on client_stores
-    // may block access depending on org membership; auth is already
-    // verified by requireAuth above)
-    const adminClient = createAdminClient()
-    const { data: store, error: storeError } = await adminClient
-      .from("client_stores")
-      .select("store_name")
-      .eq("id", storeId)
-      .single()
-
-    if (storeError || !store) {
-      return NextResponse.json({ error: "Loja não encontrada" }, { status: 404, headers: corsHeaders(request.headers.get("origin")) })
-    }
+    // Validate user has access to this store (multi-tenant isolation)
+    const store = await requireStoreAccess(storeId, user.id)
 
     // Get decrypted credentials via credentials service
     const credentials = await getStoreCredentials(storeId)
@@ -276,21 +376,52 @@ export async function GET(request: NextRequest) {
       }, { headers: corsHeaders(request.headers.get("origin")) })
     }
 
-    log.info("[Klaviyo Flows] Starting fetch for store:", store.store_name)
-
-    // Get account info for timezone
-    const accountInfo = await getAccountInfo(apiKey)
-    const timezoneOffset = getTimezoneOffset(accountInfo.timezone)
-
     // Calculate date range
     const { startDate, endDate } = parseDateRange(period, customStartDate, customEndDate)
     const startDateStr = formatDateStr(startDate)
     const endDateStr = formatDateStr(endDate)
 
+    // Convert date strings to ISO timestamps to match cron-written cache format
+    const periodStartISO = new Date(`${startDateStr}T00:00:00Z`).toISOString()
+    const periodEndISO = new Date(`${endDateStr}T23:59:59.999Z`).toISOString()
+
+    // Cache-first: try reading from cache for standard periods
+    const isCustomPeriod = period === "custom" || !CACHED_PERIODS.has(period)
+    if (!forceRefresh && !isCustomPeriod) {
+      try {
+        const adminClient = createAdminClient()
+        const cached = await readFlowsFromCache(storeId, periodStartISO, periodEndISO, adminClient)
+        if (cached) {
+          log.info(`[Klaviyo Flows] Serving from cache for store: ${store.storeName} period: ${period}`)
+          return NextResponse.json({
+            success: true,
+            period: {
+              start: startDateStr,
+              end: endDateStr,
+              label: period,
+            },
+            fromCache: true,
+            fetchedAt: cached.fetchedAt,
+            currency: "BRL",
+            summary: cached.summary,
+            flows: cached.flows,
+          }, { headers: corsHeaders(request.headers.get("origin")) })
+        }
+      } catch (cacheReadError) {
+        log.error("[Klaviyo Flows] Cache read error, falling through to live fetch:", cacheReadError)
+      }
+    }
+
+    log.info("[Klaviyo Flows] Starting live fetch for store:", store.storeName)
+
+    // Get account info for timezone
+    const accountInfo = await getCachedAccountInfo(apiKey, store.orgId)
+    const timezoneOffset = getTimezoneOffset(accountInfo.timezone)
+
     // Fetch data sequentially to avoid Klaviyo rate limiting
     const flows = await getAllFlows(apiKey)
     await sleep(350)
-    const metricId = await findPlacedOrderMetric(apiKey)
+    const metricId = await getCachedPlacedOrderMetric(apiKey, store.orgId)
 
     // Get metrics if we have the metric ID
     let flowMetrics = new Map()
@@ -371,6 +502,7 @@ export async function GET(request: NextRequest) {
 
     // Cache metrics in database
     try {
+      const adminClient = createAdminClient()
       const { error: upsertError } = await adminClient
         .from("klaviyo_flow_metrics")
         .upsert(
@@ -380,8 +512,8 @@ export async function GET(request: NextRequest) {
             flow_name: flow.name,
             flow_status: flow.status,
             trigger_type: flow.triggerType,
-            period_start: startDateStr,
-            period_end: endDateStr,
+            period_start: periodStartISO,
+            period_end: periodEndISO,
             recipients: flow.recipients,
             delivered: flow.delivered,
             delivery_rate: flow.deliveryRate,
@@ -418,6 +550,8 @@ export async function GET(request: NextRequest) {
         end: endDateStr,
         label: period
       },
+      fromCache: false,
+      fetchedAt: new Date().toISOString(),
       currency: accountInfo.currency,
       summary: {
         ...totals,

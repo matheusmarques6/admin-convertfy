@@ -117,10 +117,30 @@ export function TaskBoardWithCalendar({
     router.refresh()
   }, [handleDialogClose, editingTask, router])
 
+  // Count upcoming items
+  const today = new Date()
+  const upcomingTasks = localTasks.filter(t => t.due_date && new Date(t.due_date) >= today).length
+  const upcomingMeetings = localMeetings.filter(m => m.status === "scheduled" && new Date(m.scheduled_at) >= today).length
+
+  const getSubtitle = () => {
+    switch (viewMode) {
+      case "kanban":
+        return "Gerencie suas tarefas no estilo Kanban"
+      case "meetings":
+        return `${upcomingMeetings} reuniões agendadas`
+      case "calendar":
+        return `${upcomingTasks} tarefas e ${upcomingMeetings} reuniões agendadas`
+    }
+  }
+
   return (
     <>
       {/* Header */}
-      <div className="flex items-center justify-end mb-6">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold">Board</h1>
+          <p className="text-muted-foreground">{getSubtitle()}</p>
+        </div>
         <div className="flex items-center gap-3">
           <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)}>
             <TabsList>

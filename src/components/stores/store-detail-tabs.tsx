@@ -15,6 +15,8 @@ import {
   BookOpen,
   FileText,
   AlertTriangle,
+  Package,
+  Link2,
 } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -26,11 +28,26 @@ import { useKlaviyoCampaigns, useKlaviyoFlows } from "@/lib/hooks/use-api-data"
 import { StoreBriefingTab } from "@/components/stores/store-briefing-tab"
 import { StoreFormTab } from "@/components/stores/store-form-tab"
 import { StoreAlertsTab } from "@/components/stores/store-alerts-tab"
+import { StoreTrackingTab } from "@/components/stores/store-tracking-tab"
+import { StoreUtmTab } from "@/components/stores/store-utm-tab"
 import { StorePerformanceKPIs } from "@/components/stores/store-performance-kpis"
 import { StorePerformanceTables } from "@/components/stores/store-performance-tables"
+import { StoreLinkModal } from "@/components/stores/store-link-modal"
 import { DateRangePicker } from "@/components/ui/date-range-picker"
 import { useStorePerformance, StorePerformanceContext } from "@/lib/hooks/use-store-performance"
+import { toast } from "@/lib/hooks/use-toast"
 import type { CustomDateRange } from "@/lib/hooks/use-api-data"
+
+interface IntegrationStatusData {
+  connected: boolean
+  configured?: boolean
+  status?: "not_configured" | "pending_validation" | "connected" | "error"
+  connected_at?: string
+  validated_at?: string | null
+  error?: string | null
+  hasReportingAccess?: boolean
+  missingScopes?: string[]
+}
 
 interface StoreDetailTabsProps {
   storeId: string
@@ -40,7 +57,7 @@ interface StoreDetailTabsProps {
   niche?: string | null
   country?: string | null
   language?: string | null
-  integrationStatus: Record<string, { connected: boolean; connected_at?: string; hasReportingAccess?: boolean }>
+  integrationStatus: Record<string, IntegrationStatusData>
   clientId: string | null
   onboardingFormComplete?: boolean
   onboardingStatus?: string | null
@@ -97,6 +114,7 @@ export function StoreDetailTabs({
   const [customStart, setCustomStart] = useState<Date | undefined>()
   const [customEnd, setCustomEnd] = useState<Date | undefined>()
   const [activeAlertsCount, setActiveAlertsCount] = useState(0)
+  const [linkModalOpen, setLinkModalOpen] = useState(false)
 
   const setPeriod = (p: Period) => {
     setPeriodRaw(p)
@@ -135,6 +153,7 @@ export function StoreDetailTabs({
   }, [storeId])
 
   const klaviyoConnected = integrationStatus.klaviyo?.connected || false
+  const shopifyConnected = integrationStatus?.shopify?.connected ?? false
 
   const {
     data: campaignsData,
@@ -172,6 +191,10 @@ export function StoreDetailTabs({
           <BarChart3 className="h-4 w-4 mr-2" />
           Relatório
         </TabsTrigger>
+        <TabsTrigger value="utm" disabled={!shopifyConnected}>
+          <Link2 className="h-4 w-4 mr-2" />
+          UTM
+        </TabsTrigger>
         <TabsTrigger value="form">
           <FileText className="h-4 w-4 mr-2" />
           Formulário
@@ -188,6 +211,10 @@ export function StoreDetailTabs({
               {activeAlertsCount}
             </span>
           )}
+        </TabsTrigger>
+        <TabsTrigger value="rastreio">
+          <Package className="h-4 w-4 mr-2" />
+          Rastreio
         </TabsTrigger>
         <TabsTrigger value="settings">
           <Settings className="h-4 w-4 mr-2" />
@@ -226,6 +253,21 @@ export function StoreDetailTabs({
                       <Badge variant="outline">{platform}</Badge>
                     </div>
                   )}
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">Cliente</span>
+                    {clientId ? (
+                      <span className="font-medium">Vinculado</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setLinkModalOpen(true)}
+                        className="flex items-center gap-1 text-yellow-600 dark:text-yellow-400 hover:underline cursor-pointer text-sm"
+                      >
+                        <AlertTriangle className="h-3 w-3" />
+                        Nao vinculado - Vincular
+                      </button>
+                    )}
+                  </div>
                   {niche && (
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Nicho</span>
@@ -303,63 +345,10 @@ export function StoreDetailTabs({
               )}
 
               {/* Integration Status */}
-              <Card className="rounded-xl md:col-span-2">
-                <CardHeader>
-                  <CardTitle className="text-base">Status das Integrações</CardTitle>
-                  <CardDescription>Serviços conectados a esta loja</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    {[
-                      { key: "shopify", label: "Shopify" },
-                      { key: "klaviyo", label: "Klaviyo" },
-                      { key: "ga4", label: "Google Analytics" },
-                      { key: "meta", label: "Meta Ads" },
-                      { key: "google_ads", label: "Google Ads" },
-                      { key: "google_calendar", label: "Google Calendar" },
-                    ].map(({ key, label }) => {
-                      const status = integrationStatus[key]
-                      const connected = status?.connected || false
-                      const hasReporting = key === "klaviyo" && connected
-                        ? status?.hasReportingAccess
-                        : undefined
-                      return (
-                        <div
-                          key={key}
-                          className="flex items-center gap-3 p-3 rounded-lg border"
-                        >
-                          {connected ? (
-                            <CheckCircle2 className="h-5 w-5 text-success" />
-                          ) : (
-                            <XCircle className="h-5 w-5 text-muted-foreground/40" />
-                          )}
-                          <div>
-                            <p className="text-sm font-medium">{label}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {connected
-                                ? status?.connected_at
-                                  ? `Conectado em ${new Date(status.connected_at).toLocaleDateString("pt-BR")}`
-                                  : "Conectado"
-                                : "Não conectado"}
-                            </p>
-                            {key === "klaviyo" && connected && hasReporting === false && (
-                              <p className="text-xs text-warning flex items-center gap-1 mt-0.5">
-                                <AlertTriangle className="h-3 w-3" />
-                                Sem acesso a relatórios
-                              </p>
-                            )}
-                            {key === "klaviyo" && connected && hasReporting === true && (
-                              <p className="text-xs text-success mt-0.5">
-                                Relatórios ativos
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </CardContent>
-              </Card>
+              <IntegrationStatusCard
+                storeId={storeId}
+                integrationStatus={integrationStatus}
+              />
             </div>
 
             {/* Performance Tables (campaigns + flows) */}
@@ -403,6 +392,11 @@ export function StoreDetailTabs({
         <KlaviyoPerformanceReport storeId={storeId} storeName={storeName} />
       </TabsContent>
 
+      {/* UTM */}
+      <TabsContent value="utm">
+        <StoreUtmTab storeId={storeId} storeUrl={storeUrl} period={period} customDates={customDates} />
+      </TabsContent>
+
       {/* Formulário */}
       <TabsContent value="form">
         <StoreFormTab storeId={storeId} clientId={clientId} />
@@ -416,6 +410,11 @@ export function StoreDetailTabs({
       {/* Alerts */}
       <TabsContent value="alerts">
         <StoreAlertsTab storeId={storeId} storeName={storeName} />
+      </TabsContent>
+
+      {/* Rastreio */}
+      <TabsContent value="rastreio">
+        <StoreTrackingTab storeId={storeId} />
       </TabsContent>
 
       {/* Settings */}
@@ -434,6 +433,17 @@ export function StoreDetailTabs({
           </CardContent>
         </Card>
       </TabsContent>
+
+      {/* Store Link Modal - opened from overview "Nao vinculado" */}
+      {!clientId && (
+        <StoreLinkModal
+          storeId={storeId}
+          storeName={storeName}
+          isOpen={linkModalOpen}
+          onClose={() => setLinkModalOpen(false)}
+          onSuccess={() => window.location.reload()}
+        />
+      )}
     </Tabs>
   )
 }
@@ -659,6 +669,164 @@ function FlowsTab({
         </Card>
       )}
     </div>
+  )
+}
+
+// --- Integration Status Card ---
+function IntegrationStatusCard({
+  storeId,
+  integrationStatus,
+}: {
+  storeId: string
+  integrationStatus: Record<string, IntegrationStatusData>
+}) {
+  const [revalidating, setRevalidating] = useState<string | null>(null)
+  const [localStatus, setLocalStatus] = useState(integrationStatus)
+
+  // Sync with props
+  useEffect(() => {
+    setLocalStatus(integrationStatus)
+  }, [integrationStatus])
+
+  const handleRevalidate = async (key: string) => {
+    setRevalidating(key)
+    try {
+      // Call server-side revalidation endpoint (no credentials leave the server)
+      const res = await fetch("/api/client-stores/credentials/revalidate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ store_id: storeId }),
+      })
+
+      const data = await res.json()
+      const result = data.validation_results?.[key]
+
+      if (result) {
+        setLocalStatus((prev) => ({
+          ...prev,
+          [key]: {
+            ...prev[key],
+            connected: result.valid,
+            configured: true,
+            status: result.valid ? "connected" as const : "error" as const,
+            validated_at: result.tested_at,
+            error: result.valid ? null : (result.error || "Erro desconhecido"),
+            hasReportingAccess: result.hasReportingAccess,
+            missingScopes: result.missingScopes,
+          },
+        }))
+      }
+    } catch {
+      toast({
+        title: "Erro ao revalidar",
+        description: "Falha de conexao ao tentar revalidar credenciais. Tente novamente.",
+        variant: "destructive",
+      })
+    } finally {
+      setRevalidating(null)
+    }
+  }
+
+  const integrations = [
+    { key: "shopify", label: "Shopify", canRevalidate: true },
+    { key: "klaviyo", label: "Klaviyo", canRevalidate: true },
+    { key: "ga4", label: "Google Analytics", canRevalidate: false },
+    { key: "meta", label: "Meta Ads", canRevalidate: false },
+    { key: "google_ads", label: "Google Ads", canRevalidate: false },
+    { key: "google_calendar", label: "Google Calendar", canRevalidate: false },
+  ]
+
+  return (
+    <Card className="rounded-xl md:col-span-2">
+      <CardHeader>
+        <CardTitle className="text-base">Status das Integrações</CardTitle>
+        <CardDescription>Serviços conectados a esta loja</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {integrations.map(({ key, label, canRevalidate }) => {
+            const status = localStatus[key]
+            const connectionStatus = status?.status || (status?.connected ? "connected" : "not_configured")
+            const isRevalidating = revalidating === key
+
+            return (
+              <div
+                key={key}
+                className="flex items-center gap-3 p-3 rounded-lg border"
+              >
+                {/* Status Icon */}
+                {connectionStatus === "connected" ? (
+                  <CheckCircle2 className="h-5 w-5 text-success flex-shrink-0" />
+                ) : connectionStatus === "error" ? (
+                  <XCircle className="h-5 w-5 text-destructive flex-shrink-0" />
+                ) : connectionStatus === "pending_validation" ? (
+                  <AlertTriangle className="h-5 w-5 text-yellow-500 flex-shrink-0" />
+                ) : (
+                  <XCircle className="h-5 w-5 text-muted-foreground/40 flex-shrink-0" />
+                )}
+
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium">{label}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {connectionStatus === "connected"
+                      ? status?.validated_at
+                        ? `Conectado em ${new Date(status.validated_at).toLocaleDateString("pt-BR")}`
+                        : status?.connected_at
+                          ? `Conectado em ${new Date(status.connected_at).toLocaleDateString("pt-BR")}`
+                          : "Conectado"
+                      : connectionStatus === "error"
+                        ? "Erro de conexão"
+                        : connectionStatus === "pending_validation"
+                          ? "Pendente de validação"
+                          : "Não configurado"}
+                  </p>
+                  {connectionStatus === "error" && status?.error && (
+                    <p className="text-xs text-destructive mt-0.5 truncate" title={status.error}>
+                      {status.error}
+                    </p>
+                  )}
+                  {key === "klaviyo" && connectionStatus === "connected" && status?.missingScopes && status.missingScopes.length > 0 && (
+                    <p className="text-xs text-warning flex items-center gap-1 mt-0.5">
+                      <AlertTriangle className="h-3 w-3 flex-shrink-0" />
+                      Scopes faltando: {status.missingScopes.join(", ")}
+                    </p>
+                  )}
+                  {key === "klaviyo" && connectionStatus === "connected" && status?.hasReportingAccess === false && !status?.missingScopes?.length && (
+                    <p className="text-xs text-warning flex items-center gap-1 mt-0.5">
+                      <AlertTriangle className="h-3 w-3" />
+                      Sem acesso a relatórios
+                    </p>
+                  )}
+                  {key === "klaviyo" && connectionStatus === "connected" && status?.hasReportingAccess === true && (
+                    <p className="text-xs text-success mt-0.5">
+                      Relatórios ativos
+                    </p>
+                  )}
+                </div>
+
+                {/* Revalidate button for configured integrations */}
+                {canRevalidate && status?.configured && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 flex-shrink-0"
+                    onClick={() => handleRevalidate(key)}
+                    disabled={isRevalidating}
+                    title="Revalidar conexão"
+                  >
+                    {isRevalidating ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-3.5 w-3.5" />
+                    )}
+                  </Button>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 

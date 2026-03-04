@@ -55,6 +55,7 @@ CREATE INDEX IF NOT EXISTS idx_copy_pipeline_org_id ON copy_pipeline(org_id);
 CREATE INDEX IF NOT EXISTS idx_copy_pipeline_status ON copy_pipeline(status);
 CREATE INDEX IF NOT EXISTS idx_copy_pipeline_client_id ON copy_pipeline(client_id);
 CREATE INDEX IF NOT EXISTS idx_copy_pipeline_store_id ON copy_pipeline(store_id);
+CREATE INDEX IF NOT EXISTS idx_copy_pipeline_org_status ON copy_pipeline(org_id, status);
 
 -- Updated_at trigger
 CREATE OR REPLACE FUNCTION update_copy_pipeline_updated_at()
@@ -159,8 +160,12 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  -- Get names for task title
+  -- Get names for task title (with safe fallbacks)
   SELECT c.name INTO v_client_name FROM clients c WHERE c.id = NEW.client_id;
+  IF v_client_name IS NULL THEN
+    v_client_name := 'Cliente';
+  END IF;
+
   SELECT cs.store_name INTO v_store_name FROM client_stores cs WHERE cs.id = NEW.store_id;
 
   -- pending_design: create task for design assignee
@@ -178,7 +183,7 @@ BEGIN
       'campaign', 'high', 'pending', 'auto_campaign', NEW.id,
       NEW.org_id, v_assignee_id, NEW.client_id, NEW.store_id,
       v_max_pos, '{}', ARRAY[]::TEXT[], v_assignee_id
-    ) ON CONFLICT DO NOTHING;
+    );
   END IF;
 
   -- pending_implementation: create task for impl assignee
@@ -196,7 +201,7 @@ BEGIN
       'campaign', 'high', 'pending', 'auto_campaign', NEW.id,
       NEW.org_id, v_assignee_id, NEW.client_id, NEW.store_id,
       v_max_pos, '{}', ARRAY[]::TEXT[], v_assignee_id
-    ) ON CONFLICT DO NOTHING;
+    );
   END IF;
 
   RETURN NEW;

@@ -1,5 +1,5 @@
 // User Types
-export type UserRole = "admin" | "manager" | "sdr" | "closer" | "cs" | "financial"
+export type UserRole = "admin" | "manager" | "coo" | "sdr" | "closer" | "cs" | "financial"
 
 export interface User {
   id: string
@@ -58,6 +58,7 @@ export interface ClientStore {
   target_audience?: string | null
   free_shipping_type?: string | null
   shopify_collaborator_code?: string | null
+  /** @legacy Used only for GA4/Meta/Google integrations. Klaviyo/Shopify now use dedicated validation columns on client_stores. */
   integration_status?: Record<string, { connected: boolean; connected_at?: string }>
   created_at: string
   updated_at?: string
@@ -595,10 +596,13 @@ export interface DashboardMetrics {
 
 export interface DashboardAlert {
   id: string
-  type: "payment_overdue" | "contract_expiring" | "health_low" | "meeting_overdue" | "report_pending"
+  type: "payment_overdue" | "contract_expiring" | "health_low" | "meeting_overdue" | "report_pending" | "low_revenue" | "klaviyo_account_error" | "campaign_failure" | "low_recovery_rate"
   title: string
   description: string
   client_id?: string
+  store_id?: string
+  store_name?: string
+  action_url?: string
   severity: "low" | "medium" | "high"
   created_at?: string
 }
@@ -724,7 +728,7 @@ export interface CalendarCampaign {
 // Organization & Agent Types
 // ===========================================
 
-export type OrgRole = "owner" | "manager" | "coordinator" | "copywriter" | "designer" | "developer" | "support" | "analyst"
+export type OrgRole = "owner" | "manager" | "coo" | "coordinator" | "copywriter" | "designer" | "developer" | "support" | "analyst"
 export type OrgType = "internal" | "agency" | "partner"
 
 export interface Organization {

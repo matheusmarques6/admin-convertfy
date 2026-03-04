@@ -1,13 +1,15 @@
 import { notFound } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
-import { createAdminClient } from "@/lib/supabase/server"
+import { createAdminClient, createClient } from "@/lib/supabase/server"
+import { resolveOrgId } from "@/lib/api/resolve-org"
 import { getStoreIntegrationStatus } from "@/lib/services/credentials.service"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { StoreDetailTabs } from "@/components/stores/store-detail-tabs"
-import { StoreLinkBadge } from "@/components/stores/store-link-badge"
 import { StoreLinkActions } from "@/components/stores/store-link-actions"
+import { StoreDeleteAction } from "@/components/stores/store-delete-action"
+import { StoreUnlinkedBanner } from "@/components/stores/store-unlinked-banner"
 
 export const dynamic = "force-dynamic"
 
@@ -53,14 +55,15 @@ async function getStore(id: string) {
     return null
   }
 
-  // Get integration status from centralized service (infers from credentials if field is null)
-  let integrationStatus: Record<string, { connected: boolean; connected_at?: string }> = {}
+  // Get integration status from centralized service (uses real validation fields)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let integrationStatus: Record<string, any> = {}
   try {
     const status = await getStoreIntegrationStatus(id)
     // Convert typed IntegrationStatus to Record for the component
     integrationStatus = Object.fromEntries(
       Object.entries(status).filter(([, v]) => v !== undefined)
-    ) as Record<string, { connected: boolean; connected_at?: string }>
+    )
   } catch (err) {
     console.error("[StoreDetail] Error fetching integration status (non-critical):", err)
   }
@@ -105,10 +108,21 @@ export default async function StoreDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const store = await getStore(id)
 
-  if (!store) {
-    notFound()
+  // Validate user has access to this store's org
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) notFound()
+
+  const store = await getStore(id)
+  if (!store) notFound()
+
+  // Multi-tenant isolation: verify store belongs to user's org
+  if (store.org_id) {
+    const userOrgId = await resolveOrgId(user.id)
+    if (store.org_id !== userOrgId) {
+      notFound()
+    }
   }
 
   const integrationStatus = store.integrationStatus
@@ -118,6 +132,15 @@ export default async function StoreDetailPage({
 
   return (
     <div className="space-y-6">
+      {/* Warning banner for unlinked stores */}
+      {!store.client_id && (
+        <StoreUnlinkedBanner
+          storeId={store.id}
+          storeName={store.store_name}
+          orgId={store.org_id || ""}
+        />
+      )}
+
       {/* Header */}
       <div className="flex items-start justify-between">
         <div className="flex items-start gap-4">
@@ -150,21 +173,23 @@ export default async function StoreDetailPage({
               ) : (
                 <span>Loja Avulsa — Sem cliente vinculado</span>
               )}
-              <StoreLinkBadge
-                clientId={store.client_id}
-                clientName={clientName}
-              />
               <span>{connectedCount} integração(ões) conectada(s)</span>
             </div>
           </div>
         </div>
-        <StoreLinkActions
-          storeId={store.id}
-          storeName={store.store_name}
-          orgId={store.org_id || ""}
-          clientId={store.client_id}
-          clientName={clientName}
-        />
+        <div className="flex items-center gap-2">
+          <StoreLinkActions
+            storeId={store.id}
+            storeName={store.store_name}
+            orgId={store.org_id || ""}
+            clientId={store.client_id}
+            clientName={clientName}
+          />
+          <StoreDeleteAction
+            storeId={store.id}
+            storeName={store.store_name}
+          />
+        </div>
       </div>
 
       {/* Tabs */}

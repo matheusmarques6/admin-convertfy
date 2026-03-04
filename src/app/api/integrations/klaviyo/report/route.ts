@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth } from "@/lib/api/errors"
+import { requireStoreAccess } from "@/lib/api/require-store-access"
 import { getStoreCredentials } from "@/lib/services/credentials.service"
 import { logger } from "@/lib/logger"
 
@@ -13,9 +14,9 @@ import {
   klaviyoRequest,
   getCurrencySymbol,
   parseDateRangeInTimezone,
-  getAccountInfo,
   getTimezoneOffset,
-  findPlacedOrderMetric,
+  getCachedAccountInfo,
+  getCachedPlacedOrderMetric,
 } from "@/lib/integrations/klaviyo"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 
@@ -807,7 +808,7 @@ async function getCampaignValuesReport(
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    await requireAuth(supabase)
+    const user = await requireAuth(supabase)
 
     const searchParams = request.nextUrl.searchParams
     const storeId = searchParams.get("store_id")
@@ -819,19 +820,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "store_id é obrigatório" }, { status: 400, headers: corsHeaders(request.headers.get("origin")) })
     }
 
-    // Get store display info using admin client (RLS on client_stores
-    // may block access depending on org membership; auth is already
-    // verified by requireAuth above)
-    const adminClient = createAdminClient()
-    const { data: store, error: storeError } = await adminClient
-      .from("client_stores")
-      .select("store_name, client_id")
-      .eq("id", storeId)
-      .single()
-
-    if (storeError || !store) {
-      return NextResponse.json({ error: "Loja não encontrada" }, { status: 404, headers: corsHeaders(request.headers.get("origin")) })
-    }
+    // Validate user has access to this store (multi-tenant isolation)
+    const store = await requireStoreAccess(storeId, user.id)
 
     // Get decrypted credentials via credentials service
     const credentials = await getStoreCredentials(storeId)
@@ -845,11 +835,11 @@ export async function GET(request: NextRequest) {
     }
 
     log.info("[Klaviyo] ========== STARTING REPORT ==========")
-    log.info("[Klaviyo] Store:", store.store_name)
+    log.info("[Klaviyo] Store:", store.storeName)
     log.info("[Klaviyo] Period:", period)
 
     // Get account info first (need timezone for correct date range calculation)
-    const accountInfo = await getAccountInfo(apiKey)
+    const accountInfo = await getCachedAccountInfo(apiKey, store.orgId)
     if (!accountInfo.orgName) {
       return NextResponse.json({
         success: false,
@@ -869,7 +859,7 @@ export async function GET(request: NextRequest) {
     await sleep(500)
 
     // Find Placed Order metric - with diagnostic logging
-    let metricId = await findPlacedOrderMetric(apiKey)
+    let metricId = await getCachedPlacedOrderMetric(apiKey, store.orgId)
 
     // If findPlacedOrderMetric failed, try direct fetch as fallback (debug endpoint style)
     if (!metricId) {
@@ -933,7 +923,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         success: true,
         connected: true,
-        storeName: store.store_name,
+        storeName: store.storeName,
         generatedAt: new Date().toISOString(),
         period,
         dateRange: { start: startDateStr, end: endDateStr },
@@ -1190,7 +1180,7 @@ export async function GET(request: NextRequest) {
     const reportData = {
       success: true,
       connected: true,
-      storeName: store.store_name,
+      storeName: store.storeName,
       generatedAt: new Date().toISOString(),
       period,
       dateRange: { start: startDateStr, end: endDateStr },

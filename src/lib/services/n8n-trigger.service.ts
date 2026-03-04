@@ -16,35 +16,33 @@ export class N8nTriggerService {
     this.apiKey = process.env.N8N_ONBOARDING_API_KEY || ""
   }
 
-  private async sendWebhook(path: string, payload: Record<string, unknown>): Promise<TriggerResult> {
+  private async sendWebhook(type: string, payload: Record<string, unknown>): Promise<TriggerResult> {
     if (!this.baseUrl) {
       log.warn("N8N_ONBOARDING_WEBHOOK_URL not configured, skipping trigger")
       return { success: false, error: "N8N_ONBOARDING_WEBHOOK_URL not configured" }
     }
 
-    const url = `${this.baseUrl}${path}`
-
     try {
-      const response = await fetch(url, {
+      const response = await fetch(this.baseUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           ...(this.apiKey ? { "X-N8N-API-Key": this.apiKey } : {}),
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ type, ...payload }),
       })
 
       if (!response.ok) {
         const text = await response.text().catch(() => "Unknown error")
-        log.error(`N8N webhook failed: ${response.status}`, { url, status: response.status, body: text })
+        log.error(`N8N webhook failed: ${response.status}`, { type, status: response.status, body: text })
         return { success: false, error: `N8N responded with ${response.status}` }
       }
 
-      log.info(`N8N webhook triggered successfully`, { path })
+      log.info(`N8N webhook triggered successfully`, { type })
       return { success: true }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error"
-      log.error(`N8N webhook error: ${message}`, { path })
+      log.error(`N8N webhook error: ${message}`, { type })
       return { success: false, error: message }
     }
   }
@@ -54,30 +52,42 @@ export class N8nTriggerService {
    */
   async triggerCopyGeneration(params: {
     onboarding_id: string
-    client_name: string
-    store_name: string
-    store_url: string
-    platform: string
-    niche?: string | null
-    target_audience?: string | null
-    price_sensitivity?: string | null
-    briefing_data?: Record<string, unknown>
+    client: {
+      name: string
+      email: string
+      phone?: string | null
+      cpf_cnpj?: string | null
+      company?: string | null
+    }
+    store: {
+      name: string
+      url: string
+      platform: string
+      niche?: string | null
+      country?: string | null
+      language?: string | null
+      target_audience?: string | null
+      free_shipping_type?: string | null
+      shopify_collaborator_code?: string | null
+    }
+    form_data?: {
+      price_sensitivity?: string | null
+      additional_notes?: string | null
+      logo_url?: string | null
+      design_direction_text?: string | null
+      design_direction_file_url?: string | null
+      brand_manual_url?: string | null
+      visual_reference_url?: string | null
+    } | null
     callback_url: string
   }): Promise<TriggerResult> {
     log.info(`Triggering copy generation for onboarding ${params.onboarding_id}`)
 
-    return this.sendWebhook("/copy-generation", {
+    return this.sendWebhook("copy-generation", {
       onboarding_id: params.onboarding_id,
-      client_name: params.client_name,
-      store: {
-        name: params.store_name,
-        url: params.store_url,
-        platform: params.platform,
-        niche: params.niche,
-        target_audience: params.target_audience,
-        price_sensitivity: params.price_sensitivity,
-      },
-      briefing_data: params.briefing_data,
+      client: params.client,
+      store: params.store,
+      form_data: params.form_data,
       callback_url: params.callback_url,
       callback_secret: process.env.ONBOARDING_WEBHOOK_SECRET,
     })
@@ -96,7 +106,7 @@ export class N8nTriggerService {
   }): Promise<TriggerResult> {
     log.info(`Triggering client notification for phase: ${params.phase}`, { email: params.email })
 
-    return this.sendWebhook("/client-notification", {
+    return this.sendWebhook("client-notification", {
       email: params.email,
       client_name: params.client_name,
       phase: params.phase,
@@ -117,7 +127,7 @@ export class N8nTriggerService {
   }): Promise<TriggerResult> {
     log.info(`Triggering welcome email`, { email: params.email })
 
-    return this.sendWebhook("/welcome-email", {
+    return this.sendWebhook("welcome-email", {
       email: params.email,
       name: params.name,
       temp_password: params.temp_password,

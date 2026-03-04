@@ -2,11 +2,15 @@
   "crons": [
     {
       "path": "/api/cron/sync-reports",
-      "schedule": "0 */2 * * *"
+      "schedule": "*/30 * * * *"
     },
     {
       "path": "/api/cron/store-alerts-check",
       "schedule": "0 8 * * 1"
+    },
+    {
+      "path": "/api/cron/tracking-sync",
+      "schedule": "0 */6 * * *"
     }
   ]
 }

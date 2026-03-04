@@ -8,8 +8,10 @@
 import { getStoreCredentials } from "@/lib/services/credentials.service"
 import { logger } from "@/lib/logger"
 import { klaviyoRequest, parseDateRange, formatDateStr } from "./client"
-import { getAccountInfo, getTimezoneOffset } from "./account"
-import { findPlacedOrderMetric } from "./metrics"
+import { getTimezoneOffset } from "./account"
+import { getCachedAccountInfo } from "./cached-metadata"
+import { getCachedPlacedOrderMetric } from "./cached-metadata"
+import { type SyncResult } from "@/lib/shared/data-status"
 
 const log = logger.child("KlaviyoReportSummary")
 
@@ -17,6 +19,8 @@ export interface KlaviyoRevenueSummary {
   totalRevenue: number
   campaignRevenue: number
   flowRevenue: number
+  /** ISO 4217 currency code from Klaviyo account (e.g. "USD", "BRL") */
+  currency: string
 }
 
 interface KlaviyoValuesReport {
@@ -41,13 +45,18 @@ export async function getKlaviyoRevenueForStore(
   period: string,
   customStartDate?: string | null,
   customEndDate?: string | null
-): Promise<KlaviyoRevenueSummary> {
+): Promise<SyncResult<KlaviyoRevenueSummary>> {
   try {
     const storeData = await getStoreCredentials(storeId)
     const apiKey = storeData.klaviyo_private_key || storeData.klaviyo_api_key
 
     if (!apiKey) {
-      return { totalRevenue: 0, campaignRevenue: 0, flowRevenue: 0 }
+      log.warn(`Store ${storeId}: no Klaviyo API key found after decryption`)
+      return {
+        success: false, data: null,
+        error: "No valid Klaviyo API key",
+        source: "live", fetchedAt: new Date().toISOString(),
+      }
     }
 
     // Calculate date range
@@ -55,16 +64,17 @@ export async function getKlaviyoRevenueForStore(
     const startDateStr = formatDateStr(startDate)
     const endDateStr = formatDateStr(endDate)
 
-    // Get timezone for correct date alignment
-    const accountInfo = await getAccountInfo(apiKey)
+    // Get timezone + currency for correct date alignment and currency tracking
+    const accountInfo = await getCachedAccountInfo(apiKey)
     const timezone = accountInfo?.timezone || "America/Sao_Paulo"
+    const currency = accountInfo?.currency || "BRL"
     const tzOffset = getTimezoneOffset(timezone)
 
     const startISO = `${startDateStr}T00:00:00${tzOffset}`
     const endISO = `${endDateStr}T23:59:59${tzOffset}`
 
-    // Find Placed Order metric for conversion revenue
-    const placedOrderMetric = await findPlacedOrderMetric(apiKey)
+    // Find Placed Order metric for conversion revenue (DB-cached)
+    const placedOrderMetric = await getCachedPlacedOrderMetric(apiKey)
 
     const reportAttributes = {
       statistics: ["conversion_value"],
@@ -96,6 +106,15 @@ export async function getKlaviyoRevenueForStore(
       }),
     ])
 
+    if (!campaignReport && !flowReport) {
+      log.warn(`Store ${storeId}: both Klaviyo report requests returned null (API error or rate limit)`)
+      return {
+        success: false, data: null,
+        error: "Both campaign and flow report requests failed",
+        source: "live", fetchedAt: new Date().toISOString(),
+      }
+    }
+
     // Sum up revenue from campaign results
     let campaignRevenue = 0
     const campaignResults = campaignReport?.data?.attributes?.results || []
@@ -110,13 +129,24 @@ export async function getKlaviyoRevenueForStore(
       flowRevenue += Number(r.statistics?.conversion_value) || 0
     }
 
+    log.info(`Store ${storeId}: campaign=${currency} ${campaignRevenue}, flow=${currency} ${flowRevenue}`)
+
     return {
-      totalRevenue: campaignRevenue + flowRevenue,
-      campaignRevenue,
-      flowRevenue,
+      success: true,
+      data: {
+        totalRevenue: campaignRevenue + flowRevenue,
+        campaignRevenue,
+        flowRevenue,
+        currency,
+      },
+      source: "live", fetchedAt: new Date().toISOString(),
     }
   } catch (error) {
     log.error("Error in getKlaviyoRevenueForStore:", error)
-    return { totalRevenue: 0, campaignRevenue: 0, flowRevenue: 0 }
+    return {
+      success: false, data: null,
+      error: error instanceof Error ? error.message : "Unknown error",
+      source: "live", fetchedAt: new Date().toISOString(),
+    }
   }
 }

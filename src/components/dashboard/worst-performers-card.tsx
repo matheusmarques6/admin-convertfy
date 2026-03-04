@@ -1,21 +1,36 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import Link from "next/link"
-import { TrendingDown, RefreshCw } from "lucide-react"
+import { TrendingDown } from "lucide-react"
 import { CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
-import { formatCurrency, cn } from "@/lib/utils"
-import { useStoreRevenue } from "@/hooks/use-store-revenue"
+import { formatCurrency } from "@/lib/utils"
+import { StoresListModal } from "./stores-list-modal"
+import type { RevenueStoreItem } from "./total-revenue-banner"
+import type { DataStatus } from "@/lib/shared/data-status"
 
-export function WorstPerformersCard() {
-  const [period, setPeriod] = useState("30d")
-  const { data, isLoading, refresh } = useStoreRevenue(period)
-  const stores = data?.bottomStores || []
+interface WorstPerformersCardProps {
+  stores?: RevenueStoreItem[]
+  allStores?: RevenueStoreItem[]
+  isLoading?: boolean
+  dataStatus?: DataStatus
+}
 
-  const maxRevenue = stores[0]?.totalRevenue || 1
+export function WorstPerformersCard({ stores: storesProp, allStores, isLoading, dataStatus }: WorstPerformersCardProps) {
+  const stores = storesProp || []
+  const [modalOpen, setModalOpen] = useState(false)
+
+  const allStoresSorted = useMemo(() => {
+    if (!allStores || allStores.length === 0) return []
+    return [...allStores]
+      .filter(s => (s.totalRevenueBRL ?? s.totalRevenue) > 0)
+      .sort((a, b) => (a.totalRevenueBRL ?? a.totalRevenue) - (b.totalRevenueBRL ?? b.totalRevenue))
+  }, [allStores])
+
+  const showViewAll = allStoresSorted.length > 5
+  const maxRevenue = stores[0]?.totalRevenueBRL ?? stores[0]?.totalRevenue ?? 1
 
   return (
     <div className="rounded-xl border border-border bg-card h-full">
@@ -25,21 +40,11 @@ export function WorstPerformersCard() {
             <TrendingDown className="h-4 w-4 text-destructive" />
             <CardTitle className="text-sm font-semibold">Atenção Necessária</CardTitle>
           </div>
-          <div className="flex items-center gap-1.5">
-            <Select value={period} onValueChange={setPeriod}>
-              <SelectTrigger className="h-7 w-20 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="7d">7 dias</SelectItem>
-                <SelectItem value="15d">15 dias</SelectItem>
-                <SelectItem value="30d">30 dias</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={refresh} disabled={isLoading}>
-              <RefreshCw className={cn("h-3.5 w-3.5", isLoading && "animate-spin")} />
+          {showViewAll && (
+            <Button variant="ghost" size="sm" className="text-xs h-7 px-2" onClick={() => setModalOpen(true)}>
+              Ver todas ({allStoresSorted.length})
             </Button>
-          </div>
+          )}
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -47,11 +52,18 @@ export function WorstPerformersCard() {
           <div className="space-y-3">
             {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-10 w-full rounded-lg" />)}
           </div>
+        ) : dataStatus === "syncing" ? (
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground text-center py-2">Sincronizando...</p>
+            {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-10 w-full rounded-lg" />)}
+          </div>
         ) : stores.length === 0 ? (
           <p className="text-xs text-muted-foreground text-center py-4">Todas as lojas com boa performance</p>
         ) : (
           stores.map((store, i) => {
-            const widthPercent = Math.max((store.totalRevenue / maxRevenue) * 100, 4)
+            const storeRevBRL = store.totalRevenueBRL ?? store.totalRevenue
+            const widthPercent = Math.max((storeRevBRL / maxRevenue) * 100, 4)
+            const curr = store.currency || "BRL"
             return (
               <Link key={store.storeId} href={`/stores/${store.storeId}`} className="block group">
                 <div className="flex items-center justify-between text-xs mb-1">
@@ -59,7 +71,7 @@ export function WorstPerformersCard() {
                     <span className="text-muted-foreground mr-1.5">{i + 1}.</span>
                     {store.storeName}
                   </span>
-                  <span className="font-medium tabular-nums text-destructive">{formatCurrency(store.totalRevenue)}</span>
+                  <span className="font-medium tabular-nums text-destructive">{formatCurrency(store.totalRevenue, curr)}</span>
                 </div>
                 <div className="h-1.5 rounded-full bg-muted overflow-hidden">
                   <div
@@ -69,7 +81,7 @@ export function WorstPerformersCard() {
                 </div>
                 {i < 2 && (
                   <p className="text-[10px] text-muted-foreground mt-0.5">
-                    Campaign: {formatCurrency(store.campaignRevenue)} &middot; Flow: {formatCurrency(store.flowRevenue)}
+                    Campaign: {formatCurrency(store.campaignRevenue, curr)} &middot; Flow: {formatCurrency(store.flowRevenue, curr)}
                   </p>
                 )}
               </Link>
@@ -77,6 +89,13 @@ export function WorstPerformersCard() {
           })
         )}
       </CardContent>
+
+      <StoresListModal
+        stores={allStoresSorted}
+        variant="bottom"
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+      />
     </div>
   )
 }

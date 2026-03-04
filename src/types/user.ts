@@ -1,5 +1,5 @@
 // User Types
-export type UserRole = "admin" | "manager" | "sdr" | "closer" | "cs" | "financial"
+export type UserRole = "admin" | "manager" | "coo" | "sdr" | "closer" | "cs" | "financial"
 
 export interface User {
   id: string

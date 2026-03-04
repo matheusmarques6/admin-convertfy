@@ -10,11 +10,12 @@
 import {
   klaviyoRequest,
   KlaviyoRateLimitError,
-  getAccountInfo,
-  findPlacedOrderMetric,
+  getCachedAccountInfo,
+  getCachedPlacedOrderMetric,
   getTimezoneOffset,
   parseDateRangeInTimezone,
   KLAVIYO_API_URL,
+  sleep,
 } from "@/lib/integrations/klaviyo"
 import { logger } from "@/lib/logger"
 
@@ -64,6 +65,10 @@ export interface KlaviyoPerformanceData {
   avgClickRate: number
   bounceRate: number
   unsubscribeRate: number
+  // Audience metrics (from lists + segments)
+  totalLeads: number
+  engagedLeads: number
+  engagementRate: number
   // Lists
   recentCampaigns: KlaviyoCampaignItem[]
   topFlows: KlaviyoFlowItem[]
@@ -100,6 +105,133 @@ type NameListResp = {
   links?: { next?: string }
 }
 
+// ─── Audience Metrics (Lists + Segments) ─────────────────────────────────────
+
+type ListsApiResponse = {
+  data: Array<{
+    id: string
+    attributes: { name: string; profile_count: number }
+  }>
+  links?: { next?: string }
+}
+
+type SegmentsApiResponse = {
+  data: Array<{
+    id: string
+    attributes: { name: string; profile_count: number; is_active: boolean }
+  }>
+  links?: { next?: string }
+}
+
+/**
+ * Fetch audience metrics: totalLeads (from lists) and engagedLeads (from segments).
+ * Replicates the logic from /api/integrations/klaviyo/report/route.ts but simplified.
+ */
+async function fetchAudienceMetrics(apiKey: string): Promise<{
+  totalLeads: number
+  engagedLeads: number
+  engagementRate: number
+}> {
+  const empty = { totalLeads: 0, engagedLeads: 0, engagementRate: 0 }
+
+  try {
+    // ── 1. Fetch lists to get totalLeads ──
+    const allLists: Array<{ id: string; name: string; profileCount: number }> = []
+    let nextPage: string | null = "/lists/"
+
+    while (nextPage) {
+      const resp: ListsApiResponse | null = await klaviyoRequest<ListsApiResponse>(apiKey, nextPage)
+      if (!resp?.data) break
+      for (const l of resp.data) {
+        allLists.push({
+          id: l.id,
+          name: l.attributes.name,
+          profileCount: l.attributes.profile_count ?? 0,
+        })
+      }
+      nextPage = resp.links?.next ? resp.links.next.replace(KLAVIYO_API_URL, "") : null
+      if (nextPage) await sleep(500)
+    }
+
+    // If all lists have 0 profiles, try individual fetch for up to 5 lists
+    let totalFromLists = allLists.reduce((sum, l) => sum + l.profileCount, 0)
+    if (totalFromLists === 0 && allLists.length > 0) {
+      for (const list of allLists.slice(0, 5)) {
+        const detail = await klaviyoRequest<{
+          data: { attributes: { profile_count?: number } }
+        }>(apiKey, `/lists/${list.id}/?additional-fields[list]=profile_count`)
+        if (detail?.data?.attributes?.profile_count) {
+          list.profileCount = detail.data.attributes.profile_count
+        }
+        await sleep(200)
+      }
+      totalFromLists = allLists.reduce((sum, l) => sum + l.profileCount, 0)
+    }
+
+    // Use the largest list's profile count as totalLeads
+    const largestList = allLists.length > 0
+      ? allLists.reduce((max, l) => l.profileCount > max.profileCount ? l : max, allLists[0])
+      : null
+    const totalLeads = largestList?.profileCount || 0
+
+    // ── 2. Fetch segments to find "Engaged 90d" ──
+    const allSegments: Array<{ id: string; name: string; profileCount: number }> = []
+    let segPage: string | null = "/segments/"
+
+    while (segPage) {
+      const resp: SegmentsApiResponse | null = await klaviyoRequest<SegmentsApiResponse>(apiKey, segPage)
+      if (!resp?.data) break
+      for (const s of resp.data) {
+        allSegments.push({
+          id: s.id,
+          name: s.attributes.name,
+          profileCount: s.attributes.profile_count ?? 0,
+        })
+      }
+      segPage = resp.links?.next ? resp.links.next.replace(KLAVIYO_API_URL, "") : null
+      if (segPage) await sleep(500)
+    }
+
+    // If all segments have 0 profiles, try individual fetch for up to 5
+    const allZero = allSegments.every(s => s.profileCount === 0)
+    if (allZero && allSegments.length > 0) {
+      for (const seg of allSegments.slice(0, 5)) {
+        const detail = await klaviyoRequest<{
+          data: { attributes: { profile_count?: number } }
+        }>(apiKey, `/segments/${seg.id}/?additional-fields[segment]=profile_count`)
+        if (detail?.data?.attributes?.profile_count) {
+          seg.profileCount = detail.data.attributes.profile_count
+        }
+        await sleep(200)
+      }
+    }
+
+    // Find engaged segment: "Engaged 90d" or "Engajados 90d"
+    let engagedSegment = allSegments.find(s => {
+      const name = s.name.toLowerCase()
+      return (name.includes("engajados") || name.includes("engaged")) && name.includes("90")
+    })
+
+    // Fallback: any segment with "engaged" or "engajados"
+    if (!engagedSegment) {
+      engagedSegment = allSegments.find(s => {
+        const name = s.name.toLowerCase()
+        return name.includes("engajados") || name.includes("engaged")
+      })
+    }
+
+    const engagedLeads = engagedSegment?.profileCount || 0
+    const engagementRate = totalLeads > 0 ? (engagedLeads / totalLeads) * 100 : 0
+
+    log.info(`[KlaviyoPerf] Audience: totalLeads=${totalLeads}, engagedLeads=${engagedLeads}, rate=${engagementRate.toFixed(1)}%`)
+
+    return { totalLeads, engagedLeads, engagementRate }
+  } catch (error) {
+    log.error("[KlaviyoPerf] Failed to fetch audience metrics:", error)
+    return empty
+  }
+}
+
 // ─── Main Function ───────────────────────────────────────────────────────────
 
 /**
@@ -116,7 +248,7 @@ export async function fetchKlaviyoPerformance(
   customStartDate?: string | null,
   customEndDate?: string | null,
 ): Promise<KlaviyoPerformanceData> {
-  const accountInfo = await getAccountInfo(apiKey)
+  const accountInfo = await getCachedAccountInfo(apiKey)
   const timezone = accountInfo?.timezone || "America/Sao_Paulo"
   const tzOffset = getTimezoneOffset(timezone)
 
@@ -141,11 +273,14 @@ export async function fetchKlaviyoPerformance(
   log.info(`[KlaviyoPerf] Metric-agg filter: ${startDate}T00:00:00 to ${finalEndDate}T23:59:59 (tz param: ${timezone})`)
   log.info(`[KlaviyoPerf] Report timeframe: ${startISO} to ${endISO}`)
 
-  const placedOrderMetric = await findPlacedOrderMetric(apiKey)
+  const placedOrderMetric = await getCachedPlacedOrderMetric(apiKey)
   if (!placedOrderMetric) {
     log.warn("No Placed Order metric found - cannot fetch revenue data")
     return emptyPerformanceData()
   }
+
+  // Start audience metrics fetch in parallel (non-blocking)
+  const audiencePromise = fetchAudienceMetrics(apiKey)
 
   const reportStats = [
     "recipients", "delivered", "opens_unique", "click_rate",
@@ -354,7 +489,7 @@ export async function fetchKlaviyoPerformance(
   const flowNames = new Map<string, { name: string; status: string }>()
 
   if (campAgg.size > 0) {
-    let page: string | null = "/campaigns/?page[size]=100"
+    let page: string | null = "/campaigns/?page[size]=50"
     while (page) {
       const resp: NameListResp | null = await klaviyoRequest<NameListResp>(apiKey, page)
       if (!resp?.data) break
@@ -368,7 +503,7 @@ export async function fetchKlaviyoPerformance(
 
   const archivedFlowIds = new Set<string>()
   if (flowAgg.size > 0) {
-    let page: string | null = "/flows/?page[size]=100"
+    let page: string | null = "/flows/?page[size]=50"
     while (page) {
       const resp: NameListResp | null = await klaviyoRequest<NameListResp>(apiKey, page)
       if (!resp?.data) break
@@ -486,6 +621,9 @@ export async function fetchKlaviyoPerformance(
 
   log.info(`[Klaviyo] storeRevenue=${storeRevenue.toFixed(2)}, attributed=${attributedRevenue.toFixed(2)}, recovery=${recoveryRate.toFixed(1)}%`)
 
+  // Await audience metrics (started in parallel earlier)
+  const audience = await audiencePromise
+
   return {
     storeRevenue,
     storeOrders,
@@ -503,6 +641,9 @@ export async function fetchKlaviyoPerformance(
     avgClickRate,
     bounceRate,
     unsubscribeRate,
+    totalLeads: audience.totalLeads,
+    engagedLeads: audience.engagedLeads,
+    engagementRate: audience.engagementRate,
     recentCampaigns: recentCampaigns.slice(0, 10),
     topFlows: topFlows.slice(0, 10),
   }
@@ -515,6 +656,7 @@ export function emptyPerformanceData(): KlaviyoPerformanceData {
     sentCampaigns: 0, totalFlows: 0, liveFlows: 0,
     totalDelivered: 0, totalOpens: 0, totalClicks: 0,
     avgOpenRate: 0, avgClickRate: 0, bounceRate: 0, unsubscribeRate: 0,
+    totalLeads: 0, engagedLeads: 0, engagementRate: 0,
     recentCampaigns: [], topFlows: [],
   }
 }

@@ -17,6 +17,17 @@ import { logger } from "@/lib/logger"
 
 const log = logger.child("CredentialsService")
 
+/**
+ * Supabase OR filter string for stores with Klaviyo credentials.
+ * Used by cron sync-reports and live fetch endpoints to ensure
+ * identical store selection.
+ *
+ * Both klaviyo_private_key (current) and klaviyo_api_key (legacy)
+ * are accepted because getStoreCredentials() handles both.
+ */
+export const KLAVIYO_CREDENTIALS_FILTER =
+  "klaviyo_private_key.not.is.null,klaviyo_api_key.not.is.null"
+
 // Fields that are always encrypted in client_stores
 const ENCRYPTED_FIELDS = [
   "shopify_access_token",
@@ -53,27 +64,48 @@ export interface StoreCredentials {
   google_calendar_credentials?: Record<string, string>
 }
 
+export type IntegrationConnectionStatus = "not_configured" | "pending_validation" | "connected" | "error"
+
+export interface IntegrationStatusEntry {
+  connected: boolean
+  configured?: boolean
+  status?: IntegrationConnectionStatus
+  connected_at?: string
+  validated_at?: string | null
+  error?: string | null
+  hasReportingAccess?: boolean
+  missingScopes?: string[]
+}
+
 export interface IntegrationStatus {
-  shopify?: { connected: boolean; connected_at?: string }
-  klaviyo?: { connected: boolean; connected_at?: string }
-  meta?: { connected: boolean; connected_at?: string }
-  google_ads?: { connected: boolean; connected_at?: string }
-  google_calendar?: { connected: boolean; connected_at?: string }
-  ga4?: { connected: boolean; connected_at?: string }
+  shopify?: IntegrationStatusEntry
+  klaviyo?: IntegrationStatusEntry
+  meta?: IntegrationStatusEntry
+  google_ads?: IntegrationStatusEntry
+  google_calendar?: IntegrationStatusEntry
+  ga4?: IntegrationStatusEntry
 }
 
 /**
  * Get decrypted credentials for a store.
  * Uses admin client to bypass RLS.
+ *
+ * @param storeId - The store UUID
+ * @param orgId - Optional org_id to validate store belongs to this org (defense-in-depth)
  */
-export async function getStoreCredentials(storeId: string): Promise<StoreCredentials & { store_name: string; client_id: string | null }> {
+export async function getStoreCredentials(storeId: string, orgId?: string): Promise<StoreCredentials & { store_name: string; client_id: string | null }> {
   const adminClient = createAdminClient()
 
-  const { data: store, error } = await adminClient
+  let query = adminClient
     .from("client_stores")
     .select("*")
     .eq("id", storeId)
-    .single()
+
+  if (orgId) {
+    query = query.eq("org_id", orgId)
+  }
+
+  const { data: store, error } = await query.single()
 
   if (error || !store) {
     log.error("Store not found", { storeId, error })
@@ -139,19 +171,34 @@ export async function updateStoreCredentials(
 
   // Update integration status if key provided
   if (integrationKey) {
-    const { data: current } = await adminClient
-      .from("client_stores")
-      .select("integration_status")
-      .eq("id", storeId)
-      .single()
+    const now = new Date().toISOString()
 
-    const currentStatus = (current?.integration_status as IntegrationStatus) || {}
-    updateData.integration_status = {
-      ...currentStatus,
-      [integrationKey]: {
-        connected: true,
-        connected_at: new Date().toISOString(),
-      },
+    if (integrationKey === "shopify") {
+      // Use individual validation columns for Shopify
+      updateData.shopify_validated_at = now
+      updateData.shopify_validation_error = null
+    } else if (integrationKey === "klaviyo") {
+      // Use individual validation columns for Klaviyo
+      updateData.klaviyo_validated_at = now
+      updateData.klaviyo_validation_error = null
+      updateData.klaviyo_missing_scopes = null
+      updateData.klaviyo_has_reporting_access = null
+    } else {
+      // GA4, Meta, Google Ads/Calendar still use legacy JSON column
+      const { data: current } = await adminClient
+        .from("client_stores")
+        .select("integration_status")
+        .eq("id", storeId)
+        .single()
+
+      const currentStatus = (current?.integration_status as IntegrationStatus) || {}
+      updateData.integration_status = {
+        ...currentStatus,
+        [integrationKey]: {
+          connected: true,
+          connected_at: now,
+        },
+      }
     }
   }
 
@@ -169,7 +216,51 @@ export async function updateStoreCredentials(
 }
 
 /**
+ * Derive integration connection status from credential + validation fields.
+ */
+export function deriveStatus(
+  hasCredential: boolean,
+  validatedAt: string | null | undefined,
+  validationError: string | null | undefined
+): IntegrationStatusEntry {
+  if (!hasCredential) {
+    return {
+      connected: false,
+      configured: false,
+      status: "not_configured",
+    }
+  }
+
+  if (validationError) {
+    return {
+      connected: false,
+      configured: true,
+      status: "error",
+      validated_at: validatedAt,
+      error: validationError,
+    }
+  }
+
+  if (validatedAt) {
+    return {
+      connected: true,
+      configured: true,
+      status: "connected",
+      validated_at: validatedAt,
+    }
+  }
+
+  // Credential exists but never validated (legacy data)
+  return {
+    connected: false,
+    configured: true,
+    status: "pending_validation",
+  }
+}
+
+/**
  * Get the integration status for a store.
+ * Uses real validation fields (validated_at, validation_error) for Shopify/Klaviyo.
  */
 export async function getStoreIntegrationStatus(storeId: string): Promise<IntegrationStatus> {
   const adminClient = createAdminClient()
@@ -179,8 +270,14 @@ export async function getStoreIntegrationStatus(storeId: string): Promise<Integr
     .select(`
       integration_status,
       shopify_access_token,
+      shopify_validated_at,
+      shopify_validation_error,
       klaviyo_api_key,
       klaviyo_private_key,
+      klaviyo_validated_at,
+      klaviyo_validation_error,
+      klaviyo_missing_scopes,
+      klaviyo_has_reporting_access,
       ga4_credentials,
       meta_access_token
     `)
@@ -191,15 +288,27 @@ export async function getStoreIntegrationStatus(storeId: string): Promise<Integr
     throw new NotFoundError("Store")
   }
 
-  // If integration_status exists, use it; otherwise infer from credentials
+  // For backward compatibility, still read saved integration_status for non-validated integrations
   const saved = (store.integration_status as IntegrationStatus) || {}
 
   return {
-    shopify: saved.shopify || { connected: !!store.shopify_access_token },
-    klaviyo: saved.klaviyo || { connected: !!(store.klaviyo_api_key || store.klaviyo_private_key) },
-    ga4: saved.ga4 || { connected: !!store.ga4_credentials },
-    meta: saved.meta || { connected: !!store.meta_access_token },
-    google_ads: saved.google_ads || { connected: false },
-    google_calendar: saved.google_calendar || { connected: false },
+    shopify: deriveStatus(
+      !!store.shopify_access_token,
+      store.shopify_validated_at,
+      store.shopify_validation_error
+    ),
+    klaviyo: {
+      ...deriveStatus(
+        !!(store.klaviyo_api_key || store.klaviyo_private_key),
+        store.klaviyo_validated_at,
+        store.klaviyo_validation_error
+      ),
+      hasReportingAccess: store.klaviyo_has_reporting_access ?? undefined,
+      missingScopes: store.klaviyo_missing_scopes ?? undefined,
+    },
+    ga4: saved.ga4 || { connected: !!store.ga4_credentials, status: store.ga4_credentials ? "connected" : "not_configured" },
+    meta: saved.meta || { connected: !!store.meta_access_token, status: store.meta_access_token ? "connected" : "not_configured" },
+    google_ads: saved.google_ads || { connected: false, status: "not_configured" },
+    google_calendar: saved.google_calendar || { connected: false, status: "not_configured" },
   }
 }

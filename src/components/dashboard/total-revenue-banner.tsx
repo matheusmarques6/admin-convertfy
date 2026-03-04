@@ -1,38 +1,50 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useRef } from "react"
+import useSWR from "swr"
 import { format } from "date-fns"
-import { TrendingUp, RefreshCw, Megaphone, Workflow, Store } from "lucide-react"
+import { TrendingUp, RefreshCw, Megaphone, Workflow, Store, AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
-import { DateRangePicker } from "@/components/ui/date-range-picker"
-import { formatCurrency, cn } from "@/lib/utils"
+import { PeriodPicker } from "@/components/ui/period-picker"
+import { formatCurrency } from "@/lib/utils"
+import { TimeAgo } from "@/components/ui/time-ago"
+import { PARTIAL_DATA_TOOLTIP } from "@/components/ui/sync-status-badge"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { DataStatusBanner } from "@/components/ui/data-status-banner"
+import { RefreshButton } from "@/components/ui/refresh-button"
+import { useDataStatus } from "@/hooks/use-data-status"
+import type { DataStatus } from "@/lib/shared/data-status"
 
-interface StoreRevenue {
+export interface RevenueStoreItem {
   storeId: string
   storeName: string
   clientName: string
   totalRevenue: number
   campaignRevenue: number
   flowRevenue: number
+  currency?: string
+  totalRevenueBRL?: number
+  campaignRevenueBRL?: number
+  flowRevenueBRL?: number
 }
 
-interface TotalRevenueData {
+export interface TotalRevenueData {
   period: string
   totalRevenue: number
   campaignRevenue: number
   flowRevenue: number
   storesCount: number
   storesWithRevenue: number
-  topStores: StoreRevenue[]
+  topStores: RevenueStoreItem[]
+  bottomStores: RevenueStoreItem[]
+  storeBreakdown?: RevenueStoreItem[]
+  hasPartialData?: boolean
+  lastFetchedAt?: string | null
   cachedAt: string
+  dataStatus?: DataStatus
+  isRefreshing?: boolean
+  source?: "cache" | "live" | "stale-cache"
 }
 
 function useCountUp(target: number, duration = 1200): number {
@@ -66,49 +78,67 @@ function useCountUp(target: number, duration = 1200): number {
 
 interface TotalRevenueBannerProps {
   storeIds?: string[]
+  period?: string
+  onPeriodChange?: (period: string) => void
+  onDataChange?: (data: TotalRevenueData | null) => void
 }
 
-export function TotalRevenueBanner({ storeIds }: TotalRevenueBannerProps = {}) {
-  const [period, setPeriod] = useState("30d")
+const fetcher = (url: string) => fetch(url).then(res => {
+  if (!res.ok) throw new Error("Erro ao carregar revenue")
+  return res.json()
+})
+
+export function TotalRevenueBanner({ storeIds, period: controlledPeriod, onPeriodChange, onDataChange }: TotalRevenueBannerProps = {}) {
+  const [internalPeriod, setInternalPeriod] = useState("30d")
+  const period = controlledPeriod ?? internalPeriod
+  const setPeriod = (v: string) => {
+    setInternalPeriod(v)
+    onPeriodChange?.(v)
+  }
   const [customStart, setCustomStart] = useState<Date | undefined>()
   const [customEnd, setCustomEnd] = useState<Date | undefined>()
-  const [data, setData] = useState<TotalRevenueData | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
 
-  const loadData = useCallback(async (p: string, startDate?: Date, endDate?: Date) => {
-    setIsLoading(true)
-    try {
-      let url = `/api/dashboard/total-revenue?period=${p}`
-      if (p === "custom" && startDate && endDate) {
-        url += `&start_date=${format(startDate, "yyyy-MM-dd")}&end_date=${format(endDate, "yyyy-MM-dd")}`
-      }
-      if (storeIds && storeIds.length > 0) {
-        url += `&store_ids=${storeIds.join(",")}`
-      }
-      const response = await fetch(url)
-      if (response.ok) {
-        const result = await response.json()
-        setData(result)
-      }
-    } catch (err) {
-      console.error("Error loading total revenue:", err)
-    } finally {
-      setIsLoading(false)
+  // Build SWR key from current state
+  const swrKey = (() => {
+    let url = `/api/dashboard/total-revenue?period=${period}`
+    if (period === "custom" && customStart && customEnd) {
+      url += `&start_date=${format(customStart, "yyyy-MM-dd")}&end_date=${format(customEnd, "yyyy-MM-dd")}`
+    } else if (period === "custom") {
+      return null // Don't fetch until dates are selected
     }
-  }, [storeIds])
+    if (storeIds && storeIds.length > 0) {
+      url += `&store_ids=${storeIds.join(",")}`
+    }
+    return url
+  })()
 
+  const [isSyncing, setIsSyncing] = useState(false)
+
+  const { data, error, isLoading, isValidating, mutate } = useSWR<TotalRevenueData>(
+    swrKey,
+    fetcher,
+    {
+      revalidateOnFocus: false,
+      dedupingInterval: 60000,
+      // Poll every 30s when syncing/loading, otherwise disable polling
+      refreshInterval: isSyncing ? 30000 : 0,
+      onSuccess: (d) => setIsSyncing(
+        d?.dataStatus === "syncing" || d?.dataStatus === "loading" || d?.isRefreshing === true
+      ),
+    }
+  )
+
+  const dataStatusMeta = useDataStatus(data ? {
+    dataStatus: data.dataStatus ?? "ready",
+    lastFetchedAt: data.lastFetchedAt ?? null,
+    isRefreshing: data.isRefreshing ?? isValidating,
+    source: data.source ?? "cache",
+  } : undefined)
+
+  // Notify parent when data changes (so cards can consume topStores/bottomStores)
   useEffect(() => {
-    if (period !== "custom") {
-      loadData(period)
-    }
-  }, [period, loadData])
-
-  const handleCustomDateApply = (start: Date, end: Date) => {
-    setCustomStart(start)
-    setCustomEnd(end)
-    setPeriod("custom")
-    loadData("custom", start, end)
-  }
+    onDataChange?.(data ?? null)
+  }, [data, onDataChange])
 
   const animatedTotal = useCountUp(data?.totalRevenue || 0)
   const animatedCampaign = useCountUp(data?.campaignRevenue || 0)
@@ -136,6 +166,47 @@ export function TotalRevenueBanner({ storeIds }: TotalRevenueBannerProps = {}) {
               <Skeleton key={i} className="h-8 w-full rounded-lg" />
             ))}
           </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Error state (only show when no stale data available)
+  if (error && !data) {
+    return (
+      <div className="rounded-xl border border-border bg-card p-6">
+        <div className="flex flex-col items-center justify-center py-8">
+          <div className="rounded-xl bg-muted p-3 mb-4">
+            <Store className="h-8 w-8 text-muted-foreground" />
+          </div>
+          <h3 className="text-base font-semibold text-foreground">Erro ao carregar receita</h3>
+          <p className="text-sm text-muted-foreground text-center mt-1.5 max-w-xs">
+            Tente novamente em alguns instantes
+          </p>
+          <Button variant="outline" size="sm" className="mt-3" onClick={() => mutate()}>
+            <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+            Tentar novamente
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  // Syncing state — cache is empty but stores with Klaviyo exist
+  if (data && data.dataStatus === "syncing" && data.storesCount > 0) {
+    return (
+      <div className="rounded-xl border border-border bg-card p-6">
+        <div className="flex flex-col items-center justify-center py-8">
+          <div className="rounded-xl bg-muted p-3 mb-4">
+            <RefreshCw className="h-8 w-8 text-muted-foreground animate-spin" />
+          </div>
+          <h3 className="text-base font-semibold text-foreground">
+            Dados sendo sincronizados...
+          </h3>
+          <p className="text-sm text-muted-foreground text-center mt-1.5 max-w-xs">
+            {data.storesCount} {data.storesCount === 1 ? "loja" : "lojas"} com Klaviyo {data.storesCount === 1 ? "encontrada" : "encontradas"}.
+            O primeiro sync pode levar alguns minutos.
+          </p>
         </div>
       </div>
     )
@@ -173,46 +244,66 @@ export function TotalRevenueBanner({ storeIds }: TotalRevenueBannerProps = {}) {
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <Select value={period} onValueChange={(v) => {
-              setPeriod(v)
-              setCustomStart(undefined)
-              setCustomEnd(undefined)
-            }}>
-              <SelectTrigger className="w-28 h-9 rounded-lg border-white/15 bg-white/10 text-white hover:bg-white/15 [&>svg]:text-white/70">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="7d">7 dias</SelectItem>
-                <SelectItem value="15d">15 dias</SelectItem>
-                <SelectItem value="30d">30 dias</SelectItem>
-                <SelectItem value="90d">90 dias</SelectItem>
-              </SelectContent>
-            </Select>
-            <DateRangePicker
-              startDate={customStart}
-              endDate={customEnd}
-              onApply={handleCustomDateApply}
+            <PeriodPicker
+              value={{ period, customStart, customEnd }}
+              onChange={({ period: p, customStart: s, customEnd: e }) => {
+                setPeriod(p)
+                setCustomStart(s)
+                setCustomEnd(e)
+              }}
+              className="border-white/15 bg-white/10 text-white hover:bg-white/15 [&>svg]:text-white/70"
             />
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9 rounded-lg text-white/70 hover:text-white hover:bg-white/10"
-              onClick={() => loadData(period, customStart, customEnd)}
-              disabled={isLoading}
-            >
-              <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} />
-            </Button>
+            <RefreshButton
+              onRefresh={() => {
+                // Re-fetch with force_refresh to bypass cache
+                const separator = swrKey?.includes("?") ? "&" : "?"
+                mutate(
+                  fetch(`${swrKey}${separator}force_refresh=true`)
+                    .then(r => r.ok ? r.json() : Promise.reject(new Error("Refresh failed")))
+                )
+              }}
+              isRefreshing={dataStatusMeta.isRefreshing || isValidating}
+              lastFetchedAt={dataStatusMeta.lastFetchedAt}
+              size="md"
+              className="rounded-lg border-white/15 bg-white/10 text-white/70 hover:text-white hover:bg-white/15"
+            />
           </div>
         </div>
+
+        {/* Data status banner — force dark-friendly colors inside the always-dark container */}
+        <DataStatusBanner
+          status={data?.dataStatus}
+          lastFetchedAt={data?.lastFetchedAt}
+          isRefreshing={data?.isRefreshing ?? isValidating}
+          className="rounded-lg !bg-white/10 !text-white/80"
+        />
 
         {/* Main number */}
         <div>
           <p className="text-3xl md:text-4xl font-bold tracking-tight text-[#05AFF2]">
             {formatCurrency(animatedTotal)}
           </p>
-          <p className="mt-1.5 text-sm text-white/50">
-            {data?.storesWithRevenue || 0} de {data?.storesCount || 0} lojas geraram receita
-          </p>
+          <div className="mt-1.5 flex items-center gap-3 flex-wrap">
+            <p className="text-sm text-white/50">
+              {data?.storesWithRevenue || 0} de {data?.storesCount || 0} lojas geraram receita
+            </p>
+            {data?.hasPartialData && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex items-center gap-1 text-xs text-yellow-400">
+                      <AlertTriangle className="h-3 w-3" />
+                      Dados parciais
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>{PARTIAL_DATA_TOOLTIP}</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+            {data?.lastFetchedAt && (
+              <TimeAgo date={data.lastFetchedAt} className="text-xs text-white/40" />
+            )}
+          </div>
         </div>
 
         {/* Breakdown: campaigns vs flows */}

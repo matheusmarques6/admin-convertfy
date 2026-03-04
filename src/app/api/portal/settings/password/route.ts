@@ -1,26 +1,32 @@
 import { NextRequest } from "next/server"
+import { z } from "zod"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
-import { logger } from "@/lib/logger"
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { changePassword, MIN_PASSWORD_LENGTH } from "@/lib/services/auth.service"
 
-const log = logger.child("PortalSettingsPassword")
+const portalPasswordSchema = z.object({
+  currentPassword: z.string().min(1, "Senha atual é obrigatória"),
+  newPassword: z
+    .string()
+    .min(MIN_PASSWORD_LENGTH, `A nova senha deve ter no mínimo ${MIN_PASSWORD_LENGTH} caracteres`),
+})
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
 }
 
-
-
-
-
-// PUT - Change password
+// PUT - Change portal user password
 export async function PUT(request: NextRequest) {
+  const limited = checkRateLimit(request, "portal:password", RATE_LIMITS.auth)
+  if (limited) return limited
+
   try {
     const supabase = await createClient()
     const user = await requireAuth(supabase)
 
-    // Get portal user
+    // Verify portal user
     const { data: portalUser } = await supabase
       .from("client_portal_users")
       .select("id")
@@ -33,35 +39,16 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { currentPassword, newPassword } = body
+    const parsed = portalPasswordSchema.safeParse(body)
 
-    if (!currentPassword || !newPassword) {
-      throw new AppError("Senha atual e nova senha são obrigatórias", 400)
+    if (!parsed.success) {
+      throw new AppError(
+        parsed.error.issues[0]?.message || "Dados inválidos",
+        400
+      )
     }
 
-    if (newPassword.length < 8) {
-      throw new AppError("A nova senha deve ter no mínimo 8 caracteres", 400)
-    }
-
-    // Verify current password by re-authenticating
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: user.email!,
-      password: currentPassword,
-    })
-
-    if (signInError) {
-      throw new AppError("Senha atual incorreta", 400)
-    }
-
-    // Update password
-    const { error: updateError } = await supabase.auth.updateUser({
-      password: newPassword,
-    })
-
-    if (updateError) {
-      log.error("[Portal Password] Update error:", updateError)
-      throw new AppError("Erro ao alterar senha", 500)
-    }
+    await changePassword(supabase, user.email!, parsed.data.currentPassword, parsed.data.newPassword)
 
     return successResponse(request, { success: true })
   } catch (error) {

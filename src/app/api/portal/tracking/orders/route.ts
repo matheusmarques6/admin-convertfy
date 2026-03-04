@@ -86,9 +86,13 @@ export async function GET(request: NextRequest) {
       .range(offset, offset + limit - 1)
 
     if (search) {
-      query = query.or(
-        `order_name.ilike.%${search}%,customer_name.ilike.%${search}%,customer_email.ilike.%${search}%,shopify_order_number.ilike.%${search}%`
-      )
+      // Sanitize: remove characters that could manipulate PostgREST filter syntax
+      const sanitized = search.replace(/[,%()\\]/g, "").trim().slice(0, 100)
+      if (sanitized) {
+        query = query.or(
+          `order_name.ilike.%${sanitized}%,customer_name.ilike.%${sanitized}%,customer_email.ilike.%${sanitized}%,shopify_order_number.ilike.%${sanitized}%`
+        )
+      }
     }
 
     const { data: orders, error, count } = await query

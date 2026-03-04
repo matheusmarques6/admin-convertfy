@@ -6,6 +6,10 @@ import { logger } from "@/lib/logger"
 
 const log = logger.child("PortalOnboardingWizard")
 
+function escapeLike(str: string): string {
+  return str.replace(/%/g, "\\%").replace(/_/g, "\\_")
+}
+
 /**
  * GET /api/portal/onboarding/wizard
  *
@@ -47,6 +51,17 @@ export async function GET(request: NextRequest) {
       .eq("client_id", portalUser.client_id)
       .eq("is_active", true)
 
+    // Check if client has an approved onboarding (skip wizard)
+    const { data: approvedOnboarding } = await adminClient
+      .from("client_onboardings")
+      .select("id")
+      .eq("client_id", portalUser.client_id)
+      .in("current_phase", ["generating_copies", "design", "implementation", "completed"])
+      .limit(1)
+      .maybeSingle()
+
+    const hasApprovedOnboarding = !!approvedOnboarding
+
     // Determine completed steps
     const step1Complete = !!(client?.cpf_cnpj && portalUser?.name)
     const store = stores?.[0]
@@ -55,7 +70,8 @@ export async function GET(request: NextRequest) {
     const step4Complete = !!(store?.klaviyo_private_key || store?.klaviyo_api_key)
 
     return successResponse(request, {
-      wizardComplete: step1Complete && step2Complete && step3Complete && step4Complete,
+      wizardComplete: hasApprovedOnboarding || (step1Complete && step2Complete && step3Complete && step4Complete),
+      hasApprovedOnboarding,
       steps: {
         personalInfo: { complete: step1Complete },
         storeData: { complete: step2Complete },
@@ -152,7 +168,7 @@ export async function POST(request: NextRequest) {
         const { store_id, store_name, store_url, platform, niche, country, language, target_audience, free_shipping_type } = data
 
         const storeUpdate = {
-          store_name,
+          store_name: store_name?.trim(),
           store_url,
           platform: platform || "shopify",
           niche,
@@ -164,21 +180,62 @@ export async function POST(request: NextRequest) {
         }
 
         if (store_id) {
+          // Verify store belongs to this client
+          const { data: ownedStore } = await adminClient
+            .from("client_stores")
+            .select("id")
+            .eq("id", store_id)
+            .eq("client_id", portalUser.client_id)
+            .single()
+
+          if (!ownedStore) throw new AppError("Loja não encontrada", 404)
+
           // Update existing store
           await adminClient
             .from("client_stores")
             .update(storeUpdate)
             .eq("id", store_id)
         } else {
-          // Create new store
+          // Fix 5: Get org_id from client (needed for duplicate check and insert)
+          const { data: clientData } = await adminClient
+            .from("clients")
+            .select("org_id")
+            .eq("id", portalUser.client_id)
+            .single()
+
+          // Anti-duplicate check before creating new store
+          if (store_name && clientData?.org_id) {
+            const { data: existing } = await adminClient
+              .from("client_stores")
+              .select("id, store_name")
+              .eq("org_id", clientData.org_id)
+              .eq("is_active", true)
+              .ilike("store_name", escapeLike(store_name.trim()))
+              .limit(1)
+              .maybeSingle()
+
+            if (existing) {
+              throw new AppError(`Loja "${store_name.trim()}" já existe nesta organização`, 409)
+            }
+          }
+
+          // Create new store WITH org_id
           const { error } = await adminClient
             .from("client_stores")
             .insert({
               ...storeUpdate,
               client_id: portalUser.client_id,
+              org_id: clientData?.org_id,
               is_active: true,
             })
-          if (error) throw error
+
+          // Fix 1: Handle unique constraint violation (race condition)
+          if (error) {
+            if (error.code === "23505") {
+              throw new AppError("Loja com este nome já existe nesta organização", 409)
+            }
+            throw error
+          }
         }
 
         log.info("Wizard step 2 saved", { clientId: portalUser.client_id })
@@ -189,6 +246,16 @@ export async function POST(request: NextRequest) {
         const { store_id, collaborator_code } = data
 
         if (!store_id) throw new AppError("store_id é obrigatório", 400)
+
+        // Verify store belongs to this client
+        const { data: ownedStore3 } = await adminClient
+          .from("client_stores")
+          .select("id")
+          .eq("id", store_id)
+          .eq("client_id", portalUser.client_id)
+          .single()
+
+        if (!ownedStore3) throw new AppError("Loja não encontrada", 404)
 
         await adminClient
           .from("client_stores")
@@ -208,27 +275,53 @@ export async function POST(request: NextRequest) {
         if (!store_id) throw new AppError("store_id é obrigatório", 400)
         if (!private_key) throw new AppError("private_key é obrigatório", 400)
 
-        // Test the key first
-        const testRes = await fetch("https://a.klaviyo.com/api/accounts/", {
-          headers: {
-            Authorization: `Klaviyo-API-Key ${private_key}`,
-            revision: "2024-10-15",
-            Accept: "application/json",
-          },
-        })
+        // Verify store belongs to this client
+        const { data: ownedStore4 } = await adminClient
+          .from("client_stores")
+          .select("id")
+          .eq("id", store_id)
+          .eq("client_id", portalUser.client_id)
+          .single()
 
-        if (!testRes.ok) {
-          throw new AppError("Chave da API inválida. Verifique e tente novamente.", 400)
+        if (!ownedStore4) throw new AppError("Loja não encontrada", 404)
+
+        // Test the key - use /api/metrics/ which requires metrics:read (minimum scope needed)
+        let testRes: Response
+        try {
+          testRes = await fetch("https://a.klaviyo.com/api/metrics/?page[size]=1", {
+            headers: {
+              Authorization: `Klaviyo-API-Key ${private_key}`,
+              revision: "2024-10-15",
+              Accept: "application/json",
+            },
+          })
+        } catch {
+          throw new AppError("Não foi possível conectar ao Klaviyo. Tente novamente.", 502)
         }
 
-        // Save encrypted key
+        if (testRes.status === 401) {
+          throw new AppError("Chave da API inválida. Verifique e tente novamente.", 400)
+        }
+        if (testRes.status === 403) {
+          throw new AppError(
+            "Chave válida, mas sem permissões necessárias. Crie uma Private API Key com scope 'metrics:read' habilitado.",
+            400
+          )
+        }
+        if (!testRes.ok) {
+          throw new AppError("Erro ao validar chave do Klaviyo. Tente novamente.", 400)
+        }
+
+        // Save encrypted key — use individual validation columns, not legacy JSON
         await adminClient
           .from("client_stores")
           .update({
             klaviyo_private_key: encrypt(private_key),
-            integration_status: {
-              klaviyo: { connected: true, connected_at: new Date().toISOString() },
-            },
+            klaviyo_api_key: encrypt(private_key),
+            klaviyo_validated_at: new Date().toISOString(),
+            klaviyo_validation_error: null,
+            klaviyo_missing_scopes: null,
+            klaviyo_has_reporting_access: true,
             updated_at: new Date().toISOString(),
           })
           .eq("id", store_id)

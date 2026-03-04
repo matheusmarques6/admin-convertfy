@@ -4,6 +4,7 @@ import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { generateTempPassword } from "@/lib/utils/generate-password"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
+import { emailService } from "@/lib/email"
 
 const log = logger.child("AdminPortalUsersResetPassword")
 
@@ -31,7 +32,7 @@ export async function POST(
       .eq("id", user.id)
       .single()
 
-    if (!profile || !["admin", "manager"].includes(profile.role)) {
+    if (!profile || !["admin", "manager", "coo"].includes(profile.role)) {
       throw new AppError("Acesso negado", 403)
     }
 
@@ -70,6 +71,23 @@ export async function POST(
       .from("client_portal_users")
       .update({ must_change_password: true })
       .eq("id", id)
+
+    // Send password reset notification email (non-blocking)
+    if (portalUser.email) {
+      try {
+        await emailService.sendPasswordResetNotification({
+          to: portalUser.email,
+          name: portalUser.name || "Usuário",
+          tempPassword,
+        })
+        log.info("Password reset email sent", { email: portalUser.email })
+      } catch (emailError) {
+        log.warn("Failed to send password reset email", {
+          email: portalUser.email,
+          error: (emailError as Error).message,
+        })
+      }
+    }
 
     return NextResponse.json(
       {

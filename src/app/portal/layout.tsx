@@ -22,7 +22,7 @@ import {
   Plug,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -40,6 +40,7 @@ interface PortalUser {
   id: string
   name: string
   email: string
+  avatar_url: string | null
   clientName: string
   clientId: string
   mustChangePassword: boolean
@@ -143,6 +144,7 @@ export default function PortalLayout({
           id: data.user.id,
           name: data.user.name,
           email: data.user.email,
+          avatar_url: data.user.avatar_url || null,
           clientName: data.user.clientName,
           clientId: data.user.clientId,
           mustChangePassword: data.mustChangePassword,
@@ -168,7 +170,7 @@ export default function PortalLayout({
             const storesData = await storesRes.json()
             const storeList = (storesData.stores || []).map((s: { id: string; store_name?: string; name?: string; platform: string }) => ({
               id: s.id,
-              name: s.store_name || s.name || "Loja",
+              name: s.store_name || s.name || "Sem nome",
               platform: s.platform,
             }))
             setStores(storeList)
@@ -193,6 +195,16 @@ export default function PortalLayout({
 
     checkAuth()
   }, [pathname])
+
+  // Listen for avatar changes from settings page to keep sidebar in sync
+  useEffect(() => {
+    const handleAvatarChanged = (e: Event) => {
+      const detail = (e as CustomEvent<{ avatar_url: string | null }>).detail
+      setUser((prev) => prev ? { ...prev, avatar_url: detail.avatar_url } : null)
+    }
+    window.addEventListener("portal-avatar-changed", handleAvatarChanged)
+    return () => window.removeEventListener("portal-avatar-changed", handleAvatarChanged)
+  }, [])
 
   const handleLogout = async () => {
     try {
@@ -324,6 +336,7 @@ export default function PortalLayout({
         <DropdownMenuTrigger asChild>
           <button className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg hover:bg-white/[0.06] transition-all duration-200 text-left group">
             <Avatar className="h-8 w-8">
+              {user.avatar_url && <AvatarImage src={user.avatar_url} alt={user.name} />}
               <AvatarFallback className="bg-gradient-to-br from-[#0284C7] to-[#05AFF2] text-white text-[11px] font-semibold">
                 {getInitials(user.name)}
               </AvatarFallback>
@@ -451,6 +464,7 @@ export default function PortalLayout({
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="h-9 w-9">
                 <Avatar className="h-8 w-8">
+                  {user.avatar_url && <AvatarImage src={user.avatar_url} alt={user.name} />}
                   <AvatarFallback className="bg-gradient-to-br from-[#0284C7] to-[#05AFF2] text-white text-[11px] font-semibold">
                     {getInitials(user.name)}
                   </AvatarFallback>

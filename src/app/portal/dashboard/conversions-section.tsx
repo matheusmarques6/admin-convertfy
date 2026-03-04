@@ -1,9 +1,54 @@
-import { Ticket, Tag, Link2, Globe } from "lucide-react"
+import { Ticket, Tag, Link2, Globe, Megaphone, Monitor } from "lucide-react"
 import { formatPercent, formatCurrencyCompact } from "@/lib/utils/format"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { ShopifyData } from "./types"
 
 interface ConversionsSectionProps {
   shopify?: ShopifyData
+}
+
+/** Reusable ranked list for UTM data (top 5) */
+function UtmRankingList({
+  items,
+  labelKey,
+  icon: Icon,
+}: {
+  items: Array<Record<string, string | number>>
+  labelKey: string
+  icon: React.ComponentType<{ className?: string }>
+}) {
+  if (!items || items.length === 0) {
+    return (
+      <div className="text-center py-6">
+        <Link2 className="h-8 w-8 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
+        <p className="text-sm text-slate-500 dark:text-slate-400">Nenhum dado disponivel</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-2">
+      {items.slice(0, 5).map((item, index) => (
+        <div key={String(item[labelKey])} className="flex items-center gap-3 py-2 border-b border-slate-200/50 dark:border-slate-700/30 last:border-0">
+          <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+            index === 0 ? "bg-cyan-500/20 text-cyan-600 dark:text-cyan-400" : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
+          }`}>
+            {index + 1}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate flex items-center gap-1">
+              <Icon className="h-3 w-3" />
+              {String(item[labelKey])}
+            </p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">{item.orders} pedidos</p>
+          </div>
+          <div className="text-right">
+            <p className="text-sm font-bold text-cyan-600 dark:text-cyan-400">{formatCurrencyCompact(item.revenue as number)}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
 }
 
 export function ConversionsSection({ shopify }: ConversionsSectionProps) {
@@ -16,7 +61,7 @@ export function ConversionsSection({ shopify }: ConversionsSectionProps) {
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium text-slate-800 dark:text-slate-100 flex items-center gap-2">
             <Ticket className="h-4 w-4 text-primary" />
-            Conversões por Cupom
+            Conversoes por Cupom
           </h3>
           <span className="text-xs text-slate-500 dark:text-slate-400">Pedidos pagos</span>
         </div>
@@ -67,7 +112,7 @@ export function ConversionsSection({ shopify }: ConversionsSectionProps) {
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium text-slate-800 dark:text-slate-100 flex items-center gap-2">
             <Link2 className="h-4 w-4 text-[#05AFF2]" />
-            Conversões por UTM
+            Conversoes por UTM
           </h3>
           <span className="text-xs text-slate-500 dark:text-slate-400">Pedidos pagos</span>
         </div>
@@ -83,34 +128,39 @@ export function ConversionsSection({ shopify }: ConversionsSectionProps) {
           </div>
         </div>
 
-        <div className="space-y-2 max-h-[160px] sm:max-h-[200px] overflow-y-auto">
-          {shopify?.utmConversions?.bySource && shopify.utmConversions.bySource.length > 0 ? (
-            shopify.utmConversions.bySource.slice(0, 5).map((utm, index) => (
-              <div key={utm.source} className="flex items-center gap-3 py-2 border-b border-slate-200/50 dark:border-slate-700/30 last:border-0">
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                  index === 0 ? "bg-cyan-500/20 text-cyan-600 dark:text-cyan-400" : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
-                }`}>
-                  {index + 1}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate flex items-center gap-1">
-                    <Globe className="h-3 w-3" />
-                    {utm.source}
-                  </p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">{utm.orders} pedidos</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm font-bold text-cyan-600 dark:text-cyan-400">{formatCurrencyCompact(utm.revenue)}</p>
-                </div>
-              </div>
-            ))
-          ) : (
-            <div className="text-center py-6">
-              <Link2 className="h-8 w-8 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
-              <p className="text-sm text-slate-500 dark:text-slate-400">Nenhum UTM rastreado</p>
-            </div>
-          )}
-        </div>
+        <Tabs defaultValue="source" className="w-full">
+          <TabsList className="w-full grid grid-cols-3 h-8 mb-3">
+            <TabsTrigger value="source" className="text-xs px-2 py-1">Source</TabsTrigger>
+            <TabsTrigger value="medium" className="text-xs px-2 py-1">Medium</TabsTrigger>
+            <TabsTrigger value="campaign" className="text-xs px-2 py-1">Campaign</TabsTrigger>
+          </TabsList>
+
+          <div className="max-h-[160px] sm:max-h-[200px] overflow-y-auto">
+            <TabsContent value="source" className="mt-0">
+              <UtmRankingList
+                items={(shopify?.utmConversions?.bySource || []) as unknown as Array<Record<string, string | number>>}
+                labelKey="source"
+                icon={Globe}
+              />
+            </TabsContent>
+
+            <TabsContent value="medium" className="mt-0">
+              <UtmRankingList
+                items={(shopify?.utmConversions?.byMedium || []) as unknown as Array<Record<string, string | number>>}
+                labelKey="medium"
+                icon={Monitor}
+              />
+            </TabsContent>
+
+            <TabsContent value="campaign" className="mt-0">
+              <UtmRankingList
+                items={(shopify?.utmConversions?.byCampaign || []) as unknown as Array<Record<string, string | number>>}
+                labelKey="campaign"
+                icon={Megaphone}
+              />
+            </TabsContent>
+          </div>
+        </Tabs>
       </div>
     </div>
   )

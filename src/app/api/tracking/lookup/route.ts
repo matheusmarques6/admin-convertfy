@@ -1,325 +1,292 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
-import { trackPackages, detectCarrier } from "@/lib/tracking/seventeen-track"
-import { decrypt } from "@/lib/crypto"
-import { translateTrackingResult } from "@/lib/tracking/translate-events"
+import { checkRateLimit } from "@/lib/rate-limit"
 import { logger } from "@/lib/logger"
+import { OrderLookupService, OrderLookupResult } from "@/lib/services/order-lookup.service"
+import { translateEventDescription } from "@/lib/tracking/translate-events"
 
 const log = logger.child("TrackingLookup")
 
-/** CORS headers for public endpoint (called from any store domain) */
+const LOOKUP_RATE_LIMIT = { limit: 20, windowSeconds: 60 }
+
+/** Public CORS — this endpoint is called from merchant storefronts */
 const PUBLIC_CORS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
   "Access-Control-Max-Age": "86400",
 }
 
-/** OPTIONS - Handle preflight for CORS */
+function getClientIp(request: NextRequest): string {
+  return (
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    request.headers.get("x-real-ip") ||
+    "unknown"
+  )
+}
+
+/** Map OrderLookupResult[] to the widget-compatible format */
+function mapLookupResults(lookupResults: OrderLookupResult[]) {
+  return lookupResults
+    .filter((r) => r.found && r.order)
+    .map((r) => {
+      const o = r.order!
+      const fulfillmentToStatus: Record<string, string> = {
+        fulfilled: "delivered",
+        unfulfilled: "pending",
+        partial: "in_transit",
+      }
+      const status = fulfillmentToStatus[o.fulfillment_status] || "pending"
+
+      return {
+        order: {
+          id: `${r.source}-${o.order_number}`,
+          order_name: o.order_number,
+          customer_name: o.customer_name,
+          customer_email: null,
+          order_created_at: o.order_date,
+          shipped_at: o.fulfillment_status === "fulfilled" ? o.order_date : null,
+          delivered_at: o.fulfillment_status === "fulfilled" ? o.order_date : null,
+          total_price: parseFloat(o.total_price) || null,
+          currency: o.currency,
+          line_items: [] as unknown[],
+          shipping_address: {} as Record<string, string>,
+        },
+        tracking: o.tracking_code
+          ? [
+              {
+                id: `${r.source}-${o.tracking_code}`,
+                tracking_number: o.tracking_code,
+                carrier_name: o.carrier,
+                status,
+                status_detail: null,
+                last_event: null,
+                tracking_events: [] as unknown[],
+                estimated_delivery: null as string | null,
+              },
+            ]
+          : [],
+      }
+    })
+}
+
 export async function OPTIONS() {
-  return new NextResponse(null, { status: 204, headers: PUBLIC_CORS })
+  return NextResponse.json({}, { headers: PUBLIC_CORS })
 }
 
-/** Helper to return JSON with public CORS headers */
-function respond(data: unknown, status = 200) {
-  return NextResponse.json(data, { status, headers: PUBLIC_CORS })
-}
+export async function GET(request: NextRequest) {
+  const limited = checkRateLimit(request, "tracking:lookup", LOOKUP_RATE_LIMIT)
+  if (limited) return limited
 
-/**
- * POST - Public lookup for order tracking
- * No auth required - used by public page and widget
- */
-export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { tracking_number, order_number, email, store_id } = body
+    const query = request.nextUrl.searchParams.get("q")?.trim()
+    const storeParam = request.nextUrl.searchParams.get("store")?.trim()
 
-    if (!tracking_number && !order_number) {
-      return respond({ error: "Informe o número de rastreio ou número do pedido" }, 400)
+    if (!query || query.length < 3) {
+      return NextResponse.json(
+        { error: "Query deve ter pelo menos 3 caracteres" },
+        { status: 400, headers: PUBLIC_CORS }
+      )
     }
 
-    const adminClient = createAdminClient()
-    const ip = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || ""
-    const userAgent = request.headers.get("user-agent") || ""
+    const admin = createAdminClient()
+    const ip = getClientIp(request)
 
+    // Resolve storeParam → tracking_store_id (required for data isolation)
     let trackingStoreId: string | null = null
-    let seventeenTrackKey: string | null = null
-    const carrierKeys: Record<string, string | boolean> = { cainiao: true }
+    let clientStoreId: string | null = null
 
-    // If store_id provided, use it to find tracking store
-    if (store_id) {
-      const { data: trackingStore } = await adminClient
+    if (storeParam) {
+      // Try as tracking_store_id first
+      const { data: tsCheck } = await admin
         .from("tracking_stores")
-        .select("id, seventeen_track_api_key, carrier_api_keys")
-        .eq("client_store_id", store_id)
+        .select("id, client_store_id")
+        .eq("id", storeParam)
         .eq("is_active", true)
         .single()
 
-      if (trackingStore) {
-        trackingStoreId = trackingStore.id
-        if (trackingStore.seventeen_track_api_key) {
-          try {
-            seventeenTrackKey = decrypt(trackingStore.seventeen_track_api_key)
-          } catch {
-            // Use global key
-          }
-        }
-        // Decrypt carrier-specific API keys
-        const storedKeys = (trackingStore.carrier_api_keys as Record<string, unknown>) || {}
-        for (const [carrier, encKey] of Object.entries(storedKeys)) {
-          if (typeof encKey === "string" && encKey) {
-            try {
-              // decrypt() handles enc:v1: prefix automatically
-              carrierKeys[carrier] = decrypt(encKey)
-            } catch {
-              log.warn(`Falha ao descriptografar chave do ${carrier}`)
-            }
-          } else if (typeof encKey === "boolean") {
-            carrierKeys[carrier] = encKey
-          }
+      if (tsCheck) {
+        trackingStoreId = tsCheck.id
+        clientStoreId = tsCheck.client_store_id
+      } else {
+        // Try as client_store_id → resolve to tracking_store_id
+        const { data: byClientStore } = await admin
+          .from("tracking_stores")
+          .select("id, client_store_id")
+          .eq("client_store_id", storeParam)
+          .eq("is_active", true)
+          .limit(1)
+          .single()
+
+        if (byClientStore) {
+          trackingStoreId = byClientStore.id
+          clientStoreId = byClientStore.client_store_id
         }
       }
     }
 
-    // Search by tracking number
-    if (tracking_number) {
-      // First check our database
-      const { data: codes } = await adminClient
-        .from("tracking_codes")
-        .select(`
-          id,
-          tracking_number,
-          carrier_code,
-          carrier_name,
-          status,
-          status_detail,
-          last_event,
-          last_event_at,
-          estimated_delivery,
-          tracking_events,
-          tracking_order_id,
-          tracking_orders (
-            order_name,
-            customer_name,
-            shopify_order_number,
-            tracking_stores (
-              shop_domain
-            )
-          )
-        `)
-        .eq("tracking_number", tracking_number)
-        .limit(1)
+    if (!trackingStoreId) {
+      return NextResponse.json(
+        { error: "Store not found or inactive" },
+        { status: 400, headers: PUBLIC_CORS }
+      )
+    }
 
-      // Log the lookup
-      await adminClient.from("tracking_lookups").insert({
-        tracking_store_id: trackingStoreId,
-        tracking_number,
-        order_number: order_number || null,
-        customer_email: email || null,
-        ip_address: ip,
-        user_agent: userAgent,
-        found: !!(codes && codes.length > 0),
-        source: store_id ? "widget" : "public",
-      })
+    // Determine search type
+    const isEmail = query.includes("@")
+    const isOrderNumber = query.startsWith("#") || /^\d{3,6}$/.test(query)
+    const cleanQuery = query.replace(/^#/, "")
 
-      if (codes && codes.length > 0) {
-        const code = codes[0]
-        // Extract shop_domain from nested join for UTM links
-        const trackingOrders = code.tracking_orders as unknown as {
-          order_name?: string
-          tracking_stores?: { shop_domain?: string } | Array<{ shop_domain?: string }>
-        }
-        const orderName = trackingOrders?.order_name || ""
-        const storesData = trackingOrders?.tracking_stores
-        const shopDomain = Array.isArray(storesData)
-          ? storesData[0]?.shop_domain || ""
-          : storesData?.shop_domain || ""
-
-        // If events are empty or stale, try to fetch from 17track
-        const events = code.tracking_events as Array<Record<string, unknown>>
-        const shouldRefresh = !events || events.length === 0 ||
-          (code.last_event_at && Date.now() - new Date(code.last_event_at).getTime() > 3600000) // >1h old
-
-        if (shouldRefresh && code.status !== "delivered") {
-          try {
-            const results = await trackPackages([tracking_number], seventeenTrackKey, carrierKeys)
-            if (results.length > 0) {
-              const result = results[0]
-              // Update the tracking code with fresh data
-              await adminClient
-                .from("tracking_codes")
-                .update({
-                  carrier_code: result.carrier_code || code.carrier_code,
-                  carrier_name: result.carrier_name || code.carrier_name,
-                  status: result.status,
-                  status_detail: result.status_detail,
-                  last_event: result.last_event,
-                  last_event_at: result.last_event_at,
-                  estimated_delivery: result.estimated_delivery,
-                  tracking_events: result.events,
-                  last_checked_at: new Date().toISOString(),
-                })
-                .eq("id", code.id)
-
-              // If delivered, update order
-              if (result.status === "delivered") {
-                await adminClient
-                  .from("tracking_orders")
-                  .update({ delivered_at: new Date().toISOString() })
-                  .eq("id", code.tracking_order_id)
-              }
-
-              return respond({
-                found: true,
-                tracking: translateTrackingResult({
-                  tracking_number: result.tracking_number,
-                  carrier_code: result.carrier_code || code.carrier_code,
-                  carrier_name: result.carrier_name || code.carrier_name,
-                  status: result.status,
-                  status_detail: result.status_detail,
-                  last_event: result.last_event,
-                  last_event_at: result.last_event_at,
-                  estimated_delivery: result.estimated_delivery,
-                  events: result.events,
-                  order_name: orderName,
-                  shop_domain: shopDomain,
-                }),
-              })
-            }
-          } catch (error) {
-            log.error("Error refreshing tracking from 17track:", error)
-          }
-        }
-
-        // Return cached data (translated)
-        return respond({
-          found: true,
-          tracking: translateTrackingResult({
-            tracking_number: code.tracking_number,
-            carrier_code: code.carrier_code,
-            carrier_name: code.carrier_name,
-            status: code.status,
-            status_detail: code.status_detail,
-            last_event: code.last_event,
-            last_event_at: code.last_event_at,
-            estimated_delivery: code.estimated_delivery,
-            events: (code.tracking_events || []) as Array<{ date: string; description: string; location?: string; status?: string }>,
-            order_name: (code.tracking_orders as unknown as { order_name: string })?.order_name || "",
-          }),
-        })
+    type WidgetResult = {
+      order: {
+        id: string
+        order_name: string | null
+        customer_name: string | null
+        customer_email: string | null
+        order_created_at: string | null
+        shipped_at: string | null
+        delivered_at: string | null
+        total_price: number | null
+        currency: string
+        line_items: unknown[]
+        shipping_address: Record<string, string>
       }
+      tracking: Array<{
+        id: string
+        tracking_number: string
+        carrier_name: string | null
+        status: string
+        status_detail: string | null
+        last_event: string | null
+        tracking_events: unknown[]
+        estimated_delivery: string | null
+      }>
+    }
 
-      // Not in our DB - try 17track directly
-      try {
-        const results = await trackPackages([tracking_number], seventeenTrackKey, carrierKeys)
-        if (results.length > 0) {
-          return respond({
-            found: true,
-            tracking: translateTrackingResult({
-              tracking_number: results[0].tracking_number,
-              carrier_code: results[0].carrier_code,
-              carrier_name: results[0].carrier_name,
-              status: results[0].status,
-              status_detail: results[0].status_detail,
-              last_event: results[0].last_event,
-              last_event_at: results[0].last_event_at,
-              estimated_delivery: results[0].estimated_delivery,
-              events: results[0].events,
-              order_name: "",
-            }),
+    let results: WidgetResult[] = []
+
+    if (isEmail) {
+      // Use OrderLookupService cascade if we have a clientStoreId
+      if (clientStoreId) {
+        try {
+          const lookupService = new OrderLookupService()
+          const lookupResults = await lookupService.findByEmail(clientStoreId, cleanQuery)
+          results = mapLookupResults(lookupResults)
+        } catch (err) {
+          log.warn("OrderLookupService failed, falling back to local", {
+            error: err instanceof Error ? err.message : String(err),
           })
         }
-      } catch (error) {
-        log.error("Error querying 17track:", error)
       }
 
-      // Fallback: detect carrier locally and return pending status
-      const carrier = detectCarrier(tracking_number)
-      return respond({
-        found: true,
-        tracking: {
-          tracking_number,
-          carrier_code: carrier.code,
-          carrier_name: carrier.name,
-          status: "pending",
-          status_detail: "Aguardando informações da transportadora",
-          last_event: "",
-          last_event_at: null,
-          estimated_delivery: null,
-          events: [],
-          order_name: "",
-        },
-      })
-    }
+      // Fallback to local Supabase search — scoped to this store
+      if (results.length === 0) {
+        const { data: orders } = await admin
+          .from("tracking_orders")
+          .select("id, order_name, customer_name, customer_email, order_created_at, shipped_at, delivered_at, total_price, currency, line_items, shipping_address")
+          .eq("tracking_store_id", trackingStoreId)
+          .ilike("customer_email", cleanQuery)
+          .order("order_created_at", { ascending: false })
+          .limit(10)
 
-    // Search by order number
-    if (order_number) {
-      let query = adminClient
+        if (orders) {
+          for (const order of orders) {
+            const { data: codes } = await admin
+              .from("tracking_codes")
+              .select("id, tracking_number, carrier_name, status, status_detail, last_event, tracking_events, estimated_delivery")
+              .eq("tracking_order_id", order.id)
+
+            results.push({ order, tracking: codes || [] })
+          }
+        }
+      }
+    } else if (isOrderNumber) {
+      const { data: orders } = await admin
         .from("tracking_orders")
-        .select(`
-          id,
-          order_name,
-          customer_name,
-          shopify_order_number,
-          fulfillment_status,
-          tracking_codes (
-            tracking_number,
-            carrier_code,
-            carrier_name,
-            status,
-            status_detail,
-            last_event,
-            last_event_at,
-            estimated_delivery,
-            tracking_events
-          )
-        `)
-        .or(`order_name.ilike.%${order_number}%,shopify_order_number.eq.${order_number}`)
+        .select("id, order_name, customer_name, customer_email, order_created_at, shipped_at, delivered_at, total_price, currency, line_items, shipping_address")
+        .eq("tracking_store_id", trackingStoreId)
+        .or(`shopify_order_number.eq.${cleanQuery},order_name.ilike.%${cleanQuery}%`)
+        .order("order_created_at", { ascending: false })
+        .limit(10)
 
-      if (email) {
-        query = query.eq("customer_email", email.toLowerCase())
+      if (orders) {
+        for (const order of orders) {
+          const { data: codes } = await admin
+            .from("tracking_codes")
+            .select("id, tracking_number, carrier_name, status, status_detail, last_event, tracking_events, estimated_delivery")
+            .eq("tracking_order_id", order.id)
+
+          results.push({ order, tracking: codes || [] })
+        }
       }
+    } else {
+      const { data: codes } = await admin
+        .from("tracking_codes")
+        .select("id, tracking_number, carrier_name, status, status_detail, last_event, tracking_events, estimated_delivery, tracking_order_id")
+        .eq("tracking_store_id", trackingStoreId)
+        .ilike("tracking_number", `%${query}%`)
+        .limit(5)
 
-      const { data: orders } = await query.limit(5)
+      if (codes) {
+        for (const code of codes) {
+          const { data: order } = await admin
+            .from("tracking_orders")
+            .select("id, order_name, customer_name, customer_email, order_created_at, shipped_at, delivered_at, total_price, currency, line_items, shipping_address")
+            .eq("id", code.tracking_order_id)
+            .single()
 
-      // Log the lookup
-      await adminClient.from("tracking_lookups").insert({
-        tracking_store_id: trackingStoreId,
-        tracking_number: null,
-        order_number,
-        customer_email: email || null,
-        ip_address: ip,
-        user_agent: userAgent,
-        found: !!(orders && orders.length > 0),
-        source: store_id ? "widget" : "public",
-      })
-
-      if (orders && orders.length > 0) {
-        return respond({
-          found: true,
-          orders: orders.map((order) => ({
-            order_name: order.order_name,
-            customer_name: order.customer_name,
-            fulfillment_status: order.fulfillment_status,
-            tracking_codes: (order.tracking_codes || []).map((code: Record<string, unknown>) => translateTrackingResult({
-              tracking_number: code.tracking_number as string,
-              carrier_code: code.carrier_code as string,
-              carrier_name: code.carrier_name as string,
-              status: code.status as string,
-              status_detail: code.status_detail as string,
-              last_event: code.last_event as string,
-              last_event_at: code.last_event_at as string | null,
-              estimated_delivery: code.estimated_delivery as string | null,
-              events: (code.tracking_events || []) as Array<{ date: string; description: string; location?: string; status?: string }>,
-            })),
-          })),
-        })
+          if (order) {
+            const { tracking_order_id: _, ...codeData } = code
+            results.push({ order, tracking: [codeData] })
+          }
+        }
       }
     }
 
-    return respond({ found: false })
+    // Log lookup (fire and forget)
+    try {
+      await admin
+        .from("tracking_lookups")
+        .insert({
+          tracking_store_id: trackingStoreId,
+          tracking_number: !isEmail && !isOrderNumber ? query : null,
+          order_number: isOrderNumber ? cleanQuery : null,
+          customer_email: isEmail ? cleanQuery : null,
+          ip_address: ip,
+          found: results.length > 0,
+        })
+    } catch (err) {
+      log.warn("Failed to log lookup", err)
+    }
+
+    // Translate tracking event descriptions to Portuguese
+    for (const result of results) {
+      for (const track of result.tracking) {
+        if (track.status_detail) {
+          track.status_detail = translateEventDescription(track.status_detail)
+        }
+        if (track.last_event) {
+          track.last_event = translateEventDescription(track.last_event)
+        }
+        if (Array.isArray(track.tracking_events)) {
+          for (const event of track.tracking_events as Array<{ description?: string }>) {
+            if (event.description) {
+              event.description = translateEventDescription(event.description)
+            }
+          }
+        }
+      }
+    }
+
+    return NextResponse.json(
+      { results, query, found: results.length > 0 },
+      { headers: PUBLIC_CORS }
+    )
   } catch (error) {
-    log.error("Lookup error:", error)
-    return respond({ error: "Erro interno" }, 500)
+    log.error("Lookup error", error)
+    return NextResponse.json(
+      { error: "Erro interno" },
+      { status: 500, headers: PUBLIC_CORS }
+    )
   }
 }

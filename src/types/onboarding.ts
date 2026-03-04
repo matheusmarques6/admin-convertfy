@@ -77,6 +77,7 @@ export interface ClientOnboarding {
   design_completed_at?: string
   implementation_started_at?: string
   client_notified_at?: string
+  drive_folder_url?: string
   created_at: string
   updated_at: string
   // Joined data

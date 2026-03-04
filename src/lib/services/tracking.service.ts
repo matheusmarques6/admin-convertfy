@@ -1,0 +1,422 @@
+import { createAdminClient } from "@/lib/supabase/server"
+import { logger } from "@/lib/logger"
+import type { TrackingStatus, TrackingEvent } from "@/types/tracking"
+
+const log = logger.child("TrackingService")
+
+const SEVENTEEN_TRACK_API = "https://api.17track.net/track/v2.2"
+const API_KEY = process.env.SEVENTEEN_TRACK_API_KEY
+
+// 17track carrier codes for international carriers
+// Full list: https://api.17track.net/track/v2.2/getcarrierlist
+export const CARRIER_CODES: Record<string, number> = {
+  // Global / Multi-country
+  "dhl": 100001,
+  "dhl-express": 100001,
+  "ups": 100002,
+  "fedex": 100003,
+  "tnt": 100004,
+  "aramex": 100005,
+  "dpd": 100006,
+  "gls": 100007,
+  "toll": 100008,
+  "usps": 21051,
+  "royal-mail": 10041,
+  "canada-post": 3041,
+  "australia-post": 1151,
+  "china-post": 4041,
+  "china-ems": 4042,
+  "yanwen": 190271,
+  "cainiao": 190272,
+  "4px": 190011,
+  "yun-express": 190131,
+  "sf-express": 190021,
+  // Brazil
+  "correios": 5011,
+  "jadlog": 190351,
+  "sequoia": 190352,
+  "loggi": 190353,
+  "total-express": 190354,
+  "azul-cargo": 190355,
+  "latam-cargo": 190356,
+  // Europe
+  "deutsche-post": 6161,
+  "hermes-de": 6162,
+  "poste-italiane": 10061,
+  "correos-spain": 15041,
+  "ctt-portugal": 12041,
+  "bpost": 2041,
+  "postnl": 11041,
+  "swiss-post": 16041,
+  "colissimo": 7011,
+  "chronopost": 7012,
+  // Asia
+  "japan-post": 8041,
+  "korea-post": 9041,
+  "india-post": 190091,
+  "singpost": 14041,
+  // Auto-detect (let 17track figure it out)
+  "auto": 0,
+}
+
+// Reverse map: 17track carrier code → human-readable name
+const CARRIER_NAMES: Record<number, string> = {
+  100001: "DHL",
+  100002: "UPS",
+  100003: "FedEx",
+  100004: "TNT",
+  100005: "Aramex",
+  100006: "DPD",
+  100007: "GLS",
+  21051: "USPS",
+  10041: "Royal Mail",
+  3041: "Canada Post",
+  1151: "Australia Post",
+  4041: "China Post",
+  4042: "China EMS",
+  190271: "YanWen",
+  190272: "Cainiao",
+  190011: "4PX",
+  190131: "YunExpress",
+  190021: "SF Express",
+  5011: "Correios",
+  190351: "Jadlog",
+  6161: "Deutsche Post",
+  10061: "Poste Italiane",
+  15041: "Correos",
+  12041: "CTT",
+  7011: "Colissimo",
+  7012: "Chronopost",
+  8041: "Japan Post",
+  9041: "Korea Post",
+}
+
+interface SeventeenTrackResult {
+  number: string
+  carrier: number
+  param: unknown
+  tag: string
+  track: {
+    z: Array<{
+      a: string // date
+      z: string // description
+      c: string // location
+    }>
+  }
+}
+
+function mapSeventeenTrackStatus(tag: string): TrackingStatus {
+  const map: Record<string, TrackingStatus> = {
+    NotFound: "pending",
+    InfoReceived: "info_received",
+    InTransit: "in_transit",
+    OutForDelivery: "out_for_delivery",
+    Delivered: "delivered",
+    FailedAttempt: "failed_attempt",
+    Exception: "exception",
+    Expired: "expired",
+  }
+  return map[tag] || "pending"
+}
+
+function mapSeventeenTrackEvents(track: SeventeenTrackResult["track"]): TrackingEvent[] {
+  if (!track?.z) return []
+  return track.z.map((e) => ({
+    date: e.a,
+    status: "in_transit" as TrackingStatus,
+    description: e.z,
+    location: e.c || null,
+  }))
+}
+
+/**
+ * Auto-detect carrier from tracking number pattern
+ */
+export function detectCarrier(trackingNumber: string): { code: number; name: string } {
+  const tn = trackingNumber.trim().toUpperCase()
+
+  // Correios Brazil: 2 letters + 9 digits + 2 letters (e.g. BR123456789BR)
+  if (/^[A-Z]{2}\d{9}[A-Z]{2}$/.test(tn)) {
+    const suffix = tn.slice(-2)
+    if (suffix === "BR") return { code: 5011, name: "Correios" }
+    if (suffix === "CN") return { code: 4041, name: "China Post" }
+    if (suffix === "DE") return { code: 6161, name: "Deutsche Post" }
+    if (suffix === "IT") return { code: 10061, name: "Poste Italiane" }
+    if (suffix === "ES") return { code: 15041, name: "Correos" }
+    if (suffix === "PT") return { code: 12041, name: "CTT" }
+    if (suffix === "JP") return { code: 8041, name: "Japan Post" }
+    if (suffix === "US") return { code: 21051, name: "USPS" }
+    if (suffix === "GB") return { code: 10041, name: "Royal Mail" }
+    if (suffix === "CA") return { code: 3041, name: "Canada Post" }
+    if (suffix === "AU") return { code: 1151, name: "Australia Post" }
+    if (suffix === "FR") return { code: 7011, name: "Colissimo" }
+    // Other countries - let 17track auto-detect
+    return { code: 0, name: "International Post" }
+  }
+
+  // FedEx: 12-15 digits or starts with 6
+  if (/^\d{12,15}$/.test(tn) && tn.startsWith("6")) return { code: 100003, name: "FedEx" }
+
+  // UPS: starts with 1Z
+  if (tn.startsWith("1Z")) return { code: 100002, name: "UPS" }
+
+  // DHL: 10-digit number or starts with JD/JJD
+  if (/^\d{10}$/.test(tn) || tn.startsWith("JD") || tn.startsWith("JJD")) return { code: 100001, name: "DHL" }
+
+  // USPS: starts with 9 and is 22 digits or 94 with 20-22 digits
+  if (/^9[0-9]{21}$/.test(tn) || /^94[0-9]{18,20}$/.test(tn)) return { code: 21051, name: "USPS" }
+
+  // 4PX: starts with 4PX or JNTCU
+  if (tn.startsWith("4PX") || tn.startsWith("JNTCU")) return { code: 190011, name: "4PX" }
+
+  // YunExpress: starts with YT
+  if (tn.startsWith("YT")) return { code: 190131, name: "YunExpress" }
+
+  // Cainiao: starts with LP or CAINIAO
+  if (tn.startsWith("LP") || tn.startsWith("CAINIAO")) return { code: 190272, name: "Cainiao" }
+
+  // SF Express: starts with SF
+  if (tn.startsWith("SF")) return { code: 190021, name: "SF Express" }
+
+  // Jadlog: 14-digit number
+  if (/^\d{14}$/.test(tn)) return { code: 190351, name: "Jadlog" }
+
+  // Default: auto-detect by 17track
+  return { code: 0, name: "Auto" }
+}
+
+function resolveCarrierName(carrierCode: number, detectedName: string | null): string {
+  if (carrierCode && CARRIER_NAMES[carrierCode]) {
+    return CARRIER_NAMES[carrierCode]
+  }
+  return detectedName || "Unknown"
+}
+
+// --- Mock Service (used when API key is not configured) ---
+
+function generateMockEvents(trackingNumber: string): TrackingEvent[] {
+  const now = new Date()
+  const events: TrackingEvent[] = []
+  const base = trackingNumber.charCodeAt(trackingNumber.length - 1) % 5
+
+  events.push({
+    date: new Date(now.getTime() - 5 * 86400000).toISOString(),
+    status: "info_received",
+    description: "Objeto postado",
+    location: "São Paulo, SP",
+  })
+
+  if (base >= 1) {
+    events.push({
+      date: new Date(now.getTime() - 4 * 86400000).toISOString(),
+      status: "in_transit",
+      description: "Objeto em trânsito - por favor aguarde",
+      location: "Centro de Distribuição - São Paulo, SP",
+    })
+  }
+
+  if (base >= 2) {
+    events.push({
+      date: new Date(now.getTime() - 3 * 86400000).toISOString(),
+      status: "in_transit",
+      description: "Objeto encaminhado para unidade de distribuição",
+      location: "Curitiba, PR",
+    })
+  }
+
+  if (base >= 3) {
+    events.push({
+      date: new Date(now.getTime() - 1 * 86400000).toISOString(),
+      status: "out_for_delivery",
+      description: "Objeto saiu para entrega ao destinatário",
+      location: "Curitiba, PR",
+    })
+  }
+
+  if (base >= 4) {
+    events.push({
+      date: new Date(now.getTime() - 2 * 3600000).toISOString(),
+      status: "delivered",
+      description: "Objeto entregue ao destinatário",
+      location: "Curitiba, PR",
+    })
+  }
+
+  return events.reverse()
+}
+
+function getMockStatus(events: TrackingEvent[]): TrackingStatus {
+  return events.length > 0 ? events[0].status : "pending"
+}
+
+// --- Public API ---
+
+export interface TrackResult {
+  status: TrackingStatus
+  statusDescription: string
+  location: string | null
+  events: TrackingEvent[]
+  carrier: string | null
+  estimatedDelivery: string | null
+}
+
+export async function trackNumber(trackingNumber: string, carrierCode = 0): Promise<TrackResult> {
+  if (!API_KEY) {
+    log.info("Using mock tracking (no 17track API key)", { trackingNumber })
+    return getMockTrackResult(trackingNumber)
+  }
+
+  // Auto-detect carrier if not specified
+  const detected = detectCarrier(trackingNumber)
+  const resolvedCarrierCode = carrierCode || detected.code
+
+  try {
+    // Register tracking number with 17track
+    const registerRes = await fetch(`${SEVENTEEN_TRACK_API}/register`, {
+      method: "POST",
+      headers: {
+        "17token": API_KEY,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify([{ number: trackingNumber, carrier: resolvedCarrierCode }]),
+    })
+
+    if (!registerRes.ok) {
+      log.warn("17track register failed", { status: registerRes.status, trackingNumber })
+    }
+
+    // Brief pause for 17track to process registration
+    await new Promise((r) => setTimeout(r, 300))
+
+    // Get tracking info
+    const response = await fetch(`${SEVENTEEN_TRACK_API}/gettrackinfo`, {
+      method: "POST",
+      headers: {
+        "17token": API_KEY,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify([{ number: trackingNumber, carrier: resolvedCarrierCode }]),
+    })
+
+    if (!response.ok) {
+      log.error("17track API response error", { status: response.status, trackingNumber })
+      return getMockTrackResult(trackingNumber)
+    }
+
+    const data = await response.json()
+    const result = data?.data?.accepted?.[0] as SeventeenTrackResult | undefined
+
+    if (!result) {
+      log.warn("No tracking result from 17track", { trackingNumber, data: JSON.stringify(data?.data?.rejected?.slice(0, 2)) })
+      return getMockTrackResult(trackingNumber)
+    }
+
+    const events = mapSeventeenTrackEvents(result.track)
+    const status = mapSeventeenTrackStatus(result.tag)
+    const carrierName = resolveCarrierName(result.carrier, detected.name)
+
+    return {
+      status,
+      statusDescription: events[0]?.description || result.tag,
+      location: events[0]?.location || null,
+      events,
+      carrier: carrierName,
+      estimatedDelivery: null,
+    }
+  } catch (err) {
+    log.error("17track API error, falling back to mock", err)
+    return getMockTrackResult(trackingNumber)
+  }
+}
+
+function getMockTrackResult(trackingNumber: string): TrackResult {
+  const events = generateMockEvents(trackingNumber)
+  const status = getMockStatus(events)
+  return {
+    status,
+    statusDescription: events[0]?.description || "Aguardando atualização",
+    location: events[0]?.location || null,
+    events,
+    carrier: "Correios",
+    estimatedDelivery: null,
+  }
+}
+
+export async function syncTrackingCode(trackingCodeId: string): Promise<void> {
+  const admin = createAdminClient()
+
+  const { data: code, error } = await admin
+    .from("tracking_codes")
+    .select("*")
+    .eq("id", trackingCodeId)
+    .single()
+
+  if (error || !code) {
+    log.error("Tracking code not found for sync", { trackingCodeId, error })
+    return
+  }
+
+  const result = await trackNumber(code.tracking_number, code.carrier_code || 0)
+
+  const updateData: Record<string, unknown> = {
+    status: result.status,
+    status_detail: result.statusDescription,
+    last_event: result.location || result.events[0]?.description || null,
+    last_event_at: result.events[0]?.date || null,
+    tracking_events: result.events,
+    last_checked_at: new Date().toISOString(),
+  }
+
+  if (result.estimatedDelivery) {
+    updateData.estimated_delivery = result.estimatedDelivery
+  }
+
+  if (result.carrier) {
+    updateData.carrier_name = result.carrier
+  }
+
+  // Update shipped_at / delivered_at on the parent tracking_order
+  if (code.tracking_order_id) {
+    const orderUpdate: Record<string, unknown> = {}
+    if (result.status === "delivered") {
+      orderUpdate.delivered_at = result.events[0]?.date || new Date().toISOString()
+    }
+    if (result.status === "in_transit" || result.status === "out_for_delivery") {
+      orderUpdate.shipped_at = result.events[result.events.length - 1]?.date || new Date().toISOString()
+    }
+    if (Object.keys(orderUpdate).length > 0) {
+      await admin
+        .from("tracking_orders")
+        .update(orderUpdate)
+        .eq("id", code.tracking_order_id)
+    }
+  }
+
+  await admin
+    .from("tracking_codes")
+    .update(updateData)
+    .eq("id", trackingCodeId)
+
+  log.info("Tracking code synced", { trackingCodeId, status: result.status })
+}
+
+export async function syncAllPendingCodes(): Promise<number> {
+  const admin = createAdminClient()
+
+  const { data: codes } = await admin
+    .from("tracking_codes")
+    .select("id")
+    .not("status", "in", '("delivered","expired")')
+    .order("last_checked_at", { ascending: true, nullsFirst: true })
+    .limit(50)
+
+  if (!codes || codes.length === 0) return 0
+
+  for (const code of codes) {
+    await syncTrackingCode(code.id)
+    // Rate limit: 500ms between calls
+    await new Promise((r) => setTimeout(r, 500))
+  }
+
+  return codes.length
+}

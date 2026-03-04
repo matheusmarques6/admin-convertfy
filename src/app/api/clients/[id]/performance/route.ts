@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server"
+import { SupabaseClient } from "@supabase/supabase-js"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
@@ -6,10 +7,12 @@ import { getCache, setCache, getStaleCache } from "@/lib/cache"
 import { parseDateRange, formatDateStr, withConcurrencyLimit } from "@/lib/integrations/klaviyo"
 import { getShopifyReportForStore } from "@/lib/integrations/shopify/report"
 import { decryptStoreCredentials } from "@/lib/crypto"
+import { CACHED_PERIODS } from "@/lib/shared/data-status"
 import {
   fetchKlaviyoPerformance,
   type KlaviyoPerformanceData,
 } from "@/lib/services/klaviyo-performance.service"
+import { savePerfDataToCache } from "@/lib/services/sync-persistence.service"
 
 const log = logger.child("ClientPerformance")
 
@@ -31,6 +34,132 @@ interface StorePerformance {
   } | null
   errors: Array<{ integration: string; message: string; code?: string }>
 }
+
+// ─── Cache-First Helper ─────────────────────────────────────────────────────
+
+/**
+ * Read Klaviyo data from cron-populated cache tables and map to KlaviyoPerformanceData.
+ * Only works for CACHED_PERIODS (7d, 15d, 30d, 90d) — returns null for other periods.
+ */
+async function readKlaviyoFromCacheTables(
+  adminClient: SupabaseClient,
+  storeId: string,
+  period: string,
+): Promise<KlaviyoPerformanceData | null> {
+  if (!(CACHED_PERIODS as readonly string[]).includes(period)) return null
+
+  const { data: summary } = await adminClient
+    .from("store_revenue_summary")
+    .select("*")
+    .eq("store_id", storeId)
+    .eq("period_label", period)
+    .single()
+
+  if (!summary || summary.sync_status === "error") return null
+
+  // Check if expired (stale but usable)
+  const isExpired = new Date(summary.expires_at) < new Date()
+  if (isExpired) {
+    log.info(`[ClientPerf] Cache stale for store ${storeId}/${period} (expired ${summary.expires_at})`)
+  }
+
+  const periodStart = summary.period_start
+  const periodEnd = summary.period_end
+
+  const [{ data: campaigns }, { data: flows }] = await Promise.all([
+    adminClient
+      .from("klaviyo_campaign_metrics")
+      .select("*")
+      .eq("store_id", storeId)
+      .eq("period_start", periodStart)
+      .eq("period_end", periodEnd),
+    adminClient
+      .from("klaviyo_flow_metrics")
+      .select("*")
+      .eq("store_id", storeId)
+      .eq("period_start", periodStart)
+      .eq("period_end", periodEnd),
+  ])
+
+  const campList = campaigns || []
+  const flowList = flows || []
+
+  // Aggregate email metrics across all campaigns + flows
+  let totalDelivered = 0, totalOpens = 0, totalClicks = 0
+  let bounceRateSum = 0, unsubRateSum = 0, rateCount = 0
+
+  for (const c of campList) {
+    totalDelivered += c.delivered || 0
+    totalOpens += c.opened || 0
+    totalClicks += c.clicked || 0
+    if (c.delivered > 0) {
+      bounceRateSum += Number(c.bounce_rate) || 0
+      unsubRateSum += Number(c.unsubscribe_rate) || 0
+      rateCount++
+    }
+  }
+  for (const f of flowList) {
+    totalDelivered += f.delivered || 0
+    totalOpens += f.opened || 0
+    totalClicks += f.clicked || 0
+    if (f.delivered > 0) {
+      bounceRateSum += Number(f.bounce_rate) || 0
+      unsubRateSum += Number(f.unsubscribe_rate) || 0
+      rateCount++
+    }
+  }
+
+  const avgOpenRate = totalDelivered > 0 ? (totalOpens / totalDelivered) * 100 : 0
+  const avgClickRate = totalDelivered > 0 ? (totalClicks / totalDelivered) * 100 : 0
+  const bounceRate = rateCount > 0 ? bounceRateSum / rateCount : 0
+  const unsubscribeRate = rateCount > 0 ? unsubRateSum / rateCount : 0
+
+  const attributedRevenue = Number(summary.klaviyo_total_revenue) || 0
+  const storeRevenue = Number(summary.store_total_revenue) || 0
+
+  return {
+    storeRevenue,
+    storeOrders: summary.store_orders || 0,
+    attributedRevenue,
+    campaignRevenue: Number(summary.klaviyo_campaign_revenue) || 0,
+    flowRevenue: Number(summary.klaviyo_flow_revenue) || 0,
+    recoveryRate: storeRevenue > 0 ? (attributedRevenue / storeRevenue) * 100 : 0,
+    sentCampaigns: campList.length,
+    totalFlows: flowList.length,
+    liveFlows: flowList.filter(f => f.flow_status === "live").length,
+    totalDelivered,
+    totalOpens,
+    totalClicks,
+    avgOpenRate,
+    avgClickRate,
+    bounceRate,
+    unsubscribeRate,
+    totalLeads: summary.total_leads || 0,
+    engagedLeads: summary.engaged_leads || 0,
+    engagementRate: Number(summary.engagement_rate) || 0,
+    recentCampaigns: campList.map(c => ({
+      campaignId: c.campaign_id,
+      name: c.campaign_name || "Unknown",
+      sendTime: c.send_time || "",
+      recipients: c.recipients || 0,
+      delivered: c.delivered || 0,
+      openRate: Number(c.open_rate) || 0,
+      clickRate: Number(c.click_rate) || 0,
+      revenue: Number(c.conversion_value) || 0,
+    })),
+    topFlows: flowList.map(f => ({
+      flowId: f.flow_id,
+      name: f.flow_name || "Unknown",
+      status: f.flow_status || "unknown",
+      delivered: f.delivered || 0,
+      revenue: Number(f.conversion_value) || 0,
+      openRate: Number(f.open_rate) || 0,
+      clickRate: Number(f.click_rate) || 0,
+    })),
+  }
+}
+
+// saveLiveFetchToCache is now handled by the shared savePerfDataToCache from sync-persistence.service
 
 /**
  * GET /api/clients/[id]/performance
@@ -55,7 +184,7 @@ export async function GET(
     const forceRefresh = searchParams.get("force_refresh") === "true"
 
     // Validate period
-    const validPeriods = ["today", "yesterday", "7d", "15d", "30d", "custom"]
+    const validPeriods = ["today", "yesterday", "7d", "15d", "30d", "90d", "custom"]
     if (!validPeriods.includes(period)) {
       throw new AppError(`Período inválido: ${period}. Use: ${validPeriods.join(", ")}`, 400)
     }
@@ -63,7 +192,7 @@ export async function GET(
     // Verify user has access to this client (RLS or portal user)
     const { data: client, error: clientError } = await supabase
       .from("clients")
-      .select("id")
+      .select("id, org_id")
       .eq("id", clientId)
       .single()
 
@@ -99,7 +228,7 @@ export async function GET(
     // Get client stores and decrypt credentials
     const { data: rawStores, error: storesError } = await adminClient
       .from("client_stores")
-      .select("id, store_name, klaviyo_api_key, klaviyo_private_key, shopify_store_domain, shopify_access_token")
+      .select("id, store_name, org_id, klaviyo_api_key, klaviyo_private_key, shopify_store_domain, shopify_access_token")
       .eq("client_id", clientId)
       .eq("is_active", true)
 
@@ -129,33 +258,56 @@ export async function GET(
       let shopifyData: StorePerformance["shopify"] = null
       const errors: StorePerformance["errors"] = []
 
-      // Fetch Klaviyo data via shared service
+      // Fetch Klaviyo data — cache-first (unless forceRefresh), then live fallback
       if (hasKlaviyo) {
+        const apiKey = store.klaviyo_private_key || store.klaviyo_api_key
+
         try {
-          const apiKey = store.klaviyo_private_key || store.klaviyo_api_key
-          if (apiKey) {
+          // 1. If NOT force_refresh, try cache tables first (fast, no API calls)
+          if (!forceRefresh) {
+            klaviyoData = await readKlaviyoFromCacheTables(adminClient, store.id, period)
+            if (klaviyoData) {
+              log.info(`[ClientPerf] Cache HIT for store ${store.id}/${period}`)
+            }
+          }
+
+          // 2. No cache (or force_refresh) — do live API fetch
+          if (!klaviyoData && apiKey) {
+            log.info(`[ClientPerf] ${forceRefresh ? "Force refresh" : "Cache MISS"} for store ${store.id}/${period}, fetching live`)
             klaviyoData = await fetchKlaviyoPerformance(apiKey, period, undefined, customStartDate, customEndDate)
 
-            // If fetch returned data that looks incomplete (e.g., storeRevenue > 0 but
-            // no campaigns/flows — likely partial API failure), try stale cache for better data
+            // 2b. Save live results to cache tables so next request is instant
             if (klaviyoData) {
-              const hasRevenue = klaviyoData.storeRevenue > 0 || klaviyoData.attributedRevenue > 0
-              const hasCampaignOrFlowData = klaviyoData.recentCampaigns.length > 0 || klaviyoData.topFlows.length > 0 || klaviyoData.attributedRevenue > 0
-              if (!hasRevenue || !hasCampaignOrFlowData) {
-                const stale = await getStaleCache<KlaviyoPerformanceData>(adminClient, store.id, "klaviyo_perf", period)
-                if (stale) {
-                  log.info(`[ClientPerf] Using stale cache for store ${store.id} (fresh fetch returned incomplete: revenue=${hasRevenue}, campaigns/flows=${hasCampaignOrFlowData})`)
-                  klaviyoData = stale.data
-                }
+              savePerfDataToCache(adminClient, store.id, store.org_id || null, period, klaviyoData, startDateStr, endDateStr).catch(() => {})
+            }
+          }
+
+          // 3. If live data looks incomplete, try stale dashboard_cache for better data
+          if (klaviyoData) {
+            const hasRevenue = klaviyoData.storeRevenue > 0 || klaviyoData.attributedRevenue > 0
+            const hasCampaignOrFlowData = klaviyoData.recentCampaigns.length > 0 || klaviyoData.topFlows.length > 0 || klaviyoData.attributedRevenue > 0
+            if (!hasRevenue || !hasCampaignOrFlowData) {
+              const stale = await getStaleCache<KlaviyoPerformanceData>(adminClient, store.id, "klaviyo_perf", period)
+              if (stale) {
+                log.info(`[ClientPerf] Using stale cache for store ${store.id} (data incomplete: revenue=${hasRevenue}, campaigns/flows=${hasCampaignOrFlowData})`)
+                klaviyoData = stale.data
               }
             }
           }
         } catch (err) {
-          // On error, try stale cache as fallback before reporting error
-          const stale = await getStaleCache<KlaviyoPerformanceData>(adminClient, store.id, "klaviyo_perf", period)
-          if (stale) {
-            log.info(`[ClientPerf] Using stale cache for store ${store.id} after error`)
-            klaviyoData = stale.data
+          // On error, try cache tables first, then stale dashboard_cache
+          klaviyoData = await readKlaviyoFromCacheTables(adminClient, store.id, period).catch(() => null)
+
+          if (!klaviyoData) {
+            const stale = await getStaleCache<KlaviyoPerformanceData>(adminClient, store.id, "klaviyo_perf", period)
+            if (stale) {
+              log.info(`[ClientPerf] Using stale cache for store ${store.id} after error`)
+              klaviyoData = stale.data
+            }
+          }
+
+          if (klaviyoData) {
+            log.info(`[ClientPerf] Recovered from error with cached data for store ${store.id}`)
           } else {
             const rawMsg = err instanceof Error ? err.message : String(err)
             let message = rawMsg
@@ -234,7 +386,8 @@ export async function GET(
     const hasShopifyData = totals.shopifyRevenue > 0
     if (hasKlaviyoData || hasShopifyData) {
       const cachePeriodKey = period === "custom" && customStartDate ? `${period}:${customStartDate}:${customEndDate}` : period
-      setCache(adminClient, clientId, "client_performance", cachePeriodKey, responseData as unknown as Record<string, unknown>).catch(() => {})
+      const clientOrgId = client?.org_id ?? undefined
+      setCache(adminClient, clientId, "client_performance", cachePeriodKey, responseData as unknown as Record<string, unknown>, clientOrgId).catch(() => {})
     } else {
       log.info("[ClientPerformance] Skipping cache save — no meaningful data (klaviyo or shopify)")
     }

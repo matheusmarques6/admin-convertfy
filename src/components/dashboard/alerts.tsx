@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { Calendar, AlertCircle, Clock, FileText, HeartPulse } from "lucide-react"
+import { Calendar, AlertCircle, Clock, FileText, HeartPulse, TrendingDown, ShieldAlert, Mail, Zap } from "lucide-react"
 import { CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -22,12 +22,20 @@ const ALERT_ICONS: Record<string, LucideIcon> = {
   health_low: HeartPulse,
   meeting_overdue: Calendar,
   report_pending: Clock,
+  low_revenue: TrendingDown,
+  klaviyo_account_error: ShieldAlert,
+  campaign_failure: Mail,
+  low_recovery_rate: Zap,
 }
 
 // Alert types that require specific features
 const ALERT_FEATURE_MAP: Record<string, string> = {
   payment_overdue: "view_financial",
   report_pending: "view_reports",
+  low_revenue: "view_stores",
+  klaviyo_account_error: "view_stores",
+  campaign_failure: "view_stores",
+  low_recovery_rate: "view_stores",
 }
 
 export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps) {
@@ -52,6 +60,9 @@ export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps)
     }
   }
 
+  const hasStoreAlerts = filteredAlerts.some((a) =>
+    ["low_revenue", "klaviyo_account_error", "campaign_failure", "low_recovery_rate"].includes(a.type)
+  )
   const totalAlerts = filteredAlerts.length
 
   return (
@@ -74,9 +85,8 @@ export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps)
           <div className="space-y-3">
             {filteredAlerts.map((alert) => {
               const Icon = ALERT_ICONS[alert.type] || Clock
-              return (
+              const content = (
                 <div
-                  key={alert.id}
                   className="flex items-start gap-3 p-2.5 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors"
                 >
                   <div className={`rounded-md p-1.5 ${
@@ -100,7 +110,21 @@ export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps)
                   </Badge>
                 </div>
               )
+              return alert.action_url ? (
+                <Link key={alert.id} href={alert.action_url} className="block">
+                  {content}
+                </Link>
+              ) : (
+                <div key={alert.id}>{content}</div>
+              )
             })}
+            {hasStoreAlerts && (
+              <div className="pt-1">
+                <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground" asChild>
+                  <Link href="/stores?tab=alerts">Ver todos os alertas de lojas</Link>
+                </Button>
+              </div>
+            )}
           </div>
         ) : (
           <div className="text-sm text-muted-foreground text-center py-4">

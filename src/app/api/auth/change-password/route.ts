@@ -3,28 +3,35 @@ import { createClient } from "@/lib/supabase/server"
 import {
   errorResponse,
   successResponse,
-  requireAuth,
   parseAndValidate,
   AppError,
 } from "@/lib/api/errors"
 import { z } from "zod"
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { MIN_PASSWORD_LENGTH } from "@/lib/services/auth.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("AuthChangePassword")
 
 const changePasswordSchema = z.object({
-  new_password: z.string().min(6, "A senha deve ter pelo menos 6 caracteres"),
+  new_password: z.string().min(MIN_PASSWORD_LENGTH, `A senha deve ter pelo menos ${MIN_PASSWORD_LENGTH} caracteres`),
 })
 
-// POST - User changes their own password (for first login password change)
+// POST - First-login password change only (must_change_password guard)
 export async function POST(request: NextRequest) {
   const limited = checkRateLimit(request, "auth:change-password", RATE_LIMITS.auth)
   if (limited) return limited
 
   try {
     const supabase = await createClient()
-    const user = await requireAuth(supabase)
+    const { data: { user: authUser } } = await supabase.auth.getUser()
+    if (!authUser) throw new AppError("Não autorizado", 401)
+
+    // Guard: only allow when must_change_password is true
+    const mustChange = authUser.user_metadata?.must_change_password
+    if (!mustChange) {
+      throw new AppError("Este endpoint é exclusivo para primeiro login", 403)
+    }
 
     const body = await parseAndValidate(request, changePasswordSchema)
 
@@ -42,9 +49,9 @@ export async function POST(request: NextRequest) {
 
     // Log the activity
     await supabase.from("activities").insert({
-      user_id: user.id,
+      user_id: authUser.id,
       type: "user_updated",
-      description: `Usuário "${user.email}" alterou a senha`,
+      description: `Usuário "${authUser.email}" alterou a senha`,
       metadata: {
         action: "password_changed",
         first_login: true,

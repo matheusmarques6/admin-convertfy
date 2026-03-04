@@ -3,13 +3,31 @@ import { errorResponse, successResponse, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
 import { encrypt } from "@/lib/crypto"
-import { getPortalUser } from "@/lib/portal/auth"
+import { deriveStatus } from "@/lib/services/credentials.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("PortalIntegrations")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
+}
+
+/**
+ * Helper: get authenticated portal user with client_id
+ */
+async function getPortalUser(supabase: Awaited<ReturnType<typeof createClient>>) {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+
+  const adminClient = createAdminClient()
+  const { data: portalUser } = await adminClient
+    .from("client_portal_users")
+    .select("client_id, permissions")
+    .eq("auth_user_id", user.id)
+    .eq("is_active", true)
+    .single()
+
+  return portalUser
 }
 
 /**
@@ -44,10 +62,15 @@ export async function GET(request: NextRequest) {
         store_url,
         shopify_store_domain,
         shopify_access_token,
+        shopify_validated_at,
+        shopify_validation_error,
         klaviyo_api_key,
         klaviyo_private_key,
         klaviyo_public_key,
-        integration_status
+        klaviyo_validated_at,
+        klaviyo_validation_error,
+        klaviyo_missing_scopes,
+        klaviyo_has_reporting_access
       `)
       .eq("id", storeId)
       .eq("client_id", portalUser.client_id)
@@ -60,12 +83,21 @@ export async function GET(request: NextRequest) {
     // Check tracking store config
     const { data: trackingStore } = await adminClient
       .from("tracking_stores")
-      .select("id, is_active, seventeen_track_api_key, carrier_api_keys, widget_config, last_sync_at")
+      .select("id, is_active, seventeen_track_api_key, widget_config, last_sync_at")
       .eq("client_store_id", storeId)
       .single()
 
-    // SECURITY: Return only boolean flags for credentials, never actual values
-    const integrationStatus = (store.integration_status as Record<string, unknown>) || {}
+    // Derive status from real validation columns (same source of truth as store detail page)
+    const shopifyStatus = deriveStatus(
+      !!store.shopify_access_token,
+      store.shopify_validated_at,
+      store.shopify_validation_error
+    )
+    const klaviyoStatus = deriveStatus(
+      !!(store.klaviyo_private_key || store.klaviyo_api_key),
+      store.klaviyo_validated_at,
+      store.klaviyo_validation_error
+    )
 
     return successResponse(request, {
       store: {
@@ -77,24 +109,25 @@ export async function GET(request: NextRequest) {
       },
       integrations: {
         shopify: {
-          connected: !!store.shopify_access_token,
+          connected: shopifyStatus.connected || shopifyStatus.status === "pending_validation",
+          status: shopifyStatus.status,
           domain: store.shopify_store_domain || "",
-          connected_at: (integrationStatus.shopify as Record<string, string>)?.connected_at || null,
+          connected_at: shopifyStatus.validated_at || null,
+          error: shopifyStatus.error || null,
         },
         klaviyo: {
-          connected: !!(store.klaviyo_private_key || store.klaviyo_api_key),
+          connected: klaviyoStatus.connected || klaviyoStatus.status === "pending_validation",
+          status: klaviyoStatus.status,
           has_public_key: !!store.klaviyo_public_key,
-          connected_at: (integrationStatus.klaviyo as Record<string, string>)?.connected_at || null,
+          connected_at: klaviyoStatus.validated_at || null,
+          error: klaviyoStatus.error || null,
+          hasReportingAccess: store.klaviyo_has_reporting_access ?? undefined,
+          missingScopes: store.klaviyo_missing_scopes ?? undefined,
         },
         tracking: {
           active: trackingStore?.is_active || false,
           tracking_store_id: trackingStore?.id || null,
           has_17track_key: !!trackingStore?.seventeen_track_api_key,
-          carrier_keys: Object.fromEntries(
-            Object.entries((trackingStore?.carrier_api_keys as Record<string, unknown>) || {}).map(
-              ([k, v]) => [k, typeof v === "boolean" ? v : !!v]
-            )
-          ),
           widget_config: trackingStore?.widget_config || null,
           last_sync_at: trackingStore?.last_sync_at || null,
         },
@@ -131,9 +164,6 @@ export async function PUT(request: NextRequest) {
       // Tracking fields
       activate_tracking,
       widget_config,
-      seventeen_track_api_key,
-      // Carrier-specific keys
-      carrier_api_keys,
     } = body
 
     if (!store_id || !integration_type) {
@@ -145,7 +175,7 @@ export async function PUT(request: NextRequest) {
     // Verify store belongs to this client
     const { data: store } = await adminClient
       .from("client_stores")
-      .select("id, client_id, org_id, integration_status, store_name, shopify_store_domain, shopify_access_token")
+      .select("id, client_id, org_id, store_name, shopify_store_domain, shopify_access_token")
       .eq("id", store_id)
       .eq("client_id", portalUser.client_id)
       .single()
@@ -153,8 +183,6 @@ export async function PUT(request: NextRequest) {
     if (!store) {
       throw new AppError("Loja não encontrada", 404)
     }
-
-    const currentStatus = (store.integration_status as Record<string, unknown>) || {}
 
     if (integration_type === "shopify") {
       const updateData: Record<string, unknown> = {}
@@ -164,10 +192,9 @@ export async function PUT(request: NextRequest) {
       }
       if (shopify_access_token) {
         updateData.shopify_access_token = encrypt(shopify_access_token)
-        updateData.integration_status = {
-          ...currentStatus,
-          shopify: { connected: true, connected_at: new Date().toISOString() },
-        }
+        // Mark as pending validation (will be validated via revalidate endpoint)
+        updateData.shopify_validated_at = null
+        updateData.shopify_validation_error = null
       }
 
       if (Object.keys(updateData).length === 0) {
@@ -193,10 +220,11 @@ export async function PUT(request: NextRequest) {
       if (klaviyo_private_key) {
         updateData.klaviyo_private_key = encrypt(klaviyo_private_key)
         updateData.klaviyo_api_key = encrypt(klaviyo_private_key)
-        updateData.integration_status = {
-          ...currentStatus,
-          klaviyo: { connected: true, connected_at: new Date().toISOString() },
-        }
+        // Mark as pending validation (will be validated via revalidate endpoint)
+        updateData.klaviyo_validated_at = null
+        updateData.klaviyo_validation_error = null
+        updateData.klaviyo_missing_scopes = null
+        updateData.klaviyo_has_reporting_access = null
       }
       if (klaviyo_public_key) {
         updateData.klaviyo_public_key = encrypt(klaviyo_public_key)
@@ -245,37 +273,6 @@ export async function PUT(request: NextRequest) {
 
       if (widget_config) {
         trackingData.widget_config = widget_config
-      }
-
-      if (seventeen_track_api_key) {
-        trackingData.seventeen_track_api_key = encrypt(seventeen_track_api_key)
-      }
-
-      // Handle carrier-specific API keys
-      if (carrier_api_keys && typeof carrier_api_keys === "object") {
-        // Get existing carrier keys
-        let existingKeys: Record<string, unknown> = {}
-        if (existing) {
-          const { data: existingStore } = await adminClient
-            .from("tracking_stores")
-            .select("carrier_api_keys")
-            .eq("id", existing.id)
-            .single()
-          existingKeys = (existingStore?.carrier_api_keys as Record<string, unknown>) || {}
-        }
-
-        // Encrypt and merge new keys
-        const mergedKeys = { ...existingKeys }
-        for (const [carrier, value] of Object.entries(carrier_api_keys as Record<string, unknown>)) {
-          if (typeof value === "string" && value.trim()) {
-            mergedKeys[carrier] = encrypt(value as string)
-          } else if (typeof value === "boolean") {
-            mergedKeys[carrier] = value
-          } else if (value === null || value === "") {
-            delete mergedKeys[carrier]
-          }
-        }
-        trackingData.carrier_api_keys = mergedKeys
       }
 
       if (existing) {

@@ -1,10 +1,19 @@
 import { NextRequest, NextResponse } from "next/server"
+import { z } from "zod"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("PortalSettings")
+
+const portalProfileSchema = z.object({
+  name: z
+    .string()
+    .min(2, "Nome deve ter pelo menos 2 caracteres")
+    .max(100, "Nome deve ter no máximo 100 caracteres"),
+  phone: z.string().max(20).optional().nullable(),
+}).strict()
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -23,7 +32,7 @@ export async function GET(request: NextRequest) {
     // Get portal user
     const { data: portalUser } = await supabase
       .from("client_portal_users")
-      .select("id, name, email, phone, client_id")
+      .select("id, name, email, phone, avatar_url, client_id")
       .eq("auth_user_id", user.id)
       .eq("is_active", true)
       .single()
@@ -56,6 +65,7 @@ export async function GET(request: NextRequest) {
           name: portalUser.name,
           email: portalUser.email,
           phone: portalUser.phone,
+          avatar_url: portalUser.avatar_url,
         },
         notifications: notifications || defaultNotifications,
       },
@@ -91,14 +101,21 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { name, phone } = body
+    const parsed = portalProfileSchema.safeParse(body)
+
+    if (!parsed.success) {
+      throw new AppError(
+        parsed.error.issues[0]?.message || "Dados inválidos",
+        400
+      )
+    }
 
     // Update profile
     const { error } = await supabase
       .from("client_portal_users")
       .update({
-        name,
-        phone,
+        name: parsed.data.name,
+        phone: parsed.data.phone ?? null,
         updated_at: new Date().toISOString(),
       })
       .eq("id", portalUser.id)

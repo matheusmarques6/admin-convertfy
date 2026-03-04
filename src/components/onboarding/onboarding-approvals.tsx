@@ -7,7 +7,8 @@ import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { useToast } from "@/lib/hooks/use-toast"
-import { Check, X, MessageSquare, Store, User, Calendar, Loader2, FileText } from "lucide-react"
+import { Check, X, MessageSquare, Store, User, Calendar, Loader2, FileText, ExternalLink, ImageIcon, BookOpen, Palette } from "lucide-react"
+import Link from "next/link"
 
 interface PendingOnboarding {
   id: string
@@ -30,6 +31,10 @@ interface PendingOnboarding {
     platform: string
     niche?: string
     target_audience?: string
+    country?: string
+    language?: string
+    free_shipping_type?: string
+    shopify_collaborator_code?: string
   }
   store_onboarding_data?: {
     price_sensitivity?: string
@@ -37,8 +42,42 @@ interface PendingOnboarding {
     logo_url?: string
     design_direction_text?: string
     brand_manual_url?: string
+    visual_reference_url?: string
     is_complete?: boolean
   }
+}
+
+const countryLabel: Record<string, string> = {
+  BR: "Brasil",
+  US: "Estados Unidos",
+  PT: "Portugal",
+  ES: "Espanha",
+  MX: "México",
+  AR: "Argentina",
+  CO: "Colômbia",
+  CL: "Chile",
+}
+
+const languageLabel: Record<string, string> = {
+  "pt-BR": "Português (BR)",
+  "pt-PT": "Português (PT)",
+  "en-US": "Inglês (US)",
+  "es-ES": "Espanhol (ES)",
+  "es-MX": "Espanhol (MX)",
+}
+
+const freeShippingLabel: Record<string, string> = {
+  free: "Frete Grátis",
+  conditional: "Frete Grátis Condicional",
+  paid: "Frete Pago",
+  none: "Sem Frete Grátis",
+}
+
+const priceSensitivityLabel: Record<string, string> = {
+  price: "Focado em Preço",
+  value: "Focado em Valor",
+  premium: "Premium",
+  mixed: "Misto",
 }
 
 export function OnboardingApprovals() {
@@ -180,65 +219,180 @@ export function OnboardingApprovals() {
               </div>
             </div>
           </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm mb-4">
-              <div>
-                <span className="text-muted-foreground text-xs">Email</span>
-                <p className="truncate">{onb.client?.email}</p>
-              </div>
-              <div>
-                <span className="text-muted-foreground text-xs">Plataforma</span>
-                <p>{platformLabel[onb.store?.platform || ""] || onb.store?.platform}</p>
-              </div>
-              <div>
-                <span className="text-muted-foreground text-xs">Nicho</span>
-                <p>{onb.store?.niche || "-"}</p>
-              </div>
-              <div>
-                <span className="text-muted-foreground text-xs">Formulário</span>
-                <p>{onb.store_onboarding_data?.is_complete ?
-                  <Badge variant="default" className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs">Completo</Badge> :
-                  <Badge variant="secondary" className="text-xs">Parcial</Badge>
-                }</p>
+          <CardContent className="space-y-4">
+            {/* Dados do Cliente */}
+            <div>
+              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Dados do Cliente</h4>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                <div>
+                  <span className="text-muted-foreground text-xs">Email</span>
+                  <p className="truncate">{onb.client?.email || "-"}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground text-xs">Telefone</span>
+                  <p>{onb.client?.phone || "-"}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground text-xs">CPF/CNPJ</span>
+                  <p>{onb.client?.cpf_cnpj || "-"}</p>
+                </div>
               </div>
             </div>
 
-            {onb.store?.store_url && (
-              <div className="text-sm mb-3">
-                <span className="text-muted-foreground text-xs">URL: </span>
-                <a href={onb.store.store_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-                  {onb.store.store_url}
-                </a>
+            {/* Dados da Loja */}
+            <div>
+              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Dados da Loja</h4>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 text-sm">
+                <div>
+                  <span className="text-muted-foreground text-xs">Plataforma</span>
+                  <p>{platformLabel[onb.store?.platform || ""] || onb.store?.platform || "-"}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground text-xs">Nicho</span>
+                  <p>{onb.store?.niche || "-"}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground text-xs">País</span>
+                  <p>{countryLabel[onb.store?.country || ""] || onb.store?.country || "-"}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground text-xs">Idioma</span>
+                  <p>{languageLabel[onb.store?.language || ""] || onb.store?.language || "-"}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground text-xs">Frete</span>
+                  <p>{freeShippingLabel[onb.store?.free_shipping_type || ""] || onb.store?.free_shipping_type || "-"}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground text-xs">Código Colaborador</span>
+                  <p className="font-mono text-xs">{onb.store?.shopify_collaborator_code || "-"}</p>
+                </div>
+                <div className="col-span-2">
+                  <span className="text-muted-foreground text-xs">URL</span>
+                  {onb.store?.store_url ? (
+                    <p>
+                      <a href={onb.store.store_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">
+                        {onb.store.store_url}
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    </p>
+                  ) : (
+                    <p>-</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Público e Marca */}
+            {(onb.store?.target_audience || onb.store_onboarding_data?.price_sensitivity || onb.store_onboarding_data?.design_direction_text || onb.store_onboarding_data?.additional_notes) && (
+              <div>
+                <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Público e Marca</h4>
+                <div className="space-y-2 text-sm">
+                  {onb.store?.target_audience && (
+                    <div>
+                      <span className="text-muted-foreground text-xs">Público-alvo</span>
+                      <p>{onb.store.target_audience}</p>
+                    </div>
+                  )}
+                  {onb.store_onboarding_data?.price_sensitivity && (
+                    <div>
+                      <span className="text-muted-foreground text-xs">Sensibilidade de preço</span>
+                      <p>
+                        <Badge variant="outline" className="text-xs">
+                          {priceSensitivityLabel[onb.store_onboarding_data.price_sensitivity] || onb.store_onboarding_data.price_sensitivity}
+                        </Badge>
+                      </p>
+                    </div>
+                  )}
+                  {onb.store_onboarding_data?.design_direction_text && (
+                    <div>
+                      <span className="text-muted-foreground text-xs">Direção de design</span>
+                      <p>{onb.store_onboarding_data.design_direction_text}</p>
+                    </div>
+                  )}
+                  {onb.store_onboarding_data?.additional_notes && (
+                    <div>
+                      <span className="text-muted-foreground text-xs">Notas adicionais</span>
+                      <p className="text-muted-foreground">{onb.store_onboarding_data.additional_notes}</p>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
-            {onb.store_onboarding_data?.design_direction_text && (
-              <div className="text-sm mb-3">
-                <span className="text-muted-foreground text-xs">Direção de design: </span>
-                <span>{onb.store_onboarding_data.design_direction_text}</span>
+            {/* Arquivos */}
+            {(onb.store_onboarding_data?.logo_url || onb.store_onboarding_data?.brand_manual_url || onb.store_onboarding_data?.visual_reference_url) && (
+              <div>
+                <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Arquivos</h4>
+                <div className="flex flex-wrap gap-2">
+                  {onb.store_onboarding_data?.logo_url && (
+                    <a href={onb.store_onboarding_data.logo_url} target="_blank" rel="noopener noreferrer">
+                      <Badge variant="secondary" className="cursor-pointer hover:bg-muted gap-1">
+                        <ImageIcon className="h-3 w-3" />
+                        Logo
+                        <ExternalLink className="h-3 w-3" />
+                      </Badge>
+                    </a>
+                  )}
+                  {onb.store_onboarding_data?.brand_manual_url && (
+                    <a href={onb.store_onboarding_data.brand_manual_url} target="_blank" rel="noopener noreferrer">
+                      <Badge variant="secondary" className="cursor-pointer hover:bg-muted gap-1">
+                        <BookOpen className="h-3 w-3" />
+                        Manual da Marca
+                        <ExternalLink className="h-3 w-3" />
+                      </Badge>
+                    </a>
+                  )}
+                  {onb.store_onboarding_data?.visual_reference_url && (
+                    <a href={onb.store_onboarding_data.visual_reference_url} target="_blank" rel="noopener noreferrer">
+                      <Badge variant="secondary" className="cursor-pointer hover:bg-muted gap-1">
+                        <Palette className="h-3 w-3" />
+                        Referência Visual
+                        <ExternalLink className="h-3 w-3" />
+                      </Badge>
+                    </a>
+                  )}
+                </div>
               </div>
             )}
 
+            {/* Notas do formulário */}
             {onb.notes && (
-              <div className="text-sm mb-3 p-2 rounded bg-amber-500/10 text-amber-700 dark:text-amber-400">
+              <div className="p-2 rounded bg-amber-500/10 text-amber-700 dark:text-amber-400 text-sm">
                 <FileText className="h-3 w-3 inline mr-1" />
                 {onb.notes}
               </div>
             )}
 
-            <div className="flex gap-2 pt-2 border-t">
-              <Button size="sm" onClick={() => openAction(onb, "approved")} className="bg-emerald-600 hover:bg-emerald-700 text-white">
-                <Check className="h-4 w-4 mr-1" />
-                Aprovar
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => openAction(onb, "revision_requested")}>
-                <MessageSquare className="h-4 w-4 mr-1" />
-                Solicitar Revisão
-              </Button>
-              <Button size="sm" variant="destructive" onClick={() => openAction(onb, "rejected")}>
-                <X className="h-4 w-4 mr-1" />
-                Rejeitar
-              </Button>
+            {/* Formulário status + Ações */}
+            <div className="flex items-center justify-between pt-2 border-t">
+              <div className="flex items-center gap-2">
+                {onb.store_onboarding_data?.is_complete ? (
+                  <Badge variant="default" className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs">Formulário Completo</Badge>
+                ) : (
+                  <Badge variant="secondary" className="text-xs">Formulário Parcial</Badge>
+                )}
+                <Button size="sm" variant="ghost" asChild>
+                  <Link href={`/stores/${onb.store_id}`}>
+                    <Store className="h-4 w-4 mr-1" />
+                    Ver Loja
+                  </Link>
+                </Button>
+              </div>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={() => openAction(onb, "approved")} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                  <Check className="h-4 w-4 mr-1" />
+                  Aprovar
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => openAction(onb, "revision_requested")}>
+                  <MessageSquare className="h-4 w-4 mr-1" />
+                  Revisão
+                </Button>
+                <Button size="sm" variant="destructive" onClick={() => openAction(onb, "rejected")}>
+                  <X className="h-4 w-4 mr-1" />
+                  Rejeitar
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>

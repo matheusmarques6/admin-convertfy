@@ -1,5 +1,23 @@
 import { logger } from "@/lib/logger"
-import type { TrackingResult, TrackingEvent } from "./seventeen-track"
+/** Local type for carrier tracking results */
+export interface TrackingResult {
+  tracking_number: string
+  carrier_code: string
+  carrier_name: string
+  status: string
+  status_detail: string
+  last_event: string
+  last_event_at: string | null
+  estimated_delivery: string | null
+  events: TrackingEvent[]
+}
+
+export interface TrackingEvent {
+  date: string
+  description: string
+  location?: string
+  status?: string
+}
 
 const log = logger.child("Carriers")
 

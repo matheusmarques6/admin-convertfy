@@ -62,15 +62,20 @@ async function fetchPerformanceSummary(storeId: string): Promise<Record<string, 
       return { status: "sem_dados", mensagem: "Nenhuma integração de performance conectada." }
     }
 
-    const klaviyo = await getKlaviyoRevenueForStore(storeId, "30d")
+    const result = await getKlaviyoRevenueForStore(storeId, "30d")
+
+    if (!result.success || !result.data) {
+      log.warn(`Briefing: Klaviyo revenue fetch failed for store ${storeId}: ${result.error}`)
+      return { status: "erro", mensagem: "Erro ao buscar dados de performance do Klaviyo." }
+    }
 
     return {
       periodo: "30d",
       gerado_em: new Date().toISOString(),
       klaviyo: {
-        receita_total: klaviyo.totalRevenue,
-        receita_campanhas: klaviyo.campaignRevenue,
-        receita_flows: klaviyo.flowRevenue,
+        receita_total: result.data.totalRevenue,
+        receita_campanhas: result.data.campaignRevenue,
+        receita_flows: result.data.flowRevenue,
       },
     }
   } catch (err) {

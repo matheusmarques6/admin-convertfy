@@ -3,13 +3,35 @@ import { errorResponse, successResponse, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
 import { encrypt } from "@/lib/crypto"
-import { getPortalUser } from "@/lib/portal/auth"
+import { deriveStatus } from "@/lib/services/credentials.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("PortalStores")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
+}
+
+
+
+
+
+/**
+ * Helper: get authenticated portal user with client_id
+ */
+async function getPortalUser(supabase: Awaited<ReturnType<typeof createClient>>) {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+
+  const adminClient = createAdminClient()
+  const { data: portalUser } = await adminClient
+    .from("client_portal_users")
+    .select("client_id, permissions")
+    .eq("auth_user_id", user.id)
+    .eq("is_active", true)
+    .single()
+
+  return portalUser
 }
 
 // GET - Get stores list for portal user
@@ -41,7 +63,11 @@ export async function GET(request: NextRequest) {
         created_at,
         klaviyo_api_key,
         klaviyo_private_key,
+        klaviyo_validated_at,
+        klaviyo_validation_error,
         shopify_access_token,
+        shopify_validated_at,
+        shopify_validation_error,
         shopify_store_domain
       `)
       .eq("client_id", portalUser.client_id)
@@ -53,17 +79,30 @@ export async function GET(request: NextRequest) {
     }
 
     // SECURITY: Convert credentials to boolean flags - never expose actual keys to client
-    const storesWithFlags = (stores || []).map((store) => ({
-      id: store.id,
-      store_name: store.store_name,
-      platform: store.platform,
-      store_url: store.store_url,
-      is_active: store.is_active,
-      created_at: store.created_at,
-      hasKlaviyo: !!(store.klaviyo_private_key || store.klaviyo_api_key),
-      shopify_access_token: !!store.shopify_access_token,
-      shopify_store_domain: store.shopify_store_domain || "",
-    }))
+    // Derive status from real validation columns (same source of truth as store detail)
+    const storesWithFlags = (stores || []).map((store) => {
+      const klaviyoStatus = deriveStatus(
+        !!(store.klaviyo_private_key || store.klaviyo_api_key),
+        store.klaviyo_validated_at,
+        store.klaviyo_validation_error
+      )
+      const shopifyStatus = deriveStatus(
+        !!store.shopify_access_token,
+        store.shopify_validated_at,
+        store.shopify_validation_error
+      )
+      return {
+        id: store.id,
+        store_name: store.store_name,
+        platform: store.platform,
+        store_url: store.store_url,
+        is_active: store.is_active,
+        created_at: store.created_at,
+        hasKlaviyo: klaviyoStatus.connected || klaviyoStatus.status === "pending_validation",
+        shopify_access_token: shopifyStatus.connected || shopifyStatus.status === "pending_validation",
+        shopify_store_domain: store.shopify_store_domain || "",
+      }
+    })
 
     return successResponse(request, { stores: storesWithFlags })
   } catch (error) {
@@ -93,7 +132,7 @@ export async function PUT(request: NextRequest) {
     // Verify store belongs to this client
     const { data: store } = await adminClient
       .from("client_stores")
-      .select("id, client_id, integration_status")
+      .select("id, client_id")
       .eq("id", store_id)
       .eq("client_id", portalUser.client_id)
       .single()
@@ -102,29 +141,24 @@ export async function PUT(request: NextRequest) {
       throw new AppError("Loja não encontrada", 404)
     }
 
-    // Build update data
+    // Build update data — write to individual validation columns, not legacy JSON
     const updateData: Record<string, unknown> = {}
-    const currentStatus = (store.integration_status as Record<string, unknown>) || {}
 
     if (klaviyo_private_key) {
       updateData.klaviyo_private_key = encrypt(klaviyo_private_key)
       updateData.klaviyo_api_key = encrypt(klaviyo_private_key) // backward compat
-      updateData.integration_status = {
-        ...currentStatus,
-        klaviyo: { connected: true, connected_at: new Date().toISOString() },
-      }
+      updateData.klaviyo_validated_at = null
+      updateData.klaviyo_validation_error = null
+      updateData.klaviyo_missing_scopes = null
+      updateData.klaviyo_has_reporting_access = null
     }
     if (shopify_store_domain) {
       updateData.shopify_store_domain = shopify_store_domain
     }
     if (shopify_access_token) {
       updateData.shopify_access_token = encrypt(shopify_access_token)
-      // Merge shopify status into integration_status
-      const statusSoFar = (updateData.integration_status as Record<string, unknown>) || currentStatus
-      updateData.integration_status = {
-        ...statusSoFar,
-        shopify: { connected: true, connected_at: new Date().toISOString() },
-      }
+      updateData.shopify_validated_at = null
+      updateData.shopify_validation_error = null
     }
 
     if (Object.keys(updateData).length === 0) {

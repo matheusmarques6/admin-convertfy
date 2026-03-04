@@ -145,7 +145,11 @@ async function _klaviyoRequestInner<T>(
       const data = JSON.parse(responseText) as T
       return data
     } catch (error) {
-      log.error(`[${logTag}] REQUEST ERROR:`, error)
+      if (error instanceof KlaviyoRateLimitError) {
+        log.warn(`[${logTag}] Rate limited after all retries for ${endpoint}`)
+      } else {
+        log.error(`[${logTag}] REQUEST ERROR:`, error)
+      }
       if (attempt < maxRetries) continue
       return null
     }
@@ -184,6 +188,7 @@ export function parseDateRange(
     endDate.setHours(23, 59, 59, 999)
 
     switch (period) {
+      case "1d":
       case "today":
         startDate = new Date(now)
         break
@@ -212,7 +217,7 @@ export function parseDateRange(
       case "12m":
       case "all":
         startDate = new Date(now)
-        startDate.setFullYear(now.getFullYear() - 1)
+        startDate.setMonth(now.getMonth() - 12)
         break
       default:
         startDate = new Date(now)
@@ -286,7 +291,7 @@ export function parseDateRangeInTimezone(
     case "12m":
     case "all":
       startLocal = new Date(todayLocal)
-      startLocal.setFullYear(startLocal.getFullYear() - 1)
+      startLocal.setMonth(startLocal.getMonth() - 12)
       break
     default:
       startLocal = new Date(todayLocal)

@@ -20,7 +20,7 @@ import { createGoogleAdsService } from "./google-ads"
 import { createShopifyService } from "./shopify"
 import { createWhatsAppService } from "./whatsapp"
 import { createGoogleCalendarService } from "./google-calendar"
-import { testApiConnection, getAccountInfo, findPlacedOrderMetric } from "./klaviyo"
+import { testApiConnection, getCachedAccountInfo, getCachedPlacedOrderMetric } from "./klaviyo"
 
 // Minimal Klaviyo adapter for the factory pattern
 function createKlaviyoAdapter(credentials: Record<string, string>) {
@@ -34,8 +34,8 @@ function createKlaviyoAdapter(credentials: Record<string, string>) {
 
       // Check reporting access by fetching account info + placed order metric
       const [accountInfo, placedOrderMetricId] = await Promise.all([
-        getAccountInfo(apiKey).catch(() => null),
-        findPlacedOrderMetric(apiKey).catch(() => null),
+        getCachedAccountInfo(apiKey).catch(() => null),
+        getCachedPlacedOrderMetric(apiKey).catch(() => null),
       ])
 
       return {

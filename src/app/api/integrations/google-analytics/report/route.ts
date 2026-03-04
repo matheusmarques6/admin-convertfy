@@ -386,7 +386,7 @@ export async function GET(request: NextRequest) {
     // Get store with GA4 credentials
     const { data: store, error: storeError } = await supabase
       .from("client_stores")
-      .select("ga4_property_id, ga4_credentials, store_name, client_id")
+      .select("ga4_property_id, ga4_credentials, store_name, client_id, org_id")
       .eq("id", storeId)
       .single()
 
@@ -485,7 +485,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Save to cache for future requests
-    await setCache(supabase, storeId, "ga4", period, reportData as unknown as Record<string, unknown>)
+    await setCache(supabase, storeId, "ga4", period, reportData as unknown as Record<string, unknown>, store.org_id ?? undefined)
 
     return NextResponse.json(reportData)
   } catch (error) {

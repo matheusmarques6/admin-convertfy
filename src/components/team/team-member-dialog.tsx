@@ -49,7 +49,7 @@ interface TeamMemberDialogProps {
 const schema = z.object({
   email: z.string().email("Email inválido").optional().or(z.literal("")),
   name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres").optional().or(z.literal("")),
-  role: z.enum(["owner", "manager", "coordinator", "copywriter", "designer", "developer", "support", "analyst"]),
+  role: z.enum(["owner", "manager", "coo", "coordinator", "copywriter", "designer", "developer", "support", "analyst"]),
   job_title: z.string().optional(),
   org_id: z.string().min(1, "Organização é obrigatória"),
 })
@@ -59,6 +59,7 @@ type FormData = z.infer<typeof schema>
 const roleOptions: { value: OrgRole; label: string }[] = [
   { value: "owner", label: "Owner (Acesso total)" },
   { value: "manager", label: "Gerente" },
+  { value: "coo", label: "COO (Diretor de Operações)" },
   { value: "coordinator", label: "Coordenador" },
   { value: "copywriter", label: "Copywriter" },
   { value: "designer", label: "Designer" },

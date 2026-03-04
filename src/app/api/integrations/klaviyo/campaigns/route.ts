@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { requireAuth, errorResponse } from "@/lib/api/errors"
+import { requireStoreAccess } from "@/lib/api/require-store-access"
 import { getStoreCredentials } from "@/lib/services/credentials.service"
 import { logger } from "@/lib/logger"
 
@@ -12,14 +13,19 @@ import {
   klaviyoRequest,
   parseDateRange,
   formatDateStr,
-  getAccountInfo,
   getTimezoneOffset,
-  findPlacedOrderMetric,
+  getCachedAccountInfo,
+  getCachedPlacedOrderMetric,
 } from "@/lib/integrations/klaviyo"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import type { SupabaseClient } from "@supabase/supabase-js"
 
 export const maxDuration = 300
 export const dynamic = 'force-dynamic'
+
+// Cache-first configuration
+const CACHED_PERIODS = new Set(["7d", "15d", "30d", "90d"])
+const CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1000 // 6 hours (aligned with cron interval)
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -115,7 +121,6 @@ async function getCampaignMetrics(
     "opens_unique",
     "recipients",
     "revenue_per_recipient",
-    "spam_complaint_rate",
     "unsubscribe_rate",
     "unsubscribes"
   ]
@@ -162,7 +167,6 @@ async function getCampaignMetrics(
             click_to_open_rate?: number
             unsubscribe_rate?: number
             unsubscribes?: number
-            spam_complaint_rate?: number
             average_order_value?: number
             revenue_per_recipient?: number
           }
@@ -194,7 +198,6 @@ async function getCampaignMetrics(
     bounceRate: number
     unsubscribed: number
     unsubscribeRate: number
-    spamComplaintRate: number
   }>()
 
   for (const r of response.data.attributes.results) {
@@ -219,7 +222,6 @@ async function getCampaignMetrics(
       bounceRate: 0,
       unsubscribed: 0,
       unsubscribeRate: 0,
-      spamComplaintRate: 0
     }
 
     const newDelivered = existing.delivered + (stats.delivered || 0)
@@ -246,17 +248,139 @@ async function getCampaignMetrics(
       bounceRate: stats.bounce_rate || existing.bounceRate,
       unsubscribed: existing.unsubscribed + (stats.unsubscribes || 0),
       unsubscribeRate: stats.unsubscribe_rate || existing.unsubscribeRate,
-      spamComplaintRate: stats.spam_complaint_rate || existing.spamComplaintRate
     })
   }
 
   return campaignMetrics
 }
 
+// Read campaigns from cache (klaviyo_campaign_metrics table)
+async function readCampaignsFromCache(
+  storeId: string,
+  periodStart: string,
+  periodEnd: string,
+  statusFilter: string | null,
+  supabase: SupabaseClient
+) {
+  const { data: rows, error } = await supabase
+    .from("klaviyo_campaign_metrics")
+    .select("*")
+    .eq("store_id", storeId)
+    .eq("period_start", periodStart)
+    .eq("period_end", periodEnd)
+    .order("fetched_at", { ascending: false })
+
+  if (error || !rows || rows.length === 0) return null
+
+  // Check freshness
+  const latestFetchedAt = new Date(rows[0].fetched_at)
+  if (Date.now() - latestFetchedAt.getTime() > CACHE_MAX_AGE_MS) return null
+
+  // Map cached rows to response format
+  let campaigns = rows.map((r: Record<string, unknown>) => ({
+    id: r.campaign_id as string,
+    name: r.campaign_name as string,
+    status: r.campaign_status as string,
+    sendTime: (r.send_time as string) || null,
+    createdAt: "", // not stored in cache
+    channel: (r.channel as string) || "email",
+    subject: (r.subject as string) || null,
+    recipients: (r.recipients as number) || 0,
+    delivered: (r.delivered as number) || 0,
+    deliveryRate: (r.delivery_rate as number) || 0,
+    opened: (r.opened as number) || 0,
+    openRate: (r.open_rate as number) || 0,
+    clicked: (r.clicked as number) || 0,
+    clickRate: (r.click_rate as number) || 0,
+    clickToOpenRate: (r.click_to_open_rate as number) || 0,
+    conversions: (r.conversions as number) || 0,
+    conversionRate: (r.conversion_rate as number) || 0,
+    conversionValue: (r.conversion_value as number) || 0,
+    revenuePerRecipient: (r.revenue_per_recipient as number) || 0,
+    averageOrderValue: (r.average_order_value as number) || 0,
+    bounced: (r.bounced as number) || 0,
+    bounceRate: (r.bounce_rate as number) || 0,
+    unsubscribed: (r.unsubscribed as number) || 0,
+    unsubscribeRate: (r.unsubscribe_rate as number) || 0,
+    revenue: (r.conversion_value as number) || 0,
+  }))
+
+  // Apply status filter if provided
+  if (statusFilter) {
+    campaigns = campaigns.filter((c: { status: string }) => c.status === statusFilter)
+  }
+
+  // Sort by send time (most recent first) for sent campaigns, or by revenue
+  campaigns.sort((a: { sendTime: string | null; conversionValue: number }, b: { sendTime: string | null; conversionValue: number }) => {
+    if (a.sendTime && b.sendTime) {
+      return new Date(b.sendTime).getTime() - new Date(a.sendTime).getTime()
+    }
+    return b.conversionValue - a.conversionValue
+  })
+
+  // Calculate summary totals
+  const totals = campaigns.reduce(
+    (acc: Record<string, number>, campaign: Record<string, unknown>) => ({
+      totalCampaigns: acc.totalCampaigns + 1,
+      sentCampaigns: acc.sentCampaigns + (campaign.status === "sent" ? 1 : 0),
+      scheduledCampaigns: acc.scheduledCampaigns + (campaign.status === "scheduled" ? 1 : 0),
+      draftCampaigns: acc.draftCampaigns + (campaign.status === "draft" ? 1 : 0),
+      cancelledCampaigns: acc.cancelledCampaigns + (campaign.status === "cancelled" ? 1 : 0),
+      emailCampaigns: acc.emailCampaigns + (campaign.channel === "email" ? 1 : 0),
+      smsCampaigns: acc.smsCampaigns + (campaign.channel === "sms" ? 1 : 0),
+      totalRecipients: acc.totalRecipients + (campaign.recipients as number),
+      totalDelivered: acc.totalDelivered + (campaign.delivered as number),
+      totalOpened: acc.totalOpened + (campaign.opened as number),
+      totalClicked: acc.totalClicked + (campaign.clicked as number),
+      totalConversions: acc.totalConversions + (campaign.conversions as number),
+      totalRevenue: acc.totalRevenue + (campaign.conversionValue as number),
+      totalBounced: acc.totalBounced + (campaign.bounced as number),
+      totalUnsubscribed: acc.totalUnsubscribed + (campaign.unsubscribed as number),
+    }),
+    {
+      totalCampaigns: 0,
+      sentCampaigns: 0,
+      scheduledCampaigns: 0,
+      draftCampaigns: 0,
+      cancelledCampaigns: 0,
+      emailCampaigns: 0,
+      smsCampaigns: 0,
+      totalRecipients: 0,
+      totalDelivered: 0,
+      totalOpened: 0,
+      totalClicked: 0,
+      totalConversions: 0,
+      totalRevenue: 0,
+      totalBounced: 0,
+      totalUnsubscribed: 0,
+    }
+  )
+
+  const avgOpenRate = totals.totalDelivered > 0 ? (totals.totalOpened / totals.totalDelivered) * 100 : 0
+  const avgClickRate = totals.totalDelivered > 0 ? (totals.totalClicked / totals.totalDelivered) * 100 : 0
+  const avgConversionRate = totals.totalDelivered > 0 ? (totals.totalConversions / totals.totalDelivered) * 100 : 0
+  const avgBounceRate = totals.totalRecipients > 0 ? (totals.totalBounced / totals.totalRecipients) * 100 : 0
+
+  return {
+    fetchedAt: rows[0].fetched_at as string,
+    summary: {
+      ...totals,
+      avgOpenRate: Math.round(avgOpenRate * 100) / 100,
+      avgClickRate: Math.round(avgClickRate * 100) / 100,
+      avgConversionRate: Math.round(avgConversionRate * 100) / 100,
+      avgBounceRate: Math.round(avgBounceRate * 100) / 100,
+      revenuePerRecipient: totals.totalRecipients > 0
+        ? Math.round((totals.totalRevenue / totals.totalRecipients) * 100) / 100
+        : 0,
+    },
+    campaigns,
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    await requireAuth(supabase)
+    const user = await requireAuth(supabase)
 
     const searchParams = request.nextUrl.searchParams
     const storeId = searchParams.get("store_id")
@@ -264,24 +388,14 @@ export async function GET(request: NextRequest) {
     const customStartDate = searchParams.get("start_date")
     const customEndDate = searchParams.get("end_date")
     const statusFilter = searchParams.get("status") // 'sent', 'scheduled', 'draft', 'cancelled'
+    const forceRefresh = searchParams.get("force_refresh") === "true"
 
     if (!storeId) {
       return NextResponse.json({ error: "store_id é obrigatório" }, { status: 400, headers: corsHeaders(request.headers.get("origin")) })
     }
 
-    // Get store display info using admin client (RLS on client_stores
-    // may block access depending on org membership; auth is already
-    // verified by requireAuth above)
-    const adminClient = createAdminClient()
-    const { data: store, error: storeError } = await adminClient
-      .from("client_stores")
-      .select("store_name")
-      .eq("id", storeId)
-      .single()
-
-    if (storeError || !store) {
-      return NextResponse.json({ error: "Loja não encontrada" }, { status: 404, headers: corsHeaders(request.headers.get("origin")) })
-    }
+    // Validate user has access to this store (multi-tenant isolation)
+    const store = await requireStoreAccess(storeId, user.id)
 
     // Get decrypted credentials via credentials service
     const credentials = await getStoreCredentials(storeId)
@@ -293,21 +407,52 @@ export async function GET(request: NextRequest) {
       }, { headers: corsHeaders(request.headers.get("origin")) })
     }
 
-    log.info("[Klaviyo Campaigns] Starting fetch for store:", store.store_name)
-
-    // Get account info for timezone
-    const accountInfo = await getAccountInfo(apiKey)
-    const timezoneOffset = getTimezoneOffset(accountInfo.timezone)
-
     // Calculate date range
     const { startDate, endDate } = parseDateRange(period, customStartDate, customEndDate)
     const startDateStr = formatDateStr(startDate)
     const endDateStr = formatDateStr(endDate)
 
+    // Convert date strings to ISO timestamps to match cron-written cache format
+    const periodStartISO = new Date(`${startDateStr}T00:00:00Z`).toISOString()
+    const periodEndISO = new Date(`${endDateStr}T23:59:59.999Z`).toISOString()
+
+    // Cache-first: try reading from cache for standard periods
+    const isCustomPeriod = period === "custom" || !CACHED_PERIODS.has(period)
+    if (!forceRefresh && !isCustomPeriod) {
+      try {
+        const adminClient = createAdminClient()
+        const cached = await readCampaignsFromCache(storeId, periodStartISO, periodEndISO, statusFilter, adminClient)
+        if (cached) {
+          log.info(`[Klaviyo Campaigns] Serving from cache for store: ${store.storeName} period: ${period}`)
+          return NextResponse.json({
+            success: true,
+            period: {
+              start: startDateStr,
+              end: endDateStr,
+              label: period,
+            },
+            fromCache: true,
+            fetchedAt: cached.fetchedAt,
+            currency: "BRL",
+            summary: cached.summary,
+            campaigns: cached.campaigns,
+          }, { headers: corsHeaders(request.headers.get("origin")) })
+        }
+      } catch (cacheReadError) {
+        log.error("[Klaviyo Campaigns] Cache read error, falling through to live fetch:", cacheReadError)
+      }
+    }
+
+    log.info("[Klaviyo Campaigns] Starting live fetch for store:", store.storeName)
+
+    // Get account info for timezone
+    const accountInfo = await getCachedAccountInfo(apiKey, store.orgId)
+    const timezoneOffset = getTimezoneOffset(accountInfo.timezone)
+
     // Fetch data sequentially to avoid Klaviyo rate limiting
     const campaigns = await getAllCampaigns(apiKey)
     await sleep(350)
-    const metricId = await findPlacedOrderMetric(apiKey)
+    const metricId = await getCachedPlacedOrderMetric(apiKey, store.orgId)
 
     // Get metrics if we have the metric ID
     let campaignMetrics = new Map()
@@ -337,7 +482,6 @@ export async function GET(request: NextRequest) {
           bounceRate: 0,
           unsubscribed: 0,
           unsubscribeRate: 0,
-          spamComplaintRate: 0
         }
 
         return {
@@ -385,7 +529,6 @@ export async function GET(request: NextRequest) {
       totalRevenue: acc.totalRevenue + campaign.conversionValue,
       totalBounced: acc.totalBounced + campaign.bounced,
       totalUnsubscribed: acc.totalUnsubscribed + campaign.unsubscribed,
-      totalSpamComplaintRate: acc.totalSpamComplaintRate + campaign.spamComplaintRate
     }), {
       totalCampaigns: 0,
       sentCampaigns: 0,
@@ -402,7 +545,6 @@ export async function GET(request: NextRequest) {
       totalRevenue: 0,
       totalBounced: 0,
       totalUnsubscribed: 0,
-      totalSpamComplaintRate: 0
     })
 
     // Calculate average rates
@@ -413,6 +555,7 @@ export async function GET(request: NextRequest) {
 
     // Cache metrics in database
     try {
+      const adminClient = createAdminClient()
       const sentCampaigns = campaignsWithMetrics.filter(c => c.status === 'sent')
       if (sentCampaigns.length > 0) {
         const { error: upsertError } = await adminClient
@@ -426,8 +569,8 @@ export async function GET(request: NextRequest) {
               send_time: campaign.sendTime,
               subject: campaign.subject,
               channel: campaign.channel,
-              period_start: startDateStr,
-              period_end: endDateStr,
+              period_start: periodStartISO,
+              period_end: periodEndISO,
               recipients: campaign.recipients,
               delivered: campaign.delivered,
               delivery_rate: campaign.deliveryRate,
@@ -445,7 +588,6 @@ export async function GET(request: NextRequest) {
               bounce_rate: campaign.bounceRate,
               unsubscribed: campaign.unsubscribed,
               unsubscribe_rate: campaign.unsubscribeRate,
-              spam_complaint_rate: campaign.spamComplaintRate,
               fetched_at: new Date().toISOString()
             })),
             { onConflict: 'store_id,campaign_id,period_start,period_end' }
@@ -466,6 +608,8 @@ export async function GET(request: NextRequest) {
         end: endDateStr,
         label: period
       },
+      fromCache: false,
+      fetchedAt: new Date().toISOString(),
       currency: accountInfo.currency,
       summary: {
         ...totals,

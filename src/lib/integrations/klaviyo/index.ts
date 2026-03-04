@@ -37,3 +37,8 @@ export {
   enqueueKlaviyoRequest,
   withConcurrencyLimit,
 } from "./rate-limiter"
+
+export {
+  getCachedAccountInfo,
+  getCachedPlacedOrderMetric,
+} from "./cached-metadata"

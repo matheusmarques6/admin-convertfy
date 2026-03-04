@@ -68,9 +68,22 @@ export async function GET(request: NextRequest) {
       // If no store exists, return nulls - the form will create one on save
     }
 
+    // Fetch client personal data
+    let clientData = null
+    const resolvedClientId = store?.client_id || clientId
+    if (resolvedClientId) {
+      const { data: cl } = await adminClient
+        .from("clients")
+        .select("name, email, phone, cpf_cnpj, company")
+        .eq("id", resolvedClientId)
+        .single()
+      clientData = cl
+    }
+
     return successResponse(request, {
       store: store || null,
       onboarding_data: onboardingData || null,
+      client: clientData || null,
     })
   } catch (error) {
     return errorResponse(request, error, "OnboardingStoreData")
@@ -214,6 +227,35 @@ export async function POST(request: NextRequest) {
     if (upsertError) {
       log.error("Error upserting store_onboarding_data", upsertError)
       throw new AppError("Erro ao salvar dados do formulário", 500)
+    }
+
+    // Update client personal data if provided
+    const clientFields = ["client_name", "client_email", "client_phone", "client_cpf_cnpj", "client_company"]
+    const clientUpdate: Record<string, unknown> = {}
+    const clientFieldMap: Record<string, string> = {
+      client_name: "name",
+      client_email: "email",
+      client_phone: "phone",
+      client_cpf_cnpj: "cpf_cnpj",
+      client_company: "company",
+    }
+    for (const field of clientFields) {
+      if (body[field] !== undefined) {
+        clientUpdate[clientFieldMap[field]] = body[field]
+      }
+    }
+
+    if (Object.keys(clientUpdate).length > 0) {
+      clientUpdate.updated_at = new Date().toISOString()
+      const { error: clientUpdateError } = await adminClient
+        .from("clients")
+        .update(clientUpdate)
+        .eq("id", clientId)
+
+      if (clientUpdateError) {
+        log.error("Error updating client personal data", clientUpdateError)
+        // Non-blocking: don't throw, just log
+      }
     }
 
     // Auto-generate briefing:

@@ -33,6 +33,7 @@ interface StoreOnboardingFormProps {
   initialData?: {
     store?: Record<string, unknown> | null
     onboarding_data?: Record<string, unknown> | null
+    client?: Record<string, unknown> | null
   }
   onSave?: (isComplete: boolean) => void
   /** @deprecated Use onSave instead */
@@ -69,7 +70,8 @@ const LANGUAGES = [
 ]
 
 const STEPS = [
-  { title: "Dados Básicos", description: "Informações da loja" },
+  { title: "Dados Pessoais", description: "Informações do responsável" },
+  { title: "Dados da Loja", description: "Informações da loja" },
   { title: "Público e Marca", description: "Audiência e posicionamento" },
   { title: "Arquivos", description: "Logo e materiais visuais" },
 ]
@@ -89,6 +91,13 @@ export function StoreOnboardingForm({
 
   // Form state
   const [formData, setFormData] = useState({
+    // Personal data
+    client_name: "",
+    client_email: "",
+    client_phone: "",
+    client_cpf_cnpj: "",
+    client_company: "",
+    // Store data
     store_name: "",
     store_url: "",
     platform: "shopify",
@@ -118,8 +127,16 @@ export function StoreOnboardingForm({
     if (initialData) {
       const store = initialData.store || {}
       const od = initialData.onboarding_data || {}
+      const client = initialData.client || {}
       setFormData((prev) => ({
         ...prev,
+        // Personal data from client
+        client_name: (client.name as string) || prev.client_name,
+        client_email: (client.email as string) || prev.client_email,
+        client_phone: (client.phone as string) || "",
+        client_cpf_cnpj: (client.cpf_cnpj as string) || "",
+        client_company: (client.company as string) || "",
+        // Store data
         store_name: (store.store_name as string) || prev.store_name,
         store_url: (store.store_url as string) || prev.store_url,
         platform: (store.platform as string) || prev.platform,
@@ -249,6 +266,9 @@ export function StoreOnboardingForm({
 
   function canAdvance() {
     if (currentStep === 0) {
+      return formData.client_name.trim() !== "" && formData.client_email.trim() !== ""
+    }
+    if (currentStep === 1) {
       return formData.store_name.trim() !== "" && formData.store_url.trim() !== ""
     }
     return true
@@ -291,8 +311,64 @@ export function StoreOnboardingForm({
       </CardHeader>
 
       <CardContent className="space-y-6">
-        {/* Step 1: Dados Básicos */}
+        {/* Step 0: Dados Pessoais */}
         {currentStep === 0 && (
+          <div className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="client_name">Nome Completo *</Label>
+                <Input
+                  id="client_name"
+                  value={formData.client_name}
+                  onChange={(e) => updateField("client_name", e.target.value)}
+                  placeholder="Nome do responsável"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="client_email">Email *</Label>
+                <Input
+                  id="client_email"
+                  type="email"
+                  value={formData.client_email}
+                  onChange={(e) => updateField("client_email", e.target.value)}
+                  placeholder="email@exemplo.com"
+                />
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="space-y-2">
+                <Label htmlFor="client_phone">Telefone</Label>
+                <Input
+                  id="client_phone"
+                  value={formData.client_phone}
+                  onChange={(e) => updateField("client_phone", e.target.value)}
+                  placeholder="(11) 99999-9999"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="client_cpf_cnpj">CPF/CNPJ</Label>
+                <Input
+                  id="client_cpf_cnpj"
+                  value={formData.client_cpf_cnpj}
+                  onChange={(e) => updateField("client_cpf_cnpj", e.target.value)}
+                  placeholder="000.000.000-00"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="client_company">Empresa</Label>
+                <Input
+                  id="client_company"
+                  value={formData.client_company}
+                  onChange={(e) => updateField("client_company", e.target.value)}
+                  placeholder="Nome da empresa"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 1: Dados da Loja */}
+        {currentStep === 1 && (
           <div className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
@@ -389,7 +465,7 @@ export function StoreOnboardingForm({
         )}
 
         {/* Step 2: Público e Marca */}
-        {currentStep === 1 && (
+        {currentStep === 2 && (
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="target_audience">Público-Alvo</Label>
@@ -446,7 +522,7 @@ export function StoreOnboardingForm({
         )}
 
         {/* Step 3: Arquivos */}
-        {currentStep === 2 && (
+        {currentStep === 3 && (
           <div className="space-y-6">
             {/* Logo */}
             <FileUploadArea

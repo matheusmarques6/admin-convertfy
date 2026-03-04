@@ -9,6 +9,7 @@ import { createClient } from "@supabase/supabase-js"
 import { decrypt } from "@/lib/crypto"
 import { logger } from "@/lib/logger"
 import { KLAVIYO_API_URL, KLAVIYO_REVISION, MIN_REQUEST_INTERVAL } from "@/lib/integrations/klaviyo/client"
+import { KLAVIYO_CREDENTIALS_FILTER } from "@/lib/services/credentials.service"
 
 const log = logger.child("KlaviyoSync")
 
@@ -274,8 +275,6 @@ class KlaviyoMetricsClient {
             "bounce_rate",
             "unsubscribes",
             "unsubscribe_rate",
-            "spam_complaints",
-            "spam_complaint_rate",
             "average_order_value",
             "revenue_per_recipient",
           ],
@@ -394,7 +393,7 @@ export class KlaviyoSyncService {
           client_id,
           clients (name)
         `)
-        .not("klaviyo_private_key", "is", null)
+        .or(KLAVIYO_CREDENTIALS_FILTER)
         .eq("is_active", true)
 
       if (storesError) {
@@ -631,8 +630,6 @@ export class KlaviyoSyncService {
             bounce_rate: stats.bounce_rate || 0,
             unsubscribed: stats.unsubscribes || 0,
             unsubscribe_rate: stats.unsubscribe_rate || 0,
-            spam_complaints: stats.spam_complaints || 0,
-            spam_rate: stats.spam_complaint_rate || 0,
             synced_at: new Date().toISOString(),
           }
 

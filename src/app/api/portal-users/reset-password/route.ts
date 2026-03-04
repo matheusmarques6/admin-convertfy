@@ -13,6 +13,7 @@ import {
 import { z } from "zod"
 import { logger } from "@/lib/logger"
 import { uuidSchema } from "@/lib/schemas/common"
+import { emailService } from "@/lib/email"
 
 const log = logger.child("PortalResetPassword")
 
@@ -64,6 +65,30 @@ export async function POST(request: NextRequest) {
       .from("client_portal_users")
       .update({ must_change_password: true })
       .eq("id", body.portal_user_id)
+
+    // Send password reset notification email (non-blocking)
+    // Get portal user email for notification
+    const { data: portalUserEmail } = await adminClient
+      .from("client_portal_users")
+      .select("email, name")
+      .eq("id", body.portal_user_id)
+      .single()
+
+    if (portalUserEmail?.email) {
+      try {
+        await emailService.sendPasswordResetNotification({
+          to: portalUserEmail.email,
+          name: portalUserEmail.name || portalUser.name || "Usuário",
+          tempPassword: passwordToSet,
+        })
+        log.info("Password reset email sent", { email: portalUserEmail.email })
+      } catch (emailError) {
+        log.warn("Failed to send password reset email", {
+          email: portalUserEmail.email,
+          error: (emailError as Error).message,
+        })
+      }
+    }
 
     return successResponse(request, {
       success: true,
