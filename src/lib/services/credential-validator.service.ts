@@ -233,6 +233,15 @@ export async function validateKlaviyoCredentials(
       }
     }
 
+    // Log response body for unexpected status codes to aid debugging
+    const responseText = await response.text().catch(() => "(failed to read body)")
+    log.error("Klaviyo validation unexpected status", {
+      status: response.status,
+      apiKeyPrefix: apiKey.substring(0, 10) + "...",
+      apiKeyLength: apiKey.length,
+      responseBody: responseText.substring(0, 500),
+    })
+
     return {
       valid: false,
       error: `Erro Klaviyo API: HTTP ${response.status}`,
