@@ -4,26 +4,12 @@ import { successResponse, errorResponse, AppError } from "@/lib/api/errors"
 import { encrypt } from "@/lib/crypto"
 import { handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
+import { getPortalUser } from "@/lib/portal/auth"
 
 const log = logger.child("PortalTrackingStores")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
-}
-
-async function getPortalUser(supabase: Awaited<ReturnType<typeof createClient>>) {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-
-  const adminClient = createAdminClient()
-  const { data: portalUser } = await adminClient
-    .from("client_portal_users")
-    .select("client_id, permissions")
-    .eq("auth_user_id", user.id)
-    .eq("is_active", true)
-    .single()
-
-  return portalUser
 }
 
 export async function GET(request: NextRequest) {

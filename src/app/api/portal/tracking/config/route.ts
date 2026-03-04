@@ -3,23 +3,9 @@ import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, AppError } from "@/lib/api/errors"
 import { decrypt, encrypt } from "@/lib/crypto"
 import { logger } from "@/lib/logger"
+import { getPortalUser } from "@/lib/portal/auth"
 
 const log = logger.child("PortalTrackingConfig")
-
-async function getPortalUser(supabase: Awaited<ReturnType<typeof createClient>>) {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-
-  const adminClient = createAdminClient()
-  const { data: portalUser } = await adminClient
-    .from("client_portal_users")
-    .select("client_id, permissions")
-    .eq("auth_user_id", user.id)
-    .eq("is_active", true)
-    .single()
-
-  return portalUser
-}
 
 const DEFAULT_CONFIG = {
   plugin_type: "complete" as const,

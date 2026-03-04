@@ -5,29 +5,12 @@ import { handleCorsPreFlight } from "@/lib/cors"
 import { encrypt } from "@/lib/crypto"
 import { deriveStatus } from "@/lib/services/credentials.service"
 import { logger } from "@/lib/logger"
+import { getPortalUser } from "@/lib/portal/auth"
 
 const log = logger.child("PortalIntegrations")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
-}
-
-/**
- * Helper: get authenticated portal user with client_id
- */
-async function getPortalUser(supabase: Awaited<ReturnType<typeof createClient>>) {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-
-  const adminClient = createAdminClient()
-  const { data: portalUser } = await adminClient
-    .from("client_portal_users")
-    .select("client_id, permissions")
-    .eq("auth_user_id", user.id)
-    .eq("is_active", true)
-    .single()
-
-  return portalUser
 }
 
 /**

@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { checkRateLimit } from "@/lib/rate-limit"
 import { logger } from "@/lib/logger"
 import { OrderLookupService, OrderLookupResult } from "@/lib/services/order-lookup.service"
+import { translateEventDescription } from "@/lib/tracking/translate-events"
 
 const log = logger.child("TrackingLookup")
 
@@ -256,6 +257,25 @@ export async function GET(request: NextRequest) {
         })
     } catch (err) {
       log.warn("Failed to log lookup", err)
+    }
+
+    // Translate tracking event descriptions to Portuguese
+    for (const result of results) {
+      for (const track of result.tracking) {
+        if (track.status_detail) {
+          track.status_detail = translateEventDescription(track.status_detail)
+        }
+        if (track.last_event) {
+          track.last_event = translateEventDescription(track.last_event)
+        }
+        if (Array.isArray(track.tracking_events)) {
+          for (const event of track.tracking_events as Array<{ description?: string }>) {
+            if (event.description) {
+              event.description = translateEventDescription(event.description)
+            }
+          }
+        }
+      }
     }
 
     return NextResponse.json(
