@@ -23,6 +23,20 @@ export class KlaviyoRateLimitError extends Error {
   }
 }
 
+/**
+ * Thrown when Klaviyo returns 403 with permission_denied.
+ * Indicates the API key is missing required scopes — not a transient error.
+ * Callers should surface this to the user as a configuration issue.
+ */
+export class KlaviyoPermissionError extends Error {
+  public missingScopes: string[]
+  constructor(missingScopes: string[]) {
+    super(`Klaviyo API key is missing required scopes: ${missingScopes.join(", ")}`)
+    this.name = "KlaviyoPermissionError"
+    this.missingScopes = missingScopes
+  }
+}
+
 // Latest stable API revision per Klaviyo documentation
 // https://developers.klaviyo.com/en/docs/api_versioning_and_deprecation_policy
 export const KLAVIYO_API_URL = "https://a.klaviyo.com/api"
@@ -38,6 +52,11 @@ export const MIN_REQUEST_INTERVAL = 1000 // 1 second between reporting requests
 // If Klaviyo says "wait 3723s" (62 minutes!), we fail fast and let
 // the cache/fallback layer handle it instead of blocking the serverless function.
 const MAX_RETRY_AFTER_MS = 10_000
+
+// Timeout for individual Klaviyo HTTP requests.
+// 15s: above typical Klaviyo p99 latency (~3s), below Vercel Pro function timeout (60s).
+// AbortSignal.timeout() is supported in Node.js 17.3+ and Vercel runtimes without polyfill.
+const KLAVIYO_FETCH_TIMEOUT_MS = 15_000
 
 export const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
@@ -103,6 +122,7 @@ async function _klaviyoRequestInner<T>(
           "revision": KLAVIYO_REVISION,
         },
         ...(body && { body: JSON.stringify(body) }),
+        signal: AbortSignal.timeout(KLAVIYO_FETCH_TIMEOUT_MS),
       })
 
       log.info(`[${logTag}] RESPONSE: ${response.status} ${response.statusText}`)
@@ -138,6 +158,26 @@ async function _klaviyoRequestInner<T>(
       const responseText = await response.text()
 
       if (!response.ok) {
+        // Detect 403 permission_denied — not retryable, surface to caller
+        if (response.status === 403) {
+          try {
+            const errBody = JSON.parse(responseText)
+            const firstError = errBody?.errors?.[0]
+            if (firstError?.code === "permission_denied") {
+              const detail: string = firstError.detail ?? ""
+              const match = detail.match(/scopes?:\s*(.+)$/i)
+              const missingScopes = match
+                ? match[1].split(",").map((s: string) => s.trim()).filter(Boolean)
+                : ["unknown"]
+              log.error(`[${logTag}] Permission denied — missing scopes: ${missingScopes.join(", ")}`)
+              throw new KlaviyoPermissionError(missingScopes)
+            }
+          } catch (parseErr) {
+            if (parseErr instanceof KlaviyoPermissionError) throw parseErr
+            // Parse failed — fall through to generic error handling
+          }
+        }
+
         log.error(`[${logTag}] API ERROR ${response.status}:`, responseText.substring(0, 500))
         return null
       }
@@ -145,11 +185,19 @@ async function _klaviyoRequestInner<T>(
       const data = JSON.parse(responseText) as T
       return data
     } catch (error) {
+      if (error instanceof KlaviyoPermissionError) {
+        throw error  // not retryable — permanent configuration error
+      }
       if (error instanceof KlaviyoRateLimitError) {
         log.warn(`[${logTag}] Rate limited after all retries for ${endpoint}`)
-      } else {
-        log.error(`[${logTag}] REQUEST ERROR:`, error)
+        throw error
       }
+      if (error instanceof Error && error.name === "AbortError") {
+        log.error(`[${logTag}] REQUEST TIMEOUT after ${KLAVIYO_FETCH_TIMEOUT_MS}ms: ${endpoint}`)
+        if (attempt < maxRetries) continue  // timeout is recoverable — retry
+        return null
+      }
+      log.error(`[${logTag}] REQUEST ERROR:`, error)
       if (attempt < maxRetries) continue
       return null
     }
