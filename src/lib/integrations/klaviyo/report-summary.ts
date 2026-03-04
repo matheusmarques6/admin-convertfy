@@ -76,10 +76,20 @@ export async function getKlaviyoRevenueForStore(
     // Find Placed Order metric for conversion revenue (DB-cached)
     const placedOrderMetric = await getCachedPlacedOrderMetric(apiKey)
 
+    // conversion_metric_id is required by Klaviyo API — skip reports if metric not found
+    if (!placedOrderMetric) {
+      log.warn(`Store ${storeId}: Placed Order metric not found (missing metrics:read scope or no e-commerce integration). Returning zero revenue.`)
+      return {
+        success: true,
+        data: { totalRevenue: 0, campaignRevenue: 0, flowRevenue: 0, currency },
+        source: "live", fetchedAt: new Date().toISOString(),
+      }
+    }
+
     const reportAttributes = {
       statistics: ["conversion_value"],
       timeframe: { start: startISO, end: endISO },
-      ...(placedOrderMetric ? { conversion_metric_id: placedOrderMetric } : {}),
+      conversion_metric_id: placedOrderMetric,
     }
 
     // Fetch campaign and flow reports in parallel
