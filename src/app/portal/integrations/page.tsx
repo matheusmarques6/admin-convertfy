@@ -58,7 +58,6 @@ interface CarrierConfig {
   keyPlaceholder?: string
   helpText: string
   helpUrl?: string
-  isFree?: boolean
   covers: string[]
 }
 
@@ -91,8 +90,7 @@ const CARRIERS: CarrierConfig[] = [
     description: "Transportadoras chinesas",
     icon: "CN",
     iconBg: "bg-red-500/10 text-red-600 dark:text-red-400",
-    helpText: "Rastreamento gratuito via Cainiao Global",
-    isFree: true,
+    helpText: "Rastreamento gratuito via Cainiao Global — sem API key necessária.",
     covers: ["Wanb Express", "Yanwen", "SDH Express", "AliExpress"],
   },
   {
@@ -559,11 +557,7 @@ export default function PortalIntegrationsPage() {
                         <p className="text-xs text-slate-500 dark:text-slate-400">{carrier.description}</p>
                       </div>
                     </div>
-                    {carrier.isFree ? (
-                      <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/30">
-                        <CheckCircle2 className="h-3 w-3" /> Ativo
-                      </span>
-                    ) : hasKey ? (
+                    {hasKey ? (
                       <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/30">
                         <CheckCircle2 className="h-3 w-3" /> Ativo
                       </span>
@@ -582,22 +576,15 @@ export default function PortalIntegrationsPage() {
                     ))}
                   </div>
 
-                  {carrier.isFree ? (
-                    <div className="mt-auto flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 rounded-lg px-3 py-2">
-                      <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                      <span>Ativo automaticamente — sem chave necessária</span>
-                    </div>
-                  ) : (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => openCarrierDialog(carrier)}
-                      className="w-full mt-auto border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]"
-                    >
-                      <Key className="h-3.5 w-3.5 mr-1.5" />
-                      {hasKey ? "Alterar chave" : "Configurar"}
-                    </Button>
-                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openCarrierDialog(carrier)}
+                    className="w-full mt-auto border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]"
+                  >
+                    <Key className="h-3.5 w-3.5 mr-1.5" />
+                    {hasKey ? "Alterar chave" : "Configurar"}
+                  </Button>
                 </div>
               )
             })}
@@ -738,47 +725,72 @@ export default function PortalIntegrationsPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label className="text-[13px] font-medium text-slate-700 dark:text-slate-200">API Key</Label>
-              <div className="relative">
-                <Input
-                  type={showCarrierKey ? "text" : "password"}
-                  placeholder={activeCarrier?.keyPlaceholder || "Sua API Key"}
-                  value={carrierKeyInput}
-                  onChange={(e) => setCarrierKeyInput(e.target.value)}
-                  className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 pr-10"
-                />
-                <button type="button" onClick={() => setShowCarrierKey(!showCarrierKey)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
-                  {showCarrierKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-              {activeCarrier?.helpUrl ? (
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Obtenha sua chave em{" "}
-                  <a href={activeCarrier.helpUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-                    {activeCarrier.helpText}
-                  </a>
+          {activeCarrier?.id === "cainiao" ? (
+            <>
+              <div className="py-4">
+                <div className="flex items-start gap-3 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 p-4">
+                  <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-emerald-800 dark:text-emerald-300">Ativo automaticamente</p>
+                    <p className="text-xs text-emerald-700 dark:text-emerald-400">
+                      Cainiao é um serviço gratuito e não requer API key. O rastreamento via Cainiao Global está sempre habilitado para os carriers cobertos.
+                    </p>
+                  </div>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-3">
+                  Carriers cobertos: Wanb Express, Yanwen, SDH Express, AliExpress Standard.
                 </p>
-              ) : (
-                <p className="text-xs text-slate-500 dark:text-slate-400">{activeCarrier?.helpText}</p>
-              )}
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCarrierDialogOpen(false)} className="border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
-              Cancelar
-            </Button>
-            <Button
-              onClick={handleSaveCarrierKey}
-              disabled={savingCarrier}
-              className="bg-primary hover:bg-primary/85 text-white shadow-sm"
-            >
-              {savingCarrier && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Salvar Chave
-            </Button>
-          </DialogFooter>
+              </div>
+              <DialogFooter>
+                <Button onClick={() => setCarrierDialogOpen(false)} className="bg-primary hover:bg-primary/85 text-white shadow-sm">
+                  Fechar
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label className="text-[13px] font-medium text-slate-700 dark:text-slate-200">API Key</Label>
+                  <div className="relative">
+                    <Input
+                      type={showCarrierKey ? "text" : "password"}
+                      placeholder={activeCarrier?.keyPlaceholder || "Sua API Key"}
+                      value={carrierKeyInput}
+                      onChange={(e) => setCarrierKeyInput(e.target.value)}
+                      className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 pr-10"
+                    />
+                    <button type="button" onClick={() => setShowCarrierKey(!showCarrierKey)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
+                      {showCarrierKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  {activeCarrier?.helpUrl ? (
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Obtenha sua chave em{" "}
+                      <a href={activeCarrier.helpUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                        {activeCarrier.helpText}
+                      </a>
+                    </p>
+                  ) : (
+                    <p className="text-xs text-slate-500 dark:text-slate-400">{activeCarrier?.helpText}</p>
+                  )}
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setCarrierDialogOpen(false)} className="border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={handleSaveCarrierKey}
+                  disabled={savingCarrier}
+                  className="bg-primary hover:bg-primary/85 text-white shadow-sm"
+                >
+                  {savingCarrier && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  Salvar Chave
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>
