@@ -116,8 +116,8 @@ export async function validateShopifyCredentials(
 
 const KLAVIYO_SCOPE_CHECKS: { scope: string; url: string }[] = [
   { scope: "accounts:read", url: "https://a.klaviyo.com/api/accounts/" },
-  { scope: "campaigns:read", url: "https://a.klaviyo.com/api/campaigns/?page[size]=1" },
-  { scope: "flows:read", url: "https://a.klaviyo.com/api/flows/?page[size]=1" },
+  { scope: "campaigns:read", url: "https://a.klaviyo.com/api/campaigns/" },
+  { scope: "flows:read", url: "https://a.klaviyo.com/api/flows/" },
 ]
 
 /**
@@ -174,7 +174,7 @@ export async function validateKlaviyoCredentials(
     return { valid: false, error: "API Key é obrigatória", tested_at: testedAt }
   }
 
-  const url = "https://a.klaviyo.com/api/metrics/?page[size]=1"
+  const url = "https://a.klaviyo.com/api/metrics/"
 
   try {
     const controller = new AbortController()
