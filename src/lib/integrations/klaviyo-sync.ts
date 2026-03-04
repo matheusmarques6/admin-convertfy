@@ -351,25 +351,8 @@ export class KlaviyoSyncService {
   async syncAllStores(triggeredBy?: string): Promise<SyncJobProgress> {
     const supabase = this.getSupabase()
 
-    // Create sync job
-    const { data: job, error: jobError } = await supabase
-      .from("klaviyo_sync_jobs")
-      .insert({
-        job_type: "full_sync",
-        status: "running",
-        triggered_by: triggeredBy,
-        trigger_type: triggeredBy ? "manual" : "cron",
-        started_at: new Date().toISOString(),
-      })
-      .select()
-      .single()
-
-    if (jobError || !job) {
-      throw new Error(`Failed to create sync job: ${jobError?.message}`)
-    }
-
     const progress: SyncJobProgress = {
-      jobId: job.id,
+      jobId: crypto.randomUUID(),
       status: "running",
       totalStores: 0,
       processedStores: 0,
@@ -381,6 +364,8 @@ export class KlaviyoSyncService {
       alertsGenerated: 0,
       errors: [],
     }
+
+    log.info("Starting full sync", { triggeredBy, jobId: progress.jobId })
 
     try {
       // Get all stores with Klaviyo configured
@@ -401,12 +386,7 @@ export class KlaviyoSyncService {
       }
 
       progress.totalStores = stores?.length || 0
-
-      // Update job with total
-      await supabase
-        .from("klaviyo_sync_jobs")
-        .update({ total_stores: progress.totalStores })
-        .eq("id", job.id)
+      log.info("Fetched stores for sync", { totalStores: progress.totalStores })
 
       // Process stores in batches of 10 (parallel)
       const BATCH_SIZE = 10
@@ -432,56 +412,14 @@ export class KlaviyoSyncService {
           })
         )
 
-        // Update job progress
-        await supabase
-          .from("klaviyo_sync_jobs")
-          .update({
-            processed_stores: progress.processedStores,
-            total_campaigns: progress.totalCampaigns,
-            processed_campaigns: progress.processedCampaigns,
-            campaigns_created: progress.campaignsCreated,
-            campaigns_updated: progress.campaignsUpdated,
-            metrics_synced: progress.metricsSynced,
-            errors_count: progress.errors.length,
-            error_log: progress.errors,
-          })
-          .eq("id", job.id)
+        log.info("Batch processed", { processed: progress.processedStores, total: progress.totalStores })
       }
 
-      // Mark job as completed
       progress.status = "completed"
-      await supabase
-        .from("klaviyo_sync_jobs")
-        .update({
-          status: "completed",
-          completed_at: new Date().toISOString(),
-        })
-        .eq("id", job.id)
-
-      // Update sync config for each store
-      for (const store of stores || []) {
-        await supabase
-          .from("klaviyo_sync_config")
-          .upsert({
-            store_id: store.id,
-            last_sync_at: new Date().toISOString(),
-            last_sync_status: "success",
-          })
-      }
+      log.info("Full sync completed", { jobId: progress.jobId, created: progress.campaignsCreated, updated: progress.campaignsUpdated })
     } catch (error) {
       progress.status = "failed"
-      await supabase
-        .from("klaviyo_sync_jobs")
-        .update({
-          status: "failed",
-          completed_at: new Date().toISOString(),
-          error_log: [
-            ...progress.errors,
-            { store_id: "global", error: error instanceof Error ? error.message : "Unknown error" },
-          ],
-        })
-        .eq("id", job.id)
-
+      log.error("Full sync failed", { jobId: progress.jobId, error: error instanceof Error ? error.message : error })
       throw error
     }
 
@@ -647,8 +585,9 @@ export class KlaviyoSyncService {
 
   /**
    * Busca campanhas com filtros (para UI)
+   * @deprecated view v_campaigns_with_metrics removida — retorna vazio
    */
-  async searchCampaigns(params: {
+  async searchCampaigns(_params: {
     search?: string
     storeId?: string
     status?: string
@@ -660,236 +599,81 @@ export class KlaviyoSyncService {
     limit?: number
     offset?: number
   }) {
-    const supabase = this.getSupabase()
-
-    let query = supabase
-      .from("v_campaigns_with_metrics")
-      .select("*", { count: "exact" })
-
-    // Apply filters
-    if (params.search) {
-      query = query.ilike("name", `%${params.search}%`)
-    }
-    if (params.storeId) {
-      query = query.eq("store_id", params.storeId)
-    }
-    if (params.status) {
-      query = query.eq("status", params.status)
-    }
-    if (params.channel) {
-      query = query.eq("channel", params.channel)
-    }
-    if (params.startDate) {
-      query = query.gte("send_time", params.startDate)
-    }
-    if (params.endDate) {
-      query = query.lte("send_time", params.endDate)
-    }
-
-    // Sort
-    const sortBy = params.sortBy || "send_time"
-    const sortOrder = params.sortOrder || "desc"
-    query = query.order(sortBy, { ascending: sortOrder === "asc" })
-
-    // Pagination
-    if (params.limit) {
-      query = query.limit(params.limit)
-    }
-    if (params.offset) {
-      query = query.range(params.offset, params.offset + (params.limit || 20) - 1)
-    }
-
-    return query
+    return { data: [], count: 0, error: null }
   }
 
   /**
    * Busca rankings de campanhas
+   * @deprecated view v_campaigns_with_metrics removida — retorna vazio
    */
-  async getRankings(params: {
+  async getRankings(_params: {
     metric: "revenue" | "open_rate" | "click_rate" | "conversion_rate"
     storeId?: string
     startDate?: string
     endDate?: string
     limit?: number
   }) {
-    const supabase = this.getSupabase()
-
-    let query = supabase
-      .from("v_campaigns_with_metrics")
-      .select("*")
-      .eq("status", "Sent")
-      .gt(params.metric, 0)
-      .order(params.metric, { ascending: false })
-      .limit(params.limit || 10)
-
-    if (params.storeId) {
-      query = query.eq("store_id", params.storeId)
-    }
-    if (params.startDate) {
-      query = query.gte("send_time", params.startDate)
-    }
-    if (params.endDate) {
-      query = query.lte("send_time", params.endDate)
-    }
-
-    return query
+    return { data: [], error: null }
   }
 
   /**
    * Compara campanhas por nome entre lojas
+   * @deprecated view v_campaigns_with_metrics removida — retorna vazio
    */
-  async compareCampaignsByName(campaignName: string) {
-    const supabase = this.getSupabase()
-
-    const { data, error } = await supabase
-      .from("v_campaigns_with_metrics")
-      .select("*")
-      .ilike("name", `%${campaignName}%`)
-      .eq("status", "Sent")
-      .order("send_time", { ascending: false })
-
-    if (error) throw error
-
-    // Group by store
-    const byStore = new Map<
-      string,
-      {
-        store_id: string
-        store_name: string
-        client_name: string
-        campaigns: typeof data
-      }
-    >()
-
-    for (const campaign of data || []) {
-      if (!byStore.has(campaign.store_id)) {
-        byStore.set(campaign.store_id, {
-          store_id: campaign.store_id,
-          store_name: campaign.store_name,
-          client_name: campaign.client_name,
-          campaigns: [],
-        })
-      }
-      byStore.get(campaign.store_id)!.campaigns.push(campaign)
-    }
-
-    // Calculate totals
-    const totals = {
-      totalStores: byStore.size,
-      totalCampaigns: data?.length || 0,
-      totalRecipients: 0,
-      totalRevenue: 0,
-      avgOpenRate: 0,
-      avgClickRate: 0,
-      avgConversionRate: 0,
-    }
-
-    let totalOpenRate = 0
-    let totalClickRate = 0
-    let totalConversionRate = 0
-    let count = 0
-
-    for (const campaign of data || []) {
-      totals.totalRecipients += campaign.recipients || 0
-      totals.totalRevenue += Number(campaign.revenue) || 0
-      totalOpenRate += campaign.open_rate || 0
-      totalClickRate += campaign.click_rate || 0
-      totalConversionRate += campaign.conversion_rate || 0
-      count++
-    }
-
-    if (count > 0) {
-      totals.avgOpenRate = totalOpenRate / count
-      totals.avgClickRate = totalClickRate / count
-      totals.avgConversionRate = totalConversionRate / count
-    }
-
+  async compareCampaignsByName(_campaignName: string) {
     return {
-      byStore: Array.from(byStore.values()),
-      totals,
+      byStore: [],
+      totals: {
+        totalStores: 0,
+        totalCampaigns: 0,
+        totalRecipients: 0,
+        totalRevenue: 0,
+        avgOpenRate: 0,
+        avgClickRate: 0,
+        avgConversionRate: 0,
+      },
     }
   }
 
   /**
    * Busca histórico de métricas para gráficos
+   * @deprecated tabela campaign_metrics_history removida — retorna vazio
    */
   async getMetricsHistory(
-    campaignId: string,
-    startDate: string,
-    endDate: string
+    _campaignId: string,
+    _startDate: string,
+    _endDate: string
   ) {
-    const supabase = this.getSupabase()
-
-    return supabase
-      .from("campaign_metrics_history")
-      .select("*")
-      .eq("campaign_id", campaignId)
-      .gte("snapshot_date", startDate)
-      .lte("snapshot_date", endDate)
-      .order("snapshot_date", { ascending: true })
+    return { data: [], error: null }
   }
 
   /**
    * Busca alertas
+   * @deprecated view v_unread_alerts removida — retorna vazio
    */
-  async getAlerts(params: {
+  async getAlerts(_params: {
     storeId?: string
     severity?: string
     unreadOnly?: boolean
     limit?: number
   }) {
-    const supabase = this.getSupabase()
-
-    let query = supabase
-      .from("v_unread_alerts")
-      .select("*")
-      .order("created_at", { ascending: false })
-
-    if (params.storeId) {
-      query = query.eq("store_id", params.storeId)
-    }
-    if (params.severity) {
-      query = query.eq("severity", params.severity)
-    }
-    if (params.unreadOnly !== false) {
-      query = query.eq("is_read", false)
-    }
-    if (params.limit) {
-      query = query.limit(params.limit)
-    }
-
-    return query
+    return { data: [], error: null }
   }
 
   /**
    * Marca alerta como lido
+   * @deprecated tabela campaign_alerts removida — no-op
    */
-  async markAlertAsRead(alertId: string) {
-    const supabase = this.getSupabase()
-
-    return supabase
-      .from("campaign_alerts")
-      .update({
-        is_read: true,
-        read_at: new Date().toISOString(),
-      })
-      .eq("id", alertId)
+  async markAlertAsRead(_alertId: string) {
+    return { data: null, error: null }
   }
 
   /**
    * Dispensa alerta
+   * @deprecated tabela campaign_alerts removida — no-op
    */
-  async dismissAlert(alertId: string, dismissedBy: string) {
-    const supabase = this.getSupabase()
-
-    return supabase
-      .from("campaign_alerts")
-      .update({
-        is_dismissed: true,
-        dismissed_at: new Date().toISOString(),
-        dismissed_by: dismissedBy,
-      })
-      .eq("id", alertId)
+  async dismissAlert(_alertId: string, _dismissedBy: string) {
+    return { data: null, error: null }
   }
 }
 

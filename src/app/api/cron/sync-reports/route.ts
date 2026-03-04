@@ -229,15 +229,6 @@ async function syncStore(
     }
   }
 
-  // Update per-store sync status
-  await supabase
-    .from("klaviyo_sync_config")
-    .upsert({
-      store_id: store.id,
-      last_sync_at: new Date().toISOString(),
-      last_sync_status: results.some(r => r.status === "error") ? "partial" : "success",
-    }, { onConflict: "store_id" })
-
   return results
 }
 

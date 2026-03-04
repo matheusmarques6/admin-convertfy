@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { requireStoreAccess } from "@/lib/api/require-store-access"
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
 import { getCache, setCache } from "@/lib/cache"
 import { generateShopifyReport } from "@/lib/integrations/shopify/report"
@@ -14,6 +14,7 @@ export async function OPTIONS(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
+    const adminClient = createAdminClient()
     const user = await requireAuth(supabase)
 
     const searchParams = request.nextUrl.searchParams
@@ -46,7 +47,7 @@ export async function GET(request: NextRequest) {
     })
 
     // Save to cache for future requests
-    await setCache(supabase, storeId, "shopify", period, reportData as unknown as Record<string, unknown>, orgId)
+    await setCache(adminClient, storeId, "shopify", period, reportData as unknown as Record<string, unknown>, orgId)
 
     return NextResponse.json(reportData)
   } catch (error) {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
 import { decryptCredentialsJson } from "@/lib/crypto"
 import { getCache, setCache } from "@/lib/cache"
@@ -362,6 +362,7 @@ async function getTrafficByCountry(
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
+    const adminClient = createAdminClient()
     await requireAuth(supabase)
 
     const searchParams = request.nextUrl.searchParams
@@ -485,7 +486,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Save to cache for future requests
-    await setCache(supabase, storeId, "ga4", period, reportData as unknown as Record<string, unknown>, store.org_id ?? undefined)
+    await setCache(adminClient, storeId, "ga4", period, reportData as unknown as Record<string, unknown>, store.org_id ?? undefined)
 
     return NextResponse.json(reportData)
   } catch (error) {

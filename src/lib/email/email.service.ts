@@ -20,6 +20,7 @@ interface SendEmailParams {
   html: string
   from?: string
   replyTo?: string
+  org_id?: string | null
 }
 
 interface SendResult {
@@ -90,6 +91,7 @@ class EmailService {
           template_type: this.extractTemplateType(params.subject),
           resend_id: data.id,
           status: "sent",
+          org_id: params.org_id ?? null,
         }).catch((err) => log.warn("Falha ao salvar log de email", { error: (err as Error).message }))
 
         return { id: data.id, success: true }
@@ -119,6 +121,7 @@ class EmailService {
       resend_id: null,
       status: "failed",
       error_message: lastError?.message || "Todas tentativas falharam",
+      org_id: params.org_id ?? null,
     }).catch(() => {})
 
     throw new EmailDeliveryError(
@@ -197,6 +200,7 @@ class EmailService {
     resend_id: string | null
     status: string
     error_message?: string
+    org_id?: string | null
   }): Promise<void> {
     try {
       const adminClient = createAdminClient()
@@ -207,6 +211,7 @@ class EmailService {
         resend_id: data.resend_id,
         status: data.status,
         error_message: data.error_message || null,
+        org_id: data.org_id ?? null,
       })
     } catch {
       // Silently fail - logging should not break email sending
