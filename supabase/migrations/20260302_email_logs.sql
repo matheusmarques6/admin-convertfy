@@ -28,7 +28,7 @@ CREATE POLICY "email_logs_select_admin" ON email_logs
     EXISTS (
       SELECT 1 FROM profiles
       WHERE profiles.id = auth.uid()
-      AND profiles.role IN ('admin', 'manager', 'coo')
+      AND profiles.role IN ('admin', 'manager')
     )
   );
 
