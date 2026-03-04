@@ -623,8 +623,17 @@ export function OnboardingKanban() {
                                           Atribuir Responsável
                                         </DropdownMenuItem>
                                         <DropdownMenuSeparator />
+                                        {onboarding.store_id && (
+                                          <DropdownMenuItem asChild>
+                                            <a href={`/stores/${onboarding.store_id}`}>
+                                              <Store className="mr-2 h-4 w-4" />
+                                              Ver Loja
+                                            </a>
+                                          </DropdownMenuItem>
+                                        )}
                                         <DropdownMenuItem asChild>
                                           <a href={`/clients/${onboarding.client_id}`}>
+                                            <Building2 className="mr-2 h-4 w-4" />
                                             Ver Cliente
                                           </a>
                                         </DropdownMenuItem>
