@@ -24,8 +24,9 @@ export function StoreBriefingTab({ storeId, clientId }: StoreBriefingTabProps) {
   const [formInitialData, setFormInitialData] = useState<Record<string, unknown> | null>(null)
   const [formLoading, setFormLoading] = useState(false)
 
-  const fetchBriefing = useCallback(async () => {
-    setLoading(true)
+  // AC 12.1.1 — silent=true omite setLoading para não acionar spinner durante polling
+  const fetchBriefing = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
     try {
       const res = await fetch(`/api/onboarding/store-briefing?store_id=${storeId}`)
       const data = await res.json()
@@ -37,9 +38,22 @@ export function StoreBriefingTab({ storeId, clientId }: StoreBriefingTabProps) {
     }
   }, [storeId])
 
+  // Fetch inicial no mount
   useEffect(() => {
     fetchBriefing()
   }, [fetchBriefing])
+
+  // AC 12.1.1 — Polling de 10s enquanto sem briefing (silent, sem spinner)
+  useEffect(() => {
+    if (briefing !== null) return // já tem briefing, não pollar
+    if (loading) return           // aguarda fetch inicial
+
+    const interval = setInterval(() => {
+      fetchBriefing(true) // silent=true: sem setLoading, sem spinner
+    }, 10_000)
+
+    return () => clearInterval(interval)
+  }, [briefing, loading, fetchBriefing])
 
   async function openFormDialog() {
     setFormLoading(true)
@@ -65,6 +79,15 @@ export function StoreBriefingTab({ storeId, clientId }: StoreBriefingTabProps) {
 
   return (
     <>
+      {/* AC 12.1.1 — Indicador de aguardando N8N quando sem briefing e sem loading */}
+      {briefing === null && (
+        <div className="flex items-center gap-2 mb-4 rounded-md border border-muted bg-muted/30 px-4 py-3">
+          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground shrink-0" />
+          <p className="text-sm text-muted-foreground">
+            Briefing sendo gerado pelo N8N. Atualizando automaticamente a cada 10 segundos...
+          </p>
+        </div>
+      )}
       <StoreBriefingView
         storeId={storeId}
         briefing={briefing}

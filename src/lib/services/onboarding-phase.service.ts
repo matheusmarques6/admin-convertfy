@@ -178,7 +178,14 @@ export class OnboardingPhaseService {
           .eq("store_id", onboarding.store_id)
           .maybeSingle()
 
-        const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+        // AC 12.1.3 — APP_URL server-side tem prioridade sobre NEXT_PUBLIC_APP_URL
+        const appUrl =
+          process.env.APP_URL ||
+          process.env.NEXT_PUBLIC_APP_URL ||
+          "http://localhost:3000"
+        log.info("[CopyGeneration] callback_url configurado", {
+          callback_url: `${appUrl}/api/onboarding/webhook`,
+        })
         await n8nTriggerService.triggerCopyGeneration({
           onboarding_id: onboarding.id,
           client: {

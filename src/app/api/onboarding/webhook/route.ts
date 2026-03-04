@@ -12,6 +12,20 @@ export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
 }
 
+// GET - Health check endpoint for N8N to verify webhook accessibility (AC 12.1.3)
+export async function GET(request: NextRequest) {
+  const appUrl =
+    process.env.APP_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    "http://localhost:3000"
+
+  return successResponse(request, {
+    status: "ok",
+    endpoint: `${appUrl}/api/onboarding/webhook`,
+    secret_configured: !!process.env.ONBOARDING_WEBHOOK_SECRET,
+  })
+}
+
 
 // POST - Webhook endpoint for n8n to send store analysis results
 export async function POST(request: NextRequest) {
@@ -126,6 +140,44 @@ export async function POST(request: NextRequest) {
     }
 
     if (body.type === "briefing_generated") {
+      // AC 12.1.4 — Log de confirmação ao receber briefing_generated
+      log.info("[Webhook] Recebendo briefing_generated", {
+        onboarding_id: body.onboarding_id,
+      })
+
+      // AC 12.1.2 — Log da estrutura recebida para debug
+      log.warn("[Webhook] briefing_generated payload keys", {
+        onboarding_id: body.onboarding_id,
+        data_keys: body.data ? Object.keys(body.data) : [],
+      })
+
+      // AC 12.1.2 — Validação de campos obrigatórios
+      const requiredTopLevelKeys = [
+        "dados_loja",
+        "foco_campanhas",
+        "publico",
+        "perfil_marca",
+        "materiais_identidade",
+        "detalhes_adicionais",
+        "codigo_colaborador",
+      ]
+      const missingKeys = requiredTopLevelKeys.filter(
+        (k) => !body.data || !(k in body.data)
+      )
+      if (missingKeys.length > 0) {
+        throw new AppError(
+          `briefing_data incompleto. Campos ausentes: ${missingKeys.join(", ")}`,
+          400
+        )
+      }
+
+      // AC 12.1.2 — Adicionar defaults para campos opcionais
+      const briefingData = {
+        resumo_performance: {},
+        analise_anuncios: {},
+        ...body.data,
+      }
+
       // N8N generated a briefing via AI — save it to store_briefings
       const { data: onboarding } = await adminClient
         .from("client_onboardings")
@@ -162,7 +214,7 @@ export async function POST(request: NextRequest) {
         .from("store_briefings")
         .insert({
           store_id: storeId,
-          briefing_data: body.data,
+          briefing_data: briefingData,
           version: nextVersion,
           generated_at: new Date().toISOString(),
           generated_by: "n8n",
@@ -174,7 +226,12 @@ export async function POST(request: NextRequest) {
         throw new AppError("Erro ao salvar briefing", 500)
       }
 
-      log.info(`Briefing saved from N8N for store ${storeId}, version ${nextVersion}`)
+      // AC 12.1.4 — Log de confirmação após salvar
+      log.info("[Webhook] Briefing salvo com sucesso", {
+        store_id: storeId,
+        version: nextVersion,
+        generated_by: "n8n",
+      })
 
       return successResponse(request, {
         success: true,
