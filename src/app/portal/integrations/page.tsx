@@ -322,11 +322,7 @@ export default function PortalIntegrationsPage() {
   function getCarrierKeyStatus(carrier: CarrierConfig): boolean {
     if (!integrations?.tracking.carrier_keys) return false
     const keys = integrations.tracking.carrier_keys
-    if (carrier.id === "seventeen_track") return keys.seventeen_track
-    if (carrier.id === "trackingmore") return keys.trackingmore
-    if (carrier.id === "postnl") return keys.postnl
-    if (carrier.id === "cainiao") return true
-    return false
+    return keys[carrier.id as keyof typeof keys] ?? false
   }
 
   if (loading) {

@@ -110,12 +110,13 @@ export async function GET(request: NextRequest) {
         tracking: {
           active: trackingStore?.is_active || false,
           tracking_store_id: trackingStore?.id || null,
+          // @deprecated — redundant with carrier_keys.seventeen_track; kept for backwards compat with /api/portal/tracking
           has_17track_key: !!trackingStore?.seventeen_track_api_key,
           carrier_keys: {
             seventeen_track: !!trackingStore?.seventeen_track_api_key,
             trackingmore: !!(trackingStore?.carrier_api_keys as Record<string, unknown> | null)?.trackingmore,
             postnl: !!(trackingStore?.carrier_api_keys as Record<string, unknown> | null)?.postnl,
-            cainiao: true,
+            cainiao: true, // always true — Cainiao is free and requires no API key
           },
           widget_config: trackingStore?.widget_config || null,
           last_sync_at: trackingStore?.last_sync_at || null,
