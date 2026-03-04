@@ -6,6 +6,7 @@
  * The original functions in account.ts/metrics.ts still have in-memory L1 cache.
  */
 
+import { createHash } from "crypto"
 import { createAdminClient } from "@/lib/supabase/server"
 import { getCache, setCache } from "@/lib/cache"
 import { logger } from "@/lib/logger"
@@ -15,11 +16,14 @@ import { findPlacedOrderMetric } from "./metrics"
 const log = logger.child("CachedMetadata")
 
 /**
- * Derive a short, non-sensitive cache key from a Klaviyo API key.
- * Uses last 8 chars which are unique per account but don't expose the full key.
+ * Derive a collision-resistant cache key from a Klaviyo API key.
+ * Uses SHA-256 (first 16 hex chars = 64 bits of entropy) so two different
+ * Klaviyo accounts never share the same cache entry, even across orgs.
+ * The full key is never stored — only its hash.
  */
 function cacheKeyFromApiKey(apiKey: string): string {
-  return `kl_${apiKey.slice(-8)}`
+  const hash = createHash("sha256").update(apiKey).digest("hex")
+  return `kl_${hash.slice(0, 16)}`
 }
 
 /**
