@@ -111,6 +111,7 @@ function buildResponse(
   storeBreakdown: StoreRevenue[],
   rows: Array<{ sync_status: string; fetched_at: string | null }>,
   meta: DataStatusMeta,
+  storesCount: number,
 ): EnhancedTotalRevenueResponse {
   // Aggregate using BRL-converted values so multi-currency stores sum correctly
   const totalRevenue = storeBreakdown.reduce((sum, s) => sum + s.totalRevenueBRL, 0)
@@ -140,7 +141,7 @@ function buildResponse(
     totalRevenue,
     campaignRevenue,
     flowRevenue,
-    storesCount: storeBreakdown.length,
+    storesCount,
     storesWithRevenue,
     topStores,
     bottomStores,
@@ -193,10 +194,37 @@ async function liveFetchWithTimeout(
 
   async function fetchOneStore(store: StoreRow): Promise<void> {
     try {
-      const revenue = await getKlaviyoRevenueForStore(
+      const result = await getKlaviyoRevenueForStore(
         store.id, period,
         customStartDate || undefined, customEndDate || undefined,
       )
+
+      if (!result.success || !result.data) {
+        log.warn(`[LiveFetch] Failed for ${store.store_name}: ${result.error}`)
+        // Cache failure state with short TTL for retry
+        if ((CACHED_PERIODS as readonly string[]).includes(period)) {
+          Promise.resolve(
+            adminSupabase
+              .from("store_revenue_summary")
+              .upsert({
+                store_id: store.id,
+                org_id: store.org_id || null,
+                period_label: period,
+                klaviyo_total_revenue: 0,
+                klaviyo_campaign_revenue: 0,
+                klaviyo_flow_revenue: 0,
+                currency: "BRL",
+                sync_status: "error",
+                sync_error: result.error || "Unknown error",
+                expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+                fetched_at: new Date().toISOString(),
+              }, { onConflict: "store_id,period_label" })
+          ).catch((e) => log.warn(`[LiveFetch] Error cache upsert failed for ${store.store_name}:`, e))
+        }
+        return
+      }
+
+      const revenue = result.data
 
       // Convert to BRL for aggregation
       const [totalBRL, campaignBRL, flowBRL] = await Promise.all([
@@ -333,13 +361,21 @@ export async function GET(request: NextRequest) {
       const rows = summaries || []
 
       if (rows.length > 0) {
-        // Cache HIT
+        // Cache HIT — query real store count for accurate storesCount
+        const adminForCount = createAdminClient()
+        const { count: totalKlaviyoStores } = await adminForCount
+          .from("client_stores")
+          .select("id", { count: "exact", head: true })
+          .eq("org_id", orgId)
+          .or(KLAVIYO_CREDENTIALS_FILTER)
+
         const storeBreakdown = await buildStoreBreakdown(rows)
+        const realStoresCount = totalKlaviyoStores ?? storeBreakdown.length
         const elapsed = Date.now() - startTime
         log.info("[CacheStrategy]", {
           endpoint: "total-revenue",
           period,
-          storesCount: rows.length,
+          storesCount: realStoresCount,
           cacheHits: rows.length,
           cacheMisses: 0,
           liveFetches: 0,
@@ -352,7 +388,7 @@ export async function GET(request: NextRequest) {
           lastFetchedAt: null,
           isRefreshing: false,
           source: "cache",
-        })
+        }, realStoresCount)
         const response = successResponse(request, result)
         response.headers.set("X-Response-Time", `${elapsed}ms`)
         return response
@@ -470,7 +506,7 @@ export async function GET(request: NextRequest) {
       lastFetchedAt: fetchedAt,
       isRefreshing: false,
       source,
-    })
+    }, stores.length)
     const response = successResponse(request, result)
     response.headers.set("X-Response-Time", `${elapsed}ms`)
     return response

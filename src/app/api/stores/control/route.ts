@@ -439,7 +439,37 @@ export async function GET(request: Request) {
 
         await withConcurrencyLimit(storesWithKlaviyoNoCacheHit, 3, async (store) => {
           try {
-            const revenue = await getKlaviyoRevenueForStore(store.id, "30d")
+            const result = await getKlaviyoRevenueForStore(store.id, "30d")
+
+            if (!result.success || !result.data) {
+              log.warn(`[LiveFallback] Failed for ${store.store_name}: ${result.error}`)
+              // Cache failure state with short TTL for retry
+              Promise.resolve(
+                adminSupabase
+                  .from("store_revenue_summary")
+                  .upsert({
+                    store_id: store.id,
+                    org_id: store.org_id || orgId,
+                    period_label: "30d",
+                    klaviyo_total_revenue: 0,
+                    klaviyo_campaign_revenue: 0,
+                    klaviyo_flow_revenue: 0,
+                    currency: "BRL",
+                    sync_status: "error",
+                    sync_error: result.error || "Unknown error",
+                    expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+                    fetched_at: new Date().toISOString(),
+                  }, { onConflict: "store_id,period_label" })
+              ).catch((e: unknown) => log.warn(`[LiveFallback] Error cache upsert failed for ${store.store_name}:`, e))
+
+              syncMetaMap.set(store.id, {
+                fetchedAt: new Date().toISOString(),
+                syncStatus: "error",
+              })
+              return
+            }
+
+            const revenue = result.data
 
             // Convert to BRL for display
             const [totalBRL, campaignBRL, flowBRL] = await Promise.all([

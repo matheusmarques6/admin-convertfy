@@ -182,16 +182,19 @@ async function checkRevenue(store: StoreForCheck): Promise<SingleCheckResult> {
     const hasShopify = !!store.shopify_access_token;
 
     // Get current 30-day revenue
-    const [shopifyCurrent, klaviyoCurrent] = await Promise.all([
+    const [shopifyCurrent, klaviyoCurrentResult] = await Promise.all([
       hasShopify ? getShopifyReportForStore(store.id, '30d').catch(() => null) : Promise.resolve(null),
       hasKlaviyo ? getKlaviyoRevenueForStore(store.id, '30d').catch(() => null) : Promise.resolve(null),
     ]);
 
     // Get 90-day revenue (to calculate 3-month average)
-    const [shopify90d, klaviyo90d] = await Promise.all([
+    const [shopify90d, klaviyo90dResult] = await Promise.all([
       hasShopify ? getShopifyReportForStore(store.id, '90d').catch(() => null) : Promise.resolve(null),
       hasKlaviyo ? getKlaviyoRevenueForStore(store.id, '90d').catch(() => null) : Promise.resolve(null),
     ]);
+
+    const klaviyoCurrent = klaviyoCurrentResult?.success ? klaviyoCurrentResult.data : null;
+    const klaviyo90d = klaviyo90dResult?.success ? klaviyo90dResult.data : null;
 
     // Calculate current total revenue
     let currentRevenue = 0;
@@ -377,7 +380,7 @@ async function checkRecoveryRate(store: StoreForCheck): Promise<SingleCheckResul
     }
 
     // Get 30-day revenue data
-    const [shopifyResult, klaviyoResult] = await Promise.all([
+    const [shopifyResult, klaviyoResultRaw] = await Promise.all([
       hasShopify ? getShopifyReportForStore(store.id, '30d').catch(() => null) : Promise.resolve(null),
       getKlaviyoRevenueForStore(store.id, '30d').catch(() => null),
     ]);
@@ -387,7 +390,8 @@ async function checkRecoveryRate(store: StoreForCheck): Promise<SingleCheckResul
       totalRevenue = shopifyResult.summary.totalRevenue || 0;
     }
 
-    const klaviyoRevenue = klaviyoResult?.totalRevenue || 0;
+    const klaviyoData = klaviyoResultRaw?.success ? klaviyoResultRaw.data : null;
+    const klaviyoRevenue = klaviyoData?.totalRevenue || 0;
 
     // Skip if no total revenue (can't calculate rate)
     if (totalRevenue <= 0) {

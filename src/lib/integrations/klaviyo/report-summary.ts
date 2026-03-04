@@ -11,6 +11,7 @@ import { klaviyoRequest, parseDateRange, formatDateStr } from "./client"
 import { getTimezoneOffset } from "./account"
 import { getCachedAccountInfo } from "./cached-metadata"
 import { getCachedPlacedOrderMetric } from "./cached-metadata"
+import { type SyncResult } from "@/lib/shared/data-status"
 
 const log = logger.child("KlaviyoReportSummary")
 
@@ -44,14 +45,18 @@ export async function getKlaviyoRevenueForStore(
   period: string,
   customStartDate?: string | null,
   customEndDate?: string | null
-): Promise<KlaviyoRevenueSummary> {
+): Promise<SyncResult<KlaviyoRevenueSummary>> {
   try {
     const storeData = await getStoreCredentials(storeId)
     const apiKey = storeData.klaviyo_private_key || storeData.klaviyo_api_key
 
     if (!apiKey) {
       log.warn(`Store ${storeId}: no Klaviyo API key found after decryption`)
-      return { totalRevenue: 0, campaignRevenue: 0, flowRevenue: 0, currency: "BRL" }
+      return {
+        success: false, data: null,
+        error: "No valid Klaviyo API key",
+        source: "live", fetchedAt: new Date().toISOString(),
+      }
     }
 
     // Calculate date range
@@ -103,6 +108,11 @@ export async function getKlaviyoRevenueForStore(
 
     if (!campaignReport && !flowReport) {
       log.warn(`Store ${storeId}: both Klaviyo report requests returned null (API error or rate limit)`)
+      return {
+        success: false, data: null,
+        error: "Both campaign and flow report requests failed",
+        source: "live", fetchedAt: new Date().toISOString(),
+      }
     }
 
     // Sum up revenue from campaign results
@@ -122,13 +132,21 @@ export async function getKlaviyoRevenueForStore(
     log.info(`Store ${storeId}: campaign=${currency} ${campaignRevenue}, flow=${currency} ${flowRevenue}`)
 
     return {
-      totalRevenue: campaignRevenue + flowRevenue,
-      campaignRevenue,
-      flowRevenue,
-      currency,
+      success: true,
+      data: {
+        totalRevenue: campaignRevenue + flowRevenue,
+        campaignRevenue,
+        flowRevenue,
+        currency,
+      },
+      source: "live", fetchedAt: new Date().toISOString(),
     }
   } catch (error) {
     log.error("Error in getKlaviyoRevenueForStore:", error)
-    return { totalRevenue: 0, campaignRevenue: 0, flowRevenue: 0, currency: "BRL" }
+    return {
+      success: false, data: null,
+      error: error instanceof Error ? error.message : "Unknown error",
+      source: "live", fetchedAt: new Date().toISOString(),
+    }
   }
 }

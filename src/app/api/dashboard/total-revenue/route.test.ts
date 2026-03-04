@@ -63,6 +63,7 @@ function buildResponse(
   storeBreakdown: StoreRevenue[],
   rows: Array<{ sync_status: string; fetched_at: string | null }>,
   meta: DataStatusMeta,
+  storesCount?: number,
 ) {
   const totalRevenue = storeBreakdown.reduce((sum, s) => sum + s.totalRevenue, 0)
   const campaignRevenue = storeBreakdown.reduce((sum, s) => sum + s.campaignRevenue, 0)
@@ -90,7 +91,7 @@ function buildResponse(
     totalRevenue,
     campaignRevenue,
     flowRevenue,
-    storesCount: storeBreakdown.length,
+    storesCount: storesCount ?? storeBreakdown.length,
     storesWithRevenue,
     topStores,
     bottomStores,
@@ -416,5 +417,34 @@ describe("buildResponse", () => {
     const result = buildResponse("30d", stores, rows, { ...META, lastFetchedAt: null })
 
     expect(result.lastFetchedAt).toBeNull()
+  })
+
+  it("should use explicit storesCount when provided (Story 11.4)", () => {
+    const stores: StoreRevenue[] = [
+      { storeId: "s1", storeName: "A", clientName: "C1", totalRevenue: 5000, campaignRevenue: 3000, flowRevenue: 2000 },
+      { storeId: "s2", storeName: "B", clientName: "C2", totalRevenue: 3000, campaignRevenue: 1000, flowRevenue: 2000 },
+    ]
+    const rows = [
+      { sync_status: "ok", fetched_at: "2026-03-01T12:00:00Z" },
+      { sync_status: "ok", fetched_at: "2026-03-01T13:00:00Z" },
+    ]
+
+    // Org has 4 stores with Klaviyo but only 2 are in cache
+    const result = buildResponse("30d", stores, rows, META, 4)
+
+    expect(result.storesCount).toBe(4)
+    expect(result.storesWithRevenue).toBe(2)
+    expect(result.storeBreakdown).toHaveLength(2)
+  })
+
+  it("should fallback to storeBreakdown.length when storesCount is not provided", () => {
+    const stores: StoreRevenue[] = [
+      { storeId: "s1", storeName: "A", clientName: "C1", totalRevenue: 5000, campaignRevenue: 3000, flowRevenue: 2000 },
+    ]
+    const rows = [{ sync_status: "ok", fetched_at: null }]
+
+    const result = buildResponse("30d", stores, rows, META)
+
+    expect(result.storesCount).toBe(1)
   })
 })
