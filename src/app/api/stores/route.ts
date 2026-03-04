@@ -3,6 +3,7 @@ import { errorResponse, AppError } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { createClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { decrypt } from "@/lib/crypto"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("Stores")
@@ -68,6 +69,7 @@ export async function GET(request: NextRequest) {
         shopify_api_secret: _ss,
         klaviyo_private_key: _kp,
         klaviyo_api_key: _ka,
+        klaviyo_public_key: _kpub,
         ga4_credentials: _g,
         meta_access_token: _m,
         google_ads_credentials: _ga,
@@ -75,8 +77,19 @@ export async function GET(request: NextRequest) {
         ...rest
       } = store
 
+      // Decrypt public key (Site ID) — it's not a secret, safe to show in UI
+      let klaviyo_public_key: string | null = null
+      if (_kpub && typeof _kpub === "string") {
+        try {
+          klaviyo_public_key = decrypt(_kpub)
+        } catch {
+          klaviyo_public_key = _kpub // fallback if not encrypted (legacy)
+        }
+      }
+
       return {
         ...rest,
+        klaviyo_public_key,
         has_shopify_credentials,
         has_klaviyo_credentials,
         has_ga4_credentials,

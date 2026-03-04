@@ -147,9 +147,8 @@ export async function POST(request: NextRequest) {
       storeData.ga4_credentials = encryptCredentialsJson(ga4_credentials)
     }
 
-    // Validate credentials BEFORE inserting (using plain-text values from body)
-    const validationResults = await runCredentialValidation(fields, storeData)
-
+    // STEP 1: Insert store FIRST (before validation).
+    // This prevents data loss if Klaviyo/Shopify API validation times out.
     const { data, error } = await supabase
       .from("client_stores")
       .insert(storeData)
@@ -175,6 +174,23 @@ export async function POST(request: NextRequest) {
     }
 
     log.info("Store created", { store_id: data.id, client_id: client_id || null, standalone: !client_id })
+
+    // STEP 2: Validate credentials asynchronously and update validation fields.
+    let validationResults: { shopify?: ValidationResult; klaviyo?: ValidationResult } = {}
+    try {
+      const validationUpdates: Record<string, unknown> = {}
+      validationResults = await runCredentialValidation(fields, validationUpdates)
+
+      if (Object.keys(validationUpdates).length > 0) {
+        await supabase
+          .from("client_stores")
+          .update(validationUpdates)
+          .eq("id", data.id)
+      }
+    } catch (validationError) {
+      log.warn("Credential validation failed (store already created)", { store_id: data.id, error: validationError })
+    }
+
     return successResponse(request, { success: true, store: data, validation_results: validationResults })
   } catch (error) {
     return errorResponse(request, error, "ClientStoresCredentials")
@@ -208,9 +224,8 @@ export async function PUT(request: NextRequest) {
       return successResponse(request, { success: true, message: "No fields to update" })
     }
 
-    // Validate credentials if they are being updated (using plain-text values from body)
-    const validationResults = await runCredentialValidation(fields, updates)
-
+    // STEP 1: Save credentials FIRST (before validation).
+    // This prevents data loss if Klaviyo/Shopify API validation times out.
     const { data, error } = await supabase
       .from("client_stores")
       .update(updates)
@@ -220,7 +235,25 @@ export async function PUT(request: NextRequest) {
 
     if (error) throw error
 
-    log.info("Store updated", { store_id, fields: Object.keys(updates) })
+    log.info("Store updated (pre-validation)", { store_id, fields: Object.keys(updates) })
+
+    // STEP 2: Validate credentials asynchronously and update validation fields.
+    // Even if this times out, the credentials are already persisted.
+    let validationResults: { shopify?: ValidationResult; klaviyo?: ValidationResult } = {}
+    try {
+      const validationUpdates: Record<string, unknown> = {}
+      validationResults = await runCredentialValidation(fields, validationUpdates)
+
+      if (Object.keys(validationUpdates).length > 0) {
+        await supabase
+          .from("client_stores")
+          .update(validationUpdates)
+          .eq("id", store_id)
+      }
+    } catch (validationError) {
+      log.warn("Credential validation failed (credentials already saved)", { store_id, error: validationError })
+    }
+
     return successResponse(request, { success: true, store: data, validation_results: validationResults })
   } catch (error) {
     return errorResponse(request, error, "ClientStoresCredentials")
