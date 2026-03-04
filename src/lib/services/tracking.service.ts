@@ -1,5 +1,11 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
+import { decrypt } from "@/lib/crypto"
+import {
+  trackWithBestProvider,
+  type CarrierKeys,
+  type TrackingResult,
+} from "@/lib/tracking/carriers"
 import type { TrackingStatus, TrackingEvent } from "@/types/tracking"
 
 const log = logger.child("TrackingService")
@@ -249,6 +255,134 @@ function getMockStatus(events: TrackingEvent[]): TrackingStatus {
   return events.length > 0 ? events[0].status : "pending"
 }
 
+// --- Carrier Status Mapping ---
+
+// Explicit map: provider status strings → valid TrackingStatus
+// Avoids direct `as TrackingStatus` cast for values that don't exist in the union
+const CARRIER_STATUS_MAP: Record<string, TrackingStatus> = {
+  delivered:        "delivered",
+  in_transit:       "in_transit",
+  out_for_delivery: "out_for_delivery",
+  pending:          "pending",
+  info_received:    "info_received",
+  failed_attempt:   "failed_attempt",
+  exception:        "exception",
+  expired:          "expired",
+  // Provider-specific statuses that need normalization:
+  pick_up:          "in_transit",      // Cainiao/PostNL: collected = in transit
+  undelivered:      "failed_attempt",  // TrackingMore: not delivered = failed attempt
+  alert:            "exception",       // TrackingMore: alert = exception
+}
+
+function mapCarriersResultToTrackResult(result: TrackingResult): TrackResult {
+  // Normalize each event: carriers.TrackingEvent has optional status/location,
+  // but types/tracking.TrackingEvent requires status: TrackingStatus and location: string | null
+  const normalizedEvents: TrackingEvent[] = result.events.map((evt) => ({
+    date: evt.date,
+    description: evt.description,
+    status: CARRIER_STATUS_MAP[evt.status ?? ""] ?? "in_transit",
+    location: evt.location ?? null,
+  }))
+
+  return {
+    status: CARRIER_STATUS_MAP[result.status] ?? "pending",
+    statusDescription: result.status_detail || result.last_event || "",
+    location: normalizedEvents[0]?.location || null,
+    events: normalizedEvents,
+    carrier: result.carrier_name || null,
+    estimatedDelivery: result.estimated_delivery,
+  }
+}
+
+// --- Task 1: Standalone trackVia17track function ---
+
+/**
+ * Calls 17track API for the given tracking numbers using the provided API key.
+ * Returns an array of TrackingResult objects compatible with trackWithBestProvider.
+ */
+export async function trackVia17track(
+  numbers: string[],
+  apiKey: string
+): Promise<TrackingResult[]> {
+  if (numbers.length === 0) return []
+
+  const results: TrackingResult[] = []
+
+  for (const trackingNumber of numbers) {
+    const detected = detectCarrier(trackingNumber)
+    const resolvedCarrierCode = detected.code
+
+    try {
+      // Register tracking number with 17track
+      const registerRes = await fetch(`${SEVENTEEN_TRACK_API}/register`, {
+        method: "POST",
+        headers: {
+          "17token": apiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify([{ number: trackingNumber, carrier: resolvedCarrierCode }]),
+      })
+
+      if (!registerRes.ok) {
+        log.warn("17track register failed", { status: registerRes.status, trackingNumber })
+      }
+
+      // Brief pause for 17track to process registration
+      await new Promise((r) => setTimeout(r, 300))
+
+      // Get tracking info
+      const response = await fetch(`${SEVENTEEN_TRACK_API}/gettrackinfo`, {
+        method: "POST",
+        headers: {
+          "17token": apiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify([{ number: trackingNumber, carrier: resolvedCarrierCode }]),
+      })
+
+      if (!response.ok) {
+        log.error("17track API response error", { status: response.status, trackingNumber })
+        continue
+      }
+
+      const data = await response.json()
+      const raw = data?.data?.accepted?.[0] as SeventeenTrackResult | undefined
+
+      if (!raw) {
+        log.warn("No tracking result from 17track", {
+          trackingNumber,
+          data: JSON.stringify(data?.data?.rejected?.slice(0, 2)),
+        })
+        continue
+      }
+
+      const mappedEvents = mapSeventeenTrackEvents(raw.track)
+      const statusTag = mapSeventeenTrackStatus(raw.tag)
+      const carrierName = resolveCarrierName(raw.carrier, detected.name)
+
+      // carriers.TrackingEvent has optional fields; cast to satisfy TrackingResult shape
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const carrierEvents = mappedEvents as any[]
+
+      results.push({
+        tracking_number: trackingNumber,
+        carrier_code: "17track",
+        carrier_name: carrierName,
+        status: statusTag,
+        status_detail: mappedEvents[0]?.description || raw.tag,
+        last_event: mappedEvents[0]?.description || "",
+        last_event_at: mappedEvents[0]?.date || null,
+        estimated_delivery: null,
+        events: carrierEvents,
+      })
+    } catch (err) {
+      log.error("17track API error", { trackingNumber, err })
+    }
+  }
+
+  return results
+}
+
 // --- Public API ---
 
 export interface TrackResult {
@@ -266,63 +400,20 @@ export async function trackNumber(trackingNumber: string, carrierCode = 0): Prom
     return getMockTrackResult(trackingNumber)
   }
 
-  // Auto-detect carrier if not specified
-  const detected = detectCarrier(trackingNumber)
-  const resolvedCarrierCode = carrierCode || detected.code
+  // carrierCode param kept for backward-compat with callers; auto-detection handled inside trackVia17track
+  void carrierCode
 
   try {
-    // Register tracking number with 17track
-    const registerRes = await fetch(`${SEVENTEEN_TRACK_API}/register`, {
-      method: "POST",
-      headers: {
-        "17token": API_KEY,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify([{ number: trackingNumber, carrier: resolvedCarrierCode }]),
-    })
+    // Use the standalone trackVia17track internally
+    const results = await trackVia17track([trackingNumber], API_KEY)
 
-    if (!registerRes.ok) {
-      log.warn("17track register failed", { status: registerRes.status, trackingNumber })
+    if (results.length > 0) {
+      return mapCarriersResultToTrackResult(results[0])
     }
 
-    // Brief pause for 17track to process registration
-    await new Promise((r) => setTimeout(r, 300))
-
-    // Get tracking info
-    const response = await fetch(`${SEVENTEEN_TRACK_API}/gettrackinfo`, {
-      method: "POST",
-      headers: {
-        "17token": API_KEY,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify([{ number: trackingNumber, carrier: resolvedCarrierCode }]),
-    })
-
-    if (!response.ok) {
-      log.error("17track API response error", { status: response.status, trackingNumber })
-      return getMockTrackResult(trackingNumber)
-    }
-
-    const data = await response.json()
-    const result = data?.data?.accepted?.[0] as SeventeenTrackResult | undefined
-
-    if (!result) {
-      log.warn("No tracking result from 17track", { trackingNumber, data: JSON.stringify(data?.data?.rejected?.slice(0, 2)) })
-      return getMockTrackResult(trackingNumber)
-    }
-
-    const events = mapSeventeenTrackEvents(result.track)
-    const status = mapSeventeenTrackStatus(result.tag)
-    const carrierName = resolveCarrierName(result.carrier, detected.name)
-
-    return {
-      status,
-      statusDescription: events[0]?.description || result.tag,
-      location: events[0]?.location || null,
-      events,
-      carrier: carrierName,
-      estimatedDelivery: null,
-    }
+    // trackVia17track returned no results — fallback to mock
+    log.warn("trackVia17track returned no results, falling back to mock", { trackingNumber })
+    return getMockTrackResult(trackingNumber)
   } catch (err) {
     log.error("17track API error, falling back to mock", err)
     return getMockTrackResult(trackingNumber)
@@ -342,12 +433,67 @@ function getMockTrackResult(trackingNumber: string): TrackResult {
   }
 }
 
+// --- Task 2: Resolve carrier keys per store ---
+
+interface StoreCarrierApiKeys {
+  trackingmore?: string
+  postnl?: string
+  [key: string]: string | undefined
+}
+
+async function resolveCarrierKeys(trackingCodeId: string, trackingStoreId: string | null): Promise<CarrierKeys> {
+  const globalApiKey = process.env.SEVENTEEN_TRACK_API_KEY
+
+  // If no store id, use global fallback only
+  if (!trackingStoreId) {
+    return {
+      seventeen_track: globalApiKey,
+      cainiao: true,
+    }
+  }
+
+  const admin = createAdminClient()
+
+  const { data: store, error } = await admin
+    .from("tracking_stores")
+    .select("seventeen_track_api_key, carrier_api_keys")
+    .eq("id", trackingStoreId)
+    .single()
+
+  if (error || !store) {
+    log.warn("tracking_store not found, using global fallback", { trackingCodeId })
+    return {
+      seventeen_track: globalApiKey,
+      cainiao: true,
+    }
+  }
+
+  const apiKeys = (store.carrier_api_keys ?? {}) as StoreCarrierApiKeys
+
+  const keys: CarrierKeys = {
+    // Prefer store key, fall back to global env var
+    seventeen_track: store.seventeen_track_api_key
+      ? decrypt(store.seventeen_track_api_key)
+      : globalApiKey,
+    trackingmore: apiKeys.trackingmore
+      ? decrypt(apiKeys.trackingmore)
+      : undefined,
+    postnl: apiKeys.postnl
+      ? decrypt(apiKeys.postnl)
+      : undefined,
+    cainiao: true, // always enabled (free)
+  }
+
+  return keys
+}
+
 export async function syncTrackingCode(trackingCodeId: string): Promise<void> {
   const admin = createAdminClient()
 
+  // Task 2.1: fetch tracking_code including tracking_store_id
   const { data: code, error } = await admin
     .from("tracking_codes")
-    .select("*")
+    .select("*, tracking_store_id")
     .eq("id", trackingCodeId)
     .single()
 
@@ -356,33 +502,79 @@ export async function syncTrackingCode(trackingCodeId: string): Promise<void> {
     return
   }
 
-  const result = await trackNumber(code.tracking_number, code.carrier_code || 0)
+  // Task 2.2–2.4: resolve carrier keys for this store (with fallback)
+  const keys = await resolveCarrierKeys(trackingCodeId, code.tracking_store_id ?? null)
+
+  // Task 3.1: call trackWithBestProvider with resolved keys
+  let trackResult: TrackResult | null = null
+  const multiCarrierResult = await trackWithBestProvider(
+    code.tracking_number,
+    keys,
+    trackVia17track
+  )
+
+  if (multiCarrierResult) {
+    // Task 3.2: map TrackingResult → TrackResult via explicit status map
+    trackResult = mapCarriersResultToTrackResult(multiCarrierResult)
+
+    // Task 3.4: log the provider used after successful result
+    log.info("Tracking synced via provider", {
+      trackingCodeId,
+      trackingNumber: code.tracking_number,
+      provider: multiCarrierResult.carrier_code || "unknown",
+      status: multiCarrierResult.status,
+    })
+  } else {
+    // Task 3.3: trackWithBestProvider returned null — try global trackNumber() as last resort
+    if (!keys.seventeen_track) {
+      // No API key available at all — skip to avoid writing mock data
+      log.warn("No API key available, skipping sync", { trackingCodeId })
+      return
+    }
+
+    log.info("trackWithBestProvider returned null, falling back to global trackNumber", {
+      trackingCodeId,
+      trackingNumber: code.tracking_number,
+    })
+
+    const fallbackResult = await trackNumber(code.tracking_number, code.carrier_code || 0)
+
+    // If trackNumber used mock (API_KEY env var not set), it returns mock data — skip
+    if (!API_KEY) {
+      log.warn("No API key available, skipping sync", { trackingCodeId })
+      return
+    }
+
+    trackResult = fallbackResult
+  }
+
+  if (!trackResult) return
 
   const updateData: Record<string, unknown> = {
-    status: result.status,
-    status_detail: result.statusDescription,
-    last_event: result.location || result.events[0]?.description || null,
-    last_event_at: result.events[0]?.date || null,
-    tracking_events: result.events,
+    status: trackResult.status,
+    status_detail: trackResult.statusDescription,
+    last_event: trackResult.location || trackResult.events[0]?.description || null,
+    last_event_at: trackResult.events[0]?.date || null,
+    tracking_events: trackResult.events,
     last_checked_at: new Date().toISOString(),
   }
 
-  if (result.estimatedDelivery) {
-    updateData.estimated_delivery = result.estimatedDelivery
+  if (trackResult.estimatedDelivery) {
+    updateData.estimated_delivery = trackResult.estimatedDelivery
   }
 
-  if (result.carrier) {
-    updateData.carrier_name = result.carrier
+  if (trackResult.carrier) {
+    updateData.carrier_name = trackResult.carrier
   }
 
   // Update shipped_at / delivered_at on the parent tracking_order
   if (code.tracking_order_id) {
     const orderUpdate: Record<string, unknown> = {}
-    if (result.status === "delivered") {
-      orderUpdate.delivered_at = result.events[0]?.date || new Date().toISOString()
+    if (trackResult.status === "delivered") {
+      orderUpdate.delivered_at = trackResult.events[0]?.date || new Date().toISOString()
     }
-    if (result.status === "in_transit" || result.status === "out_for_delivery") {
-      orderUpdate.shipped_at = result.events[result.events.length - 1]?.date || new Date().toISOString()
+    if (trackResult.status === "in_transit" || trackResult.status === "out_for_delivery") {
+      orderUpdate.shipped_at = trackResult.events[trackResult.events.length - 1]?.date || new Date().toISOString()
     }
     if (Object.keys(orderUpdate).length > 0) {
       await admin
@@ -397,7 +589,7 @@ export async function syncTrackingCode(trackingCodeId: string): Promise<void> {
     .update(updateData)
     .eq("id", trackingCodeId)
 
-  log.info("Tracking code synced", { trackingCodeId, status: result.status })
+  log.info("Tracking code synced", { trackingCodeId, status: trackResult.status })
 }
 
 export async function syncAllPendingCodes(): Promise<number> {
