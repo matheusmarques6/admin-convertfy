@@ -781,14 +781,14 @@ function IntegrationStatusCard({
                           : "Não configurado"}
                   </p>
                   {connectionStatus === "error" && status?.error && (
-                    <p className="text-xs text-destructive mt-0.5 truncate" title={status.error}>
+                    <p className="text-xs text-destructive mt-0.5 break-words" title={status.error}>
                       {status.error}
                     </p>
                   )}
-                  {key === "klaviyo" && connectionStatus === "connected" && status?.missingScopes && status.missingScopes.length > 0 && (
-                    <p className="text-xs text-warning flex items-center gap-1 mt-0.5">
-                      <AlertTriangle className="h-3 w-3 flex-shrink-0" />
-                      Scopes faltando: {status.missingScopes.join(", ")}
+                  {key === "klaviyo" && status?.missingScopes && status.missingScopes.length > 0 && (
+                    <p className="text-xs text-warning flex items-start gap-1 mt-0.5">
+                      <AlertTriangle className="h-3 w-3 flex-shrink-0 mt-0.5" />
+                      <span>Scopes faltando: <strong>{status.missingScopes.join(", ")}</strong>. Edite a chave em Klaviyo → Settings → API Keys.</span>
                     </p>
                   )}
                   {key === "klaviyo" && connectionStatus === "connected" && status?.hasReportingAccess === false && !status?.missingScopes?.length && (

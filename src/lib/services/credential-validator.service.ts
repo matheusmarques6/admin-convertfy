@@ -217,7 +217,8 @@ export async function validateKlaviyoCredentials(
     if (response.status === 403) {
       return {
         valid: false,
-        error: "API Key válida, mas sem permissão 'metrics:read'. Verifique os scopes da chave.",
+        error: "Scopes insuficientes: a chave não tem permissão 'metrics:read'. No Klaviyo, vá em Settings → API Keys, edite a chave e ative os scopes necessários.",
+        missingScopes: ["metrics:read"],
         tested_at: testedAt,
       }
     }
@@ -242,9 +243,21 @@ export async function validateKlaviyoCredentials(
       responseBody: responseText.substring(0, 500),
     })
 
+    // Try to detect scope errors in the response body (e.g. HTTP 400 with scope detail)
+    const scopeMatch = responseText.match(/missing required scopes[:\s]+([^\\"]+)/i)
+    if (scopeMatch) {
+      const scopes = scopeMatch[1].trim().split(/[\s,]+/).filter(Boolean)
+      return {
+        valid: false,
+        error: `Scopes insuficientes: ${scopes.join(", ")}. No Klaviyo, vá em Settings → API Keys e ative os scopes necessários.`,
+        missingScopes: scopes,
+        tested_at: testedAt,
+      }
+    }
+
     return {
       valid: false,
-      error: `Erro Klaviyo API: HTTP ${response.status}`,
+      error: `Erro na API Klaviyo (HTTP ${response.status}). Verifique se a chave é uma Private API Key válida.`,
       tested_at: testedAt,
     }
   } catch (err) {
