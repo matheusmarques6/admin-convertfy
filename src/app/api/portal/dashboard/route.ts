@@ -364,9 +364,9 @@ async function liveFetchKlaviyoForPortal(
     const elapsed = Date.now() - startMs
     log.info(`[Portal LiveFetch] fetchKlaviyoPerformance completed in ${elapsed}ms for store ${store.id}: attributed=${perfData.attributedRevenue}, campaigns=${perfData.recentCampaigns.length}, flows=${perfData.topFlows.length}`)
 
-    // Save to cache tables (fire-and-forget)
+    // Save to cache tables (fire-and-forget) — use adminClient to bypass RLS on writes
     const { startDateStr, endDateStr } = parseDateRangeInTimezone(period, "America/Sao_Paulo")
-    savePerfDataToCache(supabase, store.id, store.org_id || null, period, perfData, startDateStr, endDateStr).catch(() => {})
+    savePerfDataToCache(createAdminClient(), store.id, store.org_id || null, period, perfData, startDateStr, endDateStr).catch(() => {})
 
     await releaseLiveFetch(supabase, store.id, fetchKey, "completed")
     return perfDataToCachedKlaviyo(perfData)
