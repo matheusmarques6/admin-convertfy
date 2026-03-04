@@ -443,7 +443,7 @@ export async function GET(request: Request) {
 
             if (!result.success || !result.data) {
               log.warn(`[LiveFallback] Failed for ${store.store_name}: ${result.error}`)
-              // Cache failure state with short TTL for retry
+              // Live fetch error upsert — campos limitados (nao inclui audience/store_total_revenue do cron)
               Promise.resolve(
                 adminSupabase
                   .from("store_revenue_summary")
@@ -456,6 +456,7 @@ export async function GET(request: Request) {
                     klaviyo_flow_revenue: 0,
                     currency: "BRL",
                     sync_status: "error",
+                    sync_source: "live",
                     sync_error: result.error || "Unknown error",
                     expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
                     fetched_at: new Date().toISOString(),
@@ -490,7 +491,10 @@ export async function GET(request: Request) {
               syncStatus: "ok",
             })
 
-            // Fire-and-forget: cache for next request (including zero revenue)
+            // Live fetch upsert — campos limitados ao escopo do live fetch.
+            // Campos exclusivos do cron (total_leads, engaged_leads, store_total_revenue)
+            // NAO sao incluidos aqui para evitar sobrescrita.
+            // Se no futuro o live fetch precisar desses campos, usar UPDATE condicional.
             Promise.resolve(
               adminSupabase
                 .from("store_revenue_summary")
@@ -503,9 +507,12 @@ export async function GET(request: Request) {
                   klaviyo_flow_revenue: revenue.flowRevenue,
                   currency: revenue.currency,
                   sync_status: "ok",
+                  sync_source: "live",
                   sync_error: null,
                   expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
                   fetched_at: new Date().toISOString(),
+                  // NAO incluir: store_total_revenue, total_leads, engaged_leads
+                  // Esses campos sao exclusivos do cron sync
                 }, { onConflict: "store_id,period_label" })
             )
               .then(() => log.info(`[LiveFallback] Cached revenue for ${store.store_name} (${revenue.currency} ${revenue.totalRevenue})`))
