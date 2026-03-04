@@ -9,6 +9,10 @@ import { logger } from "@/lib/logger"
 
 const log = logger.child("ClientStoresCredentials")
 
+function escapeLike(str: string): string {
+  return str.replace(/%/g, "\\%").replace(/_/g, "\\_")
+}
+
 const ENCRYPTED_FIELDS = [
   "shopify_access_token",
   "shopify_api_key",
@@ -147,6 +151,28 @@ export async function POST(request: NextRequest) {
       storeData.ga4_credentials = encryptCredentialsJson(ga4_credentials)
     }
 
+    // Fix 3: Trim store_name before insert
+    if (storeData.store_name) {
+      storeData.store_name = storeData.store_name.trim()
+    }
+
+    // Anti-duplicate check: verify no active store with same name in this org
+    if (storeData.store_name && storeData.org_id) {
+      const adminClient = createAdminClient()
+      const { data: existing } = await adminClient
+        .from("client_stores")
+        .select("id, store_name")
+        .eq("org_id", storeData.org_id)
+        .eq("is_active", true)
+        .ilike("store_name", escapeLike(storeData.store_name))
+        .limit(1)
+        .maybeSingle()
+
+      if (existing) {
+        throw new AppError(`Loja "${storeData.store_name}" já existe nesta organização`, 409)
+      }
+    }
+
     // STEP 1: Insert store FIRST (before validation).
     // This prevents data loss if Klaviyo/Shopify API validation times out.
     const { data, error } = await supabase
@@ -155,7 +181,13 @@ export async function POST(request: NextRequest) {
       .select()
       .single()
 
-    if (error) throw error
+    // Fix 1: Handle unique constraint violation (race condition)
+    if (error) {
+      if (error.code === "23505") {
+        throw new AppError("Loja com este nome já existe nesta organização", 409)
+      }
+      throw error
+    }
 
     // (GAP-G4) Se loja avulsa, auto-criar agent_store_access para o criador
     if (!client_id && orgMember) {
@@ -214,6 +246,33 @@ export async function PUT(request: NextRequest) {
     await requireStoreAccess(store_id, user.id)
 
     const updates = processFields(fields)
+
+    // Fix 4: Rename protection — check for duplicate store name on rename
+    if (updates.store_name) {
+      updates.store_name = updates.store_name.trim()
+      const adminClient = createAdminClient()
+      const { data: currentStore } = await adminClient
+        .from("client_stores")
+        .select("org_id")
+        .eq("id", store_id)
+        .single()
+
+      if (currentStore?.org_id) {
+        const { data: existing } = await adminClient
+          .from("client_stores")
+          .select("id, store_name")
+          .eq("org_id", currentStore.org_id)
+          .eq("is_active", true)
+          .ilike("store_name", escapeLike(updates.store_name))
+          .neq("id", store_id)
+          .limit(1)
+          .maybeSingle()
+
+        if (existing) {
+          throw new AppError(`Loja "${updates.store_name}" já existe nesta organização`, 409)
+        }
+      }
+    }
 
     // Handle ga4_credentials (encrypt as JSON string)
     if (ga4_credentials !== undefined) {

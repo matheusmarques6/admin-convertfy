@@ -6,6 +6,10 @@ import { logger } from "@/lib/logger"
 
 const log = logger.child("PortalOnboardingWizard")
 
+function escapeLike(str: string): string {
+  return str.replace(/%/g, "\\%").replace(/_/g, "\\_")
+}
+
 /**
  * GET /api/portal/onboarding/wizard
  *
@@ -164,7 +168,7 @@ export async function POST(request: NextRequest) {
         const { store_id, store_name, store_url, platform, niche, country, language, target_audience, free_shipping_type } = data
 
         const storeUpdate = {
-          store_name,
+          store_name: store_name?.trim(),
           store_url,
           platform: platform || "shopify",
           niche,
@@ -192,15 +196,46 @@ export async function POST(request: NextRequest) {
             .update(storeUpdate)
             .eq("id", store_id)
         } else {
-          // Create new store
+          // Fix 5: Get org_id from client (needed for duplicate check and insert)
+          const { data: clientData } = await adminClient
+            .from("clients")
+            .select("org_id")
+            .eq("id", portalUser.client_id)
+            .single()
+
+          // Anti-duplicate check before creating new store
+          if (store_name && clientData?.org_id) {
+            const { data: existing } = await adminClient
+              .from("client_stores")
+              .select("id, store_name")
+              .eq("org_id", clientData.org_id)
+              .eq("is_active", true)
+              .ilike("store_name", escapeLike(store_name.trim()))
+              .limit(1)
+              .maybeSingle()
+
+            if (existing) {
+              throw new AppError(`Loja "${store_name.trim()}" já existe nesta organização`, 409)
+            }
+          }
+
+          // Create new store WITH org_id
           const { error } = await adminClient
             .from("client_stores")
             .insert({
               ...storeUpdate,
               client_id: portalUser.client_id,
+              org_id: clientData?.org_id,
               is_active: true,
             })
-          if (error) throw error
+
+          // Fix 1: Handle unique constraint violation (race condition)
+          if (error) {
+            if (error.code === "23505") {
+              throw new AppError("Loja com este nome já existe nesta organização", 409)
+            }
+            throw error
+          }
         }
 
         log.info("Wizard step 2 saved", { clientId: portalUser.client_id })
