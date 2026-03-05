@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { Loader2, Store, Check, Search } from "lucide-react"
+import { Loader2, Store, Check, Search, ChevronLeft, ChevronRight } from "lucide-react"
 import Link from "next/link"
 
 import { Button } from "@/components/ui/button"
@@ -80,6 +80,8 @@ interface CampaignGeneration {
 // Inline StoreSelector (simple version for the form)
 // ---------------------------------------------------------------------------
 
+const STORES_PER_PAGE = 6
+
 function InlineStoreSelector({
   stores,
   selected,
@@ -92,6 +94,8 @@ function InlineStoreSelector({
   const [search, setSearch] = useState("")
   const [countryFilter, setCountryFilter] = useState<string>("all")
   const [languageFilter, setLanguageFilter] = useState<string>("all")
+  const [page, setPage] = useState(0)
+  const gridRef = useRef<HTMLDivElement>(null)
 
   const countries = useMemo(
     () => [...new Set(stores.map((s) => s.country))].sort(),
@@ -112,6 +116,12 @@ function InlineStoreSelector({
     })
   }, [stores, search, countryFilter, languageFilter])
 
+  // Reset page when filters change
+  useEffect(() => { setPage(0) }, [search, countryFilter, languageFilter])
+
+  const totalPages = Math.ceil(filteredStores.length / STORES_PER_PAGE)
+  const pagedStores = filteredStores.slice(page * STORES_PER_PAGE, (page + 1) * STORES_PER_PAGE)
+
   const filteredIds = useMemo(() => new Set(filteredStores.map((s) => s.id)), [filteredStores])
   const allFilteredSelected = filteredStores.length > 0 && filteredStores.every((s) => selected.includes(s.id))
 
@@ -130,6 +140,11 @@ function InlineStoreSelector({
 
   const clearFiltered = () => {
     onChange(selected.filter((id) => !filteredIds.has(id)))
+  }
+
+  const goToPage = (p: number) => {
+    setPage(p)
+    gridRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })
   }
 
   return (
@@ -200,56 +215,99 @@ function InlineStoreSelector({
         </div>
       )}
 
-      {/* Store grid */}
+      {/* Store grid (paginated) */}
       {filteredStores.length === 0 ? (
         <p className="text-sm text-slate-500 dark:text-slate-400 text-center py-4">
           Nenhuma loja encontrada para os filtros selecionados.
         </p>
       ) : (
-        <div className="grid gap-2 sm:grid-cols-2">
-          {filteredStores.map((store) => {
-            const isSelected = selected.includes(store.id)
-            return (
-              <button
-                key={store.id}
-                type="button"
-                onClick={() => toggle(store.id)}
-                className={`flex items-center gap-3 rounded-lg border p-3 text-left transition-colors ${
-                  isSelected
-                    ? "border-primary bg-primary/5 dark:bg-primary/10"
-                    : "border-slate-200 dark:border-slate-700/40 hover:border-slate-300 dark:hover:border-slate-600"
-                }`}
-              >
-                <div
-                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+        <>
+          <div ref={gridRef} className="grid gap-2 sm:grid-cols-3">
+            {pagedStores.map((store) => {
+              const isSelected = selected.includes(store.id)
+              return (
+                <button
+                  key={store.id}
+                  type="button"
+                  onClick={() => toggle(store.id)}
+                  className={`flex items-center gap-3 rounded-lg border p-3 text-left transition-colors ${
                     isSelected
-                      ? "bg-primary text-white"
-                      : "bg-slate-100 dark:bg-slate-800 text-slate-400"
+                      ? "border-primary bg-primary/5 dark:bg-primary/10"
+                      : "border-slate-200 dark:border-slate-700/40 hover:border-slate-300 dark:hover:border-slate-600"
                   }`}
                 >
-                  {isSelected ? (
-                    <Check className="h-4 w-4" />
-                  ) : (
-                    <Store className="h-4 w-4" />
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">
-                    {store.store_name}
-                  </p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {COUNTRY_LABELS[store.country] || store.country} &middot; {LANGUAGE_LABELS[store.language] || store.language}
-                  </p>
-                  {store.client_name && (
-                    <p className="truncate text-xs text-slate-400 dark:text-slate-500">
-                      {store.client_name}
+                  <div
+                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                      isSelected
+                        ? "bg-primary text-white"
+                        : "bg-slate-100 dark:bg-slate-800 text-slate-400"
+                    }`}
+                  >
+                    {isSelected ? (
+                      <Check className="h-4 w-4" />
+                    ) : (
+                      <Store className="h-4 w-4" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">
+                      {store.store_name}
                     </p>
-                  )}
-                </div>
-              </button>
-            )
-          })}
-        </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      {COUNTRY_LABELS[store.country] || store.country} &middot; {LANGUAGE_LABELS[store.language] || store.language}
+                    </p>
+                    {store.client_name && (
+                      <p className="truncate text-xs text-slate-400 dark:text-slate-500">
+                        {store.client_name}
+                      </p>
+                    )}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                Pagina {page + 1} de {totalPages}
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => goToPage(page - 1)}
+                  disabled={page === 0}
+                  className="inline-flex items-center justify-center h-7 w-7 rounded-md border border-slate-200 dark:border-slate-700/40 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </button>
+                {Array.from({ length: totalPages }, (_, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => goToPage(i)}
+                    className={`inline-flex items-center justify-center h-7 w-7 rounded-md text-xs font-medium transition-colors ${
+                      i === page
+                        ? "bg-primary text-white"
+                        : "border border-slate-200 dark:border-slate-700/40 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800"
+                    }`}
+                  >
+                    {i + 1}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => goToPage(page + 1)}
+                  disabled={page === totalPages - 1}
+                  className="inline-flex items-center justify-center h-7 w-7 rounded-md border border-slate-200 dark:border-slate-700/40 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+                >
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   )
