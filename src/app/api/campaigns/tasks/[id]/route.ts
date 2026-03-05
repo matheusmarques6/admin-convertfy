@@ -148,7 +148,13 @@ export async function PATCH(
       )
       .single()
 
-    if (updateError) {
+    if (updateError || !updated) {
+      if (!updated && !updateError) {
+        throw new AppError(
+          "Conflito: a tarefa foi atualizada por outro usuário. Recarregue e tente novamente.",
+          409
+        )
+      }
       log.error("Failed to update task", updateError)
       throw new AppError("Erro ao atualizar tarefa", 500)
     }

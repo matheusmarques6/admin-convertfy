@@ -42,6 +42,9 @@ export async function POST(
       .single()
 
     const isAdmin = profile?.role === "admin"
+    // Note: generation approval uses 'coo' (not 'coordinator').
+    // COO is the role responsible for the campaign copy workflow,
+    // while coordinator handles regular campaign approvals.
     const canApprove =
       orgMember && ["owner", "manager", "coo"].includes(orgMember.role)
 
