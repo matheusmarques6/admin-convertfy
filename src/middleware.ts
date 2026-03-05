@@ -1,19 +1,41 @@
-import { type NextRequest } from "next/server"
+import { NextResponse, type NextRequest } from "next/server"
 import { updateSession } from "@/lib/supabase/middleware"
 
+// Routes that must be embeddable in iframes (widget preview + external stores)
+const EMBEDDABLE_ROUTES = ["/tracking/embed", "/api/script/"]
+
+function isEmbeddableRoute(pathname: string): boolean {
+  return EMBEDDABLE_ROUTES.some((route) => pathname.startsWith(route))
+}
+
 export async function middleware(request: NextRequest) {
-  return await updateSession(request)
+  const { pathname } = request.nextUrl
+
+  // Embeddable routes — skip auth, allow iframes
+  if (isEmbeddableRoute(pathname)) {
+    const response = NextResponse.next()
+    response.headers.set(
+      "Content-Security-Policy",
+      "frame-ancestors *"
+    )
+    return response
+  }
+
+  // All other routes — block iframes
+  const response = await updateSession(request)
+  response.headers.set("X-Frame-Options", "DENY")
+  response.headers.set(
+    "Content-Security-Policy",
+    "frame-ancestors 'none'"
+  )
+  return response
 }
 
 export const config = {
   matcher: [
     /*
-     * Match only paths that need auth checking:
-     * - Root path
-     * - Protected routes (dashboard, clients, etc.)
-     * - Auth routes (login, register, change-password)
-     * - Portal routes (client portal)
-     * Excludes: static files, api routes, images, etc.
+     * Match paths that need auth checking + embeddable routes for frame headers.
+     * Excludes: static files (_next/static, _next/image, favicon.ico)
      */
     "/",
     "/dashboard/:path*",
@@ -35,5 +57,8 @@ export const config = {
     "/change-password",
     "/portal/:path*",
     "/public/:path*",
+    "/track/:path*",
+    "/tracking/embed",
+    "/api/script/:path*",
   ],
 }

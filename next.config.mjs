@@ -30,6 +30,8 @@ const nextConfig = {
   },
 
   async headers() {
+    // X-Frame-Options and frame-ancestors are handled in middleware
+    // to reliably distinguish embeddable routes from protected ones.
     return [
       {
         source: "/(.*)",
@@ -37,10 +39,6 @@ const nextConfig = {
           {
             key: "X-Content-Type-Options",
             value: "nosniff",
-          },
-          {
-            key: "X-Frame-Options",
-            value: "DENY",
           },
           {
             key: "X-XSS-Protection",
