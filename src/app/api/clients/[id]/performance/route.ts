@@ -274,7 +274,7 @@ export async function GET(
           // 2. No cache (or force_refresh) — do live API fetch
           if (!klaviyoData && apiKey) {
             log.info(`[ClientPerf] ${forceRefresh ? "Force refresh" : "Cache MISS"} for store ${store.id}/${period}, fetching live`)
-            klaviyoData = await fetchKlaviyoPerformance(apiKey, period, undefined, customStartDate, customEndDate)
+            klaviyoData = await fetchKlaviyoPerformance(apiKey, period, undefined, customStartDate, customEndDate, store.id)
 
             // 2b. Save live results to cache tables so next request is instant
             if (klaviyoData) {

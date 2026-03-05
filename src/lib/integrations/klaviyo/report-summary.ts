@@ -65,7 +65,7 @@ export async function getKlaviyoRevenueForStore(
     const endDateStr = formatDateStr(endDate)
 
     // Get timezone + currency for correct date alignment and currency tracking
-    const accountInfo = await getCachedAccountInfo(apiKey)
+    const accountInfo = await getCachedAccountInfo(apiKey, undefined, storeId)
     const timezone = accountInfo?.timezone || "America/Sao_Paulo"
     const currency = accountInfo?.currency || "BRL"
     const tzOffset = getTimezoneOffset(timezone)
@@ -74,7 +74,7 @@ export async function getKlaviyoRevenueForStore(
     const endISO = `${endDateStr}T23:59:59${tzOffset}`
 
     // Find Placed Order metric for conversion revenue (DB-cached)
-    const placedOrderMetric = await getCachedPlacedOrderMetric(apiKey)
+    const placedOrderMetric = await getCachedPlacedOrderMetric(apiKey, undefined, storeId)
 
     // conversion_metric_id is required by Klaviyo API — skip reports if metric not found
     if (!placedOrderMetric) {

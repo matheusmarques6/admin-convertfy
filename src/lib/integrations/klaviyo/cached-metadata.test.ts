@@ -77,13 +77,22 @@ describe("getCachedPlacedOrderMetric", () => {
     expect(result).toBe("metric-abc-123")
   })
 
-  it("should use DB cache when available", async () => {
+  it("should use DB cache when storeId is provided", async () => {
     mockGetCache.mockResolvedValueOnce({ data: { metricId: "cached-metric-id" } })
 
-    const result = await getCachedPlacedOrderMetric("pk_test_key_123")
+    const result = await getCachedPlacedOrderMetric("pk_test_key_123", undefined, "store-uuid-123")
 
     expect(result).toBe("cached-metric-id")
     expect(mockFindPlacedOrderMetric).not.toHaveBeenCalled()
+  })
+
+  it("should skip DB cache when no storeId provided", async () => {
+    mockFindPlacedOrderMetric.mockResolvedValueOnce("metric-from-api")
+
+    const result = await getCachedPlacedOrderMetric("pk_test_key_123")
+
+    expect(result).toBe("metric-from-api")
+    expect(mockGetCache).not.toHaveBeenCalled()
   })
 })
 

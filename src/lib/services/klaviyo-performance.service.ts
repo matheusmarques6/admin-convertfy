@@ -255,8 +255,9 @@ export async function fetchKlaviyoPerformance(
   endDate?: string,
   customStartDate?: string | null,
   customEndDate?: string | null,
+  storeId?: string,
 ): Promise<KlaviyoPerformanceData> {
-  const accountInfo = await getCachedAccountInfo(apiKey)
+  const accountInfo = await getCachedAccountInfo(apiKey, undefined, storeId)
   const timezone = accountInfo?.timezone || "America/Sao_Paulo"
   const tzOffset = getTimezoneOffset(timezone)
 
@@ -281,7 +282,7 @@ export async function fetchKlaviyoPerformance(
   log.info(`[KlaviyoPerf] Metric-agg filter: ${startDate}T00:00:00 to ${finalEndDate}T23:59:59 (tz param: ${timezone})`)
   log.info(`[KlaviyoPerf] Report timeframe: ${startISO} to ${endISO}`)
 
-  const placedOrderMetric = await getCachedPlacedOrderMetric(apiKey)
+  const placedOrderMetric = await getCachedPlacedOrderMetric(apiKey, undefined, storeId)
   if (!placedOrderMetric) {
     log.warn("No Placed Order metric found - cannot fetch revenue data")
     return emptyPerformanceData()

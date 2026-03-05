@@ -126,6 +126,51 @@ async function fetchKlaviyoFromCache(
     return { data: null, isStale: false, fetchedAt: null }
   }
 
+  // CA4: If summary has sync_status="error", try to build synthetic summary from detail tables
+  if (summary.sync_status === "error") {
+    log.info(`[CacheRead] Summary has sync_status=error for store ${storeId}/${period}, attempting synthetic fallback`)
+
+    // CA5: Check if detail tables have real data from a previous successful sync
+    const [campaignsResult, flowsResult] = await Promise.all([
+      supabase
+        .from("klaviyo_campaign_metrics")
+        .select("*")
+        .eq("store_id", storeId)
+        .order("conversion_value", { ascending: false }),
+      supabase
+        .from("klaviyo_flow_metrics")
+        .select("*")
+        .eq("store_id", storeId)
+        .order("conversion_value", { ascending: false }),
+    ])
+
+    const campaigns = (campaignsResult.data || []) as CachedCampaignRow[]
+    const flows = (flowsResult.data || []) as CachedFlowRow[]
+
+    if (campaigns.length > 0 || flows.length > 0) {
+      // Build synthetic summary from detail data
+      const campaignRevenue = campaigns.reduce((s, c) => s + (c.conversion_value || 0), 0)
+      const flowRevenue = flows.reduce((s, f) => s + (f.conversion_value || 0), 0)
+      const syntheticSummary: CachedRevenueSummary = {
+        ...summary,
+        klaviyo_campaign_revenue: campaignRevenue,
+        klaviyo_flow_revenue: flowRevenue,
+        klaviyo_total_revenue: campaignRevenue + flowRevenue,
+        sync_status: "synthetic",
+      }
+      log.info(`[CacheRead] Built synthetic summary for ${storeId}/${period}: campaigns=${campaigns.length}, flows=${flows.length}, revenue=${campaignRevenue + flowRevenue}`)
+      return {
+        data: { summary: syntheticSummary, campaigns, flows },
+        isStale: true, // Mark as stale so cron will refresh
+        fetchedAt: summary.fetched_at || null,
+      }
+    }
+
+    // No detail data either — treat as cache miss
+    log.info(`[CacheRead] No detail data for ${storeId}/${period}, treating error summary as cache miss`)
+    return { data: null, isStale: false, fetchedAt: null }
+  }
+
   const isStale = new Date(summary.expires_at) < new Date()
 
   // 2. Get campaign + flow detail in parallel using the same period window
@@ -360,13 +405,14 @@ async function liveFetchKlaviyoForPortal(
 
     log.info(`[Portal LiveFetch] Starting fetchKlaviyoPerformance for store ${store.id} period=${period}`)
     const startMs = Date.now()
-    const perfData = await fetchKlaviyoPerformance(apiKey, period)
+    const perfData = await fetchKlaviyoPerformance(apiKey, period, undefined, undefined, undefined, store.id)
     const elapsed = Date.now() - startMs
     log.info(`[Portal LiveFetch] fetchKlaviyoPerformance completed in ${elapsed}ms for store ${store.id}: attributed=${perfData.attributedRevenue}, campaigns=${perfData.recentCampaigns.length}, flows=${perfData.topFlows.length}`)
 
     // Save to cache tables (fire-and-forget) — use adminClient to bypass RLS on writes
     const { startDateStr, endDateStr } = parseDateRangeInTimezone(period, "America/Sao_Paulo")
-    savePerfDataToCache(createAdminClient(), store.id, store.org_id || null, period, perfData, startDateStr, endDateStr).catch(() => {})
+    savePerfDataToCache(createAdminClient(), store.id, store.org_id || null, period, perfData, startDateStr, endDateStr)
+      .catch((err) => log.warn(`[Portal] Failed to save perf data to cache for ${store.id}/${period}:`, err))
 
     await releaseLiveFetch(supabase, store.id, fetchKey, "completed")
     return perfDataToCachedKlaviyo(perfData)

@@ -26,7 +26,7 @@ const log = logger.child("CronSyncReports")
 export const maxDuration = 300
 export const dynamic = "force-dynamic"
 
-const BATCH_SIZE = 10
+const BATCH_SIZE = 3
 const MAX_DURATION_MS = 240_000 // 80% of 300s — stop before Vercel kills us
 const STALE_LOCK_MS = 10 * 60 * 1000 // 10 minutes
 
@@ -102,6 +102,19 @@ async function upsertSyncError(
   const periodStart = new Date(`${startDateStr}T00:00:00Z`).toISOString()
   const periodEnd = new Date(`${endDateStr}T23:59:59.999Z`).toISOString()
   try {
+    // CA2: Don't overwrite a valid "ok" row with zeroed error data
+    const { data: existing } = await supabase
+      .from("store_revenue_summary")
+      .select("sync_status, expires_at")
+      .eq("store_id", store.id)
+      .eq("period_label", period)
+      .single()
+
+    if (existing?.sync_status === "ok" && new Date(existing.expires_at) > new Date()) {
+      log.info(`[Cron] Preserving valid summary for ${store.store_name}/${period} (not overwriting with error)`)
+      return
+    }
+
     await supabase
       .from("store_revenue_summary")
       .upsert({
@@ -150,9 +163,9 @@ async function syncStore(
   let campNames: Awaited<ReturnType<typeof fetchCampaignNames>>
 
   try {
-    accountInfo = await getCachedAccountInfo(apiKey, store.org_id ?? undefined)
+    accountInfo = await getCachedAccountInfo(apiKey, store.org_id ?? undefined, store.id)
     timezoneOffset = getTimezoneOffset(accountInfo.timezone)
-    metricId = await getCachedPlacedOrderMetric(apiKey, store.org_id ?? undefined)
+    metricId = await getCachedPlacedOrderMetric(apiKey, store.org_id ?? undefined, store.id)
 
     if (!metricId) {
       return periods.map(p => ({ storeId: store.id, storeName: store.store_name, period: p, status: "skipped" as const, error: "No Placed Order metric" }))
@@ -394,12 +407,24 @@ export async function GET(request: NextRequest) {
             }
           }
         }
+
+        // Delay between batches to avoid Klaviyo rate limits across stores
+        if (i + BATCH_SIZE < stores.length) {
+          await new Promise(resolve => setTimeout(resolve, 3000))
+        }
       }
 
       const elapsed = Date.now() - startTime
       const okCount = allResults.filter(r => r.status === "ok").length
       const errorCount = allResults.filter(r => r.status === "error").length
       const skippedCount = allResults.filter(r => r.status === "skipped").length
+
+      // CA7: Log rate limit summary for observability
+      const rateLimitResults = allResults.filter(r => r.error?.includes("RATE_LIMIT"))
+      if (rateLimitResults.length > 0) {
+        const affectedStores = new Set(rateLimitResults.map(r => r.storeName))
+        log.warn(`[Cron] Rate limit summary: ${rateLimitResults.length} periods affected across ${affectedStores.size} stores: ${[...affectedStores].join(", ")}`)
+      }
 
       log.info(`[Cron] Sync completed in ${elapsed}ms. ok=${okCount} error=${errorCount} skipped=${skippedCount}${timedOut ? " (timed out)" : ""}`)
 

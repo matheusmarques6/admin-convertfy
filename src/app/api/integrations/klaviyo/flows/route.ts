@@ -16,6 +16,9 @@ import {
   getTimezoneOffset,
   getCachedAccountInfo,
   getCachedPlacedOrderMetric,
+  KlaviyoPermissionError,
+  KlaviyoRateLimitError,
+  KlaviyoInvalidKeyError,
 } from "@/lib/integrations/klaviyo"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import type { SupabaseClient } from "@supabase/supabase-js"
@@ -415,13 +418,13 @@ export async function GET(request: NextRequest) {
     log.info("[Klaviyo Flows] Starting live fetch for store:", store.storeName)
 
     // Get account info for timezone
-    const accountInfo = await getCachedAccountInfo(apiKey, store.orgId)
+    const accountInfo = await getCachedAccountInfo(apiKey, store.orgId, store.storeId)
     const timezoneOffset = getTimezoneOffset(accountInfo.timezone)
 
     // Fetch data sequentially to avoid Klaviyo rate limiting
     const flows = await getAllFlows(apiKey)
     await sleep(350)
-    const metricId = await getCachedPlacedOrderMetric(apiKey, store.orgId)
+    const metricId = await getCachedPlacedOrderMetric(apiKey, store.orgId, store.storeId)
 
     // Get metrics if we have the metric ID
     let flowMetrics = new Map()
@@ -567,6 +570,25 @@ export async function GET(request: NextRequest) {
     }, { headers: corsHeaders(request.headers.get("origin")) })
 
   } catch (error) {
+    const origin = request.headers.get("origin")
+    if (error instanceof KlaviyoPermissionError) {
+      return NextResponse.json(
+        { success: false, error: `Permissão negada no Klaviyo. Scopes ausentes: ${error.missingScopes.join(", ")}`, code: "KLAVIYO_PERMISSION_ERROR" },
+        { status: 403, headers: corsHeaders(origin) }
+      )
+    }
+    if (error instanceof KlaviyoInvalidKeyError) {
+      return NextResponse.json(
+        { success: false, error: "API key do Klaviyo inválida ou contém caracteres não permitidos", code: "KLAVIYO_INVALID_KEY" },
+        { status: 400, headers: corsHeaders(origin) }
+      )
+    }
+    if (error instanceof KlaviyoRateLimitError) {
+      return NextResponse.json(
+        { success: false, error: "Klaviyo temporariamente indisponível (limite de requisições). Tente novamente em alguns segundos.", code: "KLAVIYO_RATE_LIMIT" },
+        { status: 429, headers: { ...corsHeaders(origin), "Retry-After": String(Math.ceil(error.retryAfterMs / 1000)) } }
+      )
+    }
     return errorResponse(request, error, "IntegrationsKlaviyoFlows")
   }
 }

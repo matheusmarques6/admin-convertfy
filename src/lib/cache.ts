@@ -130,7 +130,7 @@ export async function setCache(
   cacheType: string,
   period: string,
   data: Record<string, unknown>,
-  orgId?: string
+  _orgId?: string
 ): Promise<void> {
   const ttlMinutes = getTTLMinutes(cacheType, period)
   const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000).toISOString()
@@ -144,7 +144,6 @@ export async function setCache(
         data: { ...data, _cacheVersion: CACHE_VERSION },
         created_at: new Date().toISOString(),
         expires_at: expiresAt,
-        ...(orgId && { org_id: orgId }),
       },
       { onConflict: "store_id,cache_type,period" }
     )
