@@ -51,17 +51,22 @@ export async function PATCH(
       throw new AppError("Tarefa não encontrada", 404)
     }
 
+    // Resolve admin status (single query)
+    const { data: profileData } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single()
+    const isAdmin = profileData?.role === "admin"
+
+    // F4 fix: Org isolation check
+    if (task.org_id !== orgMember.org_id && !isAdmin) {
+      throw new AppError("Tarefa não encontrada", 404)
+    }
+
     // Permission: assignee can update own task, owner/manager/coo can update any
     const isAssignee = task.assignee_id === orgMember.id
     const isManager = ["owner", "manager", "coo"].includes(orgMember.role)
-    const isAdmin =
-      (
-        await supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", user.id)
-          .single()
-      ).data?.role === "admin"
 
     if (!isAssignee && !isManager && !isAdmin) {
       throw new AppError("Sem permissão para atualizar esta tarefa", 403)
@@ -87,7 +92,7 @@ export async function PATCH(
 
       updateData.status = body.status
 
-      if (body.status === "in_progress" && !task.assignee_id) {
+      if (body.status === "in_progress") {
         updateData.started_at = new Date().toISOString()
       }
 
@@ -102,12 +107,28 @@ export async function PATCH(
       if (!isManager && !isAdmin) {
         throw new AppError("Apenas gestores podem reatribuir tarefas", 403)
       }
+      // F11 fix: validate assignee belongs to same org
+      if (body.assignee_id) {
+        const { data: target } = await adminClient
+          .from("org_members")
+          .select("id")
+          .eq("id", body.assignee_id)
+          .eq("org_id", orgMember.org_id)
+          .eq("is_active", true)
+          .single()
+        if (!target) {
+          throw new AppError("Membro não encontrado na organização", 400)
+        }
+      }
       updateData.assignee_id = body.assignee_id
     }
 
     // Handle notes
     if (body.notes !== undefined) {
-      updateData.notes = body.notes
+      if (typeof body.notes !== "string" || body.notes.length > 5000) {
+        throw new AppError("Notas devem ter no máximo 5000 caracteres", 400)
+      }
+      updateData.notes = body.notes || null
     }
 
     if (Object.keys(updateData).length === 0) {
@@ -118,6 +139,7 @@ export async function PATCH(
       .from("campaign_generation_tasks")
       .update(updateData)
       .eq("id", id)
+      .eq("status", task.status) // F7 fix: optimistic concurrency
       .select(
         `
         id, generation_id, role, assignee_id, status,

@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
         started_at, completed_at, completed_by, notes,
         created_at, updated_at,
         generation:campaign_generations(
-          id, prompt, status, reference_doc_url, client_id,
+          id, name, status, reference_doc_url, drive_folder_url, client_id,
           client:clients(id, name, company)
         ),
         assignee:org_members!campaign_generation_tasks_assignee_id_fkey(
@@ -53,7 +53,6 @@ export async function GET(request: NextRequest) {
     }
 
     if (myTasks) {
-      // Resolve current org_member
       const { data: orgMember } = await supabase
         .from("org_members")
         .select("id")
@@ -61,9 +60,10 @@ export async function GET(request: NextRequest) {
         .eq("is_active", true)
         .single()
 
-      if (orgMember) {
-        query = query.eq("assignee_id", orgMember.id)
+      if (!orgMember) {
+        return successResponse(request, { tasks: [] })
       }
+      query = query.eq("assignee_id", orgMember.id)
     }
 
     const { data: tasks, error: fetchError } = await query

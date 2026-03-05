@@ -57,12 +57,25 @@ export async function POST(
     // Fetch generation + validate state
     const { data: generation, error: fetchError } = await adminClient
       .from("campaign_generations")
-      .select("id, status, client_id, prompt, reference_doc_url")
+      .select("id, status, client_id, name, reference_doc_url, drive_folder_url")
       .eq("id", id)
       .single()
 
     if (fetchError || !generation) {
       throw new AppError("Geração não encontrada", 404)
+    }
+
+    // F3 fix: Org isolation — verify generation belongs to user's org
+    if (orgMember) {
+      const { data: client } = await adminClient
+        .from("clients")
+        .select("org_id")
+        .eq("id", generation.client_id)
+        .single()
+
+      if (client?.org_id !== orgMember.org_id) {
+        throw new AppError("Geração não encontrada", 404)
+      }
     }
 
     if (generation.status !== "done") {
@@ -106,9 +119,13 @@ export async function POST(
         .in("role", ["designer", "techlead", "sdr"])
 
       if (candidates?.length) {
-        const roleMap = new Map(
-          candidates.map((c) => [c.role, { id: c.id, profile_id: c.profile_id }])
-        )
+        // F5 fix: deterministic ordering — first active member per role
+        const roleMap = new Map<string, { id: string; profile_id: string }>()
+        for (const c of candidates) {
+          if (!roleMap.has(c.role)) {
+            roleMap.set(c.role, { id: c.id, profile_id: c.profile_id })
+          }
+        }
 
         const assignUpdates = tasks
           .filter((t) => !t.assignee_id && roleMap.has(t.role))
