@@ -1,15 +1,22 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { Loader2, Store, Check } from "lucide-react"
+import { Loader2, Store, Check, Search } from "lucide-react"
 import Link from "next/link"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { toast } from "@/lib/hooks/use-toast"
 import {
   generateRequestSchema,
@@ -38,6 +45,26 @@ interface PortalStore {
   id: string
   store_name: string
   platform: string
+  country: string
+  language: string
+  client_name: string
+}
+
+const COUNTRY_LABELS: Record<string, string> = {
+  BR: "Brasil",
+  US: "Estados Unidos",
+  GB: "Reino Unido",
+  PT: "Portugal",
+  ES: "Espanha",
+  OTHER: "Outro",
+}
+
+const LANGUAGE_LABELS: Record<string, string> = {
+  "pt-BR": "Portugues (BR)",
+  "en-US": "English (US)",
+  "en": "English",
+  "es-ES": "Espanol (ES)",
+  "es": "Espanol",
 }
 
 interface CampaignGeneration {
@@ -62,6 +89,32 @@ function InlineStoreSelector({
   selected: string[]
   onChange: (ids: string[]) => void
 }) {
+  const [search, setSearch] = useState("")
+  const [countryFilter, setCountryFilter] = useState<string>("all")
+  const [languageFilter, setLanguageFilter] = useState<string>("all")
+
+  const countries = useMemo(
+    () => [...new Set(stores.map((s) => s.country))].sort(),
+    [stores],
+  )
+
+  const languages = useMemo(
+    () => [...new Set(stores.map((s) => s.language))].sort(),
+    [stores],
+  )
+
+  const filteredStores = useMemo(() => {
+    return stores.filter((s) => {
+      const matchesSearch = s.store_name.toLowerCase().includes(search.toLowerCase())
+      const matchesCountry = countryFilter === "all" || s.country === countryFilter
+      const matchesLanguage = languageFilter === "all" || s.language === languageFilter
+      return matchesSearch && matchesCountry && matchesLanguage
+    })
+  }, [stores, search, countryFilter, languageFilter])
+
+  const filteredIds = useMemo(() => new Set(filteredStores.map((s) => s.id)), [filteredStores])
+  const allFilteredSelected = filteredStores.length > 0 && filteredStores.every((s) => selected.includes(s.id))
+
   const toggle = (id: string) => {
     onChange(
       selected.includes(id)
@@ -70,62 +123,134 @@ function InlineStoreSelector({
     )
   }
 
-  const toggleAll = () => {
-    onChange(selected.length === stores.length ? [] : stores.map((s) => s.id))
+  const selectAllFiltered = () => {
+    const merged = Array.from(new Set([...selected, ...filteredStores.map((s) => s.id)]))
+    onChange(merged)
+  }
+
+  const clearFiltered = () => {
+    onChange(selected.filter((id) => !filteredIds.has(id)))
   }
 
   return (
-    <div className="space-y-2">
-      {stores.length > 1 && (
-        <button
-          type="button"
-          onClick={toggleAll}
-          className="text-xs font-medium text-primary hover:underline"
-        >
-          {selected.length === stores.length
-            ? "Desmarcar todas"
-            : "Selecionar todas"}
-        </button>
+    <div className="rounded-lg border border-slate-200 dark:border-slate-700/40 p-4 space-y-3">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300">
+          Lojas
+        </h3>
+        <span className="text-xs text-slate-500 dark:text-slate-400">
+          {selected.filter((id) => filteredIds.has(id)).length} de {filteredStores.length} selecionada(s)
+        </span>
+      </div>
+
+      {/* Toolbar */}
+      <div className="flex flex-col sm:flex-row gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+          <Input
+            placeholder="Buscar loja..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-8 h-8 text-sm"
+          />
+        </div>
+        {countries.length > 1 && (
+          <Select value={countryFilter} onValueChange={setCountryFilter}>
+            <SelectTrigger className="h-8 text-sm w-full sm:w-[160px]">
+              <SelectValue placeholder="Todos os paises" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os paises</SelectItem>
+              {countries.map((c) => (
+                <SelectItem key={c} value={c}>
+                  {COUNTRY_LABELS[c] || c}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        {languages.length > 1 && (
+          <Select value={languageFilter} onValueChange={setLanguageFilter}>
+            <SelectTrigger className="h-8 text-sm w-full sm:w-[160px]">
+              <SelectValue placeholder="Todos os idiomas" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os idiomas</SelectItem>
+              {languages.map((l) => (
+                <SelectItem key={l} value={l}>
+                  {LANGUAGE_LABELS[l] || l}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      </div>
+
+      {/* Select/Clear buttons */}
+      {filteredStores.length > 1 && (
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={allFilteredSelected ? clearFiltered : selectAllFiltered}
+            className="text-xs font-medium text-primary hover:underline"
+          >
+            {allFilteredSelected ? "Limpar selecao" : "Selecionar todas"}
+          </button>
+        </div>
       )}
-      <div className="grid gap-2 sm:grid-cols-2">
-        {stores.map((store) => {
-          const isSelected = selected.includes(store.id)
-          return (
-            <button
-              key={store.id}
-              type="button"
-              onClick={() => toggle(store.id)}
-              className={`flex items-center gap-3 rounded-lg border p-3 text-left transition-colors ${
-                isSelected
-                  ? "border-primary bg-primary/5 dark:bg-primary/10"
-                  : "border-slate-200 dark:border-slate-700/40 hover:border-slate-300 dark:hover:border-slate-600"
-              }`}
-            >
-              <div
-                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+
+      {/* Store grid */}
+      {filteredStores.length === 0 ? (
+        <p className="text-sm text-slate-500 dark:text-slate-400 text-center py-4">
+          Nenhuma loja encontrada para os filtros selecionados.
+        </p>
+      ) : (
+        <div className="grid gap-2 sm:grid-cols-2">
+          {filteredStores.map((store) => {
+            const isSelected = selected.includes(store.id)
+            return (
+              <button
+                key={store.id}
+                type="button"
+                onClick={() => toggle(store.id)}
+                className={`flex items-center gap-3 rounded-lg border p-3 text-left transition-colors ${
                   isSelected
-                    ? "bg-primary text-white"
-                    : "bg-slate-100 dark:bg-slate-800 text-slate-400"
+                    ? "border-primary bg-primary/5 dark:bg-primary/10"
+                    : "border-slate-200 dark:border-slate-700/40 hover:border-slate-300 dark:hover:border-slate-600"
                 }`}
               >
-                {isSelected ? (
-                  <Check className="h-4 w-4" />
-                ) : (
-                  <Store className="h-4 w-4" />
-                )}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">
-                  {store.store_name}
-                </p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {store.platform}
-                </p>
-              </div>
-            </button>
-          )
-        })}
-      </div>
+                <div
+                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                    isSelected
+                      ? "bg-primary text-white"
+                      : "bg-slate-100 dark:bg-slate-800 text-slate-400"
+                  }`}
+                >
+                  {isSelected ? (
+                    <Check className="h-4 w-4" />
+                  ) : (
+                    <Store className="h-4 w-4" />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">
+                    {store.store_name}
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {COUNTRY_LABELS[store.country] || store.country} &middot; {LANGUAGE_LABELS[store.language] || store.language}
+                  </p>
+                  {store.client_name && (
+                    <p className="truncate text-xs text-slate-400 dark:text-slate-500">
+                      {store.client_name}
+                    </p>
+                  )}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
@@ -168,13 +293,15 @@ export function CopyTab() {
         const res = await fetch("/api/stores?active=true")
         if (!res.ok) throw new Error("Erro ao carregar lojas")
         const data = await res.json()
-        const list: PortalStore[] = (data.stores || []).map(
-          (s: { id: string; store_name?: string; name?: string; platform: string }) => ({
-            id: s.id,
-            store_name: s.store_name || s.name || "Sem nome",
-            platform: s.platform,
-          }),
-        )
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const list: PortalStore[] = (data.stores || []).map((s: any) => ({
+          id: s.id,
+          store_name: s.store_name || s.name || "Sem nome",
+          platform: s.platform || "",
+          country: s.country || "BR",
+          language: s.language || "pt-BR",
+          client_name: s.client?.name || s.client?.company || "",
+        }))
         setStores(list)
       } catch (err) {
         console.error("Error fetching stores:", err)
