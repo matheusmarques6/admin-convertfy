@@ -1,9 +1,10 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import useSWR from "swr"
 import { format } from "date-fns"
 import { TrendingUp, RefreshCw, Megaphone, Workflow, Store, AlertTriangle } from "lucide-react"
+import { useRealtimeRevenue } from "@/hooks/use-realtime-revenue"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { PeriodPicker } from "@/components/ui/period-picker"
@@ -112,50 +113,41 @@ export function TotalRevenueBanner({ storeIds, period: controlledPeriod, onPerio
     return url
   })()
 
-  const [isSyncing, setIsSyncing] = useState(false)
-
   const { data, error, isLoading, isValidating, mutate } = useSWR<TotalRevenueData>(
     swrKey,
     fetcher,
     {
       revalidateOnFocus: false,
       dedupingInterval: 60000,
-      // Poll every 30s when syncing/loading, otherwise disable polling
-      refreshInterval: isSyncing ? 30000 : 0,
-      onSuccess: (d) => setIsSyncing(
-        d?.dataStatus === "syncing" || d?.dataStatus === "loading" || d?.isRefreshing === true
-      ),
     }
   )
+
+  // Realtime: auto-update when store_revenue_summary changes in DB
+  const handleRealtimeUpdate = useCallback(() => { mutate() }, [mutate])
+  const { isRefreshing: realtimeRefreshing, triggerRefresh } = useRealtimeRevenue({
+    period,
+    onDataUpdate: handleRealtimeUpdate,
+  })
 
   const dataStatusMeta = useDataStatus(data ? {
     dataStatus: data.dataStatus ?? "ready",
     lastFetchedAt: data.lastFetchedAt ?? null,
-    isRefreshing: data.isRefreshing ?? isValidating,
+    isRefreshing: realtimeRefreshing || (data.isRefreshing ?? isValidating),
     source: data.source ?? "cache",
   } : undefined)
 
-  // Auto-refresh when server signals stale data (fetched_at > 5 min)
+  // Auto-trigger background refresh when server signals stale data
   const hasTriggeredAutoRefresh = useRef(false)
   useEffect(() => {
-    if (
-      data?.dataStatus === "stale" &&
-      !isValidating &&
-      !hasTriggeredAutoRefresh.current &&
-      swrKey
-    ) {
+    const isStale = (data as unknown as Record<string, unknown>)?.isStale === true
+    if (isStale && !isValidating && !realtimeRefreshing && !hasTriggeredAutoRefresh.current) {
       hasTriggeredAutoRefresh.current = true
-      const separator = swrKey.includes("?") ? "&" : "?"
-      mutate(
-        fetch(`${swrKey}${separator}force_refresh=true`)
-          .then(r => r.ok ? r.json() : Promise.reject(new Error("Auto-refresh failed")))
-      )
+      triggerRefresh()
     }
-    // Reset flag when period changes (swrKey changes)
     if (data?.dataStatus === "ready") {
       hasTriggeredAutoRefresh.current = false
     }
-  }, [data?.dataStatus, isValidating, swrKey, mutate])
+  }, [data, isValidating, realtimeRefreshing, triggerRefresh])
 
   // Notify parent when data changes (so cards can consume topStores/bottomStores)
   useEffect(() => {
@@ -277,12 +269,7 @@ export function TotalRevenueBanner({ storeIds, period: controlledPeriod, onPerio
             />
             <RefreshButton
               onRefresh={() => {
-                // Re-fetch with force_refresh to bypass cache
-                const separator = swrKey?.includes("?") ? "&" : "?"
-                mutate(
-                  fetch(`${swrKey}${separator}force_refresh=true`)
-                    .then(r => r.ok ? r.json() : Promise.reject(new Error("Refresh failed")))
-                )
+                triggerRefresh()
               }}
               isRefreshing={dataStatusMeta.isRefreshing || isValidating}
               lastFetchedAt={dataStatusMeta.lastFetchedAt}

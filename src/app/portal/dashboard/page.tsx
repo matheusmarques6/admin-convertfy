@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import {
   CalendarDays,
   RefreshCw,
@@ -31,6 +31,7 @@ import { LastSendCard } from "./last-send-card"
 import { TopFlowCard } from "./top-flow-card"
 import { AnimatedContainer, AnimatedItem } from "@/components/ui/animated-container"
 import { DataStatusBanner } from "@/components/ui/data-status-banner"
+import { useRealtimeRevenue } from "@/hooks/use-realtime-revenue"
 import type { DashboardData } from "./types"
 
 export default function PortalDashboardPage() {
@@ -66,6 +67,26 @@ export default function PortalDashboardPage() {
       setRefreshing(false)
     }
   }, [period])
+
+  // Realtime: auto-update when store_revenue_summary changes
+  const handleRealtimeUpdate = useCallback(() => { fetchDashboard() }, [fetchDashboard])
+  const { isRefreshing: realtimeRefreshing } = useRealtimeRevenue({
+    period,
+    onDataUpdate: handleRealtimeUpdate,
+  })
+
+  // Auto-trigger refresh when data is stale (>5 min)
+  const hasTriggeredAutoRefresh = useRef(false)
+  useEffect(() => {
+    const isStale = data?.dataStatus === "stale" || data?.source === "stale-cache"
+    if (isStale && !refreshing && !realtimeRefreshing && !hasTriggeredAutoRefresh.current) {
+      hasTriggeredAutoRefresh.current = true
+      fetchDashboard(true)
+    }
+    if (data?.dataStatus === "ready") {
+      hasTriggeredAutoRefresh.current = false
+    }
+  }, [data, refreshing, realtimeRefreshing, fetchDashboard])
 
   useEffect(() => {
     fetchDashboard()
@@ -174,7 +195,7 @@ export default function PortalDashboardPage() {
       <DataStatusBanner
         status={data.dataStatus}
         lastFetchedAt={data.lastFetchedAt}
-        isRefreshing={data.isRefreshing}
+        isRefreshing={realtimeRefreshing || data.isRefreshing || refreshing}
       />
 
       <AnimatedContainer className="space-y-6">

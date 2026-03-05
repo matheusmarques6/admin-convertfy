@@ -3,20 +3,15 @@ import { SupabaseClient } from "@supabase/supabase-js"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
-import { getCache, setCache, getStaleCache } from "@/lib/cache"
-import { parseDateRange, formatDateStr, withConcurrencyLimit, KlaviyoPermissionError } from "@/lib/integrations/klaviyo"
+import { parseDateRange, formatDateStr, withConcurrencyLimit } from "@/lib/integrations/klaviyo"
 import { getShopifyReportForStore } from "@/lib/integrations/shopify/report"
 import { decryptStoreCredentials } from "@/lib/crypto"
 import { CACHED_PERIODS } from "@/lib/shared/data-status"
-import {
-  fetchKlaviyoPerformance,
-  type KlaviyoPerformanceData,
-} from "@/lib/services/klaviyo-performance.service"
-import { savePerfDataToCache } from "@/lib/services/sync-persistence.service"
+import type { KlaviyoPerformanceData } from "@/lib/services/klaviyo-performance.service"
 
 const log = logger.child("ClientPerformance")
 
-export const maxDuration = 120
+export const maxDuration = 30
 export const dynamic = "force-dynamic"
 
 interface StorePerformance {
@@ -56,12 +51,6 @@ async function readKlaviyoFromCacheTables(
     .single()
 
   if (!summary || summary.sync_status === "error") return null
-
-  // Check if expired (stale but usable)
-  const isExpired = new Date(summary.expires_at) < new Date()
-  if (isExpired) {
-    log.info(`[ClientPerf] Cache stale for store ${storeId}/${period} (expired ${summary.expires_at})`)
-  }
 
   const periodStart = summary.period_start
   const periodEnd = summary.period_end
@@ -159,8 +148,6 @@ async function readKlaviyoFromCacheTables(
   }
 }
 
-// saveLiveFetchToCache is now handled by the shared savePerfDataToCache from sync-persistence.service
-
 /**
  * GET /api/clients/[id]/performance
  *
@@ -181,7 +168,6 @@ export async function GET(
     const period = searchParams.get("period") || "30d"
     const customStartDate = searchParams.get("start_date")
     const customEndDate = searchParams.get("end_date")
-    const forceRefresh = searchParams.get("force_refresh") === "true"
 
     // Validate period
     const validPeriods = ["today", "yesterday", "7d", "15d", "30d", "90d", "custom"]
@@ -208,20 +194,6 @@ export async function GET(
 
       if (!portalUser) {
         throw new AppError("Cliente não encontrado ou acesso negado", 404)
-      }
-    }
-
-    // Check cache first
-    if (!forceRefresh) {
-      const cacheperiod = period === "custom" && customStartDate ? `${period}:${customStartDate}:${customEndDate}` : period
-      const cached = await getCache(adminClient, clientId, "client_performance", cacheperiod)
-      if (cached) {
-        const cachedTotals = (cached.data as Record<string, unknown>).totals as Record<string, number> | undefined
-        const hasData = cachedTotals && (cachedTotals.klaviyoRevenue > 0 || cachedTotals.shopifyRevenue > 0)
-        if (hasData) {
-          return successResponse(request, { ...cached.data, fromCache: true, cachedAt: cached.cachedAt })
-        }
-        log.info("[ClientPerformance] Skipping zero-data cache, fetching fresh data")
       }
     }
 
@@ -258,89 +230,13 @@ export async function GET(
       let shopifyData: StorePerformance["shopify"] = null
       const errors: StorePerformance["errors"] = []
 
-      // Fetch Klaviyo data — cache-first (unless forceRefresh), then live fallback
+      // Klaviyo: pure cache read — no live API calls
       if (hasKlaviyo) {
-        const apiKey = store.klaviyo_private_key || store.klaviyo_api_key
-
-        try {
-          // 1. If NOT force_refresh, try cache tables first (fast, no API calls)
-          if (!forceRefresh) {
-            klaviyoData = await readKlaviyoFromCacheTables(adminClient, store.id, period)
-            if (klaviyoData) {
-              log.info(`[ClientPerf] Cache HIT for store ${store.id}/${period}`)
-            }
-          }
-
-          // 2. No cache (or force_refresh) — do live API fetch
-          if (!klaviyoData && apiKey) {
-            log.info(`[ClientPerf] ${forceRefresh ? "Force refresh" : "Cache MISS"} for store ${store.id}/${period}, fetching live`)
-            klaviyoData = await fetchKlaviyoPerformance(apiKey, period, undefined, customStartDate, customEndDate, store.id)
-
-            // 2b. Save live results to cache tables so next request is instant
-            if (klaviyoData) {
-              await savePerfDataToCache(adminClient, store.id, store.org_id || null, period, klaviyoData, startDateStr, endDateStr)
-            }
-          }
-
-          // 3. If live data looks incomplete, try stale dashboard_cache for better data
-          if (klaviyoData) {
-            const hasRevenue = klaviyoData.storeRevenue > 0 || klaviyoData.attributedRevenue > 0
-            const hasCampaignOrFlowData = klaviyoData.recentCampaigns.length > 0 || klaviyoData.topFlows.length > 0 || klaviyoData.attributedRevenue > 0
-            if (!hasRevenue || !hasCampaignOrFlowData) {
-              const stale = await getStaleCache<KlaviyoPerformanceData>(adminClient, store.id, "klaviyo_perf", period)
-              if (stale) {
-                log.info(`[ClientPerf] Using stale cache for store ${store.id} (data incomplete: revenue=${hasRevenue}, campaigns/flows=${hasCampaignOrFlowData})`)
-                klaviyoData = stale.data
-              }
-            }
-          }
-        } catch (err) {
-          // On error, try cache tables first, then stale dashboard_cache
-          klaviyoData = await readKlaviyoFromCacheTables(adminClient, store.id, period).catch(() => null)
-
-          if (!klaviyoData) {
-            const stale = await getStaleCache<KlaviyoPerformanceData>(adminClient, store.id, "klaviyo_perf", period)
-            if (stale) {
-              log.info(`[ClientPerf] Using stale cache for store ${store.id} after error`)
-              klaviyoData = stale.data
-            }
-          }
-
-          if (klaviyoData) {
-            log.info(`[ClientPerf] Recovered from error with cached data for store ${store.id}`)
-          } else {
-            log.warn("Failed to fetch Klaviyo data for store", { storeId: store.id, error: err })
-
-            // Typed detection of KlaviyoPermissionError before string matching
-            if (err instanceof KlaviyoPermissionError) {
-              const scopesList = err.missingScopes.length > 0
-                ? err.missingScopes.join(", ")
-                : "nao identificados"
-              errors.push({
-                integration: "klaviyo",
-                message: `API key sem permissao. Scopes faltando: ${scopesList}`,
-                code: "PERMISSION_DENIED",
-              })
-            } else {
-              // String matching — preserved unchanged for all other error types
-              const rawMsg = err instanceof Error ? err.message : String(err)
-              let message = rawMsg
-              let code: string | undefined
-
-              if (rawMsg.includes("401") || rawMsg.includes("403") || rawMsg.toLowerCase().includes("unauthorized")) {
-                message = "API Key sem permissão para métricas. Verifique os scopes da chave Klaviyo."
-                code = "AUTH_ERROR"
-              } else if (rawMsg.includes("429")) {
-                message = "Limite de requisições Klaviyo excedido. Tente novamente em alguns minutos."
-                code = "RATE_LIMIT"
-              } else if (rawMsg.includes("Falha ao conectar")) {
-                message = "Falha ao conectar com a API do Klaviyo. Verifique as credenciais."
-                code = "CONNECTION_ERROR"
-              }
-
-              errors.push({ integration: "klaviyo", message, code })
-            }
-          }
+        klaviyoData = await readKlaviyoFromCacheTables(adminClient, store.id, period)
+        if (klaviyoData) {
+          log.info(`[ClientPerf] Cache HIT for store ${store.id}/${period}`)
+        } else {
+          log.info(`[ClientPerf] Cache MISS for store ${store.id}/${period}`)
         }
       }
 
@@ -393,17 +289,6 @@ export async function GET(
         storeName: s.storeName,
         errors: s.errors,
       })),
-    }
-
-    // Save to cache only if we have meaningful data (avoid caching incomplete results)
-    const hasKlaviyoData = totals.klaviyoRevenue > 0 || totals.campaignRevenue > 0 || totals.flowRevenue > 0
-    const hasShopifyData = totals.shopifyRevenue > 0
-    if (hasKlaviyoData || hasShopifyData) {
-      const cachePeriodKey = period === "custom" && customStartDate ? `${period}:${customStartDate}:${customEndDate}` : period
-      const clientOrgId = client?.org_id ?? undefined
-      setCache(adminClient, clientId, "client_performance", cachePeriodKey, responseData as unknown as Record<string, unknown>, clientOrgId).catch(() => {})
-    } else {
-      log.info("[ClientPerformance] Skipping cache save — no meaningful data (klaviyo or shopify)")
     }
 
     return successResponse(request, responseData)
