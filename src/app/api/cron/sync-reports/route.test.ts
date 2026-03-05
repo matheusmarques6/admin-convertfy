@@ -15,7 +15,8 @@ let mockStoreList = [{ id: "store-1", store_name: "Test Store", org_id: "org-1" 
 const ok = { data: null, error: null }
 
 function chainable(table: string) {
-  const self: Record<string, Function> = {}
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const self: Record<string, (...args: any[]) => any> = {}
   self.select = () => self
   self.eq = () => self
   self.not = () => self
