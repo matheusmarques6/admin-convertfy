@@ -27,3 +27,21 @@ export async function getPortalUser(
 
   return portalUser
 }
+
+/**
+ * Verify that a store belongs to a specific client.
+ * Used as defense-in-depth in portal routes that receive store_id.
+ */
+export async function verifyStoreOwnership(
+  adminClient: ReturnType<typeof createAdminClient>,
+  storeId: string,
+  clientId: string
+): Promise<boolean> {
+  const { data } = await adminClient
+    .from("client_stores")
+    .select("id")
+    .eq("id", storeId)
+    .eq("client_id", clientId)
+    .single()
+  return !!data
+}
