@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from "react"
 import {
   CheckCircle2,
-  Clock,
   ExternalLink,
   Loader2,
   Paintbrush,
@@ -328,6 +327,8 @@ function GenerationCard({
         <div className="flex items-center gap-3">
           <button
             onClick={() => setExpanded(!expanded)}
+            aria-expanded={expanded}
+            aria-label={`${expanded ? "Recolher" : "Expandir"} ${generation.name}`}
             className="shrink-0 text-muted-foreground hover:text-foreground"
           >
             {expanded ? (
