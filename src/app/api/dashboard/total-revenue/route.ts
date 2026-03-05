@@ -234,30 +234,35 @@ async function liveFetchWithTimeout(
         convertToBRL(revenue.flowRevenue, revenue.currency),
       ])
 
-      // Live fetch upsert — campos limitados ao escopo do live fetch.
-      // Campos exclusivos do cron (total_leads, engaged_leads, store_total_revenue)
-      // NAO sao incluidos aqui para evitar sobrescrita.
-      // Se no futuro o live fetch precisar desses campos, usar UPDATE condicional.
+      // Live fetch upsert — only write revenue fields when report was obtained
       if ((CACHED_PERIODS as readonly string[]).includes(period)) {
+        const campAvail = revenue.campaignReportAvailable !== false
+        const flowAvail = revenue.flowReportAvailable !== false
+
+        const upsertPayload: Record<string, unknown> = {
+          store_id: store.id,
+          org_id: store.org_id || null,
+          period_label: period,
+          currency: revenue.currency,
+          sync_source: "live",
+          sync_error: null,
+          expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
+          fetched_at: new Date().toISOString(),
+        }
+
+        if (flowAvail) upsertPayload.klaviyo_flow_revenue = revenue.flowRevenue
+        if (campAvail) upsertPayload.klaviyo_campaign_revenue = revenue.campaignRevenue
+        if (campAvail && flowAvail) {
+          upsertPayload.klaviyo_total_revenue = revenue.totalRevenue
+          upsertPayload.sync_status = "ok"
+        } else {
+          upsertPayload.sync_status = "partial"
+        }
+
         Promise.resolve(
           adminSupabase
             .from("store_revenue_summary")
-            .upsert({
-              store_id: store.id,
-              org_id: store.org_id || null,
-              period_label: period,
-              klaviyo_total_revenue: revenue.totalRevenue,
-              klaviyo_campaign_revenue: revenue.campaignRevenue,
-              klaviyo_flow_revenue: revenue.flowRevenue,
-              currency: revenue.currency,
-              sync_status: "ok",
-              sync_source: "live",
-              sync_error: null,
-              expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
-              fetched_at: new Date().toISOString(),
-              // NAO incluir: store_total_revenue, total_leads, engaged_leads
-              // Esses campos sao exclusivos do cron sync
-            }, { onConflict: "store_id,period_label" })
+            .upsert(upsertPayload, { onConflict: "store_id,period_label" })
         )
           .then(() => log.info(`[LiveFetch] Cached revenue for ${store.store_name}/${period} (${revenue.currency} ${revenue.totalRevenue})`))
           .catch((e) => log.warn(`[LiveFetch] Cache upsert failed for ${store.store_name}:`, e))

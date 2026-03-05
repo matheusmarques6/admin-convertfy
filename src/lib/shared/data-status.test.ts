@@ -11,7 +11,7 @@ import {
 
 describe("data-status constants", () => {
   it("CACHED_PERIODS should contain 4 standard periods", () => {
-    expect(CACHED_PERIODS).toEqual(["7d", "15d", "30d", "90d"])
+    expect(CACHED_PERIODS).toEqual(["30d", "7d", "15d", "90d"])
     expect(CACHED_PERIODS).toHaveLength(4)
   })
 

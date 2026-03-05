@@ -34,6 +34,8 @@ const STORE = { id: "store-1", org_id: "org-1" }
 const SYNC_DATA: KlaviyoSyncData = {
   campaignRevenue: 5000,
   flowRevenue: 3000,
+  campaignDataAvailable: true,
+  flowDataAvailable: true,
   storeRevenue: 12000,
   storeOrders: 150,
   currency: "BRL",
@@ -248,6 +250,104 @@ describe("upsertSyncResults", () => {
     const row = upsert.mock.calls[summaryCallIndex][0]
 
     expect(row.org_id).toBeNull()
+  })
+
+  it("should set sync_status to 'partial' when only flow data is available", async () => {
+    // Mock that supports store_revenue_summary SELECT chain
+    const upsertFn = vi.fn().mockResolvedValue({ error: null })
+    const singleFn = vi.fn()
+    const eqChain = vi.fn()
+    const selectFn = vi.fn()
+    const fromFn = vi.fn().mockImplementation((table: string) => {
+      if (table === "client_stores") {
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              single: vi.fn().mockResolvedValue({ data: { client_id: "client-1" }, error: null }),
+            }),
+          }),
+        }
+      }
+      if (table === "store_revenue_summary") {
+        return {
+          upsert: upsertFn,
+          select: selectFn.mockReturnValue({
+            eq: eqChain.mockReturnValue({
+              eq: eqChain.mockReturnValue({
+                single: singleFn.mockResolvedValue({
+                  data: { klaviyo_campaign_revenue: 4000, klaviyo_flow_revenue: 2000 },
+                  error: null,
+                }),
+              }),
+            }),
+          }),
+        }
+      }
+      return { upsert: upsertFn }
+    })
+    const client = { from: fromFn } as unknown as Parameters<typeof upsertSyncResults>[0]
+
+    const partialData: KlaviyoSyncData = {
+      ...SYNC_DATA,
+      campaignRevenue: 0,
+      campaignDataAvailable: false,
+      flowDataAvailable: true,
+      campRows: [],
+    }
+
+    await upsertSyncResults(client, STORE, partialData, "30d")
+
+    // Find the upsert call for store_revenue_summary
+    const summaryUpsertCall = upsertFn.mock.calls.find(
+      (call: unknown[]) => {
+        const payload = call[0] as Record<string, unknown>
+        return payload.store_id === "store-1" && payload.period_label === "30d"
+      }
+    )
+    expect(summaryUpsertCall).toBeDefined()
+    const row = summaryUpsertCall![0] as Record<string, unknown>
+
+    expect(row.sync_status).toBe("partial")
+    expect(row.sync_error).toBe("Campaign report unavailable")
+    expect(row.klaviyo_flow_revenue).toBe(3000)
+    expect(row.klaviyo_campaign_revenue).toBeUndefined()
+    // Total = flow (available) + campaign from DB (4000)
+    expect(row.klaviyo_total_revenue).toBe(7000)
+  })
+
+  it("should set sync_status to 'error' when both reports unavailable", async () => {
+    const upsertFn = vi.fn().mockResolvedValue({ error: null })
+    const singleFn = vi.fn().mockResolvedValue({ data: { client_id: "client-1" }, error: null })
+    const eqFn = vi.fn().mockReturnValue({ single: singleFn })
+    const selectFn = vi.fn().mockReturnValue({ eq: eqFn })
+    const fromFn = vi.fn().mockImplementation((table: string) => {
+      if (table === "client_stores") return { select: selectFn }
+      return { upsert: upsertFn }
+    })
+    const client = { from: fromFn } as unknown as Parameters<typeof upsertSyncResults>[0]
+
+    const noDataAvailable: KlaviyoSyncData = {
+      ...SYNC_DATA,
+      campaignRevenue: 0,
+      flowRevenue: 0,
+      campaignDataAvailable: false,
+      flowDataAvailable: false,
+      flowRows: [],
+      campRows: [],
+    }
+
+    await upsertSyncResults(client, STORE, noDataAvailable, "30d")
+
+    const summaryCallIndex = fromFn.mock.calls.findIndex(
+      (c: string[]) => c[0] === "store_revenue_summary"
+    )
+    const row = upsertFn.mock.calls[summaryCallIndex][0]
+
+    expect(row.sync_status).toBe("error")
+    expect(row.sync_error).toBe("Both campaign and flow reports unavailable")
+    expect(row.klaviyo_total_revenue).toBe(0)
+    expect(row.klaviyo_campaign_revenue).toBeUndefined()
+    expect(row.klaviyo_flow_revenue).toBeUndefined()
   })
 
   it("should set expires_at to ~6 hours from now", async () => {

@@ -51,15 +51,43 @@ export async function upsertSyncResults(
     }
   }
 
-  // When the campaign report fails silently (campaignRevenue=0 + no campRows),
-  // preserve existing campaign revenue instead of overwriting with 0.
-  let effectiveCampaignRevenue = data.campaignRevenue
-  let effectiveFlowRevenue = data.flowRevenue
+  // Build upsert payload — only include revenue fields when data was actually fetched
+  const summaryPayload: Record<string, unknown> = {
+    store_id: store.id,
+    org_id: store.org_id || null,
+    period_label: period,
+    period_start: data.startDateStr,
+    period_end: data.endDateStr,
+    currency: data.currency || "BRL",
+    sync_source: "cron",
+    sync_error: null,
+    expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
+    fetched_at: new Date().toISOString(),
+    store_total_revenue: data.storeRevenue,
+    store_orders: data.storeOrders,
+    ...(audience ? {
+      total_leads: audience.totalLeads,
+      engaged_leads: audience.engagedLeads,
+      engagement_rate: audience.engagementRate,
+    } : {}),
+  }
 
-  const campaignReportMissing = data.campaignRevenue === 0 && data.campRows.length === 0
-  const flowReportMissing = data.flowRevenue === 0 && data.flowRows.length === 0
+  if (data.flowDataAvailable) {
+    summaryPayload.klaviyo_flow_revenue = data.flowRevenue
+  }
+  if (data.campaignDataAvailable) {
+    summaryPayload.klaviyo_campaign_revenue = data.campaignRevenue
+  }
 
-  if (campaignReportMissing || flowReportMissing) {
+  if (data.flowDataAvailable && data.campaignDataAvailable) {
+    summaryPayload.klaviyo_total_revenue = data.campaignRevenue + data.flowRevenue
+    summaryPayload.sync_status = "ok"
+  } else if (data.flowDataAvailable || data.campaignDataAvailable) {
+    summaryPayload.sync_status = "partial"
+    summaryPayload.sync_error = !data.campaignDataAvailable
+      ? "Campaign report unavailable"
+      : "Flow report unavailable"
+    // Recalculate total from available field + existing DB value
     const { data: existing } = await supabase
       .from("store_revenue_summary")
       .select("klaviyo_campaign_revenue, klaviyo_flow_revenue")
@@ -67,46 +95,22 @@ export async function upsertSyncResults(
       .eq("period_label", period)
       .single()
 
-    if (existing) {
-      if (campaignReportMissing && existing.klaviyo_campaign_revenue > 0) {
-        effectiveCampaignRevenue = existing.klaviyo_campaign_revenue
-        log.info(`[SyncPersistence] Preserving existing campaign revenue ${effectiveCampaignRevenue} for ${store.id}/${period} (campaign report missing)`)
-      }
-      if (flowReportMissing && existing.klaviyo_flow_revenue > 0) {
-        effectiveFlowRevenue = existing.klaviyo_flow_revenue
-        log.info(`[SyncPersistence] Preserving existing flow revenue ${effectiveFlowRevenue} for ${store.id}/${period} (flow report missing)`)
-      }
-    }
+    const campRev = data.campaignDataAvailable
+      ? data.campaignRevenue
+      : (existing ? Number(existing.klaviyo_campaign_revenue) || 0 : 0)
+    const flowRev = data.flowDataAvailable
+      ? data.flowRevenue
+      : (existing ? Number(existing.klaviyo_flow_revenue) || 0 : 0)
+    summaryPayload.klaviyo_total_revenue = campRev + flowRev
+  } else {
+    summaryPayload.klaviyo_total_revenue = 0
+    summaryPayload.sync_status = "error"
+    summaryPayload.sync_error = "Both campaign and flow reports unavailable"
   }
 
-  // Upsert revenue summary
-  // Audience fields are only included when explicitly passed (e.g. from cron job).
-  // Portal live-fetch calls omit audience to avoid overwriting cron-populated values.
   const { error: summaryErr } = await supabase
     .from("store_revenue_summary")
-    .upsert({
-      store_id: store.id,
-      org_id: store.org_id || null,
-      period_label: period,
-      period_start: data.startDateStr,
-      period_end: data.endDateStr,
-      klaviyo_total_revenue: effectiveCampaignRevenue + effectiveFlowRevenue,
-      klaviyo_campaign_revenue: effectiveCampaignRevenue,
-      klaviyo_flow_revenue: effectiveFlowRevenue,
-      store_total_revenue: data.storeRevenue,
-      store_orders: data.storeOrders,
-      currency: data.currency || "BRL",
-      sync_status: "ok",
-      sync_source: "cron",
-      sync_error: null,
-      expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
-      fetched_at: new Date().toISOString(),
-      ...(audience ? {
-        total_leads: audience.totalLeads,
-        engaged_leads: audience.engagedLeads,
-        engagement_rate: audience.engagementRate,
-      } : {}),
-    }, { onConflict: "store_id,period_label" })
+    .upsert(summaryPayload, { onConflict: "store_id,period_label" })
   if (summaryErr) {
     log.error(`[SyncPersistence] Failed to upsert summary for ${store.id}/${period}:`, summaryErr.message)
   }

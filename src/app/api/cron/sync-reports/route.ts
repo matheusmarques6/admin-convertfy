@@ -303,11 +303,16 @@ async function syncStore(
         results.push({ storeId: store.id, storeName: store.store_name, period, status: "error", error: errorMsg })
         await upsertSyncError(supabase, store, period, accountInfo.timezone, errorMsg)
 
-        if (consecutiveRateLimits >= 2) {
-          log.warn(`[Cron] 2+ consecutive rate limits for ${store.store_name}, skipping remaining periods`)
+        // Backoff before trying next period (cap at 15s to not waste cron budget)
+        const waitMs = Math.min(err.retryAfterMs || 5000, 15000)
+        log.warn(`[Cron] Rate limited for ${store.store_name}/${period}, waiting ${waitMs}ms before next period`)
+        await new Promise(resolve => setTimeout(resolve, waitMs))
+
+        if (consecutiveRateLimits >= 3) {
+          log.warn(`[Cron] 3+ consecutive rate limits for ${store.store_name}, skipping remaining periods`)
           break
         }
-        continue // try next period
+        continue
       }
 
       // KlaviyoPermissionError in period loop: scope missing for specific endpoint (e.g. flow-values-reports)

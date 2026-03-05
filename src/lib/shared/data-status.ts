@@ -22,7 +22,7 @@ export interface DataStatusMeta {
 // ─── Periods ─────────────────────────────────────────────────────────────────
 
 /** Periods that the cron pre-populates — cache always available after first sync */
-export const CACHED_PERIODS = ["7d", "15d", "30d", "90d"] as const
+export const CACHED_PERIODS = ["30d", "7d", "15d", "90d"] as const
 export type CachedPeriod = (typeof CACHED_PERIODS)[number]
 
 /** Periods that require live fetch (not cached by cron) */

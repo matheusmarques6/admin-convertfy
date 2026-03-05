@@ -126,6 +126,8 @@ export interface KlaviyoSyncParams {
 export interface KlaviyoSyncData {
   campaignRevenue: number
   flowRevenue: number
+  campaignDataAvailable: boolean
+  flowDataAvailable: boolean
   storeRevenue: number
   storeOrders: number
   startDateStr: string
@@ -465,6 +467,8 @@ export async function syncKlaviyoForPeriod(
     // Track revenue
     let totalFlowRevenue = 0
     let totalCampaignRevenue = 0
+    let campaignDataAvailable = false
+    let flowDataAvailable = false
     const flowRows: FlowMetricRow[] = []
     const campRows: CampaignMetricRow[] = []
 
@@ -478,6 +482,7 @@ export async function syncKlaviyoForPeriod(
 
     // Aggregate flow metrics
     if (flowResponse?.data?.attributes?.results) {
+      flowDataAvailable = true
       const flowAgg = new Map<string, Record<string, number>>()
       for (const r of flowResponse.data.attributes.results) {
         const fid = r.groupings.flow_id
@@ -556,6 +561,7 @@ export async function syncKlaviyoForPeriod(
 
     // Aggregate campaign metrics
     if (campaignResponse?.data?.attributes?.results) {
+      campaignDataAvailable = true
       const campAgg = new Map<string, Record<string, number>>()
       for (const r of campaignResponse.data.attributes.results) {
         const cid = r.groupings.campaign_id
@@ -650,6 +656,8 @@ export async function syncKlaviyoForPeriod(
       data: {
         campaignRevenue: totalCampaignRevenue,
         flowRevenue: totalFlowRevenue,
+        campaignDataAvailable,
+        flowDataAvailable,
         storeRevenue,
         storeOrders,
         startDateStr: periodStartISO,

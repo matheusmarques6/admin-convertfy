@@ -115,7 +115,9 @@ function successSyncResult() {
   return {
     success: true,
     data: {
-      flowRevenue: 100, campaignRevenue: 200, storeRevenue: 300, storeOrders: 5,
+      flowRevenue: 100, campaignRevenue: 200,
+      flowDataAvailable: true, campaignDataAvailable: true,
+      storeRevenue: 300, storeOrders: 5,
       startDateStr: "2026-03-01", endDateStr: "2026-03-04",
       flowRows: [], campRows: [], currency: "BRL",
     },
@@ -309,6 +311,7 @@ describe("Story 16.8 — KlaviyoRateLimitError handling in cron sync", () => {
   })
 
   it("AC 16.8.2: continues to next period after single rate limit in period loop", async () => {
+    vi.useFakeTimers()
     mockGetCachedAccountInfo.mockResolvedValue({ timezone: "America/Sao_Paulo", currency: "BRL" })
     mockGetCachedPlacedOrderMetric.mockResolvedValue("metric-123")
     mockFetchFlowNames.mockResolvedValue(new Map())
@@ -319,7 +322,9 @@ describe("Story 16.8 — KlaviyoRateLimitError handling in cron sync", () => {
       .mockRejectedValueOnce(new KlaviyoRateLimitError(60000))
       .mockResolvedValueOnce(successSyncResult())
 
-    const response = await GET(makeRequest())
+    const resultPromise = GET(makeRequest())
+    await vi.runAllTimersAsync()
+    const response = await resultPromise
     const body = await response.json()
 
     // Both periods attempted
@@ -331,9 +336,11 @@ describe("Story 16.8 — KlaviyoRateLimitError handling in cron sync", () => {
     expect(results[0].status).toBe("error")
     expect(results[0].error).toContain("[RATE_LIMIT]")
     expect(results[1].status).toBe("ok")
+    vi.useRealTimers()
   })
 
-  it("AC 16.8.2: breaks after 2 consecutive rate limits", async () => {
+  it("AC 16.8.2: breaks after 3 consecutive rate limits", async () => {
+    vi.useFakeTimers()
     mockPeriods = ["7d", "30d", "90d", "365d"]
     mockGetCachedAccountInfo.mockResolvedValue({ timezone: "America/Sao_Paulo", currency: "BRL" })
     mockGetCachedPlacedOrderMetric.mockResolvedValue("metric-123")
@@ -343,20 +350,24 @@ describe("Story 16.8 — KlaviyoRateLimitError handling in cron sync", () => {
     // All periods throw rate limit
     mockSyncKlaviyoForPeriod.mockRejectedValue(new KlaviyoRateLimitError(60000))
 
-    const response = await GET(makeRequest())
+    const resultPromise = GET(makeRequest())
+    await vi.runAllTimersAsync()
+    const response = await resultPromise
     const body = await response.json()
 
-    // Only 2 periods attempted (break after 2 consecutive)
-    expect(mockSyncKlaviyoForPeriod).toHaveBeenCalledTimes(2)
+    // Only 3 periods attempted (break after 3 consecutive)
+    expect(mockSyncKlaviyoForPeriod).toHaveBeenCalledTimes(3)
 
     const errors = body.stores.filter((s: { status: string }) => s.status === "error")
-    expect(errors).toHaveLength(2)
+    expect(errors).toHaveLength(3)
     for (const err of errors) {
       expect(err.error).toContain("[RATE_LIMIT]")
     }
+    vi.useRealTimers()
   })
 
   it("AC 16.8.2: resets consecutiveRateLimits after success (no break on non-consecutive)", async () => {
+    vi.useFakeTimers()
     mockPeriods = ["7d", "30d", "90d"]
     mockGetCachedAccountInfo.mockResolvedValue({ timezone: "America/Sao_Paulo", currency: "BRL" })
     mockGetCachedPlacedOrderMetric.mockResolvedValue("metric-123")
@@ -370,7 +381,9 @@ describe("Story 16.8 — KlaviyoRateLimitError handling in cron sync", () => {
       .mockResolvedValueOnce(successSyncResult())
       .mockRejectedValueOnce(new KlaviyoRateLimitError(60000))
 
-    const response = await GET(makeRequest())
+    const resultPromise = GET(makeRequest())
+    await vi.runAllTimersAsync()
+    const response = await resultPromise
     const body = await response.json()
 
     // All 3 periods attempted (no break)
@@ -383,6 +396,7 @@ describe("Story 16.8 — KlaviyoRateLimitError handling in cron sync", () => {
     expect(results[1].status).toBe("ok")
     expect(results[2].status).toBe("error")
     expect(results[2].error).toContain("[RATE_LIMIT]")
+    vi.useRealTimers()
   })
 
   it("AC 16.8.3: prefixes [PERMISSION] when KlaviyoPermissionError in period loop", async () => {

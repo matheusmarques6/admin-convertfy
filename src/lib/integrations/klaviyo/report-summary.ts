@@ -21,6 +21,8 @@ export interface KlaviyoRevenueSummary {
   flowRevenue: number
   /** ISO 4217 currency code from Klaviyo account (e.g. "USD", "BRL") */
   currency: string
+  campaignReportAvailable?: boolean
+  flowReportAvailable?: boolean
 }
 
 interface KlaviyoValuesReport {
@@ -148,6 +150,8 @@ export async function getKlaviyoRevenueForStore(
         campaignRevenue,
         flowRevenue,
         currency,
+        campaignReportAvailable: campaignReport !== null,
+        flowReportAvailable: flowReport !== null,
       },
       source: "live", fetchedAt: new Date().toISOString(),
     }
