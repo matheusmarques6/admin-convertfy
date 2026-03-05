@@ -112,14 +112,16 @@ async function fetchKlaviyoFromCache(
   storeId: string,
   period: string,
   supabase: SupabaseClient,
+  orgId?: string,
 ): Promise<KlaviyoCacheResult> {
   // 1. Get revenue summary (no expires_at filter — we want stale data too)
-  const { data: summary, error: summaryError } = await supabase
+  let summaryQuery = supabase
     .from("store_revenue_summary")
     .select("*")
     .eq("store_id", storeId)
     .eq("period_label", period)
-    .single()
+  if (orgId) summaryQuery = summaryQuery.eq("org_id", orgId)
+  const { data: summary, error: summaryError } = await summaryQuery.single()
 
   if (summaryError || !summary) {
     log.debug(`[CacheRead] No revenue summary for store ${storeId} period ${period}`)
@@ -131,17 +133,23 @@ async function fetchKlaviyoFromCache(
     log.info(`[CacheRead] Summary has sync_status=error for store ${storeId}/${period}, attempting synthetic fallback`)
 
     // CA5: Check if detail tables have real data from a previous successful sync
+    let fallbackCampaignQuery = supabase
+      .from("klaviyo_campaign_metrics")
+      .select("*")
+      .eq("store_id", storeId)
+      .order("conversion_value", { ascending: false })
+    if (orgId) fallbackCampaignQuery = fallbackCampaignQuery.eq("org_id", orgId)
+
+    let fallbackFlowQuery = supabase
+      .from("klaviyo_flow_metrics")
+      .select("*")
+      .eq("store_id", storeId)
+      .order("conversion_value", { ascending: false })
+    if (orgId) fallbackFlowQuery = fallbackFlowQuery.eq("org_id", orgId)
+
     const [campaignsResult, flowsResult] = await Promise.all([
-      supabase
-        .from("klaviyo_campaign_metrics")
-        .select("*")
-        .eq("store_id", storeId)
-        .order("conversion_value", { ascending: false }),
-      supabase
-        .from("klaviyo_flow_metrics")
-        .select("*")
-        .eq("store_id", storeId)
-        .order("conversion_value", { ascending: false }),
+      fallbackCampaignQuery,
+      fallbackFlowQuery,
     ])
 
     const campaigns = (campaignsResult.data || []) as CachedCampaignRow[]
@@ -174,21 +182,27 @@ async function fetchKlaviyoFromCache(
   const isStale = new Date(summary.expires_at) < new Date()
 
   // 2. Get campaign + flow detail in parallel using the same period window
+  let campaignQuery = supabase
+    .from("klaviyo_campaign_metrics")
+    .select("*")
+    .eq("store_id", storeId)
+    .eq("period_start", summary.period_start)
+    .eq("period_end", summary.period_end)
+    .order("conversion_value", { ascending: false })
+  if (orgId) campaignQuery = campaignQuery.eq("org_id", orgId)
+
+  let flowQuery = supabase
+    .from("klaviyo_flow_metrics")
+    .select("*")
+    .eq("store_id", storeId)
+    .eq("period_start", summary.period_start)
+    .eq("period_end", summary.period_end)
+    .order("conversion_value", { ascending: false })
+  if (orgId) flowQuery = flowQuery.eq("org_id", orgId)
+
   const [campaignsResult, flowsResult] = await Promise.all([
-    supabase
-      .from("klaviyo_campaign_metrics")
-      .select("*")
-      .eq("store_id", storeId)
-      .eq("period_start", summary.period_start)
-      .eq("period_end", summary.period_end)
-      .order("conversion_value", { ascending: false }),
-    supabase
-      .from("klaviyo_flow_metrics")
-      .select("*")
-      .eq("store_id", storeId)
-      .eq("period_start", summary.period_start)
-      .eq("period_end", summary.period_end)
-      .order("conversion_value", { ascending: false }),
+    campaignQuery,
+    flowQuery,
   ])
 
   return {
@@ -754,7 +768,8 @@ export async function GET(request: NextRequest) {
         const hasKlaviyo = !!(selectedStore.klaviyo_private_key || selectedStore.klaviyo_api_key)
         log.info(`[Portal] Single store ${selectedStore.id}: hasKlaviyo=${hasKlaviyo}, period=${period}`)
         if (hasKlaviyo) {
-          const cacheResult = await fetchKlaviyoFromCache(selectedStore.id, period, adminClient)
+          const storeOrgId = (selectedStore as Record<string, unknown>).org_id as string | undefined
+          const cacheResult = await fetchKlaviyoFromCache(selectedStore.id, period, adminClient, storeOrgId)
           log.info(`[Portal] Cache result for store ${selectedStore.id}: hasData=${!!cacheResult.data}, isStale=${cacheResult.isStale}`)
 
           if (cacheResult.data) {
@@ -784,7 +799,7 @@ export async function GET(request: NextRequest) {
               response.lastFetchedAt = new Date().toISOString()
             } else {
               // Live fetch failed/timed out — try stale cache as last resort
-              const staleFallback = await fetchKlaviyoFromCache(selectedStore.id, period, adminClient)
+              const staleFallback = await fetchKlaviyoFromCache(selectedStore.id, period, adminClient, storeOrgId)
               if (staleFallback.data) {
                 log.info(`[Portal] Live fetch failed, using stale cache for store ${selectedStore.id} period ${period}`)
                 response.klaviyo = mapCacheToPortalKlaviyo(staleFallback.data)
@@ -837,7 +852,7 @@ export async function GET(request: NextRequest) {
       if (storesWithIntegrations.length > 0) {
         // Fetch Klaviyo cached data for all stores in parallel (DB reads, no rate limits)
         const klaviyoCachePromises = storesWithKlaviyo.map(store =>
-          fetchKlaviyoFromCache(store.id, period, adminClient).then(result => ({ store, result }))
+          fetchKlaviyoFromCache(store.id, period, adminClient, (store as Record<string, unknown>).org_id as string | undefined).then(result => ({ store, result }))
         )
 
         // Fetch Shopify data for all stores in parallel
