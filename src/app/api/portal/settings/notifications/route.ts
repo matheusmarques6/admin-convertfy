@@ -1,3 +1,6 @@
+// TODO: Dead code — tabela client_notification_preferences nao existe no banco.
+// Queries falham silenciosamente. Nao e risco de seguranca, mas e tech debt.
+// Ref: Story 18.1.5 (AC 18.1.5.4)
 import { NextRequest } from "next/server"
 import { z } from "zod"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
