@@ -36,7 +36,8 @@ export async function GET(request: NextRequest) {
         started_at, completed_at, completed_by, notes,
         created_at, updated_at,
         generation:campaign_generations(
-          id, name, status, reference_doc_url, drive_folder_url, client_id
+          id, name, status, reference_doc_url, drive_folder_url, client_id,
+          client:clients(id, name, company)
         ),
         assignee:org_members!assignee_id(
           id, profile_id,
