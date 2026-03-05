@@ -8,8 +8,8 @@
  */
 
 import { SupabaseClient } from "@supabase/supabase-js"
-import type { KlaviyoSyncData } from "./klaviyo-sync.service"
-import type { KlaviyoPerformanceData } from "./klaviyo-performance.service"
+import type { KlaviyoSyncData, CampaignMetricRow } from "./klaviyo-sync.service"
+import type { KlaviyoPerformanceData, KlaviyoCampaignItem } from "./klaviyo-performance.service"
 import { CACHED_PERIODS } from "@/lib/shared/data-status"
 import { logger } from "@/lib/logger"
 
@@ -82,6 +82,9 @@ export async function upsertSyncResults(
   if (summaryErr) {
     log.error(`[SyncPersistence] Failed to upsert summary for ${store.id}/${period}:`, summaryErr.message)
   }
+
+  // Sync campaigns to calendar table
+  await syncCampaignsToCalendarFromCron(supabase, store, data.campRows)
 }
 
 /**
@@ -184,9 +187,138 @@ export async function savePerfDataToCache(
       }
     }
 
+    // Sync campaigns to calendar table
+    await syncCampaignsToCalendarFromLive(supabase, storeId, data.recentCampaigns)
+
     log.info(`[SyncPersistence] Saved perf data to cache for store ${storeId}/${period}`)
   } catch (err) {
     // Non-fatal — log and continue
     log.warn(`[SyncPersistence] Failed to save perf data to cache for store ${storeId}/${period}:`, err)
+  }
+}
+
+/**
+ * Sync Klaviyo campaigns to the `campaigns` calendar table
+ * from the live-fetch path (KlaviyoCampaignItem[]).
+ */
+async function syncCampaignsToCalendarFromLive(
+  supabase: SupabaseClient,
+  storeId: string,
+  campaigns: KlaviyoCampaignItem[],
+): Promise<void> {
+  if (campaigns.length === 0) return
+
+  // Resolve client_id from client_stores
+  const clientId = await resolveClientId(supabase, storeId)
+
+  const rows = campaigns
+    .filter(c => c.sendTime)
+    .map(c => {
+      const sendDate = new Date(c.sendTime)
+      return {
+        store_id: storeId,
+        client_id: clientId,
+        klaviyo_campaign_id: c.campaignId,
+        name: c.name,
+        scheduled_date: sendDate.toISOString().split("T")[0],
+        scheduled_time: sendDate.toTimeString().split(" ")[0],
+        send_datetime: sendDate.toISOString(),
+        status: "sent" as const,
+        channel: "email" as const,
+        recipients: c.recipients,
+        delivered: c.delivered,
+        revenue: c.revenue,
+      }
+    })
+
+  if (rows.length === 0) return
+
+  const { error } = await supabase
+    .from("campaigns")
+    .upsert(rows, { onConflict: "store_id,klaviyo_campaign_id" })
+
+  if (error) {
+    log.warn(`[SyncPersistence] Failed to sync campaigns to calendar for ${storeId}:`, error.message)
+  }
+}
+
+/**
+ * Sync Klaviyo campaigns to the `campaigns` calendar table
+ * from the cron path (CampaignMetricRow[]).
+ */
+export async function syncCampaignsToCalendarFromCron(
+  supabase: SupabaseClient,
+  store: StoreInfo,
+  campRows: CampaignMetricRow[],
+): Promise<void> {
+  if (campRows.length === 0) return
+
+  const clientId = await resolveClientId(supabase, store.id)
+
+  const rows = campRows
+    .filter(r => r.send_time)
+    .map(r => {
+      const sendDate = new Date(r.send_time!)
+      return {
+        store_id: store.id,
+        client_id: clientId,
+        klaviyo_campaign_id: r.campaign_id,
+        name: r.campaign_name,
+        scheduled_date: sendDate.toISOString().split("T")[0],
+        scheduled_time: sendDate.toTimeString().split(" ")[0],
+        send_datetime: sendDate.toISOString(),
+        status: mapCampaignStatus(r.campaign_status),
+        channel: (r.channel || "email") as "email" | "sms" | "push" | "whatsapp",
+        subject_line: r.subject || null,
+        recipients: r.recipients,
+        delivered: r.delivered,
+        opened: r.opened,
+        clicked: r.clicked,
+        converted: r.conversions,
+        revenue: r.conversion_value,
+      }
+    })
+
+  if (rows.length === 0) return
+
+  const { error } = await supabase
+    .from("campaigns")
+    .upsert(rows, { onConflict: "store_id,klaviyo_campaign_id" })
+
+  if (error) {
+    log.warn(`[SyncPersistence] Failed to sync campaigns to calendar for ${store.id}:`, error.message)
+  }
+}
+
+/**
+ * Resolve client_id from client_stores table given a store_id.
+ * Returns null if not found.
+ */
+async function resolveClientId(
+  supabase: SupabaseClient,
+  storeId: string,
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("client_stores")
+    .select("client_id")
+    .eq("id", storeId)
+    .single()
+
+  if (error || !data) {
+    log.warn(`[SyncPersistence] Could not resolve client_id for store ${storeId}`)
+    return null
+  }
+  return data.client_id
+}
+
+/**
+ * Map Klaviyo campaign status to the campaign_status enum.
+ */
+function mapCampaignStatus(status: string): "draft" | "scheduled" | "sent" | "cancelled" {
+  switch (status) {
+    case "sent": return "sent"
+    case "scheduled": return "scheduled"
+    case "cancelled": return "cancelled"
+    default: return "draft"
   }
 }

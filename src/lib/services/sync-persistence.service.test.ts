@@ -7,12 +7,23 @@ import type { KlaviyoPerformanceData } from "./klaviyo-performance.service"
 
 function createMockSupabase() {
   const upsertFn = vi.fn().mockResolvedValue({ error: null })
-  const fromFn = vi.fn().mockReturnValue({ upsert: upsertFn })
+  const singleFn = vi.fn().mockResolvedValue({ data: { client_id: "client-1" }, error: null })
+  const eqFn = vi.fn().mockReturnValue({ single: singleFn })
+  const selectFn = vi.fn().mockReturnValue({ eq: eqFn })
+  const fromFn = vi.fn().mockImplementation((table: string) => {
+    if (table === "client_stores") {
+      return { select: selectFn }
+    }
+    return { upsert: upsertFn }
+  })
 
   return {
     client: { from: fromFn } as unknown as Parameters<typeof upsertSyncResults>[0],
     from: fromFn,
     upsert: upsertFn,
+    select: selectFn,
+    eq: eqFn,
+    single: singleFn,
   }
 }
 
@@ -353,7 +364,13 @@ describe("savePerfDataToCache", () => {
 
   it("should not throw on supabase error (non-fatal)", async () => {
     const upsertFn = vi.fn().mockRejectedValue(new Error("DB Error"))
-    const fromFn = vi.fn().mockReturnValue({ upsert: upsertFn })
+    const singleFn = vi.fn().mockResolvedValue({ data: null, error: { message: "not found" } })
+    const eqFn = vi.fn().mockReturnValue({ single: singleFn })
+    const selectFn = vi.fn().mockReturnValue({ eq: eqFn })
+    const fromFn = vi.fn().mockImplementation((table: string) => {
+      if (table === "client_stores") return { select: selectFn }
+      return { upsert: upsertFn }
+    })
     const client = { from: fromFn } as unknown as Parameters<typeof savePerfDataToCache>[0]
 
     // Should not throw
@@ -428,5 +445,86 @@ describe("savePerfDataToCache", () => {
     const sixHoursMs = 6 * 60 * 60 * 1000
     expect(expiresAt).toBeGreaterThanOrEqual(before + sixHoursMs - 2000)
     expect(expiresAt).toBeLessThanOrEqual(after + sixHoursMs + 2000)
+  })
+
+  it("should sync campaigns to calendar table", async () => {
+    const { client, from, upsert } = createMockSupabase()
+
+    await savePerfDataToCache(client, "store-1", "org-1", "30d", PERF_DATA, "2026-01-01", "2026-01-31")
+
+    expect(from).toHaveBeenCalledWith("campaigns")
+    const campaignsCallIndex = from.mock.calls.findIndex(
+      (c: string[]) => c[0] === "campaigns"
+    )
+    expect(campaignsCallIndex).toBeGreaterThanOrEqual(0)
+
+    const campaignRow = upsert.mock.calls[campaignsCallIndex][0]
+    expect(campaignRow).toHaveLength(1)
+    expect(campaignRow[0].klaviyo_campaign_id).toBe("camp-1")
+    expect(campaignRow[0].name).toBe("Black Friday")
+    expect(campaignRow[0].status).toBe("sent")
+    expect(campaignRow[0].recipients).toBe(5000)
+    expect(campaignRow[0].revenue).toBe(5000)
+    expect(campaignRow[0].client_id).toBe("client-1")
+  })
+
+  it("should skip calendar sync when recentCampaigns is empty", async () => {
+    const { client, from } = createMockSupabase()
+    const dataNocamp = {
+      ...PERF_DATA,
+      recentCampaigns: [],
+    } as unknown as KlaviyoPerformanceData
+
+    await savePerfDataToCache(client, "store-1", "org-1", "30d", dataNocamp, "2026-01-01", "2026-01-31")
+
+    const campaignsCall = from.mock.calls.find(
+      (c: string[]) => c[0] === "campaigns"
+    )
+    expect(campaignsCall).toBeUndefined()
+  })
+
+  it("should resolve client_id from client_stores", async () => {
+    const { client, from, eq } = createMockSupabase()
+
+    await savePerfDataToCache(client, "store-1", "org-1", "30d", PERF_DATA, "2026-01-01", "2026-01-31")
+
+    expect(from).toHaveBeenCalledWith("client_stores")
+    expect(eq).toHaveBeenCalledWith("id", "store-1")
+  })
+})
+
+describe("upsertSyncResults - calendar sync", () => {
+  it("should sync campaigns to calendar table from cron path", async () => {
+    const { client, from, upsert } = createMockSupabase()
+
+    await upsertSyncResults(client, STORE, SYNC_DATA, "30d")
+
+    expect(from).toHaveBeenCalledWith("campaigns")
+    const campaignsCallIndex = from.mock.calls.findIndex(
+      (c: string[]) => c[0] === "campaigns"
+    )
+    expect(campaignsCallIndex).toBeGreaterThanOrEqual(0)
+
+    const campaignRow = upsert.mock.calls[campaignsCallIndex][0]
+    expect(campaignRow).toHaveLength(1)
+    expect(campaignRow[0].klaviyo_campaign_id).toBe("camp-1")
+    expect(campaignRow[0].name).toBe("Black Friday")
+    expect(campaignRow[0].status).toBe("sent")
+    expect(campaignRow[0].subject_line).toBe("Sale!")
+    expect(campaignRow[0].recipients).toBe(5000)
+    expect(campaignRow[0].delivered).toBe(4800)
+    expect(campaignRow[0].revenue).toBe(5000)
+  })
+
+  it("should skip calendar sync when campRows is empty", async () => {
+    const { client, from } = createMockSupabase()
+    const dataNocamp = { ...SYNC_DATA, campRows: [] }
+
+    await upsertSyncResults(client, STORE, dataNocamp, "30d")
+
+    const campaignsCall = from.mock.calls.find(
+      (c: string[]) => c[0] === "campaigns"
+    )
+    expect(campaignsCall).toBeUndefined()
   })
 })
