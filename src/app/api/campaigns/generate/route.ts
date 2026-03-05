@@ -36,8 +36,9 @@ export async function POST(request: NextRequest) {
       throw new AppError("Nao autorizado", 401)
     }
 
-    // 3. Lookup portal user to get client_id
+    // 3. Resolve client_id: try portal user first, then org member
     const adminClient = createAdminClient()
+    let clientId: string
 
     const { data: portalUser } = await adminClient
       .from("client_portal_users")
@@ -46,11 +47,36 @@ export async function POST(request: NextRequest) {
       .eq("is_active", true)
       .single()
 
-    if (!portalUser) {
-      throw new AppError("Nao autorizado", 401)
-    }
+    if (portalUser) {
+      clientId = portalUser.client_id
+    } else {
+      // Admin/org member: resolve org_id and derive client_id from the stores
+      const { data: orgMember } = await adminClient
+        .from("org_members")
+        .select("org_id")
+        .eq("profile_id", user.id)
+        .eq("is_active", true)
+        .limit(1)
+        .single()
 
-    const clientId = portalUser.client_id
+      if (!orgMember) {
+        throw new AppError("Nao autorizado", 401)
+      }
+
+      // Validate stores belong to this org and get client_id from first store
+      const { data: orgStores } = await adminClient
+        .from("client_stores")
+        .select("id, client_id")
+        .eq("org_id", orgMember.org_id)
+        .in("id", parsed.store_ids)
+        .limit(1)
+
+      if (!orgStores || orgStores.length === 0) {
+        throw new AppError("Nenhuma loja valida encontrada", 400)
+      }
+
+      clientId = orgStores[0].client_id
+    }
 
     // 4. Filter store_ids by client ownership
     const uniqueStoreIds = [...new Set(parsed.store_ids)]

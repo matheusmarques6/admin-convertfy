@@ -30,6 +30,7 @@ import { CampaignModal } from "@/components/campaigns/campaign-modal"
 import { CampaignFormModal } from "@/components/campaigns/campaign-form-modal"
 import { CampaignsListView } from "@/components/campaigns/campaigns-list-view"
 import { CopyGenerationBoard } from "@/components/campaigns/copy-generation-board"
+import { CopyTab } from "@/components/campaigns/copy-tab"
 import { QuickCampaignModal } from "@/components/campaigns/quick-campaign-modal"
 import { useCampaignsCalendar } from "./use-campaigns-calendar"
 import { CalendarGrid, channelConfig } from "./calendar-grid"
@@ -127,8 +128,13 @@ export default function CampaignsCalendarPage() {
       {/* Performance View */}
       {viewMode === "performance" && <CampaignsListView />}
 
-      {/* Copy Generation Tasks */}
-      {viewMode === "copy" && <CopyGenerationBoard />}
+      {/* Copy Generation: Form + Tasks Board */}
+      {viewMode === "copy" && (
+        <div className="space-y-8">
+          <CopyTab />
+          <CopyGenerationBoard />
+        </div>
+      )}
 
       {/* Calendar View */}
       {viewMode === "calendar" && (<>

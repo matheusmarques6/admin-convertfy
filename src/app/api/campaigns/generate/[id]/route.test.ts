@@ -50,6 +50,7 @@ function chainable(table: string): Record<string, (...args: any[]) => any> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const self: Record<string, (...args: any[]) => any> = {}
   self.select = () => self
+  self.limit = () => self
   self.eq = (col: string, _val: string) => {
     if (table === "client_portal_users") return { ...self, single: () => ({ data: mockPortalUser, error: null }) }
     if (table === "campaign_generations" && col === "id") return { ...self, single: () => ({ data: mockGeneration, error: null }) }

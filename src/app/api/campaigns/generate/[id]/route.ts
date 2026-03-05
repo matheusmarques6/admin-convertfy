@@ -30,7 +30,7 @@ export async function GET(
       throw new AppError("Não autorizado", 401)
     }
 
-    // Lookup portal user to get client_id
+    // Resolve user identity: portal user or org member
     const { data: portalUser } = await adminClient
       .from("client_portal_users")
       .select("client_id")
@@ -38,8 +38,20 @@ export async function GET(
       .eq("is_active", true)
       .single()
 
+    let allowedOrgId: string | null = null
     if (!portalUser) {
-      throw new AppError("Não autorizado", 401)
+      const { data: orgMember } = await adminClient
+        .from("org_members")
+        .select("org_id")
+        .eq("profile_id", user.id)
+        .eq("is_active", true)
+        .limit(1)
+        .single()
+
+      if (!orgMember) {
+        throw new AppError("Não autorizado", 401)
+      }
+      allowedOrgId = orgMember.org_id
     }
 
     // Fetch generation by id
@@ -53,9 +65,22 @@ export async function GET(
       throw new AppError("Geração não encontrada", 404)
     }
 
-    // Check ownership
-    if (generation.client_id !== portalUser.client_id) {
-      throw new AppError("Acesso negado", 403)
+    // Check ownership: portal user checks client_id, admin checks via org
+    if (portalUser) {
+      if (generation.client_id !== portalUser.client_id) {
+        throw new AppError("Acesso negado", 403)
+      }
+    } else if (allowedOrgId) {
+      // Verify the generation's client belongs to the admin's org
+      const { data: client } = await adminClient
+        .from("clients")
+        .select("id")
+        .eq("id", generation.client_id)
+        .eq("org_id", allowedOrgId)
+        .single()
+      if (!client) {
+        throw new AppError("Acesso negado", 403)
+      }
     }
 
     // Fetch generation stores ordered by created_at
