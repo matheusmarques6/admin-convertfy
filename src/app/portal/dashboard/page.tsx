@@ -40,8 +40,14 @@ export default function PortalDashboardPage() {
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [period, setPeriod] = useState("30d")
+  const abortRef = useRef<AbortController | null>(null)
 
   const fetchDashboard = useCallback(async (showRefresh = false) => {
+    // Cancel any in-flight request so stale responses don't overwrite newer ones
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+
     if (showRefresh) setRefreshing(true)
 
     try {
@@ -52,14 +58,14 @@ export default function PortalDashboardPage() {
         ...(storeId && { store_id: storeId }),
       })
 
-      const response = await fetch(`/api/portal/dashboard?${params}`)
+      const response = await fetch(`/api/portal/dashboard?${params}`, {
+        signal: controller.signal,
+      })
       if (!response.ok) {
         throw new Error("Erro ao carregar dados")
       }
       const result = await response.json()
       setData(prev => {
-        // If the new response has no klaviyo data but previous did,
-        // preserve previous klaviyo data so cards don't disappear
         if (!result.klaviyo && prev?.klaviyo) {
           return { ...result, klaviyo: prev.klaviyo }
         }
@@ -67,6 +73,7 @@ export default function PortalDashboardPage() {
       })
       setError(null)
     } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return
       console.error("Dashboard fetch error:", err)
       setError("Não foi possível carregar os dados. Tente novamente.")
     } finally {
