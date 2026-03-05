@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { errorResponse, successResponse } from "@/lib/api/errors"
 import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
@@ -10,6 +10,15 @@ const log = logger.child("BoardAutomationCron")
 // Call via cron or manually: GET /api/cron/board-automation
 export async function GET(request: NextRequest) {
   try {
+    // Verify CRON_SECRET
+    const authHeader = request.headers.get("authorization")
+    const cronSecret = process.env.CRON_SECRET
+
+    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+      log.warn("Unauthorized cron request")
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
     const supabase = createAdminClient()
 
     // Get all active organizations
