@@ -96,12 +96,13 @@ vi.mock("@/lib/services/credentials.service", () => ({
   KLAVIYO_CREDENTIALS_FILTER: "klaviyo_private_key.not.is.null,klaviyo_api_key.not.is.null",
 }))
 
+let mockPeriods = ["7d", "30d"]
 vi.mock("@/lib/shared/data-status", () => ({
-  CACHED_PERIODS: ["7d", "30d"],
+  get CACHED_PERIODS() { return mockPeriods },
 }))
 
 import { GET } from "./route"
-import { KlaviyoPermissionError } from "@/lib/integrations/klaviyo"
+import { KlaviyoPermissionError, KlaviyoRateLimitError } from "@/lib/integrations/klaviyo"
 
 function makeRequest() {
   return new Request("http://localhost/api/cron/sync-reports", {
@@ -133,6 +134,7 @@ describe("Story 16.7.7 — KlaviyoPermissionError in cron sync", () => {
     upsertCalls.length = 0
     updateCalls.length = 0
     mockStoreList = [{ id: "store-1", store_name: "Test Store", org_id: "org-1" }]
+    mockPeriods = ["7d", "30d"]
     process.env.CRON_SECRET = "test-secret"
     mockGetStoreCredentials.mockResolvedValue({ klaviyo_private_key: "pk_test_key" })
     mockFetchAudienceForStore.mockResolvedValue({ success: false, error: "skip" })
@@ -263,5 +265,145 @@ describe("Story 16.7.7 — KlaviyoPermissionError in cron sync", () => {
     const goodResults = body.stores.filter((s: { storeId: string }) => s.storeId === "store-good")
     expect(goodResults).toHaveLength(2)
     expect(goodResults.every((r: { status: string }) => r.status === "ok")).toBe(true)
+  })
+})
+
+describe("Story 16.8 — KlaviyoRateLimitError handling in cron sync", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    upsertCalls.length = 0
+    updateCalls.length = 0
+    mockStoreList = [{ id: "store-1", store_name: "Test Store", org_id: "org-1" }]
+    mockPeriods = ["7d", "30d"]
+    process.env.CRON_SECRET = "test-secret"
+    mockGetStoreCredentials.mockResolvedValue({ klaviyo_private_key: "pk_test_key" })
+    mockFetchAudienceForStore.mockResolvedValue({ success: false, error: "skip" })
+  })
+
+  it("AC 16.8.1: records [RATE_LIMIT] error for ALL periods when getCachedAccountInfo throws KlaviyoRateLimitError", async () => {
+    mockGetCachedAccountInfo.mockRejectedValue(new KlaviyoRateLimitError(3723000))
+
+    const response = await GET(makeRequest())
+    const body = await response.json()
+
+    const errors = body.stores.filter((s: { status: string }) => s.status === "error")
+    expect(errors).toHaveLength(2) // 2 periods (7d, 30d)
+
+    for (const err of errors) {
+      expect(err.error).toContain("[RATE_LIMIT]")
+      expect(err.error).toContain("pre-fetch")
+      expect(err.error).toContain("3723000ms")
+    }
+
+    // store_revenue_summary upserts for both periods
+    const summaryUpserts = upsertCalls.filter(c => c.table === "store_revenue_summary")
+    expect(summaryUpserts).toHaveLength(2)
+    for (const u of summaryUpserts) {
+      expect(u.data.sync_status).toBe("error")
+      expect(u.data.sync_error).toContain("[RATE_LIMIT]")
+    }
+
+    // syncKlaviyoForPeriod should NOT have been called (store was skipped)
+    expect(mockSyncKlaviyoForPeriod).not.toHaveBeenCalled()
+  })
+
+  it("AC 16.8.2: continues to next period after single rate limit in period loop", async () => {
+    mockGetCachedAccountInfo.mockResolvedValue({ timezone: "America/Sao_Paulo", currency: "BRL" })
+    mockGetCachedPlacedOrderMetric.mockResolvedValue("metric-123")
+    mockFetchFlowNames.mockResolvedValue(new Map())
+    mockFetchCampaignNames.mockResolvedValue(new Map())
+
+    // Period 1 (7d) = rate limit, Period 2 (30d) = success
+    mockSyncKlaviyoForPeriod
+      .mockRejectedValueOnce(new KlaviyoRateLimitError(60000))
+      .mockResolvedValueOnce(successSyncResult())
+
+    const response = await GET(makeRequest())
+    const body = await response.json()
+
+    // Both periods attempted
+    expect(mockSyncKlaviyoForPeriod).toHaveBeenCalledTimes(2)
+
+    // Period 1 = error with [RATE_LIMIT], Period 2 = ok
+    const results = body.stores
+    expect(results).toHaveLength(2)
+    expect(results[0].status).toBe("error")
+    expect(results[0].error).toContain("[RATE_LIMIT]")
+    expect(results[1].status).toBe("ok")
+  })
+
+  it("AC 16.8.2: breaks after 2 consecutive rate limits", async () => {
+    mockPeriods = ["7d", "30d", "90d", "365d"]
+    mockGetCachedAccountInfo.mockResolvedValue({ timezone: "America/Sao_Paulo", currency: "BRL" })
+    mockGetCachedPlacedOrderMetric.mockResolvedValue("metric-123")
+    mockFetchFlowNames.mockResolvedValue(new Map())
+    mockFetchCampaignNames.mockResolvedValue(new Map())
+
+    // All periods throw rate limit
+    mockSyncKlaviyoForPeriod.mockRejectedValue(new KlaviyoRateLimitError(60000))
+
+    const response = await GET(makeRequest())
+    const body = await response.json()
+
+    // Only 2 periods attempted (break after 2 consecutive)
+    expect(mockSyncKlaviyoForPeriod).toHaveBeenCalledTimes(2)
+
+    const errors = body.stores.filter((s: { status: string }) => s.status === "error")
+    expect(errors).toHaveLength(2)
+    for (const err of errors) {
+      expect(err.error).toContain("[RATE_LIMIT]")
+    }
+  })
+
+  it("AC 16.8.2: resets consecutiveRateLimits after success (no break on non-consecutive)", async () => {
+    mockPeriods = ["7d", "30d", "90d"]
+    mockGetCachedAccountInfo.mockResolvedValue({ timezone: "America/Sao_Paulo", currency: "BRL" })
+    mockGetCachedPlacedOrderMetric.mockResolvedValue("metric-123")
+    mockFetchFlowNames.mockResolvedValue(new Map())
+    mockFetchCampaignNames.mockResolvedValue(new Map())
+
+    // Period 1 = rate limit, Period 2 = success, Period 3 = rate limit
+    // Should NOT break because they are not consecutive
+    mockSyncKlaviyoForPeriod
+      .mockRejectedValueOnce(new KlaviyoRateLimitError(60000))
+      .mockResolvedValueOnce(successSyncResult())
+      .mockRejectedValueOnce(new KlaviyoRateLimitError(60000))
+
+    const response = await GET(makeRequest())
+    const body = await response.json()
+
+    // All 3 periods attempted (no break)
+    expect(mockSyncKlaviyoForPeriod).toHaveBeenCalledTimes(3)
+
+    const results = body.stores
+    expect(results).toHaveLength(3)
+    expect(results[0].status).toBe("error")
+    expect(results[0].error).toContain("[RATE_LIMIT]")
+    expect(results[1].status).toBe("ok")
+    expect(results[2].status).toBe("error")
+    expect(results[2].error).toContain("[RATE_LIMIT]")
+  })
+
+  it("AC 16.8.3: prefixes [PERMISSION] when KlaviyoPermissionError in period loop", async () => {
+    mockGetCachedAccountInfo.mockResolvedValue({ timezone: "America/Sao_Paulo", currency: "BRL" })
+    mockGetCachedPlacedOrderMetric.mockResolvedValue("metric-123")
+    mockFetchFlowNames.mockResolvedValue(new Map())
+    mockFetchCampaignNames.mockResolvedValue(new Map())
+    mockSyncKlaviyoForPeriod.mockRejectedValue(
+      new KlaviyoPermissionError(["flows:read"])
+    )
+
+    const response = await GET(makeRequest())
+    const body = await response.json()
+
+    const errors = body.stores.filter((s: { status: string }) => s.status === "error")
+    expect(errors.length).toBeGreaterThanOrEqual(1)
+    expect(errors[0].error).toContain("[PERMISSION]")
+
+    // Verify sync_error in upsert has [PERMISSION] prefix
+    const summaryUpserts = upsertCalls.filter(
+      c => c.table === "store_revenue_summary" && typeof c.data.sync_error === "string" && (c.data.sync_error as string).includes("[PERMISSION]")
+    )
+    expect(summaryUpserts.length).toBeGreaterThanOrEqual(1)
   })
 })

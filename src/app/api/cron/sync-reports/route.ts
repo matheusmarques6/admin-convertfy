@@ -10,6 +10,7 @@ import {
   getCachedAccountInfo,
   getCachedPlacedOrderMetric,
   KlaviyoPermissionError,
+  KlaviyoRateLimitError,
 } from "@/lib/integrations/klaviyo"
 import { CACHED_PERIODS } from "@/lib/shared/data-status"
 import {
@@ -189,6 +190,17 @@ async function syncStore(
 
       return periods.map(p => ({ storeId: store.id, storeName: store.store_name, period: p, status: "error" as const, error: errorMsg }))
     }
+    if (err instanceof KlaviyoRateLimitError) {
+      const errorMsg = `[RATE_LIMIT] Klaviyo rate limited during pre-fetch (Retry-After: ${err.retryAfterMs}ms)`
+      log.warn(`[Cron] ${store.store_name}: ${errorMsg}`)
+
+      const defaultTz = "UTC"
+      await Promise.all(
+        periods.map(p => upsertSyncError(supabase, store, p, defaultTz, errorMsg))
+      )
+
+      return periods.map(p => ({ storeId: store.id, storeName: store.store_name, period: p, status: "error" as const, error: errorMsg }))
+    }
     throw err // re-throw other errors
   }
 
@@ -204,6 +216,7 @@ async function syncStore(
   }
 
   // Sync each period
+  let consecutiveRateLimits = 0
   for (const period of periods) {
     if (Date.now() - startTime > MAX_DURATION_MS) {
       results.push({ storeId: store.id, storeName: store.store_name, period, status: "skipped", error: "timeout" })
@@ -225,6 +238,7 @@ async function syncStore(
       })
 
       if (result.success && result.data) {
+        consecutiveRateLimits = 0 // reset on success
         // Upsert flow metrics, campaign metrics, and revenue summary via shared service
         await upsertSyncResults(supabase, store, result.data, period, audience)
 
@@ -244,6 +258,21 @@ async function syncStore(
         await upsertSyncError(supabase, store, period, accountInfo.timezone, msg)
       }
     } catch (err) {
+      // KlaviyoRateLimitError in period loop: try next period, break after 2 consecutive
+      if (err instanceof KlaviyoRateLimitError) {
+        consecutiveRateLimits++
+        const errorMsg = `[RATE_LIMIT] ${err.message}`
+        log.warn(`[Cron] ${store.store_name}/${period}: ${errorMsg}`)
+        results.push({ storeId: store.id, storeName: store.store_name, period, status: "error", error: errorMsg })
+        await upsertSyncError(supabase, store, period, accountInfo.timezone, errorMsg)
+
+        if (consecutiveRateLimits >= 2) {
+          log.warn(`[Cron] 2+ consecutive rate limits for ${store.store_name}, skipping remaining periods`)
+          break
+        }
+        continue // try next period
+      }
+
       // KlaviyoPermissionError in period loop: scope missing for specific endpoint (e.g. flow-values-reports)
       if (err instanceof KlaviyoPermissionError) {
         const scopes = err.missingScopes.join(", ")
