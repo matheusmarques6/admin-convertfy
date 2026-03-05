@@ -29,7 +29,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { CampaignModal } from "@/components/campaigns/campaign-modal"
 import { CampaignFormModal } from "@/components/campaigns/campaign-form-modal"
 import { CampaignsListView } from "@/components/campaigns/campaigns-list-view"
-import { CopyPipelineBoard } from "@/components/campaigns/copy-pipeline-board"
+import { CopyGenerationBoard } from "@/components/campaigns/copy-generation-board"
 import { QuickCampaignModal } from "@/components/campaigns/quick-campaign-modal"
 import { useCampaignsCalendar } from "./use-campaigns-calendar"
 import { CalendarGrid, channelConfig } from "./calendar-grid"
@@ -127,8 +127,8 @@ export default function CampaignsCalendarPage() {
       {/* Performance View */}
       {viewMode === "performance" && <CampaignsListView />}
 
-      {/* Copy Pipeline Board */}
-      {viewMode === "copy" && <CopyPipelineBoard />}
+      {/* Copy Generation Tasks */}
+      {viewMode === "copy" && <CopyGenerationBoard />}
 
       {/* Calendar View */}
       {viewMode === "calendar" && (<>
