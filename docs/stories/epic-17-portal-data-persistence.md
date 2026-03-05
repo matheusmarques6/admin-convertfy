@@ -29,6 +29,7 @@ Ao dar F5 no portal:
 | 17.5 | Validar e sanitizar storeId do localStorage | MEDIO | Frontend |
 | 17.6 | Retornar erros explicitos em vez de 200 OK com dados vazios | MEDIO | Backend |
 | 17.7 | Renovar sessao em API routes do portal | BAIXO | Auth |
+| 17.8 | Fix: store_revenue_summary nao populado pelo cron | CRITICO | Backend+DB |
 
 ## Dependencias entre Stories
 
@@ -40,11 +41,13 @@ Ao dar F5 no portal:
 17.4 (Backend) ────── depende de 17.6 ──────────────  (precisa error codes)
 17.3 (Frontend) ───── BLOQUEADA por 17.2 ───────────  (precisa PortalContext)
 17.7 (Auth) ───────── apos 17.2 e 17.3 ────────────  (soft dependency)
+17.8 (Backend+DB) ─── independente (PRIORIDADE 1) ── causa raiz principal
 ```
 
 ## Ordem de Execucao Recomendada
 
-1. **17.1** (DB) — Corrige dados corrompidos, previne futuras insercoes sem org_id
+1. **17.8** (Backend+DB) — **CAUSA RAIZ**: Cron nao popula store_revenue_summary para maioria das lojas
+2. **17.1** (DB) — Corrige dados corrompidos, previne futuras insercoes sem org_id (JA COMMITADO)
 2. **17.6** (Backend) — Erros explicitos facilitam debug das proximas stories
 3. **17.2** (Frontend) — Elimina a causa mais frequente de dados zerados
 4. **17.5** (Frontend) — Valida storeId antes de qualquer fetch
