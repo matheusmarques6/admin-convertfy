@@ -51,6 +51,34 @@ export async function upsertSyncResults(
     }
   }
 
+  // When the campaign report fails silently (campaignRevenue=0 + no campRows),
+  // preserve existing campaign revenue instead of overwriting with 0.
+  let effectiveCampaignRevenue = data.campaignRevenue
+  let effectiveFlowRevenue = data.flowRevenue
+
+  const campaignReportMissing = data.campaignRevenue === 0 && data.campRows.length === 0
+  const flowReportMissing = data.flowRevenue === 0 && data.flowRows.length === 0
+
+  if (campaignReportMissing || flowReportMissing) {
+    const { data: existing } = await supabase
+      .from("store_revenue_summary")
+      .select("klaviyo_campaign_revenue, klaviyo_flow_revenue")
+      .eq("store_id", store.id)
+      .eq("period_label", period)
+      .single()
+
+    if (existing) {
+      if (campaignReportMissing && existing.klaviyo_campaign_revenue > 0) {
+        effectiveCampaignRevenue = existing.klaviyo_campaign_revenue
+        log.info(`[SyncPersistence] Preserving existing campaign revenue ${effectiveCampaignRevenue} for ${store.id}/${period} (campaign report missing)`)
+      }
+      if (flowReportMissing && existing.klaviyo_flow_revenue > 0) {
+        effectiveFlowRevenue = existing.klaviyo_flow_revenue
+        log.info(`[SyncPersistence] Preserving existing flow revenue ${effectiveFlowRevenue} for ${store.id}/${period} (flow report missing)`)
+      }
+    }
+  }
+
   // Upsert revenue summary
   // Audience fields are only included when explicitly passed (e.g. from cron job).
   // Portal live-fetch calls omit audience to avoid overwriting cron-populated values.
@@ -62,9 +90,9 @@ export async function upsertSyncResults(
       period_label: period,
       period_start: data.startDateStr,
       period_end: data.endDateStr,
-      klaviyo_total_revenue: data.campaignRevenue + data.flowRevenue,
-      klaviyo_campaign_revenue: data.campaignRevenue,
-      klaviyo_flow_revenue: data.flowRevenue,
+      klaviyo_total_revenue: effectiveCampaignRevenue + effectiveFlowRevenue,
+      klaviyo_campaign_revenue: effectiveCampaignRevenue,
+      klaviyo_flow_revenue: effectiveFlowRevenue,
       store_total_revenue: data.storeRevenue,
       store_orders: data.storeOrders,
       currency: data.currency || "BRL",

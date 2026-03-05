@@ -468,6 +468,14 @@ export async function syncKlaviyoForPeriod(
     const flowRows: FlowMetricRow[] = []
     const campRows: CampaignMetricRow[] = []
 
+    // Log when reports return null (silent API failure)
+    if (!flowResponse) {
+      log.warn(`[KlaviyoSyncService] ${storeId}/${period}: flow-values-report returned null (API failure)`)
+    }
+    if (!campaignResponse) {
+      log.warn(`[KlaviyoSyncService] ${storeId}/${period}: campaign-values-report returned null (API failure)`)
+    }
+
     // Aggregate flow metrics
     if (flowResponse?.data?.attributes?.results) {
       const flowAgg = new Map<string, Record<string, number>>()
