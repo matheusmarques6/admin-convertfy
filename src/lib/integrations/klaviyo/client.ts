@@ -24,6 +24,17 @@ export class KlaviyoRateLimitError extends Error {
 }
 
 /**
+ * Thrown when the API key contains non-ASCII characters that crash fetch().
+ * Not retryable — the key must be fixed in store settings.
+ */
+export class KlaviyoInvalidKeyError extends Error {
+  constructor(detail: string) {
+    super(`Klaviyo API key is invalid: ${detail}`)
+    this.name = "KlaviyoInvalidKeyError"
+  }
+}
+
+/**
  * Thrown when Klaviyo returns 403 with permission_denied.
  * Indicates the API key is missing required scopes — not a transient error.
  * Callers should surface this to the user as a configuration issue.
@@ -192,6 +203,9 @@ async function _klaviyoRequestInner<T>(
       if (error instanceof KlaviyoPermissionError) {
         throw error  // not retryable — permanent configuration error
       }
+      if (error instanceof KlaviyoInvalidKeyError) {
+        throw error  // not retryable — permanent key error
+      }
       if (error instanceof KlaviyoRateLimitError) {
         log.warn(`[${logTag}] Rate limited after all retries for ${endpoint}`)
         throw error
@@ -200,6 +214,12 @@ async function _klaviyoRequestInner<T>(
         log.error(`[${logTag}] REQUEST TIMEOUT after ${KLAVIYO_FETCH_TIMEOUT_MS}ms: ${endpoint}`)
         if (attempt < maxRetries) continue  // timeout is recoverable — retry
         return null
+      }
+      // Detect non-ASCII characters in API key — fail fast, no retry
+      if (error instanceof TypeError && error.message.includes("ByteString")) {
+        const masked = apiKey.length > 8 ? `...${apiKey.slice(-4)}` : "***"
+        log.error(`[${logTag}] API key ${masked} contains invalid non-ASCII characters. Fix the key in store settings.`)
+        throw new KlaviyoInvalidKeyError(`Non-ASCII character in API key ${masked}`)
       }
       log.error(`[${logTag}] REQUEST ERROR:`, error)
       if (attempt < maxRetries) continue

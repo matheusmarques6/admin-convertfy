@@ -1,10 +1,11 @@
 /**
  * Tests for src/lib/integrations/klaviyo/client.ts
- * Covers Story 16.3 (KlaviyoPermissionError) and Story 16.4 (fetch timeout).
+ * Covers Story 16.3 (KlaviyoPermissionError), Story 16.4 (fetch timeout),
+ * and Story 16.6 (KlaviyoInvalidKeyError on ByteString crash).
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { klaviyoRequest, KlaviyoPermissionError } from "./client"
+import { klaviyoRequest, KlaviyoPermissionError, KlaviyoInvalidKeyError } from "./client"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -533,5 +534,76 @@ describe("Story 16.5c — KlaviyoPermissionError re-throw in fetchAudienceMetric
     // Generic error DOES return { totalLeads: 0 } — confirms the distinction
     const genericResult = simulateCatch(new Error("Network timeout"))
     expect(genericResult).toEqual({ totalLeads: 0, engagedLeads: 0, engagementRate: 0 })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Story 16.6 — KlaviyoInvalidKeyError on ByteString crash
+// ---------------------------------------------------------------------------
+
+describe("Story 16.6 — ByteString crash throws KlaviyoInvalidKeyError", () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it("throws KlaviyoInvalidKeyError on ByteString TypeError without retrying", async () => {
+    const byteStringError = new TypeError(
+      "Cannot convert argument to a ByteString because the character at index 16 has a value of 8226 which is greater than 255."
+    )
+
+    const fetchMock = vi.fn().mockRejectedValue(byteStringError)
+    vi.stubGlobal("fetch", fetchMock)
+
+    let caughtError: unknown
+    try {
+      await klaviyoRequest(FAKE_API_KEY, FAKE_ENDPOINT)
+    } catch (err) {
+      caughtError = err
+    }
+
+    expect(caughtError).toBeInstanceOf(KlaviyoInvalidKeyError)
+    expect((caughtError as KlaviyoInvalidKeyError).message).toContain("Non-ASCII character")
+    // Must NOT retry — fetch called only once
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("logs masked API key in error message", async () => {
+    const byteStringError = new TypeError(
+      "Cannot convert argument to a ByteString because the character at index 16 has a value of 8226 which is greater than 255."
+    )
+
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(byteStringError))
+
+    try {
+      await klaviyoRequest("pk_1234567890abcdef", FAKE_ENDPOINT)
+    } catch {
+      // expected
+    }
+
+    expect(mockLogError).toHaveBeenCalledWith(
+      expect.stringContaining("...cdef")
+    )
+  })
+
+  it("includes masked key in KlaviyoInvalidKeyError message", async () => {
+    const byteStringError = new TypeError(
+      "Cannot convert argument to a ByteString because the character at index 16 has a value of 8226 which is greater than 255."
+    )
+
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(byteStringError))
+
+    let caughtError: unknown
+    try {
+      await klaviyoRequest("pk_1234567890abcdef", FAKE_ENDPOINT)
+    } catch (err) {
+      caughtError = err
+    }
+
+    expect(caughtError).toBeInstanceOf(KlaviyoInvalidKeyError)
+    expect((caughtError as KlaviyoInvalidKeyError).message).toContain("...cdef")
   })
 })

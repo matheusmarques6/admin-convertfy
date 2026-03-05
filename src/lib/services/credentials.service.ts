@@ -39,6 +39,31 @@ const ENCRYPTED_FIELDS = [
   "meta_access_token",
 ] as const
 
+// Fields that must contain only ASCII printable characters (0x20-0x7E).
+// meta_access_token is excluded — it comes from OAuth callback, not manual input.
+const FIELDS_TO_VALIDATE: ReadonlySet<string> = new Set([
+  "shopify_access_token",
+  "shopify_api_key",
+  "shopify_api_secret",
+  "klaviyo_api_key",
+  "klaviyo_private_key",
+  "klaviyo_public_key",
+])
+
+const ASCII_PRINTABLE = /^[\x20-\x7E]+$/
+
+export function validateCredentialField(field: string, value: string): string {
+  const trimmed = value.trim()
+  if (!trimmed) return trimmed
+  if (!ASCII_PRINTABLE.test(trimmed)) {
+    throw new AppError(
+      `O campo ${field} contem caracteres invalidos. Copie a API key novamente sem formatacao.`,
+      400
+    )
+  }
+  return trimmed
+}
+
 export interface StoreCredentials {
   // Shopify
   shopify_store_domain?: string
@@ -157,7 +182,8 @@ export async function updateStoreCredentials(
     if (value === undefined) continue
 
     if (ENCRYPTED_FIELDS.includes(key as (typeof ENCRYPTED_FIELDS)[number]) && typeof value === "string") {
-      updateData[key] = encrypt(value)
+      const cleaned = FIELDS_TO_VALIDATE.has(key) ? validateCredentialField(key, value) : value
+      updateData[key] = encrypt(cleaned)
     } else if (key === "ga4_credentials" && typeof value === "object") {
       updateData[key] = encryptCredentialsJson(value as Record<string, unknown>)
     } else if (key === "google_ads_credentials" && typeof value === "object") {
