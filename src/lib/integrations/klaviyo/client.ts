@@ -166,9 +166,13 @@ async function _klaviyoRequestInner<T>(
             if (firstError?.code === "permission_denied") {
               const detail: string = firstError.detail ?? ""
               const match = detail.match(/scopes?:\s*(.+)$/i)
-              const missingScopes = match
+              const parsed = match
                 ? match[1].split(",").map((s: string) => s.trim()).filter(Boolean)
-                : ["unknown"]
+                : null
+              if (!parsed || parsed.length === 0) {
+                log.warn(`[${logTag}] Could not parse scopes from 403 detail: "${detail.substring(0, 200)}"`)
+              }
+              const missingScopes = parsed && parsed.length > 0 ? parsed : ["unknown"]
               log.error(`[${logTag}] Permission denied — missing scopes: ${missingScopes.join(", ")}`)
               throw new KlaviyoPermissionError(missingScopes)
             }

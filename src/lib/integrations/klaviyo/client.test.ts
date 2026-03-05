@@ -28,13 +28,18 @@ vi.mock("./rate-limiter", () => ({
   enqueueKlaviyoRequest: (_apiKey: string, fn: () => unknown) => fn(),
 }))
 
-// Silence logger output during tests
+// Logger mock — expose fns for assertions (vi.hoisted to avoid TDZ)
+const { mockLogWarn, mockLogError, mockLogInfo } = vi.hoisted(() => ({
+  mockLogWarn: vi.fn(),
+  mockLogError: vi.fn(),
+  mockLogInfo: vi.fn(),
+}))
 vi.mock("@/lib/logger", () => ({
   logger: {
     child: () => ({
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
+      info: mockLogInfo,
+      warn: mockLogWarn,
+      error: mockLogError,
     }),
   },
 }))
@@ -112,6 +117,78 @@ describe("Story 16.3 — 403 permission_denied handling", () => {
       const permErr = err as KlaviyoPermissionError
       expect(permErr.missingScopes).toEqual(["accounts:read", "metrics:read"])
     }
+  })
+
+  it("Teste 1b: throws KlaviyoPermissionError with ['unknown'] and logs warn when scope regex fails to match", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        mockResponse(
+          403,
+          JSON.stringify({
+            errors: [
+              {
+                code: "permission_denied",
+                detail: "Insufficient permissions for this endpoint",
+              },
+            ],
+          })
+        )
+      )
+    )
+
+    let caughtError: unknown
+    try {
+      await klaviyoRequest(FAKE_API_KEY, FAKE_ENDPOINT)
+    } catch (err) {
+      caughtError = err
+    }
+
+    expect(caughtError).toBeInstanceOf(KlaviyoPermissionError)
+    const permErr = caughtError as KlaviyoPermissionError
+    expect(permErr.missingScopes).toEqual(["unknown"])
+
+    // Verify log.warn was called with the unparseable detail
+    expect(mockLogWarn).toHaveBeenCalledWith(
+      expect.stringContaining("Could not parse scopes from 403 detail")
+    )
+    expect(mockLogWarn).toHaveBeenCalledWith(
+      expect.stringContaining("Insufficient permissions")
+    )
+  })
+
+  it("Teste 1c: throws KlaviyoPermissionError with ['unknown'] when detail has 'scopes:' but no value after it", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        mockResponse(
+          403,
+          JSON.stringify({
+            errors: [
+              {
+                code: "permission_denied",
+                detail: "Your API key is missing required scopes: ",
+              },
+            ],
+          })
+        )
+      )
+    )
+
+    let caughtError: unknown
+    try {
+      await klaviyoRequest(FAKE_API_KEY, FAKE_ENDPOINT)
+    } catch (err) {
+      caughtError = err
+    }
+
+    expect(caughtError).toBeInstanceOf(KlaviyoPermissionError)
+    const permErr = caughtError as KlaviyoPermissionError
+    expect(permErr.missingScopes).toEqual(["unknown"])
+
+    expect(mockLogWarn).toHaveBeenCalledWith(
+      expect.stringContaining("Could not parse scopes from 403 detail")
+    )
   })
 
   it("Teste 2: returns null when 403 without permission_denied code", async () => {
