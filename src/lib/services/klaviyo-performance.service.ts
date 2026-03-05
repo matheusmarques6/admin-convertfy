@@ -10,6 +10,7 @@
 import {
   klaviyoRequest,
   KlaviyoRateLimitError,
+  KlaviyoPermissionError,
   getCachedAccountInfo,
   getCachedPlacedOrderMetric,
   getTimezoneOffset,
@@ -227,6 +228,13 @@ async function fetchAudienceMetrics(apiKey: string): Promise<{
 
     return { totalLeads, engagedLeads, engagementRate }
   } catch (error) {
+    // KlaviyoPermissionError: re-throw so callers (portal, clients route) can log
+    // the missing scopes and surface a clear diagnostic — not a transient error.
+    if (error instanceof KlaviyoPermissionError) throw error
+    // KlaviyoRateLimitError: re-throw for consistency with campaign/flow/metric-agg
+    // catch blocks (Option A — AC 16.5c.6). Audience rate limit propagates to caller
+    // which falls back to cached data, same as other sections.
+    if (error instanceof KlaviyoRateLimitError) throw error
     log.error("[KlaviyoPerf] Failed to fetch audience metrics:", error)
     return empty
   }
@@ -316,6 +324,7 @@ export async function fetchKlaviyoPerformance(
       },
     })
   } catch (err) {
+    if (err instanceof KlaviyoPermissionError) throw err
     if (err instanceof KlaviyoRateLimitError) {
       log.warn(`[KlaviyoPerf] Campaign report rate limited (${err.retryAfterMs}ms)`)
       rateLimited = true
@@ -341,6 +350,7 @@ export async function fetchKlaviyoPerformance(
       },
     })
   } catch (err) {
+    if (err instanceof KlaviyoPermissionError) throw err
     if (err instanceof KlaviyoRateLimitError) {
       log.warn(`[KlaviyoPerf] Flow report rate limited (${err.retryAfterMs}ms)`)
       rateLimited = true
@@ -388,6 +398,7 @@ export async function fetchKlaviyoPerformance(
         },
       })
     } catch (err) {
+      if (err instanceof KlaviyoPermissionError) throw err
       if (err instanceof KlaviyoRateLimitError) {
         log.warn(`[KlaviyoPerf] Metric aggregates rate limited (${err.retryAfterMs}ms)`)
         rateLimited = true

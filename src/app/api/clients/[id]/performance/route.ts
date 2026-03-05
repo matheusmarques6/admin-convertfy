@@ -4,7 +4,7 @@ import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 import { getCache, setCache, getStaleCache } from "@/lib/cache"
-import { parseDateRange, formatDateStr, withConcurrencyLimit } from "@/lib/integrations/klaviyo"
+import { parseDateRange, formatDateStr, withConcurrencyLimit, KlaviyoPermissionError } from "@/lib/integrations/klaviyo"
 import { getShopifyReportForStore } from "@/lib/integrations/shopify/report"
 import { decryptStoreCredentials } from "@/lib/crypto"
 import { CACHED_PERIODS } from "@/lib/shared/data-status"
@@ -309,23 +309,37 @@ export async function GET(
           if (klaviyoData) {
             log.info(`[ClientPerf] Recovered from error with cached data for store ${store.id}`)
           } else {
-            const rawMsg = err instanceof Error ? err.message : String(err)
-            let message = rawMsg
-            let code: string | undefined
-
-            if (rawMsg.includes("401") || rawMsg.includes("403") || rawMsg.toLowerCase().includes("unauthorized")) {
-              message = "API Key sem permissão para métricas. Verifique os scopes da chave Klaviyo."
-              code = "AUTH_ERROR"
-            } else if (rawMsg.includes("429")) {
-              message = "Limite de requisições Klaviyo excedido. Tente novamente em alguns minutos."
-              code = "RATE_LIMIT"
-            } else if (rawMsg.includes("Falha ao conectar")) {
-              message = "Falha ao conectar com a API do Klaviyo. Verifique as credenciais."
-              code = "CONNECTION_ERROR"
-            }
-
             log.warn("Failed to fetch Klaviyo data for store", { storeId: store.id, error: err })
-            errors.push({ integration: "klaviyo", message, code })
+
+            // Typed detection of KlaviyoPermissionError before string matching
+            if (err instanceof KlaviyoPermissionError) {
+              const scopesList = err.missingScopes.length > 0
+                ? err.missingScopes.join(", ")
+                : "nao identificados"
+              errors.push({
+                integration: "klaviyo",
+                message: `API key sem permissao. Scopes faltando: ${scopesList}`,
+                code: "PERMISSION_DENIED",
+              })
+            } else {
+              // String matching — preserved unchanged for all other error types
+              const rawMsg = err instanceof Error ? err.message : String(err)
+              let message = rawMsg
+              let code: string | undefined
+
+              if (rawMsg.includes("401") || rawMsg.includes("403") || rawMsg.toLowerCase().includes("unauthorized")) {
+                message = "API Key sem permissão para métricas. Verifique os scopes da chave Klaviyo."
+                code = "AUTH_ERROR"
+              } else if (rawMsg.includes("429")) {
+                message = "Limite de requisições Klaviyo excedido. Tente novamente em alguns minutos."
+                code = "RATE_LIMIT"
+              } else if (rawMsg.includes("Falha ao conectar")) {
+                message = "Falha ao conectar com a API do Klaviyo. Verifique as credenciais."
+                code = "CONNECTION_ERROR"
+              }
+
+              errors.push({ integration: "klaviyo", message, code })
+            }
           }
         }
       }

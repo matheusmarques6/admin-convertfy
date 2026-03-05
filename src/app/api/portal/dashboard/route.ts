@@ -6,7 +6,7 @@ import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
 import { decryptStoreCredentials } from "@/lib/crypto"
 import { CACHE_VERSION } from "@/lib/cache"
-import { parseDateRangeInTimezone } from "@/lib/integrations/klaviyo"
+import { parseDateRangeInTimezone, KlaviyoPermissionError } from "@/lib/integrations/klaviyo"
 import { isCachedPeriod } from "@/lib/shared/data-status"
 import type { DataStatus } from "@/lib/shared/data-status"
 import { syncShopifyForStore } from "@/lib/services/shopify-sync.service"
@@ -372,6 +372,10 @@ async function liveFetchKlaviyoForPortal(
     return perfDataToCachedKlaviyo(perfData)
   } catch (err) {
     await releaseLiveFetch(supabase, store.id, fetchKey, "failed")
+    if (err instanceof KlaviyoPermissionError) {
+      log.error(`[Portal LiveFetch] Permission denied for store ${store.id}: missing scopes [${err.missingScopes.join(", ")}]`)
+      return null
+    }
     log.error(`[Portal LiveFetch] Error for store ${store.id}:`, err)
     return null
   }

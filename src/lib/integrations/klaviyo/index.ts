@@ -11,6 +11,7 @@ export {
   sleep,
   klaviyoRequest,
   KlaviyoRateLimitError,
+  KlaviyoPermissionError,
   getCurrencySymbol,
   parseDateRange,
   parseDateRangeInTimezone,
