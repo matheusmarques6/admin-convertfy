@@ -13,6 +13,8 @@ import { KLAVIYO_CREDENTIALS_FILTER } from "@/lib/services/credentials.service"
 const log = logger.child("TotalRevenue")
 
 const LIVE_FETCH_TIMEOUT_MS = 50_000
+/** If the oldest fetched_at in cache is older than this, signal stale to trigger client-side refresh */
+const CACHE_STALENESS_MS = 5 * 60 * 1000 // 5 minutes
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -421,6 +423,17 @@ export async function GET(request: NextRequest) {
 
         const storeBreakdown = await buildStoreBreakdown(rows)
         const realStoresCount = totalKlaviyoStores ?? storeBreakdown.length
+
+        // Check if cache data is stale (oldest fetched_at > CACHE_STALENESS_MS)
+        const oldestFetchedAt = rows.reduce((oldest: string | null, s) => {
+          if (!s.fetched_at) return oldest
+          if (!oldest) return s.fetched_at
+          return new Date(s.fetched_at) < new Date(oldest) ? s.fetched_at : oldest
+        }, null)
+        const isStale = oldestFetchedAt
+          ? (Date.now() - new Date(oldestFetchedAt).getTime()) > CACHE_STALENESS_MS
+          : false
+
         const elapsed = Date.now() - startTime
         log.info("[CacheStrategy]", {
           endpoint: "total-revenue",
@@ -430,14 +443,15 @@ export async function GET(request: NextRequest) {
           cacheMisses: 0,
           liveFetches: 0,
           source: "cache",
+          isStale,
           elapsed: `${elapsed}ms`,
         })
 
         const result = buildResponse(period, storeBreakdown, rows, {
-          dataStatus: "ready",
+          dataStatus: isStale ? "stale" : "ready",
           lastFetchedAt: null,
           isRefreshing: false,
-          source: "cache",
+          source: isStale ? "stale-cache" : "cache",
         }, realStoresCount)
         const response = successResponse(request, result)
         response.headers.set("X-Response-Time", `${elapsed}ms`)

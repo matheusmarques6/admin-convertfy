@@ -135,6 +135,28 @@ export function TotalRevenueBanner({ storeIds, period: controlledPeriod, onPerio
     source: data.source ?? "cache",
   } : undefined)
 
+  // Auto-refresh when server signals stale data (fetched_at > 5 min)
+  const hasTriggeredAutoRefresh = useRef(false)
+  useEffect(() => {
+    if (
+      data?.dataStatus === "stale" &&
+      !isValidating &&
+      !hasTriggeredAutoRefresh.current &&
+      swrKey
+    ) {
+      hasTriggeredAutoRefresh.current = true
+      const separator = swrKey.includes("?") ? "&" : "?"
+      mutate(
+        fetch(`${swrKey}${separator}force_refresh=true`)
+          .then(r => r.ok ? r.json() : Promise.reject(new Error("Auto-refresh failed")))
+      )
+    }
+    // Reset flag when period changes (swrKey changes)
+    if (data?.dataStatus === "ready") {
+      hasTriggeredAutoRefresh.current = false
+    }
+  }, [data?.dataStatus, isValidating, swrKey, mutate])
+
   // Notify parent when data changes (so cards can consume topStores/bottomStores)
   useEffect(() => {
     onDataChange?.(data ?? null)
