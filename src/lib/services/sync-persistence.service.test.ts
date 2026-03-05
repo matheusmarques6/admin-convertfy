@@ -31,6 +31,7 @@ const SYNC_DATA: KlaviyoSyncData = {
   flowRows: [
     {
       store_id: "store-1",
+      org_id: "org-1",
       flow_id: "flow-1",
       flow_name: "Welcome",
       flow_status: "live",
@@ -60,6 +61,7 @@ const SYNC_DATA: KlaviyoSyncData = {
   campRows: [
     {
       store_id: "store-1",
+      org_id: "org-1",
       campaign_id: "camp-1",
       campaign_name: "Black Friday",
       campaign_status: "sent",

@@ -125,6 +125,7 @@ export async function savePerfDataToCache(
     if (data.recentCampaigns.length > 0) {
       const campRows = data.recentCampaigns.map(c => ({
         store_id: storeId,
+        org_id: orgId,
         campaign_id: c.campaignId,
         campaign_name: c.name,
         send_time: c.sendTime || null,
@@ -146,6 +147,7 @@ export async function savePerfDataToCache(
     if (data.topFlows.length > 0) {
       const flowRows = data.topFlows.map(f => ({
         store_id: storeId,
+        org_id: orgId,
         flow_id: f.flowId,
         flow_name: f.name,
         flow_status: f.status,

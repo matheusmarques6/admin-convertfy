@@ -37,6 +37,7 @@ export interface CampaignNameInfo {
 
 export interface FlowMetricRow {
   store_id: string
+  org_id: string | null
   flow_id: string
   flow_name: string
   flow_status: string
@@ -65,6 +66,7 @@ export interface FlowMetricRow {
 
 export interface CampaignMetricRow {
   store_id: string
+  org_id: string | null
   campaign_id: string
   campaign_name: string
   campaign_status: string
@@ -395,7 +397,7 @@ export async function fetchStoreRevenueFromMetricAggregates(
 export async function syncKlaviyoForPeriod(
   params: KlaviyoSyncParams,
 ): Promise<SyncResult<KlaviyoSyncData>> {
-  const { apiKey, period, timezone, timezoneOffset, metricId, flowNames, campNames, storeId, currency } = params
+  const { apiKey, period, timezone, timezoneOffset, metricId, flowNames, campNames, storeId, orgId, currency } = params
 
   try {
     const { startDateStr, endDateStr } = parseDateRangeInTimezone(period, timezone)
@@ -508,6 +510,7 @@ export async function syncKlaviyoForPeriod(
       for (const [flowId, m] of flowAgg) {
         flowRows.push({
           store_id: storeId,
+          org_id: orgId,
           flow_id: flowId,
           flow_name: flowNames.get(flowId)?.name || "Unknown",
           flow_status: flowNames.get(flowId)?.status || "unknown",
@@ -591,6 +594,7 @@ export async function syncKlaviyoForPeriod(
 
         campRows.push({
           store_id: storeId,
+          org_id: orgId,
           campaign_id: campaignId,
           campaign_name: info?.name || "Unknown",
           campaign_status: info?.status || "sent",
