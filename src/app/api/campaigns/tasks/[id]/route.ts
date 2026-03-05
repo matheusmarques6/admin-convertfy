@@ -146,17 +146,18 @@ export async function PATCH(
         started_at, completed_at, completed_by, notes, updated_at
       `
       )
-      .single()
+      .maybeSingle()
 
-    if (updateError || !updated) {
-      if (!updated && !updateError) {
-        throw new AppError(
-          "Conflito: a tarefa foi atualizada por outro usuário. Recarregue e tente novamente.",
-          409
-        )
-      }
+    if (updateError) {
       log.error("Failed to update task", updateError)
       throw new AppError("Erro ao atualizar tarefa", 500)
+    }
+
+    if (!updated) {
+      throw new AppError(
+        "Conflito: a tarefa foi atualizada por outro usuário. Recarregue e tente novamente.",
+        409
+      )
     }
 
     // If task completed/skipped, check if all tasks are done (trigger handles generation status)
