@@ -57,11 +57,13 @@ export function useRealtimeRevenue({ period, onDataUpdate, enabled = true }: Use
 
       // POST completed synchronously — data is already updated
       // Realtime event will also fire, but debounce handles dedup
+      onDataUpdate()
     } catch (err) {
       console.error("[useRealtimeRevenue] Refresh failed:", err)
+    } finally {
       setIsRefreshing(false)
     }
-  }, [period, isRefreshing])
+  }, [period, isRefreshing, onDataUpdate])
 
   // Start/stop polling fallback
   const startPolling = useCallback(() => {

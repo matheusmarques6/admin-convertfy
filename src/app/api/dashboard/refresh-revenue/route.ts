@@ -41,28 +41,55 @@ async function acquireRefreshLock(
   period: string,
 ): Promise<{ acquired: boolean; lockedSince?: string }> {
   const name = lockName(orgId, period)
+  const now = new Date().toISOString()
+  const ttlSeconds = Math.floor(LOCK_TTL_MS / 1000)
 
-  const { data: existing } = await supabase
-    .from("cron_locks")
-    .select("is_running, started_at")
-    .eq("lock_name", name)
-    .single()
+  // Atomic lock: INSERT or UPDATE only if not currently locked (or lock is stale)
+  const { data, error } = await supabase.rpc("acquire_cron_lock", {
+    p_lock_name: name,
+    p_ttl_seconds: ttlSeconds,
+    p_now: now,
+  })
 
-  if (existing?.is_running && existing.started_at) {
-    const startedAt = new Date(existing.started_at).getTime()
-    if (Date.now() - startedAt < LOCK_TTL_MS) {
-      return { acquired: false, lockedSince: existing.started_at }
+  if (error) {
+    // Fallback: if RPC doesn't exist, use non-atomic approach
+    log.warn(`[RefreshRevenue] acquire_cron_lock RPC failed, falling back: ${error.message}`)
+
+    const { data: existing } = await supabase
+      .from("cron_locks")
+      .select("is_running, started_at")
+      .eq("lock_name", name)
+      .single()
+
+    if (existing?.is_running && existing.started_at) {
+      const startedAt = new Date(existing.started_at).getTime()
+      if (Date.now() - startedAt < LOCK_TTL_MS) {
+        return { acquired: false, lockedSince: existing.started_at }
+      }
+      log.warn(`[RefreshRevenue] Stale lock detected for ${name}, overriding`)
     }
-    log.warn(`[RefreshRevenue] Stale lock detected for ${name}, overriding`)
+
+    await supabase
+      .from("cron_locks")
+      .upsert({
+        lock_name: name,
+        is_running: true,
+        started_at: now,
+      }, { onConflict: "lock_name" })
+
+    return { acquired: true }
   }
 
-  await supabase
-    .from("cron_locks")
-    .upsert({
-      lock_name: name,
-      is_running: true,
-      started_at: new Date().toISOString(),
-    }, { onConflict: "lock_name" })
+  const acquired = data === true
+  if (!acquired) {
+    // Lock is held by another process — read who holds it
+    const { data: lockRow } = await supabase
+      .from("cron_locks")
+      .select("started_at")
+      .eq("lock_name", name)
+      .single()
+    return { acquired: false, lockedSince: lockRow?.started_at }
+  }
 
   return { acquired: true }
 }
@@ -199,7 +226,8 @@ export async function POST(request: NextRequest) {
       let okCount = 0
       let errorCount = 0
 
-      for (const store of stores) {
+      for (let i = 0; i < stores.length; i++) {
+        const store = stores[i]
         const result = await refreshStoreForPeriod(adminClient, store as StoreRow, period)
         if (result.status === "ok") {
           okCount++
@@ -210,7 +238,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Small delay between stores to respect Klaviyo rate limits
-        if (stores.indexOf(store) < stores.length - 1) {
+        if (i < stores.length - 1) {
           await new Promise(resolve => setTimeout(resolve, 1000))
         }
       }

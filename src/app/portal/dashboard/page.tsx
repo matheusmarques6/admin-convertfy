@@ -70,23 +70,23 @@ export default function PortalDashboardPage() {
 
   // Realtime: auto-update when store_revenue_summary changes
   const handleRealtimeUpdate = useCallback(() => { fetchDashboard() }, [fetchDashboard])
-  const { isRefreshing: realtimeRefreshing } = useRealtimeRevenue({
+  const { isRefreshing: realtimeRefreshing, triggerRefresh } = useRealtimeRevenue({
     period,
     onDataUpdate: handleRealtimeUpdate,
   })
 
-  // Auto-trigger refresh when data is stale (>5 min)
+  // Auto-trigger background refresh when data is stale (>5 min)
   const hasTriggeredAutoRefresh = useRef(false)
   useEffect(() => {
     const isStale = data?.dataStatus === "stale" || data?.source === "stale-cache"
     if (isStale && !refreshing && !realtimeRefreshing && !hasTriggeredAutoRefresh.current) {
       hasTriggeredAutoRefresh.current = true
-      fetchDashboard(true)
+      triggerRefresh()
     }
     if (data?.dataStatus === "ready") {
       hasTriggeredAutoRefresh.current = false
     }
-  }, [data, refreshing, realtimeRefreshing, fetchDashboard])
+  }, [data, refreshing, realtimeRefreshing, triggerRefresh])
 
   useEffect(() => {
     fetchDashboard()
