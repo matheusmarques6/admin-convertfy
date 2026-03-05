@@ -12,7 +12,7 @@ export function HeroSection({ klaviyo }: HeroSectionProps) {
   const flowRevenue = klaviyo?.flowRevenue || 0
   const campaignRevenue = klaviyo?.campaignRevenue || 0
   const smsRevenue = klaviyo?.smsRevenue || 0
-  const estimatedProfit = totalRevenue * 0.30
+  const estimatedProfit = storeRevenue * 0.30
 
   const attributionPercent = storeRevenue > 0 ? (totalRevenue / storeRevenue) * 100 : 0
   const flowPercent = storeRevenue > 0 ? (flowRevenue / storeRevenue) * 100 : 0

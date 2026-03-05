@@ -57,7 +57,14 @@ export default function PortalDashboardPage() {
         throw new Error("Erro ao carregar dados")
       }
       const result = await response.json()
-      setData(result)
+      setData(prev => {
+        // If the new response has no klaviyo data but previous did,
+        // preserve previous klaviyo data so cards don't disappear
+        if (!result.klaviyo && prev?.klaviyo) {
+          return { ...result, klaviyo: prev.klaviyo }
+        }
+        return result
+      })
       setError(null)
     } catch (err) {
       console.error("Dashboard fetch error:", err)
