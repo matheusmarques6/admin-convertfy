@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { createAsaasService } from "@/lib/integrations/asaas"
 import { decryptCredentialsJson } from "@/lib/crypto"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
@@ -40,12 +40,15 @@ export async function GET(request: NextRequest) {
       throw new AppError("Sem permissão", 403)
     }
 
+    // Use admin client for data queries (RLS bypass policies will be removed in 18.1.2)
+    const adminClient = createAdminClient()
+
     const searchParams = request.nextUrl.searchParams
     const status = searchParams.get("status")
     const year = searchParams.get("year")
 
-    // Build query
-    let query = supabase
+    // Build query (adminClient bypasses RLS; isolation via client_id filter)
+    let query = adminClient
       .from("invoices")
       .select("id, client_id, asaas_id, amount, due_date, payment_date, status, description, created_at")
       .eq("client_id", portalUser.client_id)
@@ -68,13 +71,25 @@ export async function GET(request: NextRequest) {
       throw new AppError("Erro ao buscar faturas", 500)
     }
 
-    // Get Asaas integration for fetching payment links
-    const { data: integration } = await supabase
-      .from("integrations")
-      .select("credentials, is_active")
-      .eq("type", "asaas")
-      .eq("is_active", true)
+    // Get org_id for scoping integrations query
+    const { data: clientData } = await adminClient
+      .from("clients")
+      .select("org_id")
+      .eq("id", portalUser.client_id)
       .single()
+
+    // Get Asaas integration for fetching payment links (scoped by org_id)
+    let integration = null
+    if (clientData?.org_id) {
+      const { data } = await adminClient
+        .from("integrations")
+        .select("credentials, is_active")
+        .eq("type", "asaas")
+        .eq("is_active", true)
+        .eq("org_id", clientData.org_id)
+        .single()
+      integration = data
+    }
 
     let asaas: ReturnType<typeof createAsaasService> | null = null
     if (integration) {
@@ -179,8 +194,8 @@ export async function GET(request: NextRequest) {
       totalPaid: paid.reduce((sum, i) => sum + i.amount, 0),
     }
 
-    // Log activity
-    await supabase.from("client_portal_activity").insert({
+    // Log activity (table does not exist yet -- GAP-6 / Story 18.1.6)
+    await adminClient.from("client_portal_activity").insert({
       portal_user_id: portalUser.id,
       client_id: portalUser.client_id,
       action: "view_invoices",

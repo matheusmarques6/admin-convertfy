@@ -101,8 +101,11 @@ export async function POST(request: NextRequest) {
       throw new AppError("Email ou senha incorretos", 401)
     }
 
+    // Use admin client for portal queries (RLS bypass policies will be removed in 18.1.2)
+    const adminClient = createAdminClient()
+
     // Check if this is a portal user
-    const { data: portalUser, error: portalError } = await supabase
+    const { data: portalUser, error: portalError } = await adminClient
       .from("client_portal_users")
       .select(`
         *,
@@ -125,7 +128,7 @@ export async function POST(request: NextRequest) {
     // Only update last login if not required to change password
     // This way must_change_password stays true until they actually change it
     if (!portalUser.must_change_password) {
-      await supabase
+      await adminClient
         .from("client_portal_users")
         .update({
           last_login_at: new Date().toISOString(),
@@ -134,8 +137,8 @@ export async function POST(request: NextRequest) {
         .eq("id", portalUser.id)
     }
 
-    // Log activity
-    await supabase.from("client_portal_activity").insert({
+    // Log activity (table does not exist yet -- GAP-6 / Story 18.1.6)
+    await adminClient.from("client_portal_activity").insert({
       portal_user_id: portalUser.id,
       client_id: portalUser.client_id,
       action: "login",
