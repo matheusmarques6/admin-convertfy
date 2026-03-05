@@ -349,14 +349,13 @@ export async function GET(request: NextRequest) {
     const dashboardTimezone = "America/Sao_Paulo"
     const { startDateStr, endDateStr } = parseDateRangeInTimezone(period, dashboardTimezone)
 
-    // Fetch all base data in parallel using admin client to bypass RLS
+    // Fetch base data in parallel using admin client to bypass RLS
     const [
       clientData,
       rawStoresData,
       invoicesData,
       chargesData,
       meetingsData,
-      upcomingCampaignsData,
     ] = await Promise.all([
       adminClient
         .from("clients")
@@ -391,15 +390,6 @@ export async function GET(request: NextRequest) {
         .in("status", ["scheduled", "completed"])
         .order("scheduled_at", { ascending: false })
         .limit(10),
-
-      adminClient
-        .from("campaigns")
-        .select("*")
-        .eq("client_id", clientId)
-        .eq("status", "scheduled")
-        .gte("scheduled_date", new Date().toISOString().split("T")[0])
-        .order("scheduled_date")
-        .limit(10),
     ])
 
     const client = clientData.data
@@ -408,7 +398,20 @@ export async function GET(request: NextRequest) {
     const invoices = invoicesData.data || []
     const charges = chargesData.data || []
     const meetings = meetingsData.data || []
-    const upcomingCampaigns = upcomingCampaignsData.data || []
+
+    // Upcoming campaigns: fetch by store_ids (client_id can be null for Klaviyo-synced campaigns)
+    const clientStoreIds = rawStores.map(s => s.id)
+    const { data: upcomingCampaignsRaw } = clientStoreIds.length > 0
+      ? await adminClient
+          .from("campaigns")
+          .select("id, name, channel, status, scheduled_date")
+          .in("store_id", clientStoreIds)
+          .in("status", ["scheduled", "draft", "approved", "pending_review"])
+          .gte("scheduled_date", new Date().toISOString().split("T")[0])
+          .order("scheduled_date")
+          .limit(10)
+      : { data: null }
+    const upcomingCampaigns = upcomingCampaignsRaw || []
 
     // Calculate invoice + charges stats
     const pendingInvoices = invoices.filter((i) => i.status === "pending")

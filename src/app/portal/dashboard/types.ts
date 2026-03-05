@@ -119,6 +119,14 @@ export interface PortalMeeting {
   completedAt?: string
 }
 
+export interface UpcomingCampaign {
+  id: string
+  name: string
+  channel: string
+  status: string
+  scheduledDate: string
+}
+
 export interface DashboardData {
   client: {
     id: string
@@ -141,6 +149,7 @@ export interface DashboardData {
     totalPaid: number
   }
   meetings?: PortalMeeting[]
+  upcomingCampaigns?: UpcomingCampaign[]
   period: string
   dateRange?: {
     start: string

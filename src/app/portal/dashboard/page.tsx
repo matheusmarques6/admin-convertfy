@@ -73,6 +73,7 @@ export default function PortalDashboardPage() {
   const { isRefreshing: realtimeRefreshing, triggerRefresh } = useRealtimeRevenue({
     period,
     onDataUpdate: handleRealtimeUpdate,
+    refreshUrl: "/api/portal/dashboard/refresh",
   })
 
   // Auto-trigger background refresh when data is stale (>5 min)
@@ -181,12 +182,15 @@ export default function PortalDashboardPage() {
           <Button
             variant="outline"
             size="icon"
-            onClick={() => fetchDashboard(true)}
-            disabled={refreshing}
+            onClick={() => {
+              triggerRefresh()
+              fetchDashboard(true)
+            }}
+            disabled={refreshing || realtimeRefreshing}
             className="h-10 w-10 bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06] rounded-lg shadow-sm dark:shadow-slate-900/20"
             title="Atualizar dados"
           >
-            <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+            <RefreshCw className={`h-4 w-4 ${refreshing || realtimeRefreshing ? "animate-spin" : ""}`} />
           </Button>
         </div>
       </div>
@@ -212,7 +216,10 @@ export default function PortalDashboardPage() {
         {/* Operational Cards - 2x3 grid */}
         <AnimatedItem>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <NextCampaignsCard campaigns={klaviyo?.recentCampaigns} />
+            <NextCampaignsCard
+              campaigns={klaviyo?.recentCampaigns}
+              upcomingCampaigns={data.upcomingCampaigns}
+            />
             <NextMeetingCard meetings={data.meetings} />
             <ListHealthCard
               bounceRate={klaviyo?.bounceRate || 0}
