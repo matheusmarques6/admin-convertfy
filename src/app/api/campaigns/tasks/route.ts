@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
         ),
         assignee:org_members!assignee_id(
           id, profile_id,
-          profile:profiles(full_name, avatar_url)
+          profile:profiles(name, avatar_url)
         )
       `
       )

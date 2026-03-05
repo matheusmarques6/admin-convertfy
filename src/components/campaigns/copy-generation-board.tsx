@@ -35,7 +35,7 @@ import { toast } from "@/lib/hooks/use-toast"
 interface TaskAssignee {
   id: string
   profile_id: string
-  profile: { full_name: string; avatar_url: string | null } | null
+  profile: { name: string; avatar_url: string | null } | null
 }
 
 interface GenerationClient {
@@ -435,7 +435,7 @@ function TaskCard({
   const assigneeName =
     task.assignee && !Array.isArray(task.assignee)
       ? (task.assignee.profile && !Array.isArray(task.assignee.profile)
-          ? task.assignee.profile.full_name
+          ? task.assignee.profile.name
           : null)
       : null
   const isDone = task.status === "completed" || task.status === "skipped"

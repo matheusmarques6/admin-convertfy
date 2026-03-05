@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
         *,
         creator:profiles!created_by(
           id,
-          full_name,
+          name,
           email
         )
       `)

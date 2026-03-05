@@ -86,7 +86,7 @@ export async function GET(request: Request) {
         *,
         profiles:conducted_by (
           id,
-          full_name,
+          name,
           avatar_url
         ),
         client_stores:store_id (
