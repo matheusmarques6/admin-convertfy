@@ -78,7 +78,7 @@ const mockUpdate = vi.fn().mockReturnValue({ error: null })
 const mockEq = vi.fn().mockReturnValue({ error: null })
 
 vi.mock("@/lib/crypto", () => ({
-  encrypt: (...args: unknown[]) => mockEncrypt(...args),
+  encrypt: (v: string) => mockEncrypt(v),
   decryptStoreCredentials: (s: unknown) => s,
   encryptCredentialsJson: (v: unknown) => JSON.stringify(v),
   decryptCredentialsJson: (v: unknown) => v,

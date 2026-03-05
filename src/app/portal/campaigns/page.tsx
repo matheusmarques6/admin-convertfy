@@ -22,7 +22,10 @@ import {
   Target,
   CheckCircle,
   FileText,
+  Sparkles,
+  History,
 } from "lucide-react"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import {
   Select,
@@ -820,15 +823,29 @@ export default function PortalCampaignsPage() {
               Acompanhe todas as campanhas de marketing programadas
             </p>
           </div>
-          <Button
-            variant="outline"
-            onClick={fetchCampaigns}
-            disabled={loading}
-            className="bg-white dark:bg-[#151922] border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-white/[0.06] shadow-sm dark:shadow-slate-900/20"
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-            Atualizar
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button asChild variant="outline" className="bg-white dark:bg-[#151922] border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-white/[0.06] shadow-sm dark:shadow-slate-900/20">
+              <Link href="/portal/campaigns/historico">
+                <History className="h-4 w-4 mr-2" />
+                Historico
+              </Link>
+            </Button>
+            <Button asChild className="bg-primary hover:bg-primary/85 text-white shadow-sm dark:shadow-slate-900/20">
+              <Link href="/portal/campaigns/gerar">
+                <Sparkles className="h-4 w-4 mr-2" />
+                Gerar Copies
+              </Link>
+            </Button>
+            <Button
+              variant="outline"
+              onClick={fetchCampaigns}
+              disabled={loading}
+              className="bg-white dark:bg-[#151922] border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-white/[0.06] shadow-sm dark:shadow-slate-900/20"
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+              Atualizar
+            </Button>
+          </div>
         </div>
 
         {/* ========== STATS CARDS ========== */}
