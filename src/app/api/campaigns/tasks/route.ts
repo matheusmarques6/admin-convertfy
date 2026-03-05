@@ -2,6 +2,9 @@ import { NextRequest } from "next/server"
 import { errorResponse, successResponse, AppError } from "@/lib/api/errors"
 import { createClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("CampaignTasks")
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
@@ -33,10 +36,9 @@ export async function GET(request: NextRequest) {
         started_at, completed_at, completed_by, notes,
         created_at, updated_at,
         generation:campaign_generations(
-          id, name, status, reference_doc_url, drive_folder_url, client_id,
-          client:clients(id, name, company)
+          id, name, status, reference_doc_url, drive_folder_url, client_id
         ),
-        assignee:org_members!campaign_generation_tasks_assignee_id_fkey(
+        assignee:org_members!assignee_id(
           id, profile_id,
           profile:profiles(full_name, avatar_url)
         )
@@ -69,6 +71,7 @@ export async function GET(request: NextRequest) {
     const { data: tasks, error: fetchError } = await query
 
     if (fetchError) {
+      log.error("Failed to fetch tasks", fetchError)
       throw new AppError("Erro ao buscar tarefas", 500)
     }
 

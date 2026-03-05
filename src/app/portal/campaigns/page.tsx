@@ -24,8 +24,6 @@ import {
   FileText,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { CopyTab } from "@/components/campaigns/copy-tab"
 import {
   Select,
   SelectContent,
@@ -824,20 +822,8 @@ export default function PortalCampaignsPage() {
           </div>
         </div>
 
-        {/* ========== TABS ========== */}
-        <Tabs defaultValue="calendario" className="space-y-6">
-          <TabsList className="bg-white dark:bg-[#151922] border border-slate-200/80 dark:border-slate-700/40">
-            <TabsTrigger value="calendario" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">
-              <Calendar className="h-4 w-4 mr-2" />
-              Calendario
-            </TabsTrigger>
-            <TabsTrigger value="copy" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">
-              <FileText className="h-4 w-4 mr-2" />
-              Copy
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="calendario" className="space-y-6 mt-0">
+        {/* ========== CALENDAR CONTENT ========== */}
+        <div className="space-y-6">
 
           {/* Calendar refresh button */}
           <div className="flex justify-end">
@@ -1292,12 +1278,7 @@ export default function PortalCampaignsPage() {
             </DialogContent>
           </Dialog>
 
-          </TabsContent>
-
-          <TabsContent value="copy" className="mt-0">
-            <CopyTab />
-          </TabsContent>
-        </Tabs>
+        </div>
 
       </div>
     </div>
