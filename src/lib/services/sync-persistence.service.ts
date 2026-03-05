@@ -33,22 +33,28 @@ export async function upsertSyncResults(
 ): Promise<void> {
   // Upsert flow metrics
   if (data.flowRows.length > 0) {
-    await supabase
+    const { error: flowErr } = await supabase
       .from("klaviyo_flow_metrics")
       .upsert(data.flowRows, { onConflict: "store_id,flow_id,period_start,period_end" })
+    if (flowErr) {
+      log.warn(`[SyncPersistence] Failed to upsert flow metrics for ${store.id}/${period}:`, flowErr.message)
+    }
   }
 
   // Upsert campaign metrics
   if (data.campRows.length > 0) {
-    await supabase
+    const { error: campErr } = await supabase
       .from("klaviyo_campaign_metrics")
       .upsert(data.campRows, { onConflict: "store_id,campaign_id,period_start,period_end" })
+    if (campErr) {
+      log.warn(`[SyncPersistence] Failed to upsert campaign metrics for ${store.id}/${period}:`, campErr.message)
+    }
   }
 
   // Upsert revenue summary
   // Audience fields are only included when explicitly passed (e.g. from cron job).
   // Portal live-fetch calls omit audience to avoid overwriting cron-populated values.
-  await supabase
+  const { error: summaryErr } = await supabase
     .from("store_revenue_summary")
     .upsert({
       store_id: store.id,
@@ -73,6 +79,9 @@ export async function upsertSyncResults(
         engagement_rate: audience.engagementRate,
       } : {}),
     }, { onConflict: "store_id,period_label" })
+  if (summaryErr) {
+    log.error(`[SyncPersistence] Failed to upsert summary for ${store.id}/${period}:`, summaryErr.message)
+  }
 }
 
 /**
@@ -98,7 +107,7 @@ export async function savePerfDataToCache(
 
   try {
     // Upsert revenue summary
-    await supabase
+    const { error: summaryErr } = await supabase
       .from("store_revenue_summary")
       .upsert({
         store_id: storeId,
@@ -121,6 +130,11 @@ export async function savePerfDataToCache(
         fetched_at: now,
       }, { onConflict: "store_id,period_label" })
 
+    if (summaryErr) {
+      log.error(`[SyncPersistence] Failed to upsert summary for ${storeId}/${period}:`, summaryErr.message)
+      return
+    }
+
     // Upsert campaign detail rows
     if (data.recentCampaigns.length > 0) {
       const campRows = data.recentCampaigns.map(c => ({
@@ -138,9 +152,12 @@ export async function savePerfDataToCache(
         conversion_value: c.revenue,
         fetched_at: now,
       }))
-      await supabase
+      const { error: campErr } = await supabase
         .from("klaviyo_campaign_metrics")
         .upsert(campRows, { onConflict: "store_id,campaign_id,period_start,period_end" })
+      if (campErr) {
+        log.warn(`[SyncPersistence] Failed to upsert campaigns for ${storeId}/${period}:`, campErr.message)
+      }
     }
 
     // Upsert flow detail rows
@@ -159,9 +176,12 @@ export async function savePerfDataToCache(
         conversion_value: f.revenue,
         fetched_at: now,
       }))
-      await supabase
+      const { error: flowErr } = await supabase
         .from("klaviyo_flow_metrics")
         .upsert(flowRows, { onConflict: "store_id,flow_id,period_start,period_end" })
+      if (flowErr) {
+        log.warn(`[SyncPersistence] Failed to upsert flows for ${storeId}/${period}:`, flowErr.message)
+      }
     }
 
     log.info(`[SyncPersistence] Saved perf data to cache for store ${storeId}/${period}`)

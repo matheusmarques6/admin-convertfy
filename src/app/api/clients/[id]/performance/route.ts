@@ -278,7 +278,7 @@ export async function GET(
 
             // 2b. Save live results to cache tables so next request is instant
             if (klaviyoData) {
-              savePerfDataToCache(adminClient, store.id, store.org_id || null, period, klaviyoData, startDateStr, endDateStr).catch(() => {})
+              await savePerfDataToCache(adminClient, store.id, store.org_id || null, period, klaviyoData, startDateStr, endDateStr)
             }
           }
 
