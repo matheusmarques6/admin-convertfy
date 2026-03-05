@@ -13,6 +13,8 @@ import {
   KLAVIYO_API_URL,
   sleep,
   MIN_REQUEST_INTERVAL,
+  KlaviyoPermissionError,
+  KlaviyoRateLimitError,
 } from "@/lib/integrations/klaviyo"
 import type { SyncResult } from "@/lib/shared/data-status"
 import { logger } from "@/lib/logger"
@@ -380,6 +382,8 @@ export async function fetchStoreRevenueFromMetricAggregates(
       fetchedAt: new Date().toISOString(),
     }
   } catch (err) {
+    // Re-throw non-retryable errors — must not be silenced
+    if (err instanceof KlaviyoRateLimitError) throw err
     const message = err instanceof Error ? err.message : "Unknown error fetching metric aggregates"
     log.warn("[KlaviyoSyncService] fetchStoreRevenueFromMetricAggregates failed:", err)
     return {
@@ -650,6 +654,9 @@ export async function syncKlaviyoForPeriod(
       fetchedAt: new Date().toISOString(),
     }
   } catch (err) {
+    // Re-throw non-retryable errors — must not be silenced
+    if (err instanceof KlaviyoPermissionError) throw err
+    if (err instanceof KlaviyoRateLimitError) throw err
     const message = err instanceof Error ? err.message : "Unknown error in syncKlaviyoForPeriod"
     log.warn("[KlaviyoSyncService] syncKlaviyoForPeriod failed:", err)
     return {

@@ -12,6 +12,7 @@ import { getCache, setCache } from "@/lib/cache"
 import { logger } from "@/lib/logger"
 import { getAccountInfo, type KlaviyoAccountInfo } from "./account"
 import { findPlacedOrderMetric } from "./metrics"
+import { KlaviyoPermissionError } from "./client"
 
 const log = logger.child("CachedMetadata")
 
@@ -76,6 +77,8 @@ export async function getCachedPlacedOrderMetric(
   try {
     metricId = await findPlacedOrderMetric(apiKey)
   } catch (err) {
+    // Re-throw non-retryable errors — must not be silenced
+    if (err instanceof KlaviyoPermissionError) throw err
     log.warn(`[PlacedOrderMetric] Klaviyo API call failed for key ...${apiKey.slice(-4)}:`, err)
     return null
   }

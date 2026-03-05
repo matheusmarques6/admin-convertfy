@@ -9,6 +9,7 @@ import {
   getTimezoneOffset,
   getCachedAccountInfo,
   getCachedPlacedOrderMetric,
+  KlaviyoPermissionError,
 } from "@/lib/integrations/klaviyo"
 import { CACHED_PERIODS } from "@/lib/shared/data-status"
 import {
@@ -86,6 +87,42 @@ async function releaseSyncLock(supabase: SupabaseClient): Promise<void> {
 }
 
 // ==============================
+// Shared upsert helper for sync errors
+// ==============================
+
+async function upsertSyncError(
+  supabase: SupabaseClient,
+  store: StoreRow,
+  period: string,
+  timezone: string,
+  errorMsg: string,
+): Promise<void> {
+  const { startDateStr, endDateStr } = parseDateRangeInTimezone(period, timezone)
+  const periodStart = new Date(`${startDateStr}T00:00:00Z`).toISOString()
+  const periodEnd = new Date(`${endDateStr}T23:59:59.999Z`).toISOString()
+  try {
+    await supabase
+      .from("store_revenue_summary")
+      .upsert({
+        store_id: store.id,
+        org_id: store.org_id || null,
+        period_label: period,
+        period_start: periodStart,
+        period_end: periodEnd,
+        klaviyo_total_revenue: 0,
+        klaviyo_campaign_revenue: 0,
+        klaviyo_flow_revenue: 0,
+        store_total_revenue: 0,
+        sync_status: "error",
+        sync_source: "cron",
+        sync_error: errorMsg,
+        expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
+        fetched_at: new Date().toISOString(),
+      }, { onConflict: "store_id,period_label" })
+  } catch { /* Don't fail the whole store on summary upsert error */ }
+}
+
+// ==============================
 // Full sync for one store across all periods
 // ==============================
 
@@ -104,19 +141,56 @@ async function syncStore(
   }
 
   // Pre-fetch shared data (cached, minimal API calls)
-  const accountInfo = await getCachedAccountInfo(apiKey, store.org_id ?? undefined)
-  const timezoneOffset = getTimezoneOffset(accountInfo.timezone)
-  const metricId = await getCachedPlacedOrderMetric(apiKey, store.org_id ?? undefined)
+  // Wrapped in try-catch to handle KlaviyoPermissionError gracefully
+  let accountInfo: Awaited<ReturnType<typeof getCachedAccountInfo>>
+  let timezoneOffset: string
+  let metricId: string | null
+  let flowNames: Awaited<ReturnType<typeof fetchFlowNames>>
+  let campNames: Awaited<ReturnType<typeof fetchCampaignNames>>
 
-  if (!metricId) {
-    return periods.map(p => ({ storeId: store.id, storeName: store.store_name, period: p, status: "skipped" as const, error: "No Placed Order metric" }))
+  try {
+    accountInfo = await getCachedAccountInfo(apiKey, store.org_id ?? undefined)
+    timezoneOffset = getTimezoneOffset(accountInfo.timezone)
+    metricId = await getCachedPlacedOrderMetric(apiKey, store.org_id ?? undefined)
+
+    if (!metricId) {
+      return periods.map(p => ({ storeId: store.id, storeName: store.store_name, period: p, status: "skipped" as const, error: "No Placed Order metric" }))
+    }
+
+    // Fetch names ONCE per store (reused across all periods)
+    ;[flowNames, campNames] = await Promise.all([
+      fetchFlowNames(apiKey),
+      fetchCampaignNames(apiKey),
+    ])
+  } catch (err) {
+    if (err instanceof KlaviyoPermissionError) {
+      const scopes = err.missingScopes.join(", ")
+      const errorMsg = `[PERMISSION] Klaviyo API key missing scopes: ${scopes}`
+      log.warn(`[Cron] ${store.store_name}: ${errorMsg}`)
+
+      // Record error for ALL periods
+      const defaultTz = "UTC"
+      await Promise.all(
+        periods.map(p => upsertSyncError(supabase, store, p, defaultTz, errorMsg))
+      )
+
+      // Update client_stores validation fields
+      try {
+        await supabase
+          .from("client_stores")
+          .update({
+            klaviyo_validation_error: errorMsg,
+            klaviyo_missing_scopes: err.missingScopes,
+            klaviyo_validated_at: new Date().toISOString(),
+            klaviyo_has_reporting_access: false,
+          })
+          .eq("id", store.id)
+      } catch { /* Don't fail on client_stores update error */ }
+
+      return periods.map(p => ({ storeId: store.id, storeName: store.store_name, period: p, status: "error" as const, error: errorMsg }))
+    }
+    throw err // re-throw other errors
   }
-
-  // Fetch names ONCE per store (reused across all periods)
-  const [flowNames, campNames] = await Promise.all([
-    fetchFlowNames(apiKey),
-    fetchCampaignNames(apiKey),
-  ])
 
   // Fetch audience metrics ONCE per store (not per period — audience is a snapshot)
   let audience = { totalLeads: 0, engagedLeads: 0, engagementRate: 0 }
@@ -167,65 +241,37 @@ async function syncStore(
         const msg = result.error || "Sync service returned failure"
         log.warn(`[Cron] Sync failed for ${store.store_name}/${period}: ${msg}`)
         results.push({ storeId: store.id, storeName: store.store_name, period, status: "error", error: msg })
-
-        // Upsert error status in store_revenue_summary (org_id can be null)
-        {
-          const { startDateStr: errStartDate, endDateStr: errEndDate } = parseDateRangeInTimezone(period, accountInfo.timezone)
-          const errPeriodStart = new Date(`${errStartDate}T00:00:00Z`).toISOString()
-          const errPeriodEnd = new Date(`${errEndDate}T23:59:59.999Z`).toISOString()
-          try {
-            await supabase
-              .from("store_revenue_summary")
-              .upsert({
-                store_id: store.id,
-                org_id: store.org_id || null,
-                period_label: period,
-                period_start: errPeriodStart,
-                period_end: errPeriodEnd,
-                klaviyo_total_revenue: 0,
-                klaviyo_campaign_revenue: 0,
-                klaviyo_flow_revenue: 0,
-                store_total_revenue: 0,
-                sync_status: "error",
-                sync_source: "cron",
-                sync_error: msg,
-                expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
-                fetched_at: new Date().toISOString(),
-              }, { onConflict: "store_id,period_label" })
-          } catch { /* Don't fail the whole store on summary upsert error */ }
-        }
+        await upsertSyncError(supabase, store, period, accountInfo.timezone, msg)
       }
     } catch (err) {
+      // KlaviyoPermissionError in period loop: scope missing for specific endpoint (e.g. flow-values-reports)
+      if (err instanceof KlaviyoPermissionError) {
+        const scopes = err.missingScopes.join(", ")
+        const errorMsg = `[PERMISSION] Klaviyo API key missing scopes: ${scopes}`
+        log.warn(`[Cron] ${store.store_name}/${period}: ${errorMsg}`)
+        results.push({ storeId: store.id, storeName: store.store_name, period, status: "error", error: errorMsg })
+        await upsertSyncError(supabase, store, period, accountInfo.timezone, errorMsg)
+
+        // Update client_stores validation fields
+        try {
+          await supabase
+            .from("client_stores")
+            .update({
+              klaviyo_validation_error: errorMsg,
+              klaviyo_missing_scopes: err.missingScopes,
+              klaviyo_validated_at: new Date().toISOString(),
+              klaviyo_has_reporting_access: false,
+            })
+            .eq("id", store.id)
+        } catch { /* Don't fail on client_stores update error */ }
+
+        break // If a scope is missing, all periods will fail
+      }
+
       const msg = err instanceof Error ? err.message : "Unknown error"
       log.warn(`[Cron] Error syncing ${store.store_name}/${period}:`, err)
       results.push({ storeId: store.id, storeName: store.store_name, period, status: "error", error: msg })
-
-      // Upsert error status in store_revenue_summary (org_id can be null)
-      {
-        const { startDateStr: errStartDate, endDateStr: errEndDate } = parseDateRangeInTimezone(period, accountInfo.timezone)
-        const errPeriodStart = new Date(`${errStartDate}T00:00:00Z`).toISOString()
-        const errPeriodEnd = new Date(`${errEndDate}T23:59:59.999Z`).toISOString()
-        try {
-          await supabase
-            .from("store_revenue_summary")
-            .upsert({
-              store_id: store.id,
-              org_id: store.org_id || null,
-              period_label: period,
-              period_start: errPeriodStart,
-              period_end: errPeriodEnd,
-              klaviyo_total_revenue: 0,
-              klaviyo_campaign_revenue: 0,
-              klaviyo_flow_revenue: 0,
-              store_total_revenue: 0,
-              sync_status: "error",
-              sync_source: "cron",
-              sync_error: msg,
-              expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
-              fetched_at: new Date().toISOString(),
-            }, { onConflict: "store_id,period_label" })
-        } catch { /* Don't fail the whole store on summary upsert error */ }
-      }
+      await upsertSyncError(supabase, store, period, accountInfo.timezone, msg)
     }
   }
 

@@ -4,16 +4,20 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 const mockKlaviyoRequest = vi.fn()
 const mockSleep = vi.fn()
 
-vi.mock("@/lib/integrations/klaviyo", () => ({
-  klaviyoRequest: (...args: unknown[]) => mockKlaviyoRequest(...args),
-  parseDateRangeInTimezone: vi.fn().mockReturnValue({
-    startDateStr: "2026-02-01",
-    endDateStr: "2026-03-03",
-  }),
-  KLAVIYO_API_URL: "https://a.klaviyo.com/api",
-  sleep: (...args: unknown[]) => mockSleep(...args),
-  MIN_REQUEST_INTERVAL: 0,
-}))
+vi.mock("@/lib/integrations/klaviyo", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/integrations/klaviyo")>()
+  return {
+    ...actual,
+    klaviyoRequest: (...args: unknown[]) => mockKlaviyoRequest(...args),
+    parseDateRangeInTimezone: vi.fn().mockReturnValue({
+      startDateStr: "2026-02-01",
+      endDateStr: "2026-03-03",
+    }),
+    KLAVIYO_API_URL: "https://a.klaviyo.com/api",
+    sleep: (...args: unknown[]) => mockSleep(...args),
+    MIN_REQUEST_INTERVAL: 0,
+  }
+})
 
 vi.mock("@/lib/logger", () => ({
   logger: {
@@ -345,6 +349,15 @@ describe("fetchStoreRevenueFromMetricAggregates", () => {
     expect(result.error).toContain("Network error")
   })
 
+  it("should re-throw KlaviyoRateLimitError instead of catching it", async () => {
+    const { KlaviyoRateLimitError } = await import("@/lib/integrations/klaviyo")
+    mockKlaviyoRequest.mockRejectedValueOnce(new KlaviyoRateLimitError(30000))
+
+    await expect(
+      fetchStoreRevenueFromMetricAggregates("test-key", "metric-123", "2026-02-01", "2026-02-28", "America/Sao_Paulo")
+    ).rejects.toThrow(KlaviyoRateLimitError)
+  })
+
   it("should handle non-array measurements (scalar values)", async () => {
     mockKlaviyoRequest.mockResolvedValueOnce({
       data: {
@@ -576,6 +589,20 @@ describe("syncKlaviyoForPeriod", () => {
     expect(result.success).toBe(false)
     expect(result.data).toBeNull()
     expect(result.error).toContain("API timeout")
+  })
+
+  it("should re-throw KlaviyoPermissionError instead of catching it", async () => {
+    const { KlaviyoPermissionError } = await import("@/lib/integrations/klaviyo")
+    mockKlaviyoRequest.mockRejectedValueOnce(new KlaviyoPermissionError(["metrics:read"]))
+
+    await expect(syncKlaviyoForPeriod(BASE_PARAMS)).rejects.toThrow(KlaviyoPermissionError)
+  })
+
+  it("should re-throw KlaviyoRateLimitError instead of catching it", async () => {
+    const { KlaviyoRateLimitError } = await import("@/lib/integrations/klaviyo")
+    mockKlaviyoRequest.mockRejectedValueOnce(new KlaviyoRateLimitError(30000))
+
+    await expect(syncKlaviyoForPeriod(BASE_PARAMS)).rejects.toThrow(KlaviyoRateLimitError)
   })
 
   it("should handle zero denominators in rate calculations (no division by zero)", async () => {
