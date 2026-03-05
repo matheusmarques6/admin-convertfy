@@ -131,6 +131,7 @@ async function fetchKlaviyoFromCache(
       .from("klaviyo_campaign_metrics")
       .select("*")
       .eq("store_id", storeId)
+      .eq("period_label", period)
       .order("conversion_value", { ascending: false })
     if (orgId) fallbackCampaignQuery = fallbackCampaignQuery.eq("org_id", orgId)
 
@@ -138,6 +139,7 @@ async function fetchKlaviyoFromCache(
       .from("klaviyo_flow_metrics")
       .select("*")
       .eq("store_id", storeId)
+      .eq("period_label", period)
       .order("conversion_value", { ascending: false })
     if (orgId) fallbackFlowQuery = fallbackFlowQuery.eq("org_id", orgId)
 
@@ -176,13 +178,12 @@ async function fetchKlaviyoFromCache(
   const dataAgeMs = summary.fetched_at ? Date.now() - new Date(summary.fetched_at).getTime() : Infinity
   const isStale = dataAgeMs > PORTAL_STALENESS_MS
 
-  // 2. Get campaign + flow detail in parallel using the same period window
+  // 2. Get campaign + flow detail using period_label (not exact period dates)
   let campaignQuery = supabase
     .from("klaviyo_campaign_metrics")
     .select("*")
     .eq("store_id", storeId)
-    .eq("period_start", summary.period_start)
-    .eq("period_end", summary.period_end)
+    .eq("period_label", period)
     .order("conversion_value", { ascending: false })
   if (orgId) campaignQuery = campaignQuery.eq("org_id", orgId)
 
@@ -190,8 +191,7 @@ async function fetchKlaviyoFromCache(
     .from("klaviyo_flow_metrics")
     .select("*")
     .eq("store_id", storeId)
-    .eq("period_start", summary.period_start)
-    .eq("period_end", summary.period_end)
+    .eq("period_label", period)
     .order("conversion_value", { ascending: false })
   if (orgId) flowQuery = flowQuery.eq("org_id", orgId)
 

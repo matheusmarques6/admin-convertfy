@@ -52,22 +52,17 @@ async function readKlaviyoFromCacheTables(
 
   if (!summary || summary.sync_status === "error") return null
 
-  const periodStart = summary.period_start
-  const periodEnd = summary.period_end
-
   const [{ data: campaigns }, { data: flows }] = await Promise.all([
     adminClient
       .from("klaviyo_campaign_metrics")
       .select("*")
       .eq("store_id", storeId)
-      .eq("period_start", periodStart)
-      .eq("period_end", periodEnd),
+      .eq("period_label", period),
     adminClient
       .from("klaviyo_flow_metrics")
       .select("*")
       .eq("store_id", storeId)
-      .eq("period_start", periodStart)
-      .eq("period_end", periodEnd),
+      .eq("period_label", period),
   ])
 
   const campList = campaigns || []

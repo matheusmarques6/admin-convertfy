@@ -31,21 +31,37 @@ export async function upsertSyncResults(
   period: string,
   audience?: { totalLeads: number; engagedLeads: number; engagementRate: number },
 ): Promise<void> {
-  // Upsert flow metrics
+  // Delete stale flow metrics with old period dates, then upsert current ones
   if (data.flowRows.length > 0) {
+    await supabase
+      .from("klaviyo_flow_metrics")
+      .delete()
+      .eq("store_id", store.id)
+      .eq("period_label", period)
     const { error: flowErr } = await supabase
       .from("klaviyo_flow_metrics")
-      .upsert(data.flowRows, { onConflict: "store_id,flow_id,period_start,period_end" })
+      .upsert(
+        data.flowRows.map(r => ({ ...r, period_label: period })),
+        { onConflict: "store_id,flow_id,period_start,period_end" },
+      )
     if (flowErr) {
       log.warn(`[SyncPersistence] Failed to upsert flow metrics for ${store.id}/${period}:`, flowErr.message)
     }
   }
 
-  // Upsert campaign metrics
+  // Delete stale campaign metrics with old period dates, then upsert current ones
   if (data.campRows.length > 0) {
+    await supabase
+      .from("klaviyo_campaign_metrics")
+      .delete()
+      .eq("store_id", store.id)
+      .eq("period_label", period)
     const { error: campErr } = await supabase
       .from("klaviyo_campaign_metrics")
-      .upsert(data.campRows, { onConflict: "store_id,campaign_id,period_start,period_end" })
+      .upsert(
+        data.campRows.map(r => ({ ...r, period_label: period })),
+        { onConflict: "store_id,campaign_id,period_start,period_end" },
+      )
     if (campErr) {
       log.warn(`[SyncPersistence] Failed to upsert campaign metrics for ${store.id}/${period}:`, campErr.message)
     }
@@ -178,6 +194,7 @@ export async function savePerfDataToCache(
         campaign_id: c.campaignId,
         campaign_name: c.name,
         send_time: c.sendTime || null,
+        period_label: period,
         period_start: periodStartISO,
         period_end: periodEndISO,
         recipients: c.recipients,
@@ -203,6 +220,7 @@ export async function savePerfDataToCache(
         flow_id: f.flowId,
         flow_name: f.name,
         flow_status: f.status,
+        period_label: period,
         period_start: periodStartISO,
         period_end: periodEndISO,
         delivered: f.delivered,

@@ -7,20 +7,28 @@ import type { KlaviyoPerformanceData } from "./klaviyo-performance.service"
 
 function createMockSupabase() {
   const upsertFn = vi.fn().mockResolvedValue({ error: null })
+  const deleteFn = vi.fn()
+  const deleteEqFn = vi.fn()
   const singleFn = vi.fn().mockResolvedValue({ data: { client_id: "client-1" }, error: null })
   const eqFn = vi.fn().mockReturnValue({ single: singleFn })
   const selectFn = vi.fn().mockReturnValue({ eq: eqFn })
+
+  // delete().eq().eq() chain
+  deleteEqFn.mockReturnValue({ eq: deleteEqFn })
+  deleteFn.mockReturnValue({ eq: deleteEqFn })
+
   const fromFn = vi.fn().mockImplementation((table: string) => {
     if (table === "client_stores") {
       return { select: selectFn }
     }
-    return { upsert: upsertFn }
+    return { upsert: upsertFn, delete: deleteFn }
   })
 
   return {
     client: { from: fromFn } as unknown as Parameters<typeof upsertSyncResults>[0],
     from: fromFn,
     upsert: upsertFn,
+    delete: deleteFn,
     select: selectFn,
     eq: eqFn,
     single: singleFn,
@@ -108,6 +116,34 @@ const SYNC_DATA: KlaviyoSyncData = {
 
 const AUDIENCE = { totalLeads: 10000, engagedLeads: 3000, engagementRate: 30 }
 
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Find the summary upsert call by payload shape (has sync_status) */
+function findSummaryUpsert(upsertFn: ReturnType<typeof vi.fn>): Record<string, unknown> {
+  const call = upsertFn.mock.calls.find(
+    (c: unknown[]) => {
+      const payload = c[0] as Record<string, unknown>
+      return payload?.sync_status !== undefined
+    }
+  )
+  if (!call) throw new Error("Summary upsert call not found")
+  return call[0] as Record<string, unknown>
+}
+
+/** Find upsert call for a specific table by checking array payload content */
+function findTableUpsert(upsertFn: ReturnType<typeof vi.fn>, key: string, value: string): Record<string, unknown>[] | null {
+  const call = upsertFn.mock.calls.find(
+    (c: unknown[]) => {
+      const payload = c[0]
+      if (Array.isArray(payload) && payload.length > 0) {
+        return payload[0][key] === value
+      }
+      return false
+    }
+  )
+  return call ? call[0] as Record<string, unknown>[] : null
+}
+
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe("upsertSyncResults", () => {
@@ -122,7 +158,7 @@ describe("upsertSyncResults", () => {
 
     expect(from).toHaveBeenCalledWith("klaviyo_flow_metrics")
     expect(upsert).toHaveBeenCalledWith(
-      SYNC_DATA.flowRows,
+      SYNC_DATA.flowRows.map(r => ({ ...r, period_label: "30d" })),
       { onConflict: "store_id,flow_id,period_start,period_end" },
     )
   })
@@ -134,7 +170,7 @@ describe("upsertSyncResults", () => {
 
     expect(from).toHaveBeenCalledWith("klaviyo_campaign_metrics")
     expect(upsert).toHaveBeenCalledWith(
-      SYNC_DATA.campRows,
+      SYNC_DATA.campRows.map(r => ({ ...r, period_label: "30d" })),
       { onConflict: "store_id,campaign_id,period_start,period_end" },
     )
   })
@@ -170,15 +206,15 @@ describe("upsertSyncResults", () => {
 
     expect(from).toHaveBeenCalledWith("store_revenue_summary")
 
-    // Find the revenue summary upsert call
-    const summaryCallIndex = from.mock.calls.findIndex(
-      (c: string[]) => c[0] === "store_revenue_summary"
+    // Find the upsert call that contains the summary payload (has store_id + period_label)
+    const summaryCall = upsert.mock.calls.find(
+      (call: unknown[]) => {
+        const payload = call[0] as Record<string, unknown>
+        return payload?.store_id === "store-1" && payload?.period_label === "30d" && payload?.sync_status !== undefined
+      }
     )
-    expect(summaryCallIndex).toBeGreaterThanOrEqual(0)
-
-    // The upsert is called on the return value of from()
-    const upsertCall = upsert.mock.calls[summaryCallIndex]
-    const row = upsertCall[0]
+    expect(summaryCall).toBeDefined()
+    const row = summaryCall![0] as Record<string, unknown>
 
     expect(row.store_id).toBe("store-1")
     expect(row.org_id).toBe("org-1")
@@ -195,69 +231,52 @@ describe("upsertSyncResults", () => {
   })
 
   it("should include audience fields when audience param is provided", async () => {
-    const { client, from, upsert } = createMockSupabase()
+    const { client, upsert } = createMockSupabase()
 
     await upsertSyncResults(client, STORE, SYNC_DATA, "30d", AUDIENCE)
 
-    const summaryCallIndex = from.mock.calls.findIndex(
-      (c: string[]) => c[0] === "store_revenue_summary"
-    )
-    const row = upsert.mock.calls[summaryCallIndex][0]
-
+    const row = findSummaryUpsert(upsert)
     expect(row.total_leads).toBe(10000)
     expect(row.engaged_leads).toBe(3000)
     expect(row.engagement_rate).toBe(30)
   })
 
   it("should NOT include audience fields when audience param is omitted", async () => {
-    const { client, from, upsert } = createMockSupabase()
+    const { client, upsert } = createMockSupabase()
 
     await upsertSyncResults(client, STORE, SYNC_DATA, "30d")
 
-    const summaryCallIndex = from.mock.calls.findIndex(
-      (c: string[]) => c[0] === "store_revenue_summary"
-    )
-    const row = upsert.mock.calls[summaryCallIndex][0]
-
+    const row = findSummaryUpsert(upsert)
     expect(row.total_leads).toBeUndefined()
     expect(row.engaged_leads).toBeUndefined()
     expect(row.engagement_rate).toBeUndefined()
   })
 
   it("should handle null org_id gracefully", async () => {
-    const { client, from, upsert } = createMockSupabase()
+    const { client, upsert } = createMockSupabase()
     const storeNoOrg = { id: "store-1", org_id: null }
 
     await upsertSyncResults(client, storeNoOrg, SYNC_DATA, "30d")
 
-    const summaryCallIndex = from.mock.calls.findIndex(
-      (c: string[]) => c[0] === "store_revenue_summary"
-    )
-    const row = upsert.mock.calls[summaryCallIndex][0]
-
+    const row = findSummaryUpsert(upsert)
     expect(row.org_id).toBeNull()
   })
 
   it("should coerce undefined org_id to null (store.org_id || null)", async () => {
-    const { client, from, upsert } = createMockSupabase()
+    const { client, upsert } = createMockSupabase()
     const storeUndefinedOrg = { id: "store-1" } // org_id is undefined
 
     await upsertSyncResults(client, storeUndefinedOrg, SYNC_DATA, "30d")
 
-    const summaryCallIndex = from.mock.calls.findIndex(
-      (c: string[]) => c[0] === "store_revenue_summary"
-    )
-    const row = upsert.mock.calls[summaryCallIndex][0]
-
+    const row = findSummaryUpsert(upsert)
     expect(row.org_id).toBeNull()
   })
 
   it("should set sync_status to 'partial' when only flow data is available", async () => {
-    // Mock that supports store_revenue_summary SELECT chain
+    // Mock that supports store_revenue_summary SELECT + upsert + delete chains
     const upsertFn = vi.fn().mockResolvedValue({ error: null })
-    const singleFn = vi.fn()
-    const eqChain = vi.fn()
-    const selectFn = vi.fn()
+    const deleteEqFn = vi.fn().mockReturnValue({ eq: vi.fn() })
+    const deleteFn = vi.fn().mockReturnValue({ eq: deleteEqFn })
     const fromFn = vi.fn().mockImplementation((table: string) => {
       if (table === "client_stores") {
         return {
@@ -271,10 +290,10 @@ describe("upsertSyncResults", () => {
       if (table === "store_revenue_summary") {
         return {
           upsert: upsertFn,
-          select: selectFn.mockReturnValue({
-            eq: eqChain.mockReturnValue({
-              eq: eqChain.mockReturnValue({
-                single: singleFn.mockResolvedValue({
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({
+                single: vi.fn().mockResolvedValue({
                   data: { klaviyo_campaign_revenue: 4000, klaviyo_flow_revenue: 2000 },
                   error: null,
                 }),
@@ -283,7 +302,7 @@ describe("upsertSyncResults", () => {
           }),
         }
       }
-      return { upsert: upsertFn }
+      return { upsert: upsertFn, delete: deleteFn }
     })
     const client = { from: fromFn } as unknown as Parameters<typeof upsertSyncResults>[0]
 
@@ -320,9 +339,11 @@ describe("upsertSyncResults", () => {
     const singleFn = vi.fn().mockResolvedValue({ data: { client_id: "client-1" }, error: null })
     const eqFn = vi.fn().mockReturnValue({ single: singleFn })
     const selectFn = vi.fn().mockReturnValue({ eq: eqFn })
+    const deleteEqFn = vi.fn().mockReturnValue({ eq: vi.fn() })
+    const deleteFn = vi.fn().mockReturnValue({ eq: deleteEqFn })
     const fromFn = vi.fn().mockImplementation((table: string) => {
       if (table === "client_stores") return { select: selectFn }
-      return { upsert: upsertFn }
+      return { upsert: upsertFn, delete: deleteFn }
     })
     const client = { from: fromFn } as unknown as Parameters<typeof upsertSyncResults>[0]
 
@@ -351,18 +372,15 @@ describe("upsertSyncResults", () => {
   })
 
   it("should set expires_at to ~6 hours from now", async () => {
-    const { client, from, upsert } = createMockSupabase()
+    const { client, upsert } = createMockSupabase()
     const before = Date.now()
 
     await upsertSyncResults(client, STORE, SYNC_DATA, "30d")
 
     const after = Date.now()
-    const summaryCallIndex = from.mock.calls.findIndex(
-      (c: string[]) => c[0] === "store_revenue_summary"
-    )
-    const row = upsert.mock.calls[summaryCallIndex][0]
+    const row = findSummaryUpsert(upsert)
 
-    const expiresAt = new Date(row.expires_at).getTime()
+    const expiresAt = new Date(row.expires_at as string).getTime()
     const sixHoursMs = 6 * 60 * 60 * 1000
 
     // expires_at should be ~6 hours from now (within 2 seconds tolerance)
@@ -480,15 +498,11 @@ describe("savePerfDataToCache", () => {
   })
 
   it("should use attributedRevenue for klaviyo_total_revenue", async () => {
-    const { client, from, upsert } = createMockSupabase()
+    const { client, upsert } = createMockSupabase()
 
     await savePerfDataToCache(client, "store-1", "org-1", "30d", PERF_DATA, "2026-01-01", "2026-01-31")
 
-    const summaryCallIndex = from.mock.calls.findIndex(
-      (c: string[]) => c[0] === "store_revenue_summary"
-    )
-    const row = upsert.mock.calls[summaryCallIndex][0]
-
+    const row = findSummaryUpsert(upsert)
     expect(row.klaviyo_total_revenue).toBe(8000) // attributedRevenue
     expect(row.klaviyo_campaign_revenue).toBe(5000)
     expect(row.klaviyo_flow_revenue).toBe(3000)
@@ -525,23 +539,20 @@ describe("savePerfDataToCache", () => {
   })
 
   it("should set correct expires_at and ISO dates", async () => {
-    const { client, from, upsert } = createMockSupabase()
+    const { client, upsert } = createMockSupabase()
     const before = Date.now()
 
     await savePerfDataToCache(client, "store-1", "org-1", "7d", PERF_DATA, "2026-02-24", "2026-03-03")
 
     const after = Date.now()
-    const summaryCallIndex = from.mock.calls.findIndex(
-      (c: string[]) => c[0] === "store_revenue_summary"
-    )
-    const row = upsert.mock.calls[summaryCallIndex][0]
+    const row = findSummaryUpsert(upsert)
 
     // Validate period ISO dates
     expect(row.period_start).toBe(new Date("2026-02-24T00:00:00Z").toISOString())
     expect(row.period_end).toBe(new Date("2026-03-03T23:59:59.999Z").toISOString())
 
     // Validate expires_at ~6 hours
-    const expiresAt = new Date(row.expires_at).getTime()
+    const expiresAt = new Date(row.expires_at as string).getTime()
     const sixHoursMs = 6 * 60 * 60 * 1000
     expect(expiresAt).toBeGreaterThanOrEqual(before + sixHoursMs - 2000)
     expect(expiresAt).toBeLessThanOrEqual(after + sixHoursMs + 2000)
@@ -553,19 +564,15 @@ describe("savePerfDataToCache", () => {
     await savePerfDataToCache(client, "store-1", "org-1", "30d", PERF_DATA, "2026-01-01", "2026-01-31")
 
     expect(from).toHaveBeenCalledWith("campaigns")
-    const campaignsCallIndex = from.mock.calls.findIndex(
-      (c: string[]) => c[0] === "campaigns"
-    )
-    expect(campaignsCallIndex).toBeGreaterThanOrEqual(0)
-
-    const campaignRow = upsert.mock.calls[campaignsCallIndex][0]
+    const campaignRow = findTableUpsert(upsert, "klaviyo_campaign_id", "camp-1")
+    expect(campaignRow).not.toBeNull()
     expect(campaignRow).toHaveLength(1)
-    expect(campaignRow[0].klaviyo_campaign_id).toBe("camp-1")
-    expect(campaignRow[0].name).toBe("Black Friday")
-    expect(campaignRow[0].status).toBe("sent")
-    expect(campaignRow[0].recipients).toBe(5000)
-    expect(campaignRow[0].revenue).toBe(5000)
-    expect(campaignRow[0].client_id).toBe("client-1")
+    expect(campaignRow![0].klaviyo_campaign_id).toBe("camp-1")
+    expect(campaignRow![0].name).toBe("Black Friday")
+    expect(campaignRow![0].status).toBe("sent")
+    expect(campaignRow![0].recipients).toBe(5000)
+    expect(campaignRow![0].revenue).toBe(5000)
+    expect(campaignRow![0].client_id).toBe("client-1")
   })
 
   it("should skip calendar sync when recentCampaigns is empty", async () => {
@@ -600,20 +607,16 @@ describe("upsertSyncResults - calendar sync", () => {
     await upsertSyncResults(client, STORE, SYNC_DATA, "30d")
 
     expect(from).toHaveBeenCalledWith("campaigns")
-    const campaignsCallIndex = from.mock.calls.findIndex(
-      (c: string[]) => c[0] === "campaigns"
-    )
-    expect(campaignsCallIndex).toBeGreaterThanOrEqual(0)
-
-    const campaignRow = upsert.mock.calls[campaignsCallIndex][0]
+    const campaignRow = findTableUpsert(upsert, "klaviyo_campaign_id", "camp-1")
+    expect(campaignRow).not.toBeNull()
     expect(campaignRow).toHaveLength(1)
-    expect(campaignRow[0].klaviyo_campaign_id).toBe("camp-1")
-    expect(campaignRow[0].name).toBe("Black Friday")
-    expect(campaignRow[0].status).toBe("sent")
-    expect(campaignRow[0].subject_line).toBe("Sale!")
-    expect(campaignRow[0].recipients).toBe(5000)
-    expect(campaignRow[0].delivered).toBe(4800)
-    expect(campaignRow[0].revenue).toBe(5000)
+    expect(campaignRow![0].klaviyo_campaign_id).toBe("camp-1")
+    expect(campaignRow![0].name).toBe("Black Friday")
+    expect(campaignRow![0].status).toBe("sent")
+    expect(campaignRow![0].subject_line).toBe("Sale!")
+    expect(campaignRow![0].recipients).toBe(5000)
+    expect(campaignRow![0].delivered).toBe(4800)
+    expect(campaignRow![0].revenue).toBe(5000)
   })
 
   it("should skip calendar sync when campRows is empty", async () => {

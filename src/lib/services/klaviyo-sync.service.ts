@@ -480,8 +480,8 @@ export async function syncKlaviyoForPeriod(
       log.warn(`[KlaviyoSyncService] ${storeId}/${period}: campaign-values-report returned null (API failure)`)
     }
 
-    // Aggregate flow metrics
-    if (flowResponse?.data?.attributes?.results) {
+    // Aggregate flow metrics (guard against empty results array — [] is truthy in JS)
+    if (flowResponse?.data?.attributes?.results?.length) {
       flowDataAvailable = true
       const flowAgg = new Map<string, Record<string, number>>()
       for (const r of flowResponse.data.attributes.results) {
@@ -559,8 +559,8 @@ export async function syncKlaviyoForPeriod(
       log.info(`[KlaviyoSyncService] ${storeId}/${period}: ${flowRows.length} flow metrics`)
     }
 
-    // Aggregate campaign metrics
-    if (campaignResponse?.data?.attributes?.results) {
+    // Aggregate campaign metrics (guard against empty results array — [] is truthy in JS)
+    if (campaignResponse?.data?.attributes?.results?.length) {
       campaignDataAvailable = true
       const campAgg = new Map<string, Record<string, number>>()
       for (const r of campaignResponse.data.attributes.results) {
