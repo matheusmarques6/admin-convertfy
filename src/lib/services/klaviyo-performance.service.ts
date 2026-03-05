@@ -591,7 +591,7 @@ export async function fetchKlaviyoPerformance(
       recipients: m.recipients,
       delivered: m.delivered,
       openRate: Math.round(openRate * 100) / 100,
-      clickRate: m.clickRate,
+      clickRate: Math.round(m.clickRate * 100 * 100) / 100, // decimal → %
       revenue: m.conversionValue,
     })
   }
@@ -616,7 +616,7 @@ export async function fetchKlaviyoPerformance(
       delivered: m.delivered,
       revenue: m.conversionValue,
       openRate: Math.round(openRate * 100) / 100,
-      clickRate: m.clickRate,
+      clickRate: Math.round(m.clickRate * 100 * 100) / 100, // decimal → %
     })
   }
 
@@ -624,9 +624,10 @@ export async function fetchKlaviyoPerformance(
   topFlows.sort((a, b) => b.revenue - a.revenue)
 
   const avgOpenRate = rateCount > 0 ? campaignOpenRateSum / rateCount : 0
-  const avgClickRate = rateCount > 0 ? campaignClickRateSum / rateCount : 0
-  const bounceRate = rateCount > 0 ? campaignBounceSum / rateCount : 0
-  const unsubscribeRate = rateCount > 0 ? campaignUnsubSum / rateCount : 0
+  // Klaviyo API returns rates as decimals (0.035 = 3.5%), multiply by 100 for display
+  const avgClickRate = rateCount > 0 ? (campaignClickRateSum / rateCount) * 100 : 0
+  const bounceRate = rateCount > 0 ? (campaignBounceSum / rateCount) * 100 : 0
+  const unsubscribeRate = rateCount > 0 ? (campaignUnsubSum / rateCount) * 100 : 0
 
   const attributedRevenue = campaignRevenue + flowRevenue
   const recoveryRate = storeRevenue > 0 ? (attributedRevenue / storeRevenue) * 100 : 0
