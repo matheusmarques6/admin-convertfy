@@ -11,6 +11,7 @@ import {
   getCachedPlacedOrderMetric,
   KlaviyoPermissionError,
   KlaviyoRateLimitError,
+  KlaviyoInvalidKeyError,
 } from "@/lib/integrations/klaviyo"
 import { CACHED_PERIODS } from "@/lib/shared/data-status"
 import {
@@ -203,6 +204,29 @@ async function syncStore(
 
       return periods.map(p => ({ storeId: store.id, storeName: store.store_name, period: p, status: "error" as const, error: errorMsg }))
     }
+    if (err instanceof KlaviyoInvalidKeyError) {
+      const errorMsg = `[INVALID_KEY] ${err.message}`
+      log.warn(`[Cron] ${store.store_name}: ${errorMsg}`)
+
+      const defaultTz = "UTC"
+      await Promise.all(
+        periods.map(p => upsertSyncError(supabase, store, p, defaultTz, errorMsg))
+      )
+
+      // Update client_stores validation fields
+      try {
+        await supabase
+          .from("client_stores")
+          .update({
+            klaviyo_validation_error: errorMsg,
+            klaviyo_validated_at: new Date().toISOString(),
+            klaviyo_has_reporting_access: false,
+          })
+          .eq("id", store.id)
+      } catch { /* Don't fail on client_stores update error */ }
+
+      return periods.map(p => ({ storeId: store.id, storeName: store.store_name, period: p, status: "error" as const, error: errorMsg }))
+    }
     if (err instanceof KlaviyoRateLimitError) {
       const errorMsg = `[RATE_LIMIT] Klaviyo rate limited during pre-fetch (Retry-After: ${err.retryAfterMs}ms)`
       log.warn(`[Cron] ${store.store_name}: ${errorMsg}`)
@@ -308,6 +332,26 @@ async function syncStore(
         } catch { /* Don't fail on client_stores update error */ }
 
         break // If a scope is missing, all periods will fail
+      }
+
+      if (err instanceof KlaviyoInvalidKeyError) {
+        const errorMsg = `[INVALID_KEY] ${err.message}`
+        log.warn(`[Cron] ${store.store_name}/${period}: ${errorMsg}`)
+        results.push({ storeId: store.id, storeName: store.store_name, period, status: "error", error: errorMsg })
+        await upsertSyncError(supabase, store, period, accountInfo.timezone, errorMsg)
+
+        try {
+          await supabase
+            .from("client_stores")
+            .update({
+              klaviyo_validation_error: errorMsg,
+              klaviyo_validated_at: new Date().toISOString(),
+              klaviyo_has_reporting_access: false,
+            })
+            .eq("id", store.id)
+        } catch { /* Don't fail on client_stores update error */ }
+
+        break // Invalid key won't work for any period
       }
 
       const msg = err instanceof Error ? err.message : "Unknown error"

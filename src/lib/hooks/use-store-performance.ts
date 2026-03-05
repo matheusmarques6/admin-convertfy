@@ -149,10 +149,11 @@ export function useStorePerformance(storeId: string, klaviyoConnected: boolean):
   const isValidating = campaignsValidating || flowsValidating || reportValidating
   const anyError = campaignsError || flowsError || reportError
   const error = anyError
-    ? [campaignsError, flowsError, reportError]
-        .filter((e): e is Error => e instanceof Error)
-        .map(e => e.message)
-        .join(" ").trim() || "Erro ao carregar dados"
+    ? [...new Set(
+        [campaignsError, flowsError, reportError]
+          .filter((e): e is Error => e instanceof Error)
+          .map(e => e.message)
+      )].join(". ") || "Erro ao carregar dados"
     : null
 
   const refresh = useCallback(() => {
