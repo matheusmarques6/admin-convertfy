@@ -581,12 +581,9 @@ export function CampaignHistoryList({ generations, allStores, onGenerationUpdate
         <p className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">
           Nenhuma campanha gerada ainda
         </p>
-        <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
-          Crie sua primeira campanha para comecar.
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          Use o formulario acima para gerar sua primeira campanha.
         </p>
-        <Button asChild variant="outline" size="sm">
-          <a href="/portal/campaigns/gerar">Gerar Copies</a>
-        </Button>
       </div>
     )
   }

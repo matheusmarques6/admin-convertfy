@@ -1,10 +1,9 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useState, useEffect, useCallback } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { ArrowLeft, Loader2, Store, Check } from "lucide-react"
+import { Loader2, Store, Check } from "lucide-react"
 import Link from "next/link"
 
 import { Button } from "@/components/ui/button"
@@ -16,12 +15,14 @@ import {
   generateRequestSchema,
   type GenerateRequest,
 } from "@/lib/schemas/campaign-generation"
+import { CampaignHistoryList } from "@/components/campaigns/campaign-history-list"
+import { createClient } from "@/lib/supabase/client"
+import type { StoreItem } from "@/components/campaigns/store-selector"
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-/** Form-only schema (excludes store_ids and generation_id, handled separately) */
 const formSchema = generateRequestSchema.omit({
   store_ids: true,
   generation_id: true,
@@ -39,11 +40,20 @@ interface PortalStore {
   platform: string
 }
 
+interface CampaignGeneration {
+  id: string
+  name: string
+  date: string
+  status: "draft" | "processing" | "done"
+  drive_folder_url: string | null
+  created_at: string
+}
+
 // ---------------------------------------------------------------------------
-// StoreSelector (inline until story 20.6 component is available)
+// Inline StoreSelector (simple version for the form)
 // ---------------------------------------------------------------------------
 
-function StoreSelector({
+function InlineStoreSelector({
   stores,
   selected,
   onChange,
@@ -121,19 +131,25 @@ function StoreSelector({
 }
 
 // ---------------------------------------------------------------------------
-// Main Page
+// CopyTab Component
 // ---------------------------------------------------------------------------
 
-export default function GerarCopiesPage() {
-  const router = useRouter()
+export function CopyTab() {
+  // Form state
   const [stores, setStores] = useState<PortalStore[]>([])
   const [loadingStores, setLoadingStores] = useState(true)
   const [selectedStoreIds, setSelectedStoreIds] = useState<string[]>([])
   const [submitting, setSubmitting] = useState(false)
 
+  // History state
+  const [generations, setGenerations] = useState<CampaignGeneration[]>([])
+  const [allStores, setAllStores] = useState<StoreItem[]>([])
+  const [loadingHistory, setLoadingHistory] = useState(true)
+
   const {
     register,
     handleSubmit,
+    reset,
     formState: { errors, isValid },
   } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -145,7 +161,7 @@ export default function GerarCopiesPage() {
     },
   })
 
-  // Fetch stores on mount
+  // Fetch stores for the form
   useEffect(() => {
     const fetchStores = async () => {
       try {
@@ -173,6 +189,78 @@ export default function GerarCopiesPage() {
     }
     fetchStores()
   }, [])
+
+  // Fetch history
+  const fetchHistory = useCallback(async () => {
+    setLoadingHistory(true)
+    try {
+      const supabase = createClient()
+
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error("Not authenticated")
+
+      const { data: portalUser } = await supabase
+        .from("client_portal_users")
+        .select("client_id")
+        .eq("auth_user_id", user.id)
+        .eq("is_active", true)
+        .single()
+
+      if (!portalUser) throw new Error("Portal user not found")
+
+      const [genResult, storesResult] = await Promise.all([
+        supabase
+          .from("campaign_generations")
+          .select("id, name, date, status, drive_folder_url, created_at")
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("client_stores")
+          .select("id, store_name, country, language")
+          .eq("client_id", portalUser.client_id),
+      ])
+
+      if (genResult.error) throw genResult.error
+
+      setGenerations(
+        (genResult.data || []).map((row) => ({
+          id: row.id as string,
+          name: row.name as string,
+          date: row.date as string,
+          status: row.status as CampaignGeneration["status"],
+          drive_folder_url: row.drive_folder_url as string | null,
+          created_at: row.created_at as string,
+        })),
+      )
+
+      if (!storesResult.error && storesResult.data) {
+        setAllStores(
+          storesResult.data.map((row) => ({
+            id: row.id as string,
+            store_name: row.store_name as string,
+            country: row.country as string,
+            language: row.language as string,
+          })),
+        )
+      }
+    } catch (err) {
+      console.error("Error fetching campaign history:", err)
+    } finally {
+      setLoadingHistory(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchHistory()
+  }, [fetchHistory])
+
+  const handleGenerationUpdated = useCallback(
+    (id: string, updates: Partial<CampaignGeneration>) => {
+      setGenerations((prev) =>
+        prev.map((gen) => (gen.id === id ? { ...gen, ...updates } : gen)),
+      )
+    },
+    [],
+  )
 
   const canSubmit = isValid && selectedStoreIds.length > 0 && !submitting
 
@@ -204,7 +292,9 @@ export default function GerarCopiesPage() {
       }
 
       toast({ title: "Geracao iniciada!" })
-      router.push("/portal/campaigns")
+      reset()
+      setSelectedStoreIds([])
+      fetchHistory()
     } catch (err) {
       toast({
         variant: "destructive",
@@ -217,32 +307,22 @@ export default function GerarCopiesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50/50 dark:bg-[#0B0E14] text-slate-800 dark:text-slate-100">
-      <div className="mx-auto max-w-2xl p-6 space-y-8">
-        {/* Header */}
-        <div className="space-y-1">
-          <Link
-            href="/portal/campaigns"
-            className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors mb-4"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Voltar ao calendario
-          </Link>
-          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">
-            Gerar Copies de Campanha
-          </h1>
-          <p className="text-slate-500 dark:text-slate-400">
-            Preencha os dados abaixo para iniciar a geracao de copies.
-          </p>
-        </div>
+    <div className="space-y-8">
+      {/* ========== FORM: Gerar Copies ========== */}
+      <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 p-6">
+        <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100 mb-1">
+          Gerar Copies de Campanha
+        </h2>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
+          Preencha os dados abaixo para iniciar a geracao de copies.
+        </p>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-5 max-w-2xl">
           {/* Campaign Name */}
           <div className="space-y-2">
-            <Label htmlFor="name">Nome da Campanha *</Label>
+            <Label htmlFor="copy-name">Nome da Campanha *</Label>
             <Input
-              id="name"
+              id="copy-name"
               placeholder="Ex: Black Friday 2026"
               maxLength={255}
               {...register("name")}
@@ -255,9 +335,9 @@ export default function GerarCopiesPage() {
 
           {/* Campaign Date */}
           <div className="space-y-2">
-            <Label htmlFor="date">Data da Campanha *</Label>
+            <Label htmlFor="copy-date">Data da Campanha *</Label>
             <Input
-              id="date"
+              id="copy-date"
               type="date"
               {...register("date")}
               className={errors.date ? "border-red-500 focus-visible:ring-red-500" : ""}
@@ -269,12 +349,12 @@ export default function GerarCopiesPage() {
 
           {/* Reference Document URL */}
           <div className="space-y-2">
-            <Label htmlFor="reference_doc_url">
+            <Label htmlFor="copy-ref-url">
               Documento de Referencia{" "}
               <span className="text-slate-400 font-normal">(opcional)</span>
             </Label>
             <Input
-              id="reference_doc_url"
+              id="copy-ref-url"
               type="url"
               placeholder="https://docs.google.com/document/d/..."
               {...register("reference_doc_url", {
@@ -313,7 +393,7 @@ export default function GerarCopiesPage() {
                 </Link>
               </p>
             ) : (
-              <StoreSelector
+              <InlineStoreSelector
                 stores={stores}
                 selected={selectedStoreIds}
                 onChange={setSelectedStoreIds}
@@ -330,7 +410,7 @@ export default function GerarCopiesPage() {
           <Button
             type="submit"
             disabled={!canSubmit}
-            className="w-full bg-primary hover:bg-primary/85 text-white shadow-sm dark:shadow-slate-900/20"
+            className="bg-primary hover:bg-primary/85 text-white shadow-sm dark:shadow-slate-900/20"
           >
             {submitting ? (
               <>
@@ -342,6 +422,26 @@ export default function GerarCopiesPage() {
             )}
           </Button>
         </form>
+      </div>
+
+      {/* ========== HISTORY ========== */}
+      <div>
+        <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100 mb-4">
+          Historico de Geracoes
+        </h2>
+
+        {loadingHistory ? (
+          <div className="flex items-center justify-center py-12 text-slate-500 dark:text-slate-400">
+            <Loader2 className="h-5 w-5 animate-spin mr-2" />
+            Carregando historico...
+          </div>
+        ) : (
+          <CampaignHistoryList
+            generations={generations}
+            allStores={allStores}
+            onGenerationUpdated={handleGenerationUpdated}
+          />
+        )}
       </div>
     </div>
   )
