@@ -121,12 +121,13 @@ export async function GET(request: NextRequest) {
     // Resolve storeParam → tracking_store_id (required for data isolation)
     let trackingStoreId: string | null = null
     let clientStoreId: string | null = null
+    let storeLang = "pt-BR"
 
     if (storeParam) {
       // Try as tracking_store_id first
       const { data: tsCheck } = await admin
         .from("tracking_stores")
-        .select("id, client_store_id")
+        .select("id, client_store_id, widget_config")
         .eq("id", storeParam)
         .eq("is_active", true)
         .single()
@@ -134,11 +135,13 @@ export async function GET(request: NextRequest) {
       if (tsCheck) {
         trackingStoreId = tsCheck.id
         clientStoreId = tsCheck.client_store_id
+        const wc = tsCheck.widget_config as Record<string, unknown> | null
+        if (wc?.language && typeof wc.language === "string") storeLang = wc.language
       } else {
         // Try as client_store_id → resolve to tracking_store_id
         const { data: byClientStore } = await admin
           .from("tracking_stores")
-          .select("id, client_store_id")
+          .select("id, client_store_id, widget_config")
           .eq("client_store_id", storeParam)
           .eq("is_active", true)
           .limit(1)
@@ -147,6 +150,8 @@ export async function GET(request: NextRequest) {
         if (byClientStore) {
           trackingStoreId = byClientStore.id
           clientStoreId = byClientStore.client_store_id
+          const wc = byClientStore.widget_config as Record<string, unknown> | null
+          if (wc?.language && typeof wc.language === "string") storeLang = wc.language
         }
       }
     }
@@ -343,19 +348,19 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Translate tracking event descriptions to Portuguese
+    // Translate tracking event descriptions to store's configured language
     for (const result of results) {
       for (const track of result.tracking) {
         if (track.status_detail) {
-          track.status_detail = translateEventDescription(track.status_detail)
+          track.status_detail = translateEventDescription(track.status_detail, storeLang)
         }
         if (track.last_event) {
-          track.last_event = translateEventDescription(track.last_event)
+          track.last_event = translateEventDescription(track.last_event, storeLang)
         }
         if (Array.isArray(track.tracking_events)) {
           for (const event of track.tracking_events as Array<{ description?: string }>) {
             if (event.description) {
-              event.description = translateEventDescription(event.description)
+              event.description = translateEventDescription(event.description, storeLang)
             }
           }
         }
