@@ -97,21 +97,53 @@ const CARRIER_NAMES: Record<number, string> = {
   9041: "Korea Post",
 }
 
+interface SeventeenTrackEvent {
+  time_iso: string
+  time_utc?: string
+  description: string
+  location?: string
+  stage?: string
+}
+
 interface SeventeenTrackResult {
   number: string
   carrier: number
   param: unknown
   tag: string
-  track: {
-    z: Array<{
-      a: string // date
-      z: string // description
-      c: string // location
+  track_info?: {
+    latest_status?: {
+      status?: string
+      sub_status?: string
+    }
+    latest_event?: {
+      time_iso?: string
+      description?: string
+    } | null
+    tracking?: {
+      providers?: Array<{
+        events?: SeventeenTrackEvent[]
+      }>
+    }
+    time_metrics?: {
+      estimated_delivery_date?: {
+        from?: string | null
+        to?: string | null
+      }
+    }
+  }
+  // Legacy obfuscated format (kept for backward compat)
+  track?: {
+    z?: Array<{
+      a: string
+      z: string
+      c: string
     }>
   }
 }
 
-function mapSeventeenTrackStatus(tag: string): TrackingStatus {
+function mapSeventeenTrackStatus(raw: SeventeenTrackResult): TrackingStatus {
+  // Prefer track_info.latest_status.status (v2.2 clear format)
+  const statusStr = raw.track_info?.latest_status?.status || raw.tag
   const map: Record<string, TrackingStatus> = {
     NotFound: "pending",
     InfoReceived: "info_received",
@@ -122,17 +154,40 @@ function mapSeventeenTrackStatus(tag: string): TrackingStatus {
     Exception: "exception",
     Expired: "expired",
   }
-  return map[tag] || "pending"
+  return map[statusStr] || "pending"
 }
 
-function mapSeventeenTrackEvents(track: SeventeenTrackResult["track"]): TrackingEvent[] {
-  if (!track?.z) return []
-  return track.z.map((e) => ({
-    date: e.a,
-    status: "in_transit" as TrackingStatus,
-    description: e.z,
-    location: e.c || null,
-  }))
+function mapSeventeenTrackEvents(raw: SeventeenTrackResult): TrackingEvent[] {
+  // Try v2.2 clear format first
+  const providers = raw.track_info?.tracking?.providers
+  if (providers && providers.length > 0) {
+    const allEvents: TrackingEvent[] = []
+    for (const provider of providers) {
+      if (provider.events) {
+        for (const e of provider.events) {
+          allEvents.push({
+            date: e.time_iso || e.time_utc || "",
+            status: "in_transit" as TrackingStatus,
+            description: e.description || "",
+            location: e.location || null,
+          })
+        }
+      }
+    }
+    if (allEvents.length > 0) return allEvents
+  }
+
+  // Fallback to legacy obfuscated format
+  if (raw.track?.z) {
+    return raw.track.z.map((e) => ({
+      date: e.a,
+      status: "in_transit" as TrackingStatus,
+      description: e.z,
+      location: e.c || null,
+    }))
+  }
+
+  return []
 }
 
 /**
@@ -374,23 +429,29 @@ export async function trackVia17track(
         continue
       }
 
-      const mappedEvents = mapSeventeenTrackEvents(raw.track)
-      const statusTag = mapSeventeenTrackStatus(raw.tag)
+      const mappedEvents = mapSeventeenTrackEvents(raw)
+      const statusTag = mapSeventeenTrackStatus(raw)
       const carrierName = resolveCarrierName(raw.carrier, detected.name)
+
+      const estimatedDelivery = raw.track_info?.time_metrics?.estimated_delivery_date?.from || null
 
       // carriers.TrackingEvent has optional fields; cast to satisfy TrackingResult shape
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const carrierEvents = mappedEvents as any[]
+
+      const latestDesc = mappedEvents[0]?.description
+        || raw.track_info?.latest_event?.description
+        || raw.tag || ""
 
       results.push({
         tracking_number: trackingNumber,
         carrier_code: "17track",
         carrier_name: carrierName,
         status: statusTag,
-        status_detail: mappedEvents[0]?.description || raw.tag,
-        last_event: mappedEvents[0]?.description || "",
-        last_event_at: mappedEvents[0]?.date || null,
-        estimated_delivery: null,
+        status_detail: latestDesc,
+        last_event: latestDesc,
+        last_event_at: mappedEvents[0]?.date || raw.track_info?.latest_event?.time_iso || null,
+        estimated_delivery: estimatedDelivery,
         events: carrierEvents,
       })
     } catch (err) {
