@@ -15,9 +15,16 @@ const MOCK_GENERATION_ID = "gen-uuid-1"
 const MOCK_CLIENT_ID = "client-uuid-1"
 const MOCK_USER_ID = "user-uuid-1"
 
+const MOCK_ORG_ID = "org-uuid-1"
+
 let mockPortalUser: { client_id: string } | null = { client_id: MOCK_CLIENT_ID }
+let mockOrgMember: { org_id: string } | null = null
 let mockExistingGeneration: Record<string, unknown> | null = null
 let mockExistingStores: Array<Record<string, unknown>> = []
+let mockOrgStores: Array<Record<string, unknown>> = [
+  { id: "store-1", client_id: MOCK_CLIENT_ID },
+  { id: "store-2", client_id: MOCK_CLIENT_ID },
+]
 let mockClientStores: Array<Record<string, unknown>> = [
   { id: "store-1", store_name: "LensEVO", country: "BR", language: "pt-BR" },
   { id: "store-2", store_name: "Based", country: "GB", language: "en-US" },
@@ -31,13 +38,34 @@ function chainable(table: string): Record<string, (...args: any[]) => any> {
   const self: Record<string, (...args: any[]) => any> = {}
   self.select = () => self
   self.limit = () => self
+  // Helper: create a fully-chainable result object that always resolves to the given data
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function terminalChain(data: unknown, error: unknown = null): Record<string, (...args: any[]) => any> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const t: Record<string, (...args: any[]) => any> = {}
+    t.select = () => t; t.eq = () => t; t.limit = () => t; t.in = () => t
+    t.single = () => ({ data, error })
+    t.order = () => ({ data, error })
+    return t
+  }
+
+  // Track which eq column was used for client_stores to differentiate:
+  //   .eq("org_id", ...) → org stores validation (returns mockOrgStores)
+  //   .eq("client_id", ...) → client stores filter (returns mockClientStores)
+  let eqContext: "org_id" | "client_id" | null = null
   self.eq = (col: string, _val: string) => {
-    if (table === "client_portal_users") return { ...self, single: () => ({ data: mockPortalUser, error: null }) }
-    if (table === "campaign_generations" && col === "id") return { ...self, single: () => ({ data: mockExistingGeneration, error: null }) }
+    if (table === "org_members") return terminalChain(mockOrgMember, mockOrgMember ? null : { code: "PGRST116" })
+    if (table === "client_portal_users") return terminalChain(mockPortalUser, mockPortalUser ? null : { code: "PGRST116" })
+    if (table === "campaign_generations" && col === "id") return terminalChain(mockExistingGeneration)
     if (table === "campaign_generation_stores" && col === "generation_id") return { data: mockExistingStores, error: null }
+    if (table === "client_stores" && (col === "org_id" || col === "client_id")) eqContext = col
     return self
   }
-  self.in = () => ({ data: mockClientStores, error: null })
+  self.in = () => {
+    const stores = (table === "client_stores" && eqContext === "org_id") ? mockOrgStores : mockClientStores
+    // Return chainable so .limit() etc. can follow .in()
+    return { data: stores, error: null, limit: () => ({ data: stores, error: null }) }
+  }
   self.single = () => ({ data: null, error: null })
   self.insert = (data: unknown) => {
     insertCalls.push({ table, data })
@@ -109,8 +137,13 @@ beforeEach(async () => {
   updateCalls.length = 0
   selectCalls.length = 0
   mockPortalUser = { client_id: MOCK_CLIENT_ID }
+  mockOrgMember = null
   mockExistingGeneration = null
   mockExistingStores = []
+  mockOrgStores = [
+    { id: "store-1", client_id: MOCK_CLIENT_ID },
+    { id: "store-2", client_id: MOCK_CLIENT_ID },
+  ]
   mockClientStores = [
     { id: "store-1", store_name: "LensEVO", country: "BR", language: "pt-BR" },
     { id: "store-2", store_name: "Based", country: "GB", language: "en-US" },
@@ -162,8 +195,9 @@ describe("POST /api/campaigns/generate — Validation", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("POST /api/campaigns/generate — Auth", () => {
-  it("returns 401 when portal user not found", async () => {
+  it("returns 401 when neither org member nor portal user found", async () => {
     mockPortalUser = null
+    mockOrgMember = null
     const res = await POST(makeRequest({ name: "BF", date: "2026-11-27", store_ids: ["store-1"] }))
     expect(res.status).toBe(401)
   })
@@ -443,6 +477,71 @@ describe("POST /api/campaigns/generate — Webhook dispatch", () => {
 
     // The route should still return 200 — webhook failure is logged, not blocking
     expect(res.status).toBe(200)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Edge cases
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Org Member (admin/agency) path
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("POST /api/campaigns/generate — Org member path", () => {
+  beforeEach(() => {
+    mockOrgMember = { org_id: MOCK_ORG_ID }
+    mockPortalUser = null // no portal user entry
+  })
+
+  it("creates campaign when user is org member (not portal user)", async () => {
+    const res = await POST(makeRequest({
+      name: "Black Friday 2026",
+      date: "2026-11-27",
+      store_ids: ["store-1", "store-2"],
+    }))
+
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.generation_id).toBeDefined()
+    expect(body.status).toBe("processing")
+
+    const genInsert = insertCalls.find(c => c.table === "campaign_generations")
+    expect(genInsert).toBeDefined()
+    const genData = genInsert!.data as Record<string, unknown>
+    expect(genData.client_id).toBe(MOCK_CLIENT_ID)
+  })
+
+  it("prioritizes org member over portal user when both exist (dual entry)", async () => {
+    // Admin has BOTH org_members AND client_portal_users entries
+    mockOrgMember = { org_id: MOCK_ORG_ID }
+    mockPortalUser = { client_id: "different-client-id" } // would restrict to wrong client
+
+    const res = await POST(makeRequest({
+      name: "BF",
+      date: "2026-11-27",
+      store_ids: ["store-1"],
+    }))
+
+    expect(res.status).toBe(200)
+
+    // client_id should come from org stores, NOT from portal user
+    const genInsert = insertCalls.find(c => c.table === "campaign_generations")
+    const genData = genInsert!.data as Record<string, unknown>
+    expect(genData.client_id).toBe(MOCK_CLIENT_ID) // from mockOrgStores
+    expect(genData.client_id).not.toBe("different-client-id") // NOT from portal user
+  })
+
+  it("returns 400 when org member selects stores not in their org", async () => {
+    mockOrgStores = [] // no stores match org_id + store_ids
+
+    const res = await POST(makeRequest({
+      name: "BF",
+      date: "2026-11-27",
+      store_ids: ["store-unknown"],
+    }))
+
+    expect(res.status).toBe(400)
   })
 })
 

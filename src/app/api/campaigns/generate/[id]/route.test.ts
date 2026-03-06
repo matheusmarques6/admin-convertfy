@@ -8,8 +8,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 const MOCK_GENERATION_ID = "gen-uuid-1"
 const MOCK_CLIENT_ID = "client-uuid-1"
 const MOCK_USER_ID = "user-uuid-1"
+const MOCK_ORG_ID = "org-uuid-1"
 
 let mockPortalUser: { client_id: string } | null = { client_id: MOCK_CLIENT_ID }
+let mockOrgMember: { org_id: string } | null = null
+let mockClientForOrg: { id: string } | null = null
 let mockGeneration: Record<string, unknown> | null = {
   id: MOCK_GENERATION_ID,
   client_id: MOCK_CLIENT_ID,
@@ -51,9 +54,22 @@ function chainable(table: string): Record<string, (...args: any[]) => any> {
   const self: Record<string, (...args: any[]) => any> = {}
   self.select = () => self
   self.limit = () => self
+  // Helper: create a fully-chainable result object that always resolves to the given data
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function terminalChain(data: unknown, error: unknown = null): Record<string, (...args: any[]) => any> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const t: Record<string, (...args: any[]) => any> = {}
+    t.select = () => t; t.eq = () => t; t.limit = () => t; t.in = () => t
+    t.single = () => ({ data, error })
+    t.order = () => ({ data, error })
+    return t
+  }
+
   self.eq = (col: string, _val: string) => {
-    if (table === "client_portal_users") return { ...self, single: () => ({ data: mockPortalUser, error: null }) }
-    if (table === "campaign_generations" && col === "id") return { ...self, single: () => ({ data: mockGeneration, error: null }) }
+    if (table === "org_members") return terminalChain(mockOrgMember, mockOrgMember ? null : { code: "PGRST116" })
+    if (table === "client_portal_users") return terminalChain(mockPortalUser, mockPortalUser ? null : { code: "PGRST116" })
+    if (table === "campaign_generations" && col === "id") return terminalChain(mockGeneration)
+    if (table === "clients" && col === "org_id") return terminalChain(mockClientForOrg)
     if (table === "campaign_generation_stores" && col === "generation_id") {
       return {
         ...self,
@@ -104,6 +120,8 @@ function makeParams(id: string = MOCK_GENERATION_ID) {
 beforeEach(async () => {
   vi.clearAllMocks()
   mockPortalUser = { client_id: MOCK_CLIENT_ID }
+  mockOrgMember = null
+  mockClientForOrg = null
   mockGeneration = {
     id: MOCK_GENERATION_ID,
     client_id: MOCK_CLIENT_ID,
@@ -130,8 +148,9 @@ beforeEach(async () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("GET /api/campaigns/generate/[id] — Auth", () => {
-  it("returns 401 when portal user not found", async () => {
+  it("returns 401 when neither org member nor portal user found", async () => {
     mockPortalUser = null
+    mockOrgMember = null
     const res = await GET(makeRequest(), makeParams())
     expect(res.status).toBe(401)
   })
@@ -142,8 +161,16 @@ describe("GET /api/campaigns/generate/[id] — Auth", () => {
     expect(res.status).toBe(404)
   })
 
-  it("returns 403 when generation belongs to another client", async () => {
+  it("returns 403 when portal user generation belongs to another client", async () => {
     mockGeneration = { ...mockGeneration!, client_id: "another-client" }
+    const res = await GET(makeRequest(), makeParams())
+    expect(res.status).toBe(403)
+  })
+
+  it("returns 403 when org member generation belongs to another org", async () => {
+    mockOrgMember = { org_id: MOCK_ORG_ID }
+    mockPortalUser = null
+    mockClientForOrg = null // client not in this org
     const res = await GET(makeRequest(), makeParams())
     expect(res.status).toBe(403)
   })
@@ -194,5 +221,36 @@ describe("GET /api/campaigns/generate/[id] — Success", () => {
     const errorStore = body.stores.find((s: Record<string, unknown>) => s.status === "error")
     expect(errorStore).toBeDefined()
     expect(errorStore.error_message).toBe("Timeout na geracao")
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Org Member (admin/agency) path
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("GET /api/campaigns/generate/[id] — Org member path", () => {
+  beforeEach(() => {
+    mockOrgMember = { org_id: MOCK_ORG_ID }
+    mockPortalUser = null
+    mockClientForOrg = { id: MOCK_CLIENT_ID } // client belongs to this org
+  })
+
+  it("returns generation when user is org member (not portal user)", async () => {
+    const res = await GET(makeRequest(), makeParams())
+    expect(res.status).toBe(200)
+
+    const body = await res.json()
+    expect(body.generation.id).toBe(MOCK_GENERATION_ID)
+    expect(body.stores).toHaveLength(2)
+  })
+
+  it("prioritizes org member over portal user when both exist", async () => {
+    mockOrgMember = { org_id: MOCK_ORG_ID }
+    mockPortalUser = { client_id: "different-client-id" }
+    mockClientForOrg = { id: MOCK_CLIENT_ID }
+
+    const res = await GET(makeRequest(), makeParams())
+    // Should succeed via org path, not fail via portal path (different client)
+    expect(res.status).toBe(200)
   })
 })

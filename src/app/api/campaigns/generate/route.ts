@@ -36,34 +36,22 @@ export async function POST(request: NextRequest) {
       throw new AppError("Nao autorizado", 401)
     }
 
-    // 3. Resolve client_id: try portal user first, then org member
+    // 3. Resolve client_id: try org member first, then portal user
+    // Org members (admin/agency) can generate for any client in their org.
+    // Portal users can only generate for their own client.
     const adminClient = createAdminClient()
     let clientId: string
 
-    const { data: portalUser } = await adminClient
-      .from("client_portal_users")
-      .select("client_id")
-      .eq("auth_user_id", user.id)
+    const { data: orgMember } = await adminClient
+      .from("org_members")
+      .select("org_id")
+      .eq("profile_id", user.id)
       .eq("is_active", true)
+      .limit(1)
       .single()
 
-    if (portalUser) {
-      clientId = portalUser.client_id
-    } else {
-      // Admin/org member: resolve org_id and derive client_id from the stores
-      const { data: orgMember } = await adminClient
-        .from("org_members")
-        .select("org_id")
-        .eq("profile_id", user.id)
-        .eq("is_active", true)
-        .limit(1)
-        .single()
-
-      if (!orgMember) {
-        throw new AppError("Nao autorizado", 401)
-      }
-
-      // Validate stores belong to this org and get client_id from first store
+    if (orgMember) {
+      // Admin/org member: derive client_id from the selected stores
       const { data: orgStores } = await adminClient
         .from("client_stores")
         .select("id, client_id")
@@ -76,6 +64,20 @@ export async function POST(request: NextRequest) {
       }
 
       clientId = orgStores[0].client_id
+    } else {
+      // Fallback: portal user (client access only)
+      const { data: portalUser } = await adminClient
+        .from("client_portal_users")
+        .select("client_id")
+        .eq("auth_user_id", user.id)
+        .eq("is_active", true)
+        .single()
+
+      if (!portalUser) {
+        throw new AppError("Nao autorizado", 401)
+      }
+
+      clientId = portalUser.client_id
     }
 
     // 4. Filter store_ids by client ownership
