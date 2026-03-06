@@ -7,8 +7,9 @@ function getWidgetScript(storeId: string): string {
   if(window.__convertfy_tracking_loaded)return;
   window.__convertfy_tracking_loaded=true;
 
-  var STORE_ID="${storeId}";
-  var SCRIPT_ORIGIN=(function(){try{var s=document.querySelector('script[src*="widget.js"]');if(s&&s.src){var u=new URL(s.src);return u.origin}return"${DOMAIN}"}catch(e){return"${DOMAIN}"}})();
+  var SCRIPT_EL=(function(){try{return document.querySelector('script[src*="widget.js"]')}catch(e){return null}})();
+  var STORE_ID="${storeId}"!=="default"?"${storeId}":(SCRIPT_EL&&(SCRIPT_EL.dataset.storeId||SCRIPT_EL.dataset.storeid||SCRIPT_EL.getAttribute("data-store-id")))||"${storeId}";
+  var SCRIPT_ORIGIN=(function(){try{if(SCRIPT_EL&&SCRIPT_EL.src){var u=new URL(SCRIPT_EL.src);return u.origin}return"${DOMAIN}"}catch(e){return"${DOMAIN}"}})();
   var API_BASE=SCRIPT_ORIGIN+"/api/tracking";
   var LOOKUP=API_BASE+"/lookup";
   var CONFIG_URL=API_BASE+"/config?store="+STORE_ID;
@@ -328,6 +329,16 @@ function getWidgetScript(storeId: string): string {
     injectStyles();
     container.innerHTML='<div class="cvfy-w">'+buildSearchHTML()+'</div>';
     bindSearch(container);
+  }
+
+  // Read data-* attributes from script tag (snippet config)
+  if(SCRIPT_EL){
+    if(SCRIPT_EL.dataset.color)cfg.primary_color=SCRIPT_EL.dataset.color;
+    if(SCRIPT_EL.dataset.lang)cfg.language=SCRIPT_EL.dataset.lang;
+    if(SCRIPT_EL.dataset.container){
+      var customContainer=document.getElementById(SCRIPT_EL.dataset.container);
+      if(customContainer)customContainer.id=customContainer.id||"convertfy-tracking";
+    }
   }
 
   // Backward-compat: read window.ConvertfyTracking if present (legacy snippet)
