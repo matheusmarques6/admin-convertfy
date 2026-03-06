@@ -142,7 +142,7 @@ function inferCorreiosStatus(descricao: string): string {
  */
 export async function trackViaCorreios(trackingNumber: string): Promise<TrackingResult | null> {
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), 8000)
+  const timeoutId = setTimeout(() => controller.abort(), 5000)
   try {
     const response = await fetch(`${CORREIOS_API_BASE}/${encodeURIComponent(trackingNumber)}`, {
       method: "GET",
@@ -220,7 +220,7 @@ interface CainiaoEvent {
  */
 export async function trackViaCainiao(trackingNumber: string): Promise<TrackingResult | null> {
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), 8000)
+  const timeoutId = setTimeout(() => controller.abort(), 5000)
   try {
     const response = await fetch("https://global.cainiao.com/global/detail.json", {
       method: "POST",
@@ -319,7 +319,7 @@ export async function trackViaTrackingMore(
   courierCode?: string
 ): Promise<TrackingResult | null> {
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), 8000)
+  const timeoutId = setTimeout(() => controller.abort(), 5000)
   try {
     // First try realtime tracking
     const response = await fetch(`${TRACKINGMORE_API_BASE}/trackings/realtime`, {
@@ -439,7 +439,7 @@ export async function trackViaPostNL(
   apiKey: string
 ): Promise<TrackingResult | null> {
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), 8000)
+  const timeoutId = setTimeout(() => controller.abort(), 5000)
   try {
     const response = await fetch(
       `${POSTNL_API_BASE}/shipment/v2/status/barcode/${encodeURIComponent(trackingNumber)}?detail=true&language=EN`,
@@ -589,27 +589,56 @@ export async function trackWithBestProvider(
   keys: CarrierKeys,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   trackVia17track: (numbers: string[], apiKey: string) => Promise<any[]>,
-  providerOrder?: string[]
+  providerOrder?: string[],
+  globalTimeoutMs = 25_000
 ): Promise<TrackingResult | null> {
   const carrier = detectCarrierProvider(trackingNumber)
   const order = resolveProviderOrder(providerOrder ?? null)
+  const deadline = Date.now() + globalTimeoutMs
 
   for (const providerName of order) {
+    const remaining = deadline - Date.now()
+    if (remaining <= 500) {
+      log.warn("Global timeout reached, stopping provider loop", { trackingNumber, lastProvider: providerName })
+      break
+    }
+
     const provider = PROVIDER_REGISTRY[providerName]
     if (!provider) { log.warn("Unknown provider in order", { provider: providerName }); continue }
     if (!provider.canRun(keys, carrier)) continue
 
     const t0 = Date.now()
-    log.info(`Trying ${provider.label}`, { trackingNumber })
-    const result = await provider.execute(trackingNumber, keys, carrier, trackVia17track)
-    const found = !!(result && result.events.length > 0)
-    log.info("Provider attempt", { provider: providerName, trackingNumber, durationMs: Date.now() - t0, found })
+    const providerTimeout = Math.min(remaining, 5_000)
+    log.info(`Trying ${provider.label}`, { trackingNumber, remainingMs: remaining })
 
-    if (found) {
-      if (providerName !== "seventeen_track") {
-        log.debug("17track avoided", { trackingNumber, resolvedBy: providerName })
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), providerTimeout)
+
+    try {
+      const result = await Promise.race([
+        provider.execute(trackingNumber, keys, carrier, trackVia17track),
+        new Promise<null>((resolve) => {
+          controller.signal.addEventListener("abort", () => resolve(null), { once: true })
+        }),
+      ])
+
+      const found = !!(result && result.events.length > 0)
+      log.info("Provider attempt", { provider: providerName, trackingNumber, durationMs: Date.now() - t0, found })
+
+      if (found) {
+        if (providerName !== "seventeen_track") {
+          log.debug("17track avoided", { trackingNumber, resolvedBy: providerName })
+        }
+        return result
       }
-      return result
+    } catch (err) {
+      log.warn("Provider execution error", {
+        provider: providerName,
+        error: err instanceof Error ? err.message : String(err),
+        durationMs: Date.now() - t0,
+      })
+    } finally {
+      clearTimeout(timer)
     }
   }
 

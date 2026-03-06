@@ -368,9 +368,9 @@ export async function trackVia17track(
     const resolvedCarrierCode = detected.code
 
     try {
-      // Register tracking number with 17track (timeout: 8s)
+      // Register tracking number with 17track (timeout: 5s)
       const regController = new AbortController()
-      const regTimeout = setTimeout(() => regController.abort(), 8000)
+      const regTimeout = setTimeout(() => regController.abort(), 5000)
       try {
         const registerRes = await fetch(`${SEVENTEEN_TRACK_API}/register`, {
           method: "POST",
@@ -396,12 +396,12 @@ export async function trackVia17track(
         // Continue to try gettrackinfo anyway — registration may have been processed before
       }
 
-      // Pause for 17track to process registration (new numbers need more time)
-      await new Promise((r) => setTimeout(r, 2000))
+      // Pause for 17track to process registration
+      await new Promise((r) => setTimeout(r, 1000))
 
-      // Get tracking info (timeout: 8s)
+      // Get tracking info (timeout: 5s)
       const infoController = new AbortController()
-      const infoTimeout = setTimeout(() => infoController.abort(), 8000)
+      const infoTimeout = setTimeout(() => infoController.abort(), 5000)
       const response = await fetch(`${SEVENTEEN_TRACK_API}/gettrackinfo`, {
         method: "POST",
         headers: {
