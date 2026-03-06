@@ -395,6 +395,18 @@ export async function GET(request: NextRequest) {
         const adminClient = createAdminClient()
         const cached = await readFlowsFromCache(storeId, periodStartISO, periodEndISO, adminClient)
         if (cached) {
+          // Resolve currency from store_revenue_summary (already synced by cron)
+          let cachedCurrency = "BRL"
+          try {
+            const { data: summaryRow } = await adminClient
+              .from("store_revenue_summary")
+              .select("currency")
+              .eq("store_id", storeId)
+              .limit(1)
+              .single()
+            if (summaryRow?.currency) cachedCurrency = summaryRow.currency
+          } catch { /* fallback to BRL */ }
+
           log.info(`[Klaviyo Flows] Serving from cache for store: ${store.storeName} period: ${period}`)
           return NextResponse.json({
             success: true,
@@ -405,7 +417,7 @@ export async function GET(request: NextRequest) {
             },
             fromCache: true,
             fetchedAt: cached.fetchedAt,
-            currency: "BRL",
+            currency: cachedCurrency,
             summary: cached.summary,
             flows: cached.flows,
           }, { headers: corsHeaders(request.headers.get("origin")) })

@@ -32,6 +32,7 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { DateRangePicker } from "@/components/ui/date-range-picker"
+import { formatCurrency as formatCurrencyUtil, formatCurrencyCompact as formatCurrencyCompactUtil } from "@/lib/utils/format"
 
 // ============ INTERFACES ============
 interface KlaviyoReportData {
@@ -196,20 +197,17 @@ interface KlaviyoPerformanceReportProps {
 type DateRange = "7d" | "30d" | "90d" | "all" | "custom"
 
 // ============ FORMATTERS ============
+// Currency-aware formatters — currency is resolved per-report from reportData.account.currency
+let _reportCurrency = "BRL"
+
 const formatCurrency = (value: number | undefined | null): string => {
   const num = typeof value === 'number' && !isNaN(value) ? value : 0
-  return new Intl.NumberFormat('pt-BR', {
-    style: 'currency',
-    currency: 'BRL',
-    minimumFractionDigits: 2,
-  }).format(num)
+  return formatCurrencyUtil(num, _reportCurrency)
 }
 
 const formatCurrencyCompact = (value: number | undefined | null): string => {
   const num = typeof value === 'number' && !isNaN(value) ? value : 0
-  if (num >= 1000000) return `R$ ${(num / 1000000).toFixed(1)}M`
-  if (num >= 1000) return `R$ ${(num / 1000).toFixed(1)}K`
-  return formatCurrency(num)
+  return formatCurrencyCompactUtil(num, _reportCurrency)
 }
 
 const formatNumber = (value: number | undefined | null): string => {
@@ -423,6 +421,9 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
       </div>
     )
   }
+
+  // Set currency for formatters from report account data
+  _reportCurrency = reportData.account?.currency || "BRL"
 
   // ============ DATA CALCULATIONS ============
   const totalRevenue = shopifyData?.summary?.totalRevenue || reportData.revenue?.totalRevenue || 0

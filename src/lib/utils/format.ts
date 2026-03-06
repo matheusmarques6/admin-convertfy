@@ -1,18 +1,28 @@
-export function formatCurrency(value: number): string {
+export function formatCurrency(value: number, currency = "BRL"): string {
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
-    currency: "BRL",
+    currency,
   }).format(value)
 }
 
-export function formatCurrencyCompact(value: number): string {
-  if (value >= 1000000) {
-    return `R$ ${(value / 1000000).toFixed(1)}M`
+export function formatCurrencyCompact(value: number, currency = "BRL"): string {
+  if (value >= 1_000_000) {
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency,
+      notation: "compact",
+      maximumFractionDigits: 1,
+    }).format(value)
   }
-  if (value >= 1000) {
-    return `R$ ${(value / 1000).toFixed(1)}K`
+  if (value >= 1_000) {
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency,
+      notation: "compact",
+      maximumFractionDigits: 1,
+    }).format(value)
   }
-  return formatCurrency(value)
+  return formatCurrency(value, currency)
 }
 
 export function formatNumber(value: number): string {

@@ -23,6 +23,7 @@ export interface StorePerformanceTotals {
   totalFlows: number
   avgOpenRate: number
   avgClickRate: number
+  currency: string
 }
 
 interface CampaignItem {
@@ -105,8 +106,8 @@ export function useStorePerformance(storeId: string, klaviyoConnected: boolean):
     mutate: mutateReport,
   } = useKlaviyoReport(effectiveStoreId, period, customDates)
 
-  const campaignsData = campaignsRaw as { summary: Record<string, number>; campaigns: CampaignItem[] } | undefined
-  const flowsData = flowsRaw as { summary: Record<string, number>; flows: FlowItem[] } | undefined
+  const campaignsData = campaignsRaw as { summary: Record<string, number>; campaigns: CampaignItem[]; currency?: string } | undefined
+  const flowsData = flowsRaw as { summary: Record<string, number>; flows: FlowItem[]; currency?: string } | undefined
 
   // Klaviyo report returns pre-calculated revenue & recovery data from the backend
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -130,6 +131,12 @@ export function useStorePerformance(storeId: string, klaviyoConnected: boolean):
     const fs = flowsData?.summary ?? {}
     const overview = reportData?.overview ?? {}
 
+    // Resolve currency: prefer report account, then campaigns/flows endpoint, fallback BRL
+    const currency = reportData?.account?.currency
+      || campaignsData?.currency
+      || flowsData?.currency
+      || "BRL"
+
     return {
       storeRevenue: rv.storeRevenue ?? 0,
       storeOrders: rv.storeOrders ?? 0,
@@ -142,6 +149,7 @@ export function useStorePerformance(storeId: string, klaviyoConnected: boolean):
       totalFlows: fs.liveFlows ?? fs.totalFlows ?? overview.liveFlows ?? 0,
       avgOpenRate: cs.avgOpenRate ?? 0,
       avgClickRate: cs.avgClickRate ?? 0,
+      currency,
     }
   }, [campaignsData, flowsData, reportData])
 

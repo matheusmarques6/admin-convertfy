@@ -123,7 +123,7 @@ export function StorePerformanceKPIs() {
                 <span className="text-sm text-muted-foreground">Receita Total</span>
                 <ShoppingCart className="h-4 w-4 text-muted-foreground" />
               </div>
-              <p className="text-2xl font-bold">{formatCurrency(totals.storeRevenue)}</p>
+              <p className="text-2xl font-bold">{formatCurrency(totals.storeRevenue, totals.currency)}</p>
               <div className="flex gap-2 mt-1">
                 <span className="text-xs text-muted-foreground">
                   {totals.storeOrders.toLocaleString("pt-BR")} pedidos
@@ -139,13 +139,13 @@ export function StorePerformanceKPIs() {
                 <span className="text-sm text-muted-foreground">Revenue Email</span>
                 <TrendingUp className="h-4 w-4 text-success" />
               </div>
-              <p className="text-2xl font-bold">{formatCurrency(totals.totalRevenue)}</p>
+              <p className="text-2xl font-bold">{formatCurrency(totals.totalRevenue, totals.currency)}</p>
               <div className="flex gap-2 mt-1">
                 <span className="text-xs text-muted-foreground">
-                  Campanhas: {formatCurrency(totals.campaignRevenue)}
+                  Campanhas: {formatCurrency(totals.campaignRevenue, totals.currency)}
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  Flows: {formatCurrency(totals.flowRevenue)}
+                  Flows: {formatCurrency(totals.flowRevenue, totals.currency)}
                 </span>
               </div>
             </CardContent>
@@ -191,7 +191,7 @@ export function StorePerformanceKPIs() {
                 {totals.recoveryRate.toFixed(2)}%
               </p>
               <span className="text-xs text-muted-foreground">
-                {formatCurrency(totals.totalRevenue)} de {formatCurrency(totals.storeRevenue)}
+                {formatCurrency(totals.totalRevenue, totals.currency)} de {formatCurrency(totals.storeRevenue, totals.currency)}
               </span>
             </CardContent>
           </Card>

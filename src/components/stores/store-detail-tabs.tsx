@@ -24,6 +24,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { KlaviyoPerformanceReport } from "@/components/clients/klaviyo-performance-report"
+import { formatCurrency } from "@/lib/utils"
 import { useKlaviyoCampaigns, useKlaviyoFlows } from "@/lib/hooks/use-api-data"
 import { StoreBriefingTab } from "@/components/stores/store-briefing-tab"
 import { StoreFormTab } from "@/components/stores/store-form-tab"
@@ -63,6 +64,7 @@ interface StoreDetailTabsProps {
   onboardingStatus?: string | null
   onboardingProgress?: number
   hasBriefing?: boolean
+  driveFolderUrl?: string | null
 }
 
 interface CampaignData {
@@ -108,6 +110,7 @@ export function StoreDetailTabs({
   onboardingStatus,
   onboardingProgress,
   hasBriefing,
+  driveFolderUrl,
 }: StoreDetailTabsProps) {
   const [period, setPeriodRaw] = useState<Period>("30d")
   const [customDates, setCustomDates] = useState<CustomDateRange | undefined>()
@@ -360,7 +363,7 @@ export function StoreDetailTabs({
       {/* Campaigns */}
       <TabsContent value="campaigns">
         <CampaignsTab
-          data={campaignsData as { summary: Record<string, number>; campaigns: CampaignData[] } | undefined}
+          data={campaignsData as { summary: Record<string, number>; campaigns: CampaignData[]; currency?: string } | undefined}
           loading={campaignsInitialLoading}
           refreshing={campaignsLoading}
           period={period}
@@ -375,7 +378,7 @@ export function StoreDetailTabs({
       {/* Flows */}
       <TabsContent value="flows">
         <FlowsTab
-          data={flowsData as { summary: Record<string, number>; flows: FlowData[] } | undefined}
+          data={flowsData as { summary: Record<string, number>; flows: FlowData[]; currency?: string } | undefined}
           loading={flowsInitialLoading}
           refreshing={flowsLoading}
           period={period}
@@ -384,6 +387,7 @@ export function StoreDetailTabs({
           customStart={customStart}
           customEnd={customEnd}
           onCustomDateApply={handleCustomDateApply}
+          driveFolderUrl={driveFolderUrl}
         />
       </TabsContent>
 
@@ -460,7 +464,7 @@ function CampaignsTab({
   customEnd,
   onCustomDateApply,
 }: {
-  data: { summary: Record<string, number>; campaigns: CampaignData[] } | undefined
+  data: { summary: Record<string, number>; campaigns: CampaignData[]; currency?: string } | undefined
   loading: boolean
   refreshing: boolean
   period: Period
@@ -470,6 +474,8 @@ function CampaignsTab({
   customEnd?: Date
   onCustomDateApply: (start: Date, end: Date) => void
 }) {
+  const currency = data?.currency || "BRL"
+
   if (loading && !data) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -508,7 +514,7 @@ function CampaignsTab({
       {data?.summary && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <MetricCard label="Campanhas Enviadas" value={data.summary.sentCampaigns || data.summary.totalCampaigns || 0} />
-          <MetricCard label="Total Receita" value={`R$ ${(data.summary.totalRevenue || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`} />
+          <MetricCard label="Total Receita" value={formatCurrency(data.summary.totalRevenue || 0, currency)} />
           <MetricCard label="Taxa de Abertura" value={`${(data.summary.avgOpenRate || 0).toFixed(2)}%`} />
           <MetricCard label="Taxa de Clique" value={`${(data.summary.avgClickRate || 0).toFixed(2)}%`} />
         </div>
@@ -541,7 +547,7 @@ function CampaignsTab({
                       <td className="py-2 text-right">{(c.recipients || 0).toLocaleString()}</td>
                       <td className="py-2 text-right">{(c.openRate || 0).toFixed(2)}%</td>
                       <td className="py-2 text-right">{(c.clickRate || 0).toFixed(2)}%</td>
-                      <td className="py-2 text-right">R$ {(c.revenue || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</td>
+                      <td className="py-2 text-right">{formatCurrency(c.revenue || 0, currency)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -571,8 +577,9 @@ function FlowsTab({
   customStart,
   customEnd,
   onCustomDateApply,
+  driveFolderUrl,
 }: {
-  data: { summary: Record<string, number>; flows: FlowData[] } | undefined
+  data: { summary: Record<string, number>; flows: FlowData[]; currency?: string } | undefined
   loading: boolean
   refreshing: boolean
   period: Period
@@ -581,7 +588,10 @@ function FlowsTab({
   customStart?: Date
   customEnd?: Date
   onCustomDateApply: (start: Date, end: Date) => void
+  driveFolderUrl?: string | null
 }) {
+  const currency = data?.currency || "BRL"
+
   if (loading && !data) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -593,7 +603,17 @@ function FlowsTab({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">Flows Klaviyo</h3>
+        <div className="flex items-center gap-3">
+          <h3 className="text-lg font-semibold">Flows Klaviyo</h3>
+          {driveFolderUrl && (
+            <Button variant="outline" size="sm" asChild>
+              <a href={driveFolderUrl} target="_blank" rel="noopener noreferrer">
+                <Link2 className="h-4 w-4 mr-1" />
+                Pasta de Copys
+              </a>
+            </Button>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           <select
             value={period}
@@ -620,7 +640,7 @@ function FlowsTab({
       {data?.summary && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <MetricCard label="Flows Ativos" value={data.summary.liveFlows || data.summary.totalFlows || 0} />
-          <MetricCard label="Total Receita" value={`R$ ${(data.summary.totalRevenue || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`} />
+          <MetricCard label="Total Receita" value={formatCurrency(data.summary.totalRevenue || 0, currency)} />
           <MetricCard label="Taxa de Abertura" value={`${(data.summary.avgOpenRate || 0).toFixed(2)}%`} />
           <MetricCard label="Taxa de Clique" value={`${(data.summary.avgClickRate || 0).toFixed(2)}%`} />
         </div>
@@ -653,7 +673,7 @@ function FlowsTab({
                       <td className="py-2 pr-4 text-muted-foreground">{f.triggerType || "-"}</td>
                       <td className="py-2 text-right">{(f.recipients || 0).toLocaleString()}</td>
                       <td className="py-2 text-right">{(f.openRate || 0).toFixed(2)}%</td>
-                      <td className="py-2 text-right">R$ {(f.revenue || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</td>
+                      <td className="py-2 text-right">{formatCurrency(f.revenue || 0, currency)}</td>
                     </tr>
                   ))}
                 </tbody>

@@ -52,7 +52,7 @@ function formatSendDate(dateStr: string): string {
 }
 
 export function StorePerformanceTables() {
-  const { campaigns, flows, loading, error } = useStorePerformanceContext()
+  const { campaigns, flows, loading, error, totals } = useStorePerformanceContext()
 
   if (loading) {
     return (
@@ -65,6 +65,7 @@ export function StorePerformanceTables() {
 
   if (error) return null
 
+  const currency = totals?.currency ?? "BRL"
   const hasCampaigns = campaigns.length > 0
   const hasFlows = flows.length > 0
 
@@ -123,9 +124,9 @@ export function StorePerformanceTables() {
                         {(c.clickRate || 0).toFixed(2)}%
                       </TableCell>
                       <TableCell className="text-right">
-                        <div className="font-medium">{formatCurrency(c.revenue)}</div>
+                        <div className="font-medium">{formatCurrency(c.revenue, currency)}</div>
                         <div className="text-xs text-muted-foreground">
-                          {formatCurrency(revenuePerRecipient)} / destinatário
+                          {formatCurrency(revenuePerRecipient, currency)} / destinatário
                         </div>
                       </TableCell>
                     </TableRow>
@@ -174,9 +175,9 @@ export function StorePerformanceTables() {
                         {(f.openRate || 0).toFixed(2)}%
                       </TableCell>
                       <TableCell className="text-right">
-                        <div className="font-medium">{formatCurrency(f.revenue)}</div>
+                        <div className="font-medium">{formatCurrency(f.revenue, currency)}</div>
                         <div className="text-xs text-muted-foreground">
-                          {formatCurrency(revenuePerRecipient)} / destinatário
+                          {formatCurrency(revenuePerRecipient, currency)} / destinatário
                         </div>
                       </TableCell>
                     </TableRow>

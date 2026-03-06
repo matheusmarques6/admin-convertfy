@@ -29,6 +29,7 @@ import {
   ArrowLeft,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { formatCurrency as formatCurrencyUtil, formatCurrencyCompact as formatCurrencyCompactUtil } from "@/lib/utils/format"
 
 // ============ INTERFACES ============
 interface KlaviyoReportData {
@@ -191,20 +192,17 @@ interface KlaviyoFullscreenReportProps {
 }
 
 // ============ FORMATTERS ============
+// Currency-aware formatters — currency is resolved per-report from reportData.account.currency
+let _reportCurrency = "BRL"
+
 const formatCurrency = (value: number | undefined | null): string => {
   const num = typeof value === 'number' && !isNaN(value) ? value : 0
-  return new Intl.NumberFormat('pt-BR', {
-    style: 'currency',
-    currency: 'BRL',
-    minimumFractionDigits: 2,
-  }).format(num)
+  return formatCurrencyUtil(num, _reportCurrency)
 }
 
 const formatCurrencyCompact = (value: number | undefined | null): string => {
   const num = typeof value === 'number' && !isNaN(value) ? value : 0
-  if (num >= 1000000) return `R$ ${(num / 1000000).toFixed(1)}M`
-  if (num >= 1000) return `R$ ${(num / 1000).toFixed(1)}K`
-  return formatCurrency(num)
+  return formatCurrencyCompactUtil(num, _reportCurrency)
 }
 
 const formatNumber = (value: number | undefined | null): string => {
@@ -361,6 +359,9 @@ export function KlaviyoFullscreenReport({ storeId, storeName, period }: KlaviyoF
       </div>
     )
   }
+
+  // Set currency for formatters from report account data
+  _reportCurrency = reportData.account?.currency || "BRL"
 
   // ============ DATA CALCULATIONS ============
   const totalRevenue = shopifyData?.summary?.totalRevenue || reportData.revenue?.totalRevenue || 0
