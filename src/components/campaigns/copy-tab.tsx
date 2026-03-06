@@ -438,6 +438,13 @@ export function CopyTab() {
     [],
   )
 
+  const handleGenerationDeleted = useCallback(
+    (id: string) => {
+      setGenerations((prev) => prev.filter((gen) => gen.id !== id))
+    },
+    [],
+  )
+
   const canSubmit = isValid && selectedStoreIds.length > 0 && !submitting
 
   const onSubmit = async (formData: FormValues) => {
@@ -616,6 +623,7 @@ export function CopyTab() {
             generations={generations}
             allStores={allStores}
             onGenerationUpdated={handleGenerationUpdated}
+            onGenerationDeleted={handleGenerationDeleted}
           />
         )}
       </div>

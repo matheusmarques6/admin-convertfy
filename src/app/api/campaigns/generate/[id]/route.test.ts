@@ -1,6 +1,7 @@
 /**
- * Tests for GET /api/campaigns/generate/[id]
- * Returns current status of a campaign generation and its stores. Used for polling.
+ * Tests for GET and DELETE /api/campaigns/generate/[id]
+ * GET: Returns current status of a campaign generation and its stores. Used for polling.
+ * DELETE: Removes a campaign generation and its associated stores/tasks (cascade).
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
@@ -13,6 +14,7 @@ const MOCK_ORG_ID = "org-uuid-1"
 let mockPortalUser: { client_id: string } | null = { client_id: MOCK_CLIENT_ID }
 let mockOrgMember: { org_id: string } | null = null
 let mockClientForOrg: { id: string } | null = null
+let mockDeleteError: { message: string } | null = null
 let mockGeneration: Record<string, unknown> | null = {
   id: MOCK_GENERATION_ID,
   client_id: MOCK_CLIENT_ID,
@@ -80,6 +82,12 @@ function chainable(table: string): Record<string, (...args: any[]) => any> {
     }
     return self
   }
+  self.delete = () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const delChain: Record<string, (...args: any[]) => any> = {}
+    delChain.eq = () => ({ data: null, error: mockDeleteError })
+    return delChain
+  }
   self.single = () => ({ data: null, error: null })
   self.order = () => ({ data: mockGenerationStores, error: null })
   return self
@@ -95,7 +103,7 @@ vi.mock("@/lib/supabase/server", () => ({
 }))
 
 vi.mock("@/lib/logger", () => ({
-  logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }) },
+  logger: { child: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }), error: vi.fn(), warn: vi.fn(), info: vi.fn() },
 }))
 
 vi.mock("@/lib/cors", () => ({
@@ -105,6 +113,8 @@ vi.mock("@/lib/cors", () => ({
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let GET: (req: any, ctx: { params: Promise<{ id: string }> }) => Promise<Response>
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let DELETE: (req: any, ctx: { params: Promise<{ id: string }> }) => Promise<Response>
 
 function makeRequest(id: string = MOCK_GENERATION_ID) {
   return new Request(`http://localhost/api/campaigns/generate/${id}`, {
@@ -122,6 +132,7 @@ beforeEach(async () => {
   mockPortalUser = { client_id: MOCK_CLIENT_ID }
   mockOrgMember = null
   mockClientForOrg = null
+  mockDeleteError = null
   mockGeneration = {
     id: MOCK_GENERATION_ID,
     client_id: MOCK_CLIENT_ID,
@@ -141,6 +152,7 @@ beforeEach(async () => {
 
   const mod = await import("./route")
   GET = mod.GET
+  DELETE = mod.DELETE
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -252,5 +264,69 @@ describe("GET /api/campaigns/generate/[id] — Org member path", () => {
     const res = await GET(makeRequest(), makeParams())
     // Should succeed via org path, not fail via portal path (different client)
     expect(res.status).toBe(200)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DELETE /api/campaigns/generate/[id]
+// ─────────────────────────────────────────────────────────────────────────────
+
+function makeDeleteRequest(id: string = MOCK_GENERATION_ID) {
+  return new Request(`http://localhost/api/campaigns/generate/${id}`, {
+    method: "DELETE",
+  }) as unknown as Parameters<typeof DELETE>[0]
+}
+
+describe("DELETE /api/campaigns/generate/[id] — Auth", () => {
+  it("returns 401 when user is not authenticated", async () => {
+    mockPortalUser = null
+    mockOrgMember = null
+    const res = await DELETE(makeDeleteRequest(), makeParams())
+    expect(res.status).toBe(401)
+  })
+
+  it("returns 404 when generation does not exist", async () => {
+    mockGeneration = null
+    const res = await DELETE(makeDeleteRequest(), makeParams())
+    expect(res.status).toBe(404)
+  })
+
+  it("returns 403 when portal user tries to delete another client generation", async () => {
+    mockGeneration = { ...mockGeneration!, client_id: "another-client" }
+    const res = await DELETE(makeDeleteRequest(), makeParams())
+    expect(res.status).toBe(403)
+  })
+
+  it("returns 403 when org member tries to delete generation from another org", async () => {
+    mockOrgMember = { org_id: MOCK_ORG_ID }
+    mockPortalUser = null
+    mockClientForOrg = null
+    const res = await DELETE(makeDeleteRequest(), makeParams())
+    expect(res.status).toBe(403)
+  })
+})
+
+describe("DELETE /api/campaigns/generate/[id] — Success", () => {
+  it("deletes generation as portal user", async () => {
+    const res = await DELETE(makeDeleteRequest(), makeParams())
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.deleted).toBe(true)
+  })
+
+  it("deletes generation as org member", async () => {
+    mockOrgMember = { org_id: MOCK_ORG_ID }
+    mockPortalUser = null
+    mockClientForOrg = { id: MOCK_CLIENT_ID }
+    const res = await DELETE(makeDeleteRequest(), makeParams())
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.deleted).toBe(true)
+  })
+
+  it("returns 500 when delete fails at DB level", async () => {
+    mockDeleteError = { message: "FK constraint" }
+    const res = await DELETE(makeDeleteRequest(), makeParams())
+    expect(res.status).toBe(500)
   })
 })

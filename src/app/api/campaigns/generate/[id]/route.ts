@@ -10,6 +10,100 @@ export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
 }
 
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params
+
+    const supabase = await createClient()
+    const adminClient = createAdminClient()
+
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      throw new AppError("Não autorizado", 401)
+    }
+
+    // Resolve user identity: org member first, then portal user
+    const { data: orgMember } = await adminClient
+      .from("org_members")
+      .select("org_id")
+      .eq("profile_id", user.id)
+      .eq("is_active", true)
+      .limit(1)
+      .single()
+
+    let allowedOrgId: string | null = null
+    let portalClientId: string | null = null
+
+    if (orgMember) {
+      allowedOrgId = orgMember.org_id
+    } else {
+      const { data: portalUser } = await adminClient
+        .from("client_portal_users")
+        .select("client_id")
+        .eq("auth_user_id", user.id)
+        .eq("is_active", true)
+        .single()
+
+      if (!portalUser) {
+        throw new AppError("Não autorizado", 401)
+      }
+      portalClientId = portalUser.client_id
+    }
+
+    // Fetch generation to verify ownership
+    const { data: generation } = await adminClient
+      .from("campaign_generations")
+      .select("id, client_id")
+      .eq("id", id)
+      .single()
+
+    if (!generation) {
+      throw new AppError("Geração não encontrada", 404)
+    }
+
+    // Check ownership
+    if (portalClientId) {
+      if (generation.client_id !== portalClientId) {
+        throw new AppError("Acesso negado", 403)
+      }
+    } else if (allowedOrgId) {
+      const { data: client } = await adminClient
+        .from("clients")
+        .select("id")
+        .eq("id", generation.client_id)
+        .eq("org_id", allowedOrgId)
+        .single()
+      if (!client) {
+        throw new AppError("Acesso negado", 403)
+      }
+    }
+
+    // Delete generation (cascade deletes stores and tasks)
+    const { error: deleteError } = await adminClient
+      .from("campaign_generations")
+      .delete()
+      .eq("id", id)
+
+    if (deleteError) {
+      log.error(`Failed to delete generation ${id}`, { error: deleteError })
+      throw new AppError("Erro ao excluir geração", 500)
+    }
+
+    log.info(`Generation ${id} deleted by user ${user.id}`)
+
+    return successResponse(request, { deleted: true })
+  } catch (error) {
+    return errorResponse(request, error, "CampaignGeneration")
+  }
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }

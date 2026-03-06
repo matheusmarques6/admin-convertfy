@@ -11,6 +11,7 @@ import {
   RotateCcw,
   FileText,
   AlertCircle,
+  Trash2,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -28,6 +29,17 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { toast } from "@/lib/hooks/use-toast"
 import { createClient } from "@/lib/supabase/client"
 import { useCampaignPolling } from "@/hooks/use-campaign-polling"
@@ -309,16 +321,19 @@ function ExpandableGenerationRow({
   generation,
   allStores,
   onGenerationUpdated,
+  onGenerationDeleted,
 }: {
   generation: CampaignGeneration
   allStores: StoreItem[]
   onGenerationUpdated: (id: string, updates: Partial<CampaignGeneration>) => void
+  onGenerationDeleted: (id: string) => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const [stores, setStores] = useState<CampaignGenerationStore[]>([])
   const [loadingStores, setLoadingStores] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [addStoresOpen, setAddStoresOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   // Polling: only poll when expanded and processing
   const shouldPoll = expanded && generation.status === "processing"
@@ -428,6 +443,31 @@ function ExpandableGenerationRow({
     onGenerationUpdated(generation.id, { status: "processing" })
   }, [fetchStores, generation.id, onGenerationUpdated])
 
+  const handleDelete = useCallback(async () => {
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/campaigns/generate/${generation.id}`, {
+        method: "DELETE",
+      })
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => null)
+        throw new Error(errData?.error || `Erro ${res.status}`)
+      }
+
+      toast({ title: "Campanha excluida com sucesso" })
+      onGenerationDeleted(generation.id)
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Erro ao excluir",
+        description: err instanceof Error ? err.message : "Tente novamente",
+      })
+    } finally {
+      setDeleting(false)
+    }
+  }, [generation.id, onGenerationDeleted])
+
   const existingStoreIds = stores.map((s) => s.store_id)
 
   return (
@@ -489,6 +529,42 @@ function ExpandableGenerationRow({
             Adicionar lojas
           </Button>
         )}
+
+        {/* Delete button */}
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={(e) => e.stopPropagation()}
+              disabled={deleting}
+              className="shrink-0 text-red-600 border-red-200 hover:bg-red-50 dark:text-red-400 dark:border-red-500/30 dark:hover:bg-red-500/10"
+            >
+              {deleting ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5" />
+              )}
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Excluir campanha</AlertDialogTitle>
+              <AlertDialogDescription>
+                Tem certeza que deseja excluir &quot;{generation.name}&quot;? Todas as lojas e dados associados serao removidos permanentemente.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDelete}
+                className="bg-red-600 hover:bg-red-700 text-white"
+              >
+                Excluir
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </button>
 
       {/* Expanded stores table */}
@@ -571,9 +647,10 @@ export interface CampaignHistoryListProps {
   generations: CampaignGeneration[]
   allStores: StoreItem[]
   onGenerationUpdated: (id: string, updates: Partial<CampaignGeneration>) => void
+  onGenerationDeleted: (id: string) => void
 }
 
-export function CampaignHistoryList({ generations, allStores, onGenerationUpdated }: CampaignHistoryListProps) {
+export function CampaignHistoryList({ generations, allStores, onGenerationUpdated, onGenerationDeleted }: CampaignHistoryListProps) {
   if (generations.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 dark:border-slate-700/40 bg-white dark:bg-[#151922] p-12 text-center">
@@ -596,6 +673,7 @@ export function CampaignHistoryList({ generations, allStores, onGenerationUpdate
           generation={gen}
           allStores={allStores}
           onGenerationUpdated={onGenerationUpdated}
+          onGenerationDeleted={onGenerationDeleted}
         />
       ))}
     </div>
