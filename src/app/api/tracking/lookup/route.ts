@@ -7,6 +7,7 @@ import { syncTrackingCode, trackVia17track } from "@/lib/services/tracking.servi
 import { trackWithBestProvider, detectCarrierProvider, type CarrierKeys } from "@/lib/tracking/carriers"
 import { decrypt } from "@/lib/crypto"
 import { translateEventDescription } from "@/lib/tracking/translate-events"
+import { sanitizePostgrestValue, escapePostgrestLike, isSuspiciousQuery } from "@/lib/tracking/sanitize"
 
 const log = logger.child("TrackingLookup")
 
@@ -113,6 +114,14 @@ export async function GET(request: NextRequest) {
     if (!query || query.length < 3) {
       return NextResponse.json(
         { error: "Query deve ter pelo menos 3 caracteres" },
+        { status: 400, headers: PUBLIC_CORS }
+      )
+    }
+
+    if (isSuspiciousQuery(query)) {
+      log.warn("Suspicious query blocked", { query, ip: getClientIp(request) })
+      return NextResponse.json(
+        { error: "Consulta invalida" },
         { status: 400, headers: PUBLIC_CORS }
       )
     }
@@ -234,15 +243,34 @@ export async function GET(request: NextRequest) {
         }
       }
     } else if (isOrderNumber) {
-      const { data: orders } = await admin
-        .from("tracking_orders")
-        .select("id, order_name, customer_name, customer_email, order_created_at, shipped_at, delivered_at, total_price, currency, line_items, shipping_address")
-        .eq("tracking_store_id", trackingStoreId)
-        .or(`shopify_order_number.eq.${cleanQuery},order_name.ilike.%${cleanQuery}%`)
-        .order("order_created_at", { ascending: false })
-        .limit(10)
+      const safeQuery = sanitizePostgrestValue(cleanQuery)
 
-      if (orders) {
+      const [{ data: byNumber }, { data: byName }] = await Promise.all([
+        admin
+          .from("tracking_orders")
+          .select("id, order_name, customer_name, customer_email, order_created_at, shipped_at, delivered_at, total_price, currency, line_items, shipping_address")
+          .eq("tracking_store_id", trackingStoreId)
+          .eq("shopify_order_number", safeQuery)
+          .order("order_created_at", { ascending: false })
+          .limit(10),
+        admin
+          .from("tracking_orders")
+          .select("id, order_name, customer_name, customer_email, order_created_at, shipped_at, delivered_at, total_price, currency, line_items, shipping_address")
+          .eq("tracking_store_id", trackingStoreId)
+          .ilike("order_name", `%${safeQuery}%`)
+          .order("order_created_at", { ascending: false })
+          .limit(10),
+      ])
+
+      // Deduplicate by id
+      const seen = new Set<string>()
+      const orders = [...(byNumber || []), ...(byName || [])].filter((o) => {
+        if (seen.has(o.id)) return false
+        seen.add(o.id)
+        return true
+      })
+
+      if (orders.length > 0) {
         for (const order of orders) {
           const { data: codes } = await admin
             .from("tracking_codes")
@@ -257,7 +285,7 @@ export async function GET(request: NextRequest) {
         .from("tracking_codes")
         .select("id, tracking_number, carrier_name, status, status_detail, last_event, tracking_events, estimated_delivery, last_checked_at, tracking_order_id")
         .eq("tracking_store_id", trackingStoreId)
-        .ilike("tracking_number", `%${query}%`)
+        .ilike("tracking_number", `%${escapePostgrestLike(query)}%`)
         .limit(5)
 
       if (codes) {
