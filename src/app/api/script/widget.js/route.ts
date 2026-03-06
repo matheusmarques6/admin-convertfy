@@ -35,6 +35,14 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     tracking_history: "Hist\u00f3rico de rastreamento",
     powered_by: "Powered by Convertfy",
     new_search: "Nova busca",
+    order_details: "Detalhes do Pedido",
+    quantity_short: "Qtd",
+    per_unit: "/un",
+    total: "Total",
+    more_items: "+ {n} itens",
+    see_all: "Ver todos",
+    see_less: "Ver menos",
+    image_unavailable: "Imagem indispon\u00edvel",
   },
   en: {
     title: "Track your order",
@@ -70,6 +78,14 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     tracking_history: "Tracking history",
     powered_by: "Powered by Convertfy",
     new_search: "New search",
+    order_details: "Order Details",
+    quantity_short: "Qty",
+    per_unit: "/ea",
+    total: "Total",
+    more_items: "+ {n} items",
+    see_all: "See all",
+    see_less: "See less",
+    image_unavailable: "Image unavailable",
   },
   es: {
     title: "Rastrea tu pedido",
@@ -105,6 +121,14 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     tracking_history: "Historial de seguimiento",
     powered_by: "Powered by Convertfy",
     new_search: "Nueva b\u00fasqueda",
+    order_details: "Detalles del Pedido",
+    quantity_short: "Cant",
+    per_unit: "/ud",
+    total: "Total",
+    more_items: "+ {n} art\u00edculos",
+    see_all: "Ver todos",
+    see_less: "Ver menos",
+    image_unavailable: "Imagen no disponible",
   },
   fr: {
     title: "Suivez votre commande",
@@ -140,6 +164,14 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     tracking_history: "Historique de suivi",
     powered_by: "Powered by Convertfy",
     new_search: "Nouvelle recherche",
+    order_details: "D\u00e9tails de la Commande",
+    quantity_short: "Qt\u00e9",
+    per_unit: "/unit\u00e9",
+    total: "Total",
+    more_items: "+ {n} articles",
+    see_all: "Voir tout",
+    see_less: "Voir moins",
+    image_unavailable: "Image indisponible",
   },
   de: {
     title: "Verfolgen Sie Ihre Bestellung",
@@ -175,6 +207,14 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     tracking_history: "Sendungsverlauf",
     powered_by: "Powered by Convertfy",
     new_search: "Neue Suche",
+    order_details: "Bestelldetails",
+    quantity_short: "Anz",
+    per_unit: "/St",
+    total: "Gesamt",
+    more_items: "+ {n} Artikel",
+    see_all: "Alle anzeigen",
+    see_less: "Weniger anzeigen",
+    image_unavailable: "Bild nicht verf\u00fcgbar",
   },
   it: {
     title: "Traccia il tuo ordine",
@@ -210,6 +250,14 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     tracking_history: "Cronologia tracciamento",
     powered_by: "Powered by Convertfy",
     new_search: "Nuova ricerca",
+    order_details: "Dettagli dell'Ordine",
+    quantity_short: "Qt\u00e0",
+    per_unit: "/pz",
+    total: "Totale",
+    more_items: "+ {n} articoli",
+    see_all: "Vedi tutti",
+    see_less: "Vedi meno",
+    image_unavailable: "Immagine non disponibile",
   },
 }
 
@@ -389,6 +437,33 @@ export async function GET(request: NextRequest) {
     /* Date separator in timeline */
     '.ct-event-date-sep { font-size:13px; font-weight:600; color:#334155; padding:8px 0 12px; margin-left:-28px; }',
 
+    /* Order details */
+    '.ct-order-section { padding:0 28px 8px; }',
+    '.ct-order-toggle { display:flex; align-items:center; justify-content:space-between; cursor:pointer; background:none; border:1px solid #e2e8f0; border-radius:10px; padding:12px 16px; width:100%; font-family:inherit; transition:background .15s; }',
+    '.ct-order-toggle:hover { background:#f8fafc; }',
+    '.ct-order-toggle-left { display:flex; align-items:center; gap:8px; font-size:14px; font-weight:600; color:#334155; }',
+    '.ct-order-toggle-left svg { width:16px; height:16px; stroke:'+color+'; fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }',
+    '.ct-order-toggle-arrow { width:16px; height:16px; stroke:#94a3b8; fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; transition:transform .2s; }',
+    '.ct-order-toggle-arrow.open { transform:rotate(180deg); }',
+    '.ct-order-body { overflow:hidden; max-height:0; transition:max-height .3s ease; }',
+    '.ct-order-body.open { max-height:999px; }',
+    '.ct-order-list { padding:12px 0 0; }',
+    '.ct-product-row { display:flex; align-items:center; gap:12px; padding:10px 0; border-bottom:1px solid #f1f5f9; }',
+    '.ct-product-row:last-child { border-bottom:none; }',
+    '.ct-product-thumb { width:56px; height:56px; border-radius:8px; object-fit:cover; background:#f1f5f9; flex-shrink:0; border:1px solid #e2e8f0; }',
+    '.ct-product-thumb-placeholder { width:56px; height:56px; border-radius:8px; background:#f1f5f9; flex-shrink:0; display:flex; align-items:center; justify-content:center; border:1px solid #e2e8f0; }',
+    '.ct-product-thumb-placeholder svg { width:24px; height:24px; stroke:#cbd5e1; fill:none; stroke-width:1.5; }',
+    '.ct-product-info { flex:1; min-width:0; }',
+    '.ct-product-title { font-size:13px; font-weight:500; color:#1e293b; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }',
+    '.ct-product-meta { font-size:12px; color:#64748b; margin-top:2px; }',
+    '.ct-product-price { font-size:13px; font-weight:600; color:#334155; white-space:nowrap; flex-shrink:0; }',
+    '.ct-order-total { display:flex; justify-content:space-between; align-items:center; padding:12px 0 4px; border-top:1px solid #e2e8f0; margin-top:4px; }',
+    '.ct-order-total-label { font-size:13px; font-weight:600; color:#334155; }',
+    '.ct-order-total-value { font-size:15px; font-weight:700; color:#0f172a; }',
+    '.ct-order-more { text-align:center; padding:8px 0 0; }',
+    '.ct-order-more button { background:none; border:none; font-size:12px; font-weight:500; color:'+color+'; cursor:pointer; font-family:inherit; padding:4px 8px; }',
+    '.ct-order-more button:hover { text-decoration:underline; }',
+
     /* Empty / Error state */
     '.ct-empty { text-align:center; padding:48px 24px; }',
     '.ct-empty-icon { width:64px; height:64px; border-radius:50%; background:#f8fafc; display:flex; align-items:center; justify-content:center; margin:0 auto 16px; }',
@@ -420,6 +495,8 @@ export async function GET(request: NextRequest) {
     '  .ct-progress { padding:20px 20px 8px; }',
     '  .ct-progress-label { font-size:9px; max-width:56px; }',
     '  .ct-result { border-radius:14px; }',
+    '  .ct-order-section { padding:0 20px 8px; }',
+    '  .ct-product-thumb, .ct-product-thumb-placeholder { width:48px; height:48px; }',
     '}',
   ].join('\\n');
   shadow.appendChild(styles);
@@ -710,6 +787,57 @@ export async function GET(request: NextRequest) {
       }
       html += '</div></div>';
 
+      /* Order details (line_items) */
+      var lineItems = order && Array.isArray(order.line_items) ? order.line_items : [];
+      if (lineItems.length > 0) {
+        var orderUid = 'ct-order-' + ri;
+        var showMax = 3;
+        var hasMore = lineItems.length > showMax;
+        html += '<div class="ct-order-section">';
+        html += '<button class="ct-order-toggle" data-ct-order-toggle="' + orderUid + '">';
+        html += '<span class="ct-order-toggle-left">' + svgIcon('package') + ' ' + escapeHtml(t.order_details || 'Order Details') + ' (' + lineItems.length + ')</span>';
+        html += '<svg class="ct-order-toggle-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>';
+        html += '</button>';
+        html += '<div class="ct-order-body" id="' + orderUid + '">';
+        html += '<div class="ct-order-list">';
+        for (var li = 0; li < lineItems.length; li++) {
+          var item = lineItems[li];
+          var hidden = hasMore && li >= showMax ? ' style="display:none" data-ct-extra="' + orderUid + '"' : '';
+          var imgUrl = item.image_url || '';
+          if (imgUrl && imgUrl.indexOf('cdn.shopify.com') !== -1 && imgUrl.indexOf('width=') === -1) {
+            imgUrl += (imgUrl.indexOf('?') !== -1 ? '&' : '?') + 'width=128';
+          }
+          html += '<div class="ct-product-row"' + hidden + '>';
+          if (imgUrl) {
+            html += '<img class="ct-product-thumb" src="' + escapeHtml(imgUrl) + '" alt="' + escapeHtml(item.title || '') + '" loading="lazy" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'" />';
+            html += '<div class="ct-product-thumb-placeholder" style="display:none"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>';
+          } else {
+            html += '<div class="ct-product-thumb-placeholder"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>';
+          }
+          html += '<div class="ct-product-info">';
+          html += '<div class="ct-product-title">' + escapeHtml(item.title || '') + '</div>';
+          html += '<div class="ct-product-meta">' + escapeHtml((t.quantity_short || 'Qty') + ': ' + (item.quantity || 1)) + '</div>';
+          html += '</div>';
+          var itemPrice = parseFloat(item.price || '0');
+          if (itemPrice > 0) {
+            html += '<div class="ct-product-price">' + escapeHtml(order.currency || '') + ' ' + itemPrice.toFixed(2) + '</div>';
+          }
+          html += '</div>';
+        }
+        if (hasMore) {
+          var moreLabel = (t.more_items || '+ {n} items').replace('{n}', String(lineItems.length - showMax));
+          html += '<div class="ct-order-more"><button data-ct-show-all="' + orderUid + '">' + escapeHtml(moreLabel) + '</button></div>';
+        }
+        html += '</div>';
+        if (order.total_price && parseFloat(order.total_price) > 0) {
+          html += '<div class="ct-order-total">';
+          html += '<span class="ct-order-total-label">' + escapeHtml(t.total || 'Total') + '</span>';
+          html += '<span class="ct-order-total-value">' + escapeHtml(order.currency || '') + ' ' + parseFloat(order.total_price).toFixed(2) + '</span>';
+          html += '</div>';
+        }
+        html += '</div></div>';
+      }
+
       /* Timeline events */
       var events = tracking && Array.isArray(tracking.tracking_events) ? tracking.tracking_events : [];
       if (events.length > 0) {
@@ -760,6 +888,39 @@ export async function GET(request: NextRequest) {
     var btns = shadow.querySelectorAll('[data-ct-new-search]');
     for (var bi = 0; bi < btns.length; bi++) {
       btns[bi].addEventListener('click', function() { renderSearch(); });
+    }
+
+    /* Bind order detail toggles */
+    var toggleBtns = shadow.querySelectorAll('[data-ct-order-toggle]');
+    for (var ti = 0; ti < toggleBtns.length; ti++) {
+      (function(btn) {
+        btn.addEventListener('click', function() {
+          var targetId = btn.getAttribute('data-ct-order-toggle');
+          var body = shadow.getElementById(targetId);
+          var arrow = btn.querySelector('.ct-order-toggle-arrow');
+          if (body) { body.classList.toggle('open'); }
+          if (arrow) { arrow.classList.toggle('open'); }
+        });
+      })(toggleBtns[ti]);
+    }
+
+    /* Bind show-all buttons */
+    var showAllBtns = shadow.querySelectorAll('[data-ct-show-all]');
+    for (var si = 0; si < showAllBtns.length; si++) {
+      (function(btn) {
+        btn.addEventListener('click', function() {
+          var targetId = btn.getAttribute('data-ct-show-all');
+          var extras = shadow.querySelectorAll('[data-ct-extra="' + targetId + '"]');
+          var showing = btn.getAttribute('data-showing') === '1';
+          for (var xi = 0; xi < extras.length; xi++) {
+            extras[xi].style.display = showing ? 'none' : '';
+          }
+          btn.setAttribute('data-showing', showing ? '0' : '1');
+          btn.textContent = showing ? btn.getAttribute('data-ct-label-more') : (t.see_less || 'See less');
+        });
+        var moreLabel = btn.textContent;
+        btn.setAttribute('data-ct-label-more', moreLabel);
+      })(showAllBtns[si]);
     }
   }
 
