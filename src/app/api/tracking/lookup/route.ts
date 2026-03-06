@@ -9,6 +9,31 @@ const log = logger.child("TrackingLookup")
 
 const LOOKUP_RATE_LIMIT = { limit: 20, windowSeconds: 60 }
 
+/** Cache TTL by tracking status (seconds) — used for Vercel edge cache (s-maxage) */
+const CACHE_TTL: Record<string, number> = {
+  delivered: 3600,        // 1h
+  in_transit: 300,        // 5min
+  out_for_delivery: 120,  // 2min
+  pending: 600,           // 10min
+  info_received: 600,     // 10min
+  failed_attempt: 300,    // 5min (delivery attempt failed, may update soon)
+  exception: 900,         // 15min
+  expired: 3600,          // 1h
+}
+
+function getCacheTtl(results: Array<{ tracking: Array<{ status: string }> }>): number {
+  if (results.length === 0) return 60
+
+  let minTtl = 3600
+  for (const result of results) {
+    for (const track of result.tracking) {
+      const ttl = CACHE_TTL[track.status] ?? 300
+      if (ttl < minTtl) minTtl = ttl
+    }
+  }
+  return minTtl
+}
+
 /** Public CORS — this endpoint is called from merchant storefronts */
 const PUBLIC_CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -278,9 +303,15 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    const cacheTtl = getCacheTtl(results)
     return NextResponse.json(
       { results, query, found: results.length > 0 },
-      { headers: PUBLIC_CORS }
+      {
+        headers: {
+          ...PUBLIC_CORS,
+          "Cache-Control": `public, s-maxage=${cacheTtl}, stale-while-revalidate=60`,
+        },
+      }
     )
   } catch (error) {
     log.error("Lookup error", error)

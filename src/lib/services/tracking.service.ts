@@ -313,24 +313,40 @@ export async function trackVia17track(
     const resolvedCarrierCode = detected.code
 
     try {
-      // Register tracking number with 17track
-      const registerRes = await fetch(`${SEVENTEEN_TRACK_API}/register`, {
-        method: "POST",
-        headers: {
-          "17token": apiKey,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify([{ number: trackingNumber, carrier: resolvedCarrierCode }]),
-      })
+      // Register tracking number with 17track (timeout: 8s)
+      const regController = new AbortController()
+      const regTimeout = setTimeout(() => regController.abort(), 8000)
+      try {
+        const registerRes = await fetch(`${SEVENTEEN_TRACK_API}/register`, {
+          method: "POST",
+          headers: {
+            "17token": apiKey,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify([{ number: trackingNumber, carrier: resolvedCarrierCode }]),
+          signal: regController.signal,
+        })
+        clearTimeout(regTimeout)
 
-      if (!registerRes.ok) {
-        log.warn("17track register failed", { status: registerRes.status, trackingNumber })
+        if (!registerRes.ok) {
+          log.warn("17track register failed", { status: registerRes.status, trackingNumber })
+        }
+      } catch (regErr) {
+        clearTimeout(regTimeout)
+        if (regErr instanceof Error && regErr.name === "AbortError") {
+          log.warn("17track register timeout", { trackingNumber })
+        } else {
+          log.warn("17track register error", { trackingNumber, error: regErr instanceof Error ? regErr.message : String(regErr) })
+        }
+        // Continue to try gettrackinfo anyway — registration may have been processed before
       }
 
       // Brief pause for 17track to process registration
       await new Promise((r) => setTimeout(r, 300))
 
-      // Get tracking info
+      // Get tracking info (timeout: 8s)
+      const infoController = new AbortController()
+      const infoTimeout = setTimeout(() => infoController.abort(), 8000)
       const response = await fetch(`${SEVENTEEN_TRACK_API}/gettrackinfo`, {
         method: "POST",
         headers: {
@@ -338,7 +354,9 @@ export async function trackVia17track(
           "Content-Type": "application/json",
         },
         body: JSON.stringify([{ number: trackingNumber, carrier: resolvedCarrierCode }]),
+        signal: infoController.signal,
       })
+      clearTimeout(infoTimeout)
 
       if (!response.ok) {
         log.error("17track API response error", { status: response.status, trackingNumber })
@@ -376,7 +394,11 @@ export async function trackVia17track(
         events: carrierEvents,
       })
     } catch (err) {
-      log.error("17track API error", { trackingNumber, err })
+      if (err instanceof Error && err.name === "AbortError") {
+        log.warn("17track gettrackinfo timeout", { trackingNumber })
+      } else {
+        log.error("17track API error", { trackingNumber, err })
+      }
     }
   }
 
@@ -394,6 +416,7 @@ export interface TrackResult {
   estimatedDelivery: string | null
 }
 
+/** @deprecated Use trackWithBestProvider() via syncTrackingCode() instead. Will be removed in a future version. */
 export async function trackNumber(trackingNumber: string, carrierCode = 0): Promise<TrackResult> {
   if (!API_KEY) {
     log.info("Using mock tracking (no 17track API key)", { trackingNumber })
@@ -433,7 +456,45 @@ function getMockTrackResult(trackingNumber: string): TrackResult {
   }
 }
 
-// --- Task 2: Resolve carrier keys per store ---
+// --- Freshness Guard ---
+
+const FRESHNESS_MS: Record<string, number> = {
+  pending:          6 * 3600_000,       // 6h
+  info_received:    6 * 3600_000,       // 6h
+  in_transit:       4 * 3600_000,       // 4h
+  out_for_delivery: 30 * 60_000,        // 30min
+  delivered:        30 * 86400_000,     // 30 days
+  failed_attempt:   2 * 3600_000,       // 2h (delivery attempt failed, re-check sooner)
+  exception:        24 * 3600_000,      // 24h
+  expired:          24 * 3600_000,      // 24h
+}
+
+function isWithinFreshness(lastCheckedAt: string | null, status: string | null): boolean {
+  if (!lastCheckedAt) return false
+  const thresholdMs = FRESHNESS_MS[status || "pending"] ?? FRESHNESS_MS.pending
+  return Date.now() - new Date(lastCheckedAt).getTime() < thresholdMs
+}
+
+function getFreshnessThresholdMs(status: string | null): number {
+  return FRESHNESS_MS[status || "pending"] ?? FRESHNESS_MS.pending
+}
+
+// --- Safe Decrypt ---
+
+function safeDecrypt(value: string, keyName: string, trackingCodeId: string): string | undefined {
+  try {
+    return decrypt(value)
+  } catch (err) {
+    log.warn("Failed to decrypt carrier key", {
+      trackingCodeId,
+      keyName,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    return undefined
+  }
+}
+
+// --- Resolve carrier keys per store ---
 
 interface StoreCarrierApiKeys {
   trackingmore?: string
@@ -473,13 +534,13 @@ async function resolveCarrierKeys(trackingCodeId: string, trackingStoreId: strin
   const keys: CarrierKeys = {
     // Prefer store key, fall back to global env var
     seventeen_track: store.seventeen_track_api_key
-      ? decrypt(store.seventeen_track_api_key)
+      ? safeDecrypt(store.seventeen_track_api_key, "seventeen_track_api_key", trackingCodeId)
       : globalApiKey,
     trackingmore: apiKeys.trackingmore
-      ? decrypt(apiKeys.trackingmore)
+      ? safeDecrypt(apiKeys.trackingmore, "trackingmore", trackingCodeId)
       : undefined,
     postnl: apiKeys.postnl
-      ? decrypt(apiKeys.postnl)
+      ? safeDecrypt(apiKeys.postnl, "postnl", trackingCodeId)
       : undefined,
     cainiao: true, // always enabled (free)
   }
@@ -502,10 +563,21 @@ export async function syncTrackingCode(trackingCodeId: string): Promise<void> {
     return
   }
 
-  // Task 2.2–2.4: resolve carrier keys for this store (with fallback)
+  // Freshness guard: skip sync if data was recently checked
+  if (isWithinFreshness(code.last_checked_at, code.status)) {
+    log.info("Skipping sync, data is fresh", {
+      trackingCodeId,
+      status: code.status,
+      lastCheckedAt: code.last_checked_at,
+      thresholdMs: getFreshnessThresholdMs(code.status),
+    })
+    return
+  }
+
+  // Resolve carrier keys for this store (with fallback)
   const keys = await resolveCarrierKeys(trackingCodeId, code.tracking_store_id ?? null)
 
-  // Task 3.1: call trackWithBestProvider with resolved keys
+  // Call trackWithBestProvider with resolved keys
   let trackResult: TrackResult | null = null
   const multiCarrierResult = await trackWithBestProvider(
     code.tracking_number,
@@ -514,10 +586,10 @@ export async function syncTrackingCode(trackingCodeId: string): Promise<void> {
   )
 
   if (multiCarrierResult) {
-    // Task 3.2: map TrackingResult → TrackResult via explicit status map
+    // Map TrackingResult → TrackResult via explicit status map
     trackResult = mapCarriersResultToTrackResult(multiCarrierResult)
 
-    // Task 3.4: log the provider used after successful result
+    // Log the provider used after successful result
     log.info("Tracking synced via provider", {
       trackingCodeId,
       trackingNumber: code.tracking_number,
@@ -525,27 +597,13 @@ export async function syncTrackingCode(trackingCodeId: string): Promise<void> {
       status: multiCarrierResult.status,
     })
   } else {
-    // Task 3.3: trackWithBestProvider returned null — try global trackNumber() as last resort
-    if (!keys.seventeen_track) {
-      // No API key available at all — skip to avoid writing mock data
-      log.warn("No API key available, skipping sync", { trackingCodeId })
-      return
-    }
-
-    log.info("trackWithBestProvider returned null, falling back to global trackNumber", {
-      trackingCodeId,
-      trackingNumber: code.tracking_number,
-    })
-
-    const fallbackResult = await trackNumber(code.tracking_number, code.carrier_code || 0)
-
-    // If trackNumber used mock (API_KEY env var not set), it returns mock data — skip
-    if (!API_KEY) {
-      log.warn("No API key available, skipping sync", { trackingCodeId })
-      return
-    }
-
-    trackResult = fallbackResult
+    // All providers returned null — update last_checked_at to avoid retry storm
+    log.warn("No tracking data available", { trackingCodeId, trackingNumber: code.tracking_number })
+    await admin
+      .from("tracking_codes")
+      .update({ last_checked_at: new Date().toISOString() })
+      .eq("id", trackingCodeId)
+    return
   }
 
   if (!trackResult) return
@@ -557,6 +615,7 @@ export async function syncTrackingCode(trackingCodeId: string): Promise<void> {
     last_event_at: trackResult.events[0]?.date || null,
     tracking_events: trackResult.events,
     last_checked_at: new Date().toISOString(),
+    provider_used: multiCarrierResult.carrier_code || "unknown",
   }
 
   if (trackResult.estimatedDelivery) {

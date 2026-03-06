@@ -97,8 +97,11 @@ interface CainiaoEvent {
 /**
  * Track via Cainiao Global (free, no API key needed)
  * Covers: Wanb Express, Yanwen, SDH Express, China Post, AliExpress shipments
+ * Also tried for non-Chinese tracking (returns null quickly if not recognized)
  */
 export async function trackViaCainiao(trackingNumber: string): Promise<TrackingResult | null> {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 8000)
   try {
     const response = await fetch("https://global.cainiao.com/global/detail.json", {
       method: "POST",
@@ -107,7 +110,9 @@ export async function trackViaCainiao(trackingNumber: string): Promise<TrackingR
         "Accept": "application/json",
       },
       body: `mailNoList=${encodeURIComponent(trackingNumber)}&language=en`,
+      signal: controller.signal,
     })
+    clearTimeout(timeoutId)
 
     if (!response.ok) {
       log.warn("Cainiao request failed", { status: response.status })
@@ -143,7 +148,12 @@ export async function trackViaCainiao(trackingNumber: string): Promise<TrackingR
       events,
     }
   } catch (error) {
-    log.warn("Cainiao tracking error", error)
+    clearTimeout(timeoutId)
+    if (error instanceof Error && error.name === "AbortError") {
+      log.warn("Cainiao timeout", { trackingNumber })
+    } else {
+      log.warn("Cainiao tracking error", error)
+    }
     return null
   }
 }
@@ -189,6 +199,8 @@ export async function trackViaTrackingMore(
   apiKey: string,
   courierCode?: string
 ): Promise<TrackingResult | null> {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 8000)
   try {
     // First try realtime tracking
     const response = await fetch(`${TRACKINGMORE_API_BASE}/trackings/realtime`, {
@@ -201,7 +213,9 @@ export async function trackViaTrackingMore(
         tracking_number: trackingNumber,
         courier_code: courierCode || undefined,
       }),
+      signal: controller.signal,
     })
+    clearTimeout(timeoutId)
 
     if (!response.ok) {
       if (response.status === 429) {
@@ -250,7 +264,12 @@ export async function trackViaTrackingMore(
       events,
     }
   } catch (error) {
-    log.warn("TrackingMore tracking error", error)
+    clearTimeout(timeoutId)
+    if (error instanceof Error && error.name === "AbortError") {
+      log.warn("TrackingMore timeout", { trackingNumber })
+    } else {
+      log.warn("TrackingMore tracking error", error)
+    }
     return null
   }
 }
@@ -298,6 +317,8 @@ export async function trackViaPostNL(
   trackingNumber: string,
   apiKey: string
 ): Promise<TrackingResult | null> {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 8000)
   try {
     const response = await fetch(
       `${POSTNL_API_BASE}/shipment/v2/status/barcode/${encodeURIComponent(trackingNumber)}?detail=true&language=EN`,
@@ -307,8 +328,10 @@ export async function trackViaPostNL(
           apikey: apiKey,
           Accept: "application/json",
         },
+        signal: controller.signal,
       }
     )
+    clearTimeout(timeoutId)
 
     if (!response.ok) {
       log.warn("PostNL request failed", { status: response.status })
@@ -346,7 +369,12 @@ export async function trackViaPostNL(
       events,
     }
   } catch (error) {
-    log.warn("PostNL tracking error", error)
+    clearTimeout(timeoutId)
+    if (error instanceof Error && error.name === "AbortError") {
+      log.warn("PostNL timeout", { trackingNumber })
+    } else {
+      log.warn("PostNL tracking error", error)
+    }
     return null
   }
 }
@@ -373,7 +401,7 @@ export interface CarrierKeys {
 
 /**
  * Track a package using the best available provider
- * Priority: Carrier-specific → Cainiao (free) → 17track → TrackingMore → fallback
+ * Priority: PostNL (carrier-specific) → Cainiao (free) → TrackingMore → 17track (ALWAYS LAST)
  */
 export async function trackWithBestProvider(
   trackingNumber: string,
@@ -382,41 +410,46 @@ export async function trackWithBestProvider(
   trackVia17track: (numbers: string[], apiKey: string) => Promise<any[]>
 ): Promise<TrackingResult | null> {
   const carrier = detectCarrierProvider(trackingNumber)
+  let resolvedBy: string | null = null
 
-  // 1. Try carrier-specific API
+  // 1. PostNL (carrier-specific, only if detected as PostNL)
   if (carrier.provider === "postnl" && keys.postnl) {
+    const t0 = Date.now()
     log.info("Trying PostNL direct API", { trackingNumber })
     const result = await trackViaPostNL(trackingNumber, keys.postnl)
-    if (result && result.events.length > 0) return result
+    log.info("Provider attempt", { provider: "postnl", trackingNumber, durationMs: Date.now() - t0, found: !!(result && result.events.length > 0) })
+    if (result && result.events.length > 0) { resolvedBy = "postnl"; log.debug("17track avoided", { trackingNumber, resolvedBy }); return result }
   }
 
-  // 2. Try Cainiao (free, no key needed) for Chinese carriers
-  if (carrier.provider === "cainiao" || keys.cainiao !== false) {
-    const isChinese = ["yanwen", "wanbexpress", "sdhexpress", "chinapost", "cainiao"].includes(carrier.code)
-    if (isChinese) {
-      log.info("Trying Cainiao tracking", { trackingNumber, carrier: carrier.code })
-      const result = await trackViaCainiao(trackingNumber)
-      if (result && result.events.length > 0) return result
-    }
+  // 2. Cainiao (ALWAYS -- free, tries for any tracking number)
+  if (keys.cainiao !== false) {
+    const t0 = Date.now()
+    log.info("Trying Cainiao tracking", { trackingNumber, carrier: carrier.code })
+    const result = await trackViaCainiao(trackingNumber)
+    log.info("Provider attempt", { provider: "cainiao", trackingNumber, durationMs: Date.now() - t0, found: !!(result && result.events.length > 0) })
+    if (result && result.events.length > 0) { resolvedBy = "cainiao"; log.debug("17track avoided", { trackingNumber, resolvedBy }); return result }
   }
 
-  // 3. Try 17track
+  // 3. TrackingMore (moved up from position 4 to 3)
+  if (keys.trackingmore) {
+    const t0 = Date.now()
+    log.info("Trying TrackingMore", { trackingNumber })
+    const courierCode = getTrackingMoreCourierCode(carrier.code)
+    const result = await trackViaTrackingMore(trackingNumber, keys.trackingmore, courierCode)
+    log.info("Provider attempt", { provider: "trackingmore", trackingNumber, durationMs: Date.now() - t0, found: !!(result && result.events.length > 0) })
+    if (result && result.events.length > 0) { resolvedBy = "trackingmore"; log.debug("17track avoided", { trackingNumber, resolvedBy }); return result }
+  }
+
+  // 4. 17track (ALWAYS LAST -- most expensive)
   if (keys.seventeen_track) {
-    log.info("Trying 17track", { trackingNumber })
+    const t0 = Date.now()
+    log.info("Trying 17track (last resort)", { trackingNumber })
     const results = await trackVia17track([trackingNumber], keys.seventeen_track)
+    log.info("Provider attempt", { provider: "17track", trackingNumber, durationMs: Date.now() - t0, found: results.length > 0 && (results[0].events?.length > 0 || results[0].status !== "pending") })
     if (results.length > 0 && (results[0].events?.length > 0 || results[0].status !== "pending")) {
       return results[0]
     }
   }
 
-  // 4. Try TrackingMore
-  if (keys.trackingmore) {
-    log.info("Trying TrackingMore", { trackingNumber })
-    const courierCode = getTrackingMoreCourierCode(carrier.code)
-    const result = await trackViaTrackingMore(trackingNumber, keys.trackingmore, courierCode)
-    if (result && result.events.length > 0) return result
-  }
-
-  // 5. Fallback
   return null
 }
