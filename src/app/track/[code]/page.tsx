@@ -279,9 +279,14 @@ export default function TrackPage() {
 
       {/* Footer */}
       <footer className="border-t border-slate-100 mt-16 py-6 text-center">
-        <p className="text-xs text-slate-400">
+        <a
+          href="https://convertfy.me/?utm_source=track&utm_medium=referral&utm_campaign=powered_by"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-slate-400 hover:text-slate-500 transition-colors"
+        >
           Powered by <span className="font-semibold text-slate-500">Convertfy</span>
-        </p>
+        </a>
       </footer>
     </div>
   )

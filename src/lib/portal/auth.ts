@@ -28,6 +28,7 @@ export async function getPortalUser(
   return portalUser
 }
 
+
 /**
  * Verify that a store belongs to a specific client.
  * Used as defense-in-depth in portal routes that receive store_id.

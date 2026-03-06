@@ -289,7 +289,7 @@ function getWidgetScript(storeId: string): string {
         }
       }
 
-      html+='<div class="cvfy-footer"><span>'+esc(t("powered"))+'</span></div>';
+      html+='<div class="cvfy-footer"><a href="https://convertfy.me/?utm_source=track&utm_medium=referral&utm_campaign=powered_by&utm_content='+encodeURIComponent(window.location.hostname)+'" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:none;opacity:0.7;transition:opacity .2s" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.7">'+esc(t("powered"))+'</a></div>';
       html+='</div>';
     });
     el.innerHTML=html;
