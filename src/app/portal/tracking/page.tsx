@@ -254,9 +254,8 @@ export default function PortalTrackingPage() {
 <script>
 (function(){
   var s=document.createElement('script');
-  s.src='${origin}/api/script/widget.js';
+  s.src='${origin}/api/script/widget.js?store=${store.client_store_id}';
   s.async=true;
-  s.dataset.storeId='${store.client_store_id}';
   s.dataset.color='${activeColor}';
   s.dataset.lang='${language}';
   s.dataset.container='convertfy-tracking';

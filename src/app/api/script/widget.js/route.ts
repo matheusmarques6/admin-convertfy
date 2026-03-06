@@ -402,7 +402,7 @@ export async function GET(request: NextRequest) {
   return new NextResponse(script, {
     headers: {
       "Content-Type": "application/javascript; charset=utf-8",
-      "Cache-Control": "public, max-age=3600",
+      "Cache-Control": "public, max-age=300, s-maxage=300",
       "Access-Control-Allow-Origin": "*",
     },
   })
