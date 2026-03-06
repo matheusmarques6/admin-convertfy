@@ -163,8 +163,8 @@ export async function translateEventDescription(description: string, targetLang 
     })
   }
 
-  // All translation failed — log and return original
-  log.debug("untranslated_event", { text: enText, lang: targetLang })
+  // All translation failed — log for debugging
+  log.warn("untranslated_event", { text: enText, lang: targetLang })
 
   if (sourceLang === "pt") {
     return description

@@ -29,7 +29,11 @@ export async function translateViaAPI(
   text: string,
   targetLang: string
 ): Promise<string | null> {
-  if (!GOOGLE_API_KEY || !text.trim()) return null
+  if (!text.trim()) return null
+  if (!GOOGLE_API_KEY) {
+    log.debug("Google Translate API key not configured, skipping API fallback")
+    return null
+  }
 
   const normalizedText = text.trim()
   const hash = hashText(normalizedText, targetLang)
