@@ -283,13 +283,14 @@ export async function GET(request: NextRequest) {
     host = document.getElementById(containerId);
   }
   if (!host) {
+    /* Try the default container id that snippets commonly include */
+    host = document.getElementById('convertfy-tracking');
+  }
+  if (!host) {
     host = document.createElement('div');
     host.id = 'convertfy-tracking';
-    if (scriptEl && scriptEl.parentNode) {
-      scriptEl.parentNode.insertBefore(host, scriptEl.nextSibling);
-    } else {
-      document.body.appendChild(host);
-    }
+    /* Avoid inserting into <head> — always target <body> */
+    document.body.appendChild(host);
   }
 
   var shadow = host.attachShadow({ mode: 'closed' });
