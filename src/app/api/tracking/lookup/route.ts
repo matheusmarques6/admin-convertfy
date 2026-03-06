@@ -4,7 +4,7 @@ import { checkRateLimit } from "@/lib/rate-limit"
 import { logger } from "@/lib/logger"
 import { OrderLookupService, OrderLookupResult } from "@/lib/services/order-lookup.service"
 import { syncTrackingCode, trackVia17track } from "@/lib/services/tracking.service"
-import { trackWithBestProvider, type CarrierKeys } from "@/lib/tracking/carriers"
+import { trackWithBestProvider, detectCarrierProvider, type CarrierKeys } from "@/lib/tracking/carriers"
 import { decrypt } from "@/lib/crypto"
 import { translateEventDescription } from "@/lib/tracking/translate-events"
 
@@ -357,6 +357,48 @@ export async function GET(request: NextRequest) {
             status: liveResult.status,
             events: liveResult.events.length,
             carrier: liveResult.carrier_name,
+          })
+        } else {
+          // Fallback: detect carrier locally and return pending status
+          // so the widget never shows "not found" for valid tracking codes
+          const carrier = detectCarrierProvider(query)
+          const pendingDetail = storeLang === "pt-BR"
+            ? "Aguardando informações da transportadora"
+            : "Waiting for carrier information"
+
+          results.push({
+            order: {
+              id: `live-${query}`,
+              order_name: null,
+              customer_name: null,
+              customer_email: null,
+              order_created_at: null,
+              shipped_at: null,
+              delivered_at: null,
+              total_price: null,
+              currency: "BRL",
+              line_items: [],
+              shipping_address: {},
+            },
+            tracking: [
+              {
+                id: `live-${query}`,
+                tracking_number: query,
+                carrier_name: carrier.name,
+                status: "pending",
+                status_detail: pendingDetail,
+                last_event: pendingDetail,
+                tracking_events: [],
+                estimated_delivery: null,
+              },
+            ],
+          })
+
+          log.info("Live tracking fallback to pending", {
+            trackingStoreId,
+            query,
+            carrier: carrier.name,
+            providerResult: liveResult ? "no_events" : "null",
           })
         }
       } catch (err) {
