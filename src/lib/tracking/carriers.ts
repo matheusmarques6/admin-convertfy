@@ -140,16 +140,17 @@ function inferCorreiosStatus(descricao: string): string {
  * NOTE: This is an unofficial public endpoint with no SLA. May change URL or block without notice.
  * TOP 1 for Brazilian tracking numbers (XX123456789BR pattern).
  */
-export async function trackViaCorreios(trackingNumber: string): Promise<TrackingResult | null> {
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), 5000)
+export async function trackViaCorreios(trackingNumber: string, signal?: AbortSignal): Promise<TrackingResult | null> {
+  const ownController = signal ? null : new AbortController()
+  const timeoutId = ownController ? setTimeout(() => ownController.abort(), 5000) : null
+  const effectiveSignal = signal ?? ownController!.signal
   try {
     const response = await fetch(`${CORREIOS_API_BASE}/${encodeURIComponent(trackingNumber)}`, {
       method: "GET",
       headers: { Accept: "application/json" },
-      signal: controller.signal,
+      signal: effectiveSignal,
     })
-    clearTimeout(timeoutId)
+    if (timeoutId) clearTimeout(timeoutId)
 
     if (!response.ok) {
       log.warn("Correios request failed", { status: response.status, trackingNumber })
@@ -192,7 +193,7 @@ export async function trackViaCorreios(trackingNumber: string): Promise<Tracking
       events,
     }
   } catch (error) {
-    clearTimeout(timeoutId)
+    if (timeoutId) clearTimeout(timeoutId)
     if (error instanceof Error && error.name === "AbortError") {
       log.warn("Correios timeout", { trackingNumber })
     } else {
@@ -218,9 +219,10 @@ interface CainiaoEvent {
  * Covers: Wanb Express, Yanwen, SDH Express, China Post, AliExpress shipments
  * Also tried for non-Chinese tracking (returns null quickly if not recognized)
  */
-export async function trackViaCainiao(trackingNumber: string): Promise<TrackingResult | null> {
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), 5000)
+export async function trackViaCainiao(trackingNumber: string, signal?: AbortSignal): Promise<TrackingResult | null> {
+  const ownController = signal ? null : new AbortController()
+  const timeoutId = ownController ? setTimeout(() => ownController.abort(), 5000) : null
+  const effectiveSignal = signal ?? ownController!.signal
   try {
     const response = await fetch("https://global.cainiao.com/global/detail.json", {
       method: "POST",
@@ -229,9 +231,9 @@ export async function trackViaCainiao(trackingNumber: string): Promise<TrackingR
         "Accept": "application/json",
       },
       body: `mailNoList=${encodeURIComponent(trackingNumber)}&language=en`,
-      signal: controller.signal,
+      signal: effectiveSignal,
     })
-    clearTimeout(timeoutId)
+    if (timeoutId) clearTimeout(timeoutId)
 
     if (!response.ok) {
       log.warn("Cainiao request failed", { status: response.status })
@@ -267,7 +269,7 @@ export async function trackViaCainiao(trackingNumber: string): Promise<TrackingR
       events,
     }
   } catch (error) {
-    clearTimeout(timeoutId)
+    if (timeoutId) clearTimeout(timeoutId)
     if (error instanceof Error && error.name === "AbortError") {
       log.warn("Cainiao timeout", { trackingNumber })
     } else {
@@ -316,10 +318,12 @@ const TRACKINGMORE_API_BASE = "https://api.trackingmore.com/v3"
 export async function trackViaTrackingMore(
   trackingNumber: string,
   apiKey: string,
-  courierCode?: string
+  courierCode?: string,
+  signal?: AbortSignal
 ): Promise<TrackingResult | null> {
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), 5000)
+  const ownController = signal ? null : new AbortController()
+  const timeoutId = ownController ? setTimeout(() => ownController.abort(), 5000) : null
+  const effectiveSignal = signal ?? ownController!.signal
   try {
     // First try realtime tracking
     const response = await fetch(`${TRACKINGMORE_API_BASE}/trackings/realtime`, {
@@ -332,9 +336,9 @@ export async function trackViaTrackingMore(
         tracking_number: trackingNumber,
         courier_code: courierCode || undefined,
       }),
-      signal: controller.signal,
+      signal: effectiveSignal,
     })
-    clearTimeout(timeoutId)
+    if (timeoutId) clearTimeout(timeoutId)
 
     if (!response.ok) {
       if (response.status === 429) {
@@ -385,7 +389,7 @@ export async function trackViaTrackingMore(
       events,
     }
   } catch (error) {
-    clearTimeout(timeoutId)
+    if (timeoutId) clearTimeout(timeoutId)
     if (error instanceof Error && error.name === "AbortError") {
       log.warn("TrackingMore timeout", { trackingNumber })
     } else {
@@ -436,10 +440,12 @@ const POSTNL_API_BASE = "https://api.postnl.nl"
  */
 export async function trackViaPostNL(
   trackingNumber: string,
-  apiKey: string
+  apiKey: string,
+  signal?: AbortSignal
 ): Promise<TrackingResult | null> {
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), 5000)
+  const ownController = signal ? null : new AbortController()
+  const timeoutId = ownController ? setTimeout(() => ownController.abort(), 5000) : null
+  const effectiveSignal = signal ?? ownController!.signal
   try {
     const response = await fetch(
       `${POSTNL_API_BASE}/shipment/v2/status/barcode/${encodeURIComponent(trackingNumber)}?detail=true&language=EN`,
@@ -449,10 +455,10 @@ export async function trackViaPostNL(
           apikey: apiKey,
           Accept: "application/json",
         },
-        signal: controller.signal,
+        signal: effectiveSignal,
       }
     )
-    clearTimeout(timeoutId)
+    if (timeoutId) clearTimeout(timeoutId)
 
     if (!response.ok) {
       log.warn("PostNL request failed", { status: response.status })
@@ -490,7 +496,7 @@ export async function trackViaPostNL(
       events,
     }
   } catch (error) {
-    clearTimeout(timeoutId)
+    if (timeoutId) clearTimeout(timeoutId)
     if (error instanceof Error && error.name === "AbortError") {
       log.warn("PostNL timeout", { trackingNumber })
     } else {
@@ -530,7 +536,8 @@ interface ProviderEntry {
     keys: CarrierKeys,
     carrier: CarrierInfo,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    trackVia17trackFn?: (numbers: string[], apiKey: string) => Promise<any[]>
+    trackVia17trackFn?: (numbers: string[], apiKey: string) => Promise<any[]>,
+    signal?: AbortSignal
   ) => Promise<TrackingResult | null>
 }
 
@@ -538,22 +545,22 @@ const PROVIDER_REGISTRY: Record<string, ProviderEntry> = {
   correios: {
     label: "Correios",
     canRun: (_k, c) => c.code === "correios",
-    execute: (tn) => trackViaCorreios(tn),
+    execute: (tn, _k, _c, _fn, signal) => trackViaCorreios(tn, signal),
   },
   postnl: {
     label: "PostNL",
     canRun: (k, c) => c.provider === "postnl" && !!k.postnl,
-    execute: (tn, k) => trackViaPostNL(tn, k.postnl!),
+    execute: (tn, k, _c, _fn, signal) => trackViaPostNL(tn, k.postnl!, signal),
   },
   cainiao: {
     label: "Cainiao",
     canRun: (k) => k.cainiao !== false,
-    execute: (tn) => trackViaCainiao(tn),
+    execute: (tn, _k, _c, _fn, signal) => trackViaCainiao(tn, signal),
   },
   trackingmore: {
     label: "TrackingMore",
     canRun: (k) => !!k.trackingmore,
-    execute: (tn, k, c) => trackViaTrackingMore(tn, k.trackingmore!, getTrackingMoreCourierCode(c.code)),
+    execute: (tn, k, c, _fn, signal) => trackViaTrackingMore(tn, k.trackingmore!, getTrackingMoreCourierCode(c.code), signal),
   },
   seventeen_track: {
     label: "17track",
@@ -616,7 +623,7 @@ export async function trackWithBestProvider(
 
     try {
       const result = await Promise.race([
-        provider.execute(trackingNumber, keys, carrier, trackVia17track),
+        provider.execute(trackingNumber, keys, carrier, trackVia17track, controller.signal),
         new Promise<null>((resolve) => {
           controller.signal.addEventListener("abort", () => resolve(null), { once: true })
         }),
