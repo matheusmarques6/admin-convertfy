@@ -2,6 +2,7 @@ import { NextRequest } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { requireFeature } from "@/lib/api/check-permission"
+import { validateMonetaryValue } from "@/lib/schemas/common"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("ClientSubscriptions")
@@ -22,6 +23,8 @@ export async function POST(request: NextRequest) {
     if (!name || !value) {
       throw new AppError("name and value are required", 400)
     }
+
+    validateMonetaryValue(value)
 
     const subscriptionData: Record<string, unknown> = {
       client_id,

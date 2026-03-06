@@ -9,6 +9,7 @@ import {
   orgMemberCreateSchema,
   taskCreateSchema,
   portalUserCreateSchema,
+  validateMonetaryValue,
 } from "./common"
 
 describe("emailSchema", () => {
@@ -162,6 +163,41 @@ describe("portalUserCreateSchema", () => {
 
   it("should reject missing client_id", () => {
     expect(() => portalUserCreateSchema.parse({ email: "user@test.com", name: "Maria" })).toThrow()
+  })
+})
+
+describe("validateMonetaryValue", () => {
+  it("should accept valid monetary values", () => {
+    expect(validateMonetaryValue(100)).toBe(100)
+    expect(validateMonetaryValue(0.01)).toBe(0.01)
+    expect(validateMonetaryValue(99999999.99)).toBe(99999999.99)
+    expect(validateMonetaryValue("500.50")).toBe(500.50)
+  })
+
+  it("should reject zero", () => {
+    expect(() => validateMonetaryValue(0)).toThrow("Valor invalido")
+  })
+
+  it("should reject negative values", () => {
+    expect(() => validateMonetaryValue(-1)).toThrow("Valor invalido")
+    expect(() => validateMonetaryValue(-0.01)).toThrow("Valor invalido")
+  })
+
+  it("should reject values above limit", () => {
+    expect(() => validateMonetaryValue(100000000)).toThrow("Valor invalido")
+    expect(() => validateMonetaryValue(99999999.999)).toThrow("Valor invalido")
+  })
+
+  it("should reject non-finite values", () => {
+    expect(() => validateMonetaryValue(NaN)).toThrow("Valor invalido")
+    expect(() => validateMonetaryValue(Infinity)).toThrow("Valor invalido")
+    expect(() => validateMonetaryValue("abc")).toThrow("Valor invalido")
+    expect(() => validateMonetaryValue(null)).toThrow("Valor invalido")
+    expect(() => validateMonetaryValue(undefined)).toThrow("Valor invalido")
+  })
+
+  it("should use custom field name in error message", () => {
+    expect(() => validateMonetaryValue(0, "Valor mensal")).toThrow("Valor mensal invalido")
   })
 })
 

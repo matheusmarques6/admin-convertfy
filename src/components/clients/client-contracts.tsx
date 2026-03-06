@@ -24,6 +24,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { formatCurrency, formatDate } from "@/lib/utils"
+import { centsToReais } from "@/lib/currency"
+import { CurrencyInput } from "@/components/ui/currency-input"
 import { toast } from "@/lib/hooks/use-toast"
 import { createClient } from "@/lib/supabase/client"
 import type { Contract } from "@/types"
@@ -44,7 +46,7 @@ const statusConfig: Record<
 
 interface ContractFormData {
   plan_name: string
-  monthly_value: string
+  monthly_value: number
   start_date: string
   end_date: string
   status: string
@@ -58,7 +60,7 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
   const [saving, setSaving] = useState(false)
   const [formData, setFormData] = useState<ContractFormData>({
     plan_name: "",
-    monthly_value: "",
+    monthly_value: 0,
     start_date: "",
     end_date: "",
     status: "active",
@@ -90,7 +92,7 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
   function handleOpenDialog() {
     setFormData({
       plan_name: "",
-      monthly_value: "",
+      monthly_value: 0,
       start_date: new Date().toISOString().split("T")[0],
       end_date: "",
       status: "active",
@@ -124,7 +126,7 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
       toast({ variant: "destructive", title: "Nome do plano é obrigatório" })
       return
     }
-    if (!formData.monthly_value || Number(formData.monthly_value) < 0) {
+    if (formData.monthly_value <= 0) {
       toast({ variant: "destructive", title: "Valor mensal inválido" })
       return
     }
@@ -163,7 +165,7 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
         body: JSON.stringify({
           client_id: clientId,
           plan_name: formData.plan_name.trim(),
-          monthly_value: Number(formData.monthly_value),
+          monthly_value: centsToReais(formData.monthly_value),
           start_date: formData.start_date,
           end_date: formData.end_date || null,
           status: formData.status,
@@ -392,15 +394,11 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="monthly_value">Valor Mensal (R$) *</Label>
-              <Input
+              <Label htmlFor="monthly_value">Valor Mensal *</Label>
+              <CurrencyInput
                 id="monthly_value"
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="0.00"
                 value={formData.monthly_value}
-                onChange={(e) => setFormData(prev => ({ ...prev, monthly_value: e.target.value }))}
+                onValueChange={(cents) => setFormData(prev => ({ ...prev, monthly_value: cents }))}
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -493,7 +491,7 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
             <Button variant="outline" onClick={() => setShowDialog(false)} disabled={saving}>
               Cancelar
             </Button>
-            <Button onClick={handleCreateContract} disabled={saving}>
+            <Button onClick={handleCreateContract} disabled={saving || formData.monthly_value === 0}>
               {saving ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (

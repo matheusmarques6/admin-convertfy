@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
+import { validateMonetaryValue } from "@/lib/schemas/common"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("ClientContracts")
@@ -22,9 +23,7 @@ export async function POST(request: NextRequest) {
       throw new AppError(`Status inválido. Use: ${validStatuses.join(", ")}`, 400)
     }
 
-    if (Number(monthly_value) < 0) {
-      throw new AppError("Valor mensal não pode ser negativo", 400)
-    }
+    validateMonetaryValue(monthly_value, "Valor mensal")
 
     // Verify user has access to this client (RLS enforced)
     const { data: client, error: clientError } = await supabase

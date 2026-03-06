@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { AppError } from "@/lib/api/errors"
 
 // --- Pagination ---
 
@@ -103,6 +104,23 @@ export const portalUserCreateSchema = z.object({
     manage_stores: z.boolean().optional(),
   }).optional(),
 })
+
+// --- Monetary Validation ---
+
+/**
+ * Validates a monetary value: must be finite, > 0, and <= 99999999.99.
+ * Throws AppError(400) if invalid. Returns the validated number.
+ */
+export function validateMonetaryValue(value: unknown, fieldName: string = "Valor"): number {
+  const num = Number(value)
+  if (!Number.isFinite(num) || num <= 0 || num > 99999999.99) {
+    throw new AppError(
+      `${fieldName} invalido. Deve ser positivo e menor que R$ 100.000.000`,
+      400
+    )
+  }
+  return num
+}
 
 // --- Search/Filter ---
 

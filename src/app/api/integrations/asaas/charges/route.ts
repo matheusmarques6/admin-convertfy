@@ -7,6 +7,7 @@ import { createAsaasService } from "@/lib/integrations/asaas"
 import { decryptCredentialsJson } from "@/lib/crypto"
 import { errorResponse, successResponse, requireAuth, AppError, ValidationError } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
+import { validateMonetaryValue } from "@/lib/schemas/common"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("AsaasCharges")
@@ -24,6 +25,8 @@ export async function POST(request: NextRequest) {
     if (!clientId || !value || !billingType || !dueDate) {
       throw new ValidationError("Campos obrigatórios: clientId, value, billingType, dueDate")
     }
+
+    validateMonetaryValue(value)
 
     const { data: integration } = await supabase
       .from("integrations")

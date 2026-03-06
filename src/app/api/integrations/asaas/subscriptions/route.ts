@@ -4,6 +4,7 @@ import { createAsaasService } from "@/lib/integrations/asaas"
 import { decryptCredentialsJson } from "@/lib/crypto"
 import { errorResponse, successResponse, requireAuth, AppError, ValidationError } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
+import { validateMonetaryValue } from "@/lib/schemas/common"
 
 // GET - Get subscriptions for a client
 export async function GET(request: NextRequest) {
@@ -82,6 +83,8 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
     const { clientId, value, cycle, billingType, nextDueDate, description } = body
+
+    validateMonetaryValue(value)
 
     const { data: integration } = await supabase
       .from("integrations")

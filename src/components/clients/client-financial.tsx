@@ -66,6 +66,8 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "@/lib/hooks/use-toast"
 import { formatCurrency } from "@/lib/utils"
+import { centsToReais } from "@/lib/currency"
+import { CurrencyInput } from "@/components/ui/currency-input"
 import { createClient } from "@/lib/supabase/client"
 
 interface ClientFinancialProps {
@@ -204,7 +206,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
       : null
 
   const [chargeForm, setChargeForm] = useState({
-    value: "",
+    value: 0,
     billingType: "PIX",
     dueDate: new Date().toISOString().split("T")[0],
     description: "",
@@ -214,7 +216,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
 
   const [subscriptionForm, setSubscriptionForm] = useState({
     name: "",
-    value: "",
+    value: 0,
     cycle: "MONTHLY" as LocalSubscription["cycle"],
     paymentMethod: "asaas" as LocalSubscription["payment_method"],
     startDate: new Date().toISOString().split("T")[0],
@@ -267,7 +269,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
   }
 
   async function handleCreateCharge() {
-    if (!chargeForm.value || !chargeForm.dueDate) {
+    if (chargeForm.value <= 0 || !chargeForm.dueDate) {
       toast({
         variant: "destructive",
         title: "Campos obrigatórios",
@@ -286,7 +288,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             clientId,
-            value: parseFloat(chargeForm.value),
+            value: centsToReais(chargeForm.value),
             billingType: chargeForm.billingType,
             dueDate: chargeForm.dueDate,
             description: chargeForm.description || `Cobrança - ${clientName}`,
@@ -318,7 +320,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           body: JSON.stringify({
             client_id: clientId,
             description: chargeForm.description || `Cobrança - ${clientName}`,
-            value: parseFloat(chargeForm.value),
+            value: centsToReais(chargeForm.value),
             due_date: chargeForm.dueDate,
             status: "pending",
             payment_method: chargeForm.paymentMethod,
@@ -349,7 +351,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
   }
 
   async function handleCreateSubscription() {
-    if (!subscriptionForm.name || !subscriptionForm.value) {
+    if (!subscriptionForm.name || subscriptionForm.value <= 0) {
       toast({
         variant: "destructive",
         title: "Campos obrigatórios",
@@ -368,7 +370,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             clientId,
-            value: parseFloat(subscriptionForm.value),
+            value: centsToReais(subscriptionForm.value),
             cycle: subscriptionForm.cycle,
             nextDueDate: subscriptionForm.startDate,
             description: subscriptionForm.name,
@@ -401,7 +403,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           body: JSON.stringify({
             client_id: clientId,
             name: subscriptionForm.name,
-            value: parseFloat(subscriptionForm.value),
+            value: centsToReais(subscriptionForm.value),
             cycle: subscriptionForm.cycle,
             payment_method: subscriptionForm.paymentMethod,
             status: "active",
@@ -646,7 +648,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
 
   function resetForm() {
     setChargeForm({
-      value: "",
+      value: 0,
       billingType: "PIX",
       dueDate: new Date().toISOString().split("T")[0],
       description: "",
@@ -659,7 +661,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
   function resetSubscriptionForm() {
     setSubscriptionForm({
       name: "",
-      value: "",
+      value: 0,
       cycle: "MONTHLY",
       paymentMethod: "asaas",
       startDate: new Date().toISOString().split("T")[0],
@@ -1153,17 +1155,10 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
 
                 <div className="space-y-2">
                   <Label>Valor *</Label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-2.5 text-muted-foreground">R$</span>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      placeholder="0,00"
-                      className="pl-10"
-                      value={chargeForm.value}
-                      onChange={(e) => setChargeForm({ ...chargeForm, value: e.target.value })}
-                    />
-                  </div>
+                  <CurrencyInput
+                    value={chargeForm.value}
+                    onValueChange={(cents) => setChargeForm({ ...chargeForm, value: cents })}
+                  />
                 </div>
 
                 {chargeForm.paymentMethod === "asaas" && (
@@ -1210,7 +1205,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                       <SelectContent>
                         {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(n => (
                           <SelectItem key={n} value={n.toString()}>
-                            {n}x {chargeForm.value ? formatCurrency(parseFloat(chargeForm.value) / n) : ""}
+                            {n}x {chargeForm.value ? formatCurrency(centsToReais(chargeForm.value) / n) : ""}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -1230,7 +1225,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
 
               <DialogFooter>
                 <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>Cancelar</Button>
-                <Button onClick={handleCreateCharge} disabled={isCreating}>
+                <Button onClick={handleCreateCharge} disabled={isCreating || chargeForm.value === 0}>
                   {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Criar Cobrança
                 </Button>
@@ -1322,17 +1317,10 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
 
             <div className="space-y-2">
               <Label>Valor *</Label>
-              <div className="relative">
-                <span className="absolute left-3 top-2.5 text-muted-foreground">R$</span>
-                <Input
-                  type="number"
-                  step="0.01"
-                  placeholder="0,00"
-                  className="pl-10"
-                  value={subscriptionForm.value}
-                  onChange={(e) => setSubscriptionForm({ ...subscriptionForm, value: e.target.value })}
-                />
-              </div>
+              <CurrencyInput
+                value={subscriptionForm.value}
+                onValueChange={(cents) => setSubscriptionForm({ ...subscriptionForm, value: cents })}
+              />
             </div>
 
             <div className="space-y-2">
@@ -1402,7 +1390,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setSubscriptionDialogOpen(false)}>Cancelar</Button>
-            <Button onClick={handleCreateSubscription} disabled={isCreating}>
+            <Button onClick={handleCreateSubscription} disabled={isCreating || subscriptionForm.value === 0}>
               {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Criar Assinatura
             </Button>

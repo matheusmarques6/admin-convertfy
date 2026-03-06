@@ -2,6 +2,7 @@ import { NextRequest } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { requireFeature } from "@/lib/api/check-permission"
+import { validateMonetaryValue } from "@/lib/schemas/common"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("ClientCharges")
@@ -22,6 +23,8 @@ export async function POST(request: NextRequest) {
     if (!value || !due_date) {
       throw new AppError("value and due_date are required", 400)
     }
+
+    validateMonetaryValue(value)
 
     const chargeData: Record<string, unknown> = {
       client_id,
@@ -75,6 +78,10 @@ export async function PUT(request: NextRequest) {
       if (allowedFields.includes(key)) {
         updates[key] = val
       }
+    }
+
+    if (updates.value !== undefined) {
+      validateMonetaryValue(updates.value)
     }
 
     if (Object.keys(updates).length === 0) {
