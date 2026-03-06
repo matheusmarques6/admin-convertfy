@@ -794,11 +794,11 @@ export async function GET(request: NextRequest) {
         var showMax = 3;
         var hasMore = lineItems.length > showMax;
         html += '<div class="ct-order-section">';
-        html += '<button class="ct-order-toggle" data-ct-order-toggle="' + orderUid + '">';
+        html += '<button class="ct-order-toggle" data-ct-order-toggle="' + orderUid + '" aria-expanded="false" aria-controls="' + orderUid + '">';
         html += '<span class="ct-order-toggle-left">' + svgIcon('package') + ' ' + escapeHtml(t.order_details || 'Order Details') + ' (' + lineItems.length + ')</span>';
         html += '<svg class="ct-order-toggle-arrow" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>';
         html += '</button>';
-        html += '<div class="ct-order-body" id="' + orderUid + '">';
+        html += '<div class="ct-order-body" id="' + orderUid + '" role="region" aria-label="' + escapeHtml(t.order_details || 'Order Details') + '">';
         html += '<div class="ct-order-list">';
         for (var li = 0; li < lineItems.length; li++) {
           var item = lineItems[li];
@@ -900,6 +900,8 @@ export async function GET(request: NextRequest) {
           var arrow = btn.querySelector('.ct-order-toggle-arrow');
           if (body) { body.classList.toggle('open'); }
           if (arrow) { arrow.classList.toggle('open'); }
+          var isOpen = body && body.classList.contains('open');
+          btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
         });
       })(toggleBtns[ti]);
     }
