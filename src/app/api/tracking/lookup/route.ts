@@ -3,7 +3,9 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { checkRateLimit } from "@/lib/rate-limit"
 import { logger } from "@/lib/logger"
 import { OrderLookupService, OrderLookupResult } from "@/lib/services/order-lookup.service"
-import { syncTrackingCode } from "@/lib/services/tracking.service"
+import { syncTrackingCode, trackVia17track } from "@/lib/services/tracking.service"
+import { trackWithBestProvider, type CarrierKeys } from "@/lib/tracking/carriers"
+import { decrypt } from "@/lib/crypto"
 import { translateEventDescription } from "@/lib/tracking/translate-events"
 
 const log = logger.child("TrackingLookup")
@@ -271,6 +273,87 @@ export async function GET(request: NextRequest) {
             results.push({ order, tracking: [codeData] })
           }
         }
+      }
+    }
+
+    // ─── Live tracking: if no DB results for a tracking code, call providers directly ───
+    if (results.length === 0 && !isEmail && !isOrderNumber && trackingStoreId) {
+      try {
+        const { data: store } = await admin
+          .from("tracking_stores")
+          .select("seventeen_track_api_key, carrier_api_keys")
+          .eq("id", trackingStoreId)
+          .single()
+
+        const globalKey = process.env.SEVENTEEN_TRACK_API_KEY
+        const storeKeys = (store?.carrier_api_keys ?? {}) as Record<string, string | boolean | undefined>
+
+        function safeDecrypt(val: string, label: string): string | undefined {
+          try { return decrypt(val) } catch { log.warn(`Failed to decrypt ${label}`); return undefined }
+        }
+
+        const keys: CarrierKeys = {
+          seventeen_track: store?.seventeen_track_api_key
+            ? safeDecrypt(store.seventeen_track_api_key, "17track")
+            : globalKey,
+          trackingmore: typeof storeKeys.trackingmore === "string"
+            ? safeDecrypt(storeKeys.trackingmore, "trackingmore")
+            : undefined,
+          postnl: typeof storeKeys.postnl === "string"
+            ? safeDecrypt(storeKeys.postnl, "postnl")
+            : undefined,
+          cainiao: storeKeys.cainiao !== false,
+        }
+
+        log.info("Live tracking attempt", { trackingStoreId, query })
+
+        const liveResult = await trackWithBestProvider(
+          query,
+          keys,
+          trackVia17track,
+        )
+
+        if (liveResult && liveResult.events.length > 0) {
+          results.push({
+            order: {
+              id: `live-${query}`,
+              order_name: null,
+              customer_name: null,
+              customer_email: null,
+              order_created_at: null,
+              shipped_at: null,
+              delivered_at: null,
+              total_price: null,
+              currency: "BRL",
+              line_items: [],
+              shipping_address: {},
+            },
+            tracking: [
+              {
+                id: `live-${query}`,
+                tracking_number: liveResult.tracking_number,
+                carrier_name: liveResult.carrier_name,
+                status: liveResult.status,
+                status_detail: liveResult.status_detail,
+                last_event: liveResult.last_event,
+                tracking_events: liveResult.events,
+                estimated_delivery: liveResult.estimated_delivery,
+              },
+            ],
+          })
+
+          log.info("Live tracking success", {
+            trackingStoreId,
+            query,
+            status: liveResult.status,
+            events: liveResult.events.length,
+            carrier: liveResult.carrier_name,
+          })
+        }
+      } catch (err) {
+        log.warn("Live tracking failed", {
+          error: err instanceof Error ? err.message : String(err),
+        })
       }
     }
 
