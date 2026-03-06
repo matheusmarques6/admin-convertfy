@@ -120,7 +120,7 @@ export default function PortalTrackingScriptPage() {
 <script>
 (function(){
   var s=document.createElement('script');
-  s.src='${origin}/api/tracking/script/widget.js';
+  s.src='${origin}/api/script/widget.js';
   s.async=true;
   s.dataset.storeId='${selectedStoreId}';
   s.dataset.color='${activeColor}';
