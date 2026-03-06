@@ -7,8 +7,12 @@ function getWidgetScript(storeId: string): string {
   if(window.__convertfy_tracking_loaded)return;
   window.__convertfy_tracking_loaded=true;
 
+  var STORE_ID=(function(){
+    try{var s=document.querySelector('script[src*="widget.js"]');if(s){var d=s.dataset.storeId||s.dataset.storeid||s.getAttribute("data-store-id");if(d)return d}}catch(e){}
+    if("${storeId}"&&"${storeId}"!=="default")return "${storeId}";
+    return"default";
+  })();
   var SCRIPT_EL=(function(){try{return document.querySelector('script[src*="widget.js"]')}catch(e){return null}})();
-  var STORE_ID="${storeId}"!=="default"?"${storeId}":(SCRIPT_EL&&(SCRIPT_EL.dataset.storeId||SCRIPT_EL.dataset.storeid||SCRIPT_EL.getAttribute("data-store-id")))||"${storeId}";
   var SCRIPT_ORIGIN=(function(){try{if(SCRIPT_EL&&SCRIPT_EL.src){var u=new URL(SCRIPT_EL.src);return u.origin}return"${DOMAIN}"}catch(e){return"${DOMAIN}"}})();
   var API_BASE=SCRIPT_ORIGIN+"/api/tracking";
   var LOOKUP=API_BASE+"/lookup";
