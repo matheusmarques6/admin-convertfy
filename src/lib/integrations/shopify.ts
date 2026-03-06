@@ -205,12 +205,12 @@ export class ShopifyService {
   async getOrderByTrackingCode(trackingCode: string): Promise<ShopifyOrder | null> {
     const normalizedCode = trackingCode.trim().toUpperCase()
 
-    // Search fulfilled orders (last 60 days by default)
-    const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString()
+    // Search fulfilled orders (last 30 days)
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
     const queryParams = new URLSearchParams({
       status: "any",
       fulfillment_status: "fulfilled",
-      created_at_min: sixtyDaysAgo,
+      created_at_min: thirtyDaysAgo,
       limit: "250",
       fields: "id,name,order_number,customer,line_items,total_price,currency,created_at,fulfillment_status,fulfillments",
     })

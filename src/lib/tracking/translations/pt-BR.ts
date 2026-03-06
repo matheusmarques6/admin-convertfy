@@ -27,6 +27,8 @@ export const exactMatches: Record<string, string> = {
     "Sua encomenda foi entregue ao destinatário.",
   "your parcel has been delivered to the neighbour":
     "Sua encomenda foi entregue ao vizinho.",
+  "your parcel has been delivered. through your letterbox":
+    "Sua encomenda foi entregue na sua caixa de correio.",
   "your parcel could not be delivered": "Não foi possível entregar sua encomenda.",
   "your parcel will be delivered tomorrow":
     "Sua encomenda será entregue amanhã.",
@@ -37,11 +39,19 @@ export const exactMatches: Record<string, string> = {
   "your parcel has been picked up": "Sua encomenda foi retirada.",
   "your parcel is being returned to the sender":
     "Sua encomenda está sendo devolvida ao remetente.",
+  "your parcel has arrived at your delivery depot":
+    "Sua encomenda chegou ao depósito de entrega.",
+  "your parcel is at our national hub":
+    "Sua encomenda está no centro de distribuição nacional.",
+  "your parcel is at our regional hub":
+    "Sua encomenda está no centro de distribuição regional.",
   "parcel is leaving airport": "A encomenda está saindo do aeroporto.",
   "parcel leaving port": "A encomenda está saindo do porto.",
   "parcel is in transit": "Encomenda em trânsito.",
   "parcel received": "Encomenda recebida.",
   "parcel delivered": "Encomenda entregue.",
+  "parcel arrival": "Encomenda chegou.",
+  "parcel departure": "Encomenda partiu.",
   "customs declaration completed": "Declaração alfandegária concluída.",
   "customs declaration received": "Declaração alfandegária recebida.",
   "item presented to customs": "Item apresentado à alfândega.",
@@ -217,6 +227,15 @@ export const exactMatches: Record<string, string> = {
   "being processed": "Sendo processado",
   "at sorting facility": "Na unidade de triagem",
   "at processing center": "No centro de processamento",
+
+  // ─── Cainiao / 17track compound events ─────────────────────────────────
+  "parcel arrives at airport, parcel arrival": "Encomenda chegou ao aeroporto",
+  "parcel leaving port, parcel departure": "Encomenda saindo do porto",
+  "parcel departure transit facility, parcel departure": "Encomenda partiu da unidade de trânsito",
+  "parcel processed, parcel departure": "Encomenda processada e despachada",
+  "parcel arrival, customs clearance": "Encomenda chegou, desembaraço aduaneiro",
+  "custom clearance completed": "Desembaraço aduaneiro concluído",
+  "customs clearance complete": "Desembaraço aduaneiro concluído",
 
   // ─── 17track / TrackingMore / Cainiao ──────────────────────────────────
   // Customs / Alfândega
@@ -406,6 +425,68 @@ export const patterns: Array<{ pattern: RegExp; replacement: string }> = [
   {
     pattern: /^customs clearance at (.+)$/i,
     replacement: "Desembaraço aduaneiro em $1",
+  },
+  // PostNL/Yodel dynamic patterns
+  {
+    pattern: /^your parcel has been delivered\.\s*through your (.+)$/i,
+    replacement: "Sua encomenda foi entregue na sua $1",
+  },
+  {
+    pattern: /^your parcel has arrived at your (.+)$/i,
+    replacement: "Sua encomenda chegou ao seu $1",
+  },
+  {
+    pattern: /^your parcel is at our (.+)$/i,
+    replacement: "Sua encomenda está no nosso $1",
+  },
+  {
+    pattern: /^your parcel is on its way[. ]+to (.+?)\.?\s*please check back for updates\.?$/i,
+    replacement: "Sua encomenda está a caminho de $1. Verifique aqui para atualizações.",
+  },
+  {
+    pattern: /^your parcel is on its way to (.+)$/i,
+    replacement: "Sua encomenda está a caminho de $1",
+  },
+  {
+    pattern: /^we have your parcel\.\s*(.+)$/i,
+    replacement: "Recebemos sua encomenda. $1",
+  },
+  // Cainiao compound event patterns (e.g. "Parcel departure in Shenzhen Sorting Centre")
+  {
+    pattern: /^parcel departure in (.+?) sorting centre$/i,
+    replacement: "Encomenda partiu do centro de triagem de $1",
+  },
+  {
+    pattern: /^parcel processed at (.+?) sorting centre$/i,
+    replacement: "Encomenda processada no centro de triagem de $1",
+  },
+  {
+    pattern: /^parcel received at (.+?) sorting centre$/i,
+    replacement: "Encomenda recebida no centro de triagem de $1",
+  },
+  {
+    pattern: /^parcel arrives at (.+)$/i,
+    replacement: "Encomenda chegou em $1",
+  },
+  {
+    pattern: /^parcel departure (.+?) facility,?\s*parcel departure$/i,
+    replacement: "Encomenda partiu da unidade de $1",
+  },
+  {
+    pattern: /^parcel arrives at (.+?),?\s*parcel arrival$/i,
+    replacement: "Encomenda chegou em $1",
+  },
+  {
+    pattern: /^parcel departure in (.+)$/i,
+    replacement: "Encomenda partiu de $1",
+  },
+  {
+    pattern: /^parcel processed at (.+)$/i,
+    replacement: "Encomenda processada em $1",
+  },
+  {
+    pattern: /^parcel received at (.+)$/i,
+    replacement: "Encomenda recebida em $1",
   },
   // Replace English time words in translated results
   { pattern: /\btoday\b/gi, replacement: "hoje" },

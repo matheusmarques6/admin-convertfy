@@ -48,23 +48,21 @@ describe("translateEventDescription", () => {
     })
   })
 
-  // ─── Layer 4: Word-level fallback ──────────────────────────────────────
-  describe("word-level fallback", () => {
-    it("partially translates unknown phrase with known words", () => {
+  // ─── Untranslated phrases return original (no gibberish) ────────────────
+  describe("untranslated phrases", () => {
+    it("returns original English when no match found (no word-level gibberish)", () => {
       const result = translateEventDescription("The package arrived at warehouse", "pt-BR")
-      expect(result).toContain("pacote")
-      expect(result).toContain("chegou")
-      expect(result).toContain("armazém")
+      // Should return original rather than mixed-language gibberish
+      expect(result).toBe("The package arrived at warehouse")
     })
 
-    it("is case insensitive", () => {
+    it("returns original for unknown short phrases", () => {
       const result = translateEventDescription("ARRIVED AT FACILITY", "pt-BR")
-      expect(result.toLowerCase()).toContain("chegou")
-      expect(result.toLowerCase()).toContain("unidade")
+      // No exact match, no pattern match → return original
+      expect(result).toBe("ARRIVED AT FACILITY")
     })
 
-    it("does not apply fallback for non-pt languages", () => {
-      // fr has its own dict but no word-level fallback
+    it("does not create mixed-language output for non-pt languages", () => {
       const result = translateEventDescription("random package arrived somewhere", "fr")
       // Should not contain Portuguese words
       expect(result).not.toContain("pacote")
