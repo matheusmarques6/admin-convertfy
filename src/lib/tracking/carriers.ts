@@ -307,7 +307,7 @@ function inferCainiaoStatus(status: string | undefined, events: TrackingEvent[])
 
 // ─── TrackingMore API (Paid - covers 1500+ carriers) ────────────────────────
 
-const TRACKINGMORE_API_BASE = "https://api.trackingmore.com/v4"
+const TRACKINGMORE_API_BASE = "https://api.trackingmore.com/v3"
 
 /**
  * Track via TrackingMore API (paid, requires API key)
@@ -347,7 +347,9 @@ export async function trackViaTrackingMore(
 
     const data = await response.json()
 
-    if (data.meta?.code !== 200 || !data.data) {
+    const code = data.meta?.code ?? data.code
+    if (code !== 200 || !data.data) {
+      log.warn("TrackingMore API error", { code, message: data.meta?.message ?? data.message })
       return null
     }
 
