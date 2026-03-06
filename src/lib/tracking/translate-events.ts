@@ -5,13 +5,15 @@
  * 1. Detect if source text is Portuguese (Correios) or English (other providers)
  * 2. If source matches target language family → return as-is
  * 3. If source is PT → normalize to English first via PT→EN dict
- * 4. Translate English → target language
+ * 4. Translate English → target language via dictionary
+ * 5. If dictionary fails → Google Translate API fallback (cached in Supabase)
  */
 
 import { exactMatches as ptExact, patterns as ptPatterns } from "./translations/pt-BR"
 import { exactMatches as frExact, patterns as frPatterns } from "./translations/fr"
 import { exactMatches as esExact, patterns as esPatterns } from "./translations/es"
 import { ptToEnExact, ptToEnPatterns, PT_MARKERS } from "./translations/pt-normalize"
+import { translateViaAPI } from "./translation-api"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("TranslateEvents")
@@ -108,14 +110,12 @@ function translateWithDict(text: string, dict: LangDict): string {
 
 /**
  * Translate a tracking event description to the target language.
+ * Uses dictionary first, falls back to Google Translate API (cached).
  *
  * @param description - Event description (English or Portuguese source)
  * @param targetLang - Target language code (default: "pt-BR")
- *
- * Supported languages: "pt-BR", "pt", "en", "fr", "es"
- * Unsupported languages fall back to returning original text.
  */
-export function translateEventDescription(description: string, targetLang = "pt-BR"): string {
+export async function translateEventDescription(description: string, targetLang = "pt-BR"): Promise<string> {
   if (!description) return ""
 
   let text = description.trim()
@@ -142,24 +142,30 @@ export function translateEventDescription(description: string, targetLang = "pt-
     return enText
   }
 
-  // Translate English → target language
+  // Translate English → target language via dictionary
   const dict = LANG_DICTS[targetLang]
-  if (!dict) {
-    // Unsupported language — return English normalized text as fallback
-    return sourceLang === "pt" ? enText : description
+  if (dict) {
+    const translated = translateWithDict(enText, dict)
+    if (translated !== enText) {
+      return translated
+    }
   }
 
-  const translated = translateWithDict(enText, dict)
-
-  // If dict translation changed the text, return it
-  if (translated !== enText) {
-    return translated
+  // Dictionary failed → try Google Translate API (with cache)
+  try {
+    const apiResult = await translateViaAPI(enText, targetLang)
+    if (apiResult) {
+      return apiResult
+    }
+  } catch (err) {
+    log.warn("Translation API fallback failed", {
+      error: err instanceof Error ? err.message : String(err),
+    })
   }
 
-  // No translation found — log for future dictionary expansion
+  // All translation failed — log and return original
   log.debug("untranslated_event", { text: enText, lang: targetLang })
 
-  // If source was PT, return original PT text
   if (sourceLang === "pt") {
     return description
   }
@@ -169,28 +175,37 @@ export function translateEventDescription(description: string, targetLang = "pt-
 /**
  * Translate an array of tracking events.
  */
-export function translateTrackingEvents(
+export async function translateTrackingEvents(
   events: Array<{ date: string; description: string; location?: string; status?: string }>,
   targetLang = "pt-BR"
-): Array<{ date: string; description: string; location?: string; status?: string }> {
-  return events.map((event) => ({
-    ...event,
-    description: translateEventDescription(event.description, targetLang),
-  }))
+): Promise<Array<{ date: string; description: string; location?: string; status?: string }>> {
+  const translated = await Promise.all(
+    events.map(async (event) => ({
+      ...event,
+      description: await translateEventDescription(event.description, targetLang),
+    }))
+  )
+  return translated
 }
 
 /**
  * Translate status_detail and last_event fields of a tracking result.
  */
-export function translateTrackingResult<T extends {
+export async function translateTrackingResult<T extends {
   status_detail?: string
   last_event?: string
   events?: Array<{ date: string; description: string; location?: string; status?: string }>
-}>(result: T, targetLang = "pt-BR"): T {
+}>(result: T, targetLang = "pt-BR"): Promise<T> {
+  const [status_detail, last_event, events] = await Promise.all([
+    result.status_detail ? translateEventDescription(result.status_detail, targetLang) : Promise.resolve(result.status_detail),
+    result.last_event ? translateEventDescription(result.last_event, targetLang) : Promise.resolve(result.last_event),
+    result.events ? translateTrackingEvents(result.events, targetLang) : Promise.resolve(result.events),
+  ])
+
   return {
     ...result,
-    status_detail: result.status_detail ? translateEventDescription(result.status_detail, targetLang) : result.status_detail,
-    last_event: result.last_event ? translateEventDescription(result.last_event, targetLang) : result.last_event,
-    events: result.events ? translateTrackingEvents(result.events, targetLang) : result.events,
+    status_detail,
+    last_event,
+    events,
   }
 }

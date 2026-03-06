@@ -570,23 +570,32 @@ export async function GET(request: NextRequest) {
     }
 
     // Translate tracking event descriptions to store's configured language
+    // Uses dictionary first, then Google Translate API as fallback (cached)
+    const translationPromises: Promise<void>[] = []
     for (const result of results) {
       for (const track of result.tracking) {
         if (track.status_detail) {
-          track.status_detail = translateEventDescription(track.status_detail, storeLang)
+          translationPromises.push(
+            translateEventDescription(track.status_detail, storeLang).then(t => { track.status_detail = t })
+          )
         }
         if (track.last_event) {
-          track.last_event = translateEventDescription(track.last_event, storeLang)
+          translationPromises.push(
+            translateEventDescription(track.last_event, storeLang).then(t => { track.last_event = t })
+          )
         }
         if (Array.isArray(track.tracking_events)) {
           for (const event of track.tracking_events as Array<{ description?: string }>) {
             if (event.description) {
-              event.description = translateEventDescription(event.description, storeLang)
+              translationPromises.push(
+                translateEventDescription(event.description, storeLang).then(t => { event.description = t })
+              )
             }
           }
         }
       }
     }
+    await Promise.all(translationPromises)
 
     const cacheTtl = didSync ? 0 : getCacheTtl(results)
     return NextResponse.json(
