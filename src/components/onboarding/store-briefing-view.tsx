@@ -205,6 +205,14 @@ function textToBriefing(text: string, original: BriefingData): BriefingData {
   return result
 }
 
+function isRawTextBriefing(data: BriefingData): boolean {
+  return "raw_text" in data && typeof (data as unknown as Record<string, unknown>).raw_text === "string"
+}
+
+function getRawText(data: BriefingData): string {
+  return ((data as unknown as Record<string, unknown>).raw_text as string) || ""
+}
+
 export function StoreBriefingView({
   storeId,
   briefing,
@@ -215,10 +223,15 @@ export function StoreBriefingView({
   const [editing, setEditing] = useState(false)
   const [editText, setEditText] = useState("")
   const [saving, setSaving] = useState(false)
+  const [creatingManual, setCreatingManual] = useState(false)
 
   const startEditing = useCallback(() => {
     if (!briefing) return
-    setEditText(briefingToText(briefing.briefing_data))
+    if (isRawTextBriefing(briefing.briefing_data)) {
+      setEditText(getRawText(briefing.briefing_data))
+    } else {
+      setEditText(briefingToText(briefing.briefing_data))
+    }
     setEditing(true)
   }, [briefing])
 
@@ -231,7 +244,12 @@ export function StoreBriefingView({
     if (!briefing) return
     setSaving(true)
     try {
-      const updatedData = textToBriefing(editText, briefing.briefing_data)
+      let updatedData: BriefingData | Record<string, unknown>
+      if (isRawTextBriefing(briefing.briefing_data)) {
+        updatedData = { ...briefing.briefing_data, raw_text: editText }
+      } else {
+        updatedData = textToBriefing(editText, briefing.briefing_data)
+      }
       const res = await fetch("/api/onboarding/store-briefing", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -254,6 +272,37 @@ export function StoreBriefingView({
     }
   }
 
+  async function handleSaveManual() {
+    if (!editText.trim()) {
+      toast({ variant: "destructive", title: "Erro", description: "O texto do briefing não pode estar vazio" })
+      return
+    }
+    setSaving(true)
+    try {
+      const res = await fetch("/api/onboarding/store-briefing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          store_id: storeId,
+          mode: "manual",
+          briefing_text: editText.trim(),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+
+      toast({ title: "Briefing manual criado" })
+      setCreatingManual(false)
+      setEditText("")
+      onRefresh?.()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro ao salvar"
+      toast({ variant: "destructive", title: "Erro", description: message })
+    } finally {
+      setSaving(false)
+    }
+  }
+
   async function handleRegenerate() {
     setRegenerating(true)
     try {
@@ -265,14 +314,49 @@ export function StoreBriefingView({
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
 
-      toast({ title: "Briefing regenerado", description: `Versão ${data.version}` })
-      onRefresh?.()
+      toast({ title: "Briefing sendo gerado", description: "Aguarde alguns segundos e atualize." })
+      // Give N8N a moment then refresh
+      setTimeout(() => onRefresh?.(), 10000)
     } catch (error) {
       const message = error instanceof Error ? error.message : "Erro ao regenerar"
       toast({ variant: "destructive", title: "Erro", description: message })
     } finally {
       setRegenerating(false)
     }
+  }
+
+  if (creatingManual) {
+    return (
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg">Criar Briefing Manual</CardTitle>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" onClick={() => { setCreatingManual(false); setEditText("") }} disabled={saving}>
+                <X className="h-4 w-4 mr-1" />
+                Cancelar
+              </Button>
+              <Button size="sm" onClick={handleSaveManual} disabled={saving}>
+                {saving ? (
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4 mr-1" />
+                )}
+                Salvar
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <Textarea
+            value={editText}
+            onChange={(e) => setEditText(e.target.value)}
+            className="min-h-[500px] font-mono text-sm"
+            placeholder="Cole ou digite o briefing aqui..."
+          />
+        </CardContent>
+      </Card>
+    )
   }
 
   if (!briefing) {
@@ -290,6 +374,10 @@ export function StoreBriefingView({
             <Button onClick={handleRegenerate} disabled={regenerating}>
               {regenerating ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}
               Gerar Briefing
+            </Button>
+            <Button variant="outline" onClick={() => setCreatingManual(true)}>
+              <Pencil className="h-4 w-4 mr-1" />
+              Criar Manual
             </Button>
           </div>
         </CardContent>
@@ -559,13 +647,19 @@ export function StoreBriefingView({
       </CardHeader>
 
       <CardContent className="space-y-2">
-        {sections.map((section) => (
-          <BriefingSection
-            key={section.key}
-            title={section.title}
-            content={section.render(data[section.key])}
-          />
-        ))}
+        {isRawTextBriefing(data) ? (
+          <div className="whitespace-pre-wrap font-mono text-sm p-4 rounded-lg bg-muted/50">
+            {getRawText(data)}
+          </div>
+        ) : (
+          sections.map((section) => (
+            <BriefingSection
+              key={section.key}
+              title={section.title}
+              content={section.render(data[section.key])}
+            />
+          ))
+        )}
       </CardContent>
     </Card>
   )

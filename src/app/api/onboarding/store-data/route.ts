@@ -2,7 +2,7 @@ import { NextRequest } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
-import { generateBriefing } from "@/lib/services/briefing.service"
+import { n8nTriggerService } from "@/lib/services/n8n-trigger.service"
 
 const log = logger.child("OnboardingStoreData")
 
@@ -258,54 +258,72 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Auto-generate briefing:
-    // 1. When form is marked complete (is_complete=true)
-    // 2. When form data is saved and a briefing already exists (auto-regenerate on edit)
-    let briefing = null
-    let shouldRegenerateBriefing = false
+    // Trigger N8N briefing generation when form is completed
+    let briefingTriggered = false
 
-    if (body.is_complete) {
-      shouldRegenerateBriefing = true
-    } else if (storeId) {
-      // Check if a briefing already exists for this store — if so, regenerate on any save
-      const { data: existingBriefing } = await adminClient
-        .from("store_briefings")
+    if (body.is_complete && storeId) {
+      // Fetch store data for N8N payload
+      const { data: fullStore } = await adminClient
+        .from("client_stores")
+        .select("store_name, store_url, platform, niche, country, language, target_audience, free_shipping_type, shopify_collaborator_code")
+        .eq("id", storeId)
+        .single()
+
+      const { data: formData } = await adminClient
+        .from("store_onboarding_data")
+        .select("price_sensitivity, additional_notes, logo_url, design_direction_text, design_direction_file_url, brand_manual_url")
+        .eq("store_id", storeId)
+        .maybeSingle()
+
+      // Find onboarding_id for this store
+      const { data: onboarding } = await adminClient
+        .from("client_onboarding")
         .select("id")
         .eq("store_id", storeId)
-        .eq("status", "current")
+        .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle()
 
-      if (existingBriefing) {
-        shouldRegenerateBriefing = true
-      }
-    }
+      const appUrl = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
 
-    if (shouldRegenerateBriefing) {
-      if (body.is_complete) {
-        // Blocking: wait for briefing on form completion
-        try {
-          briefing = await generateBriefing(storeId!)
-        } catch (err) {
-          log.error("Error generating briefing", err)
-        }
-      } else {
-        // Fire-and-forget: don't block save response on edits
-        generateBriefing(storeId!)
-          .then((result) => log.info(`Briefing auto-regenerated for store ${storeId}, v${result.version}`))
-          .catch((err) => log.error("Error auto-regenerating briefing", err))
-      }
+      // Fire-and-forget: N8N will callback when briefing is ready
+      n8nTriggerService.triggerBriefingGeneration({
+        onboarding_id: onboarding?.id || storeId,
+        store: {
+          name: fullStore?.store_name || "",
+          url: fullStore?.store_url || "",
+          platform: fullStore?.platform || "",
+          niche: fullStore?.niche || null,
+          country: fullStore?.country || null,
+          language: fullStore?.language || null,
+          target_audience: fullStore?.target_audience || null,
+          free_shipping_type: fullStore?.free_shipping_type || null,
+          shopify_collaborator_code: fullStore?.shopify_collaborator_code || null,
+        },
+        form_data: formData ? {
+          price_sensitivity: formData.price_sensitivity || null,
+          additional_notes: formData.additional_notes || null,
+          logo_url: formData.logo_url || null,
+          design_direction_text: formData.design_direction_text || null,
+          design_direction_file_url: formData.design_direction_file_url || null,
+          brand_manual_url: formData.brand_manual_url || null,
+        } : null,
+        callback_url: `${appUrl}/api/onboarding/webhook`,
+      })
+        .then((r) => log.info(`Briefing generation triggered for store ${storeId}`, r))
+        .catch((err) => log.error("Error triggering briefing generation", err))
+
+      briefingTriggered = true
     }
 
     return successResponse(request, {
       store_id: storeId,
       onboarding_data: onboardingData,
-      briefing,
       message: body.is_complete
-        ? "Formulário concluído e briefing gerado"
-        : shouldRegenerateBriefing
-          ? "Dados salvos e briefing sendo atualizado"
-          : "Rascunho salvo",
+        ? briefingTriggered
+          ? "Formulário concluído. Briefing sendo gerado via N8N."
+          : "Formulário concluído"
+        : "Rascunho salvo",
     })
   } catch (error) {
     return errorResponse(request, error, "OnboardingStoreData")

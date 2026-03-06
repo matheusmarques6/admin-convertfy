@@ -2,7 +2,7 @@ import { NextRequest } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
-import { generateBriefing } from "@/lib/services/briefing.service"
+import { n8nTriggerService } from "@/lib/services/n8n-trigger.service"
 
 const log = logger.child("OnboardingStoreBriefing")
 
@@ -116,8 +116,8 @@ export async function PATCH(request: NextRequest) {
 
 /**
  * POST /api/onboarding/store-briefing
- * Generate or regenerate briefing
- * Body: { store_id, mode: 'auto' | 'regenerate' }
+ * Generate/regenerate briefing via N8N or create manual briefing
+ * Body: { store_id, mode: 'regenerate' | 'manual', briefing_text?: string }
  */
 export async function POST(request: NextRequest) {
   try {
@@ -130,18 +130,137 @@ export async function POST(request: NextRequest) {
       throw new AppError("store_id é obrigatório", 400)
     }
 
-    const mode = body.mode || "auto"
-    if (!["auto", "regenerate"].includes(mode)) {
-      throw new AppError("mode deve ser 'auto' ou 'regenerate'", 400)
+    const mode = body.mode || "regenerate"
+    if (!["regenerate", "manual"].includes(mode)) {
+      throw new AppError("mode deve ser 'regenerate' ou 'manual'", 400)
     }
 
-    const result = await generateBriefing(body.store_id)
+    const adminClient = createAdminClient()
 
-    log.info(`Briefing ${mode === "regenerate" ? "regenerated" : "generated"} for store ${body.store_id}, version ${result.version}`)
+    if (mode === "manual") {
+      if (!body.briefing_text || typeof body.briefing_text !== "string" || !body.briefing_text.trim()) {
+        throw new AppError("briefing_text é obrigatório para modo manual", 400)
+      }
+
+      // Archive existing briefing if any
+      await adminClient
+        .from("store_briefings")
+        .update({ status: "archived" })
+        .eq("store_id", body.store_id)
+        .eq("status", "current")
+
+      // Get current max version
+      const { data: latest } = await adminClient
+        .from("store_briefings")
+        .select("version")
+        .eq("store_id", body.store_id)
+        .order("version", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      const nextVersion = (latest?.version || 0) + 1
+
+      // Fetch store basic info for context
+      const { data: store } = await adminClient
+        .from("client_stores")
+        .select("store_name, store_url")
+        .eq("id", body.store_id)
+        .single()
+
+      const { data: newBriefing, error: insertError } = await adminClient
+        .from("store_briefings")
+        .insert({
+          store_id: body.store_id,
+          version: nextVersion,
+          status: "current",
+          briefing_data: {
+            raw_text: body.briefing_text.trim(),
+            dados_loja: {
+              nome: store?.store_name || "",
+              url: store?.store_url || "",
+            },
+          },
+          generated_by: "manual",
+          generated_at: new Date().toISOString(),
+        })
+        .select()
+        .single()
+
+      if (insertError) {
+        log.error("Failed to insert manual briefing", insertError)
+        throw new AppError("Erro ao salvar briefing manual", 500)
+      }
+
+      log.info(`Manual briefing created for store ${body.store_id}, version ${nextVersion}`)
+
+      return successResponse(request, {
+        briefing: newBriefing,
+        version: nextVersion,
+        message: "Briefing manual criado com sucesso",
+      })
+    }
+
+    // mode === "regenerate": trigger N8N
+    const { data: fullStore } = await adminClient
+      .from("client_stores")
+      .select("store_name, store_url, platform, niche, country, language, target_audience, free_shipping_type, shopify_collaborator_code")
+      .eq("id", body.store_id)
+      .single()
+
+    if (!fullStore) {
+      throw new AppError("Loja não encontrada", 404)
+    }
+
+    const { data: formData } = await adminClient
+      .from("store_onboarding_data")
+      .select("price_sensitivity, additional_notes, logo_url, design_direction_text, design_direction_file_url, brand_manual_url")
+      .eq("store_id", body.store_id)
+      .maybeSingle()
+
+    const { data: onboarding } = await adminClient
+      .from("client_onboarding")
+      .select("id")
+      .eq("store_id", body.store_id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    const appUrl = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+
+    const result = await n8nTriggerService.triggerBriefingGeneration({
+      onboarding_id: onboarding?.id || body.store_id,
+      store: {
+        name: fullStore.store_name || "",
+        url: fullStore.store_url || "",
+        platform: fullStore.platform || "",
+        niche: fullStore.niche || null,
+        country: fullStore.country || null,
+        language: fullStore.language || null,
+        target_audience: fullStore.target_audience || null,
+        free_shipping_type: fullStore.free_shipping_type || null,
+        shopify_collaborator_code: fullStore.shopify_collaborator_code || null,
+      },
+      form_data: formData ? {
+        price_sensitivity: formData.price_sensitivity || null,
+        additional_notes: formData.additional_notes || null,
+        logo_url: formData.logo_url || null,
+        design_direction_text: formData.design_direction_text || null,
+        design_direction_file_url: formData.design_direction_file_url || null,
+        brand_manual_url: formData.brand_manual_url || null,
+      } : null,
+      callback_url: `${appUrl}/api/onboarding/webhook`,
+    })
+
+    if (!result.success) {
+      log.error(`Failed to trigger briefing regeneration for store ${body.store_id}`, { error: result.error })
+      throw new AppError("Erro ao disparar geração do briefing via N8N", 500)
+    }
+
+    log.info(`Briefing regeneration triggered for store ${body.store_id}`)
 
     return successResponse(request, {
-      ...result,
-      message: mode === "regenerate" ? "Briefing regenerado com sucesso" : "Briefing gerado com sucesso",
+      triggered: true,
+      message: "Geração do briefing disparada. Aguarde o resultado.",
     })
   } catch (error) {
     return errorResponse(request, error, "OnboardingStoreBriefing")

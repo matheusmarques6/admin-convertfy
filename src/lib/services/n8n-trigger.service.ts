@@ -117,6 +117,44 @@ export class N8nTriggerService {
   }
 
   /**
+   * Trigger briefing generation in N8N
+   */
+  async triggerBriefingGeneration(params: {
+    onboarding_id: string
+    store: {
+      name: string
+      url: string
+      platform: string
+      niche?: string | null
+      country?: string | null
+      language?: string | null
+      target_audience?: string | null
+      free_shipping_type?: string | null
+      shopify_collaborator_code?: string | null
+    }
+    form_data?: {
+      price_sensitivity?: string | null
+      additional_notes?: string | null
+      logo_url?: string | null
+      design_direction_text?: string | null
+      design_direction_file_url?: string | null
+      brand_manual_url?: string | null
+      visual_reference_url?: string | null
+    } | null
+    callback_url: string
+  }): Promise<TriggerResult> {
+    log.info(`Triggering briefing generation for onboarding ${params.onboarding_id}`)
+
+    return this.sendWebhook("briefing-generation", {
+      onboarding_id: params.onboarding_id,
+      store: params.store,
+      form_data: params.form_data,
+      callback_url: params.callback_url,
+      callback_secret: process.env.ONBOARDING_WEBHOOK_SECRET,
+    })
+  }
+
+  /**
    * Trigger welcome email with portal credentials
    */
   async triggerWelcomeEmail(params: {
