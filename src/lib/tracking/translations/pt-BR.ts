@@ -217,6 +217,82 @@ export const exactMatches: Record<string, string> = {
   "being processed": "Sendo processado",
   "at sorting facility": "Na unidade de triagem",
   "at processing center": "No centro de processamento",
+
+  // ─── 17track / TrackingMore / Cainiao ──────────────────────────────────
+  // Customs / Alfândega
+  "customs clearance processing": "Processando desembaraço aduaneiro",
+  "customs clearance processing complete": "Desembaraço aduaneiro concluído",
+  "in customs": "Na alfândega",
+  "released from customs": "Liberado pela alfândega",
+  "held by customs": "Retido pela alfândega",
+  "customs inspection complete": "Inspeção aduaneira concluída",
+  "import customs": "Alfândega de importação",
+  "export customs": "Alfândega de exportação",
+  "customs duty": "Taxa aduaneira",
+  "duty paid": "Taxa paga",
+  "customs charges paid": "Taxas aduaneiras pagas",
+  "customs processing complete": "Processamento aduaneiro concluído",
+  "awaiting customs clearance": "Aguardando desembaraço aduaneiro",
+
+  // Pickup / Retirada
+  "available for pickup at post office": "Disponível para retirada na agência",
+  "available for collection": "Disponível para retirada",
+  "collected by recipient": "Coletado pelo destinatário",
+  "ready for collection": "Pronto para retirada",
+  "pickup scheduled": "Retirada agendada",
+
+  // Transit genéricos
+  "item dispatched to destination country": "Item despachado para o país de destino",
+  "the item has been processed through a facility": "O item foi processado em uma unidade",
+  "item has been processed": "Item foi processado",
+  "shipment information received by carrier": "Informações do envio recebidas pela transportadora",
+  "en route": "A caminho",
+  "item in transit": "Item em trânsito",
+  "shipment is in transit": "Encomenda em trânsito",
+  "arrived at origin facility": "Chegou à unidade de origem",
+  "departed from transit facility": "Saiu da unidade de trânsito",
+  "arrived at transit facility": "Chegou à unidade de trânsito",
+  "arrived at destination facility": "Chegou à unidade de destino",
+  "depart from transit hub": "Saiu do centro de trânsito",
+  "arrive at transit hub": "Chegou ao centro de trânsito",
+  "processed at destination facility": "Processado na unidade de destino",
+  "processed at origin facility": "Processado na unidade de origem",
+  "package arrived at distribution center": "Pacote chegou ao centro de distribuição",
+  "package departed from distribution center": "Pacote saiu do centro de distribuição",
+  "package has left seller facility": "Pacote saiu da unidade do vendedor",
+  "in transit to local delivery company": "Em trânsito para empresa de entrega local",
+  "transferred to local delivery company": "Transferido para empresa de entrega local",
+  "shipment has arrived at the destination": "Encomenda chegou ao destino",
+  "shipment has departed from origin": "Encomenda partiu da origem",
+
+  // Delivery attempts
+  "attempted delivery - recipient not available": "Tentativa de entrega - destinatário ausente",
+  "delivery failed": "Entrega falhou",
+  "delivery unsuccessful": "Entrega não realizada",
+  "delivery rescheduled by recipient": "Entrega reagendada pelo destinatário",
+  "unable to deliver": "Não foi possível entregar",
+  "no access to delivery location": "Sem acesso ao local de entrega",
+  "business closed": "Estabelecimento fechado",
+  "second delivery attempt": "Segunda tentativa de entrega",
+  "final delivery attempt": "Última tentativa de entrega",
+
+  // Returns
+  "returned": "Devolvido",
+  "return to sender": "Devolver ao remetente",
+  "returning to sender": "Sendo devolvido ao remetente",
+  "refused": "Recusado",
+  "refused delivery": "Entrega recusada",
+  "undeliverable as addressed": "Não entregável no endereço informado",
+  "insufficient address": "Endereço insuficiente",
+  "unclaimed": "Não reclamado",
+
+  // Misc
+  "shipment on its way to you": "Encomenda a caminho",
+  "shipment is moving within destination country": "Encomenda em trânsito no país de destino",
+  "local delivery": "Entrega local",
+  "last mile delivery": "Entrega de última milha",
+  "package is being prepared": "Pacote sendo preparado",
+  "package accepted": "Pacote aceito",
 }
 
 export const patterns: Array<{ pattern: RegExp; replacement: string }> = [
@@ -297,6 +373,39 @@ export const patterns: Array<{ pattern: RegExp; replacement: string }> = [
   {
     pattern: /^released from (.+)$/i,
     replacement: "Liberado de $1",
+  },
+  // 17track / TrackingMore dynamic patterns
+  {
+    pattern: /^the item has been processed through a facility in (.+)$/i,
+    replacement: "O item foi processado na unidade de $1",
+  },
+  {
+    pattern: /^item dispatched to (.+)$/i,
+    replacement: "Item despachado para $1",
+  },
+  {
+    pattern: /^package arrived at (.+)$/i,
+    replacement: "Pacote chegou em $1",
+  },
+  {
+    pattern: /^package departed from (.+)$/i,
+    replacement: "Pacote saiu de $1",
+  },
+  {
+    pattern: /^available for pickup at (.+)$/i,
+    replacement: "Disponível para retirada em $1",
+  },
+  {
+    pattern: /^delivery attempted[- ]+(.+)$/i,
+    replacement: "Tentativa de entrega - $1",
+  },
+  {
+    pattern: /^returned to (.+)$/i,
+    replacement: "Devolvido para $1",
+  },
+  {
+    pattern: /^customs clearance at (.+)$/i,
+    replacement: "Desembaraço aduaneiro em $1",
   },
   // Replace English time words in translated results
   { pattern: /\btoday\b/gi, replacement: "hoje" },

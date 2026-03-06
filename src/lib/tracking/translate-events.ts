@@ -12,6 +12,9 @@ import { exactMatches as ptExact, patterns as ptPatterns } from "./translations/
 import { exactMatches as frExact, patterns as frPatterns } from "./translations/fr"
 import { exactMatches as esExact, patterns as esPatterns } from "./translations/es"
 import { ptToEnExact, ptToEnPatterns, PT_MARKERS } from "./translations/pt-normalize"
+import { logger } from "@/lib/logger"
+
+const log = logger.child("TranslateEvents")
 
 // ─── Language Registry ──────────────────────────────────────────────────────
 
@@ -97,6 +100,77 @@ function translateWithDict(text: string, dict: LangDict): string {
   return text
 }
 
+// ─── Word-level Fallback (Layer 4) ──────────────────────────────────────
+
+const WORD_FALLBACK_PT: Record<string, string> = {
+  "arrived": "chegou",
+  "arrive": "chegou",
+  "departed": "partiu",
+  "depart": "partiu",
+  "delivered": "entregue",
+  "delivery": "entrega",
+  "customs": "alfândega",
+  "warehouse": "armazém",
+  "facility": "unidade",
+  "sorting": "triagem",
+  "airport": "aeroporto",
+  "carrier": "transportadora",
+  "shipment": "envio",
+  "dispatched": "despachado",
+  "dispatch": "despacho",
+  "processed": "processado",
+  "processing": "processando",
+  "pickup": "retirada",
+  "attempted": "tentativa",
+  "transit": "trânsito",
+  "destination": "destino",
+  "origin": "origem",
+  "package": "pacote",
+  "parcel": "pacote",
+  "item": "item",
+  "signed": "assinado",
+  "received": "recebido",
+  "forwarded": "encaminhado",
+  "returned": "devolvido",
+  "refused": "recusado",
+  "cleared": "liberado",
+  "released": "liberado",
+  "held": "retido",
+  "failed": "falhou",
+  "transferred": "transferido",
+  "collected": "coletado",
+  "available": "disponível",
+  "sender": "remetente",
+  "recipient": "destinatário",
+  "country": "país",
+}
+
+/** Pre-compiled regexes for word-level fallback (module-level for performance) */
+const WORD_FALLBACK_COMPILED = Object.entries(WORD_FALLBACK_PT).map(
+  ([en, pt]) => ({ regex: new RegExp(`\\b${en}\\b`, "gi"), replacement: pt })
+)
+
+/**
+ * Layer 4: Word-level fallback translation.
+ * Replaces known logistics terms in untranslated text.
+ * Only supports pt-BR/pt — other languages return text unchanged.
+ */
+function translateFallbackWords(text: string, lang: string): string {
+  if (lang !== "pt-BR" && lang !== "pt") return text
+
+  let result = text
+  let changed = false
+  for (const { regex, replacement } of WORD_FALLBACK_COMPILED) {
+    regex.lastIndex = 0
+    if (regex.test(result)) {
+      regex.lastIndex = 0
+      result = result.replace(regex, replacement)
+      changed = true
+    }
+  }
+  return changed ? result : text
+}
+
 // ─── Public API ─────────────────────────────────────────────────────────────
 
 /**
@@ -143,11 +217,26 @@ export function translateEventDescription(description: string, targetLang = "pt-
   }
 
   const translated = translateWithDict(enText, dict)
-  // If translation didn't change the text and source was PT, return original PT
-  if (translated === enText && sourceLang === "pt") {
+
+  // If dict translation changed the text, return it
+  if (translated !== enText) {
+    return translated
+  }
+
+  // Layer 4: Word-level fallback
+  const fallback = translateFallbackWords(enText, targetLang)
+  if (fallback !== enText) {
+    return fallback
+  }
+
+  // No translation found — log for future dictionary expansion
+  log.debug("untranslated_event", { text: enText, lang: targetLang })
+
+  // If source was PT, return original PT text
+  if (sourceLang === "pt") {
     return description
   }
-  return translated
+  return description
 }
 
 /**
