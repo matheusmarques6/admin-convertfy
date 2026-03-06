@@ -37,6 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { formatCurrency as formatCurrencyUtil } from "@/lib/utils/format"
 
 interface StoreReport {
   store: {
@@ -45,6 +46,7 @@ interface StoreReport {
     store_url: string
     platform: string
     is_active: boolean
+    currency?: string
   }
   klaviyo?: {
     totalLeads: number
@@ -130,12 +132,8 @@ interface UtmTemplate {
   created_at: string
 }
 
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  }).format(value)
-}
+// formatCurrency is imported from @/lib/utils/format as formatCurrencyUtil
+// A local wrapper is used so the store currency is applied throughout the page
 
 function formatNumber(value: number): string {
   return new Intl.NumberFormat("pt-BR").format(value)
@@ -158,10 +156,12 @@ function StoreUtmRankingList({
   items,
   labelKey,
   icon: Icon,
+  currency = "BRL",
 }: {
   items: Array<Record<string, string | number>>
   labelKey: string
   icon: React.ComponentType<{ className?: string }>
+  currency?: string
 }) {
   if (!items || items.length === 0) {
     return (
@@ -192,7 +192,7 @@ function StoreUtmRankingList({
             <p className="text-sm text-slate-500 dark:text-slate-400">{item.orders} pedidos</p>
           </div>
           <div className="text-right">
-            <p className="font-bold text-cyan-600 dark:text-cyan-400">{formatCurrency(item.revenue as number)}</p>
+            <p className="font-bold text-cyan-600 dark:text-cyan-400">{formatCurrencyUtil(item.revenue as number, currency)}</p>
           </div>
         </div>
       ))}
@@ -203,7 +203,9 @@ function StoreUtmRankingList({
 /** UTM Attribution section for the store report page */
 function UtmAttributionSection({
   utmConversions,
+  currency = "BRL",
 }: {
+  currency?: string
   utmConversions?: {
     totalOrdersWithUtm: number
     utmTrackingRate: number
@@ -256,6 +258,7 @@ function UtmAttributionSection({
             items={(utmConversions.bySource || []) as Array<Record<string, string | number>>}
             labelKey="source"
             icon={Globe}
+            currency={currency}
           />
         </TabsContent>
 
@@ -264,6 +267,7 @@ function UtmAttributionSection({
             items={(utmConversions.byMedium || []) as Array<Record<string, string | number>>}
             labelKey="medium"
             icon={Monitor}
+            currency={currency}
           />
         </TabsContent>
 
@@ -272,6 +276,7 @@ function UtmAttributionSection({
             items={(utmConversions.byCampaign || []) as Array<Record<string, string | number>>}
             labelKey="campaign"
             icon={Megaphone}
+            currency={currency}
           />
         </TabsContent>
       </Tabs>
@@ -519,6 +524,8 @@ export default function PortalStoreReportPage({
   if (!report) return null
 
   const { store, klaviyo, shopify } = report
+  const storeCurrency = store.currency || "BRL"
+  const formatCurrency = (value: number) => formatCurrencyUtil(value, storeCurrency)
 
   return (
     <div className="space-y-6">
@@ -951,7 +958,7 @@ export default function PortalStoreReportPage({
               </div>
 
               {/* UTM Attribution Section */}
-              <UtmAttributionSection utmConversions={shopify.orders?.utmConversions} />
+              <UtmAttributionSection utmConversions={shopify.orders?.utmConversions} currency={storeCurrency} />
 
               {/* UTM Templates Section */}
               <UtmTemplatesSection

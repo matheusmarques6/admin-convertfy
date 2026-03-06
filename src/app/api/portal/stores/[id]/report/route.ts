@@ -52,7 +52,7 @@ export async function GET(
     // Verify store belongs to client
     const { data: store, error: storeError } = await adminClient
       .from("client_stores")
-      .select("id, client_id, store_name, platform, store_url, klaviyo_private_key, klaviyo_api_key, shopify_access_token, shopify_store_domain")
+      .select("id, client_id, store_name, platform, store_url, currency, klaviyo_private_key, klaviyo_api_key, shopify_access_token, shopify_store_domain")
       .eq("id", storeId)
       .eq("client_id", portalUser.client_id)
       .single()
@@ -134,6 +134,7 @@ export async function GET(
           store_url: store.store_url,
           platform: store.platform,
           is_active: true,
+          currency: (store as Record<string, unknown>).currency as string || "BRL",
           hasKlaviyo: !!(store.klaviyo_private_key || store.klaviyo_api_key),
           hasShopify: !!(store.shopify_access_token && store.shopify_store_domain),
         },

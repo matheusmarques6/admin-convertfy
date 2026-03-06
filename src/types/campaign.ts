@@ -31,6 +31,7 @@ export interface Campaign {
   clicked?: number
   converted?: number
   revenue?: number
+  currency?: string
   klaviyo_campaign_id?: string
   external_id?: string
   tags: string[]

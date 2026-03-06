@@ -51,6 +51,7 @@ import {
 } from "@/components/ui/dialog"
 import { toast } from "@/lib/hooks/use-toast"
 import { Campaign, CampaignHistory } from "@/types"
+import { formatCurrency } from "@/lib/utils/format"
 
 interface CampaignModalProps {
   campaign: Campaign
@@ -439,7 +440,7 @@ export function CampaignModal({
                       <span className="text-sm font-medium">Receita Gerada</span>
                     </div>
                     <p className="text-xl font-semibold text-foreground">
-                      R$ {campaign.revenue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      {formatCurrency(campaign.revenue, campaign.currency || "BRL")}
                     </p>
                   </div>
                 )}

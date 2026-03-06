@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/select"
 import { DateRangePicker } from "@/components/ui/date-range-picker"
 import { Campaign } from "@/types"
+import { formatCurrency } from "@/lib/utils/format"
 
 interface StoreItem {
   id: string
@@ -341,7 +342,7 @@ export function CampaignsListView() {
         <Card className="rounded-xl border bg-card">
           <CardContent className="pt-4 pb-3">
             <p className="text-xs text-muted-foreground">Total Receita</p>
-            <p className="text-xl font-bold mt-1">R$ {summary.totalRevenue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</p>
+            <p className="text-xl font-bold mt-1">{formatCurrency(summary.totalRevenue)}</p>
           </CardContent>
         </Card>
         <Card className="rounded-xl border bg-card">
@@ -387,7 +388,7 @@ export function CampaignsListView() {
                       </p>
                     </div>
                     <p className="text-sm font-semibold text-success">
-                      R$ {store.totalRevenue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      {formatCurrency(store.totalRevenue)}
                     </p>
                   </div>
                 ))}
@@ -418,7 +419,7 @@ export function CampaignsListView() {
                         </p>
                       </div>
                       <p className="text-sm font-medium text-muted-foreground">
-                        R$ {store.totalRevenue.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                        {formatCurrency(store.totalRevenue)}
                       </p>
                     </div>
                   ))}
@@ -468,7 +469,7 @@ export function CampaignsListView() {
                         <td className="py-2 pr-4 text-right">{openRate.toFixed(1)}%</td>
                         <td className="py-2 pr-4 text-right">{clickRate.toFixed(1)}%</td>
                         <td className="py-2 text-right font-medium">
-                          R$ {(c.revenue || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                          {formatCurrency(c.revenue || 0, c.currency || "BRL")}
                         </td>
                       </tr>
                     )
@@ -560,7 +561,7 @@ export function CampaignsListView() {
                           <td className="py-2 text-right">{openRate.toFixed(1)}%</td>
                           <td className="py-2 text-right">{clickRate.toFixed(1)}%</td>
                           <td className="py-2 text-right font-medium">
-                            R$ {(c.revenue || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                            {formatCurrency(c.revenue || 0, c.currency || "BRL")}
                           </td>
                         </tr>
                       )

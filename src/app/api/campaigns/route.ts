@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
       .from("campaigns")
       .select(`
         *,
-        store:client_stores(id, store_name, platform),
+        store:client_stores(id, store_name, platform, currency),
         client:clients(id, name, company)
       `)
       .order("scheduled_date", { ascending: true })
@@ -81,6 +81,7 @@ export async function GET(request: NextRequest) {
       }
       return {
         ...c,
+        currency: (c.store as Record<string, unknown>)?.currency as string || "BRL",
         source: c.klaviyo_campaign_id ? "klaviyo" : "manual",
       }
     })
@@ -128,14 +129,16 @@ export async function GET(request: NextRequest) {
         )]
 
         let storeNameMap: Record<string, string> = {}
+        let storeCurrencyMap: Record<string, string> = {}
         if (allStoreIds.length > 0) {
           const { data: storesData } = await supabase
             .from("client_stores")
-            .select("id, store_name")
+            .select("id, store_name, currency")
             .in("id", allStoreIds)
 
           if (storesData) {
             storeNameMap = Object.fromEntries(storesData.map(s => [s.id, s.store_name]))
+            storeCurrencyMap = Object.fromEntries(storesData.map(s => [s.id, (s as Record<string, unknown>).currency as string || "BRL"]))
           }
         }
 
@@ -159,6 +162,7 @@ export async function GET(request: NextRequest) {
             id: `batch_${batch.id}`,
             batch_id: batch.id,
             store_id: batchStoreIds[0] || null,
+            currency: batchStoreIds[0] ? (storeCurrencyMap[batchStoreIds[0]] || "BRL") : "BRL",
             client_id: null,
             name: batch.name,
             description: null,
@@ -252,7 +256,7 @@ export async function POST(request: NextRequest) {
       .insert(campaignData)
       .select(`
         *,
-        store:client_stores(id, store_name, platform),
+        store:client_stores(id, store_name, platform, currency),
         client:clients(id, name, company)
       `)
       .single()
@@ -262,7 +266,7 @@ export async function POST(request: NextRequest) {
       throw new AppError("Erro ao criar campanha", 500)
     }
 
-    return successResponse(request, { campaign: { ...campaign, source: "manual" } }, { status: 201, message: "Campanha criada com sucesso" })
+    return successResponse(request, { campaign: { ...campaign, currency: (campaign.store as Record<string, unknown>)?.currency as string || "BRL", source: "manual" } }, { status: 201, message: "Campanha criada com sucesso" })
   } catch (error) {
     return errorResponse(request, error, "Campaigns POST")
   }

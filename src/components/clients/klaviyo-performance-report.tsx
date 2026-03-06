@@ -197,18 +197,7 @@ interface KlaviyoPerformanceReportProps {
 type DateRange = "7d" | "30d" | "90d" | "all" | "custom"
 
 // ============ FORMATTERS ============
-// Currency-aware formatters — currency is resolved per-report from reportData.account.currency
-let _reportCurrency = "BRL"
-
-const formatCurrency = (value: number | undefined | null): string => {
-  const num = typeof value === 'number' && !isNaN(value) ? value : 0
-  return formatCurrencyUtil(num, _reportCurrency)
-}
-
-const formatCurrencyCompact = (value: number | undefined | null): string => {
-  const num = typeof value === 'number' && !isNaN(value) ? value : 0
-  return formatCurrencyCompactUtil(num, _reportCurrency)
-}
+// Currency-aware formatters — currency is resolved per-report inside the component
 
 const formatNumber = (value: number | undefined | null): string => {
   const num = typeof value === 'number' && !isNaN(value) ? value : 0
@@ -218,6 +207,19 @@ const formatNumber = (value: number | undefined | null): string => {
 const formatPercent = (value: number | undefined | null): string => {
   const num = typeof value === 'number' && !isNaN(value) ? value : 0
   return `${num.toFixed(2)}%`
+}
+
+/** Creates currency formatters bound to a specific currency code */
+function createCurrencyFormatters(currency: string) {
+  const fmtCurrency = (value: number | undefined | null): string => {
+    const num = typeof value === 'number' && !isNaN(value) ? value : 0
+    return formatCurrencyUtil(num, currency)
+  }
+  const fmtCurrencyCompact = (value: number | undefined | null): string => {
+    const num = typeof value === 'number' && !isNaN(value) ? value : 0
+    return formatCurrencyCompactUtil(num, currency)
+  }
+  return { formatCurrency: fmtCurrency, formatCurrencyCompact: fmtCurrencyCompact }
 }
 
 // ============ CIRCULAR PROGRESS COMPONENT ============
@@ -422,8 +424,9 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
     )
   }
 
-  // Set currency for formatters from report account data
-  _reportCurrency = reportData.account?.currency || "BRL"
+  // Derive currency formatters from report account data (reactive to data changes)
+  const reportCurrency = reportData.account?.currency || "BRL"
+  const { formatCurrency, formatCurrencyCompact } = createCurrencyFormatters(reportCurrency)
 
   // ============ DATA CALCULATIONS ============
   const totalRevenue = shopifyData?.summary?.totalRevenue || reportData.revenue?.totalRevenue || 0

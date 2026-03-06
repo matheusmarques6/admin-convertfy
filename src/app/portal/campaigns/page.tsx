@@ -39,6 +39,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { formatCurrency, formatCurrencyCompact } from "@/lib/utils/format"
 
 // ============================================
 // TYPES
@@ -64,6 +65,7 @@ interface Campaign {
   revenue?: number
   source?: "manual" | "klaviyo" | "batch"
   storeNames?: string[]
+  currency?: string
   store?: {
     id: string
     store_name: string
@@ -163,18 +165,7 @@ const WEEK_DAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"]
 // UTILITY FUNCTIONS
 // ============================================
 
-function formatCurrency(value: number): string {
-  if (value >= 1000000) {
-    return `R$ ${(value / 1000000).toFixed(1)}M`
-  }
-  if (value >= 1000) {
-    return `R$ ${(value / 1000).toFixed(1)}K`
-  }
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  }).format(value)
-}
+// formatCurrency and formatCurrencyCompact imported from @/lib/utils/format
 
 function formatNumber(value: number): string {
   if (value >= 1000000) {
@@ -432,6 +423,7 @@ export default function PortalCampaignsPage() {
     clicked?: number | null
     converted?: number | null
     revenue?: number | null
+    currency?: string | null
     color?: string | null
     store_ids?: string[]
     store_names?: string[]
@@ -512,6 +504,7 @@ export default function PortalCampaignsPage() {
       clicked: apiCampaign.clicked || undefined,
       converted: apiCampaign.converted || undefined,
       revenue: apiCampaign.revenue || undefined,
+      currency: apiCampaign.currency || "BRL",
       source: (apiCampaign.source as Campaign["source"]) || "manual",
       storeNames: storeNames.length > 0 ? storeNames : undefined,
       store: storeIds.length > 0 ? {
@@ -867,7 +860,7 @@ export default function PortalCampaignsPage() {
               />
               <StatCard
                 title="Receita"
-                value={formatCurrency(stats.totalRevenue)}
+                value={formatCurrencyCompact(stats.totalRevenue)}
                 subtitle="atribuída às campanhas"
                 icon={DollarSign}
                 iconColor="text-emerald-600"
@@ -1218,7 +1211,7 @@ export default function PortalCampaignsPage() {
                                 <span className="text-sm text-slate-500 dark:text-slate-400">Receita Gerada</span>
                               </div>
                               <p className="text-xl font-bold text-emerald-600">
-                                {formatCurrency(selectedCampaign.revenue || 0)}
+                                {formatCurrency(selectedCampaign.revenue || 0, selectedCampaign.currency || "BRL")}
                               </p>
                             </div>
                           </div>

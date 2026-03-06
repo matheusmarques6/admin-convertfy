@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
     // Get all stores for this client
     const { data: clientStores } = await adminClient
       .from("client_stores")
-      .select("id, store_name")
+      .select("id, store_name, currency")
       .eq("client_id", clientId)
       .eq("is_active", true)
 
@@ -50,6 +50,7 @@ export async function GET(request: NextRequest) {
 
     const clientStoreIds = clientStores.map(s => s.id)
     const storeNameMap = Object.fromEntries(clientStores.map(s => [s.id, s.store_name]))
+    const storeCurrencyMap = Object.fromEntries(clientStores.map(s => [s.id, (s as Record<string, unknown>).currency as string || "BRL"]))
 
     // Parse query parameters
     const searchParams = request.nextUrl.searchParams
@@ -137,6 +138,7 @@ export async function GET(request: NextRequest) {
         clicked: c.clicked,
         converted: c.converted,
         revenue: c.revenue,
+        currency: storeId ? (storeCurrencyMap[storeId] || "BRL") : "BRL",
         color: c.color || "#3b82f6",
         created_at: c.created_at,
         store_ids: storeId ? [storeId] : [],
@@ -225,6 +227,7 @@ export async function GET(request: NextRequest) {
         clicked: null,
         converted: null,
         revenue: null,
+        currency: relevantStoreIds[0] ? (storeCurrencyMap[relevantStoreIds[0]] || "BRL") : "BRL",
         color: batch.campaign_type === "sms" ? "#10b981" : batch.campaign_type === "whatsapp" ? "#25d366" : "#3b82f6",
         created_at: batch.created_at,
         store_ids: relevantStoreIds,
