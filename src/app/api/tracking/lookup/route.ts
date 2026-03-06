@@ -292,10 +292,12 @@ export async function GET(request: NextRequest) {
           try { return decrypt(val) } catch { log.warn(`Failed to decrypt ${label}`); return undefined }
         }
 
+        const decrypted17 = store?.seventeen_track_api_key
+          ? safeDecrypt(store.seventeen_track_api_key, "17track")
+          : undefined
+
         const keys: CarrierKeys = {
-          seventeen_track: store?.seventeen_track_api_key
-            ? safeDecrypt(store.seventeen_track_api_key, "17track")
-            : globalKey,
+          seventeen_track: decrypted17 || globalKey,
           trackingmore: typeof storeKeys.trackingmore === "string"
             ? safeDecrypt(storeKeys.trackingmore, "trackingmore")
             : undefined,
@@ -305,7 +307,14 @@ export async function GET(request: NextRequest) {
           cainiao: storeKeys.cainiao !== false,
         }
 
-        log.info("Live tracking attempt", { trackingStoreId, query })
+        log.info("Live tracking attempt", {
+          trackingStoreId,
+          query,
+          has17track: !!keys.seventeen_track,
+          hasTrackingMore: !!keys.trackingmore,
+          hasCainiao: keys.cainiao,
+          usedGlobal17: !decrypted17 && !!globalKey,
+        })
 
         const liveResult = await trackWithBestProvider(
           query,

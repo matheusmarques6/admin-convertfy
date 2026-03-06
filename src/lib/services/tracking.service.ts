@@ -341,8 +341,8 @@ export async function trackVia17track(
         // Continue to try gettrackinfo anyway — registration may have been processed before
       }
 
-      // Brief pause for 17track to process registration
-      await new Promise((r) => setTimeout(r, 300))
+      // Pause for 17track to process registration (new numbers need more time)
+      await new Promise((r) => setTimeout(r, 2000))
 
       // Get tracking info (timeout: 8s)
       const infoController = new AbortController()
