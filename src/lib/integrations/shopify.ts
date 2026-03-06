@@ -198,6 +198,38 @@ export class ShopifyService {
     return response.order
   }
 
+  /**
+   * Find an order by its fulfillment tracking number.
+   * Searches recent fulfilled orders and matches against tracking numbers.
+   */
+  async getOrderByTrackingCode(trackingCode: string): Promise<ShopifyOrder | null> {
+    const normalizedCode = trackingCode.trim().toUpperCase()
+
+    // Search fulfilled orders (last 60 days by default)
+    const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString()
+    const queryParams = new URLSearchParams({
+      status: "any",
+      fulfillment_status: "fulfilled",
+      created_at_min: sixtyDaysAgo,
+      limit: "250",
+      fields: "id,name,order_number,customer,line_items,total_price,currency,created_at,fulfillment_status,fulfillments",
+    })
+
+    const response = await this.request<{ orders: ShopifyOrder[] }>(
+      `/orders.json?${queryParams.toString()}`
+    )
+
+    for (const order of response.orders) {
+      if (!order.fulfillments) continue
+      for (const f of order.fulfillments) {
+        if (f.tracking_number?.trim().toUpperCase() === normalizedCode) {
+          return order
+        }
+      }
+    }
+    return null
+  }
+
   async getOrdersCount(params?: {
     status?: string
     financial_status?: string

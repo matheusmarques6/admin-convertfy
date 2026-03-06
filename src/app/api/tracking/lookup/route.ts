@@ -8,6 +8,8 @@ import { trackWithBestProvider, detectCarrierProvider, type CarrierKeys } from "
 import { decrypt } from "@/lib/crypto"
 import { translateEventDescription } from "@/lib/tracking/translate-events"
 import { sanitizePostgrestValue, escapePostgrestLike, isSuspiciousQuery } from "@/lib/tracking/sanitize"
+import { getStoreCredentials } from "@/lib/services/credentials.service"
+import { ShopifyService } from "@/lib/integrations/shopify"
 
 const log = logger.child("TrackingLookup")
 
@@ -357,20 +359,70 @@ export async function GET(request: NextRequest) {
         )
 
         if (liveResult && liveResult.events.length > 0) {
+          // Try to enrich with Shopify order data (line_items, price, etc.)
+          let orderData: WidgetResult["order"] = {
+            id: `live-${query}`,
+            order_name: null,
+            customer_name: null,
+            customer_email: null,
+            order_created_at: null,
+            shipped_at: null,
+            delivered_at: null,
+            total_price: null,
+            currency: "BRL",
+            line_items: [],
+            shipping_address: {},
+          }
+
+          if (clientStoreId) {
+            try {
+              const creds = await getStoreCredentials(clientStoreId)
+              if (creds.shopify_store_domain && creds.shopify_access_token) {
+                const shopify = new ShopifyService({
+                  storeUrl: creds.shopify_store_domain,
+                  accessToken: creds.shopify_access_token,
+                })
+                const shopifyOrder = await shopify.getOrderByTrackingCode(query)
+                if (shopifyOrder) {
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const items = shopifyOrder.line_items.map((item: any) => ({
+                    title: item.title || "",
+                    quantity: item.quantity || 1,
+                    price: item.price || "0",
+                    image_url: item.image?.src || null,
+                  }))
+                  orderData = {
+                    id: `shopify-${shopifyOrder.id}`,
+                    order_name: shopifyOrder.name || `#${shopifyOrder.order_number}`,
+                    customer_name: shopifyOrder.customer
+                      ? `${shopifyOrder.customer.first_name || ""} ${shopifyOrder.customer.last_name || ""}`.trim()
+                      : null,
+                    customer_email: shopifyOrder.email || null,
+                    order_created_at: shopifyOrder.created_at,
+                    shipped_at: shopifyOrder.fulfillments?.[0]?.created_at || null,
+                    delivered_at: null,
+                    total_price: parseFloat(shopifyOrder.total_price) || null,
+                    currency: shopifyOrder.currency || "BRL",
+                    line_items: items,
+                    shipping_address: {},
+                  }
+                  log.info("Shopify order enrichment success", {
+                    trackingStoreId,
+                    query,
+                    orderId: shopifyOrder.id,
+                    lineItemsCount: items.length,
+                  })
+                }
+              }
+            } catch (err) {
+              log.warn("Shopify order enrichment failed", {
+                error: err instanceof Error ? err.message : String(err),
+              })
+            }
+          }
+
           results.push({
-            order: {
-              id: `live-${query}`,
-              order_name: null,
-              customer_name: null,
-              customer_email: null,
-              order_created_at: null,
-              shipped_at: null,
-              delivered_at: null,
-              total_price: null,
-              currency: "BRL",
-              line_items: [],
-              shipping_address: {},
-            },
+            order: orderData,
             tracking: [
               {
                 id: `live-${query}`,
@@ -391,6 +443,7 @@ export async function GET(request: NextRequest) {
             status: liveResult.status,
             events: liveResult.events.length,
             carrier: liveResult.carrier_name,
+            hasShopifyOrder: orderData.line_items.length > 0,
           })
         } else {
           // Fallback: detect carrier locally and return pending status
