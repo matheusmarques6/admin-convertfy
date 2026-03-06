@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAsaasService, AsaasService } from "@/lib/integrations/asaas"
 import { decryptCredentialsJson } from "@/lib/crypto"
 import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { resolveOrgId } from "@/lib/api/resolve-org"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("AsaasBilling")
@@ -66,7 +67,8 @@ async function getInadimplentesData(asaas: AsaasService, cacheKey: string) {
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    await requireAuth(supabase)
+    const user = await requireAuth(supabase)
+    const orgId = await resolveOrgId(user.id)
 
     const searchParams = request.nextUrl.searchParams
     const period = searchParams.get("period") || "month"
@@ -78,6 +80,7 @@ export async function GET(request: NextRequest) {
       .select("credentials, is_active")
       .eq("type", "asaas")
       .eq("is_active", true)
+      .eq("org_id", orgId)
       .single()
 
     if (!integration) {

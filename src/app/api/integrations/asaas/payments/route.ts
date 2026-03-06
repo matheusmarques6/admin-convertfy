@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAsaasService, mapAsaasStatusToInternal } from "@/lib/integrations/asaas"
 import { decryptCredentialsJson } from "@/lib/crypto"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
+import { resolveOrgId } from "@/lib/api/resolve-org"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("AsaasPayments")
@@ -11,7 +12,8 @@ const log = logger.child("AsaasPayments")
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    await requireAuth(supabase)
+    const user = await requireAuth(supabase)
+    const orgId = await resolveOrgId(user.id)
 
     const searchParams = request.nextUrl.searchParams
     const clientId = searchParams.get("client_id")
@@ -22,6 +24,7 @@ export async function GET(request: NextRequest) {
       .select("credentials, is_active")
       .eq("type", "asaas")
       .eq("is_active", true)
+      .eq("org_id", orgId)
       .single()
 
     if (!integration) {
@@ -34,6 +37,11 @@ export async function GET(request: NextRequest) {
     if (clientId) {
       const { data: client } = await supabase.from("clients").select("custom_fields").eq("id", clientId).single()
       asaasCustomerId = (client?.custom_fields as Record<string, string>)?.asaas_customer_id
+    }
+
+    // Security: if client_id provided but no asaas_customer_id, return empty (not ALL payments)
+    if (clientId && !asaasCustomerId) {
+      return successResponse(request, { year, summary: { total: 0, totalValue: 0, paid: 0, paidValue: 0, pending: 0, pendingValue: 0, overdue: 0, overdueValue: 0 }, payments: [], byMonth: {} })
     }
 
     let allPayments: Array<{
@@ -89,13 +97,15 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
-    await requireAuth(supabase)
+    const user = await requireAuth(supabase)
+    const orgId = await resolveOrgId(user.id)
 
     const { data: integration } = await supabase
       .from("integrations")
       .select("id, credentials, is_active")
       .eq("type", "asaas")
       .eq("is_active", true)
+      .eq("org_id", orgId)
       .single()
 
     if (!integration) {

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { requireAuth, AppError } from "@/lib/api/errors"
+import { resolveOrgId } from "@/lib/api/resolve-org"
 import { createClient } from "@/lib/supabase/server"
 import { createAsaasService } from "@/lib/integrations/asaas"
 import { decryptCredentialsJson } from "@/lib/crypto"
@@ -26,14 +27,11 @@ interface CreateCustomerBody {
 export async function POST(request: Request) {
   try {
     const supabase = await createClient()
+    const user = await requireAuth(supabase)
+    const orgId = await resolveOrgId(user.id)
 
-    // Verify authentication
-    await requireAuth(supabase)
-
-    // Get request body
     const body: CreateCustomerBody = await request.json()
 
-    // Validate required fields
     if (!body.name) {
       throw new AppError("Nome é obrigatório", 400)
     }
@@ -46,12 +44,12 @@ export async function POST(request: Request) {
       throw new AppError("Email ou telefone é obrigatório", 400)
     }
 
-    // Get Asaas integration credentials
     const { data: integration, error: intError } = await supabase
       .from("integrations")
       .select("id, credentials, is_active")
       .eq("type", "asaas")
       .eq("is_active", true)
+      .eq("org_id", orgId)
       .single()
 
     if (intError || !integration) {

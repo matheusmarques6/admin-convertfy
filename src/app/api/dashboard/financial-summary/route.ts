@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAsaasService } from "@/lib/integrations/asaas"
 import { decryptCredentialsJson } from "@/lib/crypto"
 import { requireAuth, successResponse, errorResponse } from "@/lib/api/errors"
+import { resolveOrgId } from "@/lib/api/resolve-org"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("FinancialSummary")
@@ -33,16 +34,18 @@ interface FinancialSummaryResponse {
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    await requireAuth(supabase)
+    const user = await requireAuth(supabase)
+    const orgId = await resolveOrgId(user.id)
 
     const now = new Date()
 
-    // Fetch Asaas integration
+    // Fetch Asaas integration (org-scoped)
     const { data: integration } = await supabase
       .from("integrations")
       .select("credentials, is_active")
       .eq("type", "asaas")
       .eq("is_active", true)
+      .eq("org_id", orgId)
       .single()
 
     let asaasConnected = false

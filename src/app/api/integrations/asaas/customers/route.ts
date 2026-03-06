@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
+import { resolveOrgId } from "@/lib/api/resolve-org"
 import { createClient } from "@/lib/supabase/server"
 import { createAsaasService } from "@/lib/integrations/asaas"
 import { decryptCredentialsJson } from "@/lib/crypto"
@@ -11,16 +12,15 @@ const log = logger.child("IntegrationsAsaasCustomers")
 export async function POST() {
   try {
     const supabase = await createClient()
+    const user = await requireAuth(supabase)
+    const orgId = await resolveOrgId(user.id)
 
-    // Verify authentication
-    await requireAuth(supabase)
-
-    // Get Asaas integration credentials
     const { data: integration, error: intError } = await supabase
       .from("integrations")
       .select("id, credentials, is_active")
       .eq("type", "asaas")
       .eq("is_active", true)
+      .eq("org_id", orgId)
       .single()
 
     if (intError || !integration) {
@@ -163,14 +163,14 @@ export async function POST() {
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
+    const user = await requireAuth(supabase)
+    const orgId = await resolveOrgId(user.id)
 
-    await requireAuth(supabase)
-
-    // Check if Asaas integration is active
     const { data: integration } = await supabase
       .from("integrations")
       .select("is_active, last_sync, credentials")
       .eq("type", "asaas")
+      .eq("org_id", orgId)
       .single()
 
     if (!integration?.is_active) {

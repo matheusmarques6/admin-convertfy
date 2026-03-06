@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAsaasService } from "@/lib/integrations/asaas"
 import { decryptCredentialsJson } from "@/lib/crypto"
 import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { resolveOrgId } from "@/lib/api/resolve-org"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("AsaasClientsStatus")
@@ -10,19 +11,21 @@ const log = logger.child("AsaasClientsStatus")
 export const dynamic = "force-dynamic"
 export const maxDuration = 30
 
-// Cache for client status (5 minutes)
-let statusCache: { data: Record<string, unknown> | null; timestamp: number } = { data: null, timestamp: 0 }
+// Cache for client status (5 minutes), keyed by orgId to prevent cross-tenant leakage
+const statusCacheByOrg = new Map<string, { data: Record<string, unknown>; timestamp: number }>()
 const CACHE_TTL = 5 * 60 * 1000
 
 // GET - Get payment status for all clients
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    await requireAuth(supabase)
+    const user = await requireAuth(supabase)
+    const orgId = await resolveOrgId(user.id)
 
     const now = Date.now()
-    if (statusCache.data && (now - statusCache.timestamp) < CACHE_TTL) {
-      return successResponse(request, { connected: true, clientsStatus: statusCache.data, cached: true })
+    const orgCache = statusCacheByOrg.get(orgId)
+    if (orgCache && (now - orgCache.timestamp) < CACHE_TTL) {
+      return successResponse(request, { connected: true, clientsStatus: orgCache.data, cached: true })
     }
 
     const { data: integration } = await supabase
@@ -30,6 +33,7 @@ export async function GET(request: NextRequest) {
       .select("credentials, is_active")
       .eq("type", "asaas")
       .eq("is_active", true)
+      .eq("org_id", orgId)
       .single()
 
     if (!integration) {
@@ -118,7 +122,7 @@ export async function GET(request: NextRequest) {
       log.error("Error fetching subscriptions", { error: err instanceof Error ? err.message : "unknown" })
     }
 
-    statusCache = { data: clientsStatus, timestamp: now }
+    statusCacheByOrg.set(orgId, { data: clientsStatus, timestamp: now })
 
     return successResponse(request, { connected: true, clientsStatus })
   } catch (error) {

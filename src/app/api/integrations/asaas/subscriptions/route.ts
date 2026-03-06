@@ -3,12 +3,14 @@ import { createClient } from "@/lib/supabase/server"
 import { createAsaasService } from "@/lib/integrations/asaas"
 import { decryptCredentialsJson } from "@/lib/crypto"
 import { errorResponse, successResponse, requireAuth, AppError, ValidationError } from "@/lib/api/errors"
+import { resolveOrgId } from "@/lib/api/resolve-org"
 
 // GET - Get subscriptions for a client
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    await requireAuth(supabase)
+    const user = await requireAuth(supabase)
+    const orgId = await resolveOrgId(user.id)
 
     const clientId = request.nextUrl.searchParams.get("client_id")
 
@@ -17,6 +19,7 @@ export async function GET(request: NextRequest) {
       .select("credentials, is_active")
       .eq("type", "asaas")
       .eq("is_active", true)
+      .eq("org_id", orgId)
       .single()
 
     if (!integration) {
@@ -74,7 +77,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
-    await requireAuth(supabase)
+    const user = await requireAuth(supabase)
+    const orgId = await resolveOrgId(user.id)
 
     const body = await request.json()
     const { clientId, value, cycle, billingType, nextDueDate, description } = body
@@ -84,6 +88,7 @@ export async function POST(request: NextRequest) {
       .select("credentials, is_active")
       .eq("type", "asaas")
       .eq("is_active", true)
+      .eq("org_id", orgId)
       .single()
 
     if (!integration) {
@@ -112,7 +117,8 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const supabase = await createClient()
-    await requireAuth(supabase)
+    const user = await requireAuth(supabase)
+    const orgId = await resolveOrgId(user.id)
 
     const subscriptionId = request.nextUrl.searchParams.get("subscription_id")
     if (!subscriptionId) {
@@ -124,6 +130,7 @@ export async function DELETE(request: NextRequest) {
       .select("credentials, is_active")
       .eq("type", "asaas")
       .eq("is_active", true)
+      .eq("org_id", orgId)
       .single()
 
     if (!integration) {

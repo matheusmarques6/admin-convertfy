@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAsaasService } from "@/lib/integrations/asaas"
 import { decryptCredentialsJson } from "@/lib/crypto"
 import { errorResponse, successResponse, requireAuth, AppError, ValidationError } from "@/lib/api/errors"
+import { resolveOrgId } from "@/lib/api/resolve-org"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("AsaasCharges")
@@ -14,7 +15,8 @@ const log = logger.child("AsaasCharges")
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
-    await requireAuth(supabase)
+    const user = await requireAuth(supabase)
+    const orgId = await resolveOrgId(user.id)
 
     const body = await request.json()
     const { clientId, value, billingType, dueDate, description, installmentCount, installmentValue, discount, interest, fine, postalService } = body
@@ -28,6 +30,7 @@ export async function POST(request: NextRequest) {
       .select("credentials, is_active")
       .eq("type", "asaas")
       .eq("is_active", true)
+      .eq("org_id", orgId)
       .single()
 
     if (!integration) {
@@ -113,7 +116,8 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const supabase = await createClient()
-    await requireAuth(supabase)
+    const user = await requireAuth(supabase)
+    const orgId = await resolveOrgId(user.id)
 
     const paymentId = request.nextUrl.searchParams.get("payment_id")
     if (!paymentId) {
@@ -125,6 +129,7 @@ export async function DELETE(request: NextRequest) {
       .select("credentials, is_active")
       .eq("type", "asaas")
       .eq("is_active", true)
+      .eq("org_id", orgId)
       .single()
 
     if (!integration) {

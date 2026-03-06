@@ -4,11 +4,13 @@ import { createAsaasService } from "@/lib/integrations/asaas"
 import type { AsaasPaymentStatus } from "@/lib/integrations/types"
 import { decryptCredentialsJson } from "@/lib/crypto"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
+import { resolveOrgId } from "@/lib/api/resolve-org"
 
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    await requireAuth(supabase)
+    const user = await requireAuth(supabase)
+    const orgId = await resolveOrgId(user.id)
 
     const searchParams = request.nextUrl.searchParams
     const status = searchParams.get("status")
@@ -20,6 +22,7 @@ export async function GET(request: NextRequest) {
       .select("credentials, is_active")
       .eq("type", "asaas")
       .eq("is_active", true)
+      .eq("org_id", orgId)
       .single()
 
     if (!integration) {

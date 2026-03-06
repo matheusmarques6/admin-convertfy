@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
+import { resolveOrgId } from "@/lib/api/resolve-org"
 import { encryptCredentialsJson } from "@/lib/crypto"
 import { updateStoreCredentials } from "@/lib/services/credentials.service"
 import { logger } from "@/lib/logger"
@@ -52,7 +53,8 @@ function mapCredentialsToStoreFields(
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
-    await requireAuth(supabase)
+    const user = await requireAuth(supabase)
+    const orgId = await resolveOrgId(user.id)
 
     const body = await request.json()
     const { integration_id, store_id, type, name, credentials, is_active, last_sync } = body
@@ -91,6 +93,7 @@ export async function POST(request: NextRequest) {
         .from("integrations")
         .update(updateData)
         .eq("id", integration_id)
+        .eq("org_id", orgId)
         .select()
         .single()
 
@@ -106,6 +109,7 @@ export async function POST(request: NextRequest) {
           credentials: encryptedCredentials,
           is_active: is_active ?? false,
           last_sync: last_sync || null,
+          org_id: orgId,
         })
         .select()
         .single()
@@ -123,7 +127,8 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const supabase = await createClient()
-    await requireAuth(supabase)
+    const user = await requireAuth(supabase)
+    const orgId = await resolveOrgId(user.id)
 
     const { searchParams } = new URL(request.url)
     const id = searchParams.get("id")
@@ -136,6 +141,7 @@ export async function DELETE(request: NextRequest) {
       .from("integrations")
       .delete()
       .eq("id", id)
+      .eq("org_id", orgId)
 
     if (error) throw error
     log.info("Integration deleted", { id })
