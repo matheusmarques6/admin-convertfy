@@ -28,17 +28,22 @@ Isso causa consumo desnecessario de creditos 17track quando providers mais barat
 
 ## Stories
 
-| Story | Titulo | Dependencia |
-|-------|--------|-------------|
-| **22.2** | Migration DB: indexes + provider_used + HTTP cache | -- (implementar PRIMEIRO) |
-| **22.1** | Reordenar providers + freshness + fixes | 22.2 Task 1 (migration) |
+| Story | Titulo | Dependencia | Status |
+|-------|--------|-------------|--------|
+| **22.2** | Migration DB: indexes + provider_used + HTTP cache | -- (implementar PRIMEIRO) | Done |
+| **22.1** | Reordenar providers + freshness + fixes | 22.2 Task 1 (migration) | Done |
+| **22.3** | Sync real-time no lookup (tracking sem eventos) | 22.1, 22.2 | Done |
+| **22.4** | Integracao Correios (API Rastro) como provider direto | 22.1 | Done |
+| **22.5** | Refatorar cascade para Provider Registry | 22.1, 22.2, 22.4 | Done |
 
-> **Ordem de implementacao:** 22.2 Task 1 (migration SQL) ANTES de 22.1.
-> O campo `provider_used` usado em 22.1.7 depende da coluna criada em 22.2.1.
-> 22.2 Task 2 (Cache-Control) pode rodar em paralelo com 22.1.
+> **Ordem de implementacao:**
+> 1. 22.2 Task 1 (migration SQL) — ja implementado
+> 2. 22.1 (reorder + freshness) — ja implementado
+> 3. 22.3 (sync real-time) — independente de 22.4/22.5
+> 4. 22.4 (Correios) — independente de 22.3/22.5
+> 5. 22.5 (provider order configuravel) — depende de 22.4 (Correios como opcao)
 >
-> **Ordem de rollback:** Reverter 22.1 ANTES de 22.2.
-> Se reverter 22.2 com 22.1 ativa, o codigo tentara gravar em `provider_used` que nao existe.
+> **Ordem de rollback:** Reverter na ordem inversa: 22.5 → 22.4 → 22.3 → 22.1 → 22.2.
 
 ## Decisoes Arquiteturais
 
@@ -52,14 +57,17 @@ A revisao de Dev, QA e Arquiteto convergiu em que:
 
 A ordem fixa reordenada resolve ~90% do problema com ~10% do esforco. Se no futuro precisarmos de configuracao por loja ou novos providers, refatoramos em ~2h.
 
-### Nova ordem dos providers
+### Nova ordem dos providers (apos 22.4)
 
 ```
-1. PostNL      (se carrier=postnl + key postnl) -- carrier-specific
-2. Cainiao     (SEMPRE, gratis)                  -- universal free fallback
-3. TrackingMore (se key trackingmore)            -- paid, 1500+ carriers
-4. 17track     (se key seventeen_track)          -- SEMPRE ULTIMO, mais caro
+1. Correios    (se tracking BR, gratis, direto)  -- TOP 1 para lojas BR (22.4)
+2. PostNL      (se carrier=postnl + key postnl)  -- carrier-specific
+3. Cainiao     (SEMPRE, gratis)                   -- universal free fallback
+4. TrackingMore (se key trackingmore)             -- paid, 1500+ carriers
+5. 17track     (se key seventeen_track)           -- SEMPRE ULTIMO, mais caro
 ```
+
+> Apos 22.5, o cascade usa `PROVIDER_REGISTRY` com loop dinamico. A ordem e configuravel via `providerOrder` param (default hardcoded). 17track permanece SEMPRE ultimo via `resolveProviderOrder()` (regra de negocio). Migration/API/UI para config por loja adiados para demanda futura.
 
 ### Freshness thresholds
 

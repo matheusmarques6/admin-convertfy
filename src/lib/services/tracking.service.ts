@@ -469,9 +469,12 @@ const FRESHNESS_MS: Record<string, number> = {
   expired:          24 * 3600_000,      // 24h
 }
 
-function isWithinFreshness(lastCheckedAt: string | null, status: string | null): boolean {
+function isWithinFreshness(lastCheckedAt: string | null, status: string | null, hasEvents = true): boolean {
   if (!lastCheckedAt) return false
-  const thresholdMs = FRESHNESS_MS[status || "pending"] ?? FRESHNESS_MS.pending
+  // Tracking without events uses short threshold (30min) for faster re-check
+  const thresholdMs = (!hasEvents && (status === "pending" || !status))
+    ? 30 * 60_000  // 30min
+    : FRESHNESS_MS[status || "pending"] ?? FRESHNESS_MS.pending
   return Date.now() - new Date(lastCheckedAt).getTime() < thresholdMs
 }
 
@@ -564,7 +567,8 @@ export async function syncTrackingCode(trackingCodeId: string): Promise<void> {
   }
 
   // Freshness guard: skip sync if data was recently checked
-  if (isWithinFreshness(code.last_checked_at, code.status)) {
+  const hasEvents = Array.isArray(code.tracking_events) && code.tracking_events.length > 0
+  if (isWithinFreshness(code.last_checked_at, code.status, hasEvents)) {
     log.info("Skipping sync, data is fresh", {
       trackingCodeId,
       status: code.status,

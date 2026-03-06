@@ -26,7 +26,7 @@ const log = logger.child("Carriers")
 export interface CarrierInfo {
   code: string
   name: string
-  provider: "cainiao" | "postnl" | "trackingmore" | "seventeen_track" | "unknown"
+  provider: "correios" | "cainiao" | "postnl" | "trackingmore" | "seventeen_track" | "unknown"
 }
 
 /**
@@ -42,7 +42,7 @@ export function detectCarrierProvider(trackingNumber: string): CarrierInfo {
 
   // Correios (Brazil): 13 chars, 2 letters + 9 digits + BR
   if (/^[A-Z]{2}\d{9}BR$/.test(num)) {
-    return { code: "correios", name: "Correios", provider: "cainiao" }
+    return { code: "correios", name: "Correios", provider: "correios" }
   }
 
   // Yanwen: starts with LP, LV, UG, YT, YW + digits + YP (or CN)
@@ -81,6 +81,125 @@ export function detectCarrierProvider(trackingNumber: string): CarrierInfo {
   }
 
   return { code: "unknown", name: "Transportadora", provider: "unknown" }
+}
+
+// ─── Correios API Rastro (Free - Brazil direct) ─────────────────────────────
+
+const CORREIOS_API_BASE = "https://proxyapp.correios.com.br/v1/sro-rastro"
+
+interface CorreiosEvento {
+  dtHrCriado: string
+  descricao: string
+  unidade: {
+    nome?: string
+    endereco?: { cidade?: string; uf?: string }
+  }
+  unidadeDestino?: {
+    nome?: string
+    endereco?: { cidade?: string; uf?: string }
+  }
+}
+
+interface CorreiosObjeto {
+  codObjeto: string
+  tipoPostal?: { categoria?: string; descricao?: string }
+  dtPrevista?: string
+  eventos?: CorreiosEvento[]
+  mensagem?: string
+}
+
+/**
+ * Normalize description for status matching: lowercase + remove accents
+ */
+function normalizeDesc(desc: string): string {
+  return desc.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+}
+
+/**
+ * Infer tracking status from Correios event description (Portuguese)
+ */
+function inferCorreiosStatus(descricao: string): string {
+  const d = normalizeDesc(descricao)
+
+  if (d.includes("entregue") || d.includes("entrega efetuada")) return "delivered"
+  if (d.includes("saiu para entrega")) return "out_for_delivery"
+  if (d.includes("aguardando retirada")) return "out_for_delivery"
+  if (d.includes("tentativa de entrega") || d.includes("nao foi possivel")) return "failed_attempt"
+  if (d.includes("devolvido") || d.includes("retornado")) return "exception"
+  if (d.includes("apreendido") || d.includes("roubado")) return "exception"
+  if (d.includes("aguardando pagamento") || d.includes("tributado")) return "exception"
+  if (d.includes("postado") || d.includes("coletado") || d.includes("recebido pelos correios")) return "info_received"
+  if (d.includes("objeto nao localizado")) return "pending"
+  if (d.includes("em transito") || d.includes("encaminhado") || d.includes("fiscalizacao aduaneira")) return "in_transit"
+
+  return "in_transit"
+}
+
+/**
+ * Track via Correios API Rastro (free, public, no auth)
+ * NOTE: This is an unofficial public endpoint with no SLA. May change URL or block without notice.
+ * TOP 1 for Brazilian tracking numbers (XX123456789BR pattern).
+ */
+export async function trackViaCorreios(trackingNumber: string): Promise<TrackingResult | null> {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 8000)
+  try {
+    const response = await fetch(`${CORREIOS_API_BASE}/${encodeURIComponent(trackingNumber)}`, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      signal: controller.signal,
+    })
+    clearTimeout(timeoutId)
+
+    if (!response.ok) {
+      log.warn("Correios request failed", { status: response.status, trackingNumber })
+      return null
+    }
+
+    const data = await response.json()
+    const objeto: CorreiosObjeto | undefined = data?.objetos?.[0]
+
+    if (!objeto || !objeto.eventos || objeto.eventos.length === 0) {
+      return null
+    }
+
+    const events: TrackingEvent[] = objeto.eventos.map((evt: CorreiosEvento) => {
+      const location = [
+        evt.unidade?.endereco?.cidade,
+        evt.unidade?.endereco?.uf,
+      ].filter(Boolean).join(", ")
+
+      return {
+        date: evt.dtHrCriado,
+        description: evt.descricao,
+        location: location || evt.unidade?.nome || "",
+        status: inferCorreiosStatus(evt.descricao),
+      }
+    })
+
+    const latestEvent = events[0]
+    const status = inferCorreiosStatus(latestEvent?.description || "")
+
+    return {
+      tracking_number: trackingNumber,
+      carrier_code: "correios",
+      carrier_name: "Correios",
+      status,
+      status_detail: latestEvent?.description || "",
+      last_event: latestEvent?.description || "",
+      last_event_at: latestEvent?.date || null,
+      estimated_delivery: objeto.dtPrevista || null,
+      events,
+    }
+  } catch (error) {
+    clearTimeout(timeoutId)
+    if (error instanceof Error && error.name === "AbortError") {
+      log.warn("Correios timeout", { trackingNumber })
+    } else {
+      log.warn("Correios tracking error", error)
+    }
+    return null
+  }
 }
 
 // ─── Cainiao Tracking (Free - covers Chinese carriers) ─────────────────────
@@ -399,55 +518,96 @@ export interface CarrierKeys {
   postnl?: string
 }
 
+// ─── Provider Registry ──────────────────────────────────────────────────────
+
+interface ProviderEntry {
+  label: string
+  canRun: (keys: CarrierKeys, carrier: CarrierInfo) => boolean
+  execute: (
+    trackingNumber: string,
+    keys: CarrierKeys,
+    carrier: CarrierInfo,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    trackVia17trackFn?: (numbers: string[], apiKey: string) => Promise<any[]>
+  ) => Promise<TrackingResult | null>
+}
+
+const PROVIDER_REGISTRY: Record<string, ProviderEntry> = {
+  correios: {
+    label: "Correios",
+    canRun: (_k, c) => c.code === "correios",
+    execute: (tn) => trackViaCorreios(tn),
+  },
+  postnl: {
+    label: "PostNL",
+    canRun: (k, c) => c.provider === "postnl" && !!k.postnl,
+    execute: (tn, k) => trackViaPostNL(tn, k.postnl!),
+  },
+  cainiao: {
+    label: "Cainiao",
+    canRun: (k) => k.cainiao !== false,
+    execute: (tn) => trackViaCainiao(tn),
+  },
+  trackingmore: {
+    label: "TrackingMore",
+    canRun: (k) => !!k.trackingmore,
+    execute: (tn, k, c) => trackViaTrackingMore(tn, k.trackingmore!, getTrackingMoreCourierCode(c.code)),
+  },
+  seventeen_track: {
+    label: "17track",
+    canRun: (k) => !!k.seventeen_track,
+    execute: async (tn, k, _c, trackVia17trackFn) => {
+      if (!trackVia17trackFn) return null
+      const results = await trackVia17trackFn([tn], k.seventeen_track!)
+      if (results.length > 0 && (results[0].events?.length > 0 || results[0].status !== "pending")) {
+        return results[0]
+      }
+      return null
+    },
+  },
+}
+
+const DEFAULT_PROVIDER_ORDER = ["correios", "postnl", "cainiao", "trackingmore", "seventeen_track"]
+
 /**
- * Track a package using the best available provider
- * Priority: PostNL (carrier-specific) → Cainiao (free) → TrackingMore → 17track (ALWAYS LAST)
+ * Resolve provider order, ensuring 17track is ALWAYS last.
+ */
+function resolveProviderOrder(configOrder: string[] | null): string[] {
+  const order = configOrder ?? DEFAULT_PROVIDER_ORDER
+  const without17 = order.filter(p => p !== "seventeen_track")
+  return [...without17, "seventeen_track"]
+}
+
+/**
+ * Track a package using the best available provider (dynamic registry loop).
+ * Priority: Correios (BR) → PostNL (carrier-specific) → Cainiao (free) → TrackingMore → 17track (ALWAYS LAST)
  */
 export async function trackWithBestProvider(
   trackingNumber: string,
   keys: CarrierKeys,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  trackVia17track: (numbers: string[], apiKey: string) => Promise<any[]>
+  trackVia17track: (numbers: string[], apiKey: string) => Promise<any[]>,
+  providerOrder?: string[]
 ): Promise<TrackingResult | null> {
   const carrier = detectCarrierProvider(trackingNumber)
-  let resolvedBy: string | null = null
+  const order = resolveProviderOrder(providerOrder ?? null)
 
-  // 1. PostNL (carrier-specific, only if detected as PostNL)
-  if (carrier.provider === "postnl" && keys.postnl) {
-    const t0 = Date.now()
-    log.info("Trying PostNL direct API", { trackingNumber })
-    const result = await trackViaPostNL(trackingNumber, keys.postnl)
-    log.info("Provider attempt", { provider: "postnl", trackingNumber, durationMs: Date.now() - t0, found: !!(result && result.events.length > 0) })
-    if (result && result.events.length > 0) { resolvedBy = "postnl"; log.debug("17track avoided", { trackingNumber, resolvedBy }); return result }
-  }
+  for (const providerName of order) {
+    const provider = PROVIDER_REGISTRY[providerName]
+    if (!provider) { log.warn("Unknown provider in order", { provider: providerName }); continue }
+    if (!provider.canRun(keys, carrier)) continue
 
-  // 2. Cainiao (ALWAYS -- free, tries for any tracking number)
-  if (keys.cainiao !== false) {
     const t0 = Date.now()
-    log.info("Trying Cainiao tracking", { trackingNumber, carrier: carrier.code })
-    const result = await trackViaCainiao(trackingNumber)
-    log.info("Provider attempt", { provider: "cainiao", trackingNumber, durationMs: Date.now() - t0, found: !!(result && result.events.length > 0) })
-    if (result && result.events.length > 0) { resolvedBy = "cainiao"; log.debug("17track avoided", { trackingNumber, resolvedBy }); return result }
-  }
+    log.info(`Trying ${provider.label}`, { trackingNumber })
+    const result = await provider.execute(trackingNumber, keys, carrier, trackVia17track)
+    const found = !!(result && result.events.length > 0)
+    log.info("Provider attempt", { provider: providerName, trackingNumber, durationMs: Date.now() - t0, found })
 
-  // 3. TrackingMore (moved up from position 4 to 3)
-  if (keys.trackingmore) {
-    const t0 = Date.now()
-    log.info("Trying TrackingMore", { trackingNumber })
-    const courierCode = getTrackingMoreCourierCode(carrier.code)
-    const result = await trackViaTrackingMore(trackingNumber, keys.trackingmore, courierCode)
-    log.info("Provider attempt", { provider: "trackingmore", trackingNumber, durationMs: Date.now() - t0, found: !!(result && result.events.length > 0) })
-    if (result && result.events.length > 0) { resolvedBy = "trackingmore"; log.debug("17track avoided", { trackingNumber, resolvedBy }); return result }
-  }
-
-  // 4. 17track (ALWAYS LAST -- most expensive)
-  if (keys.seventeen_track) {
-    const t0 = Date.now()
-    log.info("Trying 17track (last resort)", { trackingNumber })
-    const results = await trackVia17track([trackingNumber], keys.seventeen_track)
-    log.info("Provider attempt", { provider: "17track", trackingNumber, durationMs: Date.now() - t0, found: results.length > 0 && (results[0].events?.length > 0 || results[0].status !== "pending") })
-    if (results.length > 0 && (results[0].events?.length > 0 || results[0].status !== "pending")) {
-      return results[0]
+    if (found) {
+      if (providerName !== "seventeen_track") {
+        log.debug("17track avoided", { trackingNumber, resolvedBy: providerName })
+      }
+      return result
     }
   }
 

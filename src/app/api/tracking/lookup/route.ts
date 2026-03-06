@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { checkRateLimit } from "@/lib/rate-limit"
 import { logger } from "@/lib/logger"
 import { OrderLookupService, OrderLookupResult } from "@/lib/services/order-lookup.service"
+import { syncTrackingCode } from "@/lib/services/tracking.service"
 import { translateEventDescription } from "@/lib/tracking/translate-events"
 
 const log = logger.child("TrackingLookup")
@@ -218,7 +219,7 @@ export async function GET(request: NextRequest) {
           for (const order of orders) {
             const { data: codes } = await admin
               .from("tracking_codes")
-              .select("id, tracking_number, carrier_name, status, status_detail, last_event, tracking_events, estimated_delivery")
+              .select("id, tracking_number, carrier_name, status, status_detail, last_event, tracking_events, estimated_delivery, last_checked_at")
               .eq("tracking_order_id", order.id)
 
             results.push({ order, tracking: codes || [] })
@@ -238,7 +239,7 @@ export async function GET(request: NextRequest) {
         for (const order of orders) {
           const { data: codes } = await admin
             .from("tracking_codes")
-            .select("id, tracking_number, carrier_name, status, status_detail, last_event, tracking_events, estimated_delivery")
+            .select("id, tracking_number, carrier_name, status, status_detail, last_event, tracking_events, estimated_delivery, last_checked_at")
             .eq("tracking_order_id", order.id)
 
           results.push({ order, tracking: codes || [] })
@@ -247,7 +248,7 @@ export async function GET(request: NextRequest) {
     } else {
       const { data: codes } = await admin
         .from("tracking_codes")
-        .select("id, tracking_number, carrier_name, status, status_detail, last_event, tracking_events, estimated_delivery, tracking_order_id")
+        .select("id, tracking_number, carrier_name, status, status_detail, last_event, tracking_events, estimated_delivery, last_checked_at, tracking_order_id")
         .eq("tracking_store_id", trackingStoreId)
         .ilike("tracking_number", `%${query}%`)
         .limit(5)
@@ -284,6 +285,64 @@ export async function GET(request: NextRequest) {
       log.warn("Failed to log lookup", err)
     }
 
+    // ─── Sync real-time: tracking codes without events (Story 22.3) ───
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    const staleIds: string[] = []
+    for (const result of results) {
+      for (const track of result.tracking) {
+        const hasEvents = Array.isArray(track.tracking_events) && track.tracking_events.length > 0
+        const neverSynced = !(track as Record<string, unknown>).last_checked_at
+        if (!hasEvents && neverSynced && track.id && UUID_RE.test(track.id)) {
+          staleIds.push(track.id)
+        }
+      }
+    }
+
+    let didSync = false
+    if (staleIds.length > 0) {
+      didSync = true
+      const t0 = Date.now()
+      const syncController = new AbortController()
+      const syncTimeout = setTimeout(() => syncController.abort(), 15000)
+      let syncedCount = 0
+
+      try {
+        for (const id of staleIds.slice(0, 3)) {
+          if (syncController.signal.aborted) break
+          await syncTrackingCode(id)
+          syncedCount++
+        }
+      } catch {
+        // timeout or error — continue with partial data
+      } finally {
+        clearTimeout(syncTimeout)
+      }
+
+      log.info("Real-time sync triggered", {
+        trackingStoreId,
+        staleCount: staleIds.length,
+        syncedCount,
+        durationMs: Date.now() - t0,
+      })
+
+      // Re-read synced tracking codes from DB
+      if (syncedCount > 0) {
+        for (const result of results) {
+          for (let i = 0; i < result.tracking.length; i++) {
+            const track = result.tracking[i]
+            if (staleIds.includes(track.id)) {
+              const { data: updated } = await admin
+                .from("tracking_codes")
+                .select("id, tracking_number, carrier_name, status, status_detail, last_event, tracking_events, estimated_delivery, last_checked_at")
+                .eq("id", track.id)
+                .single()
+              if (updated) result.tracking[i] = updated
+            }
+          }
+        }
+      }
+    }
+
     // Translate tracking event descriptions to Portuguese
     for (const result of results) {
       for (const track of result.tracking) {
@@ -303,13 +362,15 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const cacheTtl = getCacheTtl(results)
+    const cacheTtl = didSync ? 0 : getCacheTtl(results)
     return NextResponse.json(
       { results, query, found: results.length > 0 },
       {
         headers: {
           ...PUBLIC_CORS,
-          "Cache-Control": `public, s-maxage=${cacheTtl}, stale-while-revalidate=60`,
+          "Cache-Control": cacheTtl === 0
+            ? "public, s-maxage=0, stale-while-revalidate=60"
+            : `public, s-maxage=${cacheTtl}, stale-while-revalidate=60`,
         },
       }
     )
