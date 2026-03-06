@@ -156,10 +156,12 @@ export class OrderLookupService {
               : "",
             tracking_code: fulfillment?.tracking_number || null,
             carrier: fulfillment?.tracking_company || null,
-            items: order.line_items.map((item) => ({
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            items: order.line_items.map((item: any) => ({
               title: item.title,
               quantity: item.quantity,
               price: item.price,
+              image_url: item.image?.src || null,
             })),
             total_price: order.total_price,
             currency: order.currency,
@@ -264,10 +266,12 @@ export class OrderLookupService {
               (props.tracking_company as string) ||
               (props.TrackingCompany as string) ||
               null,
-            items: items.map((item) => ({
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            items: items.map((item: any) => ({
               title: String(item.ProductName || item.product_name || "Item"),
               quantity: Number(item.Quantity || item.quantity || 1),
               price: String(item.ItemPrice || item.item_price || "0"),
+              image_url: item.ImageURL || item.image_url || item.ProductImageURL || null,
             })),
             total_price: String(props.$value || props.value || "0"),
             currency: String(props.Currency || props.currency || "BRL"),

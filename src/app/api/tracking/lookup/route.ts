@@ -78,7 +78,13 @@ function mapLookupResults(lookupResults: OrderLookupResult[]) {
           delivered_at: o.fulfillment_status === "fulfilled" ? o.order_date : null,
           total_price: parseFloat(o.total_price) || null,
           currency: o.currency,
-          line_items: [] as unknown[],
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          line_items: (o.items || []).map((item: any) => ({
+            title: item.title || "",
+            quantity: item.quantity || 1,
+            price: item.price || "0",
+            image_url: item.image_url || null,
+          })),
           shipping_address: {} as Record<string, string>,
         },
         tracking: o.tracking_code

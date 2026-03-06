@@ -106,10 +106,15 @@ async function syncStore(
         tracking_code: fulfillment.tracking_number || null,
         tracking_carrier: fulfillment.tracking_company || null,
         fulfillment_status: order.fulfillment_status || "unknown",
-        line_items: order.line_items.map((item) => ({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        line_items: order.line_items.map((item: any) => ({
           title: item.title,
           quantity: item.quantity,
           price: item.price,
+          image_url: item.image?.src || null,
+          product_id: item.product_id || null,
+          variant_id: item.variant_id || null,
+          sku: item.sku || null,
         })),
         total_price: parseFloat(order.total_price) || 0,
         currency: order.currency,
