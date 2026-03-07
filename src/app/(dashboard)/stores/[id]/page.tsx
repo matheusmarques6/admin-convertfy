@@ -35,6 +35,7 @@ async function getStore(id: string) {
       niche,
       country,
       language,
+      currency,
       created_at,
       client_id,
       org_id,
@@ -92,6 +93,15 @@ async function getStore(id: string) {
     .limit(1)
     .single()
 
+  const { data: driveData } = await adminClient
+    .from("client_onboardings")
+    .select("drive_folder_url")
+    .eq("store_id", id)
+    .not("drive_folder_url", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
   return {
     ...store,
     integrationStatus,
@@ -99,6 +109,7 @@ async function getStore(id: string) {
     onboarding_status: onboarding?.status || null,
     onboarding_progress: onboarding?.progress_percent || 0,
     has_briefing: !!briefing,
+    drive_folder_url: driveData?.drive_folder_url || null,
   }
 }
 
@@ -207,6 +218,8 @@ export default async function StoreDetailPage({
         onboardingStatus={store.onboarding_status}
         onboardingProgress={store.onboarding_progress}
         hasBriefing={store.has_briefing}
+        driveFolderUrl={store.drive_folder_url}
+        currency={store.currency || undefined}
       />
     </div>
   )

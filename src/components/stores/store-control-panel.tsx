@@ -87,6 +87,7 @@ interface StoreData {
   campaign_revenue_30d: number
   flow_revenue_30d: number
   recovery_rate: number | null
+  currency: string
   revenue_status: 'loaded' | 'no_integration' | 'error'
   feedback_frequency: 'monthly' | '30_days'
   last_feedback_date: string | null
@@ -122,11 +123,11 @@ interface UserData {
   name: string
 }
 
-// Format currency
-const formatCurrency = (value: number): string => {
+// Format currency with store-specific currency code
+const fmtCurrency = (value: number, currency: string = "BRL"): string => {
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
-    currency: 'BRL',
+    currency,
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(value)
@@ -786,7 +787,7 @@ export function StoreControlPanel() {
                         ) : (
                           <div className="flex flex-col items-center gap-0.5">
                             <span className={`text-lg font-bold ${store.klaviyo_revenue_30d > 0 ? 'text-success' : 'text-muted-foreground'}`}>
-                              {formatCurrency(store.klaviyo_revenue_30d)}
+                              {fmtCurrency(store.klaviyo_revenue_30d, store.currency)}
                             </span>
                             <div className="flex items-center gap-1.5">
                               <SyncStatusBadge status={store.sync_status} compact />
@@ -805,10 +806,10 @@ export function StoreControlPanel() {
                         ) : (
                           <div className="flex flex-col items-center gap-0.5">
                             <span className="text-xs text-muted-foreground">
-                              Camp: {formatCurrency(store.campaign_revenue_30d)}
+                              Camp: {fmtCurrency(store.campaign_revenue_30d, store.currency)}
                             </span>
                             <span className="text-xs text-muted-foreground">
-                              Flows: {formatCurrency(store.flow_revenue_30d)}
+                              Flows: {fmtCurrency(store.flow_revenue_30d, store.currency)}
                             </span>
                           </div>
                         )}
@@ -1009,14 +1010,14 @@ export function StoreControlPanel() {
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Faturamento Total (30d)</span>
                     <span className="text-lg font-bold text-foreground">
-                      {formatCurrency(selectedStore.total_revenue_30d)}
+                      {fmtCurrency(selectedStore.total_revenue_30d, selectedStore.currency)}
                     </span>
                   </div>
                 )}
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-muted-foreground">Receita Klaviyo (30d)</span>
                   <span className={`text-lg font-bold ${selectedStore.klaviyo_revenue_30d > 0 ? 'text-success' : 'text-muted-foreground'}`}>
-                    {formatCurrency(selectedStore.klaviyo_revenue_30d)}
+                    {fmtCurrency(selectedStore.klaviyo_revenue_30d, selectedStore.currency)}
                   </span>
                 </div>
                 {selectedStore.recovery_rate !== null && (
@@ -1032,8 +1033,8 @@ export function StoreControlPanel() {
                   </div>
                 )}
                 <div className="flex justify-between items-center text-xs text-muted-foreground pt-1 border-t border-border">
-                  <span>Campanhas: {formatCurrency(selectedStore.campaign_revenue_30d)}</span>
-                  <span>Flows: {formatCurrency(selectedStore.flow_revenue_30d)}</span>
+                  <span>Campanhas: {fmtCurrency(selectedStore.campaign_revenue_30d, selectedStore.currency)}</span>
+                  <span>Flows: {fmtCurrency(selectedStore.flow_revenue_30d, selectedStore.currency)}</span>
                 </div>
               </div>
 

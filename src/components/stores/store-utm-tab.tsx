@@ -81,6 +81,7 @@ interface StoreUtmTabProps {
   storeUrl?: string | null
   period: "7d" | "30d" | "90d" | "all" | "custom"
   customDates?: CustomDateRange
+  currency?: string
 }
 
 interface TemplateFormData {
@@ -147,7 +148,7 @@ function hasSpaces(value: string): boolean {
 // Main Component
 // ---------------------------------------------------------------------------
 
-export function StoreUtmTab({ storeId, storeUrl, period, customDates }: StoreUtmTabProps) {
+export function StoreUtmTab({ storeId, storeUrl, period, customDates, currency = "BRL" }: StoreUtmTabProps) {
   const [activeSubTab, setActiveSubTab] = useState("source")
 
   // UTM conversion data (existing report)
@@ -251,6 +252,7 @@ export function StoreUtmTab({ storeId, storeUrl, period, customDates }: StoreUtm
                     revenue: item.revenue,
                   }))}
                   columnLabel="Source"
+                  currency={currency}
                 />
               </TabsContent>
 
@@ -262,6 +264,7 @@ export function StoreUtmTab({ storeId, storeUrl, period, customDates }: StoreUtm
                     revenue: item.revenue,
                   }))}
                   columnLabel="Medium"
+                  currency={currency}
                 />
               </TabsContent>
 
@@ -272,6 +275,7 @@ export function StoreUtmTab({ storeId, storeUrl, period, customDates }: StoreUtm
                     orders: item.orders,
                     revenue: item.revenue,
                   }))}
+                  currency={currency}
                   columnLabel="Campaign"
                 />
               </TabsContent>
@@ -847,9 +851,11 @@ function UtmTemplateDialog({
 function UtmTable({
   data,
   columnLabel,
+  currency = "BRL",
 }: {
   data: Array<{ name: string; orders: number; revenue: number }>
   columnLabel: string
+  currency?: string
 }) {
   if (!data || data.length === 0) {
     return (
@@ -886,7 +892,7 @@ function UtmTable({
                   {item.orders.toLocaleString("pt-BR")}
                 </TableCell>
                 <TableCell className="text-right">
-                  {formatCurrencyCompact(item.revenue)}
+                  {formatCurrencyCompact(item.revenue, currency)}
                 </TableCell>
               </TableRow>
             ))}

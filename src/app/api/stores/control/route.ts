@@ -23,6 +23,7 @@ interface KlaviyoStoreRevenue {
   totalRevenue: number
   campaignRevenue: number
   flowRevenue: number
+  currency: string
 }
 
 type FeedbackStatus = 'on_track' | 'due_soon' | 'overdue' | 'never'
@@ -52,6 +53,7 @@ interface StoreWithResults {
   days_until_feedback: number | null
   last_call_date: string | null
   last_call_source: 'feedback' | 'meeting' | null
+  currency: string
   has_shopify: boolean
   has_klaviyo: boolean
   fetched_at: string | null
@@ -323,6 +325,8 @@ export async function GET(request: Request) {
         revenueStatus = shopifyRevenue === -1 ? 'error' : 'loaded'
       }
 
+      const currency = klaviyoData?.currency || "BRL"
+
       if (totalRevenue > 0 && klaviyoRevenue > 0) {
         recoveryRate = (klaviyoRevenue / totalRevenue) * 100
       }
@@ -372,6 +376,7 @@ export async function GET(request: Request) {
         campaign_revenue_30d: campaignRevenue,
         flow_revenue_30d: flowRevenue,
         recovery_rate: recoveryRate,
+        currency,
         revenue_status: revenueStatus,
         feedback_frequency: (store.feedback_frequency as 'monthly' | '30_days') || 'monthly',
         last_feedback_date: store.last_feedback_date,
@@ -400,7 +405,7 @@ export async function GET(request: Request) {
 
       const { data: revenueData, error: revError } = await supabase
         .from("store_revenue_summary")
-        .select("store_id, klaviyo_total_revenue, klaviyo_campaign_revenue, klaviyo_flow_revenue, store_total_revenue, sync_status, fetched_at")
+        .select("store_id, klaviyo_total_revenue, klaviyo_campaign_revenue, klaviyo_flow_revenue, store_total_revenue, currency, sync_status, fetched_at")
         .eq("period_label", "30d")
         .eq("org_id", orgId)
         .in("store_id", storeIds)
@@ -417,6 +422,7 @@ export async function GET(request: Request) {
           totalRevenue: r.sync_status === "error" ? -1 : Number(r.klaviyo_total_revenue),
           campaignRevenue: Number(r.klaviyo_campaign_revenue),
           flowRevenue: Number(r.klaviyo_flow_revenue),
+          currency: r.currency || "BRL",
         })
         const shopifyRev = Number(r.store_total_revenue)
         if (shopifyRev > 0) {
@@ -484,6 +490,7 @@ export async function GET(request: Request) {
               totalRevenue: totalBRL,
               campaignRevenue: campaignBRL,
               flowRevenue: flowBRL,
+              currency: "BRL", // Values already converted to BRL above
             })
 
             syncMetaMap.set(store.id, {

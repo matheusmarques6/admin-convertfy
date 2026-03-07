@@ -65,6 +65,7 @@ interface StoreDetailTabsProps {
   onboardingProgress?: number
   hasBriefing?: boolean
   driveFolderUrl?: string | null
+  currency?: string
 }
 
 interface CampaignData {
@@ -111,6 +112,7 @@ export function StoreDetailTabs({
   onboardingProgress,
   hasBriefing,
   driveFolderUrl,
+  currency: storeCurrency,
 }: StoreDetailTabsProps) {
   const [period, setPeriodRaw] = useState<Period>("30d")
   const [customDates, setCustomDates] = useState<CustomDateRange | undefined>()
@@ -398,7 +400,7 @@ export function StoreDetailTabs({
 
       {/* UTM */}
       <TabsContent value="utm">
-        <StoreUtmTab storeId={storeId} storeUrl={storeUrl} period={period} customDates={customDates} />
+        <StoreUtmTab storeId={storeId} storeUrl={storeUrl} period={period} customDates={customDates} currency={storeCurrency} />
       </TabsContent>
 
       {/* Formulário */}
