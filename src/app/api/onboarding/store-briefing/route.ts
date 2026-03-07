@@ -218,7 +218,7 @@ export async function POST(request: NextRequest) {
       .maybeSingle()
 
     const { data: onboarding } = await adminClient
-      .from("client_onboarding")
+      .from("client_onboardings")
       .select("id")
       .eq("store_id", body.store_id)
       .order("created_at", { ascending: false })

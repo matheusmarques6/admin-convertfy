@@ -195,17 +195,36 @@ export async function POST(request: NextRequest) {
       }
 
       // N8N generated a briefing via AI — save it to store_briefings
+      // Try to find as onboarding_id first, then fallback to store_id
+      // (callers may send store_id when no onboarding exists)
       const { data: onboarding } = await adminClient
         .from("client_onboardings")
         .select("store_id")
         .eq("id", body.onboarding_id)
-        .single()
+        .maybeSingle()
 
-      if (!onboarding?.store_id) {
-        throw new AppError("Onboarding ou loja não encontrados", 404)
+      let storeId = onboarding?.store_id
+
+      if (!storeId) {
+        // Fallback: onboarding_id might actually be a store_id
+        const { data: store } = await adminClient
+          .from("client_stores")
+          .select("id")
+          .eq("id", body.onboarding_id)
+          .maybeSingle()
+
+        if (store) {
+          storeId = store.id
+          log.info("[Webhook] onboarding_id resolved as store_id fallback", {
+            onboarding_id: body.onboarding_id,
+            store_id: storeId,
+          })
+        }
       }
 
-      const storeId = onboarding.store_id
+      if (!storeId) {
+        throw new AppError("Onboarding ou loja não encontrados", 404)
+      }
 
       // Archive previous briefing
       await adminClient

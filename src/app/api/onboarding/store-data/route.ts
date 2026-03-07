@@ -277,7 +277,7 @@ export async function POST(request: NextRequest) {
 
       // Find onboarding_id for this store
       const { data: onboarding } = await adminClient
-        .from("client_onboarding")
+        .from("client_onboardings")
         .select("id")
         .eq("store_id", storeId)
         .order("created_at", { ascending: false })
