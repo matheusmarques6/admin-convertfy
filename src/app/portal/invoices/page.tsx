@@ -10,6 +10,7 @@ import {
   AlertTriangle,
   Calendar,
   RefreshCw,
+  TrendingUp,
   Filter,
   Search,
   ExternalLink,
@@ -538,6 +539,32 @@ export default function PortalInvoicesPage() {
   const [search, setSearch] = useState("")
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
   const [showPixModal, setShowPixModal] = useState(false)
+  const [revenueGenerated, setRevenueGenerated] = useState<number | null>(null)
+  const [showRevenue, setShowRevenue] = useState(false)
+
+  // Fetch revenue data from status endpoint
+  useEffect(() => {
+    const controller = new AbortController()
+    fetch("/api/portal/invoices/status", { signal: controller.signal })
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to fetch status")
+        return res.json()
+      })
+      .then((data) => {
+        if (typeof data.revenueGenerated === "number") {
+          setRevenueGenerated(data.revenueGenerated)
+        }
+        if (data.showRevenue) {
+          setShowRevenue(true)
+        }
+      })
+      .catch((err) => {
+        if (err.name !== "AbortError") {
+          console.error("Revenue status fetch error:", err)
+        }
+      })
+    return () => controller.abort()
+  }, [])
 
   const fetchInvoices = async () => {
     setLoading(true)
@@ -664,6 +691,39 @@ export default function PortalInvoicesPage() {
             </Button>
           </div>
         </div>
+
+        {/* ========== REVENUE CARD ========== */}
+        {showRevenue && revenueGenerated != null && revenueGenerated > 0 && (
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-500 via-emerald-600 to-cyan-600 dark:from-emerald-600 dark:via-emerald-700 dark:to-cyan-700 shadow-lg shadow-emerald-500/20 dark:shadow-emerald-700/30 p-6 sm:p-8">
+            {/* Decorative background elements */}
+            <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/3" />
+            <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/5 rounded-full translate-y-1/2 -translate-x-1/4" />
+            <div className="absolute top-1/2 right-1/4 w-24 h-24 bg-white/5 rounded-full" />
+
+            <div className="relative flex flex-col sm:flex-row items-center gap-4 sm:gap-6">
+              {/* Icon */}
+              <div className="flex-shrink-0 rounded-2xl bg-white/15 backdrop-blur-sm p-4">
+                <TrendingUp className="h-8 w-8 sm:h-10 sm:w-10 text-white" />
+              </div>
+
+              {/* Content */}
+              <div className="text-center sm:text-left flex-1">
+                <p className="text-emerald-100 text-sm font-medium mb-1">
+                  Receita gerada pela Convertfy nos ultimos 30 dias
+                </p>
+                <p className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-white tracking-tight animate-pulse">
+                  {formatCurrency(revenueGenerated)}
+                </p>
+              </div>
+
+              {/* Decorative badge */}
+              <div className="hidden lg:flex flex-shrink-0 items-center gap-2 rounded-full bg-white/15 backdrop-blur-sm px-4 py-2">
+                <DollarSign className="h-5 w-5 text-emerald-100" />
+                <span className="text-sm font-semibold text-white whitespace-nowrap">Resultado Real</span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ========== MAIN INVOICE CARD (BOLETO STYLE) ========== */}
         {nextInvoice && (
