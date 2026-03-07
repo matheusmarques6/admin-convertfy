@@ -249,6 +249,99 @@ describe("fetchAudienceForStore", () => {
     expect(mockKlaviyoRequest).toHaveBeenCalledTimes(3)
   })
 
+  it("should return items[] with correct type, isMainList, and isEngagedSegment", async () => {
+    // Lists — "Newsletter" is the largest
+    mockKlaviyoRequest.mockResolvedValueOnce({
+      data: [
+        { id: "l1", attributes: { name: "Newsletter", profile_count: 5000, created: "2025-01-01T00:00:00Z" } },
+        { id: "l2", attributes: { name: "Test Import", profile_count: 200, created: "2025-06-01T00:00:00Z" } },
+      ],
+      links: {},
+    })
+    // Segments — "Engaged 90d" present
+    mockKlaviyoRequest.mockResolvedValueOnce({
+      data: [
+        { id: "seg1", attributes: { name: "Engaged 90d", profile_count: 3000, is_active: true, is_starred: false, created: "2025-03-01T00:00:00Z" } },
+        { id: "seg2", attributes: { name: "VIP Buyers", profile_count: 500, is_active: true, is_starred: true, created: "2025-04-01T00:00:00Z" } },
+      ],
+      links: {},
+    })
+
+    const result = await fetchAudienceForStore("test-key")
+
+    expect(result.success).toBe(true)
+    const { items } = result.data!
+
+    // Total items = 2 lists + 2 segments
+    expect(items).toHaveLength(4)
+
+    // Lists have type 'list'
+    const lists = items.filter(i => i.type === "list")
+    expect(lists).toHaveLength(2)
+
+    // Segments have type 'segment'
+    const segments = items.filter(i => i.type === "segment")
+    expect(segments).toHaveLength(2)
+
+    // isMainList is true ONLY for the largest list (Newsletter, l1)
+    const mainListItems = items.filter(i => i.isMainList)
+    expect(mainListItems).toHaveLength(1)
+    expect(mainListItems[0].klaviyoId).toBe("l1")
+    expect(mainListItems[0].name).toBe("Newsletter")
+    expect(mainListItems[0].type).toBe("list")
+
+    // isEngagedSegment is true ONLY for "Engaged 90d" (seg1)
+    const engagedItems = items.filter(i => i.isEngagedSegment)
+    expect(engagedItems).toHaveLength(1)
+    expect(engagedItems[0].klaviyoId).toBe("seg1")
+    expect(engagedItems[0].name).toBe("Engaged 90d")
+    expect(engagedItems[0].type).toBe("segment")
+
+    // Segments should not have isMainList
+    for (const seg of segments) {
+      expect(seg.isMainList).toBe(false)
+    }
+
+    // Non-engaged list items should not have isEngagedSegment
+    for (const list of lists) {
+      expect(list.isEngagedSegment).toBe(false)
+    }
+  })
+
+  it("should not mark isMainList when all lists have 0 profiles", async () => {
+    // Lists all with 0 count
+    mockKlaviyoRequest.mockResolvedValueOnce({
+      data: [{ id: "l1", attributes: { name: "Empty List", profile_count: 0 } }],
+      links: {},
+    })
+    // Individual fetch for l1 (allListsZero path) — still 0
+    mockKlaviyoRequest.mockResolvedValueOnce({
+      data: { attributes: { profile_count: 0 } },
+    })
+    // Segments — none
+    mockKlaviyoRequest.mockResolvedValueOnce({ data: [], links: {} })
+
+    const result = await fetchAudienceForStore("test-key")
+
+    expect(result.success).toBe(true)
+    // isMainList should be false for all items (largestList.profileCount === 0)
+    expect(result.data!.items.filter(i => i.isMainList)).toHaveLength(0)
+  })
+
+  it("should re-throw KlaviyoPermissionError instead of catching it", async () => {
+    const { KlaviyoPermissionError } = await import("@/lib/integrations/klaviyo")
+    mockKlaviyoRequest.mockRejectedValueOnce(new KlaviyoPermissionError(["lists:read"]))
+
+    await expect(fetchAudienceForStore("test-key")).rejects.toThrow(KlaviyoPermissionError)
+  })
+
+  it("should re-throw KlaviyoRateLimitError instead of catching it", async () => {
+    const { KlaviyoRateLimitError } = await import("@/lib/integrations/klaviyo")
+    mockKlaviyoRequest.mockRejectedValueOnce(new KlaviyoRateLimitError(5000))
+
+    await expect(fetchAudienceForStore("test-key")).rejects.toThrow(KlaviyoRateLimitError)
+  })
+
   it("should handle no engaged segment found (0 engaged leads)", async () => {
     mockKlaviyoRequest.mockResolvedValueOnce({
       data: [{ id: "l1", attributes: { profile_count: 5000 } }],

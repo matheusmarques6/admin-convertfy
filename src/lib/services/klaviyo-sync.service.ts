@@ -98,10 +98,23 @@ export interface CampaignMetricRow {
   fetched_at: string
 }
 
+export interface AudienceItem {
+  klaviyoId: string
+  type: "list" | "segment"
+  name: string
+  profileCount: number
+  isActive?: boolean
+  isStarred?: boolean
+  isMainList: boolean
+  isEngagedSegment: boolean
+  createdAtKlaviyo?: string
+}
+
 export interface AudienceData {
   totalLeads: number
   engagedLeads: number
   engagementRate: number
+  items: AudienceItem[]
 }
 
 export interface StoreRevenueData {
@@ -157,12 +170,12 @@ type CampListResp = {
 }
 
 type AudienceListResp = {
-  data: Array<{ id: string; attributes: { profile_count?: number } }>
+  data: Array<{ id: string; attributes: { name: string; profile_count?: number; created?: string } }>
   links?: { next?: string }
 }
 
 type AudienceSegResp = {
-  data: Array<{ id: string; attributes: { name: string; profile_count?: number } }>
+  data: Array<{ id: string; attributes: { name: string; profile_count?: number; is_active?: boolean; is_starred?: boolean; created?: string } }>
   links?: { next?: string }
 }
 
@@ -214,14 +227,14 @@ export async function fetchCampaignNames(apiKey: string): Promise<Map<string, Ca
 
 export async function fetchAudienceForStore(apiKey: string): Promise<SyncResult<AudienceData>> {
   try {
-    // 1. Fetch all lists, find largest by profile count
-    const allLists: Array<{ id: string; profileCount: number }> = []
+    // 1. Fetch all lists with name and profile count
+    const allLists: Array<{ id: string; name: string; profileCount: number; created?: string }> = []
     let listPage: string | null = "/lists/"
     while (listPage) {
       const resp: AudienceListResp | null = await klaviyoRequest<AudienceListResp>(apiKey, listPage)
       if (!resp?.data) break
       for (const l of resp.data) {
-        allLists.push({ id: l.id, profileCount: l.attributes.profile_count || 0 })
+        allLists.push({ id: l.id, name: l.attributes.name, profileCount: l.attributes.profile_count || 0, created: l.attributes.created })
       }
       listPage = resp.links?.next ? resp.links.next.replace(KLAVIYO_API_URL, "") : null
       if (listPage) await sleep(500)
@@ -241,18 +254,21 @@ export async function fetchAudienceForStore(apiKey: string): Promise<SyncResult<
 
     const largestList = allLists.reduce(
       (max, l) => (l.profileCount > max.profileCount ? l : max),
-      { id: "", profileCount: 0 },
+      { id: "", name: "", profileCount: 0 },
     )
     const totalLeads = largestList.profileCount
 
-    // 2. Fetch segments, find "Engaged" segment
-    const allSegments: Array<{ id: string; name: string; profileCount: number }> = []
+    // 2. Fetch all segments with name, profile count, and metadata
+    const allSegments: Array<{ id: string; name: string; profileCount: number; isActive?: boolean; isStarred?: boolean; created?: string }> = []
     let segPage: string | null = "/segments/"
     while (segPage) {
       const resp: AudienceSegResp | null = await klaviyoRequest<AudienceSegResp>(apiKey, segPage)
       if (!resp?.data) break
       for (const s of resp.data) {
-        allSegments.push({ id: s.id, name: s.attributes.name, profileCount: s.attributes.profile_count || 0 })
+        allSegments.push({
+          id: s.id, name: s.attributes.name, profileCount: s.attributes.profile_count || 0,
+          isActive: s.attributes.is_active, isStarred: s.attributes.is_starred, created: s.attributes.created,
+        })
       }
       segPage = resp.links?.next ? resp.links.next.replace(KLAVIYO_API_URL, "") : null
       if (segPage) await sleep(500)
@@ -279,13 +295,46 @@ export async function fetchAudienceForStore(apiKey: string): Promise<SyncResult<
     const engagedLeads = engagedSegment?.profileCount || 0
     const engagementRate = totalLeads > 0 ? (engagedLeads / totalLeads) * 100 : 0
 
+    // Build unified audience items array
+    const items: AudienceItem[] = [
+      ...allLists.map(l => ({
+        klaviyoId: l.id,
+        type: "list" as const,
+        name: l.name,
+        profileCount: l.profileCount,
+        isMainList: l.id === largestList.id && largestList.profileCount > 0,
+        isEngagedSegment: false,
+        createdAtKlaviyo: l.created,
+      })),
+      ...allSegments.map(s => ({
+        klaviyoId: s.id,
+        type: "segment" as const,
+        name: s.name,
+        profileCount: s.profileCount,
+        isActive: s.isActive,
+        isStarred: s.isStarred,
+        isMainList: false,
+        isEngagedSegment: engagedSegment?.id === s.id,
+        createdAtKlaviyo: s.created,
+      })),
+    ]
+
     return {
       success: true,
-      data: { totalLeads, engagedLeads, engagementRate: Math.round(engagementRate * 100) / 100 },
+      data: {
+        totalLeads,
+        engagedLeads,
+        engagementRate: Math.round(engagementRate * 100) / 100,
+        items,
+      },
       source: "live",
       fetchedAt: new Date().toISOString(),
     }
   } catch (err) {
+    // Re-throw non-retryable errors — must not be silenced (same pattern as syncKlaviyoForPeriod)
+    if (err instanceof KlaviyoPermissionError) throw err
+    if (err instanceof KlaviyoRateLimitError) throw err
+
     const message = err instanceof Error ? err.message : "Unknown error fetching audience"
     log.warn("[KlaviyoSyncService] fetchAudienceForStore failed:", err)
     return {

@@ -8,7 +8,7 @@
  */
 
 import { SupabaseClient } from "@supabase/supabase-js"
-import type { KlaviyoSyncData, CampaignMetricRow } from "./klaviyo-sync.service"
+import type { KlaviyoSyncData, CampaignMetricRow, AudienceItem } from "./klaviyo-sync.service"
 import type { KlaviyoPerformanceData, KlaviyoCampaignItem } from "./klaviyo-performance.service"
 import { CACHED_PERIODS } from "@/lib/shared/data-status"
 import { logger } from "@/lib/logger"
@@ -384,4 +384,55 @@ function mapCampaignStatus(status: string | null | undefined, sendTime?: string 
     return new Date(sendTime) <= new Date() ? "sent" : "scheduled"
   }
   return "draft"
+}
+
+/**
+ * Upsert Klaviyo audience items (lists + segments) to the klaviyo_audiences table.
+ * Uses delete-then-insert pattern to handle Klaviyo-side deletions (QA requirement).
+ * Does NOT affect store_revenue_summary — that path remains independent (QA requirement).
+ */
+export async function upsertAudiences(
+  supabase: SupabaseClient,
+  store: StoreInfo,
+  items: AudienceItem[],
+): Promise<void> {
+  if (items.length === 0) return
+
+  const now = new Date().toISOString()
+
+  // Delete-then-insert: removes orphaned rows from Klaviyo-deleted audiences
+  const { error: deleteErr } = await supabase
+    .from("klaviyo_audiences")
+    .delete()
+    .eq("store_id", store.id)
+
+  if (deleteErr) {
+    log.warn(`[AudienceSync] Failed to delete stale audiences for ${store.id}:`, deleteErr.message)
+    return
+  }
+
+  const rows = items.map(item => ({
+    store_id: store.id,
+    org_id: store.org_id || null,
+    klaviyo_id: item.klaviyoId,
+    type: item.type,
+    name: item.name,
+    profile_count: item.profileCount,
+    is_active: item.isActive ?? null,
+    is_starred: item.isStarred ?? null,
+    is_main_list: item.isMainList,
+    is_engaged_segment: item.isEngagedSegment,
+    created_at_klaviyo: item.createdAtKlaviyo || null,
+    fetched_at: now,
+  }))
+
+  const { error: insertErr } = await supabase
+    .from("klaviyo_audiences")
+    .insert(rows)
+
+  if (insertErr) {
+    log.warn(`[AudienceSync] Failed to insert audiences for ${store.id}:`, insertErr.message)
+  } else {
+    log.info(`[AudienceSync] Synced ${items.length} audiences for store ${store.id}`)
+  }
 }

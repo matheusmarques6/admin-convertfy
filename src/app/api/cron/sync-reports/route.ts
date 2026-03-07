@@ -20,7 +20,7 @@ import {
   fetchCampaignNames,
   fetchAudienceForStore,
 } from "@/lib/services/klaviyo-sync.service"
-import { upsertSyncResults } from "@/lib/services/sync-persistence.service"
+import { upsertSyncResults, upsertAudiences } from "@/lib/services/sync-persistence.service"
 
 const log = logger.child("CronSyncReports")
 
@@ -255,14 +255,28 @@ async function syncStore(
   }
 
   // Fetch audience metrics ONCE per store (not per period — audience is a snapshot)
+  // Wrapped in try-catch: fetchAudienceForStore re-throws KlaviyoPermissionError/KlaviyoRateLimitError
   let audience = { totalLeads: 0, engagedLeads: 0, engagementRate: 0 }
-  const audienceResult = await fetchAudienceForStore(apiKey)
-  if (audienceResult.success && audienceResult.data) {
-    audience = audienceResult.data
-    log.info(`[Cron] ${store.store_name}: audience totalLeads=${audience.totalLeads} engagedLeads=${audience.engagedLeads} rate=${audience.engagementRate}%`)
-  } else {
-    log.warn(`[Cron] Failed to fetch audience for ${store.store_name}: ${audienceResult.error || "unknown"}`)
-    // Continue with 0s — audience is optional
+  try {
+    const audienceResult = await fetchAudienceForStore(apiKey)
+    if (audienceResult.success && audienceResult.data) {
+      audience = audienceResult.data
+      log.info(`[Cron] ${store.store_name}: audience totalLeads=${audience.totalLeads} engagedLeads=${audience.engagedLeads} rate=${audience.engagementRate}%`)
+
+      // Persist individual audience items (lists + segments) to klaviyo_audiences table
+      if (audienceResult.data.items.length > 0) {
+        await upsertAudiences(supabase, store, audienceResult.data.items)
+      }
+    } else {
+      log.warn(`[Cron] Failed to fetch audience for ${store.store_name}: ${audienceResult.error || "unknown"}`)
+      // Continue with 0s — audience is optional
+    }
+  } catch (err) {
+    // KlaviyoPermissionError / KlaviyoRateLimitError bubble up to syncStore's caller
+    if (err instanceof KlaviyoPermissionError) throw err
+    if (err instanceof KlaviyoRateLimitError) throw err
+    // Other errors: log and continue with 0s (audience is optional)
+    log.warn(`[Cron] Unexpected error fetching audience for ${store.store_name}:`, err)
   }
 
   // Sync each period
