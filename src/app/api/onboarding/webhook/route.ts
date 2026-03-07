@@ -278,7 +278,13 @@ export async function POST(request: NextRequest) {
 
     if (body.type === "drive_folder") {
       // N8N created Google Drive folder with copies — save the link
-      const driveUrl = body.data?.folder_url || body.data?.url || body.data?.link
+      // Accept data as string (URL directly) or object with folder_url/url/link
+      let driveUrl: string | undefined
+      if (typeof body.data === "string") {
+        driveUrl = body.data.trim()
+      } else if (body.data && typeof body.data === "object") {
+        driveUrl = body.data.folder_url || body.data.url || body.data.link
+      }
 
       if (!driveUrl) {
         throw new AppError("folder_url é obrigatório em data", 400)
@@ -288,42 +294,100 @@ export async function POST(request: NextRequest) {
       try {
         new URL(driveUrl)
       } catch {
+        log.warn("[Webhook] Invalid drive URL received", {
+          onboarding_id: body.onboarding_id,
+          received_value: driveUrl.substring(0, 200),
+        })
         throw new AppError("URL do Drive inválida", 400)
       }
 
-      const { error } = await adminClient
+      // Resolve onboarding_id — may be a store_id fallback
+      const { data: onbForDrive } = await adminClient
         .from("client_onboardings")
-        .update({
-          drive_folder_url: driveUrl,
-          updated_at: new Date().toISOString(),
-        })
+        .select("id")
         .eq("id", body.onboarding_id)
+        .maybeSingle()
 
-      if (error) {
-        log.error("[Webhook] Error saving drive folder", error)
-        throw new AppError("Erro ao salvar link do Drive", 500)
+      const onboardingId = onbForDrive?.id
+
+      if (onboardingId) {
+        // Update onboarding record directly
+        const { error } = await adminClient
+          .from("client_onboardings")
+          .update({
+            drive_folder_url: driveUrl,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", onboardingId)
+
+        if (error) {
+          log.error("[Webhook] Error saving drive folder", error)
+          throw new AppError("Erro ao salvar link do Drive", 500)
+        }
+
+        // Also transition to design phase if still in generating_copies
+        const { data: currentOnb } = await adminClient
+          .from("client_onboardings")
+          .select("current_phase")
+          .eq("id", onboardingId)
+          .maybeSingle()
+
+        if (currentOnb?.current_phase === "generating_copies") {
+          const { onboardingPhaseService } = await import("@/lib/services/onboarding-phase.service")
+          await onboardingPhaseService.transition({
+            onboardingId,
+            toPhase: "design",
+            triggeredBy: "n8n_webhook",
+            metadata: { drive_folder_url: driveUrl },
+          }).catch((err: unknown) => {
+            log.warn("[Webhook] Phase transition failed after drive_folder", err)
+          })
+        }
+      } else {
+        // Fallback: onboarding_id is actually a store_id — find and update onboarding by store_id
+        const { data: onbByStore } = await adminClient
+          .from("client_onboardings")
+          .select("id, current_phase")
+          .eq("store_id", body.onboarding_id)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle()
+
+        if (onbByStore) {
+          log.info("[Webhook] drive_folder: resolved onboarding_id as store_id", {
+            onboarding_id: body.onboarding_id,
+            resolved_onboarding: onbByStore.id,
+          })
+
+          await adminClient
+            .from("client_onboardings")
+            .update({
+              drive_folder_url: driveUrl,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", onbByStore.id)
+
+          if (onbByStore.current_phase === "generating_copies") {
+            const { onboardingPhaseService } = await import("@/lib/services/onboarding-phase.service")
+            await onboardingPhaseService.transition({
+              onboardingId: onbByStore.id,
+              toPhase: "design",
+              triggeredBy: "n8n_webhook",
+              metadata: { drive_folder_url: driveUrl },
+            }).catch((err: unknown) => {
+              log.warn("[Webhook] Phase transition failed after drive_folder", err)
+            })
+          }
+        } else {
+          log.warn("[Webhook] drive_folder: no onboarding found for id", {
+            onboarding_id: body.onboarding_id,
+          })
+        }
       }
 
-      // Also transition to design phase if still in generating_copies
-      const { data: currentOnb } = await adminClient
-        .from("client_onboardings")
-        .select("current_phase")
-        .eq("id", body.onboarding_id)
-        .single()
-
-      if (currentOnb?.current_phase === "generating_copies") {
-        const { onboardingPhaseService } = await import("@/lib/services/onboarding-phase.service")
-        await onboardingPhaseService.transition({
-          onboardingId: body.onboarding_id,
-          toPhase: "design",
-          triggeredBy: "n8n_webhook",
-          metadata: { drive_folder_url: driveUrl },
-        }).catch((err: unknown) => {
-          log.warn("[Webhook] Phase transition failed after drive_folder", err)
-        })
-      }
-
-      log.info(`Drive folder saved for onboarding ${body.onboarding_id}`)
+      log.info(`Drive folder saved for onboarding ${body.onboarding_id}`, {
+        drive_url: driveUrl,
+      })
 
       return successResponse(request, {
         success: true,
