@@ -50,18 +50,22 @@ export function ClientsFilters() {
 
   function applyFilters() {
     const params = new URLSearchParams()
-    if (search) params.set("search", search)
+    if (search.trim()) params.set("search", search.trim())
     if (status !== "all") params.set("status", status)
     if (health !== "all") params.set("health", health)
-    router.push(`/clients?${params.toString()}`)
+    // Nao inclui page — sempre volta para pagina 1
+    const qs = params.toString()
+    router.push(qs ? `/clients?${qs}` : "/clients")
   }
 
   function clearFilter(key: string) {
     if (key === "status") setStatus("all")
     if (key === "health") setHealth("all")
-    const params = new URLSearchParams(searchParams)
+    const params = new URLSearchParams(searchParams.toString())
     params.delete(key)
-    router.push(`/clients?${params.toString()}`)
+    params.delete("page") // Reset para pagina 1
+    const qs = params.toString()
+    router.push(qs ? `/clients?${qs}` : "/clients")
   }
 
   function clearAllFilters() {

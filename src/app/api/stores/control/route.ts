@@ -7,6 +7,7 @@ import { z } from "zod"
 import { getKlaviyoRevenueForStore } from "@/lib/integrations/klaviyo/report-summary"
 import { withConcurrencyLimit } from "@/lib/integrations/klaviyo/rate-limiter"
 import { convertToBRL } from "@/lib/services/exchange-rate.service"
+import { sanitizeSearch } from "@/lib/utils/sanitize-search"
 
 const log = logger.child("StoresControl")
 
@@ -114,18 +115,6 @@ function computeFeedbackStatus(
   return { status: feedbackStatus, daysUntil: daysUntilFeedback }
 }
 
-/**
- * Sanitize search input for Supabase .ilike() / .or() interpolation.
- * Escapes %, _, comma, parentheses to prevent filter injection.
- */
-function sanitizeSearch(input: string): string {
-  return input
-    .replace(/%/g, '\\%')
-    .replace(/_/g, '\\_')
-    .replace(/,/g, '\\,')
-    .replace(/\(/g, '\\(')
-    .replace(/\)/g, '\\)')
-}
 
 export async function GET(request: Request) {
   const startTime = Date.now()

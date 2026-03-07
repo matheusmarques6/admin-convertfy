@@ -8,18 +8,30 @@ import { ClientsFilters } from "@/components/clients/clients-filters"
 import { ImportAsaasButton } from "@/components/clients/import-asaas-button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { PagePermissionWrapper } from "@/components/page-permission-wrapper"
+import { sanitizeSearch } from "@/lib/utils/sanitize-search"
 
 export const dynamic = "force-dynamic"
 
 const PAGE_SIZE = 50
 
-async function getClients(page: number = 1) {
+const VALID_STATUSES = ["active", "inactive", "prospect", "onboarding", "churned"] as const
+const VALID_HEALTH = ["good", "warning", "critical"] as const
+
+interface ClientFilters {
+  page: number
+  search?: string
+  status?: string
+  health?: string
+}
+
+async function getClients(filters: ClientFilters) {
   const supabase = await createClient()
+  const { page, search, status, health } = filters
 
   const from = (page - 1) * PAGE_SIZE
   const to = from + PAGE_SIZE - 1
 
-  const { data: clients, error, count } = await supabase
+  let query = supabase
     .from("clients")
     .select(`
       *,
@@ -41,6 +53,33 @@ async function getClients(page: number = 1) {
         is_active
       )
     `, { count: 'exact' })
+
+  // Text search filter (with ILIKE character sanitization)
+  if (search) {
+    const safe = sanitizeSearch(search)
+    const pattern = `%${safe}%`
+    query = query.or(`name.ilike.${pattern},email.ilike.${pattern},company.ilike.${pattern}`)
+  }
+
+  // Status filter
+  if (status && status !== "all") {
+    query = query.eq("status", status)
+  }
+
+  // Health score filter
+  // NOTE: Clients with health_score NULL are excluded from all health filters.
+  // This is expected behavior since the schema has DEFAULT 50 - NULLs indicate inconsistent data.
+  if (health && health !== "all") {
+    if (health === "good") {
+      query = query.gte("health_score", 70)
+    } else if (health === "warning") {
+      query = query.gte("health_score", 40).lt("health_score", 70)
+    } else if (health === "critical") {
+      query = query.lt("health_score", 40)
+    }
+  }
+
+  const { data: clients, error, count } = await query
     .order("created_at", { ascending: false })
     .range(from, to)
 
@@ -62,13 +101,23 @@ function TableSkeleton() {
 }
 
 interface PageProps {
-  searchParams: Promise<{ page?: string }>
+  searchParams: Promise<{
+    page?: string
+    search?: string
+    status?: string
+    health?: string
+  }>
 }
 
 export default async function ClientsPage({ searchParams }: PageProps) {
   const params = await searchParams
-  const page = Number(params.page) || 1
-  const { clients, totalCount } = await getClients(page)
+  const page = Math.max(1, Math.floor(Number(params.page) || 1))
+  const search = params.search?.trim() || undefined
+  const status = VALID_STATUSES.includes(params.status as typeof VALID_STATUSES[number]) ? params.status : undefined
+  const health = VALID_HEALTH.includes(params.health as typeof VALID_HEALTH[number]) ? params.health : undefined
+
+  const hasActiveFilters = !!(search || status || health)
+  const { clients, totalCount } = await getClients({ page, search, status, health })
 
   return (
     <PagePermissionWrapper requiredFeatures={["create_clients"]}>
@@ -94,7 +143,7 @@ export default async function ClientsPage({ searchParams }: PageProps) {
 
       {/* Table */}
       <Suspense fallback={<TableSkeleton />}>
-        <ClientsTable clients={clients} totalCount={totalCount} currentPage={page} />
+        <ClientsTable clients={clients} totalCount={totalCount} currentPage={page} hasActiveFilters={hasActiveFilters} />
       </Suspense>
     </div>
     </PagePermissionWrapper>

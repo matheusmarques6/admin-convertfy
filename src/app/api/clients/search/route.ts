@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
+import { sanitizeSearch } from "@/lib/utils/sanitize-search"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("ClientsSearch")
@@ -60,8 +61,8 @@ export async function GET(request: NextRequest) {
 
     log.info("Searching clients", { query, orgId, userId: user.id })
 
-    // Escape special SQL LIKE characters to prevent wildcard injection
-    const escapedQuery = query.replace(/[%_\\]/g, "\\$&")
+    // Sanitize search input (escapes ILIKE wildcards + PostgREST filter syntax)
+    const escapedQuery = sanitizeSearch(query)
 
     // Search clients by name, email, or company using ilike
     const { data: clients, error } = await adminClient

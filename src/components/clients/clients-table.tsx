@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import {
   MoreHorizontal,
   Eye,
@@ -79,6 +79,7 @@ interface ClientsTableProps {
   clients: ClientWithRelations[]
   totalCount: number
   currentPage: number
+  hasActiveFilters?: boolean
 }
 
 interface ClientStatus {
@@ -112,11 +113,23 @@ const cycleLabels: Record<string, string> = {
   YEARLY: "Anual",
 }
 
-export function ClientsTable({ clients, totalCount, currentPage }: ClientsTableProps) {
+export function ClientsTable({ clients, totalCount, currentPage, hasActiveFilters }: ClientsTableProps) {
   const pageSize = 50
   const totalPages = Math.ceil(totalCount / pageSize)
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { user } = useAuthStore()
+
+  function buildPageUrl(page: number): string {
+    const params = new URLSearchParams(searchParams.toString())
+    if (page <= 1) {
+      params.delete("page")
+    } else {
+      params.set("page", String(page))
+    }
+    const qs = params.toString()
+    return qs ? `/clients?${qs}` : "/clients"
+  }
   const { permissions } = usePermissions()
   const canDelete = permissions?.isAdmin || permissions?.isOrgOwner
   const canEdit = permissions?.isAdmin || permissions?.isOrgOwner
@@ -243,6 +256,23 @@ export function ClientsTable({ clients, totalCount, currentPage }: ClientsTableP
   }
 
   if (clients.length === 0) {
+    if (hasActiveFilters) {
+      return (
+        <div className="flex flex-col items-center justify-center py-12 text-center">
+          <div className="rounded-full bg-muted p-4 mb-4">
+            <AlertCircle className="h-8 w-8 text-muted-foreground" />
+          </div>
+          <h3 className="text-lg font-medium">Nenhum cliente encontrado para os filtros aplicados</h3>
+          <p className="text-muted-foreground mt-1">
+            Tente ajustar os filtros ou limpar a busca
+          </p>
+          <Button variant="outline" asChild className="mt-4">
+            <Link href="/clients">Limpar filtros</Link>
+          </Button>
+        </div>
+      )
+    }
+
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center">
         <div className="rounded-full bg-muted p-4 mb-4">
@@ -526,7 +556,7 @@ export function ClientsTable({ clients, totalCount, currentPage }: ClientsTableP
               variant="outline"
               size="sm"
               disabled={currentPage <= 1}
-              onClick={() => router.push(`/clients?page=${currentPage - 1}`)}
+              onClick={() => router.push(buildPageUrl(currentPage - 1))}
             >
               Anterior
             </Button>
@@ -537,7 +567,7 @@ export function ClientsTable({ clients, totalCount, currentPage }: ClientsTableP
               variant="outline"
               size="sm"
               disabled={currentPage >= totalPages}
-              onClick={() => router.push(`/clients?page=${currentPage + 1}`)}
+              onClick={() => router.push(buildPageUrl(currentPage + 1))}
             >
               Próxima
             </Button>
