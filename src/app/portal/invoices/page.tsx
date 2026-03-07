@@ -671,27 +671,6 @@ export default function PortalInvoicesPage() {
     <div className="min-h-screen text-foreground">
       <div className="max-w-[1200px] mx-auto p-6 space-y-6">
 
-        {/* ========== HEADER ========== */}
-        <div className="bg-card rounded-xl border border-border shadow-sm p-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-foreground">Faturas</h1>
-              <p className="text-muted-foreground">
-                Acompanhe seus pagamentos e histórico financeiro
-              </p>
-            </div>
-            <Button
-              variant="outline"
-              onClick={fetchInvoices}
-              disabled={loading}
-              className="bg-muted border-border text-foreground hover:bg-accent"
-            >
-              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-              Atualizar
-            </Button>
-          </div>
-        </div>
-
         {/* ========== REVENUE CARD ========== */}
         {showRevenue && revenueGenerated != null && revenueGenerated > 0 && (
           <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-500 via-emerald-600 to-cyan-600 dark:from-emerald-600 dark:via-emerald-700 dark:to-cyan-700 shadow-lg shadow-emerald-500/20 dark:shadow-emerald-700/30 p-6 sm:p-8">
@@ -801,6 +780,16 @@ export default function PortalInvoicesPage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={fetchInvoices}
+                disabled={loading}
+                className="h-10 bg-muted border-border text-foreground hover:bg-accent"
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+                Atualizar
+              </Button>
               <Filter className="h-4 w-4 text-muted-foreground" />
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-[160px] h-10 bg-muted border-border text-foreground">
