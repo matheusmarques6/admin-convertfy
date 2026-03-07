@@ -27,6 +27,8 @@ export interface CarrierInfo {
   code: string
   name: string
   provider: "correios" | "cainiao" | "postnl" | "trackingmore" | "seventeen_track" | "unknown"
+  /** UPU postal format (XX000000000YY) — eligible for Correios fallback */
+  isUpu?: boolean
 }
 
 /**
@@ -34,20 +36,22 @@ export interface CarrierInfo {
  */
 export function detectCarrierProvider(trackingNumber: string): CarrierInfo {
   const num = trackingNumber.trim().toUpperCase()
+  // UPU international postal format: 2 letters + 9 digits + 2 letter country code
+  const isUpu = /^[A-Z]{2}\d{9}[A-Z]{2}$/.test(num)
 
   // PostNL: 3S + 13-15 chars, or starts with JVGL, or NL pattern
   if (/^3S[A-Z0-9]{11,15}$/.test(num) || /^JVGL/.test(num) || /^[A-Z]{2}\d{9}NL$/.test(num)) {
-    return { code: "postnl", name: "PostNL", provider: "postnl" }
+    return { code: "postnl", name: "PostNL", provider: "postnl", isUpu }
   }
 
   // Correios (Brazil): 13 chars, 2 letters + 9 digits + BR
   if (/^[A-Z]{2}\d{9}BR$/.test(num)) {
-    return { code: "correios", name: "Correios", provider: "correios" }
+    return { code: "correios", name: "Correios", provider: "correios", isUpu: true }
   }
 
   // Yanwen: starts with LP, LV, UG, YT, YW + digits + YP (or CN)
   if (/^(LP|LV|UG|YT|YW)\d{9}(YP|CN)$/.test(num)) {
-    return { code: "yanwen", name: "Yanwen", provider: "cainiao" }
+    return { code: "yanwen", name: "Yanwen", provider: "cainiao", isUpu }
   }
 
   // Wanb Express: WB prefix or typical pattern
@@ -57,7 +61,7 @@ export function detectCarrierProvider(trackingNumber: string): CarrierInfo {
 
   // China Post / ePacket: 2 letters + 9 digits + CN
   if (/^[A-Z]{2}\d{9}CN$/.test(num)) {
-    return { code: "chinapost", name: "China Post", provider: "cainiao" }
+    return { code: "chinapost", name: "China Post", provider: "cainiao", isUpu: true }
   }
 
   // SDH Express: SDH prefix or SH + digits
@@ -78,6 +82,12 @@ export function detectCarrierProvider(trackingNumber: string): CarrierInfo {
   // Total Express: TE prefix
   if (num.startsWith("TE")) {
     return { code: "totalexpress", name: "Total Express", provider: "trackingmore" }
+  }
+
+  // Catch-all: unknown carrier, but if UPU format, mark it for Correios fallback
+  if (isUpu) {
+    const country = num.slice(-2)
+    return { code: `post_${country.toLowerCase()}`, name: `Post ${country}`, provider: "cainiao", isUpu: true }
   }
 
   return { code: "unknown", name: "Transportadora", provider: "unknown" }
@@ -544,7 +554,7 @@ interface ProviderEntry {
 const PROVIDER_REGISTRY: Record<string, ProviderEntry> = {
   correios: {
     label: "Correios",
-    canRun: (_k, c) => c.code === "correios",
+    canRun: (_k, c) => c.code === "correios" || c.isUpu === true,
     execute: (tn, _k, _c, _fn, signal) => trackViaCorreios(tn, signal),
   },
   postnl: {
@@ -589,7 +599,7 @@ function resolveProviderOrder(configOrder: string[] | null): string[] {
 
 /**
  * Track a package using the best available provider (dynamic registry loop).
- * Priority: Correios (BR) → PostNL (carrier-specific) → Cainiao (free) → TrackingMore → 17track (ALWAYS LAST)
+ * Priority: Correios (BR + UPU fallback) → PostNL (carrier-specific) → Cainiao (free) → TrackingMore → 17track (ALWAYS LAST)
  */
 export async function trackWithBestProvider(
   trackingNumber: string,
