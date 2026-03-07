@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useCallback, useEffect, useRef } from "react"
+import { useOrigin } from "@/hooks/use-origin"
 import {
   Kanban,
   FileText,
@@ -60,6 +61,7 @@ interface BriefingItem {
 }
 
 export function OnboardingTabs() {
+  const origin = useOrigin()
   const [clients, setClients] = useState<ClientItem[]>([])
   const [briefings, setBriefings] = useState<BriefingItem[]>([])
   const [loading, setLoading] = useState(false)
@@ -332,7 +334,7 @@ export function OnboardingTabs() {
                     <div className="flex items-center gap-2">
                       <Input
                         readOnly
-                        value={`${typeof window !== "undefined" ? window.location.origin : ""}/public/onboarding`}
+                        value={`${origin}/public/onboarding`}
                         className="text-xs bg-muted/50"
                       />
                       <Button

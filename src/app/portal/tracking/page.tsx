@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
+import { useOrigin } from "@/hooks/use-origin"
 import Link from "next/link"
 import {
   Package,
@@ -141,6 +142,7 @@ function getTrackingStatus(codes: TrackingCode[]) {
 // ─── Main Component ─────────────────────────────────────────────────────────────
 
 export default function PortalTrackingPage() {
+  const origin = useOrigin()
   // Overview state
   const [store, setStore] = useState<TrackingStoreData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -248,13 +250,13 @@ export default function PortalTrackingPage() {
 
   const scriptCode = useMemo(() => {
     if (!store?.client_store_id) return ""
-    const origin = typeof window !== "undefined" ? window.location.origin : "https://admin.convertfy.com.br"
+    const base = origin || "https://admin.convertfy.com.br"
     return `<!-- Convertfy - Rastreamento de Pedidos -->
 <div id="convertfy-tracking"></div>
 <script>
 (function(){
   var s=document.createElement('script');
-  s.src='${origin}/api/script/widget.js?store=${store.client_store_id}';
+  s.src='${base}/api/script/widget.js?store=${store.client_store_id}';
   s.async=true;
   s.dataset.color='${activeColor}';
   s.dataset.lang='${language}';
@@ -262,7 +264,7 @@ export default function PortalTrackingPage() {
   document.head.appendChild(s);
 })();
 </script>`
-  }, [store?.client_store_id, activeColor, language])
+  }, [store?.client_store_id, activeColor, language, origin])
 
   const handleCopy = () => {
     navigator.clipboard.writeText(scriptCode)

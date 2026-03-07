@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { StoreOnboardingForm } from "@/components/onboarding/store-onboarding-form"
 import { toast } from "@/lib/hooks/use-toast"
+import { useOrigin } from "@/hooks/use-origin"
 
 interface StoreFormTabProps {
   storeId: string
@@ -14,6 +15,7 @@ interface StoreFormTabProps {
 }
 
 export function StoreFormTab({ storeId, clientId }: StoreFormTabProps) {
+  const origin = useOrigin()
   const [initialData, setInitialData] = useState<Record<string, unknown> | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -54,7 +56,7 @@ export function StoreFormTab({ storeId, clientId }: StoreFormTabProps) {
           <div className="flex items-center gap-2">
             <Input
               readOnly
-              value={`${typeof window !== "undefined" ? window.location.origin : ""}/public/onboarding`}
+              value={`${origin}/public/onboarding`}
               className="text-xs bg-muted/50"
             />
             <Button

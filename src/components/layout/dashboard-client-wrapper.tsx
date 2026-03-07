@@ -1,7 +1,8 @@
 "use client"
 
-import { ReactNode } from "react"
+import { ReactNode, useEffect } from "react"
 import { PermissionsProvider, Permissions } from "@/lib/hooks/use-permissions"
+import { useUIStore } from "@/lib/store"
 
 interface DashboardClientWrapperProps {
   children: ReactNode
@@ -12,6 +13,10 @@ export function DashboardClientWrapper({
   children,
   initialPermissions
 }: DashboardClientWrapperProps) {
+  useEffect(() => {
+    useUIStore.persist.rehydrate()
+  }, [])
+
   return (
     <PermissionsProvider initialPermissions={initialPermissions}>
       {children}

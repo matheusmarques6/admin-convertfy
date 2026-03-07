@@ -42,80 +42,84 @@ async function getPermissions(userId: string): Promise<Permissions | null> {
     if (orgMember) {
       isOrgOwner = orgMember.role === "owner"
 
-      if (isAdmin || isOrgOwner) {
-        // Admins and owners have all features
-        const { data: allFeatures } = await supabase
-          .from("features_catalog")
-          .select("key")
-          .eq("is_active", true)
+      try {
+        if (isAdmin || isOrgOwner) {
+          const { data: allFeatures } = await supabase
+            .from("features_catalog")
+            .select("key")
+            .eq("is_active", true)
 
-        features = allFeatures?.map((f) => f.key) || []
-      } else {
-        // Get assigned features
-        const { data: memberFeatures } = await supabase
-          .from("org_member_features")
-          .select("feature_key")
-          .eq("org_member_id", orgMember.id)
-          .eq("enabled", true)
+          features = allFeatures?.map((f) => f.key) || []
+        } else {
+          const { data: memberFeatures } = await supabase
+            .from("org_member_features")
+            .select("feature_key")
+            .eq("org_member_id", orgMember.id)
+            .eq("enabled", true)
 
-        features = memberFeatures?.map((f) => f.feature_key) || []
+          features = memberFeatures?.map((f) => f.feature_key) || []
+        }
+      } catch (err) {
+        console.error("[Layout] Error fetching features:", err)
       }
     }
 
     // Get store access
     let storeAccess: StoreAccess[] = []
 
-    if (isAdmin || isOrgOwner) {
-      // Admins and owners can access all stores
-      const { data: allStores } = await supabase
-        .from("client_stores")
-        .select(`
-          id,
-          store_name,
-          client:clients(id, name)
-        `)
-        .eq("is_active", true)
+    try {
+      if (isAdmin || isOrgOwner) {
+        const { data: allStores } = await supabase
+          .from("client_stores")
+          .select(`
+            id,
+            store_name,
+            client:clients(id, name)
+          `)
+          .eq("is_active", true)
 
-      storeAccess = (allStores || []).map((store) => {
-        const client = Array.isArray(store.client) ? store.client[0] : store.client
-        return {
-          store_id: store.id,
-          store_name: store.store_name,
-          client_id: client?.id || "",
-          client_name: client?.name || "",
-          can_view: true,
-          can_edit: true,
-          can_manage_onboarding: true,
-          can_manage_campaigns: true,
-          can_manage_reports: true,
-        }
-      })
-    } else if (orgMember) {
-      // Get specific store access
-      const { data: access } = await supabase
-        .from("agent_store_access")
-        .select(`
-          *,
-          store:client_stores(id, store_name, client:clients(id, name))
-        `)
-        .eq("org_member_id", orgMember.id)
-        .eq("can_view", true)
+        storeAccess = (allStores || []).map((store) => {
+          const client = Array.isArray(store.client) ? store.client[0] : store.client
+          return {
+            store_id: store.id,
+            store_name: store.store_name,
+            client_id: client?.id || "",
+            client_name: client?.name || "",
+            can_view: true,
+            can_edit: true,
+            can_manage_onboarding: true,
+            can_manage_campaigns: true,
+            can_manage_reports: true,
+          }
+        })
+      } else if (orgMember) {
+        const { data: access } = await supabase
+          .from("agent_store_access")
+          .select(`
+            *,
+            store:client_stores(id, store_name, client:clients(id, name))
+          `)
+          .eq("org_member_id", orgMember.id)
+          .eq("can_view", true)
 
-      storeAccess = (access || []).map((a) => {
-        const store = Array.isArray(a.store) ? a.store[0] : a.store
-        const client = store?.client ? (Array.isArray(store.client) ? store.client[0] : store.client) : null
-        return {
-          store_id: store?.id || "",
-          store_name: store?.store_name || "",
-          client_id: client?.id || "",
-          client_name: client?.name || "",
-          can_view: a.can_view,
-          can_edit: a.can_edit,
-          can_manage_onboarding: a.can_manage_onboarding,
-          can_manage_campaigns: a.can_manage_campaigns,
-          can_manage_reports: a.can_manage_reports,
-        }
-      })
+        storeAccess = (access || []).map((a) => {
+          const store = Array.isArray(a.store) ? a.store[0] : a.store
+          const client = store?.client ? (Array.isArray(store.client) ? store.client[0] : store.client) : null
+          return {
+            store_id: store?.id || "",
+            store_name: store?.store_name || "",
+            client_id: client?.id || "",
+            client_name: client?.name || "",
+            can_view: a.can_view,
+            can_edit: a.can_edit,
+            can_manage_onboarding: a.can_manage_onboarding,
+            can_manage_campaigns: a.can_manage_campaigns,
+            can_manage_reports: a.can_manage_reports,
+          }
+        })
+      }
+    } catch (err) {
+      console.error("[Layout] Error fetching store access:", err)
     }
 
     // Helper function to check if user has a specific feature
@@ -147,7 +151,27 @@ async function getPermissions(userId: string): Promise<Permissions | null> {
     }
   } catch (error) {
     console.error("[Layout] Error fetching permissions:", error)
-    return null
+    return {
+      isAdmin: false,
+      isOrgOwner: false,
+      orgRole: null,
+      features: [],
+      storeAccess: [],
+      canCreateClients: false,
+      canManagePortalUsers: false,
+      canViewReports: false,
+      canViewFinancial: false,
+      canControlOnboarding: false,
+      canViewOnboarding: false,
+      canControlTeam: false,
+      canViewTeam: false,
+      canControlCampaigns: false,
+      canViewCampaigns: false,
+      canGenerateCopy: false,
+      canControlRequests: false,
+      canExecuteRequests: false,
+      canControlCalendar: false,
+    }
   }
 }
 

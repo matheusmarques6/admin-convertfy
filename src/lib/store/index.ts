@@ -47,6 +47,7 @@ export const useUIStore = create<UIState>()(
     }),
     {
       name: "convertfy-ui",
+      skipHydration: true,
     }
   )
 )

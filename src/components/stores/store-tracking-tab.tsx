@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { useOrigin } from "@/hooks/use-origin"
 import {
   Loader2,
   Power,
@@ -43,6 +44,7 @@ interface StoreTrackingTabProps {
 }
 
 export function StoreTrackingTab({ storeId }: StoreTrackingTabProps) {
+  const origin = useOrigin()
   const [config, setConfig] = useState<TrackingConfig | null>(null)
   const [stats, setStats] = useState<TrackingStats | null>(null)
   const [loading, setLoading] = useState(true)
@@ -156,7 +158,6 @@ export function StoreTrackingTab({ storeId }: StoreTrackingTabProps) {
   }
 
   function handleCopySnippet() {
-    const origin = typeof window !== "undefined" ? window.location.origin : "https://app.convertfy.com.br"
     const snippet = `<div id="convertfy-tracking"></div>\n<script src="${origin}/api/script/widget.js"></script>`
     navigator.clipboard.writeText(snippet)
     setCopied(true)
@@ -171,8 +172,6 @@ export function StoreTrackingTab({ storeId }: StoreTrackingTabProps) {
       </div>
     )
   }
-
-  const origin = typeof window !== "undefined" ? window.location.origin : "https://app.convertfy.com.br"
 
   return (
     <div className="space-y-6">

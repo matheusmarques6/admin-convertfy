@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
+import { useOrigin } from "@/hooks/use-origin"
 import {
   Code2,
   Copy,
@@ -61,6 +62,7 @@ const LANGUAGES = [
 ]
 
 export default function PortalTrackingScriptPage() {
+  const origin = useOrigin()
   const [stores, setStores] = useState<TrackingStoreData[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -113,14 +115,14 @@ export default function PortalTrackingScriptPage() {
   const scriptCode = useMemo(() => {
     if (!selectedStoreId) return ""
 
-    const origin = typeof window !== "undefined" ? window.location.origin : "https://admin.convertfy.com.br"
+    const base = origin || "https://admin.convertfy.com.br"
 
     return `<!-- Convertfy - Rastreamento de Pedidos -->
 <div id="convertfy-tracking"></div>
 <script>
 (function(){
   var s=document.createElement('script');
-  s.src='${origin}/api/script/widget.js?store=${selectedStoreId}';
+  s.src='${base}/api/script/widget.js?store=${selectedStoreId}';
   s.async=true;
   s.dataset.color='${activeColor}';
   s.dataset.lang='${language}';
@@ -128,7 +130,7 @@ export default function PortalTrackingScriptPage() {
   document.head.appendChild(s);
 })();
 </script>`
-  }, [selectedStoreId, activeColor, language])
+  }, [selectedStoreId, activeColor, language, origin])
 
   const handleCopy = () => {
     navigator.clipboard.writeText(scriptCode)

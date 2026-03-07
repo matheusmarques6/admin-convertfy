@@ -329,18 +329,15 @@ export function Sidebar({ user }: SidebarProps) {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
-                    className="flex items-center justify-center h-8 w-8 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-white/[0.06] transition-colors duration-150"
+                    className="relative flex items-center justify-center h-8 w-8 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-white/[0.06] transition-colors duration-150"
                     onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
                   >
-                    {theme === "dark" ? (
-                      <Sun className="h-4 w-4" />
-                    ) : (
-                      <Moon className="h-4 w-4" />
-                    )}
+                    <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+                    <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="right">
-                  {theme === "dark" ? "Modo claro" : "Modo escuro"}
+                  Alternar tema
                 </TooltipContent>
               </Tooltip>
 
