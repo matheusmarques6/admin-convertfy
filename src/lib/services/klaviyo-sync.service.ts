@@ -556,7 +556,7 @@ export async function syncKlaviyoForPeriod(
           org_id: orgId,
           flow_id: flowId,
           flow_name: flowNames.get(flowId)?.name || "Unknown",
-          flow_status: flowNames.get(flowId)?.status || "unknown",
+          flow_status: flowNames.get(flowId)?.status?.toLowerCase() || "unknown",
           trigger_type: flowNames.get(flowId)?.trigger_type || "unknown",
           period_start: periodStartISO,
           period_end: periodEndISO,
@@ -633,15 +633,16 @@ export async function syncKlaviyoForPeriod(
       const fetchedAt = new Date().toISOString()
       for (const [campaignId, m] of campAgg) {
         const info = campNames.get(campaignId)
+        const normalizedStatus = info?.status?.toLowerCase() || "sent"
         // Filter: only include sent campaigns (or unknown)
-        if (info && info.status !== "sent") continue
+        if (info && normalizedStatus !== "sent") continue
 
         campRows.push({
           store_id: storeId,
           org_id: orgId,
           campaign_id: campaignId,
           campaign_name: info?.name || "Unknown",
-          campaign_status: info?.status || "sent",
+          campaign_status: normalizedStatus,
           send_time: info?.send_time || null,
           subject: info?.subject || null,
           channel: info?.channel || "email",
