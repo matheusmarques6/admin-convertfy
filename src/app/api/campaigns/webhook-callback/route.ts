@@ -77,30 +77,41 @@ export async function POST(request: NextRequest) {
       .eq("id", parsed.generation_id)
 
     // 6. Update each store status
-    for (const storePayload of parsed.stores) {
-      const recordId = storeMap.get(storePayload.store_id)
-      if (!recordId) {
-        // Unknown store_id -- silently ignore
-        log.warn(`Unknown store_id in callback: ${storePayload.store_id}`)
-        continue
-      }
+    if (parsed.stores.length > 0) {
+      // Per-store status from n8n
+      for (const storePayload of parsed.stores) {
+        const recordId = storeMap.get(storePayload.store_id)
+        if (!recordId) {
+          log.warn(`Unknown store_id in callback: ${storePayload.store_id}`)
+          continue
+        }
 
-      const storeUpdateData: Record<string, unknown> = {
-        status: storePayload.status,
-      }
+        const storeUpdateData: Record<string, unknown> = {
+          status: storePayload.status,
+        }
 
-      if (storePayload.status === "done") {
-        storeUpdateData.generated_at = new Date().toISOString()
-      }
+        if (storePayload.status === "done") {
+          storeUpdateData.generated_at = new Date().toISOString()
+        }
 
-      if (storePayload.status === "error" && storePayload.error_message) {
-        storeUpdateData.error_message = storePayload.error_message
-      }
+        if (storePayload.status === "error" && storePayload.error_message) {
+          storeUpdateData.error_message = storePayload.error_message
+        }
 
-      await adminClient
-        .from("campaign_generation_stores")
-        .update(storeUpdateData)
-        .eq("id", recordId)
+        await adminClient
+          .from("campaign_generation_stores")
+          .update(storeUpdateData)
+          .eq("id", recordId)
+      }
+    } else if (storeMap.size > 0) {
+      // No per-store detail: mark all stores as done
+      const now = new Date().toISOString()
+      for (const recordId of storeMap.values()) {
+        await adminClient
+          .from("campaign_generation_stores")
+          .update({ status: "done", generated_at: now })
+          .eq("id", recordId)
+      }
     }
 
     log.info(`Webhook callback processed for generation ${parsed.generation_id}`)

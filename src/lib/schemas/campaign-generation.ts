@@ -16,7 +16,7 @@ export const webhookCallbackSchema = z.object({
     store_id: z.string().uuid(),
     status: z.enum(["done", "error"]),
     error_message: z.string().optional(),
-  })),
+  })).optional().default([]),
 })
 
 export type GenerateRequest = z.infer<typeof generateRequestSchema>
