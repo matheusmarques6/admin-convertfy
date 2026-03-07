@@ -27,9 +27,9 @@ import { use } from "react"
 const clientSchema = z.object({
   name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres"),
   email: z.string().email("Email inválido").optional().or(z.literal("")),
-  phone: z.string().min(10, "Telefone deve ter pelo menos 10 dígitos").optional().or(z.literal("")),
+  phone: z.string().min(10, "Telefone deve ter pelo menos 10 caracteres").optional().or(z.literal("")),
   company: z.string().optional(),
-  website: z.string().url("URL inválida").optional().or(z.literal("")),
+  website: z.string().optional().or(z.literal("")),
   cpf_cnpj: z.string().min(11, "CPF/CNPJ inválido").optional().or(z.literal("")),
   asaas_customer_id: z.string().optional(),
   status: z.enum(["active", "inactive", "prospect", "onboarding", "churned"]),
@@ -93,6 +93,14 @@ export default function EditClientPage({
     },
   })
 
+  function onValidationError() {
+    toast({
+      variant: "destructive",
+      title: "Campos com erro",
+      description: "Verifique os campos destacados em vermelho e corrija antes de salvar.",
+    })
+  }
+
   useEffect(() => {
     async function fetchClient() {
       try {
@@ -114,14 +122,14 @@ export default function EditClientPage({
         setValue("company", data.company || "")
         setValue("website", data.website || "")
 
-        // Read cpf_cnpj and asaas_customer_id from root or custom_fields
+        // Read cpf_cnpj from root (preferred) or custom_fields (legacy)
         const customFields = data.custom_fields as Record<string, unknown> || {}
-        setValue("cpf_cnpj", data.cpf_cnpj || customFields.cpf_cnpj as string || "")
-        setValue("asaas_customer_id", data.asaas_customer_id || customFields.asaas_customer_id as string || "")
+        setValue("cpf_cnpj", data.cpf_cnpj || (customFields.cpf_cnpj as string) || "")
+        setValue("asaas_customer_id", (customFields.asaas_customer_id as string) || "")
         setValue("status", data.status || "prospect")
 
-        // Address - try root level first, then custom_fields
-        const addressData = data.address || customFields.address as Record<string, string> | null
+        // Address from custom_fields
+        const addressData = (customFields.address as Record<string, string>) || null
         if (addressData) {
           setValue("address_street", addressData.street || "")
           setValue("address_number", addressData.number || "")
@@ -151,6 +159,29 @@ export default function EditClientPage({
     setIsLoading(true)
 
     try {
+      // Normalize phone: keep only digits and optional leading +
+      if (data.phone) {
+        const rawPhone = data.phone
+        const hasPlus = rawPhone.startsWith("+")
+        const digits = rawPhone.replace(/\D/g, "")
+        data.phone = hasPlus ? `+${digits}` : digits
+      }
+
+      // Normalize CPF/CNPJ: keep only digits, validate length
+      if (data.cpf_cnpj) {
+        const cpfCnpjDigits = data.cpf_cnpj.replace(/\D/g, "")
+        if (cpfCnpjDigits.length !== 11 && cpfCnpjDigits.length !== 14) {
+          toast({
+            variant: "destructive",
+            title: "CPF/CNPJ inválido",
+            description: "CPF deve ter 11 dígitos e CNPJ deve ter 14 dígitos.",
+          })
+          setIsLoading(false)
+          return
+        }
+        data.cpf_cnpj = cpfCnpjDigits
+      }
+
       const supabase = createClient()
 
       // Get current user
@@ -223,18 +254,24 @@ export default function EditClientPage({
         asaasCustomerId = null
       }
 
-      const { error } = await supabase
+      // Normalize website URL
+      let website = data.website?.trim() || null
+      if (website && !/^https?:\/\//.test(website)) {
+        website = `https://${website}`
+      }
+
+      const { data: updated, error } = await supabase
         .from("clients")
         .update({
           name: data.name,
           email: data.email || null,
           phone: data.phone || null,
           company: data.company || null,
-          website: data.website || null,
+          website,
+          cpf_cnpj: data.cpf_cnpj || null,
           status: data.status,
           custom_fields: {
             ...client?.custom_fields,
-            cpf_cnpj: data.cpf_cnpj || null,
             asaas_customer_id: asaasCustomerId,
             address: address,
             notes: data.notes || undefined,
@@ -243,8 +280,13 @@ export default function EditClientPage({
           updated_at: new Date().toISOString(),
         })
         .eq("id", id)
+        .select()
 
       if (error) throw error
+
+      if (!updated || updated.length === 0) {
+        throw new Error("Nenhum registro foi atualizado. Verifique suas permissões.")
+      }
 
       // Create activity
       await supabase.from("activities").insert({
@@ -386,7 +428,7 @@ export default function EditClientPage({
       )}
 
       {/* Form */}
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+      <form onSubmit={handleSubmit(onSubmit, onValidationError)} className="space-y-6">
         {/* Required Fields for Asaas */}
         <Card className="border-primary/50">
           <CardHeader>
