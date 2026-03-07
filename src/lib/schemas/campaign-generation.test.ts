@@ -80,12 +80,22 @@ describe("generateRequestSchema", () => {
     expect(result.success).toBe(true)
   })
 
-  it("rejects invalid reference_doc_url", () => {
+  it("accepts plain text reference_doc_url", () => {
     const result = generateRequestSchema.safeParse({
       name: "BF",
       date: "2026-11-27",
       store_ids: ["550e8400-e29b-41d4-a716-446655440000"],
-      reference_doc_url: "not-a-url",
+      reference_doc_url: "Texto livre de referencia para a campanha",
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it("rejects reference_doc_url exceeding 2000 characters", () => {
+    const result = generateRequestSchema.safeParse({
+      name: "BF",
+      date: "2026-11-27",
+      store_ids: ["550e8400-e29b-41d4-a716-446655440000"],
+      reference_doc_url: "A".repeat(2001),
     })
     expect(result.success).toBe(false)
   })

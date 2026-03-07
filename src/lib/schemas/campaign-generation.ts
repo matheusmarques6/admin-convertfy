@@ -3,7 +3,7 @@ import { z } from "zod"
 export const generateRequestSchema = z.object({
   name: z.string().min(1, "Nome da campanha e obrigatorio").max(255, "Nome da campanha muito longo"),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data deve estar no formato YYYY-MM-DD"),
-  reference_doc_url: z.string().url().nullable().optional(),
+  reference_doc_url: z.string().max(2000).nullable().optional(),
   store_ids: z.array(z.string().uuid()).min(1, "Selecione pelo menos uma loja"),
   generation_id: z.string().uuid().nullable().optional(),
 })

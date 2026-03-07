@@ -558,8 +558,8 @@ export function CopyTab() {
             </Label>
             <Input
               id="copy-ref-url"
-              type="url"
-              placeholder="https://docs.google.com/document/d/..."
+              type="text"
+              placeholder="Link ou texto de referencia"
               {...register("reference_doc_url", {
                 setValueAs: (v: string) => (v === "" ? null : v),
               })}
