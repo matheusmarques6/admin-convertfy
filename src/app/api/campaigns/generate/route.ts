@@ -41,6 +41,7 @@ export async function POST(request: NextRequest) {
     // Portal users can only generate for their own client.
     const adminClient = createAdminClient()
     let clientId: string
+    let validStoreMap: Map<string, { id: string; store_name: string; country: string; language: string }>
 
     const { data: orgMember } = await adminClient
       .from("org_members")
@@ -54,16 +55,43 @@ export async function POST(request: NextRequest) {
       // Admin/org member: derive client_id from the selected stores
       const { data: orgStores } = await adminClient
         .from("client_stores")
-        .select("id, client_id")
+        .select("id, client_id, store_name, country, language")
         .eq("org_id", orgMember.org_id)
         .in("id", parsed.store_ids)
-        .limit(1)
 
       if (!orgStores || orgStores.length === 0) {
         throw new AppError("Nenhuma loja valida encontrada", 400)
       }
 
-      clientId = orgStores[0].client_id
+      // Null check FIRST: reject stores not linked to a client
+      const orphanStores = orgStores.filter((s) => !s.client_id)
+      if (orphanStores.length > 0) {
+        log.warn("Rejected orphan stores (no client_id)", {
+          store_ids: orphanStores.map((s) => s.id),
+        })
+        throw new AppError(
+          "Loja(s) selecionada(s) nao vinculada(s) a um cliente. Vincule antes de gerar copies.",
+          400,
+        )
+      }
+
+      // Multi-client check SECOND: all stores must belong to same client
+      const uniqueClientIds = [...new Set(orgStores.map((s) => s.client_id))]
+      if (uniqueClientIds.length > 1) {
+        log.warn("Rejected multi-client store selection", {
+          client_ids: uniqueClientIds,
+          store_ids: orgStores.map((s) => s.id),
+        })
+        throw new AppError("Selecione lojas do mesmo cliente para gerar copies.", 400)
+      }
+
+      // clientId is guaranteed non-null at this point
+      clientId = uniqueClientIds[0] as string
+
+      // Build store map from already-fetched data (no second query needed)
+      validStoreMap = new Map(
+        orgStores.map((s) => [s.id, s]),
+      )
     } else {
       // Fallback: portal user (client access only)
       const { data: portalUser } = await adminClient
@@ -78,24 +106,26 @@ export async function POST(request: NextRequest) {
       }
 
       clientId = portalUser.client_id
+
+      // Portal users need a separate query to fetch store details
+      const uniqueStoreIds = [...new Set(parsed.store_ids)]
+      const { data: portalStores } = await adminClient
+        .from("client_stores")
+        .select("id, store_name, country, language")
+        .eq("client_id", clientId)
+        .in("id", uniqueStoreIds)
+
+      if (!portalStores || portalStores.length === 0) {
+        throw new AppError("Nenhuma loja valida encontrada", 400)
+      }
+
+      validStoreMap = new Map(
+        portalStores.map((s: { id: string; store_name: string; country: string; language: string }) => [s.id, s]),
+      )
     }
 
-    // 4. Filter store_ids by client ownership
+    // 4. Derive valid store IDs from the map
     const uniqueStoreIds = [...new Set(parsed.store_ids)]
-
-    const { data: clientStores } = await adminClient
-      .from("client_stores")
-      .select("id, store_name, country, language")
-      .eq("client_id", clientId)
-      .in("id", uniqueStoreIds)
-
-    if (!clientStores || clientStores.length === 0) {
-      throw new AppError("Nenhuma loja valida encontrada", 400)
-    }
-
-    const validStoreMap = new Map(
-      clientStores.map((s: { id: string; store_name: string; country: string; language: string }) => [s.id, s])
-    )
     const validStoreIds = uniqueStoreIds.filter((id) => validStoreMap.has(id))
 
     if (validStoreIds.length === 0) {

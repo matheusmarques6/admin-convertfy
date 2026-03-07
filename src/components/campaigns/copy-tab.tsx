@@ -48,6 +48,7 @@ interface PortalStore {
   country: string
   language: string
   client_name: string
+  client_id: string | null
 }
 
 const COUNTRY_LABELS: Record<string, string> = {
@@ -351,15 +352,19 @@ export function CopyTab() {
         const res = await fetch("/api/stores?active=true")
         if (!res.ok) throw new Error("Erro ao carregar lojas")
         const data = await res.json()
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const list: PortalStore[] = (data.stores || []).map((s: any) => ({
-          id: s.id,
-          store_name: s.store_name || s.name || "Sem nome",
-          platform: s.platform || "",
-          country: s.country || "BR",
-          language: s.language || "pt-BR",
-          client_name: s.client?.name || s.client?.company || "",
-        }))
+        /* eslint-disable @typescript-eslint/no-explicit-any */
+        const list: PortalStore[] = (data.stores || [])
+          .filter((s: any) => s.client_id)
+          .map((s: any) => ({
+            id: s.id,
+            store_name: s.store_name || s.name || "Sem nome",
+            platform: s.platform || "",
+            country: s.country || "BR",
+            language: s.language || "pt-BR",
+            client_name: s.client?.name || s.client?.company || "",
+            client_id: s.client_id,
+          }))
+        /* eslint-enable @typescript-eslint/no-explicit-any */
         setStores(list)
       } catch (err) {
         console.error("Error fetching stores:", err)
@@ -449,6 +454,21 @@ export function CopyTab() {
 
   const onSubmit = async (formData: FormValues) => {
     if (!canSubmit) return
+
+    // Validate all selected stores belong to the same client
+    const selectedClientIds = new Set(
+      stores
+        .filter((s) => selectedStoreIds.includes(s.id))
+        .map((s) => s.client_id),
+    )
+    if (selectedClientIds.size > 1) {
+      toast({
+        variant: "destructive",
+        title: "Selecione lojas do mesmo cliente",
+        description: "As lojas selecionadas pertencem a clientes diferentes.",
+      })
+      return
+    }
 
     setSubmitting(true)
     try {
@@ -567,12 +587,12 @@ export function CopyTab() {
               </div>
             ) : stores.length === 0 ? (
               <p className="text-sm text-slate-500 dark:text-slate-400">
-                Nenhuma loja encontrada.{" "}
+                Nenhuma loja disponivel para gerar copies. Verifique se as lojas estao vinculadas a um cliente.{" "}
                 <Link
                   href="/stores"
                   className="text-primary hover:underline"
                 >
-                  Adicionar loja
+                  Gerenciar lojas
                 </Link>
               </p>
             ) : (
