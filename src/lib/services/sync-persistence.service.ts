@@ -77,7 +77,7 @@ export async function upsertSyncResults(
     currency: data.currency || "BRL",
     sync_source: "cron",
     sync_error: null,
-    expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
+    expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
     fetched_at: new Date().toISOString(),
     store_total_revenue: data.storeRevenue,
     store_orders: data.storeOrders,
@@ -154,7 +154,7 @@ export async function savePerfDataToCache(
   const periodStartISO = new Date(`${startDateStr}T00:00:00Z`).toISOString()
   const periodEndISO = new Date(`${endDateStr}T23:59:59.999Z`).toISOString()
   const now = new Date().toISOString()
-  const expiresAt = new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString()
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
 
   try {
     // Upsert revenue summary
@@ -273,10 +273,13 @@ async function syncCampaignsToCalendarFromLive(
         scheduled_date: sendDate.toISOString().split("T")[0],
         scheduled_time: sendDate.toTimeString().split(" ")[0],
         send_datetime: sendDate.toISOString(),
-        status: "sent" as const,
+        status: mapCampaignStatus(null, c.sendTime),
         channel: "email" as const,
         recipients: c.recipients,
         delivered: c.delivered,
+        opened: c.opened || 0,
+        clicked: c.clicked || 0,
+        converted: c.conversions || 0,
         revenue: c.revenue,
       }
     })
@@ -317,7 +320,7 @@ export async function syncCampaignsToCalendarFromCron(
         scheduled_date: sendDate.toISOString().split("T")[0],
         scheduled_time: sendDate.toTimeString().split(" ")[0],
         send_datetime: sendDate.toISOString(),
-        status: mapCampaignStatus(r.campaign_status),
+        status: mapCampaignStatus(r.campaign_status, r.send_time),
         channel: (r.channel || "email") as "email" | "sms" | "push" | "whatsapp",
         subject_line: r.subject || null,
         recipients: r.recipients,
@@ -364,11 +367,18 @@ async function resolveClientId(
 /**
  * Map Klaviyo campaign status to the campaign_status enum.
  */
-function mapCampaignStatus(status: string): "draft" | "scheduled" | "sent" | "cancelled" {
-  switch (status) {
-    case "sent": return "sent"
-    case "scheduled": return "scheduled"
-    case "cancelled": return "cancelled"
-    default: return "draft"
+function mapCampaignStatus(status: string | null | undefined, sendTime?: string | null): "draft" | "scheduled" | "sent" | "cancelled" {
+  if (status) {
+    switch (status) {
+      case "sent": return "sent"
+      case "scheduled": return "scheduled"
+      case "cancelled": return "cancelled"
+      case "draft": return "draft"
+    }
   }
+  // Infer from send_time when status is null/undefined
+  if (sendTime) {
+    return new Date(sendTime) <= new Date() ? "sent" : "scheduled"
+  }
+  return "draft"
 }

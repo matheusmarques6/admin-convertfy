@@ -416,53 +416,87 @@ export async function syncKlaviyoForPeriod(
     const periodStartISO = new Date(`${startDateStr}T00:00:00Z`).toISOString()
     const periodEndISO = new Date(`${endDateStr}T23:59:59.999Z`).toISOString()
 
-    // Fetch flow + campaign reports + store revenue in parallel
+    // Serialize API calls to avoid Klaviyo reporting API rate limits (~1 req/s burst).
+    // Previously Promise.all caused campaign-values-reports to consistently return null.
+    const REPORT_API_DELAY_MS = 1500
+
+    // 1. Flow report
     await sleep(MIN_REQUEST_INTERVAL)
-    const [flowResponse, campaignResponse, metricAggResult] = await Promise.all([
-      klaviyoRequest<{
-        data: { attributes: { results: Array<{ groupings: { flow_id: string; send_channel: string; flow_message_id: string }; statistics: Record<string, number | undefined> }> } }
-      }>(apiKey, "/flow-values-reports/", {
-        method: "POST",
-        body: {
-          data: {
-            type: "flow-values-report",
-            attributes: {
-              timeframe,
-              conversion_metric_id: metricId,
-              statistics: [
-                "average_order_value", "bounce_rate", "bounced", "click_rate",
-                "click_to_open_rate", "clicks", "clicks_unique", "conversion_rate",
-                "conversion_uniques", "conversion_value", "conversions", "delivered",
-                "delivery_rate", "opens", "opens_unique", "recipients",
-                "revenue_per_recipient", "unsubscribe_rate", "unsubscribes",
-              ],
-            },
+    const startFlow = Date.now()
+    const flowResponse = await klaviyoRequest<{
+      data: { attributes: { results: Array<{ groupings: { flow_id: string; send_channel: string; flow_message_id: string }; statistics: Record<string, number | undefined> }> } }
+    }>(apiKey, "/flow-values-reports/", {
+      method: "POST",
+      body: {
+        data: {
+          type: "flow-values-report",
+          attributes: {
+            timeframe,
+            conversion_metric_id: metricId,
+            statistics: [
+              "average_order_value", "bounce_rate", "bounced", "click_rate",
+              "click_to_open_rate", "clicks", "clicks_unique", "conversion_rate",
+              "conversion_uniques", "conversion_value", "conversions", "delivered",
+              "delivery_rate", "opens", "opens_unique", "recipients",
+              "revenue_per_recipient", "unsubscribe_rate", "unsubscribes",
+            ],
           },
         },
-      }),
-      klaviyoRequest<{
-        data: { attributes: { results: Array<{ groupings: { campaign_id: string; send_channel: string }; statistics: Record<string, number | undefined> }> } }
-      }>(apiKey, "/campaign-values-reports/", {
-        method: "POST",
-        body: {
-          data: {
-            type: "campaign-values-report",
-            attributes: {
-              timeframe,
-              conversion_metric_id: metricId,
-              statistics: [
-                "average_order_value", "bounce_rate", "bounced", "click_rate",
-                "click_to_open_rate", "clicks", "clicks_unique", "conversion_rate",
-                "conversion_uniques", "conversion_value", "conversions", "delivered",
-                "delivery_rate", "opens", "opens_unique", "recipients",
-                "revenue_per_recipient", "spam_complaints", "unsubscribe_rate", "unsubscribes",
-              ],
-            },
+      },
+    })
+    const flowOk = flowResponse != null
+    if (flowOk) {
+      log.info(`[CronSync] flow-values-report completed for store ${storeId} in ${Date.now() - startFlow}ms`)
+    } else {
+      log.warn(`[CronSync] flow-values-report FAILED for store ${storeId}: null response (likely rate-limited)`)
+    }
+
+    await sleep(REPORT_API_DELAY_MS)
+
+    // 2. Campaign report
+    const startCamp = Date.now()
+    const campaignResponse = await klaviyoRequest<{
+      data: { attributes: { results: Array<{ groupings: { campaign_id: string; send_channel: string }; statistics: Record<string, number | undefined> }> } }
+    }>(apiKey, "/campaign-values-reports/", {
+      method: "POST",
+      body: {
+        data: {
+          type: "campaign-values-report",
+          attributes: {
+            timeframe,
+            conversion_metric_id: metricId,
+            statistics: [
+              "average_order_value", "bounce_rate", "bounced", "click_rate",
+              "click_to_open_rate", "clicks", "clicks_unique", "conversion_rate",
+              "conversion_uniques", "conversion_value", "conversions", "delivered",
+              "delivery_rate", "opens", "opens_unique", "recipients",
+              "revenue_per_recipient", "spam_complaints", "unsubscribe_rate", "unsubscribes",
+            ],
           },
         },
-      }),
-      fetchStoreRevenueFromMetricAggregates(apiKey, metricId, startDateStr, endDateStr, timezone),
-    ])
+      },
+    })
+    const campOk = campaignResponse != null
+    if (campOk) {
+      log.info(`[CronSync] campaign-values-report completed for store ${storeId} in ${Date.now() - startCamp}ms`)
+    } else {
+      log.warn(`[CronSync] campaign-values-report FAILED for store ${storeId}: null response (likely rate-limited)`)
+    }
+
+    await sleep(REPORT_API_DELAY_MS)
+
+    // 3. Metric aggregates (store revenue)
+    const startMetric = Date.now()
+    const metricAggResult = await fetchStoreRevenueFromMetricAggregates(apiKey, metricId, startDateStr, endDateStr, timezone)
+    const metricOk = metricAggResult.success
+    if (metricOk) {
+      log.info(`[CronSync] metric-aggregates completed for store ${storeId} in ${Date.now() - startMetric}ms`)
+    } else {
+      log.warn(`[CronSync] metric-aggregates FAILED for store ${storeId}: ${metricAggResult.error || "unknown error"}`)
+    }
+
+    // Summary: which reports succeeded/failed
+    log.info(`[CronSync] store ${storeId}/${period} report summary: flow=${flowOk ? "OK" : "FAIL"}, campaign=${campOk ? "OK" : "FAIL"}, metric-agg=${metricOk ? "OK" : "FAIL"}`)
 
     // Track revenue
     let totalFlowRevenue = 0
@@ -471,14 +505,6 @@ export async function syncKlaviyoForPeriod(
     let flowDataAvailable = false
     const flowRows: FlowMetricRow[] = []
     const campRows: CampaignMetricRow[] = []
-
-    // Log when reports return null (silent API failure)
-    if (!flowResponse) {
-      log.warn(`[KlaviyoSyncService] ${storeId}/${period}: flow-values-report returned null (API failure)`)
-    }
-    if (!campaignResponse) {
-      log.warn(`[KlaviyoSyncService] ${storeId}/${period}: campaign-values-report returned null (API failure)`)
-    }
 
     // Aggregate flow metrics (guard against empty results array — [] is truthy in JS)
     if (flowResponse?.data?.attributes?.results?.length) {
@@ -491,8 +517,8 @@ export async function syncKlaviyoForPeriod(
         flowAgg.set(fid, {
           recipients: (ex.recipients || 0) + (s.recipients || 0),
           delivered: (ex.delivered || 0) + (s.delivered || 0),
-          opened: (ex.opened || 0) + (s.opens || 0),
-          clicked: (ex.clicked || 0) + (s.clicks || 0),
+          opened: (ex.opened || 0) + (s.opens_unique || 0),
+          clicked: (ex.clicked || 0) + (s.clicks_unique || 0),
           conversions: (ex.conversions || 0) + (s.conversions || 0),
           conversion_value: (ex.conversion_value || 0) + (s.conversion_value || 0),
           bounced: (ex.bounced || 0) + (s.bounced || 0),
@@ -510,7 +536,7 @@ export async function syncKlaviyoForPeriod(
         })
       }
 
-      // Recalculate rates from aggregated counts
+      // Recalculate rates from aggregated counts (using unique opens/clicks)
       for (const [, m] of flowAgg) {
         m.delivery_rate = m.recipients > 0 ? (m.delivered / m.recipients) * 100 : 0
         m.open_rate = m.delivered > 0 ? (m.opened / m.delivered) * 100 : 0
@@ -570,8 +596,8 @@ export async function syncKlaviyoForPeriod(
         campAgg.set(cid, {
           recipients: (ex.recipients || 0) + (s.recipients || 0),
           delivered: (ex.delivered || 0) + (s.delivered || 0),
-          opened: (ex.opened || 0) + (s.opens || 0),
-          clicked: (ex.clicked || 0) + (s.clicks || 0),
+          opened: (ex.opened || 0) + (s.opens_unique || 0),
+          clicked: (ex.clicked || 0) + (s.clicks_unique || 0),
           conversions: (ex.conversions || 0) + (s.conversions || 0),
           conversion_value: (ex.conversion_value || 0) + (s.conversion_value || 0),
           bounced: (ex.bounced || 0) + (s.bounced || 0),
@@ -590,7 +616,7 @@ export async function syncKlaviyoForPeriod(
         })
       }
 
-      // Recalculate rates from aggregated counts
+      // Recalculate rates from aggregated counts (using unique opens/clicks)
       for (const [, m] of campAgg) {
         m.delivery_rate = m.recipients > 0 ? (m.delivered / m.recipients) * 100 : 0
         m.open_rate = m.delivered > 0 ? (m.opened / m.delivered) * 100 : 0

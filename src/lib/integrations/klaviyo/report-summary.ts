@@ -7,7 +7,7 @@
 
 import { getStoreCredentials } from "@/lib/services/credentials.service"
 import { logger } from "@/lib/logger"
-import { klaviyoRequest, parseDateRange, formatDateStr } from "./client"
+import { klaviyoRequest, parseDateRangeInTimezone } from "./client"
 import { getTimezoneOffset } from "./account"
 import { getCachedAccountInfo } from "./cached-metadata"
 import { getCachedPlacedOrderMetric } from "./cached-metadata"
@@ -61,15 +61,17 @@ export async function getKlaviyoRevenueForStore(
       }
     }
 
-    // Calculate date range
-    const { startDate, endDate } = parseDateRange(period, customStartDate, customEndDate)
-    const startDateStr = formatDateStr(startDate)
-    const endDateStr = formatDateStr(endDate)
-
     // Get timezone + currency for correct date alignment and currency tracking
     const accountInfo = await getCachedAccountInfo(apiKey, undefined, storeId)
-    const timezone = accountInfo?.timezone || "America/Sao_Paulo"
+    const accountTimezone = accountInfo?.timezone
+    if (!accountTimezone) {
+      log.warn(`Store ${storeId}: no timezone from account info, falling back to America/Sao_Paulo`)
+    }
+    const timezone = accountTimezone || "America/Sao_Paulo"
     const currency = accountInfo?.currency || "BRL"
+
+    // Calculate date range using account timezone (consistent with cron)
+    const { startDateStr, endDateStr } = parseDateRangeInTimezone(period, timezone, customStartDate, customEndDate)
     const tzOffset = getTimezoneOffset(timezone)
 
     const startISO = `${startDateStr}T00:00:00${tzOffset}`

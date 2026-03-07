@@ -428,7 +428,7 @@ describe("syncKlaviyoForPeriod", () => {
           results: [{
             groupings: { flow_id: "f1", send_channel: "email", flow_message_id: "m1" },
             statistics: {
-              recipients: 1000, delivered: 950, opens: 400, clicks: 100,
+              recipients: 1000, delivered: 950, opens: 500, opens_unique: 400, clicks: 130, clicks_unique: 100,
               conversions: 30, conversion_value: 3000, bounced: 50, unsubscribes: 10,
             },
           }],
@@ -442,7 +442,7 @@ describe("syncKlaviyoForPeriod", () => {
           results: [{
             groupings: { campaign_id: "c1", send_channel: "email" },
             statistics: {
-              recipients: 5000, delivered: 4800, opens: 2000, clicks: 500,
+              recipients: 5000, delivered: 4800, opens: 2500, opens_unique: 2000, clicks: 650, clicks_unique: 500,
               conversions: 100, conversion_value: 5000, bounced: 200, unsubscribes: 50, spam_complaints: 5,
             },
           }],
@@ -480,7 +480,7 @@ describe("syncKlaviyoForPeriod", () => {
           attributes: {
             results: [{
               groupings: { flow_id: "f1", send_channel: "email", flow_message_id: "m1" },
-              statistics: { recipients: 1000, delivered: 800, opens: 320, clicks: 80, conversions: 20, conversion_value: 2000, bounced: 200, unsubscribes: 8 },
+              statistics: { recipients: 1000, delivered: 800, opens: 400, opens_unique: 320, clicks: 100, clicks_unique: 80, conversions: 20, conversion_value: 2000, bounced: 200, unsubscribes: 8 },
             }],
           },
         },
@@ -518,7 +518,7 @@ describe("syncKlaviyoForPeriod", () => {
           attributes: {
             results: [{
               groupings: { campaign_id: "c1", send_channel: "email" },
-              statistics: { recipients: 100, delivered: 90, opens: 30, clicks: 10, conversions: 5, conversion_value: 500, bounced: 10, unsubscribes: 2, spam_complaints: 0 },
+              statistics: { recipients: 100, delivered: 90, opens: 40, opens_unique: 30, clicks: 15, clicks_unique: 10, conversions: 5, conversion_value: 500, bounced: 10, unsubscribes: 2, spam_complaints: 0 },
             }],
           },
         },
@@ -541,11 +541,11 @@ describe("syncKlaviyoForPeriod", () => {
             results: [
               {
                 groupings: { flow_id: "f1", send_channel: "email", flow_message_id: "m1" },
-                statistics: { recipients: 500, delivered: 480, opens: 200, clicks: 50, conversions: 10, conversion_value: 1000, bounced: 20, unsubscribes: 5 },
+                statistics: { recipients: 500, delivered: 480, opens: 250, opens_unique: 200, clicks: 65, clicks_unique: 50, conversions: 10, conversion_value: 1000, bounced: 20, unsubscribes: 5 },
               },
               {
                 groupings: { flow_id: "f1", send_channel: "email", flow_message_id: "m2" },
-                statistics: { recipients: 300, delivered: 290, opens: 100, clicks: 30, conversions: 5, conversion_value: 500, bounced: 10, unsubscribes: 3 },
+                statistics: { recipients: 300, delivered: 290, opens: 130, opens_unique: 100, clicks: 40, clicks_unique: 30, conversions: 5, conversion_value: 500, bounced: 10, unsubscribes: 3 },
               },
             ],
           },
@@ -612,7 +612,7 @@ describe("syncKlaviyoForPeriod", () => {
           attributes: {
             results: [{
               groupings: { flow_id: "f1", send_channel: "email", flow_message_id: "m1" },
-              statistics: { recipients: 0, delivered: 0, opens: 0, clicks: 0, conversions: 0, conversion_value: 0, bounced: 0, unsubscribes: 0 },
+              statistics: { recipients: 0, delivered: 0, opens: 0, opens_unique: 0, clicks: 0, clicks_unique: 0, conversions: 0, conversion_value: 0, bounced: 0, unsubscribes: 0 },
             }],
           },
         },

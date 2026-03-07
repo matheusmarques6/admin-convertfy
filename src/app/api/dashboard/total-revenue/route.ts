@@ -277,6 +277,19 @@ export async function GET(request: NextRequest) {
     const dataAgeMinutes = Math.round(dataAgeMs / 60_000)
     const isStale = dataAgeMs > ADMIN_STALENESS_MS
 
+    // Touch pattern: renew expires_at for valid rows that are expired
+    if (isStale && rows.some(r => r.sync_status === "ok")) {
+      const adminForTouch = createAdminClient()
+      const staleStoreIds = rows.filter(r => r.sync_status === "ok").map(r => r.store_id)
+      Promise.resolve(
+        adminForTouch
+          .from("store_revenue_summary")
+          .update({ expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() })
+          .eq("period_label", period)
+          .in("store_id", staleStoreIds)
+      ).catch(() => {})
+    }
+
     const storeBreakdown = await buildStoreBreakdown(rows)
 
     const elapsed = Date.now() - startTime

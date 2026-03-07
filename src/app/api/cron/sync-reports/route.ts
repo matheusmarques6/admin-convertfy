@@ -92,6 +92,8 @@ async function releaseSyncLock(supabase: SupabaseClient): Promise<void> {
 // Shared upsert helper for sync errors
 // ==============================
 
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000 // 24 hours
+
 async function upsertSyncError(
   supabase: SupabaseClient,
   store: StoreRow,
@@ -103,19 +105,30 @@ async function upsertSyncError(
   const periodStart = new Date(`${startDateStr}T00:00:00Z`).toISOString()
   const periodEnd = new Date(`${endDateStr}T23:59:59.999Z`).toISOString()
   try {
-    // CA2: Don't overwrite a valid "ok" row with zeroed error data
     const { data: existing } = await supabase
       .from("store_revenue_summary")
-      .select("sync_status, expires_at")
+      .select("sync_status, klaviyo_total_revenue, klaviyo_campaign_revenue, klaviyo_flow_revenue, store_total_revenue")
       .eq("store_id", store.id)
       .eq("period_label", period)
       .single()
 
-    if (existing?.sync_status === "ok" && new Date(existing.expires_at) > new Date()) {
-      log.info(`[Cron] Preserving valid summary for ${store.store_name}/${period} (not overwriting with error)`)
+    // Preserve valid revenue when existing row has status "ok" or "partial"
+    if (existing && (existing.sync_status === "ok" || existing.sync_status === "partial")) {
+      log.info(`[Cron] Preserving valid revenue for store ${store.store_name}/${period}, marking as partial due to: ${errorMsg}`)
+      await supabase
+        .from("store_revenue_summary")
+        .update({
+          sync_status: "partial",
+          sync_error: errorMsg,
+          expires_at: new Date(Date.now() + CACHE_TTL_MS).toISOString(),
+          fetched_at: new Date().toISOString(),
+        })
+        .eq("store_id", store.id)
+        .eq("period_label", period)
       return
     }
 
+    // No existing data or status is "error"/"pending" — write zeros
     await supabase
       .from("store_revenue_summary")
       .upsert({
@@ -131,7 +144,7 @@ async function upsertSyncError(
         sync_status: "error",
         sync_source: "cron",
         sync_error: errorMsg,
-        expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
+        expires_at: new Date(Date.now() + CACHE_TTL_MS).toISOString(),
         fetched_at: new Date().toISOString(),
       }, { onConflict: "store_id,period_label" })
   } catch { /* Don't fail the whole store on summary upsert error */ }

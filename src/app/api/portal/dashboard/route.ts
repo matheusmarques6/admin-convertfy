@@ -178,6 +178,19 @@ async function fetchKlaviyoFromCache(
   const dataAgeMs = summary.fetched_at ? Date.now() - new Date(summary.fetched_at).getTime() : Infinity
   const isStale = dataAgeMs > PORTAL_STALENESS_MS
 
+  // Touch pattern: renew expires_at for valid "ok" rows accessed while stale
+  if (isStale && summary.sync_status === "ok") {
+    const adminForTouch = createAdminClient()
+    Promise.resolve(
+      adminForTouch
+        .from("store_revenue_summary")
+        .update({ expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() })
+        .eq("store_id", storeId)
+        .eq("period_label", period)
+        .eq("sync_status", "ok")
+    ).catch(() => {})
+  }
+
   // 2. Get campaign + flow detail using period_label (not exact period dates)
   let campaignQuery = supabase
     .from("klaviyo_campaign_metrics")

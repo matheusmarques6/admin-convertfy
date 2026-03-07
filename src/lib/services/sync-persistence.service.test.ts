@@ -371,7 +371,7 @@ describe("upsertSyncResults", () => {
     expect(row.klaviyo_flow_revenue).toBeUndefined()
   })
 
-  it("should set expires_at to ~6 hours from now", async () => {
+  it("should set expires_at to ~24 hours from now", async () => {
     const { client, upsert } = createMockSupabase()
     const before = Date.now()
 
@@ -381,11 +381,11 @@ describe("upsertSyncResults", () => {
     const row = findSummaryUpsert(upsert)
 
     const expiresAt = new Date(row.expires_at as string).getTime()
-    const sixHoursMs = 6 * 60 * 60 * 1000
+    const twentyFourHoursMs = 24 * 60 * 60 * 1000
 
-    // expires_at should be ~6 hours from now (within 2 seconds tolerance)
-    expect(expiresAt).toBeGreaterThanOrEqual(before + sixHoursMs - 2000)
-    expect(expiresAt).toBeLessThanOrEqual(after + sixHoursMs + 2000)
+    // expires_at should be ~24 hours from now (within 2 seconds tolerance)
+    expect(expiresAt).toBeGreaterThanOrEqual(before + twentyFourHoursMs - 2000)
+    expect(expiresAt).toBeLessThanOrEqual(after + twentyFourHoursMs + 2000)
   })
 })
 
@@ -551,11 +551,11 @@ describe("savePerfDataToCache", () => {
     expect(row.period_start).toBe(new Date("2026-02-24T00:00:00Z").toISOString())
     expect(row.period_end).toBe(new Date("2026-03-03T23:59:59.999Z").toISOString())
 
-    // Validate expires_at ~6 hours
+    // Validate expires_at ~24 hours
     const expiresAt = new Date(row.expires_at as string).getTime()
-    const sixHoursMs = 6 * 60 * 60 * 1000
-    expect(expiresAt).toBeGreaterThanOrEqual(before + sixHoursMs - 2000)
-    expect(expiresAt).toBeLessThanOrEqual(after + sixHoursMs + 2000)
+    const twentyFourHoursMs = 24 * 60 * 60 * 1000
+    expect(expiresAt).toBeGreaterThanOrEqual(before + twentyFourHoursMs - 2000)
+    expect(expiresAt).toBeLessThanOrEqual(after + twentyFourHoursMs + 2000)
   })
 
   it("should sync campaigns to calendar table", async () => {

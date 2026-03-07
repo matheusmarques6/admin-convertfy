@@ -30,6 +30,9 @@ export interface KlaviyoCampaignItem {
   sendTime: string
   recipients: number
   delivered: number
+  opened: number
+  clicked: number
+  conversions: number
   openRate: number
   clickRate: number
   revenue: number
@@ -452,8 +455,8 @@ export async function fetchKlaviyoPerformance(
 
   // ── Aggregate campaign results by campaign_id ──
   interface AggEntry {
-    recipients: number; delivered: number; opensUnique: number
-    clickRate: number; conversionValue: number
+    recipients: number; delivered: number; opensUnique: number; clicksUnique: number
+    clickRate: number; conversionValue: number; conversions: number
     bounceRate: number; unsubscribeRate: number
   }
 
@@ -465,13 +468,15 @@ export async function fetchKlaviyoPerformance(
     const cid = r.groupings?.campaign_id
     if (!cid) continue
     const s = r.statistics || {}
-    const ex = campAgg.get(cid) || { recipients: 0, delivered: 0, opensUnique: 0, clickRate: 0, conversionValue: 0, bounceRate: 0, unsubscribeRate: 0 }
+    const ex = campAgg.get(cid) || { recipients: 0, delivered: 0, opensUnique: 0, clicksUnique: 0, clickRate: 0, conversionValue: 0, conversions: 0, bounceRate: 0, unsubscribeRate: 0 }
     campAgg.set(cid, {
       recipients: ex.recipients + (Number(s.recipients) || 0),
       delivered: ex.delivered + (Number(s.delivered) || 0),
       opensUnique: ex.opensUnique + (Number(s.opens_unique) || 0),
+      clicksUnique: ex.clicksUnique + (Number(s.clicks_unique) || 0),
       clickRate: Number(s.click_rate) || ex.clickRate,
       conversionValue: ex.conversionValue + (Number(s.conversion_value) || 0),
+      conversions: ex.conversions + (Number(s.conversions) || 0),
       bounceRate: Number(s.bounce_rate) || ex.bounceRate,
       unsubscribeRate: Number(s.unsubscribe_rate) || ex.unsubscribeRate,
     })
@@ -483,13 +488,15 @@ export async function fetchKlaviyoPerformance(
     const fid = r.groupings?.flow_id
     if (!fid) continue
     const s = r.statistics || {}
-    const ex = flowAgg.get(fid) || { recipients: 0, delivered: 0, opensUnique: 0, clickRate: 0, conversionValue: 0, bounceRate: 0, unsubscribeRate: 0 }
+    const ex = flowAgg.get(fid) || { recipients: 0, delivered: 0, opensUnique: 0, clicksUnique: 0, clickRate: 0, conversionValue: 0, conversions: 0, bounceRate: 0, unsubscribeRate: 0 }
     flowAgg.set(fid, {
       recipients: ex.recipients + (Number(s.recipients) || 0),
       delivered: ex.delivered + (Number(s.delivered) || 0),
       opensUnique: ex.opensUnique + (Number(s.opens_unique) || 0),
+      clicksUnique: ex.clicksUnique + (Number(s.clicks_unique) || 0),
       clickRate: Number(s.click_rate) || ex.clickRate,
       conversionValue: ex.conversionValue + (Number(s.conversion_value) || 0),
+      conversions: ex.conversions + (Number(s.conversions) || 0),
       bounceRate: Number(s.bounce_rate) || ex.bounceRate,
       unsubscribeRate: Number(s.unsubscribe_rate) || ex.unsubscribeRate,
     })
@@ -572,7 +579,7 @@ export async function fetchKlaviyoPerformance(
     campaignRevenue += m.conversionValue
     totalDelivered += m.delivered
     totalOpens += m.opensUnique
-    totalClicks += Math.round(m.clickRate * m.delivered)
+    totalClicks += m.clicksUnique
 
     const openRate = m.delivered > 0 ? (m.opensUnique / m.delivered) * 100 : 0
     if (openRate > 0 || m.clickRate > 0) {
@@ -590,6 +597,9 @@ export async function fetchKlaviyoPerformance(
       sendTime: info?.sendTime || "",
       recipients: m.recipients,
       delivered: m.delivered,
+      opened: m.opensUnique,
+      clicked: m.clicksUnique,
+      conversions: m.conversions,
       openRate: Math.round(openRate * 100) / 100,
       clickRate: Math.round(m.clickRate * 100 * 100) / 100, // decimal → %
       revenue: m.conversionValue,
@@ -605,7 +615,7 @@ export async function fetchKlaviyoPerformance(
     flowRevenue += m.conversionValue
     totalDelivered += m.delivered
     totalOpens += m.opensUnique
-    totalClicks += Math.round(m.clickRate * m.delivered)
+    totalClicks += m.clicksUnique
 
     const openRate = m.delivered > 0 ? (m.opensUnique / m.delivered) * 100 : 0
     const info = flowNames.get(fid)

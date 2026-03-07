@@ -11,8 +11,7 @@ import {
   MIN_REQUEST_INTERVAL,
   sleep,
   klaviyoRequest,
-  parseDateRange,
-  formatDateStr,
+  parseDateRangeInTimezone,
   getTimezoneOffset,
   getCachedAccountInfo,
   getCachedPlacedOrderMetric,
@@ -21,13 +20,13 @@ import {
   KlaviyoInvalidKeyError,
 } from "@/lib/integrations/klaviyo"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { isCachedPeriod } from "@/lib/shared/data-status"
 import type { SupabaseClient } from "@supabase/supabase-js"
 
 export const maxDuration = 300
 export const dynamic = 'force-dynamic'
 
 // Cache-first configuration
-const CACHED_PERIODS = new Set(["7d", "15d", "30d", "90d"])
 const CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1000 // 6 hours (aligned with cron interval)
 
 export async function OPTIONS(request: NextRequest) {
@@ -249,16 +248,14 @@ async function getFlowMetrics(
 // Read flows from cache (klaviyo_flow_metrics table)
 async function readFlowsFromCache(
   storeId: string,
-  periodStart: string,
-  periodEnd: string,
+  period: string,
   supabase: SupabaseClient
 ) {
   const { data: rows, error } = await supabase
     .from("klaviyo_flow_metrics")
     .select("*")
     .eq("store_id", storeId)
-    .eq("period_start", periodStart)
-    .eq("period_end", periodEnd)
+    .eq("period_label", period)
     .order("fetched_at", { ascending: false })
 
   if (error || !rows || rows.length === 0) return null
@@ -379,21 +376,27 @@ export async function GET(request: NextRequest) {
       }, { headers: corsHeaders(request.headers.get("origin")) })
     }
 
-    // Calculate date range
-    const { startDate, endDate } = parseDateRange(period, customStartDate, customEndDate)
-    const startDateStr = formatDateStr(startDate)
-    const endDateStr = formatDateStr(endDate)
+    // Get account info for timezone (in-memory cached, no API cost)
+    const accountInfo = await getCachedAccountInfo(apiKey, store.orgId, store.storeId)
+    const accountTimezone = accountInfo?.timezone
+    if (!accountTimezone) {
+      log.warn(`[Klaviyo Flows] No timezone from account info for store ${storeId}, falling back to America/Sao_Paulo`)
+    }
+    const timezone = accountTimezone || "America/Sao_Paulo"
+
+    // Calculate date range using account timezone (consistent with cron)
+    const { startDateStr, endDateStr } = parseDateRangeInTimezone(period, timezone, customStartDate, customEndDate)
 
     // Convert date strings to ISO timestamps to match cron-written cache format
     const periodStartISO = new Date(`${startDateStr}T00:00:00Z`).toISOString()
     const periodEndISO = new Date(`${endDateStr}T23:59:59.999Z`).toISOString()
 
     // Cache-first: try reading from cache for standard periods
-    const isCustomPeriod = period === "custom" || !CACHED_PERIODS.has(period)
+    const isCustomPeriod = period === "custom" || !isCachedPeriod(period)
     if (!forceRefresh && !isCustomPeriod) {
       try {
         const adminClient = createAdminClient()
-        const cached = await readFlowsFromCache(storeId, periodStartISO, periodEndISO, adminClient)
+        const cached = await readFlowsFromCache(storeId, period, adminClient)
         if (cached) {
           // Resolve currency from store_revenue_summary (already synced by cron)
           let cachedCurrency = "BRL"
@@ -429,9 +432,7 @@ export async function GET(request: NextRequest) {
 
     log.info("[Klaviyo Flows] Starting live fetch for store:", store.storeName)
 
-    // Get account info for timezone
-    const accountInfo = await getCachedAccountInfo(apiKey, store.orgId, store.storeId)
-    const timezoneOffset = getTimezoneOffset(accountInfo.timezone)
+    const timezoneOffset = getTimezoneOffset(timezone)
 
     // Fetch data sequentially to avoid Klaviyo rate limiting
     const flows = await getAllFlows(apiKey)
@@ -523,12 +524,14 @@ export async function GET(request: NextRequest) {
         .upsert(
           flowsWithMetrics.map(flow => ({
             store_id: storeId,
+            org_id: store.orgId,
             flow_id: flow.id,
             flow_name: flow.name,
             flow_status: flow.status,
             trigger_type: flow.triggerType,
             period_start: periodStartISO,
             period_end: periodEndISO,
+            period_label: isCachedPeriod(period) ? period : "custom",
             recipients: flow.recipients,
             delivered: flow.delivered,
             delivery_rate: flow.deliveryRate,
