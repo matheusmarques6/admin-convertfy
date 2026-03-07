@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
     // Get all stores for this client
     const { data: clientStores } = await adminClient
       .from("client_stores")
-      .select("id, store_name, currency")
+      .select("id, store_name")
       .eq("client_id", clientId)
       .eq("is_active", true)
 
@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
 
     const clientStoreIds = clientStores.map(s => s.id)
     const storeNameMap = Object.fromEntries(clientStores.map(s => [s.id, s.store_name]))
-    const storeCurrencyMap = Object.fromEntries(clientStores.map(s => [s.id, (s as Record<string, unknown>).currency as string || "BRL"]))
+    const storeCurrencyMap = Object.fromEntries(clientStores.map(s => [s.id, "BRL"]))
 
     // Parse query parameters
     const searchParams = request.nextUrl.searchParams

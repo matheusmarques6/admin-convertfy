@@ -35,7 +35,6 @@ async function getStore(id: string) {
       niche,
       country,
       language,
-      currency,
       created_at,
       client_id,
       org_id,
@@ -219,7 +218,7 @@ export default async function StoreDetailPage({
         onboardingProgress={store.onboarding_progress}
         hasBriefing={store.has_briefing}
         driveFolderUrl={store.drive_folder_url}
-        currency={store.currency || undefined}
+        currency={undefined}
       />
     </div>
   )

@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
       .from("campaigns")
       .select(`
         *,
-        store:client_stores(id, store_name, platform, currency),
+        store:client_stores(id, store_name, platform),
         client:clients(id, name, company)
       `)
       .order("scheduled_date", { ascending: true })
@@ -81,7 +81,7 @@ export async function GET(request: NextRequest) {
       }
       return {
         ...c,
-        currency: (c.store as Record<string, unknown>)?.currency as string || "BRL",
+        currency: "BRL",
         source: c.klaviyo_campaign_id ? "klaviyo" : "manual",
       }
     })
@@ -133,12 +133,12 @@ export async function GET(request: NextRequest) {
         if (allStoreIds.length > 0) {
           const { data: storesData } = await supabase
             .from("client_stores")
-            .select("id, store_name, currency")
+            .select("id, store_name")
             .in("id", allStoreIds)
 
           if (storesData) {
             storeNameMap = Object.fromEntries(storesData.map(s => [s.id, s.store_name]))
-            storeCurrencyMap = Object.fromEntries(storesData.map(s => [s.id, (s as Record<string, unknown>).currency as string || "BRL"]))
+            storeCurrencyMap = Object.fromEntries(storesData.map(s => [s.id, "BRL"]))
           }
         }
 
@@ -256,7 +256,7 @@ export async function POST(request: NextRequest) {
       .insert(campaignData)
       .select(`
         *,
-        store:client_stores(id, store_name, platform, currency),
+        store:client_stores(id, store_name, platform),
         client:clients(id, name, company)
       `)
       .single()
@@ -266,7 +266,7 @@ export async function POST(request: NextRequest) {
       throw new AppError("Erro ao criar campanha", 500)
     }
 
-    return successResponse(request, { campaign: { ...campaign, currency: (campaign.store as Record<string, unknown>)?.currency as string || "BRL", source: "manual" } }, { status: 201, message: "Campanha criada com sucesso" })
+    return successResponse(request, { campaign: { ...campaign, currency: "BRL", source: "manual" } }, { status: 201, message: "Campanha criada com sucesso" })
   } catch (error) {
     return errorResponse(request, error, "Campaigns POST")
   }
