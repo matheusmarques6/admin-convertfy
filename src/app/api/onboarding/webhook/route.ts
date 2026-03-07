@@ -145,37 +145,53 @@ export async function POST(request: NextRequest) {
         onboarding_id: body.onboarding_id,
       })
 
-      // AC 12.1.2 — Log da estrutura recebida para debug
-      log.warn("[Webhook] briefing_generated payload keys", {
+      // Resilient handling: accept both structured JSON and raw text from n8n
+      const isStructured = body.data && typeof body.data === "object" && !Array.isArray(body.data)
+
+      log.warn("[Webhook] briefing_generated payload type", {
         onboarding_id: body.onboarding_id,
-        data_keys: body.data ? Object.keys(body.data) : [],
+        data_type: typeof body.data,
+        is_structured: isStructured,
+        data_keys: isStructured ? Object.keys(body.data) : [],
       })
 
-      // AC 12.1.2 — Validação de campos obrigatórios
-      const requiredTopLevelKeys = [
-        "dados_loja",
-        "foco_campanhas",
-        "publico",
-        "perfil_marca",
-        "materiais_identidade",
-        "detalhes_adicionais",
-        "codigo_colaborador",
-      ]
-      const missingKeys = requiredTopLevelKeys.filter(
-        (k) => !body.data || !(k in body.data)
-      )
-      if (missingKeys.length > 0) {
-        throw new AppError(
-          `briefing_data incompleto. Campos ausentes: ${missingKeys.join(", ")}`,
-          400
-        )
-      }
+      let briefingData: Record<string, unknown>
 
-      // AC 12.1.2 — Adicionar defaults para campos opcionais
-      const briefingData = {
-        resumo_performance: {},
-        analise_anuncios: {},
-        ...body.data,
+      if (isStructured) {
+        // Structured JSON — validate required keys
+        const requiredTopLevelKeys = [
+          "dados_loja",
+          "foco_campanhas",
+          "publico",
+          "perfil_marca",
+          "materiais_identidade",
+          "detalhes_adicionais",
+          "codigo_colaborador",
+        ]
+        const missingKeys = requiredTopLevelKeys.filter(
+          (k) => !(k in body.data)
+        )
+        if (missingKeys.length > 0) {
+          log.warn("[Webhook] Structured briefing missing keys, saving as raw_text fallback", {
+            onboarding_id: body.onboarding_id,
+            missing: missingKeys,
+          })
+          // Save as raw_text instead of rejecting
+          briefingData = { raw_text: JSON.stringify(body.data, null, 2) }
+        } else {
+          briefingData = {
+            resumo_performance: {},
+            analise_anuncios: {},
+            ...body.data,
+          }
+        }
+      } else {
+        // Raw text from n8n (string) — wrap in raw_text envelope
+        log.info("[Webhook] Received raw text briefing, wrapping as raw_text", {
+          onboarding_id: body.onboarding_id,
+          text_length: typeof body.data === "string" ? body.data.length : 0,
+        })
+        briefingData = { raw_text: String(body.data) }
       }
 
       // N8N generated a briefing via AI — save it to store_briefings

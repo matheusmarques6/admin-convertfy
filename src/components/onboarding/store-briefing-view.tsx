@@ -206,11 +206,11 @@ function textToBriefing(text: string, original: BriefingData): BriefingData {
 }
 
 function isRawTextBriefing(data: BriefingData): boolean {
-  return "raw_text" in data && typeof (data as unknown as Record<string, unknown>).raw_text === "string"
+  return typeof data.raw_text === "string"
 }
 
 function getRawText(data: BriefingData): string {
-  return ((data as unknown as Record<string, unknown>).raw_text as string) || ""
+  return data.raw_text || ""
 }
 
 export function StoreBriefingView({

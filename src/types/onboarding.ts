@@ -191,6 +191,8 @@ export interface StoreBriefing {
 }
 
 export interface BriefingData {
+  /** When n8n sends raw text instead of structured JSON, the briefing is stored here */
+  raw_text?: string
   dados_loja: {
     nome: string
     url: string
