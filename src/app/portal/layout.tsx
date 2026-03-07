@@ -35,6 +35,7 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
 import { PortalThemeToggle } from "@/components/portal/theme-toggle"
+import { InvoiceBanner } from "@/components/portal/invoice-banner"
 
 interface PortalUser {
   id: string
@@ -58,15 +59,20 @@ interface PortalStore {
   platform: string
 }
 
-// PRD v2.1: Main navigation items
-const navigation = [
+// Store-scoped navigation (depends on active store)
+const storeNavigation = [
   { name: "Dashboard", href: "/portal/dashboard", icon: LayoutDashboard },
   { name: "Análise", href: "/portal/analytics", icon: BarChart3 },
   { name: "Campanhas", href: "/portal/campaigns", icon: Send },
   { name: "Flows", href: "/portal/flows", icon: GitBranch },
   { name: "Integrações", href: "/portal/integrations", icon: Plug },
   { name: "Rastreamento", href: "/portal/tracking", icon: Package },
+]
+
+// Account-scoped navigation (client-level, not store-level)
+const accountNavigation = [
   { name: "Faturas", href: "/portal/invoices", icon: FileText },
+  { name: "Configurações", href: "/portal/settings", icon: Settings },
 ]
 
 function getInitials(name: string): string {
@@ -95,6 +101,7 @@ export default function PortalLayout({
     logo_url: null,
     primary_color: "#3b82f6",
   })
+  const [invoiceStatus, setInvoiceStatus] = useState<{ hasOverdue: boolean } | null>(null)
   // Check authentication using browser Supabase client
   useEffect(() => {
     const checkAuth = async () => {
@@ -206,6 +213,20 @@ export default function PortalLayout({
     return () => window.removeEventListener("portal-avatar-changed", handleAvatarChanged)
   }, [])
 
+  // Listen for invoice status from banner component to show badge in sidebar
+  useEffect(() => {
+    const handleInvoiceStatus = (e: Event) => {
+      const detail = (e as CustomEvent<{ show: boolean; overdueCount?: number }>).detail
+      if (detail.show) {
+        setInvoiceStatus({ hasOverdue: (detail.overdueCount ?? 0) > 0 })
+      } else {
+        setInvoiceStatus(null)
+      }
+    }
+    window.addEventListener("invoice-status-loaded", handleInvoiceStatus)
+    return () => window.removeEventListener("invoice-status-loaded", handleInvoiceStatus)
+  }, [])
+
   const handleLogout = async () => {
     try {
       const supabase = createClient()
@@ -254,41 +275,68 @@ export default function PortalLayout({
 
   // Get current page title
   const getPageTitle = () => {
-    const navItem = navigation.find(item => pathname === item.href || pathname.startsWith(item.href + "/"))
+    const allNav = [...storeNavigation, ...accountNavigation]
+    const navItem = allNav.find(item => pathname === item.href || pathname.startsWith(item.href + "/"))
     if (navItem) return navItem.name
-    if (pathname.startsWith("/portal/integrations")) return "Integrações"
-    if (pathname.startsWith("/portal/tracking")) return "Rastreamento"
-    if (pathname.startsWith("/portal/settings")) return "Configurações"
-    if (pathname.startsWith("/portal/invoices")) return "Faturas"
     if (pathname.startsWith("/portal/stores")) return "Lojas"
     return "Portal"
   }
 
   // Sidebar content shared between desktop and mobile
-  const SidebarNav = ({ onLinkClick }: { onLinkClick?: () => void }) => (
-    <div className="space-y-1">
-      {navigation.map((item) => {
-        const isActive = pathname === item.href || pathname.startsWith(item.href + "/")
-        return (
-          <Link
-            key={item.name}
-            href={item.href}
-            onClick={onLinkClick}
-            className={cn(
-              "flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition-all duration-200",
-              isActive
-                ? "bg-white/10 text-white"
-                : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.06]"
-            )}
-          >
-            <item.icon className="h-[18px] w-[18px]" />
-            {item.name}
-          </Link>
-        )
-      })}
+  const SidebarNav = ({ labelPrefix = "desktop", onLinkClick }: { labelPrefix?: string; onLinkClick?: () => void }) => {
+    const renderNavItem = (item: typeof storeNavigation[number], showBadge?: boolean) => {
+      const isActive = pathname === item.href || pathname.startsWith(item.href + "/")
+      return (
+        <Link
+          key={item.name}
+          href={item.href}
+          onClick={onLinkClick}
+          aria-current={isActive ? "page" : undefined}
+          className={cn(
+            "flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition-all duration-200",
+            isActive
+              ? "bg-white/10 text-white"
+              : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.06]"
+          )}
+        >
+          <item.icon className="h-[18px] w-[18px]" aria-hidden="true" />
+          <span className="flex-1">{item.name}</span>
+          {showBadge && invoiceStatus && (
+            <span
+              role="status"
+              aria-label="Faturas pendentes"
+              className={cn(
+                "h-2 w-2 rounded-full bg-red-500 flex-shrink-0",
+                invoiceStatus.hasOverdue && "motion-safe:animate-pulse"
+              )}
+            />
+          )}
+        </Link>
+      )
+    }
 
-    </div>
-  )
+    return (
+      <>
+        {/* Store-scoped items */}
+        <div className="space-y-1" role="group" aria-labelledby={`nav-menu-label-${labelPrefix}`}>
+          {storeNavigation.map((item) => renderNavItem(item))}
+        </div>
+
+        {/* Divider */}
+        <div className="my-4 border-t border-white/[0.06]" role="separator" />
+
+        {/* Account-scoped items */}
+        <div role="group" aria-labelledby={`nav-account-label-${labelPrefix}`}>
+          <p id={`nav-account-label-${labelPrefix}`} className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-widest text-slate-600">Conta</p>
+          <div className="space-y-1">
+            {accountNavigation.map((item) =>
+              renderNavItem(item, item.href === "/portal/invoices")
+            )}
+          </div>
+        </div>
+      </>
+    )
+  }
 
   // Footer section shared between desktop and mobile
   const SidebarFooter = () => (
@@ -357,18 +405,6 @@ export default function PortalLayout({
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem asChild>
-            <Link href="/portal/settings">
-              <Settings className="mr-2 h-4 w-4" />
-              Configurações
-            </Link>
-          </DropdownMenuItem>
-          <DropdownMenuItem asChild>
-            <Link href="/portal/invoices">
-              <FileText className="mr-2 h-4 w-4" />
-              Faturas
-            </Link>
-          </DropdownMenuItem>
-          <DropdownMenuItem asChild>
             <Link href="/portal/stores">
               <Store className="mr-2 h-4 w-4" />
               Gerenciar Lojas
@@ -411,8 +447,8 @@ export default function PortalLayout({
 
           {/* Navigation */}
           <nav className="flex-1 px-3 pt-2">
-            <p className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-widest text-slate-600">Menu</p>
-            <SidebarNav />
+            <p id="nav-menu-label-desktop" className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-widest text-slate-600">Menu</p>
+            <SidebarNav labelPrefix="desktop" />
           </nav>
 
           {/* Footer: Store Switcher + Account Menu */}
@@ -444,8 +480,8 @@ export default function PortalLayout({
 
                 {/* Navigation */}
                 <nav className="flex-1 px-3 pt-2">
-                  <p className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-widest text-slate-600">Menu</p>
-                  <SidebarNav onLinkClick={() => setMobileMenuOpen(false)} />
+                  <p id="nav-menu-label-mobile" className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-widest text-slate-600">Menu</p>
+                  <SidebarNav labelPrefix="mobile" onLinkClick={() => setMobileMenuOpen(false)} />
                 </nav>
 
                 {/* Footer */}
@@ -479,19 +515,6 @@ export default function PortalLayout({
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-                <Link href="/portal/settings">
-                  <Settings className="mr-2 h-4 w-4" />
-                  Configurações
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/portal/invoices">
-                  <FileText className="mr-2 h-4 w-4" />
-                  Faturas
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleLogout}>
                 <LogOut className="mr-2 h-4 w-4" />
                 Sair
@@ -521,6 +544,9 @@ export default function PortalLayout({
             </Button>
           </div>
         </header>
+
+        {/* Invoice Urgency Banner */}
+        <InvoiceBanner />
 
         {/* Page Content */}
         <div className="p-6 pt-20 lg:pt-6 lg:px-8">{children}</div>
