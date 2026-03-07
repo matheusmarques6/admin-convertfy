@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
 
     // Fetch all pending invoices for this client
     const { data: invoices, error: invoicesError } = await adminClient
-      .from("invoices")
+      .from("unified_invoices")
       .select("id, amount, due_date, status")
       .eq("client_id", portalUser.client_id)
       .eq("status", "pending")

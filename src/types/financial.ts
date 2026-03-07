@@ -11,4 +11,9 @@ export interface Invoice {
   status: PaymentStatus
   description?: string
   created_at: string
+  source?: "asaas" | "local"
+  payment_method?: string
+  actual_payment_method?: string
+  subscription_id?: string
+  notes?: string
 }

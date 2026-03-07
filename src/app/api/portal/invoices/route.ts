@@ -49,8 +49,8 @@ export async function GET(request: NextRequest) {
 
     // Build query (adminClient bypasses RLS; isolation via client_id filter)
     let query = adminClient
-      .from("invoices")
-      .select("id, client_id, asaas_id, amount, due_date, payment_date, status, description, created_at")
+      .from("unified_invoices")
+      .select("id, client_id, asaas_id, amount, due_date, payment_date, status, description, created_at, source, payment_method, actual_payment_method, subscription_id, notes")
       .eq("client_id", portalUser.client_id)
       .order("due_date", { ascending: false })
 
@@ -158,6 +158,9 @@ export async function GET(request: NextRequest) {
           description: i.description || "Mensalidade Convertfy",
           asaas_id: i.asaas_id,
           created_at: i.created_at,
+          source: i.source,
+          payment_method: i.payment_method,
+          actual_payment_method: i.actual_payment_method,
           invoice_url: invoiceUrl,
           bank_slip_url: bankSlipUrl,
           pix_qr_code: pixQrCode,

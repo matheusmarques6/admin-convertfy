@@ -51,6 +51,11 @@ interface Invoice {
   description?: string
   asaas_id?: string
   created_at: string
+  source?: "asaas" | "local"
+  payment_method?: string
+  actual_payment_method?: string
+  subscription_id?: string
+  notes?: string
   invoice_url?: string
   bank_slip_url?: string
   pix_qr_code?: {
@@ -109,6 +114,37 @@ const STATUS_CONFIG = {
     dotColor: "bg-purple-500",
     icon: DollarSign,
   },
+}
+
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  asaas: "Asaas",
+  pix_direto: "PIX Direto",
+  wise: "Wise",
+  boleto: "Boleto",
+  cartao: "Cartao",
+}
+
+const PAYMENT_METHOD_BADGE_COLORS: Record<string, string> = {
+  asaas: "bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-500/10 dark:text-cyan-400 dark:border-cyan-500/20",
+  pix_direto: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20",
+  wise: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20",
+  boleto: "bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-500/10 dark:text-gray-400 dark:border-gray-500/20",
+  cartao: "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-500/10 dark:text-purple-400 dark:border-purple-500/20",
+}
+
+function getPaymentMethodInstruction(method: string): string {
+  switch (method) {
+    case "pix_direto":
+      return "Solicite a chave PIX com a agencia"
+    case "wise":
+      return "Pague via Wise — consulte os dados com a agencia"
+    default:
+      return "Entre em contato com a agencia para dados de pagamento"
+  }
+}
+
+function isLocalNonAsaas(invoice: Invoice): boolean {
+  return invoice.source === "local" && invoice.payment_method !== "asaas"
 }
 
 // ============================================
@@ -273,8 +309,25 @@ function BoletoCard({ invoice, onPayClick }: { invoice: Invoice; onPayClick: () 
           </div>
         </div>
 
-        {/* Payment Options */}
-        {canPay && (
+        {/* Payment Options — Local non-Asaas charges */}
+        {canPay && isLocalNonAsaas(invoice) && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-center gap-2">
+              <Badge variant="outline" className={`text-xs ${PAYMENT_METHOD_BADGE_COLORS[invoice.payment_method || ""] || PAYMENT_METHOD_BADGE_COLORS.boleto}`}>
+                {PAYMENT_METHOD_LABELS[invoice.payment_method || ""] || invoice.payment_method}
+              </Badge>
+            </div>
+            <div className={`
+              rounded-xl p-4 text-center text-sm
+              ${isOverdue ? "bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400" : "bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400"}
+            `}>
+              {getPaymentMethodInstruction(invoice.payment_method || "")}
+            </div>
+          </div>
+        )}
+
+        {/* Payment Options — Asaas charges (or local with payment_method=asaas) */}
+        {canPay && !isLocalNonAsaas(invoice) && (
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground text-center">Opções de Pagamento</p>
             <div className="grid grid-cols-2 gap-3">
@@ -316,8 +369,8 @@ function BoletoCard({ invoice, onPayClick }: { invoice: Invoice; onPayClick: () 
                 </Button>
               )}
 
-              {/* Fallback if no payment links */}
-              {!invoice.pix_qr_code && !invoice.bank_slip_url && !invoice.invoice_url && (
+              {/* Fallback if no payment links — only for Asaas invoices (local charges never have payment links) */}
+              {!invoice.pix_qr_code && !invoice.bank_slip_url && !invoice.invoice_url && invoice.source !== "local" && (
                 <div className="col-span-2 text-center py-4 text-muted-foreground text-sm">
                   Links de pagamento em processamento...
                 </div>
@@ -333,11 +386,16 @@ function BoletoCard({ invoice, onPayClick }: { invoice: Invoice; onPayClick: () 
 function InvoiceRow({ invoice, onClick }: { invoice: Invoice; onClick: () => void }) {
   const statusConfig = STATUS_CONFIG[invoice.status] || STATUS_CONFIG.pending
   const StatusIcon = statusConfig.icon
+  const isLocal = isLocalNonAsaas(invoice)
+  const isLocalPending = isLocal && (invoice.status === "pending" || invoice.status === "overdue")
+  const showActualMethod = isLocal && invoice.status === "paid" && invoice.actual_payment_method && invoice.actual_payment_method !== invoice.payment_method
 
   return (
     <div
-      onClick={onClick}
-      className="flex items-center gap-4 p-4 rounded-xl bg-card border border-border hover:bg-accent/50 cursor-pointer transition-all group shadow-sm"
+      onClick={isLocalPending ? undefined : onClick}
+      className={`flex items-center gap-4 p-4 rounded-xl bg-card border border-border transition-all group shadow-sm ${
+        isLocalPending ? "cursor-default" : "hover:bg-accent/50 cursor-pointer"
+      }`}
     >
       {/* Status Icon */}
       <div className={`p-2 rounded-lg ${statusConfig.color.split(" ")[0]}`}>
@@ -346,11 +404,23 @@ function InvoiceRow({ invoice, onClick }: { invoice: Invoice; onClick: () => voi
 
       {/* Info */}
       <div className="flex-1 min-w-0">
-        <p className="font-medium text-foreground truncate">
-          {invoice.description || "Mensalidade Convertfy"}
-        </p>
+        <div className="flex items-center gap-2">
+          <p className="font-medium text-foreground truncate">
+            {invoice.description || "Mensalidade Convertfy"}
+          </p>
+          {isLocal && invoice.payment_method && (
+            <Badge variant="outline" className={`text-[10px] shrink-0 ${PAYMENT_METHOD_BADGE_COLORS[invoice.payment_method] || PAYMENT_METHOD_BADGE_COLORS.boleto}`}>
+              {PAYMENT_METHOD_LABELS[invoice.payment_method] || invoice.payment_method}
+            </Badge>
+          )}
+        </div>
         <p className="text-sm text-muted-foreground">
           Vencimento: {formatDate(invoice.due_date)}
+          {showActualMethod && (
+            <span className="ml-2 text-xs">
+              (pago via {PAYMENT_METHOD_LABELS[invoice.actual_payment_method!] || invoice.actual_payment_method})
+            </span>
+          )}
         </p>
       </div>
 
@@ -362,8 +432,10 @@ function InvoiceRow({ invoice, onClick }: { invoice: Invoice; onClick: () => voi
         </Badge>
       </div>
 
-      {/* Arrow */}
-      <ArrowRight className="h-5 w-5 text-muted-foreground group-hover:text-foreground transition-colors" />
+      {/* Arrow — hide for local pending charges */}
+      {!isLocalPending && (
+        <ArrowRight className="h-5 w-5 text-muted-foreground group-hover:text-foreground transition-colors" />
+      )}
     </div>
   )
 }

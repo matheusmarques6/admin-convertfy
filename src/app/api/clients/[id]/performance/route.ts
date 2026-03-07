@@ -305,35 +305,19 @@ async function fetchBillingData(
   const startStr = startDate.toISOString().split("T")[0]
   const endStr = endDate.toISOString().split("T")[0]
 
-  const [invoicesRes, chargesRes] = await Promise.all([
-    adminClient
-      .from("invoices")
-      .select("amount, status")
-      .eq("client_id", clientId)
-      .gte("due_date", startStr)
-      .lte("due_date", endStr),
-    adminClient
-      .from("client_charges")
-      .select("value, status")
-      .eq("client_id", clientId)
-      .gte("due_date", startStr)
-      .lte("due_date", endStr),
-  ])
+  // Single query on unified_invoices VIEW (merges invoices + client_charges)
+  const { data } = await adminClient
+    .from("unified_invoices")
+    .select("amount, status")
+    .eq("client_id", clientId)
+    .gte("due_date", startStr)
+    .lte("due_date", endStr)
 
-  const invoices = invoicesRes.data || []
-  const charges = chargesRes.data || []
+  const rows = data || []
 
-  const totalPaid =
-    invoices.filter(i => i.status === "paid").reduce((s, i) => s + Number(i.amount), 0) +
-    charges.filter(c => c.status === "paid").reduce((s, c) => s + Number(c.value), 0)
-
-  const totalPending =
-    invoices.filter(i => i.status === "pending").reduce((s, i) => s + Number(i.amount), 0) +
-    charges.filter(c => c.status === "pending").reduce((s, c) => s + Number(c.value), 0)
-
-  const totalOverdue =
-    invoices.filter(i => i.status === "overdue").reduce((s, i) => s + Number(i.amount), 0) +
-    charges.filter(c => c.status === "overdue").reduce((s, c) => s + Number(c.value), 0)
+  const totalPaid = rows.filter(r => r.status === "paid").reduce((s, r) => s + Number(r.amount), 0)
+  const totalPending = rows.filter(r => r.status === "pending").reduce((s, r) => s + Number(r.amount), 0)
+  const totalOverdue = rows.filter(r => r.status === "overdue").reduce((s, r) => s + Number(r.amount), 0)
 
   return { totalPaid, totalPending, totalOverdue }
 }

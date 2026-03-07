@@ -366,8 +366,7 @@ export async function GET(request: NextRequest) {
     const [
       clientData,
       rawStoresData,
-      invoicesData,
-      chargesData,
+      unifiedInvoicesData,
       meetingsData,
     ] = await Promise.all([
       adminClient
@@ -384,16 +383,10 @@ export async function GET(request: NextRequest) {
         .order("store_name"),
 
       adminClient
-        .from("invoices")
-        .select("*")
+        .from("unified_invoices")
+        .select("id, amount, due_date, status, description, source")
         .eq("client_id", clientId)
         .order("due_date", { ascending: false })
-        .limit(20),
-
-      adminClient
-        .from("client_charges")
-        .select("value, status")
-        .eq("client_id", clientId)
         .limit(200),
 
       adminClient
@@ -408,8 +401,7 @@ export async function GET(request: NextRequest) {
     const client = clientData.data
     const rawStores = rawStoresData.data || []
     const stores = rawStores.map(s => decryptStoreCredentials(s))
-    const invoices = invoicesData.data || []
-    const charges = chargesData.data || []
+    const allInvoices = unifiedInvoicesData.data || []
     const meetings = meetingsData.data || []
 
     // Upcoming campaigns: fetch by store_ids (client_id can be null for Klaviyo-synced campaigns)
@@ -426,20 +418,14 @@ export async function GET(request: NextRequest) {
       : { data: null }
     const upcomingCampaigns = upcomingCampaignsRaw || []
 
-    // Calculate invoice + charges stats
-    const pendingInvoices = invoices.filter((i) => i.status === "pending")
-    const overdueInvoices = invoices.filter((i) => i.status === "overdue")
-    const paidInvoices = invoices.filter((i) => i.status === "paid")
+    // Calculate unified invoice stats (VIEW already merges invoices + client_charges)
+    const pendingInvoices = allInvoices.filter((i) => i.status === "pending")
+    const overdueInvoices = allInvoices.filter((i) => i.status === "overdue")
+    const paidInvoices = allInvoices.filter((i) => i.status === "paid")
 
-    const totalPending =
-      pendingInvoices.reduce((sum, i) => sum + (i.amount || 0), 0) +
-      charges.filter(c => c.status === "pending").reduce((s, c) => s + Number(c.value), 0)
-    const totalOverdue =
-      overdueInvoices.reduce((sum, i) => sum + (i.amount || 0), 0) +
-      charges.filter(c => c.status === "overdue").reduce((s, c) => s + Number(c.value), 0)
-    const totalPaid =
-      paidInvoices.reduce((sum, i) => sum + (i.amount || 0), 0) +
-      charges.filter(c => c.status === "paid").reduce((s, c) => s + Number(c.value), 0)
+    const totalPending = pendingInvoices.reduce((sum, i) => sum + Number(i.amount || 0), 0)
+    const totalOverdue = overdueInvoices.reduce((sum, i) => sum + Number(i.amount || 0), 0)
+    const totalPaid = paidInvoices.reduce((sum, i) => sum + Number(i.amount || 0), 0)
 
     // Prepare the base response
     const response: Record<string, unknown> = {
@@ -469,7 +455,7 @@ export async function GET(request: NextRequest) {
         totalPending,
         totalOverdue,
         totalPaid,
-        recent: invoices.slice(0, 10).map((i) => ({
+        recent: allInvoices.slice(0, 10).map((i) => ({
           id: i.id,
           amount: i.amount,
           dueDate: i.due_date,
