@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { AlertCircle, Clock, TrendingUp } from "lucide-react"
+import { AlertCircle, Clock, TrendingUp, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 interface InvoiceStatus {
@@ -36,6 +36,7 @@ function getDaysFromToday(dateStr: string): number {
 export function InvoiceBanner() {
   const pathname = usePathname()
   const [status, setStatus] = useState<InvoiceStatus | null>(null)
+  const [dismissed, setDismissed] = useState(false)
 
   useEffect(() => {
     // Don't fetch if already on invoices page
@@ -67,6 +68,7 @@ export function InvoiceBanner() {
   // Don't render on invoices page or when nothing to show
   if (pathname?.startsWith("/portal/invoices")) return null
   if (!status?.show) return null
+  if (dismissed) return null
 
   const hasOverdue = (status.overdueCount ?? 0) > 0
   const hasPending = (status.pendingCount ?? 0) > 0
@@ -107,7 +109,7 @@ export function InvoiceBanner() {
       role="alert"
       aria-live="polite"
       className={`
-        sticky top-14 z-20 mx-6 mt-4 lg:mx-8 rounded-xl border p-4 shadow-sm
+        relative mx-6 mt-4 lg:mx-8 rounded-xl border p-4 pr-10 shadow-sm
         motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-2 motion-safe:duration-300
         ${isOverdueVariant
           ? "bg-red-50 border-red-200 dark:bg-red-500/10 dark:border-red-500/20"
@@ -115,6 +117,18 @@ export function InvoiceBanner() {
         }
       `}
     >
+      <button
+        type="button"
+        aria-label="Fechar notificacao"
+        onClick={() => setDismissed(true)}
+        className={`absolute top-3 right-3 rounded-md p-0.5 transition-colors ${
+          isOverdueVariant
+            ? "text-red-400 hover:text-red-600 dark:text-red-400/60 dark:hover:text-red-300"
+            : "text-amber-400 hover:text-amber-600 dark:text-amber-400/60 dark:hover:text-amber-300"
+        }`}
+      >
+        <X className="h-4 w-4" />
+      </button>
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         {/* Left: icon + text */}
         <div className="flex items-start gap-3 flex-1 min-w-0">
