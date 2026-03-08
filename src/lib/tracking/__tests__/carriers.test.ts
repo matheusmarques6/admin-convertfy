@@ -278,5 +278,46 @@ describe("detectCarrierProvider", () => {
       const result = detectCarrierProvider("3SABCDEFGHIJK")
       expect(result.code === "correios" || result.isUpu === true).toBe(false)
     })
+
+    it("YunExpress is NOT eligible", () => {
+      const result = detectCarrierProvider("YT2024030700001234")
+      expect(result.code === "correios" || result.isUpu === true).toBe(false)
+    })
+  })
+
+  // ── YunExpress ─────────────────────────────────────────────────────────
+  describe("YunExpress", () => {
+    it("detects YT + 16 digits as yunexpress", () => {
+      expectCarrier("YT2024030700001234", { code: "yunexpress", provider: "yunexpress" })
+    })
+
+    it("detects YT + 17 digits as yunexpress", () => {
+      expectCarrier("YT20240307000012345", { code: "yunexpress", provider: "yunexpress" })
+    })
+
+    it("detects YT + 20 digits as yunexpress", () => {
+      expectCarrier("YT12345678901234567890", { code: "yunexpress", provider: "yunexpress" })
+    })
+
+    it("does NOT match Yanwen (YT + 9 digits + YP)", () => {
+      expectCarrier("YT123456789YP", { code: "yanwen", provider: "cainiao", isUpu: true })
+    })
+
+    it("does NOT match Yanwen (YT + 9 digits + CN)", () => {
+      expectCarrier("YT123456789CN", { code: "yanwen", provider: "cainiao", isUpu: true })
+    })
+
+    it("intermediate YT (13 chars, no suffix) falls to unknown", () => {
+      expectCarrier("YT12345678901", { code: "unknown", provider: "unknown" })
+    })
+
+    it("intermediate YT (15 digits) falls to unknown", () => {
+      expectCarrier("YT123456789012345", { code: "unknown", provider: "unknown" })
+    })
+
+    it("does NOT have isUpu", () => {
+      const result = detectCarrierProvider("YT2024030700001234")
+      expect(result.isUpu).toBeFalsy()
+    })
   })
 })

@@ -35,7 +35,7 @@ interface IntegrationData {
     active: boolean
     tracking_store_id: string | null
     has_17track_key: boolean
-    carrier_keys: { seventeen_track: boolean; trackingmore: boolean; postnl: boolean; cainiao: boolean }
+    carrier_keys: { seventeen_track: boolean; trackingmore: boolean; postnl: boolean; cainiao: boolean; yunexpress: boolean }
     widget_config: Record<string, unknown> | null
     last_sync_at: string | null
   }
@@ -104,6 +104,17 @@ const CARRIERS: CarrierConfig[] = [
     helpUrl: "https://developer.postnl.nl",
     covers: ["PostNL International", "PostNL Domestic"],
   },
+  {
+    id: "yunexpress",
+    name: "YunExpress",
+    description: "Rastreamento direto",
+    icon: "YE",
+    iconBg: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+    keyPlaceholder: "Sua API Key da YunExpress",
+    helpText: "open.yunexpress.cn",
+    helpUrl: "https://open.yunexpress.cn/",
+    covers: ["YunExpress (YT...)", "Last Mile Tracking"],
+  },
 ]
 
 type IntegrationType = "shopify" | "klaviyo"
@@ -134,6 +145,7 @@ export default function PortalIntegrationsPage() {
   const [carrierKeyInput, setCarrierKeyInput] = useState("")
   const [showCarrierKey, setShowCarrierKey] = useState(false)
   const [savingCarrier, setSavingCarrier] = useState(false)
+  const [yunexpressCustomerNumber, setYunexpressCustomerNumber] = useState("")
 
   const fetchData = useCallback(async () => {
     try {
@@ -178,6 +190,7 @@ export default function PortalIntegrationsPage() {
   function openCarrierDialog(carrier: CarrierConfig) {
     setActiveCarrier(carrier)
     setCarrierKeyInput("")
+    setYunexpressCustomerNumber("")
     setShowCarrierKey(false)
     setCarrierDialogOpen(true)
   }
@@ -267,22 +280,33 @@ export default function PortalIntegrationsPage() {
 
   async function handleSaveCarrierKey() {
     if (!activeCarrier || !store) return
-    if (!carrierKeyInput.trim()) {
+
+    if (activeCarrier.id === "yunexpress") {
+      if (!yunexpressCustomerNumber.trim() || !carrierKeyInput.trim()) {
+        toast({ variant: "destructive", title: "Preencha o Customer Number e a API Key" })
+        return
+      }
+    } else if (!carrierKeyInput.trim()) {
       toast({ variant: "destructive", title: "Preencha a API key" })
       return
     }
 
     setSavingCarrier(true)
     try {
+      const payload: Record<string, string> = {
+        store_id: store.id,
+        integration_type: "carrier",
+        carrier_id: activeCarrier.id,
+        api_key: carrierKeyInput.trim(),
+      }
+      if (activeCarrier.id === "yunexpress") {
+        payload.customer_number = yunexpressCustomerNumber.trim()
+      }
+
       const res = await fetch("/api/portal/integrations", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          store_id: store.id,
-          integration_type: "carrier",
-          carrier_id: activeCarrier.id,
-          api_key: carrierKeyInput.trim(),
-        }),
+        body: JSON.stringify(payload),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Erro ao salvar")
@@ -750,6 +774,18 @@ export default function PortalIntegrationsPage() {
           ) : (
             <>
               <div className="space-y-4 py-4">
+                {activeCarrier?.id === "yunexpress" && (
+                  <div className="space-y-2">
+                    <Label className="text-[13px] font-medium text-slate-700 dark:text-slate-200">Customer Number</Label>
+                    <Input
+                      type="text"
+                      placeholder="Seu Customer Number da YunExpress"
+                      value={yunexpressCustomerNumber}
+                      onChange={(e) => setYunexpressCustomerNumber(e.target.value)}
+                      className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100"
+                    />
+                  </div>
+                )}
                 <div className="space-y-2">
                   <Label className="text-[13px] font-medium text-slate-700 dark:text-slate-200">API Key</Label>
                   <div className="relative">
@@ -766,7 +802,7 @@ export default function PortalIntegrationsPage() {
                   </div>
                   {activeCarrier?.helpUrl ? (
                     <p className="text-xs text-slate-500 dark:text-slate-400">
-                      Obtenha sua chave em{" "}
+                      Obtenha suas credenciais em{" "}
                       <a href={activeCarrier.helpUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
                         {activeCarrier.helpText}
                       </a>

@@ -117,6 +117,7 @@ export async function GET(request: NextRequest) {
             trackingmore: !!(trackingStore?.carrier_api_keys as Record<string, unknown> | null)?.trackingmore,
             postnl: !!(trackingStore?.carrier_api_keys as Record<string, unknown> | null)?.postnl,
             cainiao: true, // always true — Cainiao is free and requires no API key
+            yunexpress: !!((trackingStore?.carrier_api_keys as Record<string, unknown> | null)?.yunexpress as Record<string, unknown> | undefined)?.customer_number,
           },
           widget_config: trackingStore?.widget_config || null,
           last_sync_at: trackingStore?.last_sync_at || null,
@@ -157,6 +158,7 @@ export async function PUT(request: NextRequest) {
       // Carrier fields
       carrier_id,
       api_key,
+      customer_number, // YunExpress-specific
     } = body
 
     if (!store_id || !integration_type) {
@@ -297,14 +299,11 @@ export async function PUT(request: NextRequest) {
     }
 
     if (integration_type === "carrier") {
-      const VALID_CARRIERS = ["trackingmore", "postnl", "seventeen_track"] as const
+      const VALID_CARRIERS = ["trackingmore", "postnl", "seventeen_track", "yunexpress"] as const
       type ValidCarrier = typeof VALID_CARRIERS[number]
 
       if (!carrier_id || !VALID_CARRIERS.includes(carrier_id as ValidCarrier)) {
         throw new AppError("carrier_id inválido", 400)
-      }
-      if (!api_key || String(api_key).trim().length === 0) {
-        throw new AppError("API key não pode ser vazia", 400)
       }
 
       // Resolve tracking_store from server-verified store_id (never from body)
@@ -316,6 +315,42 @@ export async function PUT(request: NextRequest) {
 
       if (!trackingStore) {
         throw new AppError("Rastreamento não ativado para esta loja", 400)
+      }
+
+      if (carrier_id === "yunexpress") {
+        // YunExpress requires two fields: customer_number + api_key
+        if (!customer_number || String(customer_number).trim().length === 0) {
+          throw new AppError("Customer Number é obrigatório para YunExpress", 400)
+        }
+        if (!api_key || String(api_key).trim().length === 0) {
+          throw new AppError("API Key é obrigatória para YunExpress", 400)
+        }
+
+        const currentKeys = (trackingStore.carrier_api_keys ?? {}) as Record<string, unknown>
+        const updatedKeys = {
+          ...currentKeys,
+          yunexpress: {
+            customer_number: encrypt(String(customer_number).trim()),
+            api_key: encrypt(String(api_key).trim()),
+          },
+        }
+
+        const { error: updateError } = await adminClient
+          .from("tracking_stores")
+          .update({ carrier_api_keys: updatedKeys })
+          .eq("id", trackingStore.id)
+
+        if (updateError) {
+          log.error("Error updating YunExpress keys:", updateError)
+          throw new AppError("Erro ao salvar credenciais YunExpress", 500)
+        }
+
+        return successResponse(request, { success: true, message: "Credenciais YunExpress salvas com sucesso" })
+      }
+
+      // All other carriers: single api_key
+      if (!api_key || String(api_key).trim().length === 0) {
+        throw new AppError("API key não pode ser vazia", 400)
       }
 
       const encryptedKey = encrypt(String(api_key).trim())
@@ -332,7 +367,7 @@ export async function PUT(request: NextRequest) {
         }
       } else {
         // JSONB merge: fetch current keys, merge, save
-        const currentKeys = (trackingStore.carrier_api_keys ?? {}) as Record<string, string>
+        const currentKeys = (trackingStore.carrier_api_keys ?? {}) as Record<string, unknown>
         const updatedKeys = { ...currentKeys, [carrier_id]: encryptedKey }
 
         const { error: updateError } = await adminClient

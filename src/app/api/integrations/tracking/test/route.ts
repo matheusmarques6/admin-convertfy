@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { decrypt } from "@/lib/crypto"
 import { logger } from "@/lib/logger"
 import { trackViaCainiao, trackViaTrackingMore, trackViaPostNL } from "@/lib/tracking/carriers"
+import { trackViaYunExpress, type YunExpressCredentials } from "@/lib/tracking/yunexpress"
 
 const log = logger.child("IntegrationsTrackingTest")
 
@@ -116,7 +117,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { carrier_id, api_key, tracking_number, store_id } = body
+    const { carrier_id, api_key, tracking_number, store_id, customer_number } = body
 
     if (!carrier_id) {
       return NextResponse.json(
@@ -144,6 +145,9 @@ export async function POST(request: NextRequest) {
         break
       case "seventeen_track":
         result = await testSeventeenTrack(resolvedKey)
+        break
+      case "yunexpress":
+        result = await testYunExpress({ customer_number, api_key, store_id, tracking_number })
         break
       default:
         return NextResponse.json(
@@ -575,6 +579,128 @@ async function testSeventeenTrack(apiKey?: string): Promise<TestResult> {
       success: false,
       carrier: "17track",
       message: error instanceof Error ? error.message : "Erro ao conectar ao 17track. Verifique sua conexão.",
+      details: { response_time_ms: responseTime },
+    }
+  }
+}
+
+/**
+ * Resolve YunExpress credentials from request body or from DB.
+ * Does NOT use resolveApiKey() since YunExpress needs two fields.
+ */
+async function resolveYunExpressCredentials(
+  customerNumber?: string,
+  apiKey?: string,
+  storeId?: string
+): Promise<YunExpressCredentials | null> {
+  if (customerNumber && apiKey) {
+    return { customerNumber, apiKey }
+  }
+
+  if (!storeId) return null
+
+  try {
+    const adminClient = createAdminClient()
+    const { data: trackingStore } = await adminClient
+      .from("tracking_stores")
+      .select("carrier_api_keys")
+      .eq("client_store_id", storeId)
+      .single()
+
+    if (!trackingStore) return null
+
+    const carrierKeys = (trackingStore.carrier_api_keys ?? {}) as Record<string, unknown>
+    const yunCreds = carrierKeys.yunexpress as { customer_number?: string; api_key?: string } | undefined
+
+    if (!yunCreds?.customer_number || !yunCreds?.api_key) return null
+
+    try {
+      return {
+        customerNumber: decrypt(yunCreds.customer_number),
+        apiKey: decrypt(yunCreds.api_key),
+      }
+    } catch {
+      log.warn("Falha ao descriptografar credenciais YunExpress")
+      return null
+    }
+  } catch (error) {
+    log.warn("Erro ao buscar credenciais YunExpress no banco", { error })
+    return null
+  }
+}
+
+async function testYunExpress(opts: {
+  customer_number?: string
+  api_key?: string
+  store_id?: string
+  tracking_number?: string
+}): Promise<TestResult> {
+  const credentials = await resolveYunExpressCredentials(
+    opts.customer_number,
+    opts.api_key,
+    opts.store_id
+  )
+
+  if (!credentials) {
+    return {
+      success: false,
+      carrier: "YunExpress",
+      message: "Customer Number e API Key são obrigatórios para testar o YunExpress. Configure as credenciais primeiro.",
+    }
+  }
+
+  const startTime = Date.now()
+
+  try {
+    const testNumber = opts.tracking_number || "YT0000000000000000"
+    const result = await trackViaYunExpress(testNumber, credentials, AbortSignal.timeout(15000))
+    const responseTime = Date.now() - startTime
+
+    if (result) {
+      return {
+        success: true,
+        carrier: "YunExpress",
+        message: `Conexão OK! Rastreamento encontrado com status "${translateStatus(result.status)}".`,
+        details: {
+          tracking_number: testNumber,
+          carrier_detected: "YunExpress",
+          status: translateStatus(result.status),
+          events_count: result.events.length,
+          last_event: result.last_event || undefined,
+          response_time_ms: responseTime,
+        },
+      }
+    }
+
+    // API responded but no data — credentials are likely valid (just no data for test number)
+    return {
+      success: true,
+      carrier: "YunExpress",
+      message: opts.tracking_number
+        ? `Conexão OK! A API respondeu mas não encontrou dados para "${testNumber}". Verifique se o código está correto.`
+        : `Conexão OK! API YunExpress está acessível e respondendo (${responseTime}ms).`,
+      details: {
+        tracking_number: testNumber,
+        response_time_ms: responseTime,
+      },
+    }
+  } catch (error) {
+    const responseTime = Date.now() - startTime
+
+    if (error instanceof DOMException && error.name === "TimeoutError") {
+      return {
+        success: false,
+        carrier: "YunExpress",
+        message: "Tempo esgotado: API YunExpress não respondeu em 15 segundos. Tente novamente.",
+        details: { response_time_ms: responseTime },
+      }
+    }
+
+    // Check if it's an auth error (fetch succeeded but returned 401/403)
+    return {
+      success: false,
+      carrier: "YunExpress",
+      message: error instanceof Error ? error.message : "Erro ao conectar ao YunExpress. Verifique suas credenciais.",
       details: { response_time_ms: responseTime },
     }
   }

@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logger"
+import { trackViaYunExpress } from "./yunexpress"
 /** Local type for carrier tracking results */
 export interface TrackingResult {
   tracking_number: string
@@ -26,7 +27,7 @@ const log = logger.child("Carriers")
 export interface CarrierInfo {
   code: string
   name: string
-  provider: "correios" | "cainiao" | "postnl" | "trackingmore" | "seventeen_track" | "unknown"
+  provider: "correios" | "cainiao" | "postnl" | "trackingmore" | "seventeen_track" | "yunexpress" | "unknown"
   /** UPU postal format (XX000000000YY) — eligible for Correios fallback */
   isUpu?: boolean
 }
@@ -52,6 +53,12 @@ export function detectCarrierProvider(trackingNumber: string): CarrierInfo {
   // Yanwen: starts with LP, LV, UG, YT, YW + digits + YP (or CN)
   if (/^(LP|LV|UG|YT|YW)\d{9}(YP|CN)$/.test(num)) {
     return { code: "yanwen", name: "Yanwen", provider: "cainiao", isUpu }
+  }
+
+  // YunExpress: YT + 16 or more pure digits (no letter suffix)
+  // MUST be AFTER Yanwen check (Yanwen is more specific: YT + 9 digits + YP/CN)
+  if (/^YT\d{16,}$/.test(num)) {
+    return { code: "yunexpress", name: "YunExpress", provider: "yunexpress" }
   }
 
   // Wanb Express: WB prefix or typical pattern
@@ -437,6 +444,7 @@ export function getTrackingMoreCourierCode(carrierCode: string): string | undefi
     correios: "correios",
     jadlog: "jadlog",
     cainiao: "cainiao",
+    yunexpress: "yun-express",
   }
   return map[carrierCode]
 }
@@ -534,6 +542,8 @@ export interface CarrierKeys {
   trackingmore?: string
   cainiao?: boolean // Free, no key needed
   postnl?: string
+  yunexpress_customer_number?: string
+  yunexpress_api_key?: string
 }
 
 // ─── Provider Registry ──────────────────────────────────────────────────────
@@ -562,6 +572,12 @@ const PROVIDER_REGISTRY: Record<string, ProviderEntry> = {
     canRun: (k, c) => c.provider === "postnl" && !!k.postnl,
     execute: (tn, k, _c, _fn, signal) => trackViaPostNL(tn, k.postnl!, signal),
   },
+  yunexpress: {
+    label: "YunExpress",
+    canRun: (k) => !!(k.yunexpress_customer_number && k.yunexpress_api_key),
+    execute: (tn, k, _c, _fn, signal) =>
+      trackViaYunExpress(tn, { customerNumber: k.yunexpress_customer_number!, apiKey: k.yunexpress_api_key! }, signal),
+  },
   cainiao: {
     label: "Cainiao",
     canRun: (k) => k.cainiao !== false,
@@ -586,7 +602,7 @@ const PROVIDER_REGISTRY: Record<string, ProviderEntry> = {
   },
 }
 
-const DEFAULT_PROVIDER_ORDER = ["correios", "postnl", "cainiao", "trackingmore", "seventeen_track"]
+const DEFAULT_PROVIDER_ORDER = ["correios", "postnl", "yunexpress", "cainiao", "trackingmore", "seventeen_track"]
 
 /**
  * Resolve provider order, ensuring 17track is ALWAYS last.

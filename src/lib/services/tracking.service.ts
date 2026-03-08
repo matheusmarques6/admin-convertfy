@@ -560,10 +560,16 @@ function safeDecrypt(value: string, keyName: string, trackingCodeId: string): st
 
 // --- Resolve carrier keys per store ---
 
+interface YunExpressStoredKeys {
+  customer_number: string
+  api_key: string
+}
+
 interface StoreCarrierApiKeys {
   trackingmore?: string
   postnl?: string
-  [key: string]: string | undefined
+  yunexpress?: YunExpressStoredKeys
+  [key: string]: string | YunExpressStoredKeys | undefined
 }
 
 async function resolveCarrierKeys(trackingCodeId: string, trackingStoreId: string | null): Promise<CarrierKeys> {
@@ -595,18 +601,33 @@ async function resolveCarrierKeys(trackingCodeId: string, trackingStoreId: strin
 
   const apiKeys = (store.carrier_api_keys ?? {}) as StoreCarrierApiKeys
 
+  // Resolve YunExpress nested credentials
+  let yunexpressCustomerNumber: string | undefined
+  let yunexpressApiKey: string | undefined
+  if (apiKeys.yunexpress && typeof apiKeys.yunexpress === "object") {
+    const yun = apiKeys.yunexpress as YunExpressStoredKeys
+    if (yun.customer_number) {
+      yunexpressCustomerNumber = safeDecrypt(yun.customer_number, "yunexpress.customer_number", trackingCodeId)
+    }
+    if (yun.api_key) {
+      yunexpressApiKey = safeDecrypt(yun.api_key, "yunexpress.api_key", trackingCodeId)
+    }
+  }
+
   const keys: CarrierKeys = {
     // Prefer store key, fall back to global env var
     seventeen_track: store.seventeen_track_api_key
       ? safeDecrypt(store.seventeen_track_api_key, "seventeen_track_api_key", trackingCodeId)
       : globalApiKey,
-    trackingmore: apiKeys.trackingmore
+    trackingmore: apiKeys.trackingmore && typeof apiKeys.trackingmore === "string"
       ? safeDecrypt(apiKeys.trackingmore, "trackingmore", trackingCodeId)
       : undefined,
-    postnl: apiKeys.postnl
+    postnl: apiKeys.postnl && typeof apiKeys.postnl === "string"
       ? safeDecrypt(apiKeys.postnl, "postnl", trackingCodeId)
       : undefined,
     cainiao: true, // always enabled (free)
+    yunexpress_customer_number: yunexpressCustomerNumber,
+    yunexpress_api_key: yunexpressApiKey,
   }
 
   return keys
