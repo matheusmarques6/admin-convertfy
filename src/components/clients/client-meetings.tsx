@@ -64,7 +64,7 @@ export function ClientMeetings({ clientId }: ClientMeetingsProps) {
       {/* Quick Actions */}
       <div className="flex justify-end">
         <Button asChild>
-          <Link href="/meetings">
+          <Link href="/admin/meetings">
             <Plus className="mr-2 h-4 w-4" />
             Agendar Reunião
           </Link>

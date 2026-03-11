@@ -86,7 +86,7 @@ export default function LoginPage() {
         description: "Redirecionando para o dashboard...",
       })
 
-      router.push("/dashboard")
+      router.push("/admin/dashboard")
       router.refresh()
     } catch {
       toast({

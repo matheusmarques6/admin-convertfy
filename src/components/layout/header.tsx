@@ -32,56 +32,57 @@ import { notificationService, type Notification } from "@/lib/services"
 import { useAuthStore } from "@/lib/store"
 import { toast } from "@/lib/hooks/use-toast"
 import { cn } from "@/lib/utils"
+import { ROUTES } from "@/lib/routes"
 
 const pageTitles: Record<string, string> = {
-  "/dashboard": "Dashboard",
-  "/dashboard/operational": "Operacional",
-  "/clients/new": "Novo Cliente",
-  "/clients": "Clientes",
-  "/pipeline": "Pipeline de Vendas",
-  "/board": "Quadro de Tarefas",
-  "/financial": "Financeiro",
-  "/meetings/new": "Nova Reuniao",
-  "/meetings": "Reunioes",
-  "/reports/new": "Novo Relatorio",
-  "/reports": "Relatorios",
-  "/automations/new": "Nova Automacao",
-  "/automations": "Automacoes",
-  "/campaigns": "Campanhas",
-  "/stores": "Lojas",
-  "/onboarding": "Onboarding",
-  "/tools": "Ferramentas",
-  "/notifications": "Notificacoes",
-  "/team": "Equipe",
-  "/settings/appearance": "Aparencia",
-  "/settings/profile": "Perfil",
-  "/settings/company": "Empresa",
-  "/settings/integrations": "Integracoes",
-  "/settings/users": "Usuarios",
-  "/settings/permissions": "Permissoes",
-  "/settings/tags": "Tags",
-  "/settings/custom-fields": "Campos Personalizados",
-  "/settings/notifications": "Notificacoes",
-  "/settings/email-templates": "Templates de Email",
-  "/settings": "Configuracoes",
+  [ROUTES.ADMIN.DASHBOARD]: "Dashboard",
+  [ROUTES.ADMIN.DASHBOARD_OPERATIONAL]: "Operacional",
+  [ROUTES.ADMIN.CLIENTS.NEW]: "Novo Cliente",
+  [ROUTES.ADMIN.CLIENTS.LIST]: "Clientes",
+  [ROUTES.ADMIN.PIPELINE]: "Pipeline de Vendas",
+  [ROUTES.ADMIN.BOARD]: "Quadro de Tarefas",
+  [ROUTES.ADMIN.FINANCIAL]: "Financeiro",
+  [ROUTES.ADMIN.MEETINGS.NEW]: "Nova Reuniao",
+  [ROUTES.ADMIN.MEETINGS.LIST]: "Reunioes",
+  [ROUTES.ADMIN.REPORTS.NEW]: "Novo Relatorio",
+  [ROUTES.ADMIN.REPORTS.LIST]: "Relatorios",
+  [ROUTES.ADMIN.AUTOMATIONS.NEW]: "Nova Automacao",
+  [ROUTES.ADMIN.AUTOMATIONS.LIST]: "Automacoes",
+  [ROUTES.ADMIN.CAMPAIGNS.LIST]: "Campanhas",
+  [ROUTES.ADMIN.STORES.LIST]: "Lojas",
+  [ROUTES.ADMIN.ONBOARDING]: "Onboarding",
+  [ROUTES.ADMIN.TOOLS]: "Ferramentas",
+  [ROUTES.ADMIN.NOTIFICATIONS]: "Notificacoes",
+  [ROUTES.ADMIN.TEAM]: "Equipe",
+  [ROUTES.ADMIN.SETTINGS.APPEARANCE]: "Aparencia",
+  [ROUTES.ADMIN.SETTINGS.PROFILE]: "Perfil",
+  [ROUTES.ADMIN.SETTINGS.COMPANY]: "Empresa",
+  [ROUTES.ADMIN.SETTINGS.INTEGRATIONS]: "Integracoes",
+  [ROUTES.ADMIN.SETTINGS.USERS]: "Usuarios",
+  [ROUTES.ADMIN.SETTINGS.PERMISSIONS]: "Permissoes",
+  [ROUTES.ADMIN.SETTINGS.TAGS]: "Tags",
+  [ROUTES.ADMIN.SETTINGS.CUSTOM_FIELDS]: "Campos Personalizados",
+  [ROUTES.ADMIN.SETTINGS.NOTIFICATIONS]: "Notificacoes",
+  [ROUTES.ADMIN.SETTINGS.EMAIL_TEMPLATES]: "Templates de Email",
+  [ROUTES.ADMIN.SETTINGS.ROOT]: "Configuracoes",
 }
 
 const parentRoutes: Record<string, { label: string; href: string }> = {
-  "/clients/new": { label: "Clientes", href: "/clients" },
-  "/meetings/new": { label: "Reunioes", href: "/meetings" },
-  "/reports/new": { label: "Relatorios", href: "/reports" },
-  "/automations/new": { label: "Automacoes", href: "/automations" },
-  "/settings/appearance": { label: "Configuracoes", href: "/settings" },
-  "/settings/profile": { label: "Configuracoes", href: "/settings" },
-  "/settings/company": { label: "Configuracoes", href: "/settings" },
-  "/settings/integrations": { label: "Configuracoes", href: "/settings" },
-  "/settings/users": { label: "Configuracoes", href: "/settings" },
-  "/settings/permissions": { label: "Configuracoes", href: "/settings" },
-  "/settings/tags": { label: "Configuracoes", href: "/settings" },
-  "/settings/custom-fields": { label: "Configuracoes", href: "/settings" },
-  "/settings/notifications": { label: "Configuracoes", href: "/settings" },
-  "/settings/email-templates": { label: "Configuracoes", href: "/settings" },
-  "/dashboard/operational": { label: "Dashboard", href: "/dashboard" },
+  [ROUTES.ADMIN.CLIENTS.NEW]: { label: "Clientes", href: ROUTES.ADMIN.CLIENTS.LIST },
+  [ROUTES.ADMIN.MEETINGS.NEW]: { label: "Reunioes", href: ROUTES.ADMIN.MEETINGS.LIST },
+  [ROUTES.ADMIN.REPORTS.NEW]: { label: "Relatorios", href: ROUTES.ADMIN.REPORTS.LIST },
+  [ROUTES.ADMIN.AUTOMATIONS.NEW]: { label: "Automacoes", href: ROUTES.ADMIN.AUTOMATIONS.LIST },
+  [ROUTES.ADMIN.SETTINGS.APPEARANCE]: { label: "Configuracoes", href: ROUTES.ADMIN.SETTINGS.ROOT },
+  [ROUTES.ADMIN.SETTINGS.PROFILE]: { label: "Configuracoes", href: ROUTES.ADMIN.SETTINGS.ROOT },
+  [ROUTES.ADMIN.SETTINGS.COMPANY]: { label: "Configuracoes", href: ROUTES.ADMIN.SETTINGS.ROOT },
+  [ROUTES.ADMIN.SETTINGS.INTEGRATIONS]: { label: "Configuracoes", href: ROUTES.ADMIN.SETTINGS.ROOT },
+  [ROUTES.ADMIN.SETTINGS.USERS]: { label: "Configuracoes", href: ROUTES.ADMIN.SETTINGS.ROOT },
+  [ROUTES.ADMIN.SETTINGS.PERMISSIONS]: { label: "Configuracoes", href: ROUTES.ADMIN.SETTINGS.ROOT },
+  [ROUTES.ADMIN.SETTINGS.TAGS]: { label: "Configuracoes", href: ROUTES.ADMIN.SETTINGS.ROOT },
+  [ROUTES.ADMIN.SETTINGS.CUSTOM_FIELDS]: { label: "Configuracoes", href: ROUTES.ADMIN.SETTINGS.ROOT },
+  [ROUTES.ADMIN.SETTINGS.NOTIFICATIONS]: { label: "Configuracoes", href: ROUTES.ADMIN.SETTINGS.ROOT },
+  [ROUTES.ADMIN.SETTINGS.EMAIL_TEMPLATES]: { label: "Configuracoes", href: ROUTES.ADMIN.SETTINGS.ROOT },
+  [ROUTES.ADMIN.DASHBOARD_OPERATIONAL]: { label: "Dashboard", href: ROUTES.ADMIN.DASHBOARD },
 }
 
 interface HeaderProps {
@@ -201,16 +202,17 @@ export function Header({ user: userProp }: HeaderProps) {
       const parent = parentRoutes[matchedParent]
       breadcrumbs.push({ label: parent.label, href: parent.href })
       breadcrumbs.push({ label: title, href: pathname, current: true })
-    } else if (segments.length > 1) {
-      const basePath = `/${segments[0]}`
+    } else if (segments.length > 2) {
+      // For /admin/clients/[id] etc. - segments[0] is "admin", segments[1] is resource
+      const basePath = `/${segments[0]}/${segments[1]}`
       const baseTitle = pageTitles[basePath]
       if (baseTitle) {
         breadcrumbs.push({ label: baseTitle, href: basePath })
-        if (segments.length === 2 && segments[1] !== "new") {
+        if (segments.length === 3 && segments[2] !== "new") {
           breadcrumbs.push({ label: "Detalhes", href: pathname, current: true })
-        } else if (segments.length === 3) {
-          breadcrumbs.push({ label: "Detalhes", href: `/${segments[0]}/${segments[1]}` })
-          const lastSegment = segments[2]
+        } else if (segments.length === 4) {
+          breadcrumbs.push({ label: "Detalhes", href: `/${segments[0]}/${segments[1]}/${segments[2]}` })
+          const lastSegment = segments[3]
           const subTitle = lastSegment === "edit" ? "Editar" : lastSegment.charAt(0).toUpperCase() + lastSegment.slice(1)
           breadcrumbs.push({ label: subTitle, href: pathname, current: true })
         }
@@ -340,7 +342,7 @@ export function Header({ user: userProp }: HeaderProps) {
 
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild className="justify-center text-primary cursor-pointer text-xs font-medium">
-              <Link href="/notifications">
+              <Link href={ROUTES.ADMIN.NOTIFICATIONS}>
                 Ver todas as notificacoes
               </Link>
             </DropdownMenuItem>

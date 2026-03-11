@@ -234,7 +234,7 @@ export function ChargesManager() {
             Conecte sua conta Asaas para gerenciar cobranças
           </p>
           <Button asChild>
-            <Link href="/settings/integrations">Configurar Integração</Link>
+            <Link href="/admin/settings/integrations">Configurar Integração</Link>
           </Button>
         </CardContent>
       </Card>
@@ -266,7 +266,7 @@ export function ChargesManager() {
             <TableRow key={charge.id} className={charge.isOverdue ? "bg-destructive/10" : ""}>
               <TableCell>
                 {charge.client ? (
-                  <Link href={`/clients/${charge.client.id}`} className="hover:underline">
+                  <Link href={`/admin/clients/${charge.client.id}`} className="hover:underline">
                     <div className="font-medium">{charge.client.name}</div>
                     {charge.client.company && (
                       <div className="text-xs text-muted-foreground">{charge.client.company}</div>

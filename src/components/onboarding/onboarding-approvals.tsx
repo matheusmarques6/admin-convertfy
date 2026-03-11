@@ -373,7 +373,7 @@ export function OnboardingApprovals() {
                   <Badge variant="secondary" className="text-xs">Formulário Parcial</Badge>
                 )}
                 <Button size="sm" variant="ghost" asChild>
-                  <Link href={`/stores/${onb.store_id}`}>
+                  <Link href={`/admin/stores/${onb.store_id}`}>
                     <Store className="h-4 w-4 mr-1" />
                     Ver Loja
                   </Link>

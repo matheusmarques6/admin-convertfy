@@ -560,7 +560,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
                     variant="default"
                     size="sm"
                     className="flex-1"
-                    onClick={() => router.push(`/stores/${store.id}`)}
+                    onClick={() => router.push(`/admin/stores/${store.id}`)}
                   >
                     <Eye className="mr-2 h-4 w-4" />
                     Ir para Loja

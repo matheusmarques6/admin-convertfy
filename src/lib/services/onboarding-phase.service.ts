@@ -235,7 +235,7 @@ export class OnboardingPhaseService {
           title: `Novo onboarding para design: ${onboarding.client?.company || onboarding.client?.name}`,
           body: `Copies prontas. Iniciar design para ${onboarding.store?.store_name}`,
           type: "info",
-          link: `/onboarding?highlight=${onboarding.id}`,
+          link: `/admin/onboarding?highlight=${onboarding.id}`,
         })
 
         await this.notifyClient(onboarding, "design_started",
@@ -249,7 +249,7 @@ export class OnboardingPhaseService {
           title: `Novo onboarding para implementação: ${onboarding.client?.company || onboarding.client?.name}`,
           body: `Design finalizado. Implementar para ${onboarding.store?.store_name}`,
           type: "info",
-          link: `/onboarding?highlight=${onboarding.id}`,
+          link: `/admin/onboarding?highlight=${onboarding.id}`,
         })
 
         await this.notifyClient(onboarding, "implementation_started",
@@ -272,7 +272,7 @@ export class OnboardingPhaseService {
           title: `Onboarding concluído: ${onboarding.client?.company || onboarding.client?.name}`,
           body: `Onboarding finalizado para ${onboarding.store?.store_name}. Cliente agora ativo.`,
           type: "success",
-          link: `/clients/${onboarding.client_id}`,
+          link: `/admin/clients/${onboarding.client_id}`,
         })
         break
       }
@@ -309,7 +309,7 @@ export class OnboardingPhaseService {
         title: `Novo formulário de onboarding para aprovação`,
         body: `${onboarding.client?.name} (${onboarding.store?.store_name}) aguarda aprovação`,
         type: "warning",
-        link: `/onboarding?tab=approvals`,
+        link: `/admin/onboarding?tab=approvals`,
       })
       return
     }
@@ -323,7 +323,7 @@ export class OnboardingPhaseService {
         title: `Novo formulário de onboarding para aprovação`,
         body: `${onboarding.client?.name} (${onboarding.store?.store_name}) aguarda sua aprovação`,
         type: "warning",
-        link: `/onboarding?tab=approvals`,
+        link: `/admin/onboarding?tab=approvals`,
       })
     }
   }
@@ -354,7 +354,7 @@ export class OnboardingPhaseService {
         title: "Atualização do Onboarding",
         body: message,
         type: "info",
-        link: "/portal/onboarding",
+        link: "/client/onboarding",
         metadata: { event, onboarding_id: onboarding.id },
       })
     }
@@ -371,7 +371,7 @@ export class OnboardingPhaseService {
         phase: event,
         phase_label: PHASE_LABELS[event] || event,
         message,
-        portal_url: `${appUrl}/portal/onboarding`,
+        portal_url: `${appUrl}/client/onboarding`,
       })
     }
 

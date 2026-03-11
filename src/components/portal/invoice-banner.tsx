@@ -40,7 +40,7 @@ export function InvoiceBanner() {
 
   useEffect(() => {
     // Don't fetch if already on invoices page
-    if (pathname?.startsWith("/portal/invoices")) return
+    if (pathname?.startsWith("/client/invoices")) return
 
     const controller = new AbortController()
 
@@ -66,7 +66,7 @@ export function InvoiceBanner() {
   }, [pathname])
 
   // Don't render on invoices page or when nothing to show
-  if (pathname?.startsWith("/portal/invoices")) return null
+  if (pathname?.startsWith("/client/invoices")) return null
   if (!status?.show) return null
   if (dismissed) return null
 
@@ -167,7 +167,7 @@ export function InvoiceBanner() {
                 : "bg-amber-600 hover:bg-amber-700 text-white shadow-sm"
             }
           >
-            <Link href="/portal/invoices">{ctaText}</Link>
+            <Link href="/client/invoices">{ctaText}</Link>
           </Button>
         </div>
       </div>

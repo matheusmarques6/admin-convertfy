@@ -130,7 +130,7 @@ export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps)
 
         {hasStoreAlerts && (
           <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground" asChild>
-            <Link href="/stores?tab=alerts">Ver todos os alertas de lojas</Link>
+            <Link href="/admin/stores?tab=alerts">Ver todos os alertas de lojas</Link>
           </Button>
         )}
 
@@ -154,7 +154,7 @@ export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps)
                     </p>
                   </div>
                   <Button variant="ghost" size="sm" className="text-xs shrink-0" asChild>
-                    <Link href="/meetings">Ver</Link>
+                    <Link href="/admin/meetings">Ver</Link>
                   </Button>
                 </div>
               ))}

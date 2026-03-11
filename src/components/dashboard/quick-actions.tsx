@@ -14,15 +14,15 @@ interface QuickAction {
 }
 
 const allActions: QuickAction[] = [
-  { label: "Novo Cliente", href: "/clients/new", icon: UserPlus, primary: true, requiredFeatures: ["create_clients"] },
-  { label: "Nova Automacao", href: "/automations/new", icon: Zap, requiredFeatures: ["campaign_control"] },
-  { label: "Aprovar Onboarding", href: "/onboarding", icon: Rocket, requiredFeatures: ["onboarding_control"] },
-  { label: "Agendar Reuniao", href: "/meetings", icon: Calendar, requiredFeatures: ["calendar_control"] },
-  { label: "Nova Campanha", href: "/campaigns", icon: Plus, requiredFeatures: ["campaign_control", "campaign_view"] },
-  { label: "Criar Relatorio", href: "/reports/new", icon: FileText, requiredFeatures: ["view_reports"] },
-  { label: "Ver Copys", href: "/campaigns?view=copy", icon: PenLine, requiredFeatures: ["campaign_copy"] },
-  { label: "Ver Board", href: "/board", icon: ClipboardList, requiredFeatures: ["request_control", "request_execute"] },
-  { label: "Ver Lojas", href: "/stores", icon: Store },
+  { label: "Novo Cliente", href: "/admin/clients/new", icon: UserPlus, primary: true, requiredFeatures: ["create_clients"] },
+  { label: "Nova Automacao", href: "/admin/automations/new", icon: Zap, requiredFeatures: ["campaign_control"] },
+  { label: "Aprovar Onboarding", href: "/admin/onboarding", icon: Rocket, requiredFeatures: ["onboarding_control"] },
+  { label: "Agendar Reuniao", href: "/admin/meetings", icon: Calendar, requiredFeatures: ["calendar_control"] },
+  { label: "Nova Campanha", href: "/admin/campaigns", icon: Plus, requiredFeatures: ["campaign_control", "campaign_view"] },
+  { label: "Criar Relatorio", href: "/admin/reports/new", icon: FileText, requiredFeatures: ["view_reports"] },
+  { label: "Ver Copys", href: "/admin/campaigns?view=copy", icon: PenLine, requiredFeatures: ["campaign_copy"] },
+  { label: "Ver Board", href: "/admin/board", icon: ClipboardList, requiredFeatures: ["request_control", "request_execute"] },
+  { label: "Ver Lojas", href: "/admin/stores", icon: Store },
 ]
 
 export function QuickActions() {

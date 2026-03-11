@@ -41,14 +41,14 @@ export function StoreOnboardingCard({
     <Card className="hover:border-primary/50 transition-colors">
       <CardContent className="p-4">
         <div className="flex items-start justify-between gap-2">
-          <Link href={`/stores/${storeId}`} className="flex-1 min-w-0">
+          <Link href={`/admin/stores/${storeId}`} className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <Store className="h-4 w-4 text-primary flex-shrink-0" />
               <h3 className="font-medium truncate">{storeName}</h3>
             </div>
           </Link>
           <Link
-            href={`/clients/${clientId}`}
+            href={`/admin/clients/${clientId}`}
             className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors flex-shrink-0"
           >
             <User className="h-3 w-3" />

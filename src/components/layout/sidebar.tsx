@@ -51,6 +51,7 @@ import { createClient } from "@/lib/supabase/client"
 import { useUIStore } from "@/lib/store"
 import { toast } from "@/lib/hooks/use-toast"
 import { usePermissions } from "@/lib/hooks/use-permissions"
+import { ROUTES } from "@/lib/routes"
 
 interface NavItem {
   name: string
@@ -70,22 +71,22 @@ const NAV_GROUPS = [
 ] as const
 
 const navigation: NavItem[] = [
-  { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard, group: "principal" },
-  { name: "Clientes", href: "/clients", icon: Users, group: "crm", requiredFeatures: ["create_clients", "onboarding_control"] },
-  { name: "Lojas", href: "/stores", icon: Store, group: "crm", requiresStoreAccess: true },
-  { name: "Onboarding", href: "/onboarding", icon: Rocket, group: "crm", requiredFeatures: ["onboarding_control", "onboarding_view"] },
-  { name: "Pipeline", href: "/pipeline", icon: Kanban, group: "crm", requiredFeatures: ["request_control", "request_execute"] },
-  { name: "Campanhas", href: "/campaigns", icon: CalendarDays, group: "marketing", requiredFeatures: ["campaign_control", "campaign_view", "campaign_copy"] },
-  { name: "Automacoes", href: "/automations", icon: Zap, group: "marketing", requiredFeatures: ["campaign_control"] },
-  { name: "Board", href: "/board", icon: ClipboardList, group: "operacional", requiredFeatures: ["request_control", "request_execute", "calendar_control"] },
-  { name: "Reunioes", href: "/meetings", icon: Calendar, group: "operacional", requiredFeatures: ["calendar_control"] },
-  { name: "Financeiro", href: "/financial", icon: DollarSign, group: "operacional", requiredFeatures: ["view_financial"] },
-  { name: "Relatorios", href: "/reports", icon: BarChart3, group: "operacional", requiredFeatures: ["view_reports"] },
-  { name: "Ferramentas", href: "/tools", icon: Wrench, group: "ferramentas" },
+  { name: "Dashboard", href: ROUTES.ADMIN.DASHBOARD, icon: LayoutDashboard, group: "principal" },
+  { name: "Clientes", href: ROUTES.ADMIN.CLIENTS.LIST, icon: Users, group: "crm", requiredFeatures: ["create_clients", "onboarding_control"] },
+  { name: "Lojas", href: ROUTES.ADMIN.STORES.LIST, icon: Store, group: "crm", requiresStoreAccess: true },
+  { name: "Onboarding", href: ROUTES.ADMIN.ONBOARDING, icon: Rocket, group: "crm", requiredFeatures: ["onboarding_control", "onboarding_view"] },
+  { name: "Pipeline", href: ROUTES.ADMIN.PIPELINE, icon: Kanban, group: "crm", requiredFeatures: ["request_control", "request_execute"] },
+  { name: "Campanhas", href: ROUTES.ADMIN.CAMPAIGNS.LIST, icon: CalendarDays, group: "marketing", requiredFeatures: ["campaign_control", "campaign_view", "campaign_copy"] },
+  { name: "Automacoes", href: ROUTES.ADMIN.AUTOMATIONS.LIST, icon: Zap, group: "marketing", requiredFeatures: ["campaign_control"] },
+  { name: "Board", href: ROUTES.ADMIN.BOARD, icon: ClipboardList, group: "operacional", requiredFeatures: ["request_control", "request_execute", "calendar_control"] },
+  { name: "Reunioes", href: ROUTES.ADMIN.MEETINGS.LIST, icon: Calendar, group: "operacional", requiredFeatures: ["calendar_control"] },
+  { name: "Financeiro", href: ROUTES.ADMIN.FINANCIAL, icon: DollarSign, group: "operacional", requiredFeatures: ["view_financial"] },
+  { name: "Relatorios", href: ROUTES.ADMIN.REPORTS.LIST, icon: BarChart3, group: "operacional", requiredFeatures: ["view_reports"] },
+  { name: "Ferramentas", href: ROUTES.ADMIN.TOOLS, icon: Wrench, group: "ferramentas" },
 ]
 
 const bottomNavigation: NavItem[] = [
-  { name: "Configuracoes", href: "/settings", icon: Settings, group: "bottom" },
+  { name: "Configuracoes", href: ROUTES.ADMIN.SETTINGS.ROOT, icon: Settings, group: "bottom" },
 ]
 
 interface SidebarProps {
@@ -134,7 +135,7 @@ export function Sidebar({ user }: SidebarProps) {
     try {
       const supabase = createClient()
       await supabase.auth.signOut()
-      router.push("/login")
+      router.push(ROUTES.LOGIN)
       router.refresh()
     } catch {
       toast({
@@ -148,7 +149,7 @@ export function Sidebar({ user }: SidebarProps) {
   }
 
   function checkActive(href: string) {
-    if (href === "/dashboard") return pathname === "/dashboard" || pathname === "/dashboard/operational"
+    if (href === ROUTES.ADMIN.DASHBOARD) return pathname === ROUTES.ADMIN.DASHBOARD || pathname === ROUTES.ADMIN.DASHBOARD_OPERATIONAL
     return pathname.startsWith(href)
   }
 
@@ -226,7 +227,7 @@ export function Sidebar({ user }: SidebarProps) {
           "flex items-center h-16 shrink-0 border-b border-white/[0.04]",
           sidebarCollapsed ? "justify-center px-2" : "px-5"
         )}>
-          <Link href="/dashboard" className="flex items-center">
+          <Link href={ROUTES.ADMIN.DASHBOARD} className="flex items-center">
             {sidebarCollapsed ? (
               <LogoIcon className="w-8 h-8" />
             ) : (
@@ -315,13 +316,13 @@ export function Sidebar({ user }: SidebarProps) {
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
-                  <Link href="/settings/profile">
+                  <Link href={ROUTES.ADMIN.SETTINGS.PROFILE}>
                     <UserCircle className="mr-2 h-4 w-4" />
                     Perfil
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
-                  <Link href="/notifications">
+                  <Link href={ROUTES.ADMIN.NOTIFICATIONS}>
                     <Bell className="mr-2 h-4 w-4" />
                     Notificacoes
                   </Link>

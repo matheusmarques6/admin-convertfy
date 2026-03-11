@@ -78,7 +78,7 @@ export function NewClients({ clients }: NewClientsProps) {
               {clients.map((client) => (
                 <Link
                   key={client.id}
-                  href={`/clients/${client.id}`}
+                  href={`/admin/clients/${client.id}`}
                   className="flex items-center gap-3 p-3 rounded-lg border border-border hover:bg-muted/30 transition-colors"
                 >
                   <Avatar className="h-8 w-8">

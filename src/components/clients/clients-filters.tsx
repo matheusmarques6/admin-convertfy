@@ -55,7 +55,7 @@ export function ClientsFilters() {
     if (health !== "all") params.set("health", health)
     // Nao inclui page — sempre volta para pagina 1
     const qs = params.toString()
-    router.push(qs ? `/clients?${qs}` : "/clients")
+    router.push(qs ? `/admin/clients?${qs}` : "/clients")
   }
 
   function clearFilter(key: string) {
@@ -65,14 +65,14 @@ export function ClientsFilters() {
     params.delete(key)
     params.delete("page") // Reset para pagina 1
     const qs = params.toString()
-    router.push(qs ? `/clients?${qs}` : "/clients")
+    router.push(qs ? `/admin/clients?${qs}` : "/clients")
   }
 
   function clearAllFilters() {
     setSearch("")
     setStatus("all")
     setHealth("all")
-    router.push("/clients")
+    router.push("/admin/clients")
   }
 
   return (

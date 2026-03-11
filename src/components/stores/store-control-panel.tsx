@@ -891,7 +891,7 @@ export function StoreControlPanel() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => router.push(`/stores/${store.id}`)}>
+                              <DropdownMenuItem onClick={() => router.push(`/admin/stores/${store.id}`)}>
                                 <Store className="w-4 h-4 mr-2" />
                                 Ver Loja
                               </DropdownMenuItem>
@@ -902,7 +902,7 @@ export function StoreControlPanel() {
                               {store.client_id && (
                                 <>
                                   <DropdownMenuSeparator />
-                                  <DropdownMenuItem onClick={() => router.push(`/clients/${store.client_id}`)}>
+                                  <DropdownMenuItem onClick={() => router.push(`/admin/clients/${store.client_id}`)}>
                                     <ExternalLink className="w-4 h-4 mr-2" />
                                     Ver Cliente
                                   </DropdownMenuItem>
@@ -1217,7 +1217,7 @@ export function StoreControlPanel() {
                       variant="outline"
                       size="sm"
                       className="flex-1 border-border"
-                      onClick={() => router.push(`/clients/${selectedStore.client_id}?tab=stores`)}
+                      onClick={() => router.push(`/admin/clients/${selectedStore.client_id}?tab=stores`)}
                     >
                       <Pencil className="w-3 h-3 mr-1" />
                       Editar no Cliente
@@ -1227,7 +1227,7 @@ export function StoreControlPanel() {
                     variant="outline"
                     size="sm"
                     className="flex-1 border-border"
-                    onClick={() => router.push(`/reports?store_id=${selectedStore.id}`)}
+                    onClick={() => router.push(`/admin/reports?store_id=${selectedStore.id}`)}
                   >
                     <TrendingUp className="w-3 h-3 mr-1" />
                     Ver Relatorio

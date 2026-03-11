@@ -34,7 +34,7 @@ function AccessDenied() {
         Entre em contato com o administrador se precisar de acesso.
       </p>
       <Button asChild>
-        <Link href="/dashboard">Voltar ao Dashboard</Link>
+        <Link href="/admin/dashboard">Voltar ao Dashboard</Link>
       </Button>
     </div>
   )

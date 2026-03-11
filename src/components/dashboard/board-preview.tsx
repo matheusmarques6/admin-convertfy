@@ -84,7 +84,7 @@ export function BoardPreview({ tasks }: BoardPreviewProps) {
         {/* Link */}
         <div className="mt-auto pt-2">
           <Button variant="ghost" size="sm" className="w-full text-xs text-primary group" asChild>
-            <Link href="/board">
+            <Link href="/admin/board">
               Ver Board
               <ArrowRight className="h-3.5 w-3.5 ml-1 transition-transform group-hover:translate-x-0.5" />
             </Link>

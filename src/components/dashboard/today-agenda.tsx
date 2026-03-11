@@ -36,7 +36,7 @@ export function TodayAgenda({ meetings }: TodayAgendaProps) {
             <span className="text-foreground">Agenda de Hoje</span>
           </div>
           <Button variant="ghost" size="sm" className="text-xs text-muted-foreground hover:text-primary h-7" asChild>
-            <Link href="/meetings?view=calendar">
+            <Link href="/admin/meetings?view=calendar">
               Ver calendário
               <ArrowRight className="ml-1 h-3 w-3" />
             </Link>

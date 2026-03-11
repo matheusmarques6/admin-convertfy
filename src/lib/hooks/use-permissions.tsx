@@ -176,28 +176,28 @@ export function useCanAccessRoute(routePath: string): boolean {
 
   // Mapeamento de rotas para features necessárias
   const routePermissions: Record<string, string[]> = {
-    "/dashboard": [], // Sempre acessível
-    "/board": ["request_control", "request_execute"],
-    "/clients": ["create_clients"],
-    "/team": ["team_control", "team_view"],
-    "/onboarding": ["onboarding_control", "onboarding_view"],
-    "/stores": [], // Controlado por storeAccess
-    "/pipeline": ["request_control", "request_execute"],
-    "/financial": ["view_financial"],
-    "/meetings": ["calendar_control"],
-    "/campaigns": ["campaign_control", "campaign_view"],
-    "/reports": ["view_reports"],
-    "/automations": ["campaign_control"],
-    "/tools": [], // Sempre acessível
-    "/settings": [], // Sempre acessível
+    "/admin/dashboard": [], // Sempre acessível
+    "/admin/board": ["request_control", "request_execute"],
+    "/admin/clients": ["create_clients"],
+    "/admin/team": ["team_control", "team_view"],
+    "/admin/onboarding": ["onboarding_control", "onboarding_view"],
+    "/admin/stores": [], // Controlado por storeAccess
+    "/admin/pipeline": ["request_control", "request_execute"],
+    "/admin/financial": ["view_financial"],
+    "/admin/meetings": ["calendar_control"],
+    "/admin/campaigns": ["campaign_control", "campaign_view"],
+    "/admin/reports": ["view_reports"],
+    "/admin/automations": ["campaign_control"],
+    "/admin/tools": [], // Sempre acessível
+    "/admin/settings": [], // Sempre acessível
   }
 
   const requiredFeatures = routePermissions[routePath]
 
   // Se não há features requeridas, permite acesso
   if (!requiredFeatures || requiredFeatures.length === 0) {
-    // Caso especial para /stores - precisa ter acesso a pelo menos uma loja
-    if (routePath === "/stores") {
+    // Caso especial para /admin/stores - precisa ter acesso a pelo menos uma loja
+    if (routePath === "/admin/stores") {
       return permissions.storeAccess.length > 0
     }
     return true

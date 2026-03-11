@@ -67,7 +67,7 @@ export function TopStoresCard({ stores: storesProp, allStores, isLoading, dataSt
             const widthPercent = Math.max((storeRevBRL / maxRevenue) * 100, 4)
             const curr = store.currency || "BRL"
             return (
-              <Link key={store.storeId} href={`/stores/${store.storeId}`} className="block group">
+              <Link key={store.storeId} href={`/admin/stores/${store.storeId}`} className="block group">
                 <div className="flex items-center justify-between text-xs mb-1">
                   <span className="truncate max-w-[55%] text-foreground group-hover:text-primary transition-colors">
                     <span className="text-muted-foreground mr-1.5 font-medium">{i + 1}.</span>

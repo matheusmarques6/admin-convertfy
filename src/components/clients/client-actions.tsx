@@ -55,7 +55,7 @@ export function ClientActions({ clientId, clientName }: ClientActionsProps) {
         description: "O cliente foi excluído com sucesso.",
       })
 
-      router.push("/clients")
+      router.push("/admin/clients")
       router.refresh()
     } catch {
       toast({
@@ -81,13 +81,13 @@ export function ClientActions({ clientId, clientName }: ClientActionsProps) {
           <DropdownMenuLabel>Ações</DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem asChild>
-            <Link href={`/meetings/new?clientId=${clientId}`}>
+            <Link href={`/admin/meetings/new?clientId=${clientId}`}>
               <Calendar className="mr-2 h-4 w-4" />
               Agendar Reunião
             </Link>
           </DropdownMenuItem>
           <DropdownMenuItem asChild>
-            <Link href={`/reports/new?clientId=${clientId}`}>
+            <Link href={`/admin/reports/new?clientId=${clientId}`}>
               <FileText className="mr-2 h-4 w-4" />
               Criar Relatório
             </Link>

@@ -9,7 +9,7 @@ export class PortalAccountService {
   /**
    * Create a portal account for a new client after form submission.
    * Creates auth user with temp password and sends welcome email via Resend.
-   * The user logs in at /portal/login and is prompted to change password.
+   * The user logs in at /client/login and is prompted to change password.
    */
   async createPortalAccount(params: {
     clientId: string
@@ -71,7 +71,7 @@ export class PortalAccountService {
         name: params.name,
         email: params.email,
         tempPassword,
-        loginUrl: `${appUrl}/portal/login`,
+        loginUrl: `${appUrl}/client/login`,
       })
     } catch (emailErr) {
       log.warn("Failed to send welcome email, account created anyway", {
