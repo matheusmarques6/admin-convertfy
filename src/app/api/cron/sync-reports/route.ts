@@ -27,7 +27,8 @@ const log = logger.child("CronSyncReports")
 export const maxDuration = 300
 export const dynamic = "force-dynamic"
 
-const BATCH_SIZE = 3
+const MAX_PARALLEL_GROUPS = 2
+const INTRA_GROUP_DELAY_MS = 2500
 const MAX_DURATION_MS = 240_000 // 80% of 300s — stop before Vercel kills us
 const STALE_LOCK_MS = 10 * 60 * 1000 // 10 minutes
 
@@ -456,39 +457,111 @@ export async function GET(request: NextRequest) {
       const allResults: CronSyncResult[] = []
       let timedOut = false
 
-      // Process stores in batches
-      for (let i = 0; i < stores.length; i += BATCH_SIZE) {
+      // Step 1: Fetch API keys and group stores by Klaviyo API key
+      const apiKeyGroups = new Map<string, StoreRow[]>()
+      const skippedNoKey: string[] = []
+
+      for (const store of stores) {
+        try {
+          const credentials = await getStoreCredentials(store.id)
+          const apiKey = credentials.klaviyo_private_key || credentials.klaviyo_api_key
+          if (!apiKey) {
+            skippedNoKey.push(store.store_name)
+            continue
+          }
+          const existing = apiKeyGroups.get(apiKey)
+          if (existing) {
+            existing.push(store as StoreRow)
+          } else {
+            apiKeyGroups.set(apiKey, [store as StoreRow])
+          }
+        } catch {
+          skippedNoKey.push(store.store_name)
+        }
+      }
+
+      if (skippedNoKey.length > 0) {
+        log.warn(`[Cron] Skipped ${skippedNoKey.length} stores with no valid API key: ${skippedNoKey.join(", ")}`)
+      }
+
+      const groups = Array.from(apiKeyGroups.entries())
+      const groupSizes = groups.map(g => g[1].length)
+      log.info(`[Cron] ${stores.length} stores grouped into ${groups.length} API key groups: [${groupSizes.join(", ")}]`)
+
+      // Log which group each store belongs to (masked key, not plaintext)
+      groups.forEach(([apiKey, groupStores], groupIdx) => {
+        const maskedKey = `...${apiKey.slice(-4)}`
+        for (const s of groupStores) {
+          log.info(`[Cron] Store "${s.store_name}" → API key group #${groupIdx + 1} (${groupStores.length} stores in group, key ${maskedKey})`)
+        }
+      })
+
+      // Step 2: Process groups in batches of MAX_PARALLEL_GROUPS
+      for (let i = 0; i < groups.length; i += MAX_PARALLEL_GROUPS) {
         if (Date.now() - startTime > MAX_DURATION_MS) {
           timedOut = true
-          log.warn(`[Cron] Timeout approaching at store batch ${i}/${stores.length}`)
+          log.warn(`[Cron] Timeout approaching at group batch ${i}/${groups.length}`)
           break
         }
 
-        const batch = stores.slice(i, i + BATCH_SIZE)
-        const batchResults = await Promise.allSettled(
-          batch.map(store => syncStore(store as StoreRow, CACHED_PERIODS, supabase, startTime))
+        const groupBatch = groups.slice(i, i + MAX_PARALLEL_GROUPS)
+
+        const groupResults = await Promise.allSettled(
+          groupBatch.map(async ([, groupStores]) => {
+            const results: CronSyncResult[] = []
+            for (let j = 0; j < groupStores.length; j++) {
+              if (Date.now() - startTime > MAX_DURATION_MS) {
+                // Mark remaining stores as skipped due to timeout
+                for (let k = j; k < groupStores.length; k++) {
+                  for (const period of CACHED_PERIODS) {
+                    results.push({
+                      storeId: groupStores[k].id,
+                      storeName: groupStores[k].store_name,
+                      period,
+                      status: "skipped",
+                      error: "timeout",
+                    })
+                  }
+                }
+                break
+              }
+
+              const storeResults = await syncStore(groupStores[j], CACHED_PERIODS, supabase, startTime)
+              results.push(...storeResults)
+
+              // Delay between stores in the same API key group
+              if (j < groupStores.length - 1) {
+                await new Promise(resolve => setTimeout(resolve, INTRA_GROUP_DELAY_MS))
+              }
+            }
+            return results
+          })
         )
 
-        for (let j = 0; j < batchResults.length; j++) {
-          const result = batchResults[j]
+        // Collect results from all groups in this batch
+        for (let g = 0; g < groupResults.length; g++) {
+          const result = groupResults[g]
           if (result.status === "fulfilled") {
             allResults.push(...result.value)
           } else {
             const msg = result.reason instanceof Error ? result.reason.message : "Unknown error"
-            for (const period of CACHED_PERIODS) {
-              allResults.push({
-                storeId: batch[j].id,
-                storeName: batch[j].store_name,
-                period,
-                status: "error",
-                error: msg,
-              })
+            const failedStores = groupBatch[g][1]
+            for (const s of failedStores) {
+              for (const period of CACHED_PERIODS) {
+                allResults.push({
+                  storeId: s.id,
+                  storeName: s.store_name,
+                  period,
+                  status: "error",
+                  error: msg,
+                })
+              }
             }
           }
         }
 
-        // Delay between batches to avoid Klaviyo rate limits across stores
-        if (i + BATCH_SIZE < stores.length) {
+        // Delay between batches of groups
+        if (i + MAX_PARALLEL_GROUPS < groups.length) {
           await new Promise(resolve => setTimeout(resolve, 3000))
         }
       }
