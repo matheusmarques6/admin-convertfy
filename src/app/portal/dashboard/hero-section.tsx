@@ -20,7 +20,7 @@ export function HeroSection({ klaviyo }: HeroSectionProps) {
   const smsPercent = storeRevenue > 0 ? (smsRevenue / storeRevenue) * 100 : 0
 
   return (
-    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6 lg:p-8">
+    <div className="relative overflow-hidden rounded-2xl p-6 lg:p-8" style={{ background: 'linear-gradient(90deg, #4e62d8, #2137b6, #041366)' }}>
       {/* Subtle pattern overlay */}
       <div className="absolute inset-0 opacity-30">
         <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-gradient-to-bl from-emerald-500/20 to-transparent rounded-full blur-3xl -translate-y-1/2 translate-x-1/3" />

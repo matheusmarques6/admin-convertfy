@@ -452,7 +452,7 @@ export default function PortalLayout({
                 priority
               />
               <Image
-                src="/images/logo com escrito preto.png"
+                src="/images/logo da convertfy com escrito preto.png"
                 alt="Convertfy"
                 width={140}
                 height={36}
@@ -493,7 +493,7 @@ export default function PortalLayout({
                     className="h-8 w-auto object-contain hidden dark:block"
                   />
                   <Image
-                    src="/images/logo com escrito preto.png"
+                    src="/images/logo da convertfy com escrito preto.png"
                     alt="Convertfy"
                     width={140}
                     height={36}
