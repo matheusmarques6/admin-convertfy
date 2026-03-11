@@ -154,8 +154,8 @@ export async function POST(request: NextRequest) {
         client_id: client.id,
         store_id: store.id,
         template_id: template?.id || null,
-        status: "pending_approval",
-        current_phase: "pending_approval",
+        status: "not_started",
+        current_phase: "not_started",
         submitted_at: new Date().toISOString(),
         target_completion_date: targetDate.toISOString(),
       })
@@ -186,18 +186,15 @@ export async function POST(request: NextRequest) {
       await adminClient.from("client_onboarding_steps").insert(steps)
     }
 
-    // 5. Notify approvers (via phase service side effects)
+    // 5. Transition not_started → pending_approval (triggers notifyApprovers + notifyClient)
     try {
       await onboardingPhaseService.transition({
         onboardingId: onboarding.id,
         toPhase: "pending_approval",
         triggeredBy: "form_submission",
-      }).catch(() => {
-        // The onboarding is already in pending_approval, so transition may fail
-        // That's ok, just manually notify
       })
     } catch {
-      // Non-blocking
+      // Non-blocking — side effects are best-effort
     }
 
     log.info("Public onboarding form submitted successfully", {

@@ -44,7 +44,7 @@ export class OnboardingPhaseService {
     triggeredBy: PhaseTransitionTrigger
     triggeredByUserId?: string
     metadata?: Record<string, unknown>
-  }): Promise<{ success: boolean; onboarding?: ClientOnboarding; error?: string }> {
+  }): Promise<{ success: boolean; onboarding?: ClientOnboarding; fromPhase?: string; toPhase?: string; error?: string }> {
     const adminClient = createAdminClient()
 
     // 1. Fetch current onboarding
@@ -65,7 +65,13 @@ export class OnboardingPhaseService {
 
     const fromPhase = onboarding.current_phase || onboarding.status || "not_started"
 
-    // 2. Validate transition
+    // 2. Self-transition is a no-op (e.g., form resubmission while already in pending_approval)
+    if (fromPhase === params.toPhase) {
+      log.debug(`Self-transition ignored: ${fromPhase}`, { id: params.onboardingId })
+      return { success: true, fromPhase, toPhase: params.toPhase }
+    }
+
+    // 3. Validate transition
     const validTargets = VALID_TRANSITIONS[fromPhase] || []
     if (!validTargets.includes(params.toPhase)) {
       log.warn(`Invalid transition: ${fromPhase} → ${params.toPhase}`, { id: params.onboardingId })

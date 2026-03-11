@@ -145,14 +145,30 @@ export async function POST(request: NextRequest) {
         onboarding_id: body.onboarding_id,
       })
 
+      // Parse string payload from N8N if it's valid JSON
+      let parsedData = body.data
+      if (typeof body.data === "string") {
+        try {
+          const parsed = JSON.parse(body.data)
+          if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+            log.warn("[Webhook] briefing_generated body.data was JSON string, parsed to object", {
+              onboarding_id: body.onboarding_id,
+            })
+            parsedData = parsed
+          }
+        } catch {
+          // Not valid JSON — will fall through to raw_text fallback below
+        }
+      }
+
       // Resilient handling: accept both structured JSON and raw text from n8n
-      const isStructured = body.data && typeof body.data === "object" && !Array.isArray(body.data)
+      const isStructured = parsedData && typeof parsedData === "object" && !Array.isArray(parsedData)
 
       log.warn("[Webhook] briefing_generated payload type", {
         onboarding_id: body.onboarding_id,
-        data_type: typeof body.data,
+        data_type: typeof parsedData,
         is_structured: isStructured,
-        data_keys: isStructured ? Object.keys(body.data) : [],
+        data_keys: isStructured ? Object.keys(parsedData) : [],
       })
 
       let briefingData: Record<string, unknown>
@@ -169,7 +185,7 @@ export async function POST(request: NextRequest) {
           "codigo_colaborador",
         ]
         const missingKeys = requiredTopLevelKeys.filter(
-          (k) => !(k in body.data)
+          (k) => !(k in parsedData)
         )
         if (missingKeys.length > 0) {
           log.warn("[Webhook] Structured briefing missing keys, saving as raw_text fallback", {
@@ -177,21 +193,21 @@ export async function POST(request: NextRequest) {
             missing: missingKeys,
           })
           // Save as raw_text instead of rejecting
-          briefingData = { raw_text: JSON.stringify(body.data, null, 2) }
+          briefingData = { raw_text: JSON.stringify(parsedData, null, 2) }
         } else {
           briefingData = {
             resumo_performance: {},
             analise_anuncios: {},
-            ...body.data,
+            ...parsedData,
           }
         }
       } else {
         // Raw text from n8n (string) — wrap in raw_text envelope
         log.info("[Webhook] Received raw text briefing, wrapping as raw_text", {
           onboarding_id: body.onboarding_id,
-          text_length: typeof body.data === "string" ? body.data.length : 0,
+          text_length: typeof parsedData === "string" ? parsedData.length : 0,
         })
-        briefingData = { raw_text: String(body.data) }
+        briefingData = { raw_text: String(parsedData) }
       }
 
       // N8N generated a briefing via AI — save it to store_briefings
