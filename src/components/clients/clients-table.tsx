@@ -128,7 +128,7 @@ export function ClientsTable({ clients, totalCount, currentPage, hasActiveFilter
       params.set("page", String(page))
     }
     const qs = params.toString()
-    return qs ? `/admin/clients?${qs}` : "/clients"
+    return qs ? `/admin/clients?${qs}` : "/admin/clients"
   }
   const { permissions } = usePermissions()
   const canDelete = permissions?.isAdmin || permissions?.isOrgOwner
