@@ -225,7 +225,7 @@ export async function POST(
             title: body.action === "rejected" ? "Cadastro precisa de ajustes" : "Revisão solicitada",
             body: body.comments || "Por favor, revise seu cadastro e faça os ajustes necessários.",
             type: "warning",
-            link: "/portal/onboarding",
+            link: "/client/onboarding",
           })
         }
 
