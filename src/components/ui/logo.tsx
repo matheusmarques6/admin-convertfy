@@ -5,15 +5,16 @@ import { cn } from "@/lib/utils"
 
 interface LogoProps {
   className?: string
-  size?: "sm" | "md" | "lg" | "xl"
+  size?: "xs" | "sm" | "md" | "lg" | "xl"
   showText?: boolean
 }
 
 const sizes = {
-  sm: { height: 28, width: 120 },
-  md: { height: 32, width: 135 },
-  lg: { height: 38, width: 160 },
-  xl: { height: 56, width: 230 },
+  xs: { height: 22, width: 95 },
+  sm: { height: 26, width: 110 },
+  md: { height: 30, width: 125 },
+  lg: { height: 34, width: 145 },
+  xl: { height: 48, width: 200 },
 }
 
 export function Logo({ className, size = "md" }: LogoProps) {

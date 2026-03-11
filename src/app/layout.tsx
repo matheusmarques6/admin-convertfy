@@ -5,8 +5,9 @@ import { ThemeProvider } from "@/components/providers/theme-provider"
 import { Toaster } from "@/components/ui/toaster"
 
 const inter = localFont({
-  src: "./fonts/GeistVF.woff",
+  src: "./fonts/InterVariable.woff2",
   variable: "--font-inter",
+  display: "swap",
 })
 
 export const metadata: Metadata = {
@@ -24,7 +25,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR" suppressHydrationWarning>
-      <body className={`${inter.className} antialiased`}>
+      <body className={`${inter.variable} ${inter.className} antialiased`}>
         <ThemeProvider
           attribute="class"
           defaultTheme="light"
