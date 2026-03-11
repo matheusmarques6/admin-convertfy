@@ -75,7 +75,7 @@ export default async function MeetingsPage() {
   if (participantOrgMemberIds.size > 0) {
     const { data: orgMembersData } = await adminClient
       .from("org_members")
-      .select("id, profile:profiles(id, name, email, avatar_url)")
+      .select("id, profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url)")
       .in("id", Array.from(participantOrgMemberIds))
     ;(orgMembersData || []).forEach((om) => {
       const prof = Array.isArray(om.profile) ? om.profile[0] : om.profile
@@ -111,7 +111,7 @@ export default async function MeetingsPage() {
   if (profile?.org_id) {
     const { data: orgMembers } = await adminClient
       .from("org_members")
-      .select("id, role, profile:profiles (id, name, email, avatar_url)")
+      .select("id, role, profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url)")
       .eq("org_id", profile.org_id)
 
     members = (orgMembers || []).map((m) => {

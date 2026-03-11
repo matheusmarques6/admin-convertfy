@@ -267,7 +267,7 @@ async function getMeetings(orgId: string) {
     ;(profs || []).forEach(p => boardProfilesMap.set(p.id, p))
   }
   if (boardOmIds.size > 0) {
-    const { data: oms } = await adminClient.from("org_members").select("id, profile:profiles(id, name, email, avatar_url)").in("id", Array.from(boardOmIds))
+    const { data: oms } = await adminClient.from("org_members").select("id, profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url)").in("id", Array.from(boardOmIds))
     ;(oms || []).forEach(om => {
       const prof = Array.isArray(om.profile) ? om.profile[0] : om.profile
       if (prof) boardProfilesMap.set(om.id, prof as Record<string, unknown>)

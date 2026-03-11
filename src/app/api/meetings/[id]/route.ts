@@ -89,7 +89,7 @@ export async function GET(
       ;(profs || []).forEach((p) => profMap.set(p.id, p))
     }
     if (omIds.length > 0) {
-      const { data: oms } = await adminClient.from("org_members").select("id, profile:profiles(id, name, email, avatar_url)").in("id", omIds)
+      const { data: oms } = await adminClient.from("org_members").select("id, profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url)").in("id", omIds)
       ;(oms || []).forEach((om) => {
         const prof = Array.isArray(om.profile) ? om.profile[0] : om.profile
         if (prof) profMap.set(om.id, prof as Record<string, unknown>)
@@ -271,7 +271,7 @@ export async function PUT(
       ;(profs || []).forEach((p) => putProfMap.set(p.id, p))
     }
     if (putOmIds.length > 0) {
-      const { data: oms } = await adminClient.from("org_members").select("id, profile:profiles(id, name, email, avatar_url)").in("id", putOmIds)
+      const { data: oms } = await adminClient.from("org_members").select("id, profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url)").in("id", putOmIds)
       ;(oms || []).forEach((om) => {
         const prof = Array.isArray(om.profile) ? om.profile[0] : om.profile
         if (prof) putProfMap.set(om.id, prof as Record<string, unknown>)

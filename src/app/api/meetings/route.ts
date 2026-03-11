@@ -127,7 +127,7 @@ export async function GET(request: NextRequest) {
     if (participantOrgMemberIds.size > 0) {
       const { data: orgMembersData } = await adminClient
         .from("org_members")
-        .select("id, profile:profiles(id, name, email, avatar_url)")
+        .select("id, profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url)")
         .in("id", Array.from(participantOrgMemberIds))
       ;(orgMembersData || []).forEach((om) => {
         const prof = Array.isArray(om.profile) ? om.profile[0] : om.profile
@@ -265,7 +265,7 @@ export async function POST(request: NextRequest) {
         ;(profs || []).forEach((p) => postProfilesMap.set(p.id, p))
       }
       if (omIds.length > 0) {
-        const { data: oms } = await adminClient.from("org_members").select("id, profile:profiles(id, name, email, avatar_url)").in("id", omIds)
+        const { data: oms } = await adminClient.from("org_members").select("id, profile:profiles!org_members_profile_id_fkey(id, name, email, avatar_url)").in("id", omIds)
         ;(oms || []).forEach((om) => {
           const prof = Array.isArray(om.profile) ? om.profile[0] : om.profile
           if (prof) postProfilesMap.set(om.id, prof as Record<string, unknown>)
