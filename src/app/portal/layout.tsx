@@ -294,20 +294,20 @@ export default function PortalLayout({
           onClick={onLinkClick}
           aria-current={isActive ? "page" : undefined}
           className={cn(
-            "relative flex items-center gap-3 h-9 px-3 rounded-lg text-[13px] font-medium transition-all duration-150",
+            "relative flex items-center gap-3 h-10 px-3 rounded-xl text-[13px] font-medium transition-all duration-200",
             isActive
-              ? "text-white bg-white/[0.08]"
-              : "text-slate-400 hover:bg-white/[0.04] hover:text-slate-200"
+              ? "text-white bg-gradient-to-r from-[#4e62d8] to-[#2137b6] shadow-lg shadow-[#4e62d8]/20"
+              : "text-slate-400 hover:bg-white/[0.06] hover:text-slate-200"
           )}
         >
-          {isActive && (
-            <motion.div
-              layoutId={`portal-sidebar-active-${labelPrefix}`}
-              className="absolute left-0 top-1.5 bottom-1.5 w-[2px] bg-primary rounded-r-full"
-              transition={{ type: "spring", stiffness: 400, damping: 30 }}
-            />
-          )}
-          <item.icon className={cn("h-[18px] w-[18px] flex-shrink-0", isActive && "text-primary")} strokeWidth={1.5} aria-hidden="true" />
+          <div className={cn(
+            "w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200",
+            isActive
+              ? "bg-white/20"
+              : "bg-white/[0.04]"
+          )}>
+            <item.icon className={cn("h-[18px] w-[18px]", isActive ? "text-white" : "text-slate-400")} strokeWidth={1.5} aria-hidden="true" />
+          </div>
           <span className="flex-1">{item.name}</span>
           {showBadge && invoiceStatus && (
             <span
@@ -326,7 +326,7 @@ export default function PortalLayout({
     return (
       <LayoutGroup>
         {/* Store-scoped items */}
-        <div className="space-y-0.5" role="group" aria-labelledby={`nav-menu-label-${labelPrefix}`}>
+        <div className="space-y-1" role="group" aria-labelledby={`nav-menu-label-${labelPrefix}`}>
           {storeNavigation.map((item) => renderNavItem(item))}
         </div>
 
@@ -334,8 +334,8 @@ export default function PortalLayout({
         <div className="flex-1 min-h-4" />
 
         {/* Account-scoped items */}
-        <div className="pt-2 border-t border-white/[0.06]" role="group" aria-labelledby={`nav-account-label-${labelPrefix}`}>
-          <div className="space-y-0.5">
+        <div className="pt-3 border-t border-white/[0.06]" role="group" aria-labelledby={`nav-account-label-${labelPrefix}`}>
+          <div className="space-y-1">
             {accountNavigation.map((item) =>
               renderNavItem(item, item.href === "/portal/invoices")
             )}

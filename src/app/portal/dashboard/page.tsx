@@ -5,12 +5,7 @@ import {
   CalendarDays,
   RefreshCw,
   AlertCircle,
-  ShoppingCart,
-  Receipt,
-  Zap,
   DollarSign,
-  Users,
-  ShoppingBag,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -21,7 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
-import { formatCurrency, formatNumber, formatPercent, formatDateRange } from "@/lib/utils/format"
+import { formatCurrency, formatDateRange } from "@/lib/utils/format"
 import { HeroSection } from "./hero-section"
 import { OnboardingCard } from "./onboarding-card"
 import { NextCampaignsCard } from "./next-campaigns-card"
@@ -29,6 +24,7 @@ import { NextMeetingCard } from "./next-meeting-card"
 import { ListHealthCard } from "./list-health-card"
 import { LastSendCard } from "./last-send-card"
 import { TopFlowCard } from "./top-flow-card"
+import { MetricsSidebar } from "./metrics-sidebar"
 import { AnimatedContainer, AnimatedItem } from "@/components/ui/animated-container"
 import { DataStatusBanner } from "@/components/ui/data-status-banner"
 import { useRealtimeRevenue } from "@/hooks/use-realtime-revenue"
@@ -43,7 +39,6 @@ export default function PortalDashboardPage() {
   const abortRef = useRef<AbortController | null>(null)
 
   const fetchDashboard = useCallback(async (showRefresh = false) => {
-    // Cancel any in-flight request so stale responses don't overwrite newer ones
     abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
@@ -75,14 +70,13 @@ export default function PortalDashboardPage() {
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") return
       console.error("Dashboard fetch error:", err)
-      setError("Não foi possível carregar os dados. Tente novamente.")
+      setError("Nao foi possivel carregar os dados. Tente novamente.")
     } finally {
       setLoading(false)
       setRefreshing(false)
     }
   }, [period])
 
-  // Realtime: auto-update when store_revenue_summary changes
   const handleRealtimeUpdate = useCallback(() => { fetchDashboard() }, [fetchDashboard])
   const { isRefreshing: realtimeRefreshing, triggerRefresh } = useRealtimeRevenue({
     period,
@@ -90,7 +84,6 @@ export default function PortalDashboardPage() {
     refreshUrl: "/api/portal/dashboard/refresh",
   })
 
-  // Auto-trigger background refresh when data is stale (>5 min)
   const hasTriggeredAutoRefresh = useRef(false)
   useEffect(() => {
     const isStale = data?.dataStatus === "stale" || data?.source === "stale-cache"
@@ -116,15 +109,24 @@ export default function PortalDashboardPage() {
             <Skeleton className="h-4 w-48 bg-slate-100 dark:bg-slate-800" />
           </div>
           <div className="flex gap-3">
-            <Skeleton className="h-10 w-32 bg-slate-200 dark:bg-slate-700 rounded-lg" />
-            <Skeleton className="h-10 w-10 bg-slate-200 dark:bg-slate-700 rounded-lg" />
+            <Skeleton className="h-10 w-32 bg-slate-200 dark:bg-slate-700 rounded-xl" />
+            <Skeleton className="h-10 w-10 bg-slate-200 dark:bg-slate-700 rounded-xl" />
           </div>
         </div>
-        <Skeleton className="h-48 bg-slate-100 dark:bg-slate-800 rounded-2xl" />
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-          {[1, 2, 3, 4, 5, 6].map((i) => (
-            <Skeleton key={i} className="h-36 bg-white dark:bg-[#151922] rounded-xl border border-slate-100 dark:border-slate-700/30" />
-          ))}
+        <Skeleton className="h-56 bg-gradient-to-r from-slate-200 to-slate-100 dark:from-slate-800 dark:to-slate-700 rounded-2xl" />
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          <div className="lg:col-span-3 space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              {[1, 2, 3, 4, 5, 6].map((i) => (
+                <Skeleton key={i} className="h-40 bg-white dark:bg-[#151922] rounded-xl border border-slate-100 dark:border-slate-700/30" />
+              ))}
+            </div>
+          </div>
+          <div className="space-y-3">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <Skeleton key={i} className="h-24 bg-white dark:bg-[#151922] rounded-xl border border-slate-100 dark:border-slate-700/30" />
+            ))}
+          </div>
         </div>
       </div>
     )
@@ -141,7 +143,7 @@ export default function PortalDashboardPage() {
           <p className="text-slate-500 dark:text-slate-400 text-sm mb-6">{error}</p>
           <Button
             onClick={() => fetchDashboard()}
-            className="bg-primary hover:bg-primary/85 text-white shadow-sm"
+            className="bg-gradient-to-r from-[#4e62d8] to-[#2137b6] hover:opacity-90 text-white shadow-lg shadow-[#4e62d8]/20"
           >
             Tentar novamente
           </Button>
@@ -153,12 +155,7 @@ export default function PortalDashboardPage() {
   if (!data) return null
 
   const klaviyo = data.klaviyo
-  const storeRevenue = klaviyo?.storeRevenue || 0
   const storeOrders = klaviyo?.storeOrders || 0
-  const totalRevenue = klaviyo?.totalRevenue || 0
-  const ticketMedio = storeOrders > 0 ? storeRevenue / storeOrders : 0
-  const receitaPorLead = klaviyo?.engagedLeads ? totalRevenue / klaviyo.engagedLeads : 0
-  const recoveryRate = klaviyo?.recoveryRate || 0
 
   return (
     <div className="max-w-[1600px] mx-auto space-y-6">
@@ -171,7 +168,7 @@ export default function PortalDashboardPage() {
               <p className="text-sm text-slate-500 dark:text-slate-400">{formatDateRange(data.dateRange.start, data.dateRange.end)}</p>
             )}
             {refreshing && (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#4e62d8]/10 text-[#4e62d8] text-xs font-medium">
                 <RefreshCw className="h-3 w-3 animate-spin" />
                 Atualizando...
               </span>
@@ -181,11 +178,11 @@ export default function PortalDashboardPage() {
 
         <div className="flex items-center gap-3">
           <Select value={period} onValueChange={setPeriod}>
-            <SelectTrigger className="w-[140px] h-10 bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40 text-slate-700 dark:text-slate-200 rounded-lg shadow-sm dark:shadow-slate-900/20">
+            <SelectTrigger className="w-[140px] h-10 bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40 text-slate-700 dark:text-slate-200 rounded-xl shadow-sm dark:shadow-slate-900/20">
               <CalendarDays className="h-4 w-4 mr-2 text-slate-400 dark:text-slate-500" />
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40 shadow-lg">
+            <SelectContent className="bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40 shadow-lg rounded-xl">
               <SelectItem value="7d">7 dias</SelectItem>
               <SelectItem value="15d">15 dias</SelectItem>
               <SelectItem value="30d">30 dias</SelectItem>
@@ -201,7 +198,7 @@ export default function PortalDashboardPage() {
               fetchDashboard(true)
             }}
             disabled={refreshing || realtimeRefreshing}
-            className="h-10 w-10 bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06] rounded-lg shadow-sm dark:shadow-slate-900/20"
+            className="h-10 w-10 bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06] rounded-xl shadow-sm dark:shadow-slate-900/20"
             title="Atualizar dados"
           >
             <RefreshCw className={`h-4 w-4 ${refreshing || realtimeRefreshing ? "animate-spin" : ""}`} />
@@ -209,7 +206,7 @@ export default function PortalDashboardPage() {
         </div>
       </div>
 
-      {/* Data status banner (no refresh button for portal) */}
+      {/* Data status banner */}
       <DataStatusBanner
         status={data.dataStatus}
         lastFetchedAt={data.lastFetchedAt}
@@ -227,55 +224,64 @@ export default function PortalDashboardPage() {
           <OnboardingCard />
         </AnimatedItem>
 
-        {/* Operational Cards - 2x3 grid */}
+        {/* Main content grid with sidebar */}
         <AnimatedItem>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <NextCampaignsCard
-              campaigns={klaviyo?.recentCampaigns}
-              upcomingCampaigns={data.upcomingCampaigns}
-            />
-            <NextMeetingCard meetings={data.meetings} />
-            <ListHealthCard
-              bounceRate={klaviyo?.bounceRate || 0}
-              unsubscribeRate={klaviyo?.unsubscribeRate || 0}
-            />
-            <LastSendCard campaigns={klaviyo?.recentCampaigns} />
-            <TopFlowCard flows={klaviyo?.topFlows} />
+          <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
+            {/* Left: Main content - 3 columns */}
+            <div className="xl:col-span-3 space-y-6">
+              {/* Operational Cards - 2x3 grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <NextCampaignsCard
+                  campaigns={klaviyo?.recentCampaigns}
+                  upcomingCampaigns={data.upcomingCampaigns}
+                />
+                <NextMeetingCard meetings={data.meetings} />
+                <ListHealthCard
+                  bounceRate={klaviyo?.bounceRate || 0}
+                  unsubscribeRate={klaviyo?.unsubscribeRate || 0}
+                />
+                <LastSendCard campaigns={klaviyo?.recentCampaigns} />
+                <TopFlowCard flows={klaviyo?.topFlows} />
 
-            {/* Invoices quick card */}
-            {(data.invoices.pending > 0 || data.invoices.overdue > 0) && (
-              <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20">
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center">
-                    <DollarSign className="h-4 w-4 text-amber-600" />
-                  </div>
-                  <span className="text-[13px] font-semibold text-slate-800 dark:text-slate-100">Faturas</span>
-                </div>
-                {data.invoices.overdue > 0 && (
-                  <div className="mb-3">
-                    <p className="text-lg font-bold text-red-600">{formatCurrency(data.invoices.totalOverdue)}</p>
-                    <p className="text-xs text-red-500">{data.invoices.overdue} fatura(s) em atraso</p>
-                  </div>
-                )}
-                {data.invoices.pending > 0 && (
-                  <div>
-                    <p className="text-lg font-bold text-slate-800 dark:text-slate-100">{formatCurrency(data.invoices.totalPending)}</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">{data.invoices.pending} fatura(s) pendente(s)</p>
+                {/* Invoices quick card */}
+                {(data.invoices.pending > 0 || data.invoices.overdue > 0) && (
+                  <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20">
+                    <div className="flex items-center gap-2 mb-4">
+                      <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center">
+                        <DollarSign className="h-4 w-4 text-amber-600" />
+                      </div>
+                      <span className="text-[13px] font-semibold text-slate-800 dark:text-slate-100">Faturas</span>
+                    </div>
+                    {data.invoices.overdue > 0 && (
+                      <div className="mb-3">
+                        <p className="text-lg font-bold text-red-600">{formatCurrency(data.invoices.totalOverdue)}</p>
+                        <p className="text-xs text-red-500">{data.invoices.overdue} fatura(s) em atraso</p>
+                      </div>
+                    )}
+                    {data.invoices.pending > 0 && (
+                      <div>
+                        <p className="text-lg font-bold text-slate-800 dark:text-slate-100">{formatCurrency(data.invoices.totalPending)}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">{data.invoices.pending} fatura(s) pendente(s)</p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
-            )}
+            </div>
+
+            {/* Right: Metrics Sidebar - 1 column */}
+            <div className="hidden xl:block">
+              <MetricsSidebar klaviyo={klaviyo} storeOrders={storeOrders} />
+            </div>
           </div>
         </AnimatedItem>
 
-        {/* KPI Cards */}
-        <AnimatedItem>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-            <KpiCard label="Pedidos" value={formatNumber(storeOrders)} icon={ShoppingCart} iconColor="text-blue-600" iconBg="bg-blue-50 dark:bg-blue-500/10" />
-            <KpiCard label="Ticket Médio" value={formatCurrency(ticketMedio)} icon={Receipt} iconColor="text-emerald-600" iconBg="bg-emerald-50 dark:bg-emerald-500/10" />
-            <KpiCard label="Recuperação de Carrinho" value={formatPercent(recoveryRate)} icon={ShoppingBag} iconColor="text-amber-600" iconBg="bg-amber-50 dark:bg-amber-500/10" />
-            <KpiCard label="Receita por Lead" value={formatCurrency(receitaPorLead)} icon={Users} iconColor="text-violet-600" iconBg="bg-violet-50 dark:bg-violet-500/10" />
-            <KpiCard label="Flows Ativos" value={`${klaviyo?.activeFlows || 0} / ${klaviyo?.flowsCount || 0}`} icon={Zap} iconColor="text-cyan-600" iconBg="bg-cyan-50 dark:bg-cyan-500/10" />
+        {/* Mobile metrics - show below on smaller screens */}
+        <AnimatedItem className="xl:hidden">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <MobileMetricCard label="Vendas" value={formatCurrency(klaviyo?.storeRevenue || 0)} />
+            <MobileMetricCard label="Ticket Medio" value={formatCurrency(storeOrders > 0 ? (klaviyo?.storeRevenue || 0) / storeOrders : 0)} />
+            <MobileMetricCard label="Receita Klaviyo" value={formatCurrency(klaviyo?.totalRevenue || 0)} />
           </div>
         </AnimatedItem>
       </AnimatedContainer>
@@ -283,28 +289,11 @@ export default function PortalDashboardPage() {
   )
 }
 
-function KpiCard({
-  label,
-  value,
-  icon: Icon,
-  iconColor,
-  iconBg,
-}: {
-  label: string
-  value: string | number
-  icon: React.ElementType
-  iconColor: string
-  iconBg: string
-}) {
+function MobileMetricCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-4 shadow-sm dark:shadow-slate-900/20 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200">
-      <div className="flex items-center gap-2 mb-3">
-        <div className={`w-7 h-7 rounded-lg ${iconBg} flex items-center justify-center`}>
-          <Icon className={`h-3.5 w-3.5 ${iconColor}`} />
-        </div>
-        <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">{label}</span>
-      </div>
-      <p className="text-xl font-bold text-slate-800 dark:text-slate-100">{value}</p>
+    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-4 shadow-sm dark:shadow-slate-900/20">
+      <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mb-1">{label}</p>
+      <p className="text-lg font-bold text-slate-800 dark:text-slate-100">{value}</p>
     </div>
   )
 }

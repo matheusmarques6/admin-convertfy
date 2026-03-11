@@ -1,5 +1,5 @@
-import { formatCurrency } from "@/lib/utils/format"
-import { VariationBadge } from "./components"
+import { TrendingUp } from "lucide-react"
+import { formatCurrency, formatPercent } from "@/lib/utils/format"
 import type { KlaviyoData } from "./types"
 
 interface HeroSectionProps {
@@ -20,39 +20,104 @@ export function HeroSection({ klaviyo }: HeroSectionProps) {
   const smsPercent = storeRevenue > 0 ? (smsRevenue / storeRevenue) * 100 : 0
 
   return (
-    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#0B0E14] via-[#12152B] to-[#1A1040] p-6 lg:p-8 shadow-xl">
-      {/* Decorative orbs */}
-      <div className="absolute -top-20 -right-20 w-60 h-60 bg-primary/20 rounded-full blur-[80px]" />
-      <div className="absolute -bottom-16 -left-16 w-48 h-48 bg-[#05AFF2]/15 rounded-full blur-[60px]" />
+    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#4e62d8] via-[#2137b6] to-[#041366] p-6 lg:p-8">
+      {/* Subtle pattern overlay */}
+      <div className="absolute inset-0 opacity-10">
+        <div className="absolute top-0 right-0 w-96 h-96 bg-white/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
+        <div className="absolute bottom-0 left-0 w-64 h-64 bg-white/10 rounded-full blur-2xl translate-y-1/2 -translate-x-1/2" />
+      </div>
 
       <div className="relative">
-        {/* Top row */}
-        <div className="flex flex-col lg:flex-row lg:items-start justify-between mb-8 gap-4">
-          <div>
-            <p className="text-sm text-slate-400 mb-1">Receita Total da Loja</p>
-            <div className="flex items-center gap-3 mb-2">
-              <h2 className="text-3xl lg:text-4xl font-bold text-white tracking-tight">{formatCurrency(storeRevenue)}</h2>
-              {storeRevenue > 0 && <VariationBadge value={storeRevenue * 0.08} type="currency" />}
+        {/* Main content */}
+        <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-6 mb-6">
+          {/* Left: Revenue info */}
+          <div className="flex-1">
+            <p className="text-sm text-white/70 mb-1.5 font-medium">Receita Total da Loja</p>
+            <div className="flex items-center gap-4 mb-3">
+              <h2 className="text-4xl lg:text-5xl font-bold text-white tracking-tight">
+                {formatCurrency(storeRevenue)}
+              </h2>
+              {storeRevenue > 0 && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-sm font-medium">
+                  <TrendingUp className="h-3.5 w-3.5" />
+                  12%
+                </span>
+              )}
             </div>
-            <p className="text-sm text-slate-400">
-              Atribuição Klaviyo: <span className="text-white font-medium">{formatCurrency(totalRevenue)}</span>{" "}
-              <span className="text-slate-500">{`(${attributionPercent.toFixed(1)}% do total)`}</span>
+            <p className="text-sm text-white/60">
+              Atribuido ao Klaviyo: <span className="text-white font-semibold">{formatCurrency(totalRevenue)}</span>
+              <span className="text-white/40 ml-1">({formatPercent(attributionPercent)} do total)</span>
             </p>
           </div>
 
-          <div className="lg:text-right">
-            <p className="text-xs text-slate-500 mb-1">Atribuição Klaviyo</p>
-            <p className="text-3xl font-bold text-[#05AFF2]">{attributionPercent.toFixed(1)}%</p>
-            <p className="text-xs text-slate-500">do faturamento</p>
+          {/* Right: Attribution circle */}
+          <div className="flex flex-col items-center lg:items-end">
+            <p className="text-xs text-white/50 mb-2 uppercase tracking-wider font-medium">Atribuicao Klaviyo</p>
+            <div className="relative w-28 h-28">
+              {/* Background circle */}
+              <svg className="w-full h-full -rotate-90">
+                <circle
+                  cx="56"
+                  cy="56"
+                  r="48"
+                  fill="none"
+                  stroke="rgba(255,255,255,0.1)"
+                  strokeWidth="8"
+                />
+                {/* Progress circle */}
+                <circle
+                  cx="56"
+                  cy="56"
+                  r="48"
+                  fill="none"
+                  stroke="url(#progressGradient)"
+                  strokeWidth="8"
+                  strokeLinecap="round"
+                  strokeDasharray={`${(attributionPercent / 100) * 301.59} 301.59`}
+                />
+                <defs>
+                  <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stopColor="#10b981" />
+                    <stop offset="100%" stopColor="#34d399" />
+                  </linearGradient>
+                </defs>
+              </svg>
+              {/* Center text */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className="text-2xl font-bold text-white">{attributionPercent.toFixed(1)}%</span>
+                <span className="text-[10px] text-white/50 uppercase tracking-wide">do total</span>
+              </div>
+            </div>
           </div>
         </div>
 
         {/* Revenue breakdown cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <RevenueCard label="Flows" value={flowRevenue} percent={flowPercent} dotColor="bg-violet-400" accentColor="text-violet-300" />
-          <RevenueCard label="Campanhas" value={campaignRevenue} percent={campaignPercent} dotColor="bg-cyan-400" accentColor="text-cyan-300" />
-          <RevenueCard label="SMS" value={smsRevenue} percent={smsPercent} dotColor="bg-amber-400" accentColor="text-amber-300" />
-          <RevenueCard label="Lucro Estimado" value={estimatedProfit} percent={30} dotColor="bg-emerald-400" accentColor="text-emerald-300" isProfit />
+          <RevenueCard
+            label="Flows"
+            value={flowRevenue}
+            percent={flowPercent}
+            color="violet"
+          />
+          <RevenueCard
+            label="Campanhas"
+            value={campaignRevenue}
+            percent={campaignPercent}
+            color="cyan"
+          />
+          <RevenueCard
+            label="SMS"
+            value={smsRevenue}
+            percent={smsPercent}
+            color="amber"
+          />
+          <RevenueCard
+            label="Lucro Estimado"
+            value={estimatedProfit}
+            percent={30}
+            color="emerald"
+            isProfit
+          />
         </div>
       </div>
     </div>
@@ -63,25 +128,37 @@ function RevenueCard({
   label,
   value,
   percent,
-  dotColor,
-  accentColor,
+  color,
   isProfit = false,
 }: {
   label: string
   value: number
   percent: number
-  dotColor: string
-  accentColor: string
+  color: "violet" | "cyan" | "amber" | "emerald"
   isProfit?: boolean
 }) {
+  const colorClasses = {
+    violet: "bg-violet-500/30 border-violet-400/20",
+    cyan: "bg-cyan-500/30 border-cyan-400/20",
+    amber: "bg-amber-500/30 border-amber-400/20",
+    emerald: "bg-emerald-500/30 border-emerald-400/20",
+  }
+
+  const dotColors = {
+    violet: "bg-violet-400",
+    cyan: "bg-cyan-400",
+    amber: "bg-amber-400",
+    emerald: "bg-emerald-400",
+  }
+
   return (
-    <div className="rounded-xl bg-white/[0.06] border border-white/[0.08] backdrop-blur-sm p-4">
+    <div className={`rounded-xl ${colorClasses[color]} border backdrop-blur-sm p-4`}>
       <div className="flex items-center gap-2 mb-2">
-        <div className={`w-2 h-2 rounded-full ${dotColor}`} />
-        <span className="text-xs text-slate-400">{label}</span>
+        <div className={`w-2 h-2 rounded-full ${dotColors[color]}`} />
+        <span className="text-xs text-white/70 font-medium">{label}</span>
       </div>
       <p className="text-lg font-bold text-white">{formatCurrency(value)}</p>
-      <p className={`text-xs ${accentColor} mt-0.5`}>
+      <p className="text-xs text-white/50 mt-0.5">
         {isProfit ? "30% margem" : `${percent.toFixed(1)}% da receita`}
       </p>
     </div>
