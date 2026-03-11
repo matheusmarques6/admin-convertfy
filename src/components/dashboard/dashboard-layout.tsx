@@ -11,7 +11,6 @@ import { WorstPerformersCard } from "./worst-performers-card"
 import { OnboardingPreview } from "./onboarding-preview"
 import { DashboardAlerts } from "./alerts"
 import { RecentActivity } from "./recent-activity"
-import { MetricsSidebar } from "./metrics-sidebar"
 import type { Meeting, DashboardAlert } from "@/types"
 
 interface Activity {
@@ -91,60 +90,41 @@ export function DashboardLayout({ data, userRole }: DashboardLayoutProps) {
       {/* Revenue Banner - visible to all (shows store performance metrics) */}
       <TotalRevenueBanner period={revenuePeriod} onPeriodChange={setRevenuePeriod} onDataChange={handleRevenueData} />
 
-      {/* Main Grid: 3 columns on large screens */}
-      <div className="grid gap-6 grid-cols-1 lg:grid-cols-3">
-        {/* Left Column: Main content (2 cols on lg) */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Top row: Board + Calendar */}
-          <div className="grid gap-6 grid-cols-1 md:grid-cols-2">
-            <BoardPreview tasks={data.activeTasks} />
-            <WeekCalendarPreview meetings={data.weekMeetings} tasks={data.weekTasks} />
-          </div>
+      {/* Main Grid: 2 columns */}
+      <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
+        {/* Board Preview - visible to all */}
+        <BoardPreview tasks={data.activeTasks} />
 
-          {/* Second row: Top Stores + Worst Performers */}
-          <div className="grid gap-6 grid-cols-1 md:grid-cols-2">
-            <TopStoresCard
-              stores={revenueData?.topStores}
-              allStores={revenueData?.storeBreakdown}
-              isLoading={!revenueResolved.current}
-              dataStatus={revenueData?.dataStatus}
-            />
+        {/* Calendar - visible to all */}
+        <WeekCalendarPreview meetings={data.weekMeetings} tasks={data.weekTasks} />
 
-            {(isAdminOrOwner || canViewReports) && (
-              <WorstPerformersCard
-                stores={revenueData?.bottomStores}
-                allStores={revenueData?.storeBreakdown}
-                isLoading={!revenueResolved.current}
-                dataStatus={revenueData?.dataStatus}
-              />
-            )}
-          </div>
+        {/* Top Stores - visible to all */}
+        <TopStoresCard
+          stores={revenueData?.topStores}
+          allStores={revenueData?.storeBreakdown}
+          isLoading={!revenueResolved.current}
+          dataStatus={revenueData?.dataStatus}
+        />
 
-          {/* Third row: Onboarding + Alerts */}
-          <div className="grid gap-6 grid-cols-1 md:grid-cols-2">
-            <OnboardingPreview onboardings={data.activeOnboardings} userRole={userRole} />
-            <DashboardAlerts meetings={data.upcomingMeetings} alerts={data.alerts} />
-          </div>
+        {/* Worst Performers - admin, COO and those with reports access */}
+        {(isAdminOrOwner || canViewReports) && (
+          <WorstPerformersCard
+            stores={revenueData?.bottomStores}
+            allStores={revenueData?.storeBreakdown}
+            isLoading={!revenueResolved.current}
+            dataStatus={revenueData?.dataStatus}
+          />
+        )}
 
-          {/* Recent Activity - full width */}
-          <RecentActivity activities={data.activities} />
-        </div>
+        {/* Onboarding Preview - visible to all, filters by role internally */}
+        <OnboardingPreview onboardings={data.activeOnboardings} userRole={userRole} />
 
-        {/* Right Column: Metrics sidebar */}
-        <div className="hidden lg:block">
-          <div className="sticky top-6">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-4">Metricas Rapidas</h3>
-            <MetricsSidebar
-              totalRevenue={revenueData?.totalRevenue || 0}
-              averageTicket={(revenueData?.totalRevenue || 0) / Math.max(revenueData?.storesWithRevenue || 1, 1)}
-              orderBump={(revenueData?.totalRevenue || 0) * 0.08}
-              upsell={(revenueData?.totalRevenue || 0) * 0.12}
-              cartRecovery={(revenueData?.flowRevenue || 0) * 0.4}
-              refundRate={2.3}
-            />
-          </div>
-        </div>
+        {/* Alerts - filters internally by feature */}
+        <DashboardAlerts meetings={data.upcomingMeetings} alerts={data.alerts} />
       </div>
+
+      {/* Recent Activity - visible to all */}
+      <RecentActivity activities={data.activities} />
     </div>
   )
 }

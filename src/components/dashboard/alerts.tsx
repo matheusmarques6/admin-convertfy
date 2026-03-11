@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { Calendar, AlertCircle, Clock, FileText, HeartPulse, TrendingDown, ShieldAlert, Mail, Zap, Bell, ArrowRight, Video } from "lucide-react"
+import { Calendar, AlertCircle, Clock, FileText, HeartPulse, TrendingDown, ShieldAlert, Mail, Zap } from "lucide-react"
 import { CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -49,26 +49,14 @@ export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps)
     return hasFeature(requiredFeature)
   })
 
-  const getSeverityStyles = (severity: "high" | "medium" | "low") => {
+  const getSeverityColor = (severity: "high" | "medium" | "low") => {
     switch (severity) {
       case "high":
-        return {
-          badge: "bg-red-500/10 text-red-500 dark:bg-red-500/20 dark:text-red-400 border-0",
-          icon: "bg-red-500/10 dark:bg-red-500/20",
-          iconColor: "text-red-500 dark:text-red-400"
-        }
+        return "destructive"
       case "medium":
-        return {
-          badge: "bg-amber-500/10 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400 border-0",
-          icon: "bg-amber-500/10 dark:bg-amber-500/20",
-          iconColor: "text-amber-600 dark:text-amber-400"
-        }
+        return "warning"
       case "low":
-        return {
-          badge: "bg-slate-500/10 text-slate-600 dark:bg-slate-500/20 dark:text-slate-400 border-0",
-          icon: "bg-slate-500/10 dark:bg-slate-500/20",
-          iconColor: "text-slate-500 dark:text-slate-400"
-        }
+        return "secondary"
     }
   }
 
@@ -78,17 +66,14 @@ export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps)
   const totalAlerts = filteredAlerts.length
 
   return (
-    <div className="rounded-xl border border-border bg-card dark:bg-[#0f1419] dark:border-white/[0.08] transition-all duration-200 hover:shadow-lg dark:hover:border-white/[0.12]">
+    <div className="rounded-xl border border-border bg-card">
       <CardHeader className="p-5 pb-3">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="p-1.5 rounded-lg bg-amber-500/10 dark:bg-amber-500/20">
-              <Bell className="h-4 w-4 text-amber-500 dark:text-amber-400" />
-            </div>
-            <CardTitle className="text-sm font-semibold">Alertas e Lembretes</CardTitle>
+          <div>
+            <CardTitle className="text-sm font-medium text-foreground">Alertas e Lembretes</CardTitle>
           </div>
           {totalAlerts > 0 && (
-            <Badge className="bg-red-500/10 text-red-500 dark:bg-red-500/20 dark:text-red-400 border-0 rounded-full text-xs px-2.5 h-5 font-semibold">
+            <Badge variant="destructive" className="bg-destructive/10 text-destructive border-0 rounded-full text-xs px-2 h-5">
               {totalAlerts}
             </Badge>
           )}
@@ -97,24 +82,31 @@ export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps)
       <CardContent className="space-y-4">
         {/* Alerts */}
         {filteredAlerts.length > 0 ? (
-          <div className="space-y-2">
+          <div className="space-y-3">
             {filteredAlerts.map((alert) => {
               const Icon = ALERT_ICONS[alert.type] || Clock
-              const styles = getSeverityStyles(alert.severity)
               const content = (
-                <div className="flex items-start gap-3 p-3 rounded-lg bg-muted/20 dark:bg-white/[0.03] hover:bg-muted/40 dark:hover:bg-white/[0.06] transition-all group">
-                  <div className={`rounded-lg p-2 ${styles.icon}`}>
-                    <Icon className={`h-4 w-4 ${styles.iconColor}`} />
+                <div
+                  className="flex items-start gap-3 p-2.5 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors"
+                >
+                  <div className={`rounded-md p-1.5 ${
+                    alert.severity === "high" ? "bg-destructive/10" :
+                    alert.severity === "medium" ? "bg-warning/10" : "bg-muted"
+                  }`}>
+                    <Icon className={`h-4 w-4 ${
+                      alert.severity === "high" ? "text-destructive" :
+                      alert.severity === "medium" ? "text-warning" : "text-muted-foreground"
+                    }`} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground group-hover:text-primary transition-colors">{alert.title}</p>
-                    <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
+                    <p className="text-sm font-medium text-foreground">{alert.title}</p>
+                    <p className="text-xs text-muted-foreground truncate">
                       {alert.description}
                     </p>
                   </div>
-                  <Badge className={`shrink-0 text-[10px] h-5 px-2 font-medium ${styles.badge}`}>
+                  <Badge variant={getSeverityColor(alert.severity)} className="shrink-0 text-[10px] h-5 px-2">
                     {alert.severity === "high" ? "Urgente" :
-                     alert.severity === "medium" ? "Atencao" : "Baixo"}
+                     alert.severity === "medium" ? "Atenção" : "Baixo"}
                   </Badge>
                 </div>
               )
@@ -127,62 +119,45 @@ export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps)
               )
             })}
             {hasStoreAlerts && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-full text-xs text-muted-foreground hover:text-primary group mt-1"
-                asChild
-              >
-                <Link href="/stores?tab=alerts" className="flex items-center justify-center gap-1.5">
-                  Ver todos os alertas de lojas
-                  <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-                </Link>
-              </Button>
+              <div className="pt-1">
+                <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground" asChild>
+                  <Link href="/stores?tab=alerts">Ver todos os alertas de lojas</Link>
+                </Button>
+              </div>
             )}
           </div>
         ) : (
-          <div className="py-6 text-center">
-            <div className="p-3 rounded-full bg-emerald-500/10 dark:bg-emerald-500/20 w-fit mx-auto mb-3">
-              <Bell className="h-5 w-5 text-emerald-500" />
-            </div>
-            <p className="text-sm text-muted-foreground">Nenhum alerta no momento</p>
-            <p className="text-xs text-muted-foreground/60 mt-1">Tudo funcionando normalmente</p>
+          <div className="text-sm text-muted-foreground text-center py-4">
+            Nenhum alerta no momento
           </div>
         )}
 
         {/* Upcoming Meetings */}
         {meetings.length > 0 && (
           <>
-            <div className="flex items-center gap-2.5 pt-3 mt-3 border-t border-border dark:border-white/[0.08]">
-              <div className="p-1.5 rounded-lg bg-blue-500/10 dark:bg-blue-500/20">
-                <Video className="h-4 w-4 text-blue-500 dark:text-blue-400" />
-              </div>
-              <span className="text-sm font-semibold text-foreground">Proximas Reunioes</span>
-              <Badge className="bg-blue-500/10 text-blue-500 dark:bg-blue-500/20 dark:text-blue-400 border-0 text-[10px] px-2 h-4">
-                {meetings.length}
-              </Badge>
+            <div className="flex items-center gap-2 pt-3 mt-3 border-t border-border">
+              <Calendar className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium text-foreground">Próximas Reuniões</span>
             </div>
-            <ScrollArea className="h-[140px]">
+            <ScrollArea className="h-[150px]">
               <div className="space-y-2">
                 {meetings.map((meeting) => (
-                  <Link
+                  <div
                     key={meeting.id}
-                    href="/meetings"
-                    className="flex items-center justify-between p-3 rounded-lg bg-muted/20 dark:bg-white/[0.03] hover:bg-muted/40 dark:hover:bg-white/[0.06] transition-all group"
+                    className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/50 transition-colors"
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-lg bg-blue-500/10 dark:bg-blue-500/20">
-                        <Calendar className="h-4 w-4 text-blue-500 dark:text-blue-400" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-foreground group-hover:text-primary transition-colors">{meeting.title}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {formatDateTime(meeting.scheduled_at)}
-                        </p>
-                      </div>
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{meeting.title}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatDateTime(meeting.scheduled_at)}
+                      </p>
                     </div>
-                    <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </Link>
+                    <Button variant="ghost" size="sm" asChild>
+                      <Link href="/meetings">
+                        Ver
+                      </Link>
+                    </Button>
+                  </div>
                 ))}
               </div>
             </ScrollArea>
