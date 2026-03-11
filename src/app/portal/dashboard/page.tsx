@@ -16,7 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
-import { formatCurrency, formatDateRange } from "@/lib/utils/format"
+import { formatCurrency } from "@/lib/utils/format"
 import { HeroSection } from "./hero-section"
 import { OnboardingCard } from "./onboarding-card"
 import { NextCampaignsCard } from "./next-campaigns-card"
@@ -24,7 +24,6 @@ import { NextMeetingCard } from "./next-meeting-card"
 import { ListHealthCard } from "./list-health-card"
 import { LastSendCard } from "./last-send-card"
 import { TopFlowCard } from "./top-flow-card"
-import { MetricsSidebar } from "./metrics-sidebar"
 import { AnimatedContainer, AnimatedItem } from "@/components/ui/animated-container"
 import { DataStatusBanner } from "@/components/ui/data-status-banner"
 import { useRealtimeRevenue } from "@/hooks/use-realtime-revenue"
@@ -114,19 +113,10 @@ export default function PortalDashboardPage() {
           </div>
         </div>
         <Skeleton className="h-56 bg-gradient-to-r from-slate-200 to-slate-100 dark:from-slate-800 dark:to-slate-700 rounded-2xl" />
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          <div className="lg:col-span-3 space-y-4">
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              {[1, 2, 3, 4, 5, 6].map((i) => (
-                <Skeleton key={i} className="h-40 bg-white dark:bg-[#151922] rounded-xl border border-slate-100 dark:border-slate-700/30" />
-              ))}
-            </div>
-          </div>
-          <div className="space-y-3">
-            {[1, 2, 3, 4, 5, 6].map((i) => (
-              <Skeleton key={i} className="h-24 bg-white dark:bg-[#151922] rounded-xl border border-slate-100 dark:border-slate-700/30" />
-            ))}
-          </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <Skeleton key={i} className="h-40 bg-white dark:bg-[#151922] rounded-xl border border-slate-100 dark:border-slate-700/30" />
+          ))}
         </div>
       </div>
     )
@@ -155,17 +145,20 @@ export default function PortalDashboardPage() {
   if (!data) return null
 
   const klaviyo = data.klaviyo
-  const storeOrders = klaviyo?.storeOrders || 0
 
   return (
-    <div className="max-w-[1600px] mx-auto space-y-6">
+    <div className="max-w-[1400px] mx-auto space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Dashboard</h1>
           <div className="flex items-center gap-2 mt-1">
             {data.dateRange && (
-              <p className="text-sm text-slate-500 dark:text-slate-400">{formatDateRange(data.dateRange.start, data.dateRange.end)}</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                {new Date(data.dateRange.start).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                {" - "}
+                {new Date(data.dateRange.end).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })}
+              </p>
             )}
             {refreshing && (
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#4e62d8]/10 text-[#4e62d8] text-xs font-medium">
@@ -224,76 +217,47 @@ export default function PortalDashboardPage() {
           <OnboardingCard />
         </AnimatedItem>
 
-        {/* Main content grid with sidebar */}
+        {/* Operational Cards - full width grid */}
         <AnimatedItem>
-          <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
-            {/* Left: Main content - 3 columns */}
-            <div className="xl:col-span-3 space-y-6">
-              {/* Operational Cards - 2x3 grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                <NextCampaignsCard
-                  campaigns={klaviyo?.recentCampaigns}
-                  upcomingCampaigns={data.upcomingCampaigns}
-                />
-                <NextMeetingCard meetings={data.meetings} />
-                <ListHealthCard
-                  bounceRate={klaviyo?.bounceRate || 0}
-                  unsubscribeRate={klaviyo?.unsubscribeRate || 0}
-                />
-                <LastSendCard campaigns={klaviyo?.recentCampaigns} />
-                <TopFlowCard flows={klaviyo?.topFlows} />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <NextCampaignsCard
+              campaigns={klaviyo?.recentCampaigns}
+              upcomingCampaigns={data.upcomingCampaigns}
+            />
+            <NextMeetingCard meetings={data.meetings} />
+            <ListHealthCard
+              bounceRate={klaviyo?.bounceRate || 0}
+              unsubscribeRate={klaviyo?.unsubscribeRate || 0}
+            />
+            <LastSendCard campaigns={klaviyo?.recentCampaigns} />
+            <TopFlowCard flows={klaviyo?.topFlows} />
 
-                {/* Invoices quick card */}
-                {(data.invoices.pending > 0 || data.invoices.overdue > 0) && (
-                  <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20">
-                    <div className="flex items-center gap-2 mb-4">
-                      <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center">
-                        <DollarSign className="h-4 w-4 text-amber-600" />
-                      </div>
-                      <span className="text-[13px] font-semibold text-slate-800 dark:text-slate-100">Faturas</span>
-                    </div>
-                    {data.invoices.overdue > 0 && (
-                      <div className="mb-3">
-                        <p className="text-lg font-bold text-red-600">{formatCurrency(data.invoices.totalOverdue)}</p>
-                        <p className="text-xs text-red-500">{data.invoices.overdue} fatura(s) em atraso</p>
-                      </div>
-                    )}
-                    {data.invoices.pending > 0 && (
-                      <div>
-                        <p className="text-lg font-bold text-slate-800 dark:text-slate-100">{formatCurrency(data.invoices.totalPending)}</p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">{data.invoices.pending} fatura(s) pendente(s)</p>
-                      </div>
-                    )}
+            {/* Invoices quick card */}
+            {(data.invoices.pending > 0 || data.invoices.overdue > 0) && (
+              <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20">
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center">
+                    <DollarSign className="h-4 w-4 text-amber-600" />
+                  </div>
+                  <span className="text-[13px] font-semibold text-slate-800 dark:text-slate-100">Faturas</span>
+                </div>
+                {data.invoices.overdue > 0 && (
+                  <div className="mb-3">
+                    <p className="text-lg font-bold text-red-600">{formatCurrency(data.invoices.totalOverdue)}</p>
+                    <p className="text-xs text-red-500">{data.invoices.overdue} fatura(s) em atraso</p>
+                  </div>
+                )}
+                {data.invoices.pending > 0 && (
+                  <div>
+                    <p className="text-lg font-bold text-slate-800 dark:text-slate-100">{formatCurrency(data.invoices.totalPending)}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">{data.invoices.pending} fatura(s) pendente(s)</p>
                   </div>
                 )}
               </div>
-            </div>
-
-            {/* Right: Metrics Sidebar - 1 column */}
-            <div className="hidden xl:block">
-              <MetricsSidebar klaviyo={klaviyo} storeOrders={storeOrders} />
-            </div>
-          </div>
-        </AnimatedItem>
-
-        {/* Mobile metrics - show below on smaller screens */}
-        <AnimatedItem className="xl:hidden">
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            <MobileMetricCard label="Vendas" value={formatCurrency(klaviyo?.storeRevenue || 0)} />
-            <MobileMetricCard label="Ticket Medio" value={formatCurrency(storeOrders > 0 ? (klaviyo?.storeRevenue || 0) / storeOrders : 0)} />
-            <MobileMetricCard label="Receita Klaviyo" value={formatCurrency(klaviyo?.totalRevenue || 0)} />
+            )}
           </div>
         </AnimatedItem>
       </AnimatedContainer>
-    </div>
-  )
-}
-
-function MobileMetricCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-4 shadow-sm dark:shadow-slate-900/20">
-      <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mb-1">{label}</p>
-      <p className="text-lg font-bold text-slate-800 dark:text-slate-100">{value}</p>
     </div>
   )
 }
