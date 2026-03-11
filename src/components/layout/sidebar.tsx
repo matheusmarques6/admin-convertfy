@@ -5,17 +5,17 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useTheme } from "next-themes"
 import {
-  Home,
+  LayoutDashboard,
   Users,
-  Building2,
-  Sparkles,
-  Columns3,
-  Send,
-  Zap,
-  LayoutList,
-  CalendarDays,
-  Wallet,
-  LineChart,
+  Store,
+  Rocket,
+  Kanban,
+  Mail,
+  Workflow,
+  ListTodo,
+  Calendar,
+  CreditCard,
+  BarChart3,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -23,6 +23,8 @@ import {
   Bell,
   Sun,
   Moon,
+  FileText,
+  HelpCircle,
   type LucideIcon,
 } from "lucide-react"
 import { motion, LayoutGroup } from "framer-motion"
@@ -54,20 +56,50 @@ interface NavItem {
   icon: LucideIcon
   requiredFeatures?: string[]
   requiresStoreAccess?: boolean
+  badge?: string
 }
 
-const navigation: NavItem[] = [
-  { name: "Início", href: "/dashboard", icon: Home },
-  { name: "Clientes", href: "/clients", icon: Users, requiredFeatures: ["create_clients", "onboarding_control"] },
-  { name: "Lojas", href: "/stores", icon: Building2, requiresStoreAccess: true },
-  { name: "Onboarding", href: "/onboarding", icon: Sparkles, requiredFeatures: ["onboarding_control", "onboarding_view"] },
-  { name: "Pipeline", href: "/pipeline", icon: Columns3, requiredFeatures: ["request_control", "request_execute"] },
-  { name: "Campanhas", href: "/campaigns", icon: Send, requiredFeatures: ["campaign_control", "campaign_view", "campaign_copy"] },
-  { name: "Automações", href: "/automations", icon: Zap, requiredFeatures: ["campaign_control"] },
-  { name: "Board", href: "/board", icon: LayoutList, requiredFeatures: ["request_control", "request_execute", "calendar_control"] },
-  { name: "Reuniões", href: "/meetings", icon: CalendarDays, requiredFeatures: ["calendar_control"] },
-  { name: "Financeiro", href: "/financial", icon: Wallet, requiredFeatures: ["view_financial"] },
-  { name: "Relatórios", href: "/reports", icon: LineChart, requiredFeatures: ["view_reports"] },
+interface NavSection {
+  title?: string
+  items: NavItem[]
+}
+
+const navigationSections: NavSection[] = [
+  {
+    items: [
+      { name: "Inicio", href: "/dashboard", icon: LayoutDashboard },
+    ]
+  },
+  {
+    title: "Gestao",
+    items: [
+      { name: "Clientes", href: "/clients", icon: Users, requiredFeatures: ["create_clients", "onboarding_control"] },
+      { name: "Lojas", href: "/stores", icon: Store, requiresStoreAccess: true },
+      { name: "Onboarding", href: "/onboarding", icon: Rocket, requiredFeatures: ["onboarding_control", "onboarding_view"] },
+    ]
+  },
+  {
+    title: "Marketing",
+    items: [
+      { name: "Campanhas", href: "/campaigns", icon: Mail, requiredFeatures: ["campaign_control", "campaign_view", "campaign_copy"] },
+      { name: "Automacoes", href: "/automations", icon: Workflow, requiredFeatures: ["campaign_control"] },
+    ]
+  },
+  {
+    title: "Operacoes",
+    items: [
+      { name: "Pipeline", href: "/pipeline", icon: Kanban, requiredFeatures: ["request_control", "request_execute"] },
+      { name: "Board", href: "/board", icon: ListTodo, requiredFeatures: ["request_control", "request_execute", "calendar_control"] },
+      { name: "Reunioes", href: "/meetings", icon: Calendar, requiredFeatures: ["calendar_control"] },
+    ]
+  },
+  {
+    title: "Financeiro",
+    items: [
+      { name: "Financeiro", href: "/financial", icon: CreditCard, requiredFeatures: ["view_financial"] },
+      { name: "Relatorios", href: "/reports", icon: BarChart3, requiredFeatures: ["view_reports"] },
+    ]
+  },
 ]
 
 interface SidebarProps {
@@ -86,17 +118,22 @@ export function Sidebar({ user }: SidebarProps) {
   const [isLoggingOut, setIsLoggingOut] = useState(false)
   const { permissions, hasAnyFeature, isLoading } = usePermissions()
 
-  const filteredNavigation = useMemo(() => {
+  const filteredSections = useMemo(() => {
     if (isLoading || !permissions) return []
-    if (permissions.isAdmin || permissions.isOrgOwner) return navigation
 
-    return navigation.filter(item => {
-      if (!item.requiredFeatures || item.requiredFeatures.length === 0) {
-        if (item.requiresStoreAccess) return permissions.storeAccess.length > 0
-        return true
-      }
-      return hasAnyFeature(item.requiredFeatures)
-    })
+    return navigationSections.map(section => {
+      if (permissions.isAdmin || permissions.isOrgOwner) return section
+
+      const filteredItems = section.items.filter(item => {
+        if (!item.requiredFeatures || item.requiredFeatures.length === 0) {
+          if (item.requiresStoreAccess) return permissions.storeAccess.length > 0
+          return true
+        }
+        return hasAnyFeature(item.requiredFeatures)
+      })
+
+      return { ...section, items: filteredItems }
+    }).filter(section => section.items.length > 0)
   }, [permissions, hasAnyFeature, isLoading])
 
   async function handleLogout() {
@@ -130,23 +167,23 @@ export function Sidebar({ user }: SidebarProps) {
             <Link
               href={item.href}
               className={cn(
-                "relative flex items-center justify-center h-9 w-full rounded-lg transition-all duration-150",
+                "relative flex items-center justify-center h-10 w-10 mx-auto rounded-lg transition-all duration-200",
                 isActive
-                  ? "text-white bg-white/[0.08]"
-                  : "text-slate-400 hover:bg-white/[0.04] hover:text-slate-200"
+                  ? "bg-white/10 text-white"
+                  : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
               )}
             >
               {isActive && (
                 <motion.div
-                  layoutId="sidebar-active"
-                  className="absolute left-0 top-1.5 bottom-1.5 w-[2px] bg-primary rounded-r-full"
-                  transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                  layoutId="nav-indicator"
+                  className="absolute left-0 top-2 bottom-2 w-[3px] bg-[#05AFF2] rounded-r-full"
+                  transition={{ type: "spring", stiffness: 500, damping: 35 }}
                 />
               )}
-              <Icon className={cn("h-[18px] w-[18px]", isActive && "text-primary")} strokeWidth={1.5} />
+              <Icon className={cn("h-5 w-5", isActive && "text-[#05AFF2]")} strokeWidth={1.75} />
             </Link>
           </TooltipTrigger>
-          <TooltipContent side="right" className="font-medium">
+          <TooltipContent side="right" className="font-medium text-sm">
             {item.name}
           </TooltipContent>
         </Tooltip>
@@ -158,21 +195,26 @@ export function Sidebar({ user }: SidebarProps) {
         key={item.name}
         href={item.href}
         className={cn(
-          "relative flex items-center gap-3 h-9 px-3 rounded-lg text-[13px] font-medium transition-all duration-150",
+          "group relative flex items-center gap-3 h-10 px-3 rounded-lg text-sm font-medium transition-all duration-200",
           isActive
-            ? "text-white bg-white/[0.08]"
-            : "text-slate-400 hover:bg-white/[0.04] hover:text-slate-200"
+            ? "bg-white/10 text-white"
+            : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
         )}
       >
         {isActive && (
           <motion.div
-            layoutId="sidebar-active"
-            className="absolute left-0 top-1.5 bottom-1.5 w-[2px] bg-primary rounded-r-full"
-            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+            layoutId="nav-indicator"
+            className="absolute left-0 top-2 bottom-2 w-[3px] bg-[#05AFF2] rounded-r-full"
+            transition={{ type: "spring", stiffness: 500, damping: 35 }}
           />
         )}
-        <Icon className={cn("h-[18px] w-[18px] flex-shrink-0", isActive && "text-primary")} strokeWidth={1.5} />
-        <span>{item.name}</span>
+        <Icon className={cn("h-5 w-5 flex-shrink-0 transition-colors", isActive ? "text-[#05AFF2]" : "group-hover:text-slate-300")} strokeWidth={1.75} />
+        <span className="truncate">{item.name}</span>
+        {item.badge && (
+          <span className="ml-auto px-2 py-0.5 text-[10px] font-semibold bg-[#05AFF2]/20 text-[#05AFF2] rounded-full">
+            {item.badge}
+          </span>
+        )}
       </Link>
     )
   }
@@ -181,18 +223,18 @@ export function Sidebar({ user }: SidebarProps) {
     <TooltipProvider delayDuration={0}>
       <aside
         className={cn(
-          "flex flex-col h-screen bg-[#0C0E16] border-r border-white/[0.06] transition-all duration-300",
-          sidebarCollapsed ? "w-16" : "w-56"
+          "flex flex-col h-screen bg-[#0B0D14] border-r border-white/[0.08] transition-all duration-300 ease-out",
+          sidebarCollapsed ? "w-[72px]" : "w-60"
         )}
       >
         {/* Logo */}
         <div className={cn(
-          "flex items-center h-14 shrink-0",
-          sidebarCollapsed ? "justify-center" : "px-4"
+          "flex items-center h-16 shrink-0 border-b border-white/[0.06]",
+          sidebarCollapsed ? "justify-center px-3" : "px-5"
         )}>
           <Link href="/dashboard" className="flex items-center">
             {sidebarCollapsed ? (
-              <LogoIcon className="w-7 h-7" />
+              <LogoIcon className="w-8 h-8" />
             ) : (
               <Logo size="sm" showText={true} />
             )}
@@ -202,117 +244,141 @@ export function Sidebar({ user }: SidebarProps) {
         {/* Navigation */}
         <LayoutGroup>
           <nav className={cn(
-            "flex-1 flex flex-col py-2",
+            "flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent py-4",
             sidebarCollapsed ? "px-2" : "px-3"
           )}>
-            <div className="space-y-0.5">
-              {filteredNavigation.map(renderNavItem)}
-            </div>
-
-            {/* Spacer */}
-            <div className="flex-1 min-h-4" />
-
-            {/* Settings */}
-            <div className="pt-2 border-t border-white/[0.06]">
-              <Link
-                href="/settings"
-                className={cn(
-                  "relative flex items-center gap-3 h-9 rounded-lg text-[13px] font-medium transition-all duration-150",
-                  pathname.startsWith("/settings")
-                    ? "text-white bg-white/[0.08]"
-                    : "text-slate-400 hover:bg-white/[0.04] hover:text-slate-200",
-                  sidebarCollapsed ? "justify-center" : "px-3"
+            {filteredSections.map((section, sectionIndex) => (
+              <div key={sectionIndex} className={cn(sectionIndex > 0 && "mt-6")}>
+                {section.title && !sidebarCollapsed && (
+                  <h3 className="px-3 mb-2 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                    {section.title}
+                  </h3>
                 )}
-              >
-                {pathname.startsWith("/settings") && (
-                  <motion.div
-                    layoutId="sidebar-active"
-                    className="absolute left-0 top-1.5 bottom-1.5 w-[2px] bg-primary rounded-r-full"
-                    transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                  />
+                {section.title && sidebarCollapsed && sectionIndex > 0 && (
+                  <div className="mx-3 mb-3 border-t border-white/[0.06]" />
                 )}
-                <Settings className={cn("h-[18px] w-[18px] flex-shrink-0", pathname.startsWith("/settings") && "text-primary")} strokeWidth={1.5} />
-                {!sidebarCollapsed && <span>Configurações</span>}
-              </Link>
-            </div>
+                <div className="space-y-1">
+                  {section.items.map(renderNavItem)}
+                </div>
+              </div>
+            ))}
           </nav>
         </LayoutGroup>
 
         {/* Bottom Section */}
         <div className="shrink-0 border-t border-white/[0.06]">
+          {/* Settings Link */}
+          <div className={cn("pt-3", sidebarCollapsed ? "px-2" : "px-3")}>
+            <Link
+              href="/settings"
+              className={cn(
+                "group relative flex items-center gap-3 h-10 rounded-lg text-sm font-medium transition-all duration-200",
+                pathname.startsWith("/settings")
+                  ? "bg-white/10 text-white"
+                  : "text-slate-400 hover:bg-white/5 hover:text-slate-200",
+                sidebarCollapsed ? "justify-center w-10 mx-auto" : "px-3"
+              )}
+            >
+              {pathname.startsWith("/settings") && (
+                <motion.div
+                  layoutId="nav-indicator"
+                  className="absolute left-0 top-2 bottom-2 w-[3px] bg-[#05AFF2] rounded-r-full"
+                  transition={{ type: "spring", stiffness: 500, damping: 35 }}
+                />
+              )}
+              <Settings className={cn("h-5 w-5 flex-shrink-0", pathname.startsWith("/settings") && "text-[#05AFF2]")} strokeWidth={1.75} />
+              {!sidebarCollapsed && <span>Configuracoes</span>}
+            </Link>
+          </div>
+
+          {/* User Section */}
           <div className={cn("p-3", sidebarCollapsed && "px-2")}>
-            {/* User */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
                   className={cn(
-                    "flex items-center w-full rounded-lg hover:bg-white/[0.04] transition-colors duration-150 outline-none",
-                    sidebarCollapsed ? "justify-center p-1.5" : "gap-2.5 p-1.5"
+                    "flex items-center w-full rounded-lg hover:bg-white/5 transition-all duration-200 outline-none",
+                    sidebarCollapsed ? "justify-center p-2" : "gap-3 p-2"
                   )}
                 >
-                  <Avatar className="h-7 w-7 shrink-0">
+                  <Avatar className="h-9 w-9 shrink-0 ring-2 ring-white/10">
                     <AvatarImage src={user?.avatar_url} />
-                    <AvatarFallback className="bg-primary/20 text-primary text-[10px] font-semibold">
+                    <AvatarFallback className="bg-gradient-to-br from-[#05AFF2] to-[#0284C7] text-white text-xs font-semibold">
                       {user?.name?.slice(0, 2).toUpperCase() || "U"}
                     </AvatarFallback>
                   </Avatar>
                   {!sidebarCollapsed && (
                     <div className="text-left overflow-hidden flex-1 min-w-0">
-                      <p className="text-[13px] font-medium text-slate-200 truncate">
-                        {user?.name || "Usuário"}
+                      <p className="text-sm font-medium text-slate-200 truncate">
+                        {user?.name || "Usuario"}
+                      </p>
+                      <p className="text-xs text-slate-500 truncate">
+                        {user?.email}
                       </p>
                     </div>
                   )}
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align={sidebarCollapsed ? "center" : "start"} side="top" className="w-52 mb-1">
+              <DropdownMenuContent align={sidebarCollapsed ? "center" : "start"} side="top" className="w-56 mb-2 bg-[#151922] border-white/10">
                 <DropdownMenuLabel className="font-normal">
                   <div className="flex flex-col space-y-1">
-                    <p className="text-sm font-medium">{user?.name || "Usuário"}</p>
-                    <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+                    <p className="text-sm font-medium text-slate-200">{user?.name || "Usuario"}</p>
+                    <p className="text-xs text-slate-500 truncate">{user?.email}</p>
                   </div>
                 </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <Link href="/settings/profile">
-                    <Settings className="mr-2 h-4 w-4" strokeWidth={1.5} />
+                <DropdownMenuSeparator className="bg-white/10" />
+                <DropdownMenuItem asChild className="text-slate-300 focus:bg-white/10 focus:text-white">
+                  <Link href="/settings/profile" className="flex items-center">
+                    <Settings className="mr-2 h-4 w-4" strokeWidth={1.75} />
                     Perfil
                   </Link>
                 </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link href="/settings/notifications">
-                    <Bell className="mr-2 h-4 w-4" strokeWidth={1.5} />
-                    Notificações
+                <DropdownMenuItem asChild className="text-slate-300 focus:bg-white/10 focus:text-white">
+                  <Link href="/settings/notifications" className="flex items-center">
+                    <Bell className="mr-2 h-4 w-4" strokeWidth={1.75} />
+                    Notificacoes
                   </Link>
                 </DropdownMenuItem>
-                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild className="text-slate-300 focus:bg-white/10 focus:text-white">
+                  <Link href="/docs" className="flex items-center">
+                    <FileText className="mr-2 h-4 w-4" strokeWidth={1.75} />
+                    Documentacao
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild className="text-slate-300 focus:bg-white/10 focus:text-white">
+                  <Link href="/help" className="flex items-center">
+                    <HelpCircle className="mr-2 h-4 w-4" strokeWidth={1.75} />
+                    Ajuda
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator className="bg-white/10" />
                 <DropdownMenuItem
                   onClick={handleLogout}
                   disabled={isLoggingOut}
-                  className="text-destructive focus:text-destructive"
+                  className="text-red-400 focus:bg-red-500/10 focus:text-red-400"
                 >
-                  <LogOut className="mr-2 h-4 w-4" strokeWidth={1.5} />
+                  <LogOut className="mr-2 h-4 w-4" strokeWidth={1.75} />
                   Sair
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
 
-            {/* Controls */}
+            {/* Theme & Collapse Controls */}
             <div className={cn(
-              "flex items-center mt-2 pt-2 border-t border-white/[0.06]",
-              sidebarCollapsed ? "flex-col gap-1" : "gap-1"
+              "flex items-center mt-3 pt-3 border-t border-white/[0.06]",
+              sidebarCollapsed ? "flex-col gap-2" : "justify-between"
             )}>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
-                    className="relative flex items-center justify-center h-7 w-7 rounded-md text-slate-500 hover:text-slate-300 hover:bg-white/[0.04] transition-colors duration-150"
+                    className="flex items-center justify-center h-9 w-9 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-white/5 transition-all duration-200"
                     onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
                   >
-                    <Sun className="h-3.5 w-3.5 rotate-0 scale-100 transition-transform dark:-rotate-90 dark:scale-0" strokeWidth={1.5} />
-                    <Moon className="absolute h-3.5 w-3.5 rotate-90 scale-0 transition-transform dark:rotate-0 dark:scale-100" strokeWidth={1.5} />
+                    <Sun className="h-4 w-4 rotate-0 scale-100 transition-transform dark:-rotate-90 dark:scale-0" strokeWidth={1.75} />
+                    <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-transform dark:rotate-0 dark:scale-100" strokeWidth={1.75} />
                   </button>
                 </TooltipTrigger>
-                <TooltipContent side={sidebarCollapsed ? "right" : "top"}>
+                <TooltipContent side={sidebarCollapsed ? "right" : "top"} className="text-sm">
                   Alternar tema
                 </TooltipContent>
               </Tooltip>
@@ -320,17 +386,17 @@ export function Sidebar({ user }: SidebarProps) {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
-                    className="flex items-center justify-center h-7 w-7 rounded-md text-slate-500 hover:text-slate-300 hover:bg-white/[0.04] transition-colors duration-150"
+                    className="flex items-center justify-center h-9 w-9 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-white/5 transition-all duration-200"
                     onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
                   >
                     {sidebarCollapsed ? (
-                      <ChevronRight className="h-3.5 w-3.5" strokeWidth={1.5} />
+                      <ChevronRight className="h-4 w-4" strokeWidth={1.75} />
                     ) : (
-                      <ChevronLeft className="h-3.5 w-3.5" strokeWidth={1.5} />
+                      <ChevronLeft className="h-4 w-4" strokeWidth={1.75} />
                     )}
                   </button>
                 </TooltipTrigger>
-                <TooltipContent side={sidebarCollapsed ? "right" : "top"}>
+                <TooltipContent side={sidebarCollapsed ? "right" : "top"} className="text-sm">
                   {sidebarCollapsed ? "Expandir" : "Recolher"}
                 </TooltipContent>
               </Tooltip>
