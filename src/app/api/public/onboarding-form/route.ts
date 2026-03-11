@@ -82,7 +82,6 @@ export async function POST(request: NextRequest) {
         email: data.email,
         phone: data.phone || null,
         cpf_cnpj: data.cpf_cnpj || null,
-        company: data.company || null,
         status: "prospect",
         org_id: orgId,
       })
@@ -121,7 +120,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 3. Create store onboarding data (design info)
-    if (data.price_sensitivity || data.logo_url || data.design_direction_text || data.brand_manual_url || data.additional_notes) {
+    if (data.price_sensitivity || data.logo_url || data.design_direction_text || data.design_direction_file_url || data.brand_manual_url || data.additional_notes) {
       await adminClient.from("store_onboarding_data").insert({
         store_id: store.id,
         client_id: client.id,
