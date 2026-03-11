@@ -454,7 +454,7 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
 
   const totalLeads = reportData.overview?.totalSubscribers || 0
   const engagedLeads = reportData.engagement?.engagedProfiles || 0
-  const engagementRate = totalLeads > 0 ? (engagedLeads / totalLeads) * 100 : 0
+  const engagementRate = Math.min(totalLeads > 0 ? (engagedLeads / totalLeads) * 100 : 0, 100)
 
   const openRate = reportData.emailPerformance?.openRate || 0
   const clickRate = reportData.emailPerformance?.clickRate || 0

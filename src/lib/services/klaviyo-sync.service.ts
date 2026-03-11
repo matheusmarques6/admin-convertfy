@@ -256,7 +256,8 @@ export async function fetchAudienceForStore(apiKey: string): Promise<SyncResult<
       (max, l) => (l.profileCount > max.profileCount ? l : max),
       { id: "", name: "", profileCount: 0 },
     )
-    const totalLeads = largestList.profileCount
+    // totalLeads = sum of ALL lists (not just largest) to avoid engagementRate >100%
+    const totalLeads = allLists.reduce((sum, l) => sum + l.profileCount, 0)
 
     // 2. Fetch all segments with name, profile count, and metadata
     const allSegments: Array<{ id: string; name: string; profileCount: number; isActive?: boolean; isStarred?: boolean; created?: string }> = []
@@ -293,7 +294,11 @@ export async function fetchAudienceForStore(apiKey: string): Promise<SyncResult<
     }
 
     const engagedLeads = engagedSegment?.profileCount || 0
-    const engagementRate = totalLeads > 0 ? (engagedLeads / totalLeads) * 100 : 0
+    const rawEngagementRate = totalLeads > 0 ? (engagedLeads / totalLeads) * 100 : 0
+    if (rawEngagementRate > 100) {
+      log.warn(`[Audience] Engagement rate ${rawEngagementRate.toFixed(1)}% exceeds 100% — capping. totalLeads=${totalLeads}, engagedLeads=${engagedLeads}`)
+    }
+    const engagementRate = Math.min(rawEngagementRate, 100)
 
     // Build unified audience items array
     const items: AudienceItem[] = [

@@ -911,7 +911,7 @@ export async function GET(request: NextRequest) {
 
       // Calculate total subscribers from list/segment counts
       const largestListCount = listMetrics.lists.length > 0 ? listMetrics.lists[0].profileCount : 0
-      let errorCaseTotalSubscribers = largestListCount || segmentMetrics.totalActiveProfiles || listMetrics.totalSubscribers
+      let errorCaseTotalSubscribers = listMetrics.totalSubscribers || segmentMetrics.totalActiveProfiles || largestListCount
 
       // Lightweight check if still 0 (1 API call)
       if (errorCaseTotalSubscribers === 0) {
@@ -957,7 +957,7 @@ export async function GET(request: NextRequest) {
         engagement: {
           engagedProfiles: segmentMetrics.engaged90dProfiles,
           engagementRate: errorCaseTotalSubscribers > 0
-            ? ((segmentMetrics.engaged90dProfiles / errorCaseTotalSubscribers) * 100).toFixed(1)
+            ? Math.min((segmentMetrics.engaged90dProfiles / errorCaseTotalSubscribers) * 100, 100).toFixed(1)
             : "0",
           engaged90dSegmentName: segmentMetrics.engaged90dSegmentName,
         },
@@ -998,7 +998,7 @@ export async function GET(request: NextRequest) {
     // NO MORE paginating all profiles (was ~426 API calls for 42k profiles!)
     const largestListCount = listMetrics.lists.length > 0 ? listMetrics.lists[0].profileCount : 0
     const segmentCount = segmentMetrics.totalActiveProfiles || 0
-    let totalSubscribers = largestListCount || segmentCount || listMetrics.totalSubscribers
+    let totalSubscribers = listMetrics.totalSubscribers || segmentCount || largestListCount
 
     // If still 0, do a lightweight check (1 API call instead of ~426)
     if (totalSubscribers === 0) {
@@ -1234,7 +1234,7 @@ export async function GET(request: NextRequest) {
       engagement: {
         engagedProfiles: segmentMetrics.engaged90dProfiles,
         engagementRate: totalSubscribers > 0
-          ? ((segmentMetrics.engaged90dProfiles / totalSubscribers) * 100).toFixed(1)
+          ? Math.min((segmentMetrics.engaged90dProfiles / totalSubscribers) * 100, 100).toFixed(1)
           : "0",
         engaged90dSegmentName: segmentMetrics.engaged90dSegmentName,
       },

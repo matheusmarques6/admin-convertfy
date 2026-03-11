@@ -726,7 +726,7 @@ export async function GET(request: NextRequest) {
             engagementRate: (() => {
               const aggTotalLeads = klaviyoDataList.reduce((sum, k) => sum + (k.totalLeads || 0), 0)
               const aggEngagedLeads = klaviyoDataList.reduce((sum, k) => sum + (k.engagedLeads || 0), 0)
-              return aggTotalLeads > 0 ? (aggEngagedLeads / aggTotalLeads) * 100 : 0
+              return Math.min(aggTotalLeads > 0 ? (aggEngagedLeads / aggTotalLeads) * 100 : 0, 100)
             })(),
             totalRevenue: aggTotalRevenue,
             campaignRevenue: aggCampaignRevenue,

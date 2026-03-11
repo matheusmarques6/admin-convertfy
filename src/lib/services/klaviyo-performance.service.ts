@@ -172,11 +172,8 @@ async function fetchAudienceMetrics(apiKey: string): Promise<{
       totalFromLists = allLists.reduce((sum, l) => sum + l.profileCount, 0)
     }
 
-    // Use the largest list's profile count as totalLeads
-    const largestList = allLists.length > 0
-      ? allLists.reduce((max, l) => l.profileCount > max.profileCount ? l : max, allLists[0])
-      : null
-    const totalLeads = largestList?.profileCount || 0
+    // totalLeads = sum of ALL lists (not just largest) to avoid engagementRate >100%
+    const totalLeads = allLists.reduce((sum, l) => sum + l.profileCount, 0)
 
     // ── 2. Fetch segments to find "Engaged 90d" ──
     const allSegments: Array<{ id: string; name: string; profileCount: number }> = []
@@ -225,7 +222,11 @@ async function fetchAudienceMetrics(apiKey: string): Promise<{
     }
 
     const engagedLeads = engagedSegment?.profileCount || 0
-    const engagementRate = totalLeads > 0 ? (engagedLeads / totalLeads) * 100 : 0
+    const rawEngagementRate = totalLeads > 0 ? (engagedLeads / totalLeads) * 100 : 0
+    if (rawEngagementRate > 100) {
+      log.warn(`[Audience] Engagement rate ${rawEngagementRate.toFixed(1)}% exceeds 100% — capping. totalLeads=${totalLeads}, engagedLeads=${engagedLeads}`)
+    }
+    const engagementRate = Math.min(rawEngagementRate, 100)
 
     log.info(`[KlaviyoPerf] Audience: totalLeads=${totalLeads}, engagedLeads=${engagedLeads}, rate=${engagementRate.toFixed(1)}%`)
 

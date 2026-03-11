@@ -169,9 +169,9 @@ describe("fetchAudienceForStore", () => {
 
     expect(result.success).toBe(true)
     expect(result.data).toBeDefined()
-    expect(result.data!.totalLeads).toBe(10000) // largest list
+    expect(result.data!.totalLeads).toBe(10500) // sum of all lists (10000 + 500)
     expect(result.data!.engagedLeads).toBe(3000) // Engaged 90d segment
-    expect(result.data!.engagementRate).toBe(30)
+    expect(result.data!.engagementRate).toBe(Math.round((3000 / 10500) * 100 * 100) / 100)
   })
 
   it("should handle lists with zero profile_count (API quirk)", async () => {
@@ -356,6 +356,101 @@ describe("fetchAudienceForStore", () => {
 
     expect(result.success).toBe(true)
     expect(result.data!.engagedLeads).toBe(0)
+    expect(result.data!.engagementRate).toBe(0)
+  })
+
+  // ── Story 33.1 — Engagement Rate >100% Fix ──
+
+  it("should use sum of all lists as totalLeads (not just largest)", async () => {
+    // 3 lists with profileCount [100, 200, 300] → totalLeads = 600
+    mockKlaviyoRequest.mockResolvedValueOnce({
+      data: [
+        { id: "l1", attributes: { name: "List A", profile_count: 100 } },
+        { id: "l2", attributes: { name: "List B", profile_count: 200 } },
+        { id: "l3", attributes: { name: "List C", profile_count: 300 } },
+      ],
+      links: {},
+    })
+    mockKlaviyoRequest.mockResolvedValueOnce({
+      data: [{ id: "seg1", attributes: { name: "Engaged 90d", profile_count: 500 } }],
+      links: {},
+    })
+
+    const result = await fetchAudienceForStore("test-key")
+
+    expect(result.success).toBe(true)
+    expect(result.data!.totalLeads).toBe(600) // sum, not 300 (largest)
+    expect(result.data!.engagedLeads).toBe(500)
+    // 500/600 * 100 = 83.33...%
+    expect(result.data!.engagementRate).toBe(Math.round((500 / 600) * 100 * 100) / 100)
+  })
+
+  it("should cap engagement rate at 100% when engagedLeads > totalLeads", async () => {
+    // engagedLeads (800) > totalLeads (600) → rate capped at 100%
+    mockKlaviyoRequest.mockResolvedValueOnce({
+      data: [
+        { id: "l1", attributes: { name: "List A", profile_count: 100 } },
+        { id: "l2", attributes: { name: "List B", profile_count: 200 } },
+        { id: "l3", attributes: { name: "List C", profile_count: 300 } },
+      ],
+      links: {},
+    })
+    mockKlaviyoRequest.mockResolvedValueOnce({
+      data: [{ id: "seg1", attributes: { name: "Engaged 90d", profile_count: 800 } }],
+      links: {},
+    })
+
+    const result = await fetchAudienceForStore("test-key")
+
+    expect(result.success).toBe(true)
+    expect(result.data!.totalLeads).toBe(600)
+    expect(result.data!.engagedLeads).toBe(800)
+    expect(result.data!.engagementRate).toBe(100) // capped, not 133.3%
+  })
+
+  it("should return 0% engagement rate when there are 0 lists", async () => {
+    mockKlaviyoRequest.mockResolvedValueOnce({
+      data: [],
+      links: {},
+    })
+    mockKlaviyoRequest.mockResolvedValueOnce({
+      data: [{ id: "seg1", attributes: { name: "Engaged 90d", profile_count: 500 } }],
+      links: {},
+    })
+
+    const result = await fetchAudienceForStore("test-key")
+
+    expect(result.success).toBe(true)
+    expect(result.data!.totalLeads).toBe(0)
+    expect(result.data!.engagementRate).toBe(0)
+  })
+
+  it("should return 0% engagement rate when all lists have profileCount = 0", async () => {
+    mockKlaviyoRequest.mockResolvedValueOnce({
+      data: [
+        { id: "l1", attributes: { name: "List A", profile_count: 0 } },
+        { id: "l2", attributes: { name: "List B", profile_count: 0 } },
+      ],
+      links: {},
+    })
+    // Individual fetch for l1 (allListsZero path) — still 0
+    mockKlaviyoRequest.mockResolvedValueOnce({
+      data: { attributes: { profile_count: 0 } },
+    })
+    // Individual fetch for l2
+    mockKlaviyoRequest.mockResolvedValueOnce({
+      data: { attributes: { profile_count: 0 } },
+    })
+    // Segments
+    mockKlaviyoRequest.mockResolvedValueOnce({
+      data: [{ id: "seg1", attributes: { name: "Engaged 90d", profile_count: 100 } }],
+      links: {},
+    })
+
+    const result = await fetchAudienceForStore("test-key")
+
+    expect(result.success).toBe(true)
+    expect(result.data!.totalLeads).toBe(0)
     expect(result.data!.engagementRate).toBe(0)
   })
 })
