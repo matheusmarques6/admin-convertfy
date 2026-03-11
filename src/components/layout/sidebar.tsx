@@ -130,20 +130,13 @@ export function Sidebar({ user }: SidebarProps) {
             <Link
               href={item.href}
               className={cn(
-                "relative flex items-center justify-center h-9 w-full rounded-lg transition-all duration-150",
+                "relative flex items-center justify-center h-10 w-10 mx-auto rounded-xl transition-all duration-200",
                 isActive
-                  ? "text-white bg-white/[0.08]"
-                  : "text-slate-400 hover:bg-white/[0.04] hover:text-slate-200"
+                  ? "text-white bg-gradient-to-br from-[#4e62d8] to-[#2137b6] shadow-lg shadow-[#4e62d8]/25"
+                  : "text-slate-400 hover:bg-white/[0.06] hover:text-slate-200"
               )}
             >
-              {isActive && (
-                <motion.div
-                  layoutId="sidebar-active"
-                  className="absolute left-0 top-1.5 bottom-1.5 w-[2px] bg-primary rounded-r-full"
-                  transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                />
-              )}
-              <Icon className={cn("h-[18px] w-[18px]", isActive && "text-primary")} strokeWidth={1.5} />
+              <Icon className={cn("h-[18px] w-[18px]", isActive && "text-white")} strokeWidth={1.5} />
             </Link>
           </TooltipTrigger>
           <TooltipContent side="right" className="font-medium">
@@ -158,20 +151,28 @@ export function Sidebar({ user }: SidebarProps) {
         key={item.name}
         href={item.href}
         className={cn(
-          "relative flex items-center gap-3 h-9 px-3 rounded-lg text-[13px] font-medium transition-all duration-150",
+          "relative flex items-center gap-3 h-10 px-3 rounded-xl text-[13px] font-medium transition-all duration-200",
           isActive
-            ? "text-white bg-white/[0.08]"
+            ? "text-white bg-gradient-to-r from-[#4e62d8]/20 to-[#2137b6]/10 border border-[#4e62d8]/30"
             : "text-slate-400 hover:bg-white/[0.04] hover:text-slate-200"
         )}
       >
         {isActive && (
           <motion.div
             layoutId="sidebar-active"
-            className="absolute left-0 top-1.5 bottom-1.5 w-[2px] bg-primary rounded-r-full"
+            className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r-full"
+            style={{ background: 'linear-gradient(180deg, #4e62d8 0%, #2137b6 100%)' }}
             transition={{ type: "spring", stiffness: 400, damping: 30 }}
           />
         )}
-        <Icon className={cn("h-[18px] w-[18px] flex-shrink-0", isActive && "text-primary")} strokeWidth={1.5} />
+        <div className={cn(
+          "flex items-center justify-center w-7 h-7 rounded-lg transition-all",
+          isActive
+            ? "bg-gradient-to-br from-[#4e62d8] to-[#2137b6] shadow-md shadow-[#4e62d8]/20"
+            : "bg-white/[0.05]"
+        )}>
+          <Icon className={cn("h-[15px] w-[15px]", isActive ? "text-white" : "text-inherit")} strokeWidth={1.5} />
+        </div>
         <span>{item.name}</span>
       </Link>
     )
@@ -181,7 +182,7 @@ export function Sidebar({ user }: SidebarProps) {
     <TooltipProvider delayDuration={0}>
       <aside
         className={cn(
-          "flex flex-col h-screen bg-[#0C0E16] border-r border-white/[0.06] transition-all duration-300",
+          "flex flex-col h-screen bg-[#0C0E14] border-r border-white/[0.06] transition-all duration-300",
           sidebarCollapsed ? "w-16" : "w-56"
         )}
       >
@@ -214,26 +215,54 @@ export function Sidebar({ user }: SidebarProps) {
 
             {/* Settings */}
             <div className="pt-2 border-t border-white/[0.06]">
-              <Link
-                href="/settings"
-                className={cn(
-                  "relative flex items-center gap-3 h-9 rounded-lg text-[13px] font-medium transition-all duration-150",
-                  pathname.startsWith("/settings")
-                    ? "text-white bg-white/[0.08]"
-                    : "text-slate-400 hover:bg-white/[0.04] hover:text-slate-200",
-                  sidebarCollapsed ? "justify-center" : "px-3"
-                )}
-              >
-                {pathname.startsWith("/settings") && (
-                  <motion.div
-                    layoutId="sidebar-active"
-                    className="absolute left-0 top-1.5 bottom-1.5 w-[2px] bg-primary rounded-r-full"
-                    transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                  />
-                )}
-                <Settings className={cn("h-[18px] w-[18px] flex-shrink-0", pathname.startsWith("/settings") && "text-primary")} strokeWidth={1.5} />
-                {!sidebarCollapsed && <span>Configurações</span>}
-              </Link>
+              {sidebarCollapsed ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Link
+                      href="/settings"
+                      className={cn(
+                        "flex items-center justify-center h-10 w-10 mx-auto rounded-xl transition-all duration-200",
+                        pathname.startsWith("/settings")
+                          ? "text-white bg-gradient-to-br from-[#4e62d8] to-[#2137b6] shadow-lg shadow-[#4e62d8]/25"
+                          : "text-slate-400 hover:bg-white/[0.06] hover:text-slate-200"
+                      )}
+                    >
+                      <Settings className="h-[18px] w-[18px]" strokeWidth={1.5} />
+                    </Link>
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="font-medium">
+                    Configuracoes
+                  </TooltipContent>
+                </Tooltip>
+              ) : (
+                <Link
+                  href="/settings"
+                  className={cn(
+                    "relative flex items-center gap-3 h-10 px-3 rounded-xl text-[13px] font-medium transition-all duration-200",
+                    pathname.startsWith("/settings")
+                      ? "text-white bg-gradient-to-r from-[#4e62d8]/20 to-[#2137b6]/10 border border-[#4e62d8]/30"
+                      : "text-slate-400 hover:bg-white/[0.04] hover:text-slate-200"
+                  )}
+                >
+                  {pathname.startsWith("/settings") && (
+                    <motion.div
+                      layoutId="sidebar-active"
+                      className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r-full"
+                      style={{ background: 'linear-gradient(180deg, #4e62d8 0%, #2137b6 100%)' }}
+                      transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                    />
+                  )}
+                  <div className={cn(
+                    "flex items-center justify-center w-7 h-7 rounded-lg transition-all",
+                    pathname.startsWith("/settings")
+                      ? "bg-gradient-to-br from-[#4e62d8] to-[#2137b6] shadow-md shadow-[#4e62d8]/20"
+                      : "bg-white/[0.05]"
+                  )}>
+                    <Settings className="h-[15px] w-[15px] text-inherit" strokeWidth={1.5} />
+                  </div>
+                  <span>Configuracoes</span>
+                </Link>
+              )}
             </div>
           </nav>
         </LayoutGroup>

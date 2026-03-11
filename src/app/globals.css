@@ -186,6 +186,125 @@
   }
 
   /* ═══════════════════════════════════════════════
+     CONVERTFY BRAND GRADIENT
+     Primary: #4e62d8 → #2137b6 → #041366
+     ═══════════════════════════════════════════════ */
+
+  .gradient-convertfy {
+    background: linear-gradient(90deg, #4e62d8 0%, #2137b6 50%, #041366 100%);
+  }
+
+  .gradient-convertfy-card {
+    background: linear-gradient(135deg, #4e62d8 0%, #2137b6 40%, #041366 100%);
+  }
+
+  .gradient-convertfy-subtle {
+    background: linear-gradient(135deg, rgba(78, 98, 216, 0.15) 0%, rgba(33, 55, 182, 0.1) 50%, rgba(4, 19, 102, 0.05) 100%);
+  }
+
+  /* Dashboard card styles */
+  .dashboard-card {
+    @apply rounded-xl border bg-card transition-all duration-200;
+  }
+
+  .dashboard-card:hover {
+    @apply shadow-lg;
+  }
+
+  .dark .dashboard-card {
+    @apply border-white/[0.08] bg-[#0f1419];
+  }
+
+  .dark .dashboard-card:hover {
+    @apply border-white/[0.12] shadow-xl shadow-black/30;
+  }
+
+  /* Featured card with gradient */
+  .dashboard-featured-card {
+    @apply rounded-xl border-0 overflow-hidden;
+    background: linear-gradient(135deg, #4e62d8 0%, #2137b6 40%, #041366 100%);
+  }
+
+  .dashboard-featured-card .card-content {
+    @apply text-white;
+  }
+
+  /* Dashboard metric card */
+  .dashboard-metric-card {
+    @apply rounded-xl border p-4 transition-all duration-200;
+  }
+
+  .dark .dashboard-metric-card {
+    @apply border-white/[0.08] bg-[#0f1419]/80 backdrop-blur-sm;
+  }
+
+  .dark .dashboard-metric-card:hover {
+    @apply border-white/[0.12] bg-[#0f1419];
+  }
+
+  /* Dashboard section title */
+  .dashboard-section-title {
+    @apply text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3;
+  }
+
+  /* Chart area gradient for dark mode */
+  .dark .chart-gradient-fill {
+    fill: url(#chartGradient);
+  }
+
+  /* Mini stats card */
+  .mini-stat-card {
+    @apply flex items-center gap-3 p-3 rounded-lg transition-all duration-200;
+  }
+
+  .dark .mini-stat-card {
+    @apply bg-white/[0.03] hover:bg-white/[0.06];
+  }
+
+  .mini-stat-card .icon-wrapper {
+    @apply p-2 rounded-lg;
+  }
+
+  .dark .mini-stat-card .icon-wrapper {
+    @apply bg-white/[0.08];
+  }
+
+  /* Sidebar nav item active glow */
+  .dark .nav-item-active {
+    @apply relative;
+  }
+
+  .dark .nav-item-active::before {
+    content: "";
+    position: absolute;
+    left: -8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 4px;
+    height: 16px;
+    border-radius: 0 4px 4px 0;
+    background: linear-gradient(180deg, #4e62d8 0%, #2137b6 100%);
+    box-shadow: 0 0 12px rgba(78, 98, 216, 0.5);
+  }
+
+  /* Percentage badge styles */
+  .percentage-badge-up {
+    @apply text-emerald-500;
+  }
+
+  .percentage-badge-down {
+    @apply text-red-500;
+  }
+
+  .dark .percentage-badge-up {
+    @apply text-emerald-400;
+  }
+
+  .dark .percentage-badge-down {
+    @apply text-red-400;
+  }
+
+  /* ═══════════════════════════════════════════════
      GLOW CARD SYSTEM — Clean card with subtle color accent
      ═══════════════════════════════════════════════ */
 

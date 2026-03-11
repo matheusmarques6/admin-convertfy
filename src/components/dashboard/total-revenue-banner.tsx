@@ -243,100 +243,177 @@ export function TotalRevenueBanner({ storeIds, period: controlledPeriod, onPerio
     )
   }
 
+  // Calculate percentage for Klaviyo attribution (example calculation)
+  const klaviyoPercentage = data?.totalRevenue && data.totalRevenue > 0
+    ? Math.round(((data.campaignRevenue + data.flowRevenue) / data.totalRevenue) * 100 * 10) / 10
+    : 0
+
   return (
-    <div className="rounded-xl border border-white/10 bg-gradient-to-br from-[#0a1628] via-[#0f2035] to-[#0a2540] shadow-lg shadow-black/20">
-      <div className="p-6 space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-2.5">
-            <div className="rounded-lg bg-white/10 p-1.5">
-              <TrendingUp className="h-4 w-4 text-[#05AFF2]" />
+    <div className="rounded-xl overflow-hidden shadow-xl shadow-[#041366]/20">
+      {/* Main gradient container */}
+      <div className="relative" style={{ background: 'linear-gradient(135deg, #4e62d8 0%, #2137b6 40%, #041366 100%)' }}>
+        {/* Subtle pattern overlay */}
+        <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 20% 50%, rgba(255,255,255,0.1) 0%, transparent 50%), radial-gradient(circle at 80% 80%, rgba(255,255,255,0.05) 0%, transparent 40%)' }} />
+
+        <div className="relative p-6 space-y-5">
+          {/* Header with title and controls */}
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-3">
+              <div className="rounded-lg bg-white/15 p-2 backdrop-blur-sm">
+                <TrendingUp className="h-5 w-5 text-white" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-white">Receita Total da Loja</h2>
+                <span className="text-xs text-white/60">
+                  Receita gerada via Klaviyo
+                </span>
+              </div>
             </div>
-            <h2 className="text-base font-semibold text-white">Resultado Total</h2>
-            <span className="text-xs text-white/50 hidden sm:inline">
-              Receita gerada via Klaviyo
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <PeriodPicker
-              value={{ period, customStart, customEnd }}
-              onChange={({ period: p, customStart: s, customEnd: e }) => {
-                setPeriod(p)
-                setCustomStart(s)
-                setCustomEnd(e)
-              }}
-              className="border-white/15 bg-white/10 text-white hover:bg-white/15 [&>svg]:text-white/70"
-            />
-            <RefreshButton
-              onRefresh={() => {
-                triggerRefresh()
-              }}
-              isRefreshing={dataStatusMeta.isRefreshing || isValidating}
-              lastFetchedAt={dataStatusMeta.lastFetchedAt}
-              size="md"
-              className="rounded-lg border-white/15 bg-white/10 text-white/70 hover:text-white hover:bg-white/15"
-            />
-          </div>
-        </div>
-
-        {/* Data status banner — force dark-friendly colors inside the always-dark container */}
-        <DataStatusBanner
-          status={data?.dataStatus}
-          lastFetchedAt={data?.lastFetchedAt}
-          isRefreshing={data?.isRefreshing ?? isValidating}
-          className="rounded-lg !bg-white/10 !text-white/80"
-        />
-
-        {/* Main number */}
-        <div>
-          <p className="text-3xl md:text-4xl font-bold tracking-tight text-[#05AFF2]">
-            {formatCurrency(animatedTotal)}
-          </p>
-          <div className="mt-1.5 flex items-center gap-3 flex-wrap">
-            <p className="text-sm text-white/50">
-              {data?.storesWithRevenue || 0} de {data?.storesCount || 0} lojas geraram receita
-            </p>
-            {data?.hasPartialData && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="inline-flex items-center gap-1 text-xs text-yellow-400">
-                      <AlertTriangle className="h-3 w-3" />
-                      Dados parciais
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent>{PARTIAL_DATA_TOOLTIP}</TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
-            {data?.lastFetchedAt && (
-              <TimeAgo date={data.lastFetchedAt} className="text-xs text-white/40" />
-            )}
-          </div>
-        </div>
-
-        {/* Breakdown: campaigns vs flows */}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="flex items-center gap-3 p-4 rounded-xl border border-white/10 bg-white/5">
-            <div className="rounded-xl p-2.5 bg-[#05AFF2]/15">
-              <Megaphone className="h-4 w-4 text-[#05AFF2]" />
+            <div className="flex items-center gap-2">
+              <PeriodPicker
+                value={{ period, customStart, customEnd }}
+                onChange={({ period: p, customStart: s, customEnd: e }) => {
+                  setPeriod(p)
+                  setCustomStart(s)
+                  setCustomEnd(e)
+                }}
+                className="border-white/20 bg-white/10 text-white hover:bg-white/20 backdrop-blur-sm [&>svg]:text-white/70"
+              />
+              <RefreshButton
+                onRefresh={() => {
+                  triggerRefresh()
+                }}
+                isRefreshing={dataStatusMeta.isRefreshing || isValidating}
+                lastFetchedAt={dataStatusMeta.lastFetchedAt}
+                size="md"
+                className="rounded-lg border-white/20 bg-white/10 text-white/70 hover:text-white hover:bg-white/20 backdrop-blur-sm"
+              />
             </div>
+          </div>
+
+          {/* Data status banner */}
+          <DataStatusBanner
+            status={data?.dataStatus}
+            lastFetchedAt={data?.lastFetchedAt}
+            isRefreshing={data?.isRefreshing ?? isValidating}
+            className="rounded-lg !bg-white/10 !text-white/80 backdrop-blur-sm"
+          />
+
+          {/* Main content grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr,auto] gap-6 items-center">
+            {/* Left: Main revenue number */}
             <div>
-              <p className="text-xs text-white/50 font-medium">Campanhas</p>
-              <p className="text-lg font-semibold tracking-tight text-white">{formatCurrency(animatedCampaign)}</p>
+              <div className="flex items-baseline gap-3 flex-wrap">
+                <p className="text-4xl md:text-5xl font-bold tracking-tight text-white">
+                  {formatCurrency(animatedTotal)}
+                </p>
+                {data?.hasPartialData && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="inline-flex items-center gap-1 text-xs text-yellow-300 bg-yellow-500/20 px-2 py-1 rounded-full">
+                          <AlertTriangle className="h-3 w-3" />
+                          Dados parciais
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>{PARTIAL_DATA_TOOLTIP}</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+              </div>
+              <div className="mt-2 flex items-center gap-4 flex-wrap">
+                <p className="text-sm text-white/60">
+                  Atribuicao Klaviyo: <span className="text-white font-medium">{formatCurrency(data?.campaignRevenue || 0 + (data?.flowRevenue || 0))}</span>
+                  <span className="text-white/40 ml-1">({klaviyoPercentage}% do total)</span>
+                </p>
+              </div>
+              <div className="mt-1.5 flex items-center gap-3 flex-wrap">
+                <p className="text-xs text-white/40">
+                  {data?.storesWithRevenue || 0} de {data?.storesCount || 0} lojas geraram receita
+                </p>
+                {data?.lastFetchedAt && (
+                  <TimeAgo date={data.lastFetchedAt} className="text-xs text-white/30" />
+                )}
+              </div>
+            </div>
+
+            {/* Right: Klaviyo percentage circle */}
+            <div className="hidden lg:flex flex-col items-center justify-center">
+              <p className="text-xs text-white/50 mb-2">Atribuicao Klaviyo</p>
+              <div className="relative w-24 h-24">
+                <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="40"
+                    fill="none"
+                    stroke="rgba(255,255,255,0.1)"
+                    strokeWidth="8"
+                  />
+                  <circle
+                    cx="50"
+                    cy="50"
+                    r="40"
+                    fill="none"
+                    stroke="rgba(255,255,255,0.9)"
+                    strokeWidth="8"
+                    strokeLinecap="round"
+                    strokeDasharray={`${klaviyoPercentage * 2.51} 251`}
+                    className="transition-all duration-1000"
+                  />
+                </svg>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-2xl font-bold text-white">{klaviyoPercentage}%</span>
+                </div>
+              </div>
+              <p className="text-xs text-white/40 mt-1">do faturamento</p>
             </div>
           </div>
-          <div className="flex items-center gap-3 p-4 rounded-xl border border-white/10 bg-white/5">
-            <div className="rounded-xl p-2.5 bg-[#05AFF2]/15">
-              <Workflow className="h-4 w-4 text-[#05AFF2]" />
+
+          {/* Breakdown cards: Flows, Campaigns, SMS, Estimated Profit */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="p-4 rounded-xl bg-white/[0.08] backdrop-blur-sm border border-white/10 hover:bg-white/[0.12] transition-colors">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-2 h-2 rounded-full bg-blue-400" />
+                <p className="text-xs text-white/60 font-medium">Flows</p>
+              </div>
+              <p className="text-xl font-bold text-white">{formatCurrency(animatedFlow)}</p>
+              <p className="text-xs text-emerald-400 mt-1">
+                {data?.totalRevenue && data.totalRevenue > 0
+                  ? `${((data.flowRevenue / data.totalRevenue) * 100).toFixed(1)}% da receita`
+                  : '0% da receita'}
+              </p>
             </div>
-            <div>
-              <p className="text-xs text-white/50 font-medium">Flows</p>
-              <p className="text-lg font-semibold tracking-tight text-white">{formatCurrency(animatedFlow)}</p>
+            <div className="p-4 rounded-xl bg-white/[0.08] backdrop-blur-sm border border-white/10 hover:bg-white/[0.12] transition-colors">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-2 h-2 rounded-full bg-purple-400" />
+                <p className="text-xs text-white/60 font-medium">Campanhas</p>
+              </div>
+              <p className="text-xl font-bold text-white">{formatCurrency(animatedCampaign)}</p>
+              <p className="text-xs text-emerald-400 mt-1">
+                {data?.totalRevenue && data.totalRevenue > 0
+                  ? `${((data.campaignRevenue / data.totalRevenue) * 100).toFixed(1)}% da receita`
+                  : '0% da receita'}
+              </p>
+            </div>
+            <div className="p-4 rounded-xl bg-white/[0.08] backdrop-blur-sm border border-white/10 hover:bg-white/[0.12] transition-colors">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-2 h-2 rounded-full bg-green-400" />
+                <p className="text-xs text-white/60 font-medium">SMS</p>
+              </div>
+              <p className="text-xl font-bold text-white">R$ 0,00</p>
+              <p className="text-xs text-white/40 mt-1">0.0% da receita</p>
+            </div>
+            <div className="p-4 rounded-xl bg-white/[0.08] backdrop-blur-sm border border-white/10 hover:bg-white/[0.12] transition-colors">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-2 h-2 rounded-full bg-emerald-400" />
+                <p className="text-xs text-white/60 font-medium">Lucro Estimado</p>
+              </div>
+              <p className="text-xl font-bold text-white">{formatCurrency((data?.totalRevenue || 0) * 0.3)}</p>
+              <p className="text-xs text-emerald-400 mt-1">30% margem</p>
             </div>
           </div>
         </div>
-
       </div>
     </div>
   )
