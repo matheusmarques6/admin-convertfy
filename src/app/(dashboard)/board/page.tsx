@@ -1,4 +1,5 @@
 import { Suspense } from "react"
+import { ClipboardList } from "lucide-react"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { TaskBoardWithCalendar } from "@/components/board/task-board-with-calendar"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -335,6 +336,17 @@ export default async function BoardPage() {
   return (
     <PagePermissionWrapper requiredFeatures={["request_control", "request_execute"]}>
       <div className="h-[calc(100vh-8rem)] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center gap-3 mb-4">
+          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/10">
+            <ClipboardList className="w-5 h-5 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Board</h1>
+            <p className="text-sm text-muted-foreground">Gerencie tarefas e acompanhe o progresso da equipe</p>
+          </div>
+        </div>
+
         <Suspense fallback={<BoardSkeleton />}>
           <TaskBoardWithCalendar
             tasks={tasks}

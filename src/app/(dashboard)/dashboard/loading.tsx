@@ -2,40 +2,34 @@ import { Skeleton } from "@/components/ui/skeleton"
 
 export default function DashboardLoading() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-[1600px] mx-auto">
       {/* Quick Actions */}
-      <div className="flex items-center gap-3">
-        <Skeleton className="h-9 w-32 rounded-lg" />
-        <Skeleton className="h-9 w-28 rounded-lg" />
-        <Skeleton className="h-9 w-36 rounded-lg" />
+      <div className="flex items-center gap-2">
+        <Skeleton className="h-9 w-32 rounded-xl" />
+        <Skeleton className="h-9 w-28 rounded-xl" />
+        <Skeleton className="h-9 w-36 rounded-xl" />
       </div>
 
       {/* Revenue Banner */}
       <Skeleton className="h-64 w-full rounded-xl" />
 
-      {/* Billing Metrics Grid */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <Skeleton className="h-8 w-40 rounded-lg" />
-          <Skeleton className="h-8 w-8 rounded-lg" />
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-          {[...Array(5)].map((_, i) => (
-            <Skeleton key={i} className="h-28 rounded-xl" />
-          ))}
-        </div>
+      {/* Primary Grid: Board + Calendar */}
+      <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
+        <Skeleton className="h-72 rounded-xl" />
+        <Skeleton className="h-72 rounded-xl" />
       </div>
 
-      {/* Charts + Right Column */}
-      <div className="grid gap-6 lg:grid-cols-7">
-        <div className="col-span-full lg:col-span-4">
-          <Skeleton className="h-[460px] rounded-xl" />
-        </div>
-        <div className="col-span-full lg:col-span-3 space-y-6">
-          <Skeleton className="h-48 rounded-xl" />
-          <Skeleton className="h-48 rounded-xl" />
-          <Skeleton className="h-48 rounded-xl" />
-        </div>
+      {/* Secondary Grid: 3 columns */}
+      <div className="grid gap-6 grid-cols-1 lg:grid-cols-3">
+        <Skeleton className="h-80 rounded-xl" />
+        <Skeleton className="h-80 rounded-xl" />
+        <Skeleton className="h-80 rounded-xl" />
+      </div>
+
+      {/* Tertiary Row */}
+      <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
+        <Skeleton className="h-64 rounded-xl" />
+        <Skeleton className="h-64 rounded-xl" />
       </div>
     </div>
   )

@@ -13,6 +13,7 @@ import {
   BarChart3,
   Zap,
   PenLine,
+  Megaphone,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PermissionGate } from "@/components/permission-gate"
@@ -59,12 +60,21 @@ export default function CampaignsCalendarPage() {
 
   return (
     <PermissionGate requiredFeatures={["campaign_control", "campaign_view"]}>
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <p className="text-muted-foreground">
-          Visualize e gerencie suas campanhas de marketing
-        </p>
+    <div className="flex-1 space-y-6">
+      {/* Page Header */}
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+            <Megaphone className="w-5 h-5 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-lg font-semibold tracking-tight">Campanhas</h1>
+            <p className="text-sm text-muted-foreground">
+              Planeje, acompanhe e gerencie suas campanhas de marketing
+            </p>
+          </div>
+        </div>
+
         <div className="flex items-center gap-2">
           {/* View Toggle */}
           <div className="flex rounded-lg border bg-muted p-1">
@@ -205,22 +215,22 @@ export default function CampaignsCalendarPage() {
       </Card>
 
       {/* Legend */}
-      <div className="flex flex-wrap items-center gap-4 text-sm">
-        <span className="text-muted-foreground">Canais:</span>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+        <span className="font-medium text-muted-foreground">Canais:</span>
         {Object.entries(channelConfig).map(([key, config]) => {
           const Icon = config.icon
           return (
-            <div key={key} className="flex items-center gap-1">
-              <div className={`w-3 h-3 rounded ${config.color}`} />
-              <Icon className="h-3 w-3" />
+            <div key={key} className="flex items-center gap-1.5">
+              <div className={`w-2.5 h-2.5 rounded ${config.color}`} />
+              <Icon className="h-3 w-3 text-muted-foreground" />
               <span>{config.label}</span>
             </div>
           )
         })}
-        <span className="text-muted-foreground ml-4">Status:</span>
+        <span className="font-medium text-muted-foreground ml-2">Status:</span>
         {Object.entries(statusColors).map(([key, color]) => (
-          <div key={key} className="flex items-center gap-1">
-            <div className={`w-3 h-3 rounded-full ${color}`} />
+          <div key={key} className="flex items-center gap-1.5">
+            <div className={`w-2.5 h-2.5 rounded-full ${color}`} />
             <span className="capitalize">{key}</span>
           </div>
         ))}

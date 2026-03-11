@@ -83,22 +83,21 @@ export function DashboardLayout({ data, userRole }: DashboardLayoutProps) {
   const canViewReports = isAdminOrOwner || hasFeature("view_reports")
 
   return (
-    <div className="space-y-6">
-      {/* Quick Actions - adapts per role */}
+    <div className="space-y-6 max-w-[1600px] mx-auto">
+      {/* Quick Actions Row */}
       <QuickActions />
 
-      {/* Revenue Banner - visible to all (shows store performance metrics) */}
+      {/* Revenue Banner - Full Width Hero */}
       <TotalRevenueBanner period={revenuePeriod} onPeriodChange={setRevenuePeriod} onDataChange={handleRevenueData} />
 
-      {/* Main Grid: 2 columns */}
+      {/* Primary Grid: Board + Calendar side by side */}
       <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
-        {/* Board Preview - visible to all */}
         <BoardPreview tasks={data.activeTasks} />
-
-        {/* Calendar - visible to all */}
         <WeekCalendarPreview meetings={data.weekMeetings} tasks={data.weekTasks} />
+      </div>
 
-        {/* Top Stores - visible to all */}
+      {/* Secondary Grid: Store Performance + Alerts - 3 columns */}
+      <div className="grid gap-6 grid-cols-1 lg:grid-cols-3">
         <TopStoresCard
           stores={revenueData?.topStores}
           allStores={revenueData?.storeBreakdown}
@@ -106,25 +105,27 @@ export function DashboardLayout({ data, userRole }: DashboardLayoutProps) {
           dataStatus={revenueData?.dataStatus}
         />
 
-        {/* Worst Performers - admin, COO and those with reports access */}
-        {(isAdminOrOwner || canViewReports) && (
+        {(isAdminOrOwner || canViewReports) ? (
           <WorstPerformersCard
             stores={revenueData?.bottomStores}
             allStores={revenueData?.storeBreakdown}
             isLoading={!revenueResolved.current}
             dataStatus={revenueData?.dataStatus}
           />
+        ) : (
+          <OnboardingPreview onboardings={data.activeOnboardings} userRole={userRole} />
         )}
 
-        {/* Onboarding Preview - visible to all, filters by role internally */}
-        <OnboardingPreview onboardings={data.activeOnboardings} userRole={userRole} />
-
-        {/* Alerts - filters internally by feature */}
         <DashboardAlerts meetings={data.upcomingMeetings} alerts={data.alerts} />
       </div>
 
-      {/* Recent Activity - visible to all */}
-      <RecentActivity activities={data.activities} />
+      {/* Tertiary Row: Onboarding (for admins) + Activity */}
+      <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
+        {(isAdminOrOwner || canViewReports) && (
+          <OnboardingPreview onboardings={data.activeOnboardings} userRole={userRole} />
+        )}
+        <RecentActivity activities={data.activities} />
+      </div>
     </div>
   )
 }

@@ -6,7 +6,7 @@ import { SubscriptionsManager } from "@/components/financial/subscriptions-manag
 import { WiseReconciliation } from "@/components/financial/wise-reconciliation"
 import { BillingMetrics } from "@/components/dashboard/billing-metrics"
 import { FinancialCharts } from "@/components/dashboard/financial-charts"
-import { BarChart3, DollarSign, Repeat, Wallet } from "lucide-react"
+import { BarChart3, DollarSign, Repeat, Wallet, Landmark } from "lucide-react"
 import { PermissionGate } from "@/components/permission-gate"
 
 export default function FinancialPage() {
@@ -14,9 +14,15 @@ export default function FinancialPage() {
     <PermissionGate requiredFeatures={["view_financial"]}>
     <div className="space-y-6">
       {/* Header */}
-      <p className="text-muted-foreground">
-        Gerencie cobranças, assinaturas e pagamentos
-      </p>
+      <div className="flex items-center gap-3">
+        <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/10">
+          <Landmark className="w-5 h-5 text-primary" />
+        </div>
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Financeiro</h1>
+          <p className="text-sm text-muted-foreground">Gerencie cobranças, assinaturas e pagamentos</p>
+        </div>
+      </div>
 
       {/* Tabs */}
       <Tabs defaultValue="analysis">

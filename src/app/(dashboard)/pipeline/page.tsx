@@ -1,4 +1,5 @@
 import { Suspense } from "react"
+import { Kanban } from "lucide-react"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { PipelineBoard } from "@/components/pipeline/pipeline-board"
 import { PipelineHeader } from "@/components/pipeline/pipeline-header"
@@ -145,6 +146,17 @@ export default async function PipelinePage({
 
   return (
     <div className="space-y-6 h-full flex flex-col">
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/10">
+          <Kanban className="w-5 h-5 text-primary" />
+        </div>
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Pipeline</h1>
+          <p className="text-sm text-muted-foreground">Gerencie oportunidades e acompanhe o funil de vendas</p>
+        </div>
+      </div>
+
       {/* Sync server data into Zustand store */}
       <PipelineStoreInitializer
         pipelines={data.pipelines}

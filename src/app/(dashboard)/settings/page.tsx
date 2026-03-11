@@ -10,6 +10,8 @@ import {
   Layers,
   Plug,
   Mail,
+  Settings,
+  ChevronRight,
 } from "lucide-react"
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { createClient } from "@/lib/supabase/server"
@@ -146,33 +148,49 @@ export default async function SettingsPage() {
   )
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Header */}
-      <p className="text-muted-foreground">
-        Gerencie as configurações do sistema
-      </p>
+      <div className="flex items-center gap-4">
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
+          <Settings className="h-6 w-6 text-primary" />
+        </div>
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Configurações</h1>
+          <p className="text-sm text-muted-foreground">
+            Gerencie as configurações da sua conta, equipe e integrações do sistema.
+          </p>
+        </div>
+      </div>
 
       {/* Settings Groups */}
       {visibleGroups.map((group) => (
         <div key={group.title} className="space-y-4">
-          <h2 className="text-lg font-semibold">{group.title}</h2>
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-semibold tracking-tight">{group.title}</h2>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {group.items.map((item) => (
-              <Card key={item.href} className="rounded-xl border bg-card hover:border-primary/30 transition-colors">
-                <Link href={item.href}>
-                  <CardHeader className="pb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="rounded-lg p-2 bg-primary/10">
+              <Link key={item.href} href={item.href} className="group">
+                <Card className="h-full rounded-xl border bg-card transition-all duration-200 hover:border-primary/40 hover:shadow-md hover:shadow-primary/5">
+                  <CardHeader className="p-5">
+                    <div className="flex items-start gap-4">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/10 transition-colors duration-200 group-hover:bg-primary/15">
                         <item.icon className="h-5 w-5 text-primary" />
                       </div>
-                      <div>
-                        <CardTitle className="text-base">{item.title}</CardTitle>
-                        <CardDescription>{item.description}</CardDescription>
+                      <div className="flex-1 space-y-1">
+                        <CardTitle className="flex items-center justify-between text-base font-semibold">
+                          {item.title}
+                          <ChevronRight className="h-4 w-4 text-muted-foreground/50 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-primary" />
+                        </CardTitle>
+                        <CardDescription className="text-sm leading-relaxed">
+                          {item.description}
+                        </CardDescription>
                       </div>
                     </div>
                   </CardHeader>
-                </Link>
-              </Card>
+                </Card>
+              </Link>
             ))}
           </div>
         </div>

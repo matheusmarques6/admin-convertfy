@@ -11,12 +11,13 @@ import {
   Edit,
   Kanban,
   LucideIcon,
+  Activity,
 } from "lucide-react"
 import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 
-interface Activity {
+interface ActivityItem {
   id: string
   type: string
   description: string
@@ -26,7 +27,7 @@ interface Activity {
 }
 
 interface RecentActivityProps {
-  activities?: Activity[]
+  activities?: ActivityItem[]
 }
 
 function getActivityIcon(type: string): { icon: LucideIcon; color: string; bg: string } {
@@ -68,13 +69,13 @@ function timeAgo(dateStr: string): string {
 
   const minutes = Math.floor(diff / 60000)
   if (minutes < 1) return "agora"
-  if (minutes < 60) return `${minutes} min atrás`
+  if (minutes < 60) return `${minutes} min atras`
 
   const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h atrás`
+  if (hours < 24) return `${hours}h atras`
 
   const days = Math.floor(hours / 24)
-  if (days < 30) return `${days}d atrás`
+  if (days < 30) return `${days}d atras`
 
   return new Date(dateStr).toLocaleDateString("pt-BR")
 }
@@ -83,30 +84,37 @@ export function RecentActivity({ activities = [] }: RecentActivityProps) {
   const hasActivities = activities.length > 0
 
   return (
-    <div className="rounded-xl border border-border bg-card">
+    <div className="rounded-xl border border-border bg-card h-full flex flex-col">
       <CardHeader className="p-5 pb-3">
-        <CardTitle className="text-sm font-medium text-foreground">Atividade Recente</CardTitle>
-        <CardDescription className="text-xs text-muted-foreground">Últimas ações no sistema</CardDescription>
+        <div className="flex items-center gap-2.5">
+          <div className="h-8 w-8 rounded-lg bg-muted flex items-center justify-center">
+            <Activity className="h-4 w-4 text-muted-foreground" />
+          </div>
+          <div>
+            <CardTitle className="text-sm font-semibold text-foreground">Atividade Recente</CardTitle>
+            <CardDescription className="text-xs text-muted-foreground">Ultimas acoes no sistema</CardDescription>
+          </div>
+        </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex-1">
         <ScrollArea className="h-[300px] pr-4">
           {hasActivities ? (
-            <div className="space-y-3">
-              {activities.map((activity) => {
+            <div className="space-y-1">
+              {activities.map((activity, idx) => {
                 const { icon: Icon, color, bg } = getActivityIcon(activity.type)
                 const profileName = Array.isArray(activity.profile)
                   ? activity.profile[0]?.name
                   : activity.profile?.name
                 return (
-                  <div key={activity.id} className="flex gap-3">
-                    <div className={cn("rounded-md p-1.5 h-fit", bg)}>
+                  <div key={activity.id} className="flex gap-3 p-2 rounded-lg hover:bg-muted/30 transition-colors">
+                    <div className={cn("rounded-lg p-2 h-fit shrink-0", bg)}>
                       <Icon className={cn("h-3.5 w-3.5", color)} />
                     </div>
-                    <div className="flex-1 space-y-1">
+                    <div className="flex-1 space-y-1 min-w-0">
                       <p className="text-sm leading-tight text-foreground">{activity.description}</p>
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <span>{profileName || "Sistema"}</span>
-                        <span>·</span>
+                        <span className="font-medium">{profileName || "Sistema"}</span>
+                        <span className="text-muted-foreground/50">·</span>
                         <span>{timeAgo(activity.created_at)}</span>
                       </div>
                     </div>

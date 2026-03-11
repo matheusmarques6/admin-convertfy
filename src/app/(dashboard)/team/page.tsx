@@ -1,5 +1,5 @@
 import { Suspense } from "react"
-import { Plus } from "lucide-react"
+import { Plus, Users } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { Button } from "@/components/ui/button"
 import { TeamTable } from "@/components/team/team-table"
@@ -136,9 +136,15 @@ export default async function TeamPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <p className="text-muted-foreground">
-          Gerencie os membros da sua equipe e suas permissões
-        </p>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/10">
+            <Users className="w-5 h-5 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Equipe</h1>
+            <p className="text-sm text-muted-foreground">Gerencie os membros da sua equipe e suas permissões</p>
+          </div>
+        </div>
         <Button id="add-member-trigger">
           <Plus className="mr-2 h-4 w-4" />
           Novo Membro

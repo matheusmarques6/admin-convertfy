@@ -1,3 +1,4 @@
+import { Calendar } from "lucide-react"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 
@@ -150,11 +151,24 @@ export default async function MeetingsPage() {
 
   return (
     <PagePermissionWrapper requiredFeatures={["calendar_control"]}>
-      <MeetingsPageClient
-        meetings={transformedMeetings}
-        clients={clients}
-        members={members}
-      />
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/10">
+            <Calendar className="w-5 h-5 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Reuniões</h1>
+            <p className="text-sm text-muted-foreground">Agende e acompanhe reuniões com clientes e equipe</p>
+          </div>
+        </div>
+
+        <MeetingsPageClient
+          meetings={transformedMeetings}
+          clients={clients}
+          members={members}
+        />
+      </div>
     </PagePermissionWrapper>
   )
 }

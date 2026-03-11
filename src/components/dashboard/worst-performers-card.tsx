@@ -33,12 +33,14 @@ export function WorstPerformersCard({ stores: storesProp, allStores, isLoading, 
   const maxRevenue = stores[0]?.totalRevenueBRL ?? stores[0]?.totalRevenue ?? 1
 
   return (
-    <div className="rounded-xl border border-border bg-card h-full">
+    <div className="rounded-xl border border-border bg-card h-full flex flex-col">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <TrendingDown className="h-4 w-4 text-destructive" />
-            <CardTitle className="text-sm font-semibold">Atenção Necessária</CardTitle>
+          <div className="flex items-center gap-2.5">
+            <div className="h-8 w-8 rounded-lg bg-destructive/10 flex items-center justify-center">
+              <TrendingDown className="h-4 w-4 text-destructive" />
+            </div>
+            <CardTitle className="text-sm font-semibold">Atencao Necessaria</CardTitle>
           </div>
           {showViewAll && (
             <Button variant="ghost" size="sm" className="text-xs h-7 px-2" onClick={() => setModalOpen(true)}>
@@ -47,7 +49,7 @@ export function WorstPerformersCard({ stores: storesProp, allStores, isLoading, 
           )}
         </div>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-3 flex-1">
         {isLoading && stores.length === 0 ? (
           <div className="space-y-3">
             {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-10 w-full rounded-lg" />)}
@@ -68,10 +70,10 @@ export function WorstPerformersCard({ stores: storesProp, allStores, isLoading, 
               <Link key={store.storeId} href={`/stores/${store.storeId}`} className="block group">
                 <div className="flex items-center justify-between text-xs mb-1">
                   <span className="truncate max-w-[55%] text-foreground group-hover:text-primary transition-colors">
-                    <span className="text-muted-foreground mr-1.5">{i + 1}.</span>
+                    <span className="text-muted-foreground mr-1.5 font-medium">{i + 1}.</span>
                     {store.storeName}
                   </span>
-                  <span className="font-medium tabular-nums text-destructive">{formatCurrency(store.totalRevenue, curr)}</span>
+                  <span className="font-semibold tabular-nums text-destructive">{formatCurrency(store.totalRevenue, curr)}</span>
                 </div>
                 <div className="h-1.5 rounded-full bg-muted overflow-hidden">
                   <div
