@@ -12,7 +12,6 @@ import {
   Calendar,
   Instagram,
   CheckCircle2,
-  XCircle,
   Loader2,
   ExternalLink,
   Settings,
@@ -21,8 +20,8 @@ import {
   ArrowLeft,
   AlertTriangle,
   BarChart3,
+  ChevronRight,
 } from "lucide-react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -48,7 +47,6 @@ import { INTEGRATION_CONFIGS, getIntegrationConfig } from "@/lib/integrations/co
 import { toast } from "@/lib/hooks/use-toast"
 import type { IntegrationType, Integration } from "@/types"
 
-// Call backend API to test connection (avoids CORS issues)
 async function testIntegrationConnection(
   type: string,
   credentials: Record<string, string>
@@ -71,6 +69,35 @@ const ICONS: Record<string, React.ComponentType<{ className?: string; style?: Re
   Calendar,
   Instagram,
 }
+
+// Categorias de integrações
+const INTEGRATION_CATEGORIES = {
+  payments: {
+    title: "Pagamentos",
+    description: "Gateways de pagamento e cobrança",
+    types: ["asaas"],
+  },
+  ecommerce: {
+    title: "E-commerce",
+    description: "Plataformas de loja virtual",
+    types: ["shopify"],
+  },
+  marketing: {
+    title: "Marketing",
+    description: "Email marketing e automações",
+    types: ["klaviyo"],
+  },
+  ads: {
+    title: "Anúncios",
+    description: "Plataformas de mídia paga",
+    types: ["meta_ads", "google_ads"],
+  },
+  calendar: {
+    title: "Calendário",
+    description: "Agendamento de reuniões",
+    types: ["google_calendar"],
+  },
+} as const
 
 export default function IntegrationsPage() {
   const router = useRouter()
@@ -123,8 +150,6 @@ export default function IntegrationsPage() {
 
   function openConfigDialog(type: IntegrationType) {
     setSelectedType(type)
-    // Don't pre-fill credentials — they're encrypted in the DB
-    // User must re-enter credentials when editing
     setCredentials({})
     setConfigDialogOpen(true)
   }
@@ -139,7 +164,6 @@ export default function IntegrationsPage() {
       if (result.success) {
         setStatus(selectedType, { connected: true, error: undefined, details: result.details })
 
-        // Klaviyo: differentiated toast based on reporting access
         if (selectedType === "klaviyo" && result.details) {
           if (result.details.hasReportingAccess) {
             toast({
@@ -190,7 +214,6 @@ export default function IntegrationsPage() {
       const config = getIntegrationConfig(selectedType)
       const existing = integrations.find((i) => i.type === selectedType)
 
-      // Validate required fields
       const missingFields = config?.requiredCredentials.filter(
         (field) => !credentials[field.key]
       )
@@ -205,11 +228,9 @@ export default function IntegrationsPage() {
         return
       }
 
-      // Test connection first
       const testResult = await testIntegrationConnection(selectedType, credentials)
       const now = new Date().toISOString()
 
-      // Save via server-side API (encrypts credentials)
       const response = await fetch("/api/integrations/save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -226,7 +247,6 @@ export default function IntegrationsPage() {
       const result = await response.json()
       if (!response.ok) throw new Error(result.error || "Erro ao salvar")
 
-      // Update local store
       if (existing) {
         updateIntegration(existing.id, {
           is_active: testResult.success,
@@ -252,7 +272,6 @@ export default function IntegrationsPage() {
       })
 
       setConfigDialogOpen(false)
-      // Reload to get fresh data
       loadIntegrations()
     } catch (error) {
       console.error("Error saving integration:", error)
@@ -298,14 +317,12 @@ export default function IntegrationsPage() {
       const integration = integrations.find((i) => i.type === type)
       if (!integration) return
 
-      // Call the sync API based on integration type
       let syncUrl = ""
       switch (type) {
         case "asaas":
           syncUrl = "/api/integrations/asaas/sync"
           break
         default:
-          // For other integrations, inform user to use config dialog to test
           toast({
             title: "Use Configurar para testar",
             description: "Abra o diálogo de configuração para testar a conexão.",
@@ -346,164 +363,248 @@ export default function IntegrationsPage() {
 
   const selectedConfig = selectedType ? getIntegrationConfig(selectedType) : null
 
+  // Contagem de integrações conectadas
+  const connectedCount = Object.values(statuses).filter((s) => s?.connected).length
+  const totalCount = Object.keys(INTEGRATION_CONFIGS).length
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => router.back()}>
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <p className="text-muted-foreground">
-          Conecte suas ferramentas favoritas ao Convertfy
-        </p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" onClick={() => router.back()} className="h-9 w-9">
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div>
+            <h1 className="text-xl font-semibold text-foreground">Integrações</h1>
+            <p className="text-sm text-muted-foreground">
+              Conecte suas ferramentas favoritas ao Convertfy
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">
+            {connectedCount} de {totalCount} conectadas
+          </span>
+          <div className="h-2 w-24 rounded-full bg-muted overflow-hidden">
+            <div
+              className="h-full bg-success transition-all duration-300"
+              style={{ width: `${(connectedCount / totalCount) * 100}%` }}
+            />
+          </div>
+        </div>
       </div>
 
-      {/* Integration Cards */}
+      {/* Loading State */}
       {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <div className="flex items-center justify-center py-16">
+          <div className="flex flex-col items-center gap-3">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">Carregando integrações...</p>
+          </div>
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {Object.values(INTEGRATION_CONFIGS).map((config) => {
-            const status = statuses[config.type]
-            const Icon = ICONS[config.icon] || Plug
-            const isConnected = status?.connected
+        <div className="space-y-8">
+          {/* Categories */}
+          {Object.entries(INTEGRATION_CATEGORIES).map(([categoryKey, category]) => {
+            const categoryIntegrations = category.types
+              .map((type) => INTEGRATION_CONFIGS[type as keyof typeof INTEGRATION_CONFIGS])
+              .filter(Boolean)
+
+            if (categoryIntegrations.length === 0) return null
 
             return (
-              <Card
-                key={config.type}
-                className={`rounded-xl border bg-card relative overflow-hidden ${
-                  isConnected ? "border-success/50" : ""
-                }`}
-              >
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3">
+              <div key={categoryKey} className="space-y-4">
+                {/* Category Header */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-base font-medium text-foreground">{category.title}</h2>
+                    <p className="text-sm text-muted-foreground">{category.description}</p>
+                  </div>
+                </div>
+
+                {/* Integration Cards */}
+                <div className="grid gap-3">
+                  {categoryIntegrations.map((config) => {
+                    const status = statuses[config.type]
+                    const Icon = ICONS[config.icon] || Plug
+                    const isConnected = status?.connected
+
+                    return (
                       <div
-                        className="rounded-lg p-2"
-                        style={{ backgroundColor: `${config.color}20` }}
+                        key={config.type}
+                        className={`
+                          group relative flex items-center justify-between
+                          rounded-lg border bg-card p-4
+                          transition-all duration-200
+                          hover:border-border/80 hover:shadow-sm
+                          ${isConnected ? "border-success/30" : "border-border"}
+                        `}
                       >
-                        <Icon
-                          className="h-6 w-6"
-                          style={{ color: config.color }}
-                        />
-                      </div>
-                      <div>
-                        <CardTitle className="text-base">{config.name}</CardTitle>
-                        <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        {/* Left side: Icon + Info */}
+                        <div className="flex items-center gap-4">
+                          {/* Icon */}
+                          <div
+                            className="flex h-10 w-10 items-center justify-center rounded-lg"
+                            style={{ backgroundColor: `${config.color}15` }}
+                          >
+                            <Icon className="h-5 w-5" style={{ color: config.color }} />
+                          </div>
+
+                          {/* Info */}
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <h3 className="text-sm font-medium text-foreground">
+                                {config.name}
+                              </h3>
+                              {/* Status Badge */}
+                              {isConnected ? (
+                                <Badge
+                                  variant="outline"
+                                  className="h-5 border-success/50 bg-success/10 text-success text-xs font-normal"
+                                >
+                                  <CheckCircle2 className="mr-1 h-3 w-3" />
+                                  Conectado
+                                </Badge>
+                              ) : (
+                                <Badge
+                                  variant="outline"
+                                  className="h-5 border-muted-foreground/30 text-muted-foreground text-xs font-normal"
+                                >
+                                  Desconectado
+                                </Badge>
+                              )}
+                              {/* Klaviyo Reports Badge */}
+                              {isConnected && config.type === "klaviyo" && status?.details && (
+                                status.details.hasReportingAccess ? (
+                                  <Badge
+                                    variant="outline"
+                                    className="h-5 border-success/50 bg-success/10 text-success text-xs font-normal"
+                                  >
+                                    <BarChart3 className="mr-1 h-3 w-3" />
+                                    Relatórios
+                                  </Badge>
+                                ) : (
+                                  <Badge
+                                    variant="outline"
+                                    className="h-5 border-warning/50 bg-warning/10 text-warning text-xs font-normal"
+                                  >
+                                    <AlertTriangle className="mr-1 h-3 w-3" />
+                                    Sem relatórios
+                                  </Badge>
+                                )
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              {config.description}
+                            </p>
+                            {/* Last sync */}
+                            {status?.lastSync && (
+                              <p className="text-xs text-muted-foreground/70">
+                                Sync: {new Date(status.lastSync).toLocaleDateString("pt-BR", {
+                                  day: "2-digit",
+                                  month: "2-digit",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Right side: Actions */}
+                        <div className="flex items-center gap-2">
                           {isConnected ? (
-                            <Badge variant="outline" className="text-success border-success">
-                              <CheckCircle2 className="h-3 w-3 mr-1" />
-                              Conectado
-                            </Badge>
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleSync(config.type)}
+                                disabled={isTesting === config.type}
+                                className="h-8 px-2 text-muted-foreground hover:text-foreground"
+                              >
+                                {isTesting === config.type ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <RefreshCw className="h-4 w-4" />
+                                )}
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => openConfigDialog(config.type)}
+                                className="h-8"
+                              >
+                                <Settings className="mr-1.5 h-3.5 w-3.5" />
+                                Configurar
+                              </Button>
+                            </>
                           ) : (
-                            <Badge variant="outline" className="text-muted-foreground">
-                              <XCircle className="h-3 w-3 mr-1" />
-                              Desconectado
-                            </Badge>
+                            <Button
+                              size="sm"
+                              onClick={() => openConfigDialog(config.type)}
+                              className="h-8"
+                            >
+                              <Plug className="mr-1.5 h-3.5 w-3.5" />
+                              Conectar
+                            </Button>
                           )}
-                          {isConnected && config.type === "klaviyo" && status?.details && (
-                            status.details.hasReportingAccess ? (
-                              <Badge variant="outline" className="text-success border-success">
-                                <BarChart3 className="h-3 w-3 mr-1" />
-                                Relatórios OK
-                              </Badge>
-                            ) : (
-                              <Badge variant="outline" className="text-warning border-warning">
-                                <AlertTriangle className="h-3 w-3 mr-1" />
-                                Sem relatórios
-                              </Badge>
-                            )
+                          {config.docsUrl && (
+                            <Button variant="ghost" size="sm" asChild className="h-8 px-2 text-muted-foreground hover:text-foreground">
+                              <a
+                                href={config.docsUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                <ExternalLink className="h-4 w-4" />
+                              </a>
+                            </Button>
                           )}
+                          <ChevronRight className="h-4 w-4 text-muted-foreground/50 opacity-0 transition-opacity group-hover:opacity-100" />
                         </div>
                       </div>
-                    </div>
-                  </div>
-                  <CardDescription className="mt-2">
-                    {config.description}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {/* Features */}
-                    <div className="text-xs text-muted-foreground">
-                      <ul className="space-y-1">
-                        {config.features.slice(0, 2).map((feature, i) => (
-                          <li key={i} className="flex items-center gap-1">
-                            <CheckCircle2 className="h-3 w-3 text-success" />
-                            {feature}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    {/* Last sync */}
-                    {status?.lastSync && (
-                      <p className="text-xs text-muted-foreground">
-                        Última sync:{" "}
-                        {new Date(status.lastSync).toLocaleDateString("pt-BR", {
-                          day: "2-digit",
-                          month: "2-digit",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </p>
-                    )}
-
-                    {/* Actions */}
-                    <div className="flex gap-2 pt-2">
-                      {isConnected ? (
-                        <>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="flex-1"
-                            onClick={() => openConfigDialog(config.type)}
-                          >
-                            <Settings className="h-4 w-4 mr-1" />
-                            Configurar
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleSync(config.type)}
-                            disabled={isTesting === config.type}
-                          >
-                            {isTesting === config.type ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <RefreshCw className="h-4 w-4" />
-                            )}
-                          </Button>
-                        </>
-                      ) : (
-                        <Button
-                          size="sm"
-                          className="flex-1"
-                          onClick={() => openConfigDialog(config.type)}
-                        >
-                          <Plug className="h-4 w-4 mr-1" />
-                          Conectar
-                        </Button>
-                      )}
-                      {config.docsUrl && (
-                        <Button variant="ghost" size="sm" asChild>
-                          <a
-                            href={config.docsUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            <ExternalLink className="h-4 w-4" />
-                          </a>
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+                    )
+                  })}
+                </div>
+              </div>
             )
           })}
+
+          {/* Features Summary */}
+          <div className="rounded-lg border border-dashed border-border bg-muted/30 p-6">
+            <div className="flex items-start gap-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                <Plug className="h-5 w-5 text-primary" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-sm font-medium text-foreground">
+                  Integrações disponíveis
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  Conecte suas ferramentas para sincronizar dados automaticamente,
+                  acompanhar métricas em tempo real e automatizar processos.
+                </p>
+                <ul className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-success" />
+                    Sincronização automática de pedidos
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-success" />
+                    Métricas de email marketing
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-success" />
+                    Gestão de cobranças e pagamentos
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-success" />
+                    Relatórios de performance de ads
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -511,19 +612,19 @@ export default function IntegrationsPage() {
       <Dialog open={configDialogOpen} onOpenChange={setConfigDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
+            <DialogTitle className="flex items-center gap-3">
               {selectedConfig && (
                 <>
-                  {(() => {
-                    const Icon = ICONS[selectedConfig.icon] || Plug
-                    return (
-                      <Icon
-                        className="h-5 w-5"
-                        style={{ color: selectedConfig.color }}
-                      />
-                    )
-                  })()}
-                  Configurar {selectedConfig.name}
+                  <div
+                    className="flex h-8 w-8 items-center justify-center rounded-lg"
+                    style={{ backgroundColor: `${selectedConfig.color}15` }}
+                  >
+                    {(() => {
+                      const Icon = ICONS[selectedConfig.icon] || Plug
+                      return <Icon className="h-4 w-4" style={{ color: selectedConfig.color }} />
+                    })()}
+                  </div>
+                  <span>Configurar {selectedConfig.name}</span>
                 </>
               )}
             </DialogTitle>
@@ -536,7 +637,7 @@ export default function IntegrationsPage() {
             {/* Required Credentials */}
             {selectedConfig?.requiredCredentials.map((field) => (
               <div key={field.key} className="space-y-2">
-                <Label htmlFor={field.key}>
+                <Label htmlFor={field.key} className="text-sm">
                   {field.label}
                   <span className="text-destructive ml-1">*</span>
                 </Label>
@@ -547,7 +648,7 @@ export default function IntegrationsPage() {
                       setCredentials({ ...credentials, [field.key]: value })
                     }
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="h-9">
                       <SelectValue placeholder={field.placeholder || `Selecione...`} />
                     </SelectTrigger>
                     <SelectContent>
@@ -567,6 +668,7 @@ export default function IntegrationsPage() {
                     onChange={(e) =>
                       setCredentials({ ...credentials, [field.key]: e.target.value })
                     }
+                    className="h-9"
                   />
                 )}
                 {field.helpText && (
@@ -579,11 +681,11 @@ export default function IntegrationsPage() {
             {selectedConfig?.optionalCredentials && selectedConfig.optionalCredentials.length > 0 && (
               <>
                 <div className="border-t pt-4">
-                  <p className="text-sm font-medium mb-3">Configurações opcionais</p>
+                  <p className="text-sm font-medium text-foreground mb-3">Configurações opcionais</p>
                 </div>
                 {selectedConfig.optionalCredentials.map((field) => (
                   <div key={field.key} className="space-y-2">
-                    <Label htmlFor={field.key}>{field.label}</Label>
+                    <Label htmlFor={field.key} className="text-sm">{field.label}</Label>
                     {field.type === "select" ? (
                       <Select
                         value={credentials[field.key] || ""}
@@ -591,7 +693,7 @@ export default function IntegrationsPage() {
                           setCredentials({ ...credentials, [field.key]: value })
                         }
                       >
-                        <SelectTrigger>
+                        <SelectTrigger className="h-9">
                           <SelectValue placeholder={field.placeholder || `Selecione...`} />
                         </SelectTrigger>
                         <SelectContent>
@@ -611,6 +713,7 @@ export default function IntegrationsPage() {
                         onChange={(e) =>
                           setCredentials({ ...credentials, [field.key]: e.target.value })
                         }
+                        className="h-9"
                       />
                     )}
                     {field.helpText && (
@@ -622,15 +725,15 @@ export default function IntegrationsPage() {
             )}
           </div>
 
-          <DialogFooter className="flex-col sm:flex-row gap-2">
+          <DialogFooter className="flex-col gap-2 sm:flex-row">
             {selectedType && statuses[selectedType]?.connected && (
               <Button
-                variant="destructive"
+                variant="outline"
                 onClick={() => {
                   handleDisconnect(selectedType)
                   setConfigDialogOpen(false)
                 }}
-                className="w-full sm:w-auto"
+                className="w-full text-destructive hover:bg-destructive hover:text-destructive-foreground sm:w-auto"
               >
                 Desconectar
               </Button>
@@ -642,19 +745,19 @@ export default function IntegrationsPage() {
                 disabled={isTesting !== null || isSaving}
                 className="flex-1 sm:flex-initial"
               >
-                {isTesting === selectedType ? (
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                ) : null}
-                Testar Conexão
+                {isTesting === selectedType && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
+                Testar
               </Button>
               <Button
                 onClick={handleSaveIntegration}
                 disabled={isTesting !== null || isSaving}
                 className="flex-1 sm:flex-initial"
               >
-                {isSaving ? (
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                ) : null}
+                {isSaving && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
                 Salvar
               </Button>
             </div>
