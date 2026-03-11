@@ -1,4 +1,4 @@
-import { TrendingUp, Workflow, Mail, MessageSquare, TrendingDown } from "lucide-react"
+import { TrendingUp } from "lucide-react"
 import { formatCurrency, formatPercent } from "@/lib/utils/format"
 import type { KlaviyoData } from "./types"
 
@@ -20,62 +20,60 @@ export function HeroSection({ klaviyo }: HeroSectionProps) {
   const smsPercent = storeRevenue > 0 ? (smsRevenue / storeRevenue) * 100 : 0
 
   return (
-    <div className="relative overflow-hidden rounded-2xl bg-[#0f172a] p-6 lg:p-8">
-      {/* Subtle gradient overlay */}
-      <div className="absolute inset-0">
-        <div className="absolute inset-0 bg-gradient-to-br from-slate-900/50 via-transparent to-slate-900/80" />
-        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-[#05AFF2]/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/4" />
-        <div className="absolute bottom-0 left-0 w-[300px] h-[300px] bg-emerald-500/5 rounded-full blur-3xl translate-y-1/2 -translate-x-1/4" />
+    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#4e62d8] via-[#2137b6] to-[#041366] p-6 lg:p-8">
+      {/* Subtle pattern overlay */}
+      <div className="absolute inset-0 opacity-10">
+        <div className="absolute top-0 right-0 w-96 h-96 bg-white/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
+        <div className="absolute bottom-0 left-0 w-64 h-64 bg-white/10 rounded-full blur-2xl translate-y-1/2 -translate-x-1/2" />
       </div>
 
       <div className="relative">
         {/* Main content */}
-        <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-6 mb-8">
+        <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-6 mb-6">
           {/* Left: Revenue info */}
           <div className="flex-1">
-            <p className="text-sm text-slate-400 mb-2 font-medium tracking-wide">Receita Total da Loja</p>
+            <p className="text-sm text-white/70 mb-1.5 font-medium">Receita Total da Loja</p>
             <div className="flex items-center gap-4 mb-3">
               <h2 className="text-4xl lg:text-5xl font-bold text-white tracking-tight">
                 {formatCurrency(storeRevenue)}
               </h2>
               {storeRevenue > 0 && (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/15 text-emerald-400 text-sm font-semibold border border-emerald-500/20">
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-sm font-medium">
                   <TrendingUp className="h-3.5 w-3.5" />
                   12%
                 </span>
               )}
             </div>
-            <p className="text-sm text-slate-500">
-              Atribuido ao Klaviyo: <span className="text-slate-300 font-semibold">{formatCurrency(totalRevenue)}</span>
-              <span className="text-slate-600 ml-1.5">({formatPercent(attributionPercent)} do total)</span>
+            <p className="text-sm text-white/60">
+              Atribuido ao Klaviyo: <span className="text-white font-semibold">{formatCurrency(totalRevenue)}</span>
+              <span className="text-white/40 ml-1">({formatPercent(attributionPercent)} do total)</span>
             </p>
           </div>
 
           {/* Right: Attribution circle */}
           <div className="flex flex-col items-center lg:items-end">
-            <p className="text-[11px] text-slate-500 mb-3 uppercase tracking-widest font-semibold">Atribuicao Klaviyo</p>
-            <div className="relative w-32 h-32">
+            <p className="text-xs text-white/50 mb-2 uppercase tracking-wider font-medium">Atribuicao Klaviyo</p>
+            <div className="relative w-28 h-28">
               {/* Background circle */}
               <svg className="w-full h-full -rotate-90">
                 <circle
-                  cx="64"
-                  cy="64"
-                  r="54"
+                  cx="56"
+                  cy="56"
+                  r="48"
                   fill="none"
-                  stroke="rgba(255,255,255,0.06)"
-                  strokeWidth="10"
+                  stroke="rgba(255,255,255,0.1)"
+                  strokeWidth="8"
                 />
                 {/* Progress circle */}
                 <circle
-                  cx="64"
-                  cy="64"
-                  r="54"
+                  cx="56"
+                  cy="56"
+                  r="48"
                   fill="none"
                   stroke="url(#progressGradient)"
-                  strokeWidth="10"
+                  strokeWidth="8"
                   strokeLinecap="round"
-                  strokeDasharray={`${(attributionPercent / 100) * 339.29} 339.29`}
-                  className="transition-all duration-1000 ease-out"
+                  strokeDasharray={`${(attributionPercent / 100) * 301.59} 301.59`}
                 />
                 <defs>
                   <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -86,8 +84,8 @@ export function HeroSection({ klaviyo }: HeroSectionProps) {
               </svg>
               {/* Center text */}
               <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-3xl font-bold text-white">{attributionPercent.toFixed(1)}%</span>
-                <span className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mt-0.5">do total</span>
+                <span className="text-2xl font-bold text-white">{attributionPercent.toFixed(1)}%</span>
+                <span className="text-[10px] text-white/50 uppercase tracking-wide">do total</span>
               </div>
             </div>
           </div>
@@ -95,37 +93,29 @@ export function HeroSection({ klaviyo }: HeroSectionProps) {
 
         {/* Revenue breakdown cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <MetricCard
-            icon={Workflow}
+          <RevenueCard
             label="Flows"
             value={flowRevenue}
             percent={flowPercent}
-            iconColor="text-violet-400"
-            iconBg="bg-violet-500/10"
+            color="violet"
           />
-          <MetricCard
-            icon={Mail}
+          <RevenueCard
             label="Campanhas"
             value={campaignRevenue}
             percent={campaignPercent}
-            iconColor="text-sky-400"
-            iconBg="bg-sky-500/10"
+            color="cyan"
           />
-          <MetricCard
-            icon={MessageSquare}
+          <RevenueCard
             label="SMS"
             value={smsRevenue}
             percent={smsPercent}
-            iconColor="text-amber-400"
-            iconBg="bg-amber-500/10"
+            color="amber"
           />
-          <MetricCard
-            icon={TrendingUp}
+          <RevenueCard
             label="Lucro Estimado"
             value={estimatedProfit}
             percent={30}
-            iconColor="text-emerald-400"
-            iconBg="bg-emerald-500/10"
+            color="emerald"
             isProfit
           />
         </div>
@@ -134,34 +124,42 @@ export function HeroSection({ klaviyo }: HeroSectionProps) {
   )
 }
 
-function MetricCard({
-  icon: Icon,
+function RevenueCard({
   label,
   value,
   percent,
-  iconColor,
-  iconBg,
+  color,
   isProfit = false,
 }: {
-  icon: React.ElementType
   label: string
   value: number
   percent: number
-  iconColor: string
-  iconBg: string
+  color: "violet" | "cyan" | "amber" | "emerald"
   isProfit?: boolean
 }) {
+  const colorClasses = {
+    violet: "bg-violet-500/30 border-violet-400/20",
+    cyan: "bg-cyan-500/30 border-cyan-400/20",
+    amber: "bg-amber-500/30 border-amber-400/20",
+    emerald: "bg-emerald-500/30 border-emerald-400/20",
+  }
+
+  const dotColors = {
+    violet: "bg-violet-400",
+    cyan: "bg-cyan-400",
+    amber: "bg-amber-400",
+    emerald: "bg-emerald-400",
+  }
+
   return (
-    <div className="bg-white/[0.03] hover:bg-white/[0.05] border border-white/[0.06] rounded-xl p-4 transition-all duration-200">
-      <div className="flex items-center gap-2.5 mb-3">
-        <div className={`w-8 h-8 rounded-lg ${iconBg} flex items-center justify-center`}>
-          <Icon className={`h-4 w-4 ${iconColor}`} strokeWidth={2} />
-        </div>
-        <span className="text-sm text-slate-400 font-medium">{label}</span>
+    <div className={`rounded-xl ${colorClasses[color]} border backdrop-blur-sm p-4`}>
+      <div className="flex items-center gap-2 mb-2">
+        <div className={`w-2 h-2 rounded-full ${dotColors[color]}`} />
+        <span className="text-xs text-white/70 font-medium">{label}</span>
       </div>
-      <p className="text-xl font-bold text-white mb-1">{formatCurrency(value)}</p>
-      <p className="text-xs text-slate-500">
-        {isProfit ? "30% margem estimada" : `${percent.toFixed(1)}% da receita`}
+      <p className="text-lg font-bold text-white">{formatCurrency(value)}</p>
+      <p className="text-xs text-white/50 mt-0.5">
+        {isProfit ? "30% margem" : `${percent.toFixed(1)}% da receita`}
       </p>
     </div>
   )
