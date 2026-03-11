@@ -279,6 +279,9 @@ export default function PublicOnboardingPage() {
       <div className="text-center mb-8">
         <h1 className="text-3xl font-bold text-slate-900">Cadastro de Onboarding</h1>
         <p className="text-slate-500 mt-2">Preencha os dados para iniciar o processo</p>
+        <p className="text-slate-400 text-sm mt-1">
+          Ao finalizar o envio, seu onboarding será iniciado com prazo estimado de 3 a 5 dias úteis.
+        </p>
       </div>
 
       {/* Progress Steps */}
