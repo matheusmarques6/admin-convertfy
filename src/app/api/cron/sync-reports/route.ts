@@ -57,30 +57,22 @@ interface StoreRow {
 // ==============================
 
 async function acquireSyncLock(supabase: SupabaseClient): Promise<boolean> {
-  const { data: lock } = await supabase
-    .from("cron_locks")
-    .select("is_running, started_at")
-    .eq("lock_name", "sync_reports")
-    .single()
+  const { data, error } = await supabase.rpc("acquire_sync_lock", {
+    p_lock_name: "sync_reports",
+    p_stale_ms: STALE_LOCK_MS,
+  })
 
-  if (lock?.is_running && lock.started_at) {
-    const startedAt = new Date(lock.started_at).getTime()
-    if (Date.now() - startedAt < STALE_LOCK_MS) {
-      log.warn("[Cron] Another sync is running, skipping")
-      return false
-    }
-    log.warn("[Cron] Stale lock detected, proceeding")
+  if (error) {
+    log.error("[Cron] Failed to acquire lock via RPC:", error.message)
+    return false
   }
 
-  await supabase
-    .from("cron_locks")
-    .upsert({
-      lock_name: "sync_reports",
-      is_running: true,
-      started_at: new Date().toISOString(),
-    }, { onConflict: "lock_name" })
+  if (data === true) {
+    return true
+  }
 
-  return true
+  log.warn("[Cron] Another sync is running, skipping")
+  return false
 }
 
 async function releaseSyncLock(supabase: SupabaseClient): Promise<void> {
