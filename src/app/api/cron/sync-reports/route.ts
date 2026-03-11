@@ -31,6 +31,7 @@ const MAX_PARALLEL_GROUPS = 2
 const INTRA_GROUP_DELAY_MS = 2500
 const MAX_DURATION_MS = 240_000 // 80% of 300s — stop before Vercel kills us
 const STALE_LOCK_MS = 10 * 60 * 1000 // 10 minutes
+const PERMISSION_RETRY_MS = 24 * 60 * 60 * 1000 // 24 hours — retry stores with permission failures after this
 
 interface CronSyncResult {
   storeId: string
@@ -46,6 +47,9 @@ interface StoreRow {
   id: string
   store_name: string
   org_id: string | null
+  klaviyo_has_reporting_access?: boolean
+  klaviyo_validated_at?: string
+  klaviyo_missing_scopes?: string[]
 }
 
 // ==============================
@@ -443,7 +447,7 @@ export async function GET(request: NextRequest) {
       // Get all stores with Klaviyo credentials (either field)
       const { data: stores, error: storesError } = await supabase
         .from("client_stores")
-        .select("id, store_name, org_id")
+        .select("id, store_name, org_id, klaviyo_has_reporting_access, klaviyo_validated_at, klaviyo_missing_scopes")
         .or(KLAVIYO_CREDENTIALS_FILTER)
         .not("org_id", "is", null)
 
@@ -452,7 +456,38 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: "Failed to fetch stores" }, { status: 500 })
       }
 
-      log.info(`[Cron] Found ${stores.length} stores × ${CACHED_PERIODS.length} periods`)
+      // Filter out stores with recent permission failures (retry after 24h)
+      const now = Date.now()
+      const retryThreshold = new Date(now - PERMISSION_RETRY_MS).toISOString()
+
+      const skippedPermission: { name: string; scopes: string[]; validatedAt: string }[] = []
+      const eligibleStores = stores.filter(store => {
+        // Include if has reporting access or field is null/undefined
+        if (store.klaviyo_has_reporting_access !== false) return true
+        // Include if validation timestamp is missing (treat as needing retry)
+        if (!store.klaviyo_validated_at) return true
+        // Include if validation is older than 24h (retry)
+        if (store.klaviyo_validated_at < retryThreshold) return true
+        // Skip — recent permission failure
+        const minutesAgo = Math.round((now - new Date(store.klaviyo_validated_at).getTime()) / (60 * 1000))
+        const timeAgo = minutesAgo < 60 ? `${minutesAgo}min ago` : `${Math.round(minutesAgo / 60)}h ago`
+        skippedPermission.push({
+          name: store.store_name,
+          scopes: store.klaviyo_missing_scopes ?? [],
+          validatedAt: timeAgo,
+        })
+        return false
+      })
+
+      if (skippedPermission.length > 0) {
+        const details = skippedPermission
+          .map(s => `${s.name} (missing ${s.scopes.join(", ") || "unknown scopes"}, validated ${s.validatedAt})`)
+          .join(", ")
+        log.warn(`[Cron] Skipping ${skippedPermission.length} stores with recent permission failures: ${details}`)
+      }
+
+      log.info(`[Cron] Found ${stores.length} stores with credentials, processing ${eligibleStores.length} (skipping ${skippedPermission.length} with recent permission failures)`)
+      log.info(`[Cron] ${eligibleStores.length} stores × ${CACHED_PERIODS.length} periods`)
 
       const allResults: CronSyncResult[] = []
       let timedOut = false
@@ -461,7 +496,7 @@ export async function GET(request: NextRequest) {
       const apiKeyGroups = new Map<string, StoreRow[]>()
       const skippedNoKey: string[] = []
 
-      for (const store of stores) {
+      for (const store of eligibleStores) {
         try {
           const credentials = await getStoreCredentials(store.id)
           const apiKey = credentials.klaviyo_private_key || credentials.klaviyo_api_key
@@ -486,7 +521,7 @@ export async function GET(request: NextRequest) {
 
       const groups = Array.from(apiKeyGroups.entries())
       const groupSizes = groups.map(g => g[1].length)
-      log.info(`[Cron] ${stores.length} stores grouped into ${groups.length} API key groups: [${groupSizes.join(", ")}]`)
+      log.info(`[Cron] ${eligibleStores.length} stores grouped into ${groups.length} API key groups: [${groupSizes.join(", ")}]`)
 
       // Log which group each store belongs to (masked key, not plaintext)
       groups.forEach(([apiKey, groupStores], groupIdx) => {
