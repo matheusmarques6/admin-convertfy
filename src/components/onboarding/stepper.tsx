@@ -1,5 +1,6 @@
 "use client"
 
+import { Fragment } from "react"
 import { cn } from "@/lib/utils"
 import { Check, type LucideIcon } from "lucide-react"
 
@@ -19,16 +20,16 @@ export function OnboardingStepper({ steps, currentIndex, onNavigate }: Onboardin
   return (
     <div className="w-full">
       <nav aria-label="Progresso do formulario">
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center mb-2">
           {steps.map((step, i) => {
             const Icon = step.icon
             const isActive = i === currentIndex
             const isComplete = i < currentIndex
 
             return (
-              <div key={step.id} className="flex items-center">
-                {/* Step circle + label wrapper */}
-                <div className="relative flex flex-col items-center">
+              <Fragment key={step.id}>
+                {/* Step circle + label */}
+                <div className="flex flex-col items-center flex-shrink-0">
                   <button
                     type="button"
                     onClick={() => isComplete && onNavigate(i)}
@@ -36,7 +37,8 @@ export function OnboardingStepper({ steps, currentIndex, onNavigate }: Onboardin
                     aria-current={isActive ? "step" : undefined}
                     aria-disabled={!isComplete && !isActive}
                     className={cn(
-                      "flex items-center justify-center w-10 h-10 rounded-full border-2 transition-colors",
+                      "flex items-center justify-center rounded-full border-2 transition-colors",
+                      "w-8 h-8 sm:w-10 sm:h-10",
                       isActive && "border-primary bg-primary text-primary-foreground",
                       isComplete &&
                         "border-emerald-500 bg-emerald-500 text-white cursor-pointer hover:bg-emerald-600 hover:border-emerald-600",
@@ -46,15 +48,15 @@ export function OnboardingStepper({ steps, currentIndex, onNavigate }: Onboardin
                     )}
                   >
                     {isComplete ? (
-                      <Check className="h-5 w-5" />
+                      <Check className="h-4 w-4 sm:h-5 sm:w-5" />
                     ) : (
-                      <Icon className="h-5 w-5" />
+                      <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
                     )}
                   </button>
                   {/* Desktop label below circle */}
                   <span
                     className={cn(
-                      "hidden sm:block text-xs font-medium mt-1.5 whitespace-nowrap",
+                      "hidden sm:block text-xs font-medium mt-1.5 text-center leading-tight max-w-[80px]",
                       isActive && "text-primary",
                       isComplete && "text-emerald-600 dark:text-emerald-400",
                       !isActive && !isComplete && "text-muted-foreground"
@@ -68,13 +70,12 @@ export function OnboardingStepper({ steps, currentIndex, onNavigate }: Onboardin
                 {i < steps.length - 1 && (
                   <div
                     className={cn(
-                      "h-0.5 mx-1.5 sm:mx-3 flex-shrink-0",
-                      "w-6 sm:w-12",
+                      "h-0.5 flex-1 mx-1 sm:mx-2 self-start mt-4 sm:mt-5",
                       i < currentIndex ? "bg-emerald-500" : "bg-muted"
                     )}
                   />
                 )}
-              </div>
+              </Fragment>
             )
           })}
         </div>

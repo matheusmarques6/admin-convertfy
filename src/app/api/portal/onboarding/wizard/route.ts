@@ -2,6 +2,7 @@ import { NextRequest } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { encrypt } from "@/lib/crypto"
+import { updateStoreCredentials } from "@/lib/services/credentials.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("PortalOnboardingWizard")
@@ -241,6 +242,83 @@ export async function POST(request: NextRequest) {
 
         log.info("Wizard step 2 saved", { clientId: portalUser.client_id })
         return successResponse(request, { success: true, step: "store_data" })
+      }
+
+      case "create_shopify_app": {
+        const { store_id, token, shopify_myshopify_domain } = data
+
+        if (!store_id) throw new AppError("store_id é obrigatório", 400)
+
+        // Verify store belongs to this client
+        const { data: ownedStoreApp } = await adminClient
+          .from("client_stores")
+          .select("id")
+          .eq("id", store_id)
+          .eq("client_id", portalUser.client_id)
+          .single()
+
+        if (!ownedStoreApp) throw new AppError("Loja não encontrada", 404)
+
+        // If token is provided, validate and save
+        if (token) {
+          // Format validation
+          if (!token.startsWith("shpat_") || token.length < 20) {
+            throw new AppError("Token deve começar com shpat_ e ter pelo menos 20 caracteres", 400)
+          }
+
+          if (!shopify_myshopify_domain) {
+            throw new AppError("Domínio .myshopify.com é obrigatório quando o token é informado", 400)
+          }
+
+          // Clean domain (remove protocol, trailing slashes)
+          const domain = shopify_myshopify_domain
+            .replace(/^https?:\/\//, "")
+            .replace(/\/+$/, "")
+            .trim()
+
+          // Test token against Shopify Admin API
+          const controller = new AbortController()
+          const timeout = setTimeout(() => controller.abort(), 10_000)
+
+          let testRes: Response
+          try {
+            testRes = await fetch(`https://${domain}/admin/api/2024-10/shop.json`, {
+              headers: {
+                "X-Shopify-Access-Token": token,
+                "Content-Type": "application/json",
+              },
+              signal: controller.signal,
+            })
+          } catch (err) {
+            if (err instanceof DOMException && err.name === "AbortError") {
+              throw new AppError("Não foi possível validar o token. Verifique o domínio da loja.", 504)
+            }
+            throw new AppError("Não foi possível validar o token. Verifique o domínio da loja.", 502)
+          } finally {
+            clearTimeout(timeout)
+          }
+
+          if (testRes.status === 401) {
+            throw new AppError("Token inválido. Verifique se copiou corretamente.", 400)
+          }
+          if (testRes.status === 403) {
+            throw new AppError("Token sem permissões suficientes. Verifique os escopos configurados.", 400)
+          }
+          if (!testRes.ok) {
+            throw new AppError("Não foi possível validar o token. Verifique o domínio da loja.", 400)
+          }
+
+          // Save encrypted via credentials service
+          await updateStoreCredentials(
+            store_id,
+            { shopify_access_token: token, shopify_store_domain: domain },
+            "shopify"
+          )
+
+          log.info("Shopify token validated and saved", { storeId: store_id })
+        }
+
+        return successResponse(request, { success: true, step: "create_shopify_app" })
       }
 
       case "shopify_code": {

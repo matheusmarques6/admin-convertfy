@@ -114,3 +114,14 @@ export const PRICE_SENSITIVITY_VALUES = PRICE_SENSITIVITIES.map((p) => p.value) 
   PriceSensitivityValue,
   ...PriceSensitivityValue[],
 ]
+
+// ── Shopify Admin API Scopes ──
+// These must match the scopes in src/app/api/integrations/shopify/authorize/route.ts
+
+export const SHOPIFY_SCOPES = [
+  { scope: "read_products", label: "Produtos" },
+  { scope: "read_orders", label: "Pedidos" },
+  { scope: "read_customers", label: "Clientes" },
+  { scope: "read_inventory", label: "Inventario" },
+  { scope: "read_analytics", label: "Analytics" },
+] as const

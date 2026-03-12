@@ -26,6 +26,9 @@ Os dois forms parecem de projetos diferentes: cores hardcoded vs tokens shadcn, 
 | 36.8 | Mascara CPF/CNPJ com deteccao automatica | Baixa | Baixo | - |
 | 36.9 | Redesign upload (grid assimetrico) | Baixa | Baixo | - |
 | 36.10 | Review interativo (botao editar por secao) | Baixa | Baixo | - |
+| 36.11 | Fix stepper centralizacao (conectores flexiveis) | Alta | Baixo | 36.6 |
+| 36.12 | Step instrucional "Criar App Shopify" + seletor permissoes | Alta | Medio | 36.11 |
+| 36.13 | Coletar e validar Shopify Admin API token no wizard | Alta | Medio | 36.12 |
 
 ## Arquivos Principais
 
@@ -48,4 +51,15 @@ Os dois forms parecem de projetos diferentes: cores hardcoded vs tokens shadcn, 
           [36.8 Mascara CPF]     (independente)
           [36.9 Upload redesign] (independente)
           [36.10 Review]         (independente)
+
+[36.6 Stepper] ──→ [36.11 Centralizar] ──→ [36.12 Tutorial Shopify] ──→ [36.13 Token Backend]
 ```
+
+## Status
+
+| Story | Status |
+|-------|--------|
+| 36.1–36.10 | DONE (commit 36c259b) |
+| 36.11 | Ready for Dev |
+| 36.12 | Ready for Dev (dep: 36.11) |
+| 36.13 | Ready for Dev (dep: 36.12) |

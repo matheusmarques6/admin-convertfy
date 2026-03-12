@@ -9,15 +9,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { useToast } from "@/lib/hooks/use-toast"
-import { Check, ChevronLeft, ChevronRight, Loader2, Store, User, Palette, Send, Upload, X, FileText, ImageIcon, Mail, Key, Info, Users, Pencil } from "lucide-react"
+import { Check, ChevronLeft, ChevronRight, Loader2, Store, User, Palette, Send, Upload, X, FileText, ImageIcon, Mail, Key, Info, Users, Pencil, AppWindow, Copy, CheckCheck } from "lucide-react"
 import { PhoneInputIntl, formatPhoneDisplay } from "@/components/ui/phone-input"
 import { CpfCnpjInput } from "@/components/ui/cpf-cnpj-input"
 import { OnboardingStepper } from "@/components/onboarding/stepper"
-import { PLATFORMS, COUNTRIES, LANGUAGES, SHIPPING_TYPES, PRICE_SENSITIVITIES } from "@/lib/constants/onboarding"
+import { PLATFORMS, COUNTRIES, LANGUAGES, SHIPPING_TYPES, PRICE_SENSITIVITIES, SHOPIFY_SCOPES } from "@/lib/constants/onboarding"
 
 // ── Step identity system ──
 
-type StepId = "personal_data" | "store_data" | "store_profile" | "collaborator_code" | "visual_identity" | "review"
+type StepId = "personal_data" | "store_data" | "store_profile" | "create_shopify_app" | "collaborator_code" | "visual_identity" | "review"
 
 interface StepDef {
   id: StepId
@@ -29,6 +29,7 @@ const ALL_STEPS: StepDef[] = [
   { id: "personal_data", title: "Dados Pessoais", icon: User },
   { id: "store_data", title: "Dados da Loja", icon: Store },
   { id: "store_profile", title: "Perfil da Loja", icon: Users },
+  { id: "create_shopify_app", title: "App Shopify", icon: AppWindow },
   { id: "collaborator_code", title: "Codigo Colaborador", icon: Key },
   { id: "visual_identity", title: "Identidade Visual", icon: Palette },
   { id: "review", title: "Revisao e Envio", icon: Send },
@@ -68,6 +69,11 @@ export default function PublicOnboardingPage() {
 
   // Inline validation errors
   const [errors, setErrors] = useState<Record<string, string>>({})
+
+  // Shopify app step: permission selector
+  const [selectedScopes, setSelectedScopes] = useState<string[]>(SHOPIFY_SCOPES.map((s) => s.scope))
+  const [scopesCopied, setScopesCopied] = useState(false)
+  const scopesTextRef = useRef<HTMLElement>(null)
 
   // Form state
   const [formData, setFormData] = useState({
@@ -125,7 +131,7 @@ export default function PublicOnboardingPage() {
 
   function getVisibleSteps(): StepDef[] {
     return ALL_STEPS.filter((s) => {
-      if (s.id === "collaborator_code") return formData.platform === "shopify"
+      if (s.id === "create_shopify_app" || s.id === "collaborator_code") return formData.platform === "shopify"
       return true
     })
   }
@@ -152,8 +158,8 @@ export default function PublicOnboardingPage() {
       delete next[field]
       return next
     })
-    // Handle edge case: user changes platform away from shopify while on collaborator step
-    if (field === "platform" && value !== "shopify" && currentStepId === "collaborator_code") {
+    // Handle edge case: user changes platform away from shopify while on a shopify-only step
+    if (field === "platform" && value !== "shopify" && (currentStepId === "create_shopify_app" || currentStepId === "collaborator_code")) {
       setCurrentStepId("store_data")
     }
   }
@@ -232,6 +238,7 @@ export default function PublicOnboardingPage() {
       case "store_profile":
         // All fields are optional
         break
+      case "create_shopify_app":
       case "collaborator_code":
       case "visual_identity":
       case "review":
@@ -499,6 +506,130 @@ export default function PublicOnboardingPage() {
             </>
           )}
 
+          {/* Step: Create Shopify App (Shopify only — instructional, public form = no token field) */}
+          {currentStepId === "create_shopify_app" && (
+            <div className="space-y-6">
+              {/* Passo 1 */}
+              <div className="rounded-xl bg-muted p-4 space-y-2">
+                <p className="font-semibold text-foreground">1. Acessar o Admin</p>
+                <p className="text-sm text-muted-foreground">Abra o admin da sua loja Shopify em <strong>suaLoja.myshopify.com/admin</strong></p>
+                <div className="rounded-lg border-2 border-dashed border-muted-foreground/20 p-6 text-center text-muted-foreground text-sm">[Imagem: tela de login do admin Shopify]</div>
+              </div>
+
+              {/* Passo 2 */}
+              <div className="rounded-xl bg-muted p-4 space-y-2">
+                <p className="font-semibold text-foreground">2. Ir para Apps</p>
+                <p className="text-sm text-muted-foreground">No menu lateral, clique em <strong>Configuracoes</strong> (icone de engrenagem), depois em <strong>Apps e canais de vendas</strong>. No canto superior, clique em <strong>Desenvolver apps</strong>.</p>
+                <div className="rounded-lg border-2 border-dashed border-muted-foreground/20 p-6 text-center text-muted-foreground text-sm">[Imagem: menu configuracoes &gt; apps]</div>
+              </div>
+
+              {/* Passo 3 */}
+              <div className="rounded-xl bg-muted p-4 space-y-2">
+                <p className="font-semibold text-foreground">3. Permitir desenvolvimento</p>
+                <p className="text-sm text-muted-foreground">Se for a primeira vez, clique em <strong>Permitir desenvolvimento de apps personalizados</strong> e confirme novamente.</p>
+                <div className="rounded-lg border-2 border-dashed border-muted-foreground/20 p-6 text-center text-muted-foreground text-sm">[Imagem: botao de permitir desenvolvimento]</div>
+              </div>
+
+              {/* Passo 4 */}
+              <div className="rounded-xl bg-muted p-4 space-y-2">
+                <p className="font-semibold text-foreground">4. Criar o App</p>
+                <p className="text-sm text-muted-foreground">Clique em <strong>Criar um app</strong>. No campo &quot;Nome do app&quot;, digite: <strong>convertfy</strong>. Clique em <strong>Criar app</strong>.</p>
+                <div className="rounded-lg border-2 border-dashed border-muted-foreground/20 p-6 text-center text-muted-foreground text-sm">[Imagem: modal de criar app]</div>
+              </div>
+
+              {/* Passo 5 — Permissoes com seletor interativo */}
+              <div className="rounded-xl bg-muted p-4 space-y-3">
+                <p className="font-semibold text-foreground">5. Configurar Permissoes</p>
+                <p className="text-sm text-muted-foreground">Na aba <strong>Configuracao</strong>, clique em <strong>Configurar escopos da API Admin</strong>. Selecione as permissoes abaixo:</p>
+
+                {/* Scope selector */}
+                <div className="bg-background rounded-lg border p-3 space-y-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectedScopes.length === SHOPIFY_SCOPES.length}
+                      onChange={(e) => setSelectedScopes(e.target.checked ? SHOPIFY_SCOPES.map((s) => s.scope) : [])}
+                      className="rounded border-muted-foreground"
+                    />
+                    <span className="text-sm font-medium">Selecionar todas (recomendado)</span>
+                  </label>
+                  <hr className="border-muted" />
+                  {SHOPIFY_SCOPES.map((s) => (
+                    <label key={s.scope} className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectedScopes.includes(s.scope)}
+                        onChange={(e) => {
+                          setSelectedScopes((prev) =>
+                            e.target.checked ? [...prev, s.scope] : prev.filter((x) => x !== s.scope)
+                          )
+                        }}
+                        className="rounded border-muted-foreground"
+                      />
+                      <span className="text-sm">{s.label} — <span className="text-muted-foreground">{s.scope}</span></span>
+                    </label>
+                  ))}
+                </div>
+
+                {/* Copyable text block */}
+                {selectedScopes.length > 0 && (
+                  <div className="bg-background rounded-lg border p-3">
+                    <p className="text-xs text-muted-foreground mb-1">Texto pronto para colar:</p>
+                    <div className="flex items-start gap-2">
+                      <code ref={scopesTextRef} className="text-sm flex-1 break-all">{selectedScopes.join(", ")}</code>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="shrink-0 h-7"
+                        onClick={() => {
+                          const text = selectedScopes.join(", ")
+                          if (navigator.clipboard?.writeText) {
+                            navigator.clipboard.writeText(text).then(() => {
+                              setScopesCopied(true)
+                              setTimeout(() => setScopesCopied(false), 2000)
+                            })
+                          } else {
+                            // Fallback: select the text
+                            const el = scopesTextRef.current
+                            if (el) {
+                              const range = document.createRange()
+                              range.selectNodeContents(el)
+                              window.getSelection()?.removeAllRanges()
+                              window.getSelection()?.addRange(range)
+                            }
+                          }
+                        }}
+                      >
+                        {scopesCopied ? <CheckCheck className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+                        <span className="ml-1 text-xs">{scopesCopied ? "Copiado!" : "Copiar"}</span>
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                <p className="text-sm text-muted-foreground">Depois clique em <strong>Salvar</strong>.</p>
+                <div className="rounded-lg border-2 border-dashed border-muted-foreground/20 p-6 text-center text-muted-foreground text-sm">[Imagem: tela de escopos da API Admin]</div>
+              </div>
+
+              {/* Passo 6 */}
+              <div className="rounded-xl bg-muted p-4 space-y-2">
+                <p className="font-semibold text-foreground">6. Instalar o App</p>
+                <p className="text-sm text-muted-foreground">Volte para a aba <strong>Visao geral</strong>. Clique em <strong>Instalar app</strong> e confirme.</p>
+                <div className="rounded-lg border-2 border-dashed border-muted-foreground/20 p-6 text-center text-muted-foreground text-sm">[Imagem: botao instalar app]</div>
+              </div>
+
+              {/* Passo 7 */}
+              <div className="rounded-xl bg-muted p-4 space-y-2">
+                <p className="font-semibold text-foreground">7. Copiar o Token</p>
+                <p className="text-sm text-muted-foreground">Apos instalar, a tela mostrara o <strong>Admin API access token</strong>. Copie e guarde em local seguro.</p>
+                <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-700 dark:bg-amber-950/30">
+                  <p className="text-sm text-amber-700 dark:text-amber-300 font-medium">ATENCAO: Este token aparece apenas UMA VEZ. Copie agora!</p>
+                </div>
+                <div className="rounded-lg border-2 border-dashed border-muted-foreground/20 p-6 text-center text-muted-foreground text-sm">[Imagem: tela com token gerado]</div>
+              </div>
+            </div>
+          )}
+
           {/* Step: Collaborator Code (Shopify only) */}
           {currentStepId === "collaborator_code" && (
             <div className="space-y-4">
@@ -740,6 +871,19 @@ export default function PublicOnboardingPage() {
                 </div>
               </div>
 
+              {/* App Shopify */}
+              {formData.platform === "shopify" && (
+                <div className="border-t pt-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="font-semibold text-foreground">App Shopify</h3>
+                    <Button variant="ghost" size="sm" onClick={() => setCurrentStepId("create_shopify_app")}>
+                      <Pencil className="h-3 w-3 mr-1" />Editar
+                    </Button>
+                  </div>
+                  <p className="text-sm text-muted-foreground">Instrucoes visualizadas</p>
+                </div>
+              )}
+
               {/* Codigo Colaborador */}
               {formData.platform === "shopify" && formData.shopify_collaborator_code && (
                 <div className="border-t pt-4">
@@ -784,7 +928,7 @@ export default function PublicOnboardingPage() {
             </Button>
 
             <div className="flex items-center gap-2">
-              {currentStepId === "collaborator_code" && (
+              {(currentStepId === "create_shopify_app" || currentStepId === "collaborator_code") && (
                 <Button variant="ghost" onClick={nextStep}>
                   Pular
                 </Button>
