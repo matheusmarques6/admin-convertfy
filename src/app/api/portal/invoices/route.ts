@@ -197,7 +197,7 @@ export async function GET(request: NextRequest) {
       totalPaid: paid.reduce((sum, i) => sum + i.amount, 0),
     }
 
-    // Log activity (table does not exist yet -- GAP-6 / Story 18.1.6)
+    // Log portal activity
     await adminClient.from("client_portal_activity").insert({
       portal_user_id: portalUser.id,
       client_id: portalUser.client_id,

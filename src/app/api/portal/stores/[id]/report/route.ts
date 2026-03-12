@@ -114,14 +114,12 @@ export async function GET(
       .gte("scheduled_date", startDate.toISOString().split("T")[0])
       .order("scheduled_date", { ascending: false })
 
-    // Log activity
+    // Log portal activity
     await adminClient.from("client_portal_activity").insert({
       portal_user_id: portalUser.id,
       client_id: portalUser.client_id,
       action: "view_report",
-      resource_type: "store",
-      resource_id: storeId,
-      metadata: { period, storeName: store.store_name },
+      metadata: { resource_type: "store", resource_id: storeId, period, storeName: store.store_name },
     })
 
     // Build response

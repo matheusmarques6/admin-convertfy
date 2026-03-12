@@ -137,7 +137,7 @@ export async function POST(request: NextRequest) {
         .eq("id", portalUser.id)
     }
 
-    // Log activity (table does not exist yet -- GAP-6 / Story 18.1.6)
+    // Log portal activity
     await adminClient.from("client_portal_activity").insert({
       portal_user_id: portalUser.id,
       client_id: portalUser.client_id,

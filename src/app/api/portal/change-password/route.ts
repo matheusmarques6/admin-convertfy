@@ -74,8 +74,8 @@ export async function POST(request: NextRequest) {
       })
       .eq("id", portalUser.id)
 
-    // Log activity
-    await supabase.from("client_portal_activity").insert({
+    // Log portal activity
+    await adminClient.from("client_portal_activity").insert({
       portal_user_id: portalUser.id,
       client_id: portalUser.client_id,
       action: "password_changed",

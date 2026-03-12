@@ -72,9 +72,29 @@ export async function updateSession(request: NextRequest) {
       // Use getUser() with a timeout to prevent long waits
       const { data: { user } } = await supabase.auth.getUser()
 
+      // Helper: check if user is portal-only (no org_members = not admin)
+      // Only queries DB when is_portal_user is true (small subset of users)
+      async function isPortalOnlyUser(): Promise<boolean> {
+        if (!user?.user_metadata?.is_portal_user) return false
+        // RLS note: portal users without org_members get null from current_org_id(),
+        // which means this query safely returns 0 rows (not error). This is intentional.
+        const { data: orgMember } = await supabase
+          .from("org_members")
+          .select("id")
+          .eq("profile_id", user.id)
+          .eq("is_active", true)
+          .maybeSingle()
+        return !orgMember
+      }
+
       // Admin protected routes
       if (isProtectedPath && !user) {
         return NextResponse.redirect(new URL("/login", request.url))
+      }
+
+      // Portal-only users accessing admin routes → redirect to portal
+      if (isProtectedPath && user && await isPortalOnlyUser()) {
+        return NextResponse.redirect(new URL("/portal/dashboard", request.url))
       }
 
       // Change password route requires authentication
@@ -84,12 +104,18 @@ export async function updateSession(request: NextRequest) {
 
       // Admin auth routes - redirect to dashboard if already logged in
       if (isAuthPath && user) {
+        if (await isPortalOnlyUser()) {
+          return NextResponse.redirect(new URL("/portal/dashboard", request.url))
+        }
         return NextResponse.redirect(new URL("/dashboard", request.url))
       }
 
       // Root path handling
       if (isRootPath) {
         if (user) {
+          if (await isPortalOnlyUser()) {
+            return NextResponse.redirect(new URL("/portal/dashboard", request.url))
+          }
           return NextResponse.redirect(new URL("/dashboard", request.url))
         }
         return NextResponse.redirect(new URL("/login", request.url))

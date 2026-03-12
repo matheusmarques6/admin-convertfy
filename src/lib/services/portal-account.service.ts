@@ -32,6 +32,7 @@ export class PortalAccountService {
       user_metadata: {
         name: params.name,
         is_portal_user: true,
+        client_id: params.clientId,
       },
     })
 
