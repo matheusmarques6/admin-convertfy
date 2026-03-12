@@ -86,7 +86,7 @@ export function StoreTrackingTab({ storeId }: StoreTrackingTabProps) {
     } finally {
       setLoading(false)
     }
-  }, [storeId])
+  }, [storeId, toast])
 
   useEffect(() => {
     fetchConfig()

@@ -6,8 +6,6 @@ import {
   AlertTriangle,
   ArrowRight,
   Users,
-  UserMinus,
-  Rocket,
   ShieldAlert,
   CalendarClock,
   MessageSquareWarning,
@@ -20,7 +18,6 @@ import { TopStoresCard } from "./top-stores-card"
 import { WorstPerformersCard } from "./worst-performers-card"
 import { OnboardingPreview } from "./onboarding-preview"
 import { RecentActivity } from "./recent-activity"
-import { AlertBanner } from "@/components/ui/alert-banner"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"

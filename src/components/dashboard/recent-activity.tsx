@@ -100,7 +100,7 @@ export function RecentActivity({ activities = [] }: RecentActivityProps) {
         <ScrollArea className="h-[300px] pr-4">
           {hasActivities ? (
             <div className="space-y-1">
-              {activities.map((activity, idx) => {
+              {activities.map((activity) => {
                 const { icon: Icon, color, bg } = getActivityIcon(activity.type)
                 const profileName = Array.isArray(activity.profile)
                   ? activity.profile[0]?.name

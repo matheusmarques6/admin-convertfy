@@ -23,7 +23,7 @@ export async function PATCH(
     const { client_id: newClientId } = storeLinkSchema.parse(body)
 
     // Validate user has access to this store (multi-tenant isolation)
-    const storeAccess = await requireStoreAccess(storeId, user.id)
+    await requireStoreAccess(storeId, user.id)
 
     const adminClient = createAdminClient()
 
