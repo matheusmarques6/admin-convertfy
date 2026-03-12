@@ -28,9 +28,8 @@ import {
   UserCircle,
   ChevronDown,
   Search,
-  Sparkles,
 } from "lucide-react"
-import { motion, LayoutGroup, AnimatePresence } from "framer-motion"
+import { motion, LayoutGroup } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { Logo, LogoIcon } from "@/components/ui/logo"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -108,7 +107,6 @@ export function Sidebar({ user }: SidebarProps) {
   const [isLoggingOut, setIsLoggingOut] = useState(false)
   const { permissions, hasAnyFeature, isLoading } = usePermissions()
 
-  // Auto-collapse sidebar on screens < 1280px
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 1279px)")
     const handler = (e: MediaQueryListEvent | MediaQueryList) => {
@@ -187,20 +185,20 @@ export function Sidebar({ user }: SidebarProps) {
             <Link
               href={item.href}
               className={cn(
-                "relative flex items-center justify-center h-10 w-10 mx-auto rounded-xl transition-all duration-200",
+                "sidebar-nav-item relative flex items-center justify-center h-10 w-10 mx-auto rounded-lg transition-all duration-150",
                 active
-                  ? "bg-white/[0.08] text-white"
-                  : "text-slate-500 hover:bg-white/[0.05] hover:text-slate-300"
+                  ? "sidebar-nav-item-active text-white"
+                  : "text-sidebar-muted hover:text-sidebar-hover hover:bg-white/[0.04]"
               )}
             >
               {active && (
                 <motion.div
                   layoutId="sidebar-active-pill"
-                  className="absolute inset-0 rounded-xl bg-white/[0.08]"
-                  transition={{ type: "spring", stiffness: 350, damping: 30 }}
+                  className="absolute inset-0 rounded-lg bg-white/[0.08]"
+                  transition={{ type: "spring", stiffness: 380, damping: 30 }}
                 />
               )}
-              <Icon className="h-[18px] w-[18px] relative z-10" strokeWidth={active ? 2 : 1.75} />
+              <Icon className="h-5 w-5 relative z-10" strokeWidth={active ? 2 : 1.5} />
             </Link>
           </TooltipTrigger>
           <TooltipContent side="right" className="font-medium text-xs px-3 py-1.5 rounded-lg">
@@ -215,29 +213,36 @@ export function Sidebar({ user }: SidebarProps) {
         key={item.name}
         href={item.href}
         className={cn(
-          "relative flex items-center gap-3 h-9 px-3 rounded-lg text-[13px] transition-all duration-200 group",
+          "sidebar-nav-item relative flex items-center gap-3 h-9 px-3 rounded-lg text-[13px] transition-all duration-150 group",
           active
-            ? "text-white font-medium"
-            : "text-slate-500 hover:text-slate-300 hover:bg-white/[0.04]"
+            ? "sidebar-nav-item-active text-white font-medium"
+            : "text-sidebar-muted hover:text-sidebar-hover hover:bg-white/[0.04]"
         )}
       >
         {active && (
-          <motion.div
-            layoutId="sidebar-active-pill"
-            className="absolute inset-0 rounded-lg bg-white/[0.08]"
-            transition={{ type: "spring", stiffness: 350, damping: 30 }}
-          />
+          <>
+            <motion.div
+              layoutId="sidebar-active-pill"
+              className="absolute inset-0 rounded-lg bg-white/[0.07]"
+              transition={{ type: "spring", stiffness: 380, damping: 30 }}
+            />
+            <motion.div
+              layoutId="sidebar-active-accent"
+              className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-convertfy-blue"
+              transition={{ type: "spring", stiffness: 380, damping: 30 }}
+            />
+          </>
         )}
         <Icon
           className={cn(
             "h-[18px] w-[18px] flex-shrink-0 relative z-10 transition-colors",
-            active ? "text-primary" : "text-slate-500 group-hover:text-slate-400"
+            active ? "text-convertfy-blue" : "text-sidebar-icon group-hover:text-sidebar-hover"
           )}
-          strokeWidth={active ? 2 : 1.75}
+          strokeWidth={active ? 2 : 1.5}
         />
         <span className="relative z-10 whitespace-nowrap overflow-hidden">{item.name}</span>
         {item.badge && (
-          <span className="relative z-10 ml-auto text-[10px] font-semibold bg-primary/20 text-primary px-1.5 py-0.5 rounded-md">
+          <span className="relative z-10 ml-auto text-[10px] font-semibold bg-convertfy-blue/15 text-convertfy-blue px-1.5 py-0.5 rounded-md">
             {item.badge}
           </span>
         )}
@@ -250,29 +255,29 @@ export function Sidebar({ user }: SidebarProps) {
       <aside
         className={cn(
           "flex flex-col h-screen transition-all duration-300 ease-in-out",
-          "bg-[#0C0E16] border-r border-white/[0.06]",
+          "sidebar-container",
           sidebarCollapsed ? "w-[68px]" : "w-[240px]"
         )}
       >
-        {/* Logo Area */}
+        {/* Logo */}
         <div className={cn(
-          "flex items-center h-14 shrink-0",
-          sidebarCollapsed ? "justify-center px-2" : "px-4"
+          "flex items-center h-[56px] shrink-0 border-b border-white/[0.06]",
+          sidebarCollapsed ? "justify-center px-2" : "px-5"
         )}>
           <Link href={ROUTES.ADMIN.DASHBOARD} className="flex items-center">
             {sidebarCollapsed ? (
-              <LogoIcon className="w-7 h-7" />
+              <LogoIcon size={28} />
             ) : (
-              <Logo size="md" showText={true} />
+              <Logo size="md" />
             )}
           </Link>
         </div>
 
-        {/* Search (expanded only) */}
+        {/* Search */}
         {!sidebarCollapsed && (
-          <div className="px-3 pb-2">
-            <button className="flex items-center gap-2.5 w-full h-8 px-2.5 rounded-lg bg-white/[0.04] border border-white/[0.06] text-slate-500 hover:text-slate-400 hover:bg-white/[0.06] hover:border-white/[0.08] transition-all duration-200 text-[12px]">
-              <Search className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+          <div className="px-3 pt-3 pb-1">
+            <button className="flex items-center gap-2.5 w-full h-8 px-2.5 rounded-lg bg-white/[0.04] border border-white/[0.06] text-sidebar-muted hover:text-sidebar-hover hover:bg-white/[0.06] hover:border-white/[0.08] transition-all duration-150 text-[12px]">
+              <Search className="h-3.5 w-3.5 shrink-0" strokeWidth={1.5} />
               <span>Buscar...</span>
               <kbd className="ml-auto text-[10px] text-slate-600 bg-white/[0.06] px-1.5 py-0.5 rounded font-mono">⌘K</kbd>
             </button>
@@ -280,22 +285,20 @@ export function Sidebar({ user }: SidebarProps) {
         )}
 
         {/* Navigation */}
-        <ScrollArea className="flex-1">
+        <ScrollArea className="flex-1 mt-1">
           <LayoutGroup>
-            <nav className={cn("py-1", sidebarCollapsed ? "px-2" : "px-2.5")}>
+            <nav className={cn("py-1", sidebarCollapsed ? "px-2" : "px-2")}>
               {groupedNavigation.map((group, idx) => (
-                <div key={group.key} className={cn(idx > 0 && "mt-5")}>
-                  {/* Group label */}
+                <div key={group.key} className={cn(idx > 0 && "mt-4")}>
                   {!sidebarCollapsed && group.label && (
                     <div className="px-3 mb-1.5">
-                      <p className="text-[10px] font-semibold tracking-[0.08em] text-slate-600 uppercase">
+                      <p className="text-[10px] font-semibold tracking-[0.1em] text-sidebar-label uppercase">
                         {group.label}
                       </p>
                     </div>
                   )}
-                  {/* Divider for collapsed mode */}
                   {sidebarCollapsed && idx > 0 && (
-                    <div className="h-px bg-white/[0.06] mx-1.5 mb-3" />
+                    <div className="h-px bg-white/[0.06] mx-2 mb-3" />
                   )}
                   <div className="space-y-0.5">
                     {group.items.map(renderNavItem)}
@@ -306,33 +309,32 @@ export function Sidebar({ user }: SidebarProps) {
           </LayoutGroup>
         </ScrollArea>
 
-        {/* Bottom Section */}
+        {/* Bottom */}
         <div className="mt-auto shrink-0">
           <div className="h-px bg-white/[0.06] mx-3" />
 
-          {/* Settings */}
           <LayoutGroup>
-            <nav className={cn("py-1.5", sidebarCollapsed ? "px-2" : "px-2.5")}>
+            <nav className={cn("py-1.5", sidebarCollapsed ? "px-2" : "px-2")}>
               {filteredBottomNavigation.map(renderNavItem)}
             </nav>
           </LayoutGroup>
 
           <div className="h-px bg-white/[0.06] mx-3" />
 
-          {/* User Section */}
-          <div className="p-2.5">
+          {/* User */}
+          <div className="p-2">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
                   className={cn(
-                    "flex items-center w-full rounded-xl transition-all duration-200 outline-none",
-                    "hover:bg-white/[0.05]",
+                    "flex items-center w-full rounded-lg transition-all duration-150 outline-none",
+                    "hover:bg-white/[0.04]",
                     sidebarCollapsed ? "justify-center p-2" : "gap-2.5 p-2"
                   )}
                 >
                   <Avatar className="h-8 w-8 shrink-0 rounded-lg">
                     <AvatarImage src={user?.avatar_url} className="rounded-lg" />
-                    <AvatarFallback className="rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 text-white text-[11px] font-semibold">
+                    <AvatarFallback className="rounded-lg bg-gradient-to-br from-convertfy-blue-deep to-convertfy-blue text-white text-[11px] font-semibold">
                       {getInitials(user?.name || "U")}
                     </AvatarFallback>
                   </Avatar>
@@ -342,11 +344,11 @@ export function Sidebar({ user }: SidebarProps) {
                         <p className="text-[13px] font-medium text-slate-200 truncate leading-tight">
                           {user?.name || "Usuário"}
                         </p>
-                        <p className="text-[11px] text-slate-600 truncate leading-tight">
+                        <p className="text-[11px] text-sidebar-muted truncate leading-tight">
                           {user?.email}
                         </p>
                       </div>
-                      <ChevronDown className="h-3 w-3 text-slate-600 shrink-0" />
+                      <ChevronDown className="h-3 w-3 text-sidebar-muted shrink-0" />
                     </>
                   )}
                 </button>
@@ -379,7 +381,7 @@ export function Sidebar({ user }: SidebarProps) {
                 <div className="mx-1 px-2.5 py-2 flex items-center justify-between">
                   <span className="text-xs text-muted-foreground">Tema</span>
                   <button
-                    className="relative flex items-center justify-center h-7 w-7 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-all duration-200"
+                    className="relative flex items-center justify-center h-7 w-7 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-all duration-150"
                     onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
                   >
                     <Sun className="h-3.5 w-3.5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
@@ -401,7 +403,7 @@ export function Sidebar({ user }: SidebarProps) {
             {/* Collapse Toggle */}
             {!sidebarCollapsed ? (
               <button
-                className="flex items-center justify-center w-full h-7 mt-1 rounded-lg text-slate-600 hover:text-slate-400 hover:bg-white/[0.04] transition-all duration-200"
+                className="flex items-center justify-center w-full h-7 mt-1 rounded-lg text-sidebar-muted hover:text-sidebar-hover hover:bg-white/[0.04] transition-all duration-150"
                 onClick={() => setSidebarCollapsed(true)}
               >
                 <ChevronLeft className="h-3.5 w-3.5" />
@@ -410,7 +412,7 @@ export function Sidebar({ user }: SidebarProps) {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
-                    className="flex items-center justify-center w-full h-7 mt-1 rounded-lg text-slate-600 hover:text-slate-400 hover:bg-white/[0.04] transition-all duration-200"
+                    className="flex items-center justify-center w-full h-7 mt-1 rounded-lg text-sidebar-muted hover:text-sidebar-hover hover:bg-white/[0.04] transition-all duration-150"
                     onClick={() => setSidebarCollapsed(false)}
                   >
                     <ChevronRight className="h-3.5 w-3.5" />

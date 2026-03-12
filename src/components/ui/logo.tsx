@@ -10,10 +10,10 @@ interface LogoProps {
 }
 
 const sizes = {
-  sm: { height: 28, width: 120 },
-  md: { height: 32, width: 135 },
-  lg: { height: 38, width: 160 },
-  xl: { height: 56, width: 230 },
+  sm: { height: 22, width: 100 },
+  md: { height: 26, width: 120 },
+  lg: { height: 30, width: 140 },
+  xl: { height: 40, width: 180 },
 }
 
 export function Logo({ className, size = "md" }: LogoProps) {
@@ -26,14 +26,15 @@ export function Logo({ className, size = "md" }: LogoProps) {
         alt="Convertfy"
         width={sizeConfig.width}
         height={sizeConfig.height}
-        className="object-contain"
+        className="h-auto w-auto object-contain"
+        style={{ maxHeight: sizeConfig.height, maxWidth: sizeConfig.width }}
         priority
       />
     </div>
   )
 }
 
-export function LogoIcon({ className, size = 40 }: { className?: string; size?: number }) {
+export function LogoIcon({ className, size = 32 }: { className?: string; size?: number }) {
   return (
     <Image
       src="/images/convertfy icon.png"
@@ -41,6 +42,7 @@ export function LogoIcon({ className, size = 40 }: { className?: string; size?: 
       width={size}
       height={size}
       className={cn("object-contain", className)}
+      style={{ width: size, height: size }}
       priority
     />
   )
