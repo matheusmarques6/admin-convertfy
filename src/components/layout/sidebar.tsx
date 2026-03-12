@@ -239,7 +239,7 @@ export function Sidebar({ user }: SidebarProps) {
           sidebarCollapsed ? "justify-center" : "px-5"
         )}>
           <Link href={ROUTES.ADMIN.DASHBOARD} className="flex items-center">
-            {sidebarCollapsed ? <LogoIcon size={26} /> : <Logo size="md" />}
+            {sidebarCollapsed ? <LogoIcon size={26} /> : <Logo size="lg" />}
           </Link>
         </div>
 

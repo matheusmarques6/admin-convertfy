@@ -3,12 +3,11 @@
 import { useEffect, useState } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import Link from "next/link"
-import Image from "next/image"
 import {
-  LayoutDashboard,
-  BarChart3,
+  Home,
+  PieChart,
   Send,
-  GitBranch,
+  Workflow,
   Store,
   FileText,
   Settings,
@@ -20,7 +19,6 @@ import {
   Package,
   Plug,
   ChevronDown,
-  Search,
   LucideIcon,
 } from "lucide-react"
 import { motion, LayoutGroup } from "framer-motion"
@@ -35,10 +33,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
 import { PortalThemeToggle } from "@/components/portal/theme-toggle"
 import { InvoiceBanner } from "@/components/portal/invoice-banner"
+import { Logo } from "@/components/ui/logo"
 
 interface PortalUser {
   id: string
@@ -66,21 +66,29 @@ interface NavItem {
   name: string
   href: string
   icon: LucideIcon
+  group: string
 }
 
+const NAV_GROUPS = [
+  { key: "principal", label: "" },
+  { key: "conta", label: "Conta" },
+] as const
+
 const storeNavigation: NavItem[] = [
-  { name: "Dashboard", href: "/client/dashboard", icon: LayoutDashboard },
-  { name: "Análise", href: "/client/analytics", icon: BarChart3 },
-  { name: "Campanhas", href: "/client/campaigns", icon: Send },
-  { name: "Flows", href: "/client/flows", icon: GitBranch },
-  { name: "Integrações", href: "/client/integrations", icon: Plug },
-  { name: "Rastreamento", href: "/client/tracking", icon: Package },
+  { name: "Dashboard", href: "/client/dashboard", icon: Home, group: "principal" },
+  { name: "Análise", href: "/client/analytics", icon: PieChart, group: "principal" },
+  { name: "Campanhas", href: "/client/campaigns", icon: Send, group: "principal" },
+  { name: "Flows", href: "/client/flows", icon: Workflow, group: "principal" },
+  { name: "Integrações", href: "/client/integrations", icon: Plug, group: "principal" },
+  { name: "Rastreamento", href: "/client/tracking", icon: Package, group: "principal" },
 ]
 
 const accountNavigation: NavItem[] = [
-  { name: "Faturas", href: "/client/invoices", icon: FileText },
-  { name: "Configurações", href: "/client/settings", icon: Settings },
+  { name: "Faturas", href: "/client/invoices", icon: FileText, group: "conta" },
+  { name: "Configurações", href: "/client/settings", icon: Settings, group: "conta" },
 ]
+
+const allNavigation = [...storeNavigation, ...accountNavigation]
 
 function getInitials(name: string): string {
   return name
@@ -264,57 +272,53 @@ export default function PortalLayout({
   }
 
   const getPageTitle = () => {
-    const allNav = [...storeNavigation, ...accountNavigation]
-    const navItem = allNav.find(item => pathname === item.href || pathname.startsWith(item.href + "/"))
+    const navItem = allNavigation.find(item => pathname === item.href || pathname.startsWith(item.href + "/"))
     if (navItem) return navItem.name
     if (pathname.startsWith("/client/stores")) return "Lojas"
     return "Portal"
   }
 
-  const renderNavItem = (item: NavItem, options?: { showBadge?: boolean; onLinkClick?: () => void }) => {
-    const isActive = pathname === item.href || pathname.startsWith(item.href + "/")
+  function checkActive(href: string) {
+    return pathname === href || pathname.startsWith(href + "/")
+  }
+
+  const groupedNavigation = NAV_GROUPS.map(group => ({
+    ...group,
+    items: allNavigation.filter(item => item.group === group.key),
+  })).filter(group => group.items.length > 0)
+
+  function renderNavItem(item: NavItem, onLinkClick?: () => void) {
+    const active = checkActive(item.href)
     const Icon = item.icon
+    const showBadge = item.href === "/client/invoices" && invoiceStatus
+
     return (
       <Link
         key={item.name}
         href={item.href}
-        onClick={options?.onLinkClick}
-        aria-current={isActive ? "page" : undefined}
+        onClick={onLinkClick}
         className={cn(
-          "sidebar-nav-item relative flex items-center gap-3 h-9 px-3 rounded-lg text-[13px] transition-all duration-150 group",
-          isActive
-            ? "sidebar-nav-item-active text-white font-medium"
-            : "text-sidebar-muted hover:text-sidebar-hover hover:bg-white/[0.04]"
+          "relative flex items-center gap-3 h-9 px-3 rounded-lg text-[13px] transition-colors duration-150",
+          active
+            ? "text-white font-medium"
+            : "text-[#b0b8c1] hover:text-white hover:bg-white/[0.07]"
         )}
       >
-        {isActive && (
-          <>
-            <motion.div
-              layoutId="portal-nav-active"
-              className="absolute inset-0 rounded-lg bg-white/[0.07]"
-              transition={{ type: "spring", stiffness: 380, damping: 30 }}
-            />
-            <motion.div
-              layoutId="portal-nav-accent"
-              className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-convertfy-blue"
-              transition={{ type: "spring", stiffness: 380, damping: 30 }}
-            />
-          </>
+        {active && (
+          <motion.div
+            layoutId="portal-nav-active"
+            className="absolute inset-0 rounded-lg bg-white/[0.08] ring-1 ring-white/[0.06]"
+            transition={{ type: "spring", stiffness: 400, damping: 28 }}
+          />
         )}
-        <Icon
-          className={cn(
-            "h-[18px] w-[18px] flex-shrink-0 relative z-10 transition-colors",
-            isActive ? "text-convertfy-blue" : "text-sidebar-icon group-hover:text-sidebar-hover"
-          )}
-          strokeWidth={isActive ? 2 : 1.5}
-        />
-        <span className="relative z-10 flex-1">{item.name}</span>
-        {options?.showBadge && invoiceStatus && (
+        <Icon className="h-[18px] w-[18px] shrink-0 relative z-10" strokeWidth={1.7} />
+        <span className="relative z-10 truncate">{item.name}</span>
+        {showBadge && (
           <span
             role="status"
             aria-label="Faturas pendentes"
             className={cn(
-              "relative z-10 h-2 w-2 rounded-full bg-red-500 flex-shrink-0",
+              "relative z-10 ml-auto h-2 w-2 rounded-full bg-red-500 shrink-0",
               invoiceStatus.hasOverdue && "motion-safe:animate-pulse"
             )}
           />
@@ -325,21 +329,22 @@ export default function PortalLayout({
 
   const SidebarNav = ({ onLinkClick }: { onLinkClick?: () => void }) => (
     <LayoutGroup>
-      <nav className="px-2 py-1">
-        <div className="space-y-0.5" role="group">
-          {storeNavigation.map((item) => renderNavItem(item, { onLinkClick }))}
-        </div>
-
-        <div className="my-4 h-px bg-white/[0.06] mx-2" role="separator" />
-
-        <div role="group">
-          <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-sidebar-label">Conta</p>
-          <div className="space-y-0.5">
-            {accountNavigation.map((item) =>
-              renderNavItem(item, { showBadge: item.href === "/client/invoices", onLinkClick })
+      <nav className="py-1">
+        {groupedNavigation.map((group, idx) => (
+          <div key={group.key} className={cn(idx > 0 && "mt-6")}>
+            {group.label && (
+              <p className="px-2.5 mb-1.5 text-[10px] font-semibold tracking-[0.08em] text-[#6e7681] uppercase">
+                {group.label}
+              </p>
             )}
+            {!group.label && idx > 0 && (
+              <div className="h-px bg-white/[0.06] mx-1.5 mb-2" />
+            )}
+            <div className="space-y-0.5">
+              {group.items.map((item) => renderNavItem(item, onLinkClick))}
+            </div>
           </div>
-        </div>
+        ))}
       </nav>
     </LayoutGroup>
   )
@@ -349,31 +354,31 @@ export default function PortalLayout({
     return (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button className="flex items-center gap-2.5 w-full px-2.5 py-2 rounded-lg hover:bg-white/[0.04] transition-all duration-150 text-left group outline-none">
-            <div className="w-8 h-8 rounded-lg bg-white/[0.06] flex items-center justify-center flex-shrink-0">
-              <Store className="h-4 w-4 text-convertfy-blue" strokeWidth={1.5} />
+          <button className="flex items-center gap-2.5 w-full px-2 py-1.5 rounded-lg hover:bg-white/[0.06] transition-colors duration-150 text-left outline-none">
+            <div className="w-7 h-7 rounded-md bg-white/[0.06] flex items-center justify-center shrink-0">
+              <Store className="h-3.5 w-3.5 text-[#b0b8c1]" strokeWidth={1.7} />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[13px] font-medium text-slate-200 truncate leading-tight">{activeStore?.name || "Selecionar loja"}</p>
-              <p className="text-[11px] text-sidebar-muted truncate leading-tight">{activeStore?.platform || ""}</p>
+              <p className="text-[12px] font-medium text-[#e6edf3] truncate leading-tight">{activeStore?.name || "Selecionar loja"}</p>
+              <p className="text-[10px] text-[#6e7681] truncate leading-tight">{activeStore?.platform || ""}</p>
             </div>
-            <ChevronsUpDown className="h-3 w-3 text-sidebar-muted group-hover:text-sidebar-hover flex-shrink-0" />
+            <ChevronsUpDown className="h-3 w-3 text-[#6e7681] shrink-0" />
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent side="top" align="start" className="w-[220px] rounded-xl">
+        <DropdownMenuContent side="top" align="start" className="w-52 rounded-lg">
           <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Lojas</DropdownMenuLabel>
           {stores.map((store) => (
             <DropdownMenuItem
               key={store.id}
               onClick={() => handleStoreChange(store)}
-              className={cn("rounded-lg mx-1 px-2.5", activeStore?.id === store.id && "bg-accent")}
+              className={cn("rounded-md mx-1 px-2", activeStore?.id === store.id && "bg-accent")}
             >
               <Store className="mr-2 h-4 w-4 text-muted-foreground" />
               <span className="truncate">{store.name}</span>
             </DropdownMenuItem>
           ))}
           <DropdownMenuSeparator />
-          <DropdownMenuItem asChild className="rounded-lg mx-1 px-2.5">
+          <DropdownMenuItem asChild className="rounded-md mx-1 px-2">
             <Link href="/client/stores/new">
               <Plus className="mr-2 h-4 w-4 text-muted-foreground" />
               Adicionar loja
@@ -387,48 +392,39 @@ export default function PortalLayout({
   const AccountMenu = ({ side = "top" as "top" | "right" }: { side?: "top" | "right" }) => (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button className="flex items-center gap-2.5 w-full px-2.5 py-2 rounded-lg hover:bg-white/[0.04] transition-all duration-150 text-left group outline-none">
-          <Avatar className="h-8 w-8 rounded-lg">
-            {user.avatar_url && <AvatarImage src={user.avatar_url} alt={user.name} className="rounded-lg" />}
-            <AvatarFallback className="rounded-lg bg-gradient-to-br from-convertfy-blue-deep to-convertfy-blue text-white text-[11px] font-semibold">
+        <button className="flex items-center gap-2.5 w-full px-2 py-1.5 rounded-lg hover:bg-white/[0.06] transition-colors duration-150 text-left outline-none">
+          <Avatar className="h-7 w-7 shrink-0 rounded-full">
+            {user.avatar_url && <AvatarImage src={user.avatar_url} alt={user.name} />}
+            <AvatarFallback className="rounded-full bg-[#21262d] text-[#c9d1d9] text-[10px] font-semibold">
               {getInitials(user.name)}
             </AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
-            <p className="text-[13px] font-medium text-slate-200 truncate leading-tight">{user.name}</p>
-            <p className="text-[11px] text-sidebar-muted truncate leading-tight">{user.clientName}</p>
+            <p className="text-[12px] font-medium text-[#e6edf3] truncate leading-tight">{user.name}</p>
+            <p className="text-[10px] text-[#6e7681] truncate leading-tight">{user.clientName}</p>
           </div>
-          <ChevronDown className="h-3 w-3 text-sidebar-muted group-hover:text-sidebar-hover flex-shrink-0" />
+          <ChevronDown className="h-3 w-3 text-[#6e7681] shrink-0" />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent side={side} align="start" className="w-[220px] rounded-xl">
-        <DropdownMenuLabel className="px-3 py-2.5">
-          <div>
-            <p className="font-semibold text-sm">{user.name}</p>
-            <p className="text-xs text-muted-foreground">{user.email}</p>
-          </div>
+      <DropdownMenuContent side={side} align="start" className="w-52 rounded-lg">
+        <DropdownMenuLabel className="font-normal px-3 py-2">
+          <p className="text-sm font-medium">{user.name}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{user.email}</p>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem asChild className="rounded-lg mx-1 px-2.5">
+        <DropdownMenuItem asChild className="rounded-md mx-1 px-2">
           <Link href="/client/stores">
             <Store className="mr-2 h-4 w-4 text-muted-foreground" />
             Gerenciar Lojas
           </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={handleLogout} className="rounded-lg mx-1 px-2.5 text-red-400 focus:text-red-400 focus:bg-red-500/10">
+        <DropdownMenuItem onClick={handleLogout} className="rounded-md mx-1 px-2 text-red-400 focus:text-red-400 focus:bg-red-500/10">
           <LogOut className="mr-2 h-4 w-4" />
           Sair
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
-  )
-
-  const SidebarFooter = () => (
-    <div className="border-t border-white/[0.06] p-2 space-y-0.5">
-      <StoreSwitcher />
-      <AccountMenu />
-    </div>
   )
 
   return (
@@ -443,35 +439,25 @@ export default function PortalLayout({
       <aside className="hidden lg:fixed lg:inset-y-0 lg:flex lg:w-[240px] lg:flex-col z-40">
         <div className="flex flex-col flex-grow sidebar-container overflow-hidden">
           {/* Logo */}
-          <div className="flex h-[56px] items-center px-5 border-b border-white/[0.06]">
+          <div className="flex h-14 items-center px-5">
             <Link href="/client/dashboard" className="flex items-center">
-              <Image
-                src="/images/logo da convertfy com escrito branco.png"
-                alt="Convertfy"
-                width={120}
-                height={26}
-                className="h-auto w-auto object-contain"
-                style={{ maxHeight: 26, maxWidth: 120 }}
-                priority
-              />
+              <Logo size="lg" />
             </Link>
           </div>
 
-          {/* Search */}
-          <div className="px-3 pt-3 pb-1">
-            <button className="flex items-center gap-2.5 w-full h-8 px-2.5 rounded-lg bg-white/[0.04] border border-white/[0.06] text-sidebar-muted hover:text-sidebar-hover hover:bg-white/[0.06] hover:border-white/[0.08] transition-all duration-150 text-[12px]">
-              <Search className="h-3.5 w-3.5 shrink-0" strokeWidth={1.5} />
-              <span>Buscar...</span>
-            </button>
-          </div>
-
           {/* Navigation */}
-          <div className="flex-1 overflow-y-auto scrollbar-thin mt-1">
+          <ScrollArea className="flex-1 px-3">
             <SidebarNav />
-          </div>
+          </ScrollArea>
 
           {/* Footer */}
-          <SidebarFooter />
+          <div className="mt-auto shrink-0 px-3 pb-2.5">
+            <div className="h-px bg-white/[0.06] mx-1 mb-2" />
+            <div className="space-y-0.5">
+              <StoreSwitcher />
+              <AccountMenu />
+            </div>
+          </div>
         </div>
       </aside>
 
@@ -484,27 +470,26 @@ export default function PortalLayout({
                 <Menu className="h-5 w-5" strokeWidth={1.5} />
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="w-[260px] p-0 bg-[#0F1117] border-none">
+            <SheetContent side="left" className="w-[260px] p-0 bg-[#0d1117] border-none">
               <div className="flex flex-col h-full">
                 {/* Logo */}
-                <div className="flex h-[56px] items-center px-5 border-b border-white/[0.06]">
-                  <Image
-                    src="/images/logo da convertfy com escrito branco.png"
-                    alt="Convertfy"
-                    width={120}
-                    height={26}
-                    className="h-auto w-auto object-contain"
-                    style={{ maxHeight: 26, maxWidth: 120 }}
-                  />
+                <div className="flex h-14 items-center px-5">
+                  <Logo size="lg" />
                 </div>
 
                 {/* Navigation */}
-                <div className="flex-1 overflow-y-auto scrollbar-thin mt-1">
+                <ScrollArea className="flex-1 px-3">
                   <SidebarNav onLinkClick={() => setMobileMenuOpen(false)} />
-                </div>
+                </ScrollArea>
 
                 {/* Footer */}
-                <SidebarFooter />
+                <div className="mt-auto shrink-0 px-3 pb-2.5">
+                  <div className="h-px bg-white/[0.06] mx-1 mb-2" />
+                  <div className="space-y-0.5">
+                    <StoreSwitcher />
+                    <AccountMenu side="right" />
+                  </div>
+                </div>
               </div>
             </SheetContent>
           </Sheet>
@@ -518,23 +503,21 @@ export default function PortalLayout({
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="h-9 w-9">
-                <Avatar className="h-8 w-8 rounded-lg">
-                  {user.avatar_url && <AvatarImage src={user.avatar_url} alt={user.name} className="rounded-lg" />}
-                  <AvatarFallback className="rounded-lg bg-gradient-to-br from-convertfy-blue-deep to-convertfy-blue text-white text-[11px] font-semibold">
+                <Avatar className="h-8 w-8 rounded-full">
+                  {user.avatar_url && <AvatarImage src={user.avatar_url} alt={user.name} />}
+                  <AvatarFallback className="rounded-full bg-[#21262d] text-[#c9d1d9] text-[11px] font-semibold">
                     {getInitials(user.name)}
                   </AvatarFallback>
                 </Avatar>
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56 rounded-xl">
-              <DropdownMenuLabel className="px-3 py-2.5">
-                <div>
-                  <p className="font-semibold text-sm">{user.name}</p>
-                  <p className="text-xs text-muted-foreground">{user.email}</p>
-                </div>
+            <DropdownMenuContent align="end" className="w-56 rounded-lg">
+              <DropdownMenuLabel className="px-3 py-2">
+                <p className="font-medium text-sm">{user.name}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{user.email}</p>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleLogout} className="rounded-lg mx-1 px-2.5 text-red-400 focus:text-red-400 focus:bg-red-500/10">
+              <DropdownMenuItem onClick={handleLogout} className="rounded-md mx-1 px-2 text-red-400 focus:text-red-400 focus:bg-red-500/10">
                 <LogOut className="mr-2 h-4 w-4" />
                 Sair
               </DropdownMenuItem>
