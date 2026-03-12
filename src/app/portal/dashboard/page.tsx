@@ -11,11 +11,8 @@ import {
   DollarSign,
   Users,
   ShoppingBag,
-  TrendingUp,
   ArrowUpRight,
   ArrowDownRight,
-  Mail,
-  Sparkles,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
