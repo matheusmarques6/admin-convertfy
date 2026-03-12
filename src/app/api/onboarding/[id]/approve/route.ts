@@ -29,6 +29,18 @@ export async function POST(
       throw new AppError("action deve ser: approved, rejected ou revision_requested", 400)
     }
 
+    // AC 37.1.1: Comments obrigatório para rejected/revision_requested
+    if (body.action === "rejected" || body.action === "revision_requested") {
+      if (!body.comments || typeof body.comments !== "string" || !body.comments.trim()) {
+        throw new AppError("Comentários são obrigatórios para rejeição ou solicitação de revisão", 400)
+      }
+    }
+
+    // AC 37.1.3: Limite de 2000 caracteres
+    if (body.comments && typeof body.comments === "string" && body.comments.length > 2000) {
+      throw new AppError("Comentários não podem exceder 2000 caracteres", 400)
+    }
+
     const adminClient = createAdminClient()
 
     // Check permission: user must have onboarding_approve feature
@@ -97,14 +109,16 @@ export async function POST(
       .eq("store_id", onboarding.store_id)
       .maybeSingle()
 
-    // Log the approval action
-    await adminClient.from("onboarding_approvals").insert({
-      onboarding_id: id,
-      approved_by: orgMember.id,
-      action: body.action,
-      comments: body.comments || null,
-      form_snapshot: formData || null,
-    })
+    // Log the approval action (skip for rejected/revision — records will be deleted)
+    if (body.action === "approved") {
+      await adminClient.from("onboarding_approvals").insert({
+        onboarding_id: id,
+        approved_by: orgMember.id,
+        action: body.action,
+        comments: body.comments || null,
+        form_snapshot: formData || null,
+      })
+    }
 
     if (body.action === "approved") {
       // Transition to generating_copies
@@ -189,67 +203,96 @@ export async function POST(
     }
 
     if (body.action === "rejected" || body.action === "revision_requested") {
-      // Keep in pending_approval but log the rejection
-      // The client will be notified to make adjustments
-      const { data: updatedOnboarding } = await adminClient
-        .from("client_onboardings")
-        .update({
-          notes: body.comments ? `Revisão solicitada: ${body.comments}` : "Revisão solicitada",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", id)
-        .select()
-        .single()
+      // Both rejected and revision_requested delete all data so the client
+      // can re-submit via the public form. The client has no portal account
+      // at this stage, so keeping data would leave them stuck.
+      const isRejected = body.action === "rejected"
+      const phaseLabel = isRejected ? "Cadastro Rejeitado" : "Revisão Solicitada"
 
-      // Notify client about rejection
+      // Fetch client + store info BEFORE deleting (needed for notification + audit)
       const { data: client } = await adminClient
         .from("clients")
         .select("email, name")
         .eq("id", onboarding.client_id)
         .single()
 
-      if (client) {
-        // Try in-app notification if portal user exists
-        const { notificationService } = await import("@/lib/services/notification.service")
-        const { data: portalUser } = await adminClient
-          .from("client_portal_users")
-          .select("auth_user_id")
-          .eq("client_id", onboarding.client_id)
-          .eq("is_active", true)
-          .limit(1)
-          .maybeSingle()
+      const { data: storeData } = await adminClient
+        .from("client_stores")
+        .select("store_name")
+        .eq("id", onboarding.store_id)
+        .maybeSingle()
 
-        if (portalUser?.auth_user_id) {
-          await notificationService.create({
-            user_id: portalUser.auth_user_id,
-            title: body.action === "rejected" ? "Cadastro precisa de ajustes" : "Revisão solicitada",
-            body: body.comments || "Por favor, revise seu cadastro e faça os ajustes necessários.",
-            type: "warning",
-            link: "/portal/onboarding",
-          })
-        }
+      // Persist audit trail in dedicated table (survives data deletion)
+      await adminClient.from("onboarding_rejection_log").insert({
+        org_id: orgMember.org_id,
+        onboarding_id: id,
+        client_email: client?.email || "unknown",
+        client_name: client?.name || null,
+        store_name: storeData?.store_name || null,
+        rejected_by: orgMember.id,
+        comments: body.comments || null,
+        form_snapshot: formData || null,
+      })
 
-        // Always send email via N8N (works even without portal account)
-        const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
-        await n8nTriggerService.triggerClientNotification({
-          email: client.email,
-          client_name: client.name,
-          phase: body.action === "rejected" ? "rejected" : "revision_requested",
-          phase_label: body.action === "rejected" ? "Cadastro Rejeitado" : "Revisão Solicitada",
-          message: body.comments || "Por favor, revise seu cadastro e faça os ajustes necessários.",
-          portal_url: `${appUrl}/portal/onboarding`,
-        })
+      // Also log to application logs for operational visibility
+      log.info(`Onboarding ${id} ${body.action} — data will be deleted`, {
+        by: orgMember.id,
+        clientId: onboarding.client_id,
+        storeId: onboarding.store_id,
+        clientEmail: client?.email,
+        comments: body.comments,
+      })
+
+      // Atomic deletion via RPC FIRST (single transaction, validates phase + IDs)
+      const { error: rpcError } = await adminClient.rpc("delete_rejected_onboarding", {
+        p_onboarding_id: id,
+        p_client_id: onboarding.client_id,
+        p_store_id: onboarding.store_id,
+      })
+
+      if (rpcError) {
+        log.error("Failed to delete onboarding data", rpcError)
+        throw new AppError("Erro ao remover dados do onboarding", 500)
       }
 
-      const actionLabel = body.action === "rejected" ? "rejeitado" : "revisão solicitada"
-      log.info(`Onboarding ${id} ${actionLabel}`, { by: orgMember.id })
+      // Notify client AFTER successful deletion (non-blocking)
+      try {
+        if (client) {
+          const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+          const resubmitUrl = `${appUrl}/cliente/onboarding`
 
-      return successResponse(request, {
-        onboarding: updatedOnboarding,
-        message: body.action === "rejected"
-          ? "Onboarding rejeitado. Cliente será notificado."
-          : "Revisão solicitada. Cliente será notificado.",
-      })
+          // AC 37.2.1: Sanitizar HTML dos comments
+          const sanitizedComments = (body.comments || "").replace(/<[^>]*>/g, "")
+
+          // AC 37.2.4: Subject diferenciado por acao
+          const subject = isRejected
+            ? "Seu formulário precisa de ajustes"
+            : "Revisão solicitada no seu cadastro"
+
+          await n8nTriggerService.triggerClientNotification({
+            email: client.email,
+            client_name: client.name,
+            phase: body.action,
+            phase_label: phaseLabel,
+            message: sanitizedComments || "Por favor, preencha o formulário novamente com os ajustes necessários.",
+            portal_url: resubmitUrl,
+            // AC 37.2.2: Campos enriquecidos
+            action_type: body.action,
+            store_name: storeData?.store_name || undefined,
+            rejection_comments: sanitizedComments || undefined,
+            resubmit_url: resubmitUrl,
+            subject,
+          })
+        }
+      } catch (notifyError) {
+        log.error("Failed to notify client (non-blocking)", notifyError)
+      }
+
+      const message = isRejected
+        ? "Onboarding rejeitado. Dados removidos e cliente notificado para preencher novamente."
+        : "Revisão solicitada. Dados removidos e cliente notificado para preencher novamente."
+
+      return successResponse(request, { message })
     }
 
     throw new AppError("Ação não reconhecida", 400)

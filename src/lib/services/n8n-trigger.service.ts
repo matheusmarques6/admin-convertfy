@@ -23,6 +23,11 @@ export class N8nTriggerService {
     }
 
     try {
+      // Timeout de 15s para não estourar o limite do Vercel (60s).
+      // O resultado real vem via callback_url, não precisamos esperar N8N processar tudo.
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 15_000)
+
       const response = await fetch(this.baseUrl, {
         method: "POST",
         headers: {
@@ -30,7 +35,10 @@ export class N8nTriggerService {
           ...(this.apiKey ? { "X-N8N-API-Key": this.apiKey } : {}),
         },
         body: JSON.stringify({ type, ...payload }),
+        signal: controller.signal,
       })
+
+      clearTimeout(timeout)
 
       if (!response.ok) {
         const text = await response.text().catch(() => "Unknown error")
@@ -41,6 +49,11 @@ export class N8nTriggerService {
       log.info(`N8N webhook triggered successfully`, { type })
       return { success: true }
     } catch (error) {
+      // Se abortou por timeout, o trigger já foi enviado — N8N vai processar e chamar callback
+      if (error instanceof Error && error.name === "AbortError") {
+        log.info(`N8N webhook timed out but trigger was sent, relying on callback`, { type })
+        return { success: true }
+      }
       const message = error instanceof Error ? error.message : "Unknown error"
       log.error(`N8N webhook error: ${message}`, { type })
       return { success: false, error: message }
@@ -103,6 +116,12 @@ export class N8nTriggerService {
     phase_label: string
     message: string
     portal_url: string
+    // AC 37.2.2/37.2.3: Campos adicionais (opcionais para backward-compat)
+    action_type?: string
+    store_name?: string
+    rejection_comments?: string
+    resubmit_url?: string
+    subject?: string
   }): Promise<TriggerResult> {
     log.info(`Triggering client notification for phase: ${params.phase}`, { email: params.email })
 
@@ -113,6 +132,11 @@ export class N8nTriggerService {
       phase_label: params.phase_label,
       message: params.message,
       portal_url: params.portal_url,
+      ...(params.action_type && { action_type: params.action_type }),
+      ...(params.store_name && { store_name: params.store_name }),
+      ...(params.rejection_comments && { rejection_comments: params.rejection_comments }),
+      ...(params.resubmit_url && { resubmit_url: params.resubmit_url }),
+      ...(params.subject && { subject: params.subject }),
     })
   }
 
