@@ -176,13 +176,13 @@ export function Sidebar({ user }: SidebarProps) {
                 "relative flex items-center justify-center h-9 w-9 mx-auto rounded-lg transition-colors duration-150",
                 active
                   ? "text-white"
-                  : "text-[#8b949e] hover:text-[#c9d1d9] hover:bg-white/[0.06]"
+                  : "text-[#b0b8c1] hover:text-white hover:bg-white/[0.07]"
               )}
             >
               {active && (
                 <motion.div
                   layoutId="nav-active"
-                  className="absolute inset-0 rounded-lg bg-white/[0.10]"
+                  className="absolute inset-0 rounded-lg bg-white/[0.08] ring-1 ring-white/[0.06]"
                   transition={{ type: "spring", stiffness: 400, damping: 28 }}
                 />
               )}
@@ -201,20 +201,20 @@ export function Sidebar({ user }: SidebarProps) {
         key={item.name}
         href={item.href}
         className={cn(
-          "relative flex items-center gap-2.5 h-8 px-2.5 rounded-lg text-[13px] transition-colors duration-150",
+          "relative flex items-center gap-3 h-9 px-3 rounded-lg text-[13px] transition-colors duration-150",
           active
             ? "text-white font-medium"
-            : "text-[#8b949e] hover:text-[#c9d1d9] hover:bg-white/[0.06]"
+            : "text-[#b0b8c1] hover:text-white hover:bg-white/[0.07]"
         )}
       >
         {active && (
           <motion.div
             layoutId="nav-active"
-            className="absolute inset-0 rounded-lg bg-white/[0.10]"
+            className="absolute inset-0 rounded-lg bg-white/[0.08] ring-1 ring-white/[0.06]"
             transition={{ type: "spring", stiffness: 400, damping: 28 }}
           />
         )}
-        <Icon className="h-[16px] w-[16px] shrink-0 relative z-10" strokeWidth={1.8} />
+        <Icon className="h-[18px] w-[18px] shrink-0 relative z-10" strokeWidth={1.7} />
         <span className="relative z-10 truncate">{item.name}</span>
         {item.badge && (
           <span className="relative z-10 ml-auto text-[10px] font-medium bg-convertfy-blue/20 text-convertfy-blue px-1.5 py-0.5 rounded">
@@ -230,34 +230,34 @@ export function Sidebar({ user }: SidebarProps) {
       <aside
         className={cn(
           "flex flex-col h-screen transition-all duration-300 ease-in-out sidebar-container",
-          sidebarCollapsed ? "w-[60px]" : "w-[220px]"
+          sidebarCollapsed ? "w-[64px]" : "w-[240px]"
         )}
       >
         {/* Logo */}
         <div className={cn(
           "flex items-center shrink-0 h-14",
-          sidebarCollapsed ? "justify-center" : "px-4"
+          sidebarCollapsed ? "justify-center" : "px-5"
         )}>
           <Link href={ROUTES.ADMIN.DASHBOARD} className="flex items-center">
-            {sidebarCollapsed ? <LogoIcon size={24} /> : <Logo size="sm" />}
+            {sidebarCollapsed ? <LogoIcon size={26} /> : <Logo size="md" />}
           </Link>
         </div>
 
         {/* Navigation */}
-        <ScrollArea className="flex-1 px-2">
+        <ScrollArea className="flex-1 px-3">
           <LayoutGroup>
             <nav className="py-1">
               {groupedNavigation.map((group, idx) => (
                 <div key={group.key} className={cn(idx > 0 && "mt-6")}>
                   {!sidebarCollapsed && group.label && (
-                    <p className="px-2.5 mb-1.5 text-[10px] font-semibold tracking-[0.08em] text-[#484f58] uppercase">
+                    <p className="px-2.5 mb-1.5 text-[10px] font-semibold tracking-[0.08em] text-[#6e7681] uppercase">
                       {group.label}
                     </p>
                   )}
                   {sidebarCollapsed && idx > 0 && (
                     <div className="h-px bg-white/[0.06] mx-1.5 mb-2" />
                   )}
-                  <div className="space-y-px">
+                  <div className="space-y-0.5">
                     {group.items.map(renderNavItem)}
                   </div>
                 </div>
@@ -267,7 +267,7 @@ export function Sidebar({ user }: SidebarProps) {
         </ScrollArea>
 
         {/* Bottom */}
-        <div className="mt-auto shrink-0 px-2 pb-2">
+        <div className="mt-auto shrink-0 px-3 pb-2.5">
           <div className="h-px bg-white/[0.06] mx-1 mb-2" />
 
           <LayoutGroup>
@@ -295,14 +295,14 @@ export function Sidebar({ user }: SidebarProps) {
                 {!sidebarCollapsed && (
                   <>
                     <div className="text-left overflow-hidden flex-1 min-w-0">
-                      <p className="text-[12px] font-medium text-[#c9d1d9] truncate leading-tight">
+                      <p className="text-[12px] font-medium text-[#e6edf3] truncate leading-tight">
                         {user?.name || "Usuario"}
                       </p>
-                      <p className="text-[10px] text-[#484f58] truncate leading-tight">
+                      <p className="text-[10px] text-[#6e7681] truncate leading-tight">
                         {user?.email}
                       </p>
                     </div>
-                    <ChevronDown className="h-3 w-3 text-[#484f58] shrink-0" />
+                    <ChevronDown className="h-3 w-3 text-[#6e7681] shrink-0" />
                   </>
                 )}
               </button>
@@ -355,7 +355,7 @@ export function Sidebar({ user }: SidebarProps) {
           {/* Collapse */}
           {!sidebarCollapsed ? (
             <button
-              className="flex items-center justify-center w-full h-7 mt-1 rounded-md text-[#484f58] hover:text-[#8b949e] hover:bg-white/[0.04] transition-colors duration-150"
+              className="flex items-center justify-center w-full h-7 mt-1 rounded-md text-[#6e7681] hover:text-[#b0b8c1] hover:bg-white/[0.06] transition-colors duration-150"
               onClick={() => setSidebarCollapsed(true)}
             >
               <ChevronLeft className="h-3.5 w-3.5" />
@@ -364,7 +364,7 @@ export function Sidebar({ user }: SidebarProps) {
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
-                  className="flex items-center justify-center w-full h-7 mt-1 rounded-md text-[#484f58] hover:text-[#8b949e] hover:bg-white/[0.04] transition-colors duration-150"
+                  className="flex items-center justify-center w-full h-7 mt-1 rounded-md text-[#6e7681] hover:text-[#b0b8c1] hover:bg-white/[0.06] transition-colors duration-150"
                   onClick={() => setSidebarCollapsed(false)}
                 >
                   <ChevronRight className="h-3.5 w-3.5" />

@@ -70,10 +70,10 @@ const config: Config = {
         },
         sidebar: {
           bg: "#0d1117",
-          muted: "#8b949e",
-          hover: "#c9d1d9",
-          icon: "#8b949e",
-          label: "#484f58",
+          muted: "#b0b8c1",
+          hover: "#e6edf3",
+          icon: "#b0b8c1",
+          label: "#6e7681",
         },
       },
       borderRadius: {
