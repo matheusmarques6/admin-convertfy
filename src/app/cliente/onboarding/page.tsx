@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -9,12 +9,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { useToast } from "@/lib/hooks/use-toast"
-import { Check, ChevronLeft, ChevronRight, Loader2, Store, User, Palette, Send, Upload, X, FileText, ImageIcon, Mail, Key, Info } from "lucide-react"
+import { Check, ChevronLeft, ChevronRight, Loader2, Store, User, Palette, Send, Upload, X, FileText, ImageIcon, Mail, Key, Info, Users, Pencil } from "lucide-react"
 import { PhoneInputIntl, formatPhoneDisplay } from "@/components/ui/phone-input"
+import { CpfCnpjInput } from "@/components/ui/cpf-cnpj-input"
+import { OnboardingStepper } from "@/components/onboarding/stepper"
+import { PLATFORMS, COUNTRIES, LANGUAGES, SHIPPING_TYPES, PRICE_SENSITIVITIES } from "@/lib/constants/onboarding"
 
 // ── Step identity system ──
 
-type StepId = "personal_data" | "store_data" | "collaborator_code" | "visual_identity" | "review"
+type StepId = "personal_data" | "store_data" | "store_profile" | "collaborator_code" | "visual_identity" | "review"
 
 interface StepDef {
   id: StepId
@@ -25,51 +28,10 @@ interface StepDef {
 const ALL_STEPS: StepDef[] = [
   { id: "personal_data", title: "Dados Pessoais", icon: User },
   { id: "store_data", title: "Dados da Loja", icon: Store },
+  { id: "store_profile", title: "Perfil da Loja", icon: Users },
   { id: "collaborator_code", title: "Codigo Colaborador", icon: Key },
   { id: "visual_identity", title: "Identidade Visual", icon: Palette },
   { id: "review", title: "Revisao e Envio", icon: Send },
-]
-
-// ── Constants ──
-
-const PLATFORMS = [
-  { value: "shopify", label: "Shopify" },
-  { value: "nuvemshop", label: "Nuvemshop" },
-  { value: "woocommerce", label: "WooCommerce" },
-  { value: "tray", label: "Tray" },
-  { value: "vtex", label: "VTEX" },
-  { value: "other", label: "Outra" },
-]
-
-const COUNTRIES = [
-  { value: "BR", label: "Brasil" },
-  { value: "US", label: "Estados Unidos" },
-  { value: "PT", label: "Portugal" },
-  { value: "ES", label: "Espanha" },
-  { value: "MX", label: "Mexico" },
-  { value: "AR", label: "Argentina" },
-  { value: "CO", label: "Colombia" },
-  { value: "CL", label: "Chile" },
-  { value: "DE", label: "Alemanha" },
-  { value: "FR", label: "Franca" },
-  { value: "IT", label: "Italia" },
-  { value: "GB", label: "Reino Unido" },
-  { value: "CA", label: "Canada" },
-  { value: "AU", label: "Australia" },
-  { value: "JP", label: "Japao" },
-  { value: "OTHER", label: "Outro" },
-]
-
-const LANGUAGES = [
-  { value: "pt-BR", label: "Portugues (Brasil)" },
-  { value: "pt-PT", label: "Portugues (Portugal)" },
-  { value: "en", label: "English" },
-  { value: "es", label: "Espanol" },
-  { value: "fr", label: "Francais" },
-  { value: "de", label: "Deutsch" },
-  { value: "it", label: "Italiano" },
-  { value: "ja", label: "日本語" },
-  { value: "other", label: "Outro" },
 ]
 
 // ── Helpers ──
@@ -104,6 +66,9 @@ export default function PublicOnboardingPage() {
   const designInputRef = useRef<HTMLInputElement>(null)
   const brandInputRef = useRef<HTMLInputElement>(null)
 
+  // Inline validation errors
+  const [errors, setErrors] = useState<Record<string, string>>({})
+
   // Form state
   const [formData, setFormData] = useState({
     // Step: personal_data
@@ -133,6 +98,29 @@ export default function PublicOnboardingPage() {
     website: "",
   })
 
+  // ── sessionStorage persistence ──
+
+  const STORAGE_KEY = "convertfy_onboarding_draft"
+
+  // Restore on mount
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem(STORAGE_KEY)
+      if (saved) {
+        const { formData: savedForm, stepId } = JSON.parse(saved)
+        if (savedForm) setFormData((prev) => ({ ...prev, ...savedForm }))
+        if (stepId) setCurrentStepId(stepId)
+      }
+    } catch { /* ignore corrupt data */ }
+  }, [])
+
+  // Save on change
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ formData, stepId: currentStepId }))
+    } catch { /* ignore quota errors */ }
+  }, [formData, currentStepId])
+
   // ── Step navigation helpers ──
 
   function getVisibleSteps(): StepDef[] {
@@ -155,6 +143,13 @@ export default function PublicOnboardingPage() {
         next.shopify_collaborator_code = ""
         // If currently on collaborator_code step, navigate to store_data
       }
+      return next
+    })
+    // Clear the specific field error when user edits the field
+    setErrors((prev) => {
+      if (!prev[field]) return prev
+      const next = { ...prev }
+      delete next[field]
       return next
     })
     // Handle edge case: user changes platform away from shopify while on collaborator step
@@ -220,38 +215,42 @@ export default function PublicOnboardingPage() {
     })
   }
 
-  const validateStep = (stepId: StepId): string | null => {
+  const validateStep = (stepId: StepId): Record<string, string> => {
+    const errs: Record<string, string> = {}
     switch (stepId) {
       case "personal_data":
-        if (!formData.name.trim()) return "Nome e obrigatorio"
-        if (!formData.email.trim()) return "Email e obrigatorio"
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) return "Email invalido"
-        return null
+        if (!formData.name.trim()) errs.name = "Nome e obrigatorio"
+        if (!formData.email.trim()) errs.email = "Email e obrigatorio"
+        else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) errs.email = "Email invalido"
+        break
       case "store_data":
-        if (!formData.store_name.trim()) return "Nome da loja e obrigatorio"
-        if (!formData.store_url.trim()) return "URL da loja e obrigatoria"
-        if (!/^(https?:\/\/)?[\w.-]+\.[a-z]{2,}(\/.*)?$/i.test(formData.store_url.trim())) return "URL invalida. Ex: minhaloja.com.br ou https://minhaloja.com.br"
-        if (!formData.platform) return "Plataforma e obrigatoria"
-        if (!formData.country) return "Pais e obrigatorio"
-        if (!formData.language) return "Idioma e obrigatorio"
-        return null
+        if (!formData.store_name.trim()) errs.store_name = "Nome da loja e obrigatorio"
+        if (!formData.store_url.trim()) errs.store_url = "URL da loja e obrigatoria"
+        else if (!/^(https?:\/\/)?[\w.-]+\.[a-z]{2,}(\/.*)?$/i.test(formData.store_url.trim())) errs.store_url = "URL invalida. Ex: minhaloja.com.br ou https://minhaloja.com.br"
+        if (!formData.platform) errs.platform = "Plataforma e obrigatoria"
+        break
+      case "store_profile":
+        // All fields are optional
+        break
       case "collaborator_code":
-        return null
       case "visual_identity":
-        return null
       case "review":
-        return null
-      default:
-        return null
+        break
     }
+    return errs
   }
 
   const nextStep = () => {
-    const error = validateStep(currentStepId)
-    if (error) {
-      toast({ title: "Atencao", description: error, variant: "destructive" })
+    const stepErrors = validateStep(currentStepId)
+    if (Object.keys(stepErrors).length > 0) {
+      setErrors(stepErrors)
+      setTimeout(() => {
+        const firstError = document.querySelector('[aria-invalid="true"]')
+        if (firstError instanceof HTMLElement) firstError.focus()
+      }, 0)
       return
     }
+    setErrors({})
     if (currentStepIndex < visibleSteps.length - 1) {
       setCurrentStepId(visibleSteps[currentStepIndex + 1].id)
     }
@@ -303,6 +302,7 @@ export default function PublicOnboardingPage() {
       }
 
       setSubmitted(true)
+      sessionStorage.removeItem(STORAGE_KEY)
     } catch (error) {
       toast({
         title: "Erro",
@@ -352,37 +352,12 @@ export default function PublicOnboardingPage() {
       </div>
 
       {/* Progress Steps */}
-      <div className="flex items-center gap-1 sm:gap-2 mb-8 w-full max-w-2xl">
-        {visibleSteps.map((step, index) => {
-          const StepIcon = step.icon
-          const isActive = currentStepId === step.id
-          const isCompleted = currentStepIndex > index
-
-          return (
-            <div key={step.id} className="flex items-center flex-1">
-              <button
-                onClick={() => {
-                  if (isCompleted) setCurrentStepId(step.id)
-                }}
-                className={`flex items-center gap-1 sm:gap-2 rounded-lg px-2 sm:px-3 py-2 text-sm font-medium transition-colors w-full justify-center
-                  ${isActive ? "bg-primary text-primary-foreground" : ""}
-                  ${isCompleted ? "bg-green-100 text-green-700 cursor-pointer hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/50" : ""}
-                  ${!isActive && !isCompleted ? "bg-muted text-muted-foreground" : ""}
-                `}
-              >
-                {isCompleted ? (
-                  <Check className="h-4 w-4 shrink-0" />
-                ) : (
-                  <StepIcon className="h-4 w-4 shrink-0" />
-                )}
-                <span className="hidden sm:inline">{step.title}</span>
-              </button>
-              {index < visibleSteps.length - 1 && (
-                <div className={`h-px w-2 sm:w-4 mx-0.5 sm:mx-1 shrink-0 ${isCompleted ? "bg-green-300 dark:bg-green-700" : "bg-border"}`} />
-              )}
-            </div>
-          )
-        })}
+      <div className="w-full max-w-2xl mb-8">
+        <OnboardingStepper
+          steps={visibleSteps.map((s) => ({ id: s.id, label: s.title, icon: s.icon }))}
+          currentIndex={currentStepIndex}
+          onNavigate={(i) => setCurrentStepId(visibleSteps[i].id)}
+        />
       </div>
 
       {/* Form Card */}
@@ -397,11 +372,13 @@ export default function PublicOnboardingPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <RequiredLabel htmlFor="name">Nome completo</RequiredLabel>
-                  <Input id="name" value={formData.name} onChange={(e) => updateField("name", e.target.value)} placeholder="Seu nome" />
+                  <Input id="name" value={formData.name} onChange={(e) => updateField("name", e.target.value)} placeholder="Seu nome" aria-invalid={!!errors.name} aria-describedby={errors.name ? "name-error" : undefined} />
+                  {errors.name && <p id="name-error" className="text-sm text-destructive">{errors.name}</p>}
                 </div>
                 <div className="space-y-2">
                   <RequiredLabel htmlFor="email">Email</RequiredLabel>
-                  <Input id="email" type="email" value={formData.email} onChange={(e) => updateField("email", e.target.value)} placeholder="seu@email.com" />
+                  <Input id="email" type="email" value={formData.email} onChange={(e) => updateField("email", e.target.value)} placeholder="seu@email.com" aria-invalid={!!errors.email} aria-describedby={errors.email ? "email-error" : undefined} />
+                  {errors.email && <p id="email-error" className="text-sm text-destructive">{errors.email}</p>}
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -416,7 +393,7 @@ export default function PublicOnboardingPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="cpf_cnpj">CPF/CNPJ</Label>
-                  <Input id="cpf_cnpj" value={formData.cpf_cnpj} onChange={(e) => updateField("cpf_cnpj", e.target.value)} placeholder="000.000.000-00" />
+                  <CpfCnpjInput id="cpf_cnpj" value={formData.cpf_cnpj} onChange={(v) => updateField("cpf_cnpj", v)} placeholder="000.000.000-00" />
                 </div>
               </div>
               <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 mt-4 dark:border-blue-800 dark:bg-blue-950/30">
@@ -436,33 +413,40 @@ export default function PublicOnboardingPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <RequiredLabel htmlFor="store_name">Nome da loja</RequiredLabel>
-                  <Input id="store_name" value={formData.store_name} onChange={(e) => updateField("store_name", e.target.value)} placeholder="Minha Loja" />
+                  <Input id="store_name" value={formData.store_name} onChange={(e) => updateField("store_name", e.target.value)} placeholder="Minha Loja" aria-invalid={!!errors.store_name} aria-describedby={errors.store_name ? "store_name-error" : undefined} />
+                  {errors.store_name && <p id="store_name-error" className="text-sm text-destructive">{errors.store_name}</p>}
                 </div>
                 <div className="space-y-2">
                   <RequiredLabel htmlFor="store_url">URL da loja</RequiredLabel>
-                  <Input id="store_url" value={formData.store_url} onChange={(e) => updateField("store_url", e.target.value)} placeholder="https://minhaloja.com.br" />
+                  <Input id="store_url" value={formData.store_url} onChange={(e) => updateField("store_url", e.target.value)} placeholder="https://minhaloja.com.br" aria-invalid={!!errors.store_url} aria-describedby={errors.store_url ? "store_url-error" : undefined} />
+                  {errors.store_url && <p id="store_url-error" className="text-sm text-destructive">{errors.store_url}</p>}
                 </div>
               </div>
+              <div className="space-y-2">
+                <RequiredLabel>Plataforma</RequiredLabel>
+                <Select value={formData.platform} onValueChange={(v) => updateField("platform", v)}>
+                  <SelectTrigger aria-invalid={!!errors.platform} aria-describedby={errors.platform ? "platform-error" : undefined}><SelectValue placeholder="Selecione" /></SelectTrigger>
+                  <SelectContent>
+                    {PLATFORMS.map((p) => (
+                      <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {errors.platform && <p id="platform-error" className="text-sm text-destructive">{errors.platform}</p>}
+              </div>
+            </>
+          )}
+
+          {/* Step: Store Profile */}
+          {currentStepId === "store_profile" && (
+            <>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <RequiredLabel>Plataforma</RequiredLabel>
-                  <Select value={formData.platform} onValueChange={(v) => updateField("platform", v)}>
-                    <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                    <SelectContent>
-                      {PLATFORMS.map((p) => (
-                        <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
                 <div className="space-y-2">
                   <Label htmlFor="niche">Nicho</Label>
                   <Input id="niche" value={formData.niche} onChange={(e) => updateField("niche", e.target.value)} placeholder="Ex: Moda, Beleza, Tech..." />
                 </div>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <RequiredLabel>Pais</RequiredLabel>
+                  <Label>Pais</Label>
                   <Select value={formData.country} onValueChange={(v) => updateField("country", v)}>
                     <SelectTrigger><SelectValue placeholder="Selecione o pais" /></SelectTrigger>
                     <SelectContent>
@@ -472,13 +456,26 @@ export default function PublicOnboardingPage() {
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <RequiredLabel>Idioma</RequiredLabel>
+                  <Label>Idioma</Label>
                   <Select value={formData.language} onValueChange={(v) => updateField("language", v)}>
                     <SelectTrigger><SelectValue placeholder="Selecione o idioma" /></SelectTrigger>
                     <SelectContent>
                       {LANGUAGES.map((l) => (
                         <SelectItem key={l.value} value={l.value}>{l.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Tipo de frete</Label>
+                  <Select value={formData.free_shipping_type} onValueChange={(v) => updateField("free_shipping_type", v)}>
+                    <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                    <SelectContent>
+                      {SHIPPING_TYPES.map((s) => (
+                        <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -491,30 +488,13 @@ export default function PublicOnboardingPage() {
               <div className="space-y-2">
                 <Label>Seu publico alvo e mais sensivel a ofertas de preco ou qualidade?</Label>
                 <RadioGroup value={formData.price_sensitivity} onValueChange={(v) => updateField("price_sensitivity", v)} className="flex gap-4">
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="price" id="price" />
-                    <Label htmlFor="price">Preco</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="balanced" id="balanced" />
-                    <Label htmlFor="balanced">Equilibrado</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="quality" id="quality" />
-                    <Label htmlFor="quality">Qualidade</Label>
-                  </div>
+                  {PRICE_SENSITIVITIES.map((ps) => (
+                    <div key={ps.value} className="flex items-center space-x-2">
+                      <RadioGroupItem value={ps.value} id={ps.value} />
+                      <Label htmlFor={ps.value}>{ps.label}</Label>
+                    </div>
+                  ))}
                 </RadioGroup>
-              </div>
-              <div className="space-y-2">
-                <Label>Tipo de frete</Label>
-                <Select value={formData.free_shipping_type} onValueChange={(v) => updateField("free_shipping_type", v)}>
-                  <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Frete gratis total</SelectItem>
-                    <SelectItem value="conditional">Frete gratis condicional</SelectItem>
-                    <SelectItem value="none">Sem frete gratis</SelectItem>
-                  </SelectContent>
-                </Select>
               </div>
             </>
           )}
@@ -551,132 +531,154 @@ export default function PublicOnboardingPage() {
           {/* Step: Visual Identity */}
           {currentStepId === "visual_identity" && (
             <>
-              {/* Logo Upload */}
-              <div className="space-y-2">
-                <Label>Logo da marca</Label>
-                {uploadedFiles.logo ? (
-                  <div className="flex items-center gap-3 rounded-lg border p-3 bg-green-50 dark:bg-green-900/20">
-                    <ImageIcon className="h-5 w-5 text-green-600 dark:text-green-400 shrink-0" />
-                    <span className="text-sm text-green-700 dark:text-green-300 flex-1 truncate">{uploadedFiles.logo.fileName}</span>
-                    <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => removeFile("logo")}>
-                      <X className="h-4 w-4" />
-                    </Button>
+              {/* Warning: uploads need to be redone after session restore */}
+              {(formData.logo_url && !uploadedFiles.logo) ||
+               (formData.design_direction_file_url && !uploadedFiles.design) ||
+               (formData.brand_manual_url && !uploadedFiles.brand_manual) ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30">
+                  <div className="flex items-center gap-2 text-sm text-amber-700 dark:text-amber-300">
+                    <Info className="h-4 w-4 shrink-0" />
+                    <span>Alguns arquivos precisam ser enviados novamente. Faca o upload novamente abaixo.</span>
                   </div>
-                ) : (
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-4 sm:p-6 cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 dark:hover:bg-blue-950/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                    onClick={() => logoInputRef.current?.click()}
-                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); logoInputRef.current?.click() } }}
-                  >
-                    {uploadingField === "logo" ? (
-                      <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
+                </div>
+              ) : null}
+              {/* Asymmetric grid: logo (60%) | optional files (40%) */}
+              <div className="grid grid-cols-1 sm:grid-cols-5 gap-4">
+                {/* Left column: Logo */}
+                <div className="sm:col-span-3">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Logo</p>
+                  {uploadedFiles.logo ? (
+                    <div className="flex items-center gap-3 rounded-lg border p-3 bg-green-50 dark:bg-green-900/20">
+                      <ImageIcon className="h-5 w-5 text-green-600 dark:text-green-400 shrink-0" />
+                      <span className="text-sm text-green-700 dark:text-green-300 flex-1 truncate">{uploadedFiles.logo.fileName}</span>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => removeFile("logo")}>
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-4 sm:p-6 cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 dark:hover:bg-blue-950/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:min-h-[160px]"
+                      onClick={() => logoInputRef.current?.click()}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); logoInputRef.current?.click() } }}
+                    >
+                      {uploadingField === "logo" ? (
+                        <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
+                      ) : (
+                        <Upload className="h-6 w-6 text-muted-foreground" />
+                      )}
+                      <span className="text-sm text-muted-foreground">Clique para enviar o logo</span>
+                      <span className="text-xs text-muted-foreground/70">PNG, JPG, SVG, WebP (max. 10MB)</span>
+                    </div>
+                  )}
+                  <input
+                    ref={logoInputRef}
+                    type="file"
+                    accept=".png,.jpg,.jpeg,.svg,.webp"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) handleFileUpload(file, "logo")
+                      e.target.value = ""
+                    }}
+                  />
+                </div>
+
+                {/* Right column: Optional files */}
+                <div className="sm:col-span-2 flex flex-col gap-4">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-0">Arquivos opcionais</p>
+
+                  {/* Design Reference Upload - compact horizontal */}
+                  <div>
+                    {uploadedFiles.design ? (
+                      <div className="flex items-center gap-3 rounded-lg border p-3 bg-green-50 dark:bg-green-900/20">
+                        <FileText className="h-5 w-5 text-green-600 dark:text-green-400 shrink-0" />
+                        <span className="text-sm text-green-700 dark:text-green-300 flex-1 truncate">{uploadedFiles.design.fileName}</span>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => removeFile("design")}>
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
                     ) : (
-                      <Upload className="h-6 w-6 text-muted-foreground" />
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        className="flex items-center gap-3 rounded-lg border-2 border-dashed p-3 cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 dark:hover:bg-blue-950/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                        onClick={() => designInputRef.current?.click()}
+                        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); designInputRef.current?.click() } }}
+                      >
+                        {uploadingField === "design" ? (
+                          <Loader2 className="h-5 w-5 animate-spin text-blue-500 shrink-0" />
+                        ) : (
+                          <Upload className="h-5 w-5 text-muted-foreground shrink-0" />
+                        )}
+                        <div>
+                          <span className="text-sm text-muted-foreground block">Referencia visual</span>
+                          <span className="text-xs text-muted-foreground/70">PNG, JPG, SVG, WebP, PDF</span>
+                        </div>
+                      </div>
                     )}
-                    <span className="text-sm text-muted-foreground">Clique para enviar o logo</span>
-                    <span className="text-xs text-muted-foreground/70">PNG, JPG, SVG, WebP (max. 10MB)</span>
+                    <input
+                      ref={designInputRef}
+                      type="file"
+                      accept=".png,.jpg,.jpeg,.svg,.webp,.pdf"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0]
+                        if (file) handleFileUpload(file, "design")
+                        e.target.value = ""
+                      }}
+                    />
                   </div>
-                )}
-                <input
-                  ref={logoInputRef}
-                  type="file"
-                  accept=".png,.jpg,.jpeg,.svg,.webp"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    if (file) handleFileUpload(file, "logo")
-                    e.target.value = ""
-                  }}
-                />
+
+                  {/* Brand Manual Upload - compact horizontal */}
+                  <div>
+                    {uploadedFiles.brand_manual ? (
+                      <div className="flex items-center gap-3 rounded-lg border p-3 bg-green-50 dark:bg-green-900/20">
+                        <FileText className="h-5 w-5 text-green-600 dark:text-green-400 shrink-0" />
+                        <span className="text-sm text-green-700 dark:text-green-300 flex-1 truncate">{uploadedFiles.brand_manual.fileName}</span>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => removeFile("brand_manual")}>
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        className="flex items-center gap-3 rounded-lg border-2 border-dashed p-3 cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 dark:hover:bg-blue-950/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                        onClick={() => brandInputRef.current?.click()}
+                        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); brandInputRef.current?.click() } }}
+                      >
+                        {uploadingField === "brand_manual" ? (
+                          <Loader2 className="h-5 w-5 animate-spin text-blue-500 shrink-0" />
+                        ) : (
+                          <Upload className="h-5 w-5 text-muted-foreground shrink-0" />
+                        )}
+                        <div>
+                          <span className="text-sm text-muted-foreground block">Manual da marca</span>
+                          <span className="text-xs text-muted-foreground/70">PDF, PNG, JPG</span>
+                        </div>
+                      </div>
+                    )}
+                    <input
+                      ref={brandInputRef}
+                      type="file"
+                      accept=".pdf,.png,.jpg,.jpeg"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0]
+                        if (file) handleFileUpload(file, "brand_manual")
+                        e.target.value = ""
+                      }}
+                    />
+                  </div>
+                </div>
               </div>
 
+              {/* Text fields below the grid */}
               <div className="space-y-2">
                 <Label htmlFor="design_direction">Direcao de design</Label>
                 <Textarea id="design_direction" value={formData.design_direction_text} onChange={(e) => updateField("design_direction_text", e.target.value)} placeholder="Descreva o estilo visual desejado, cores, referencias..." rows={3} />
-              </div>
-
-              {/* Design Reference Upload */}
-              <div className="space-y-2">
-                <Label>Arquivo de referencia visual</Label>
-                {uploadedFiles.design ? (
-                  <div className="flex items-center gap-3 rounded-lg border p-3 bg-green-50 dark:bg-green-900/20">
-                    <FileText className="h-5 w-5 text-green-600 dark:text-green-400 shrink-0" />
-                    <span className="text-sm text-green-700 dark:text-green-300 flex-1 truncate">{uploadedFiles.design.fileName}</span>
-                    <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => removeFile("design")}>
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ) : (
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-4 sm:p-6 cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 dark:hover:bg-blue-950/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                    onClick={() => designInputRef.current?.click()}
-                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); designInputRef.current?.click() } }}
-                  >
-                    {uploadingField === "design" ? (
-                      <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
-                    ) : (
-                      <Upload className="h-6 w-6 text-muted-foreground" />
-                    )}
-                    <span className="text-sm text-muted-foreground">Clique para enviar referencia visual</span>
-                    <span className="text-xs text-muted-foreground/70">PNG, JPG, SVG, WebP, PDF (max. 10MB)</span>
-                  </div>
-                )}
-                <input
-                  ref={designInputRef}
-                  type="file"
-                  accept=".png,.jpg,.jpeg,.svg,.webp,.pdf"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    if (file) handleFileUpload(file, "design")
-                    e.target.value = ""
-                  }}
-                />
-              </div>
-
-              {/* Brand Manual Upload */}
-              <div className="space-y-2">
-                <Label>Manual da marca</Label>
-                {uploadedFiles.brand_manual ? (
-                  <div className="flex items-center gap-3 rounded-lg border p-3 bg-green-50 dark:bg-green-900/20">
-                    <FileText className="h-5 w-5 text-green-600 dark:text-green-400 shrink-0" />
-                    <span className="text-sm text-green-700 dark:text-green-300 flex-1 truncate">{uploadedFiles.brand_manual.fileName}</span>
-                    <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => removeFile("brand_manual")}>
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ) : (
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-4 sm:p-6 cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 dark:hover:bg-blue-950/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                    onClick={() => brandInputRef.current?.click()}
-                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); brandInputRef.current?.click() } }}
-                  >
-                    {uploadingField === "brand_manual" ? (
-                      <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
-                    ) : (
-                      <Upload className="h-6 w-6 text-muted-foreground" />
-                    )}
-                    <span className="text-sm text-muted-foreground">Clique para enviar o manual da marca</span>
-                    <span className="text-xs text-muted-foreground/70">PDF, PNG, JPG (max. 10MB)</span>
-                  </div>
-                )}
-                <input
-                  ref={brandInputRef}
-                  type="file"
-                  accept=".pdf,.png,.jpg,.jpeg"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0]
-                    if (file) handleFileUpload(file, "brand_manual")
-                    e.target.value = ""
-                  }}
-                />
               </div>
 
               <div className="space-y-2">
@@ -689,46 +691,85 @@ export default function PublicOnboardingPage() {
           {/* Step: Review */}
           {currentStepId === "review" && (
             <div className="space-y-6">
+              {/* Dados Pessoais */}
               <div>
-                <h3 className="font-semibold text-foreground mb-2">Dados Pessoais</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
-                  <span className="text-muted-foreground">Nome:</span><span>{formData.name}</span>
-                  <span className="text-muted-foreground">Email:</span><span>{formData.email}</span>
-                  {formData.phone && <><span className="text-muted-foreground">Telefone:</span><span>{formatPhoneDisplay(formData.phone)}</span></>}
-                  {formData.cpf_cnpj && <><span className="text-muted-foreground">CPF/CNPJ:</span><span>{formData.cpf_cnpj}</span></>}
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="font-semibold text-foreground">Dados Pessoais</h3>
+                  <Button variant="ghost" size="sm" onClick={() => setCurrentStepId("personal_data")}>
+                    <Pencil className="h-3 w-3 mr-1" />Editar
+                  </Button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div><p className="text-xs text-muted-foreground">Nome</p><p className="text-sm">{formData.name}</p></div>
+                  <div><p className="text-xs text-muted-foreground">Email</p><p className="text-sm">{formData.email}</p></div>
+                  {formData.phone && <div><p className="text-xs text-muted-foreground">Telefone</p><p className="text-sm">{formatPhoneDisplay(formData.phone)}</p></div>}
+                  {formData.cpf_cnpj && <div><p className="text-xs text-muted-foreground">CPF/CNPJ</p><p className="text-sm">{formData.cpf_cnpj}</p></div>}
                 </div>
               </div>
+
+              {/* Dados da Loja */}
               <div className="border-t pt-4">
-                <h3 className="font-semibold text-foreground mb-2">Dados da Loja</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
-                  <span className="text-muted-foreground">Loja:</span><span>{formData.store_name}</span>
-                  <span className="text-muted-foreground">URL:</span><span className="truncate">{formData.store_url}</span>
-                  <span className="text-muted-foreground">Plataforma:</span><span>{PLATFORMS.find(p => p.value === formData.platform)?.label}</span>
-                  <span className="text-muted-foreground">Pais:</span><span>{COUNTRIES.find(c => c.value === formData.country)?.label}</span>
-                  <span className="text-muted-foreground">Idioma:</span><span>{LANGUAGES.find(l => l.value === formData.language)?.label}</span>
-                  {formData.niche && <><span className="text-muted-foreground">Nicho:</span><span>{formData.niche}</span></>}
-                  {formData.target_audience && <><span className="text-muted-foreground">Publico-alvo:</span><span className="truncate">{formData.target_audience}</span></>}
-                  {formData.price_sensitivity && <><span className="text-muted-foreground">Sensibilidade:</span><span>{formData.price_sensitivity === "price" ? "Preco" : formData.price_sensitivity === "quality" ? "Qualidade" : "Equilibrado"}</span></>}
-                  {formData.free_shipping_type && <><span className="text-muted-foreground">Frete:</span><span>{formData.free_shipping_type === "all" ? "Frete gratis total" : formData.free_shipping_type === "conditional" ? "Frete gratis condicional" : "Sem frete gratis"}</span></>}
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="font-semibold text-foreground">Dados da Loja</h3>
+                  <Button variant="ghost" size="sm" onClick={() => setCurrentStepId("store_data")}>
+                    <Pencil className="h-3 w-3 mr-1" />Editar
+                  </Button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div><p className="text-xs text-muted-foreground">Loja</p><p className="text-sm">{formData.store_name}</p></div>
+                  <div><p className="text-xs text-muted-foreground">URL</p><p className="text-sm break-all">{formData.store_url}</p></div>
+                  <div><p className="text-xs text-muted-foreground">Plataforma</p><p className="text-sm">{PLATFORMS.find(p => p.value === formData.platform)?.label}</p></div>
                 </div>
               </div>
+
+              {/* Perfil da Loja */}
+              <div className="border-t pt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="font-semibold text-foreground">Perfil da Loja</h3>
+                  <Button variant="ghost" size="sm" onClick={() => setCurrentStepId("store_profile")}>
+                    <Pencil className="h-3 w-3 mr-1" />Editar
+                  </Button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {formData.niche && <div><p className="text-xs text-muted-foreground">Nicho</p><p className="text-sm">{formData.niche}</p></div>}
+                  <div><p className="text-xs text-muted-foreground">Pais</p><p className="text-sm">{COUNTRIES.find(c => c.value === formData.country)?.label}</p></div>
+                  <div><p className="text-xs text-muted-foreground">Idioma</p><p className="text-sm">{LANGUAGES.find(l => l.value === formData.language)?.label}</p></div>
+                  {formData.target_audience && <div className="sm:col-span-2"><p className="text-xs text-muted-foreground">Publico-alvo</p><p className="text-sm whitespace-pre-wrap">{formData.target_audience}</p></div>}
+                  {formData.price_sensitivity && <div><p className="text-xs text-muted-foreground">Sensibilidade</p><p className="text-sm">{PRICE_SENSITIVITIES.find(p => p.value === formData.price_sensitivity)?.label}</p></div>}
+                  {formData.free_shipping_type && <div><p className="text-xs text-muted-foreground">Frete</p><p className="text-sm">{SHIPPING_TYPES.find(s => s.value === formData.free_shipping_type)?.label}</p></div>}
+                </div>
+              </div>
+
+              {/* Codigo Colaborador */}
               {formData.platform === "shopify" && formData.shopify_collaborator_code && (
                 <div className="border-t pt-4">
-                  <h3 className="font-semibold text-foreground mb-2">Codigo Colaborador</h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
-                    <span className="text-muted-foreground">Codigo:</span><span>{formData.shopify_collaborator_code}</span>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="font-semibold text-foreground">Codigo Colaborador</h3>
+                    <Button variant="ghost" size="sm" onClick={() => setCurrentStepId("collaborator_code")}>
+                      <Pencil className="h-3 w-3 mr-1" />Editar
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div><p className="text-xs text-muted-foreground">Codigo</p><p className="text-sm">{formData.shopify_collaborator_code}</p></div>
                   </div>
                 </div>
               )}
+
+              {/* Identidade Visual */}
               {(formData.design_direction_text || formData.logo_url || formData.design_direction_file_url || formData.brand_manual_url || formData.additional_notes) && (
                 <div className="border-t pt-4">
-                  <h3 className="font-semibold text-foreground mb-2">Identidade Visual</h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
-                    {formData.logo_url && <><span className="text-muted-foreground">Logo:</span><span className="text-green-600 dark:text-green-400 truncate">{uploadedFiles.logo?.fileName || "Arquivo enviado"}</span></>}
-                    {formData.design_direction_text && <><span className="text-muted-foreground">Direcao:</span><span className="truncate">{formData.design_direction_text}</span></>}
-                    {formData.design_direction_file_url && <><span className="text-muted-foreground">Referencia visual:</span><span className="text-green-600 dark:text-green-400 truncate">{uploadedFiles.design?.fileName || "Arquivo enviado"}</span></>}
-                    {formData.brand_manual_url && <><span className="text-muted-foreground">Manual da marca:</span><span className="text-green-600 dark:text-green-400 truncate">{uploadedFiles.brand_manual?.fileName || "Arquivo enviado"}</span></>}
-                    {formData.additional_notes && <><span className="text-muted-foreground">Observacoes:</span><span className="truncate">{formData.additional_notes}</span></>}
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="font-semibold text-foreground">Identidade Visual</h3>
+                    <Button variant="ghost" size="sm" onClick={() => setCurrentStepId("visual_identity")}>
+                      <Pencil className="h-3 w-3 mr-1" />Editar
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {formData.logo_url && <div><p className="text-xs text-muted-foreground">Logo</p><p className="text-sm text-green-600 dark:text-green-400 flex items-center gap-1"><ImageIcon className="h-3.5 w-3.5" />{uploadedFiles.logo?.fileName || "Arquivo enviado"}</p></div>}
+                    {formData.design_direction_file_url && <div><p className="text-xs text-muted-foreground">Referencia visual</p><p className="text-sm text-green-600 dark:text-green-400 flex items-center gap-1"><FileText className="h-3.5 w-3.5" />{uploadedFiles.design?.fileName || "Arquivo enviado"}</p></div>}
+                    {formData.brand_manual_url && <div><p className="text-xs text-muted-foreground">Manual da marca</p><p className="text-sm text-green-600 dark:text-green-400 flex items-center gap-1"><FileText className="h-3.5 w-3.5" />{uploadedFiles.brand_manual?.fileName || "Arquivo enviado"}</p></div>}
+                    {formData.design_direction_text && <div className="sm:col-span-2"><p className="text-xs text-muted-foreground">Direcao de design</p><p className="text-sm whitespace-pre-wrap">{formData.design_direction_text}</p></div>}
+                    {formData.additional_notes && <div className="sm:col-span-2"><p className="text-xs text-muted-foreground">Observacoes</p><p className="text-sm whitespace-pre-wrap">{formData.additional_notes}</p></div>}
                   </div>
                 </div>
               )}

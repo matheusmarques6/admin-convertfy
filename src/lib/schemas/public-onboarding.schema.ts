@@ -1,4 +1,10 @@
 import { z } from "zod"
+import {
+  PLATFORM_VALUES,
+  COUNTRY_VALUES,
+  LANGUAGE_VALUES,
+  SHIPPING_TYPE_VALUES,
+} from "@/lib/constants/onboarding"
 
 export const publicOnboardingSchema = z.object({
   // Personal data
@@ -13,12 +19,12 @@ export const publicOnboardingSchema = z.object({
     (val) => /^(https?:\/\/)?[\w.-]+\.[a-z]{2,}(\/.*)?$/i.test(val.trim()),
     { message: "URL invalida. Ex: minhaloja.com.br ou https://minhaloja.com.br" }
   ),
-  platform: z.enum(["shopify", "nuvemshop", "woocommerce", "tray", "vtex", "other"]),
+  platform: z.enum(PLATFORM_VALUES),
   niche: z.string().optional().nullable(),
-  country: z.string().min(1, "Pais e obrigatorio"),
-  language: z.string().min(1, "Idioma e obrigatorio"),
+  country: z.enum(COUNTRY_VALUES),
+  language: z.enum(LANGUAGE_VALUES),
   target_audience: z.string().optional().nullable(),
-  free_shipping_type: z.enum(["all", "conditional", "none"]).optional().nullable(),
+  free_shipping_type: z.enum(SHIPPING_TYPE_VALUES).optional().nullable(),
   shopify_collaborator_code: z.string().optional().nullable(),
   price_sensitivity: z.enum(["price", "quality", "balanced"]).optional().nullable(),
 

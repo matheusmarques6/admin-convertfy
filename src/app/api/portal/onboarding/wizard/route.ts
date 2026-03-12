@@ -66,7 +66,8 @@ export async function GET(request: NextRequest) {
     const step1Complete = !!(client?.cpf_cnpj && portalUser?.name)
     const store = stores?.[0]
     const step2Complete = !!(store?.store_name && store?.niche)
-    const step3Complete = !!store?.shopify_collaborator_code
+    const isShopify = (store?.platform || "shopify") === "shopify"
+    const step3Complete = isShopify ? !!store?.shopify_collaborator_code : true
     const step4Complete = !!(store?.klaviyo_private_key || store?.klaviyo_api_key)
 
     return successResponse(request, {
