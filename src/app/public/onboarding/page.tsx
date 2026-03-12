@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, forwardRef } from "react"
+import { useState, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -10,8 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { useToast } from "@/lib/hooks/use-toast"
 import { Check, ChevronLeft, ChevronRight, Loader2, Store, User, Palette, Send, Upload, X, FileText, ImageIcon, Mail, Key, Info } from "lucide-react"
-import PhoneInput from "react-phone-number-input"
-import "react-phone-number-input/style.css"
+import { PhoneInputIntl, formatPhoneDisplay } from "@/components/ui/phone-input"
 
 // ── Step identity system ──
 
@@ -54,7 +53,7 @@ const COUNTRIES = [
   { value: "DE", label: "Alemanha" },
   { value: "FR", label: "Franca" },
   { value: "IT", label: "Italia" },
-  { value: "UK", label: "Reino Unido" },
+  { value: "GB", label: "Reino Unido" },
   { value: "CA", label: "Canada" },
   { value: "AU", label: "Australia" },
   { value: "JP", label: "Japao" },
@@ -73,10 +72,6 @@ const LANGUAGES = [
   { value: "other", label: "Outro" },
 ]
 
-const PHONE_COUNTRIES: Array<"BR" | "US" | "PT" | "ES" | "MX" | "AR" | "CO" | "CL" | "DE" | "FR" | "IT" | "GB" | "CA" | "AU" | "JP"> = [
-  "BR", "US", "PT", "ES", "MX", "AR", "CO", "CL", "DE", "FR", "IT", "GB", "CA", "AU", "JP",
-]
-
 // ── Helpers ──
 
 function RequiredLabel({ htmlFor, children }: { htmlFor?: string; children: React.ReactNode }) {
@@ -86,13 +81,6 @@ function RequiredLabel({ htmlFor, children }: { htmlFor?: string; children: Reac
     </Label>
   )
 }
-
-// Forward-ref Input for PhoneInput inputComponent
-const PhoneInputField = forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
-  function PhoneInputField(props, ref) {
-    return <Input {...props} ref={ref} className={`border-0 shadow-none focus-visible:ring-0 ${props.className || ""}`} />
-  }
-)
 
 // ── Types ──
 
@@ -419,14 +407,11 @@ export default function PublicOnboardingPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="phone">Telefone</Label>
-                  <PhoneInput
-                    international
+                  <PhoneInputIntl
+                    id="phone"
                     defaultCountry="BR"
-                    countries={PHONE_COUNTRIES}
                     value={formData.phone}
                     onChange={(value) => updateField("phone", value)}
-                    inputComponent={PhoneInputField}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm [&>.PhoneInputCountry]:mr-2"
                   />
                 </div>
                 <div className="space-y-2">
@@ -709,7 +694,7 @@ export default function PublicOnboardingPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
                   <span className="text-muted-foreground">Nome:</span><span>{formData.name}</span>
                   <span className="text-muted-foreground">Email:</span><span>{formData.email}</span>
-                  {formData.phone && <><span className="text-muted-foreground">Telefone:</span><span>{formData.phone}</span></>}
+                  {formData.phone && <><span className="text-muted-foreground">Telefone:</span><span>{formatPhoneDisplay(formData.phone)}</span></>}
                   {formData.cpf_cnpj && <><span className="text-muted-foreground">CPF/CNPJ:</span><span>{formData.cpf_cnpj}</span></>}
                 </div>
               </div>
