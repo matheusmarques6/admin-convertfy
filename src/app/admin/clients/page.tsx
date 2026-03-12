@@ -7,8 +7,6 @@ import {
   UserX,
   Activity,
   AlertTriangle,
-  Building2,
-  TrendingUp,
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { Button } from "@/components/ui/button"
@@ -19,7 +17,8 @@ import { ClientsFilters } from "@/components/clients/clients-filters"
 import { ImportAsaasButton } from "@/components/clients/import-asaas-button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { PagePermissionWrapper } from "@/components/page-permission-wrapper"
-import { Separator } from "@/components/ui/separator"
+import { PageHeader } from "@/components/ui/page-header"
+import { cn } from "@/lib/utils"
 import { sanitizeSearch } from "@/lib/utils/sanitize-search"
 
 export const dynamic = "force-dynamic"
@@ -109,12 +108,14 @@ async function getClientStats() {
   const [
     { count: totalCount },
     { count: activeCount },
+    { count: prospectCount },
     { count: onboardingCount },
     { count: churnedCount },
     { count: criticalCount },
   ] = await Promise.all([
     supabase.from("clients").select("*", { count: "exact", head: true }),
     supabase.from("clients").select("*", { count: "exact", head: true }).eq("status", "active"),
+    supabase.from("clients").select("*", { count: "exact", head: true }).eq("status", "prospect"),
     supabase.from("clients").select("*", { count: "exact", head: true }).eq("status", "onboarding"),
     supabase.from("clients").select("*", { count: "exact", head: true }).eq("status", "churned"),
     supabase.from("clients").select("*", { count: "exact", head: true }).lt("health_score", 40),
@@ -123,6 +124,7 @@ async function getClientStats() {
   return {
     total: totalCount || 0,
     active: activeCount || 0,
+    prospect: prospectCount || 0,
     onboarding: onboardingCount || 0,
     churned: churnedCount || 0,
     critical: criticalCount || 0,
@@ -152,6 +154,7 @@ interface StatsRowProps {
   stats: {
     total: number
     active: number
+    prospect: number
     onboarding: number
     churned: number
     critical: number
@@ -257,55 +260,75 @@ export default async function ClientsPage({ searchParams }: PageProps) {
     getClientStats(),
   ])
 
+  const statusTabs = [
+    { value: "all", label: "Todos", count: stats.total },
+    { value: "active", label: "Ativos", count: stats.active },
+    { value: "prospect", label: "Prospect", count: stats.prospect },
+    { value: "onboarding", label: "Onboarding", count: stats.onboarding },
+    { value: "churned", label: "Churned", count: stats.churned },
+  ]
+
+  const currentStatusTab = status || "all"
+
+  function buildTabHref(tabValue: string) {
+    const params = new URLSearchParams()
+    if (tabValue !== "all") params.set("status", tabValue)
+    if (search) params.set("search", search)
+    if (health) params.set("health", health)
+    const qs = params.toString()
+    return qs ? `/admin/clients?${qs}` : "/admin/clients"
+  }
+
   return (
     <PagePermissionWrapper requiredFeatures={["create_clients"]}>
     <div className="space-y-6">
       {/* Page Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex items-start gap-4">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 ring-1 ring-primary/20">
-            <Building2 className="h-6 w-6 text-primary" />
-          </div>
-          <div className="space-y-1">
-            <div className="flex items-center gap-2.5">
-              <h1 className="text-2xl font-bold tracking-tight">Clientes</h1>
-              <Badge variant="secondary" className="font-mono text-xs tabular-nums">
-                {stats.total}
-              </Badge>
-            </div>
-            <p className="text-sm leading-relaxed text-muted-foreground">
-              Gerencie sua carteira de clientes e acompanhe a saúde de cada conta.
-            </p>
-            {stats.active > 0 && (
-              <div className="flex items-center gap-1.5 pt-0.5">
-                <TrendingUp className="h-3.5 w-3.5 text-emerald-500" />
-                <span className="text-xs text-muted-foreground">
-                  <span className="font-medium text-emerald-600 dark:text-emerald-400">
-                    {Math.round((stats.active / stats.total) * 100)}%
-                  </span>
-                  {" "}dos clientes ativos
-                </span>
-              </div>
-            )}
-          </div>
-        </div>
-        <div className="flex items-center gap-2 sm:shrink-0">
-          <ImportAsaasButton />
-          <Button asChild>
-            <Link href="/admin/clients/new">
-              <Plus className="mr-2 h-4 w-4" />
-              Novo Cliente
-            </Link>
-          </Button>
-        </div>
-      </div>
-
-      <Separator />
+      <PageHeader
+        icon={Users}
+        title="Clientes"
+        badge={stats.total}
+        description="Gerencie sua carteira e acompanhe a saúde de cada conta"
+        actions={
+          <>
+            <ImportAsaasButton />
+            <Button asChild>
+              <Link href="/admin/clients/new">
+                <Plus className="mr-2 h-4 w-4" />
+                Novo Cliente
+              </Link>
+            </Button>
+          </>
+        }
+      />
 
       {/* Stats Summary */}
       <Suspense fallback={<StatsSkeleton />}>
         <StatsRow stats={stats} />
       </Suspense>
+
+      {/* Status Tabs */}
+      <div className="inline-flex h-10 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground">
+        {statusTabs.map((tab) => (
+          <Link
+            key={tab.value}
+            href={buildTabHref(tab.value)}
+            className={cn(
+              "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+              currentStatusTab === tab.value
+                ? "bg-background text-foreground shadow-sm"
+                : "hover:text-foreground/80"
+            )}
+          >
+            {tab.label}
+            <Badge
+              variant={currentStatusTab === tab.value ? "secondary" : "outline"}
+              className="ml-0.5 h-5 min-w-[20px] px-1.5 text-[11px] tabular-nums"
+            >
+              {tab.count}
+            </Badge>
+          </Link>
+        ))}
+      </div>
 
       {/* Filters */}
       <div className="space-y-3">

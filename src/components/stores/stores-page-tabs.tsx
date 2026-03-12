@@ -3,11 +3,13 @@
 import { useState, useEffect } from "react"
 import { Store, AlertTriangle } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { AlertBanner } from "@/components/ui/alert-banner"
 import { StoreControlPanel } from "@/components/stores/store-control-panel"
 import { StoreAlertsPanel } from "@/components/stores/store-alerts-panel"
 
 export function StoresPageTabs() {
   const [activeAlertsCount, setActiveAlertsCount] = useState(0)
+  const [noFeedbackCount, setNoFeedbackCount] = useState(0)
 
   useEffect(() => {
     async function fetchAlertCount() {
@@ -21,10 +23,35 @@ export function StoresPageTabs() {
         // Silently fail
       }
     }
+
+    async function fetchNoFeedbackCount() {
+      try {
+        const res = await fetch("/api/stores/control?per_page=1")
+        const data = await res.json()
+        if (data.success && data.summary) {
+          setNoFeedbackCount(data.summary.never + data.summary.overdue)
+        }
+      } catch {
+        // Silently fail
+      }
+    }
+
     fetchAlertCount()
+    fetchNoFeedbackCount()
   }, [])
 
   return (
+    <>
+      {noFeedbackCount > 0 && (
+        <AlertBanner
+          variant="warning"
+          title="Lojas sem feedback agendado"
+          description="Agende calls de feedback para manter a saúde dos clientes"
+          action={{ label: "Ver lojas", href: "/admin/stores" }}
+          className="mb-6"
+        />
+      )}
+
     <Tabs defaultValue="stores" className="space-y-6">
       <TabsList>
         <TabsTrigger value="stores">
@@ -50,5 +77,6 @@ export function StoresPageTabs() {
         <StoreAlertsPanel />
       </TabsContent>
     </Tabs>
+    </>
   )
 }

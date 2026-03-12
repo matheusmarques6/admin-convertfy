@@ -10,12 +10,13 @@ import {
   Store,
   X,
   Calendar,
+  CalendarDays,
   BarChart3,
   Zap,
   PenLine,
-  Megaphone,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { PageHeader } from "@/components/ui/page-header"
 import { PermissionGate } from "@/components/permission-gate"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -62,78 +63,71 @@ export default function CampaignsCalendarPage() {
     <PermissionGate requiredFeatures={["campaign_control", "campaign_view"]}>
     <div className="flex-1 space-y-6">
       {/* Page Header */}
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-            <Megaphone className="w-5 h-5 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-lg font-semibold tracking-tight">Campanhas</h1>
-            <p className="text-sm text-muted-foreground">
-              Planeje, acompanhe e gerencie suas campanhas de marketing
-            </p>
-          </div>
-        </div>
+      <PageHeader
+        icon={CalendarDays}
+        title="Campanhas"
+        description="Planeje, acompanhe e gerencie suas campanhas de marketing"
+        actions={
+          <>
+            {/* View Toggle */}
+            <div className="flex rounded-lg border bg-muted p-1">
+              <button
+                onClick={() => setViewMode("calendar")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                  viewMode === "calendar"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Calendar className="h-3.5 w-3.5" />
+                Calendário
+              </button>
+              <button
+                onClick={() => setViewMode("performance")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                  viewMode === "performance"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <BarChart3 className="h-3.5 w-3.5" />
+                Desempenho
+              </button>
+              <button
+                onClick={() => setViewMode("copy")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                  viewMode === "copy"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <PenLine className="h-3.5 w-3.5" />
+                Copy
+              </button>
+            </div>
 
-        <div className="flex items-center gap-2">
-          {/* View Toggle */}
-          <div className="flex rounded-lg border bg-muted p-1">
-            <button
-              onClick={() => setViewMode("calendar")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                viewMode === "calendar"
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowQuickModal(true)}
             >
-              <Calendar className="h-3.5 w-3.5" />
-              Calendário
-            </button>
-            <button
-              onClick={() => setViewMode("performance")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                viewMode === "performance"
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <BarChart3 className="h-3.5 w-3.5" />
-              Desempenho
-            </button>
-            <button
-              onClick={() => setViewMode("copy")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                viewMode === "copy"
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <PenLine className="h-3.5 w-3.5" />
-              Copy
-            </button>
-          </div>
+              <Zap className="h-4 w-4 mr-2" />
+              Rápida
+            </Button>
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowQuickModal(true)}
-          >
-            <Zap className="h-4 w-4 mr-2" />
-            Rápida
-          </Button>
-
-          <Button
-            variant="outline"
-            onClick={() => {
-              cal.setSelectedDate(null)
-              cal.setShowFormModal(true)
-            }}
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Nova Campanha
-          </Button>
-        </div>
-      </div>
+            <Button
+              variant="outline"
+              onClick={() => {
+                cal.setSelectedDate(null)
+                cal.setShowFormModal(true)
+              }}
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Nova Campanha
+            </Button>
+          </>
+        }
+      />
 
       {/* Performance View */}
       {viewMode === "performance" && <CampaignsListView />}

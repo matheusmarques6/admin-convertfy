@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useTheme } from "next-themes"
@@ -107,6 +107,17 @@ export function Sidebar({ user }: SidebarProps) {
   const { sidebarCollapsed, setSidebarCollapsed } = useUIStore()
   const [isLoggingOut, setIsLoggingOut] = useState(false)
   const { permissions, hasAnyFeature, isLoading } = usePermissions()
+
+  // Auto-collapse sidebar on screens < 1280px
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 1279px)")
+    const handler = (e: MediaQueryListEvent | MediaQueryList) => {
+      if (e.matches) setSidebarCollapsed(true)
+    }
+    handler(mq)
+    mq.addEventListener("change", handler)
+    return () => mq.removeEventListener("change", handler)
+  }, [setSidebarCollapsed])
 
   const filteredNavigation = useMemo(() => {
     if (isLoading || !permissions) return []

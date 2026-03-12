@@ -6,6 +6,7 @@ import { DashboardClientWrapper } from "@/components/layout/dashboard-client-wra
 import { ErrorBoundary } from "@/components/error-boundary"
 import { Permissions, StoreAccess } from "@/lib/hooks/use-permissions"
 import { ROUTES } from "@/lib/routes"
+import { CommandPalette } from "@/components/ui/command-palette"
 
 async function getPermissions(userId: string): Promise<Permissions | null> {
   try {
@@ -210,6 +211,7 @@ export default async function DashboardLayout({
   return (
     <DashboardClientWrapper initialPermissions={permissions}>
       <div className="flex h-screen bg-background relative">
+        <CommandPalette />
         {/* Sidebar - Hidden on mobile */}
         <div className="hidden md:block shrink-0">
           <Sidebar user={userData} />
