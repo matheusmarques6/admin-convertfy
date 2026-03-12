@@ -45,21 +45,23 @@ export function OnboardingStepper({ steps, currentIndex, onNavigate }: Onboardin
                 disabled={!isComplete}
                 aria-current={isActive ? "step" : undefined}
                 aria-disabled={!isComplete && !isActive}
-                className="relative z-10 flex flex-col items-center gap-2 cursor-default min-w-[56px] bg-transparent border-0 p-0"
+                className="relative z-10 flex flex-col items-center cursor-default min-w-[40px] bg-transparent border-0 p-0"
               >
-                {/* Icon container — bg masks the line behind it */}
+                {/* Icon container — active is larger, bg masks the line */}
                 <div
                   className={cn(
-                    "flex items-center justify-center w-8 h-8 rounded-md bg-background relative",
+                    "flex items-center justify-center rounded-md bg-background relative transition-all duration-300",
+                    isActive && "w-10 h-10",
+                    !isActive && "w-8 h-8",
                     isComplete && "cursor-pointer"
                   )}
                 >
                   <Icon
                     className={cn(
                       "transition-all duration-300",
-                      isActive && "h-6 w-6 text-primary drop-shadow-[0_0_8px_rgba(124,58,237,0.4)]",
+                      isActive && "h-7 w-7 text-primary drop-shadow-[0_0_8px_rgba(124,58,237,0.4)]",
                       isComplete && "h-5 w-5 text-primary opacity-85",
-                      !isActive && !isComplete && "h-5 w-5 text-muted-foreground/30"
+                      !isActive && !isComplete && "h-5 w-5 text-muted-foreground/20"
                     )}
                   />
                   {/* Check badge for completed steps */}
@@ -70,22 +72,12 @@ export function OnboardingStepper({ steps, currentIndex, onNavigate }: Onboardin
                   )}
                 </div>
 
-                {/* Active dot indicator */}
+                {/* Label — only visible on active step */}
                 {isActive && (
-                  <span className="w-1 h-1 rounded-full bg-primary -mt-1" />
+                  <span className="mt-1.5 text-[11px] font-semibold text-primary text-center leading-tight max-w-[80px]">
+                    {step.label}
+                  </span>
                 )}
-
-                {/* Desktop label */}
-                <span
-                  className={cn(
-                    "hidden sm:block text-[11px] font-medium text-center leading-tight max-w-[72px]",
-                    isActive && "text-primary font-semibold",
-                    isComplete && "text-muted-foreground",
-                    !isActive && !isComplete && "text-muted-foreground/30"
-                  )}
-                >
-                  {step.label}
-                </span>
               </button>
             )
           })}
