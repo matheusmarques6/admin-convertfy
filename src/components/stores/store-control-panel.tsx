@@ -10,12 +10,10 @@ import {
   AlertTriangle,
   CheckCircle,
   Phone,
-  User,
   MoreVertical,
   RefreshCw,
   Loader2,
   ExternalLink,
-  Filter,
   Search,
   Settings,
   Pencil,
@@ -26,6 +24,7 @@ import {
   Trash2,
   ChevronLeft,
   ChevronRight,
+  X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -71,6 +70,7 @@ import { SyncStatusBadge } from "@/components/ui/sync-status-badge"
 import { QuickStoreForm } from "@/components/stores/quick-store-form"
 import { StoreLinkModal } from "@/components/stores/store-link-modal"
 import { StoreUnlinkDialog } from "@/components/stores/store-unlink-dialog"
+import { cn } from "@/lib/utils"
 
 interface StoreData {
   id: string
@@ -123,7 +123,6 @@ interface UserData {
   name: string
 }
 
-// Format currency with store-specific currency code
 const fmtCurrency = (value: number, currency: string = "BRL"): string => {
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
@@ -133,41 +132,57 @@ const fmtCurrency = (value: number, currency: string = "BRL"): string => {
   }).format(value)
 }
 
-// Format date
 const formatDate = (dateStr: string | null): string => {
   if (!dateStr) return '-'
   const date = new Date(dateStr)
   return date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
 }
 
-// Get status badge config
-const getStatusBadge = (status: StoreData['feedback_status'], daysUntil: number | null) => {
+const getStatusConfig = (status: StoreData['feedback_status'], daysUntil: number | null) => {
   switch (status) {
     case 'overdue':
       return {
         label: daysUntil !== null ? `${Math.abs(daysUntil)}d atrasado` : 'Atrasado',
-        className: 'bg-destructive/15 text-destructive border-destructive/30',
+        className: 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20',
+        dotColor: 'bg-red-500',
         icon: AlertTriangle,
       }
     case 'due_soon':
       return {
         label: daysUntil !== null ? `Em ${daysUntil}d` : 'Em breve',
-        className: 'bg-warning/15 text-warning border-warning/30',
+        className: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20',
+        dotColor: 'bg-amber-500',
         icon: Clock,
       }
     case 'on_track':
       return {
         label: daysUntil !== null ? `Em ${daysUntil}d` : 'Em dia',
-        className: 'bg-success/15 text-success border-success/30',
+        className: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
+        dotColor: 'bg-emerald-500',
         icon: CheckCircle,
       }
     default:
       return {
         label: 'Nunca feito',
-        className: 'bg-muted/20 text-muted-foreground border-muted-foreground/30',
+        className: 'bg-muted text-muted-foreground border-border',
+        dotColor: 'bg-muted-foreground/40',
         icon: Calendar,
       }
   }
+}
+
+// Summary card config
+const summaryCards = [
+  { key: 'all', label: 'Total', color: 'text-foreground', bgActive: 'border-primary/50 bg-primary/5 shadow-sm', icon: Store, iconBg: 'bg-primary/10 text-primary' },
+  { key: 'overdue', label: 'Atrasadas', color: 'text-red-600 dark:text-red-400', bgActive: 'border-red-500/50 bg-red-500/5 shadow-sm', icon: AlertTriangle, iconBg: 'bg-red-500/10 text-red-500' },
+  { key: 'due_soon', label: 'Em breve', color: 'text-amber-600 dark:text-amber-400', bgActive: 'border-amber-500/50 bg-amber-500/5 shadow-sm', icon: Clock, iconBg: 'bg-amber-500/10 text-amber-500' },
+  { key: 'on_track', label: 'Em dia', color: 'text-emerald-600 dark:text-emerald-400', bgActive: 'border-emerald-500/50 bg-emerald-500/5 shadow-sm', icon: CheckCircle, iconBg: 'bg-emerald-500/10 text-emerald-500' },
+  { key: 'never', label: 'Sem feedback', color: 'text-muted-foreground', bgActive: 'border-foreground/20 bg-muted/80 shadow-sm', icon: Calendar, iconBg: 'bg-muted text-muted-foreground' },
+] as const
+
+const getSummaryValue = (summary: Summary, key: string): number => {
+  if (key === 'all') return summary.total
+  return summary[key as keyof Omit<Summary, 'total'>] ?? 0
 }
 
 export function StoreControlPanel() {
@@ -179,13 +194,13 @@ export function StoreControlPanel() {
   const [isLoading, setIsLoading] = useState(true)
   const [users, setUsers] = useState<UserData[]>([])
 
-  // Pagination states
+  // Pagination
   const [page, setPage] = useState(1)
   const [perPage] = useState(10)
   const [totalPages, setTotalPages] = useState(1)
   const [totalItems, setTotalItems] = useState(0)
 
-  // Filter states
+  // Filters
   const [searchInput, setSearchInput] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState<string>('all')
@@ -214,8 +229,6 @@ export function StoreControlPanel() {
     notes: '',
     action_items: '',
   })
-
-  // Edit form states
   const [editForm, setEditForm] = useState({
     feedback_frequency: 'monthly' as 'monthly' | '30_days',
     next_feedback_date: '',
@@ -231,14 +244,12 @@ export function StoreControlPanel() {
     }, 300)
   }, [])
 
-  // Cleanup debounce on unmount
   useEffect(() => {
     return () => {
       if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current)
     }
   }, [])
 
-  // Reset page when filters change
   const handleFilterStatusChange = useCallback((value: string) => {
     setFilterStatus(value)
     setPage(1)
@@ -249,12 +260,9 @@ export function StoreControlPanel() {
     setPage(1)
   }, [])
 
-  // Fetch stores data
+  // Fetch stores
   const fetchStores = useCallback(async () => {
-    // Cancel previous fetch
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort()
-    }
+    if (abortControllerRef.current) abortControllerRef.current.abort()
     const controller = new AbortController()
     abortControllerRef.current = controller
 
@@ -264,25 +272,14 @@ export function StoreControlPanel() {
         page: page.toString(),
         per_page: perPage.toString(),
       })
+      if (debouncedSearch) params.set('search', debouncedSearch)
+      if (filterStatus && filterStatus !== 'all') params.set('status', filterStatus)
+      if (filterLink && filterLink !== 'all') params.set('link_filter', filterLink)
 
-      if (debouncedSearch) {
-        params.set('search', debouncedSearch)
-      }
-      if (filterStatus && filterStatus !== 'all') {
-        params.set('status', filterStatus)
-      }
-      if (filterLink && filterLink !== 'all') {
-        params.set('link_filter', filterLink)
-      }
-
-      const res = await fetch(`/api/stores/control?${params}`, {
-        signal: controller.signal,
-      })
-
+      const res = await fetch(`/api/stores/control?${params}`, { signal: controller.signal })
       if (controller.signal.aborted) return
 
       const data = await res.json()
-
       if (data.success) {
         setStores(data.stores)
         if (data.summary) setSummary(data.summary)
@@ -291,73 +288,44 @@ export function StoreControlPanel() {
           setTotalPages(data.pagination.total_pages)
           setTotalItems(data.pagination.total)
         } else {
-          // Backward compat: no pagination object means all returned
           setTotalPages(1)
           setTotalItems(data.stores?.length || 0)
         }
       } else {
-        toast({
-          title: 'Erro ao carregar lojas',
-          description: data.error,
-          variant: 'destructive',
-        })
+        toast({ title: 'Erro ao carregar lojas', description: data.error, variant: 'destructive' })
       }
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') return
       console.error('Error fetching stores:', error)
-      toast({
-        title: 'Erro de conexao',
-        description: 'Nao foi possivel carregar os dados das lojas',
-        variant: 'destructive',
-      })
+      toast({ title: 'Erro de conexao', description: 'Nao foi possivel carregar os dados das lojas', variant: 'destructive' })
     } finally {
-      if (!controller.signal.aborted) {
-        setIsLoading(false)
-      }
+      if (!controller.signal.aborted) setIsLoading(false)
     }
   }, [page, perPage, debouncedSearch, filterStatus, filterLink, toast])
 
-  // Cleanup AbortController on unmount
   useEffect(() => {
-    return () => {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort()
-      }
-    }
+    return () => { if (abortControllerRef.current) abortControllerRef.current.abort() }
   }, [])
 
-  // Fetch users for dropdown
   const fetchUsers = useCallback(async () => {
     try {
       const res = await fetch('/api/users')
       const data = await res.json()
-      if (data.users) {
-        setUsers(data.users)
-      }
+      if (data.users) setUsers(data.users)
     } catch (error) {
       console.error('Error fetching users:', error)
     }
   }, [])
 
-  useEffect(() => {
-    fetchStores()
-  }, [fetchStores])
+  useEffect(() => { fetchStores() }, [fetchStores])
+  useEffect(() => { fetchUsers() }, [fetchUsers])
 
-  useEffect(() => {
-    fetchUsers()
-  }, [fetchUsers])
-
-  // Register feedback call
+  // Handlers
   const handleRegisterFeedback = async () => {
     if (!selectedStore || !feedbackForm.conducted_by) {
-      toast({
-        title: 'Campos obrigatorios',
-        description: 'Selecione quem realizou a call',
-        variant: 'destructive',
-      })
+      toast({ title: 'Campos obrigatorios', description: 'Selecione quem realizou a call', variant: 'destructive' })
       return
     }
-
     setIsSubmitting(true)
     try {
       const res = await fetch('/api/stores/feedback', {
@@ -378,58 +346,32 @@ export function StoreControlPanel() {
           recovery_rate: selectedStore.recovery_rate,
         }),
       })
-
       const data = await res.json()
-
       if (data.success) {
-        toast({
-          title: 'Call registrada!',
-          description: `Feedback de ${selectedStore.store_name} registrado com sucesso`,
-        })
+        toast({ title: 'Call registrada!', description: `Feedback de ${selectedStore.store_name} registrado com sucesso` })
         setIsRegisterDialogOpen(false)
         setSelectedStore(null)
-        setFeedbackForm({
-          conducted_by: '',
-          conducted_at: new Date().toISOString().split('T')[0],
-          duration_minutes: '',
-          notes: '',
-          action_items: '',
-        })
-        // Reload current page with same filters
+        setFeedbackForm({ conducted_by: '', conducted_at: new Date().toISOString().split('T')[0], duration_minutes: '', notes: '', action_items: '' })
         fetchStores()
       } else {
-        toast({
-          title: 'Erro ao registrar',
-          description: data.error,
-          variant: 'destructive',
-        })
+        toast({ title: 'Erro ao registrar', description: data.error, variant: 'destructive' })
       }
     } catch (error) {
       console.error('Error registering feedback:', error)
-      toast({
-        title: 'Erro de conexao',
-        description: 'Nao foi possivel registrar a call',
-        variant: 'destructive',
-      })
+      toast({ title: 'Erro de conexao', description: 'Nao foi possivel registrar a call', variant: 'destructive' })
     } finally {
       setIsSubmitting(false)
     }
   }
 
-  // Open edit dialog
   const openEditDialog = (store: StoreData) => {
     setSelectedStore(store)
-    setEditForm({
-      feedback_frequency: store.feedback_frequency,
-      next_feedback_date: store.next_feedback_date?.split('T')[0] || '',
-    })
+    setEditForm({ feedback_frequency: store.feedback_frequency, next_feedback_date: store.next_feedback_date?.split('T')[0] || '' })
     setIsEditDialogOpen(true)
   }
 
-  // Save store settings
   const handleSaveStoreSettings = async () => {
     if (!selectedStore) return
-
     setIsSubmitting(true)
     try {
       const res = await fetch('/api/stores/feedback', {
@@ -441,117 +383,75 @@ export function StoreControlPanel() {
           next_feedback_date: editForm.next_feedback_date || null,
         }),
       })
-
       const data = await res.json()
-
       if (data.success) {
-        toast({
-          title: 'Configuracoes salvas!',
-          description: `Loja ${selectedStore.store_name} atualizada com sucesso`,
-        })
+        toast({ title: 'Configuracoes salvas!', description: `Loja ${selectedStore.store_name} atualizada com sucesso` })
         setIsEditDialogOpen(false)
         setSelectedStore(null)
         fetchStores()
       } else {
-        toast({
-          title: 'Erro ao salvar',
-          description: data.error,
-          variant: 'destructive',
-        })
+        toast({ title: 'Erro ao salvar', description: data.error, variant: 'destructive' })
       }
     } catch (error) {
       console.error('Error saving store settings:', error)
-      toast({
-        title: 'Erro de conexao',
-        description: 'Nao foi possivel salvar as configuracoes',
-        variant: 'destructive',
-      })
+      toast({ title: 'Erro de conexao', description: 'Nao foi possivel salvar as configuracoes', variant: 'destructive' })
     } finally {
       setIsSubmitting(false)
     }
   }
 
-  // Delete store
   const handleDeleteStore = async () => {
     if (!selectedStore) return
-
     setIsDeleting(true)
     try {
-      const res = await fetch(`/api/client-stores/${selectedStore.id}`, {
-        method: 'DELETE',
-      })
+      const res = await fetch(`/api/client-stores/${selectedStore.id}`, { method: 'DELETE' })
       const data = await res.json()
-
       if (res.ok && data.success) {
-        toast({
-          title: 'Loja excluida!',
-          description: `"${selectedStore.store_name}" foi removida com sucesso`,
-        })
+        toast({ title: 'Loja excluida!', description: `"${selectedStore.store_name}" foi removida com sucesso` })
         setIsDeleteDialogOpen(false)
         setSelectedStore(null)
         fetchStores()
       } else {
-        toast({
-          title: 'Erro ao excluir',
-          description: data.error || 'Nao foi possivel excluir a loja',
-          variant: 'destructive',
-        })
+        toast({ title: 'Erro ao excluir', description: data.error || 'Nao foi possivel excluir a loja', variant: 'destructive' })
       }
     } catch (error) {
       console.error('Error deleting store:', error)
-      toast({
-        title: 'Erro de conexao',
-        description: 'Nao foi possivel excluir a loja',
-        variant: 'destructive',
-      })
+      toast({ title: 'Erro de conexao', description: 'Nao foi possivel excluir a loja', variant: 'destructive' })
     } finally {
       setIsDeleting(false)
     }
   }
 
-  // Pagination info text
   const paginationStart = totalItems > 0 ? ((page - 1) * perPage) + 1 : 0
   const paginationEnd = Math.min(page * perPage, totalItems)
+  const hasActiveFilters = filterStatus !== 'all' || filterLink !== 'all' || searchInput !== ''
 
-  // Loading state - skeleton table for better perceived performance
+  // ─── Loading skeleton ─────────────────────────────────────────
   if (isLoading && stores.length === 0) {
     return (
-      <div className="space-y-6">
-        {/* Summary skeleton */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="rounded-xl border border-border p-4">
-              <div className="flex items-center gap-3">
-                <Skeleton className="w-10 h-10 rounded-lg" />
-                <div className="space-y-2">
-                  <Skeleton className="h-6 w-10" />
-                  <Skeleton className="h-3 w-20" />
-                </div>
+            <div key={i} className="rounded-xl border border-border p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <Skeleton className="h-3 w-16" />
+                <Skeleton className="w-8 h-8 rounded-lg" />
               </div>
+              <Skeleton className="h-7 w-12" />
             </div>
           ))}
         </div>
-        {/* Table skeleton */}
-        <div className="rounded-xl border border-border overflow-hidden">
-          <div className="bg-muted/50 border-b border-border px-4 py-3 flex gap-8">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <Skeleton key={i} className="h-3 w-24" />
-            ))}
-          </div>
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="flex items-center gap-8 px-4 py-4 border-b border-border/50">
-              <div className="flex items-center gap-3 flex-1">
-                <Skeleton className="w-10 h-10 rounded-lg" />
-                <div className="space-y-2">
+        <div className="space-y-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="rounded-xl border border-border p-4">
+              <div className="flex items-center gap-4">
+                <Skeleton className="w-10 h-10 rounded-xl shrink-0" />
+                <div className="flex-1 space-y-2">
                   <Skeleton className="h-4 w-32" />
-                  <Skeleton className="h-3 w-20" />
+                  <Skeleton className="h-3 w-24" />
                 </div>
+                <Skeleton className="h-8 w-20 rounded-lg" />
               </div>
-              <Skeleton className="h-6 w-16" />
-              <Skeleton className="h-4 w-24" />
-              <Skeleton className="h-6 w-20 rounded-full" />
-              <Skeleton className="h-4 w-16" />
-              <Skeleton className="h-4 w-20" />
             </div>
           ))}
         </div>
@@ -560,430 +460,559 @@ export function StoreControlPanel() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Summary Cards - Clickable to filter */}
+    <div className="space-y-4">
+      {/* ─── Summary Cards ─────────────────────────────────────── */}
       {summary && (
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-          <button
-            onClick={() => handleFilterStatusChange('all')}
-            className={`rounded-xl border p-4 text-left transition-all hover:bg-muted/50 ${
-              filterStatus === 'all' ? 'border-primary/40 ring-1 ring-primary/40 bg-primary/5' : 'border-border bg-card'
-            }`}
-          >
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-medium text-muted-foreground">Total de Lojas</span>
-              <div className="rounded-full p-1.5 bg-muted">
-                <Store className="w-3 h-3 text-muted-foreground" />
-              </div>
-            </div>
-            <p className="text-xl font-semibold text-foreground">{summary.total}</p>
-          </button>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          {summaryCards.map((card) => {
+            const Icon = card.icon
+            const value = getSummaryValue(summary, card.key)
+            const isActive = filterStatus === card.key
 
-          <button
-            onClick={() => handleFilterStatusChange('overdue')}
-            className={`rounded-xl border p-4 text-left transition-all hover:bg-red-500/5 ${
-              filterStatus === 'overdue' ? 'border-red-500/40 ring-1 ring-red-500/40 bg-red-500/5' : 'border-border bg-card'
-            }`}
-          >
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-medium text-muted-foreground">Atrasadas</span>
-              <div className="rounded-full p-1.5 bg-red-500/10">
-                <AlertTriangle className="w-3 h-3 text-red-500" />
-              </div>
-            </div>
-            <p className="text-xl font-semibold text-foreground">{summary.overdue}</p>
-          </button>
-
-          <button
-            onClick={() => handleFilterStatusChange('due_soon')}
-            className={`rounded-xl border p-4 text-left transition-all hover:bg-amber-500/5 ${
-              filterStatus === 'due_soon' ? 'border-amber-500/40 ring-1 ring-amber-500/40 bg-amber-500/5' : 'border-border bg-card'
-            }`}
-          >
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-medium text-muted-foreground">Em breve</span>
-              <div className="rounded-full p-1.5 bg-amber-500/10">
-                <Clock className="w-3 h-3 text-amber-500" />
-              </div>
-            </div>
-            <p className="text-xl font-semibold text-foreground">{summary.due_soon}</p>
-          </button>
-
-          <button
-            onClick={() => handleFilterStatusChange('on_track')}
-            className={`rounded-xl border p-4 text-left transition-all hover:bg-emerald-500/5 ${
-              filterStatus === 'on_track' ? 'border-emerald-500/40 ring-1 ring-emerald-500/40 bg-emerald-500/5' : 'border-border bg-card'
-            }`}
-          >
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-medium text-muted-foreground">Em dia</span>
-              <div className="rounded-full p-1.5 bg-emerald-500/10">
-                <CheckCircle className="w-3 h-3 text-emerald-500" />
-              </div>
-            </div>
-            <p className="text-xl font-semibold text-foreground">{summary.on_track}</p>
-          </button>
-
-          <button
-            onClick={() => handleFilterStatusChange('never')}
-            className={`rounded-xl border p-4 text-left transition-all hover:bg-muted/50 ${
-              filterStatus === 'never' ? 'border-foreground/20 ring-1 ring-foreground/20 bg-muted/50' : 'border-border bg-card'
-            }`}
-          >
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-medium text-muted-foreground">Sem feedback</span>
-              <div className="rounded-full p-1.5 bg-muted">
-                <Calendar className="w-3 h-3 text-muted-foreground" />
-              </div>
-            </div>
-            <p className="text-xl font-semibold text-foreground">{summary.never}</p>
-          </button>
+            return (
+              <button
+                key={card.key}
+                onClick={() => handleFilterStatusChange(card.key)}
+                className={cn(
+                  "group rounded-xl border p-4 text-left transition-all duration-200",
+                  isActive
+                    ? card.bgActive
+                    : "border-border bg-card hover:border-border/80 hover:shadow-sm"
+                )}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-medium text-muted-foreground">{card.label}</span>
+                  <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center transition-colors", card.iconBg)}>
+                    <Icon className="w-4 h-4" />
+                  </div>
+                </div>
+                <p className={cn("text-2xl font-bold tracking-tight", isActive ? card.color : "text-foreground")}>
+                  {value}
+                </p>
+              </button>
+            )
+          })}
         </div>
       )}
 
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar por loja ou cliente..."
-            value={searchInput}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            className="pl-9 bg-card border-border"
-          />
+      {/* ─── Toolbar ───────────────────────────────────────────── */}
+      <div className="flex flex-col gap-3">
+        {/* Search + Actions row */}
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por loja ou cliente..."
+              value={searchInput}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              className="pl-9 h-10 bg-card"
+            />
+            {searchInput && (
+              <button
+                onClick={() => { handleSearchChange(''); setSearchInput('') }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={fetchStores}
+              disabled={isLoading}
+              className="h-10 w-10 shrink-0"
+            >
+              <RefreshCw className={cn("w-4 h-4", isLoading && "animate-spin")} />
+            </Button>
+            <Button onClick={() => setIsQuickStoreDialogOpen(true)} className="h-10 whitespace-nowrap">
+              <Plus className="w-4 h-4 mr-2" />
+              <span className="hidden sm:inline">Cadastro Rapido</span>
+              <span className="sm:hidden">Nova</span>
+            </Button>
+          </div>
         </div>
 
-        <Select value={filterStatus} onValueChange={handleFilterStatusChange}>
-          <SelectTrigger className="w-[180px] bg-card border-border">
-            <Filter className="w-4 h-4 mr-2 text-muted-foreground" />
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos</SelectItem>
-            <SelectItem value="overdue">Atrasadas</SelectItem>
-            <SelectItem value="due_soon">Em breve</SelectItem>
-            <SelectItem value="on_track">Em dia</SelectItem>
-            <SelectItem value="never">Sem feedback</SelectItem>
-          </SelectContent>
-        </Select>
+        {/* Link filter tabs + active filter chips */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1 p-0.5 bg-muted/50 rounded-lg">
+            {([
+              { key: 'all' as const, label: 'Todas', count: linkCounts.all },
+              { key: 'avulsas' as const, label: 'Avulsas', count: linkCounts.avulsas },
+              { key: 'vinculadas' as const, label: 'Vinculadas', count: linkCounts.vinculadas },
+            ]).map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => handleFilterLinkChange(tab.key)}
+                className={cn(
+                  "px-3 py-1.5 text-xs font-medium rounded-md transition-all",
+                  filterLink === tab.key
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {tab.label}
+                <span className="ml-1 text-muted-foreground/70">{tab.count}</span>
+              </button>
+            ))}
+          </div>
 
-        <Button variant="outline" onClick={fetchStores} disabled={isLoading} className="border-border">
-          <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-        </Button>
-
-        <Button onClick={() => setIsQuickStoreDialogOpen(true)}>
-          <Plus className="w-4 h-4 mr-2" />
-          Cadastro Rapido
-        </Button>
+          {hasActiveFilters && (
+            <button
+              onClick={() => {
+                setFilterStatus('all')
+                setFilterLink('all')
+                handleSearchChange('')
+                setSearchInput('')
+                setPage(1)
+              }}
+              className="flex items-center gap-1 px-2 py-1 text-xs text-muted-foreground hover:text-foreground rounded-md hover:bg-muted/50 transition-colors"
+            >
+              <X className="w-3 h-3" />
+              Limpar filtros
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Link Filter Tabs - using backend link_counts */}
-      <div className="flex gap-2">
-        {([
-          { key: 'all' as const, label: 'Todas', count: linkCounts.all },
-          { key: 'avulsas' as const, label: 'Avulsas', count: linkCounts.avulsas },
-          { key: 'vinculadas' as const, label: 'Vinculadas', count: linkCounts.vinculadas },
-        ]).map(tab => (
-          <button
-            key={tab.key}
-            onClick={() => handleFilterLinkChange(tab.key)}
-            className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-              filterLink === tab.key
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted/50 text-muted-foreground hover:bg-muted'
-            }`}
-          >
-            {tab.label} ({tab.count})
-          </button>
-        ))}
-      </div>
-
-      {/* Stores List */}
-      <div className="rounded-xl border border-border overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-muted/50 border-b border-border">
-                <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3">Loja / Cliente</th>
-                <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Receita Klaviyo 30d</th>
-                <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Campanhas / Flows</th>
-                <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">% Recuperacao</th>
-                <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Proximo Feedback</th>
-                <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Ultima Call</th>
-                <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Responsavel</th>
-                <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Acoes</th>
-              </tr>
-            </thead>
-            <tbody>
-              {stores.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="text-center py-16">
-                    <div className="flex flex-col items-center gap-3">
-                      <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
-                        <Store className="w-6 h-6 text-muted-foreground" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground">Nenhuma loja encontrada</p>
-                        <p className="text-xs text-muted-foreground/70 mt-1">
-                          {searchInput || filterStatus !== 'all'
-                            ? 'Tente ajustar os filtros de busca'
-                            : 'Cadastre lojas nos clientes para ve-las aqui'}
-                        </p>
-                      </div>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                stores.map((store) => {
-                  const statusBadge = getStatusBadge(store.feedback_status, store.days_until_feedback)
-                  const StatusIcon = statusBadge.icon
-
-                  return (
-                    <tr key={store.id} className={`border-b border-border/50 hover:bg-muted/50 transition-colors ${isLoading ? 'opacity-50' : ''}`}>
-                      {/* Store / Client */}
-                      <td className="px-4 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
-                            <Store className="w-5 h-5 text-muted-foreground" />
+      {/* ─── Store List ────────────────────────────────────────── */}
+      {stores.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-20 px-4">
+          <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mb-4">
+            <Store className="w-7 h-7 text-muted-foreground" />
+          </div>
+          <p className="text-sm font-medium text-foreground mb-1">Nenhuma loja encontrada</p>
+          <p className="text-xs text-muted-foreground text-center max-w-[280px]">
+            {hasActiveFilters
+              ? 'Tente ajustar os filtros de busca'
+              : 'Cadastre lojas nos clientes para ve-las aqui'}
+          </p>
+        </div>
+      ) : (
+        <>
+          {/* Desktop Table (hidden on mobile) */}
+          <div className="hidden lg:block rounded-xl border border-border overflow-hidden bg-card">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-border bg-muted/30">
+                    <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3 min-w-[240px]">Loja / Cliente</th>
+                    <th className="text-right text-xs font-medium text-muted-foreground px-4 py-3">Receita Klaviyo</th>
+                    <th className="text-right text-xs font-medium text-muted-foreground px-4 py-3">Campanhas / Flows</th>
+                    <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Recuperacao</th>
+                    <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Feedback</th>
+                    <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Ultima Call</th>
+                    <th className="text-center text-xs font-medium text-muted-foreground px-4 py-3">Responsavel</th>
+                    <th className="text-right text-xs font-medium text-muted-foreground px-4 py-3 w-[120px]"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stores.map((store) => {
+                    const statusCfg = getStatusConfig(store.feedback_status, store.days_until_feedback)
+                    return (
+                      <tr
+                        key={store.id}
+                        onClick={() => router.push(`/admin/stores/${store.id}`)}
+                        className={cn(
+                          "border-b border-border/50 hover:bg-muted/40 transition-colors cursor-pointer group",
+                          isLoading && "opacity-50"
+                        )}
+                      >
+                        {/* Store / Client */}
+                        <td className="px-4 py-3.5">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/10 flex items-center justify-center shrink-0">
+                              <Store className="w-4.5 h-4.5 text-primary" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-medium text-foreground truncate group-hover:text-primary transition-colors">{store.store_name}</p>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <span className="text-xs text-muted-foreground truncate">{store.client_name || 'Sem cliente'}</span>
+                                {store.has_klaviyo && (
+                                  <span className="shrink-0 inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded bg-violet-500/10 text-violet-600 dark:text-violet-400">
+                                    Klaviyo
+                                  </span>
+                                )}
+                                {store.has_shopify && (
+                                  <span className="shrink-0 inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                                    Shopify
+                                  </span>
+                                )}
+                              </div>
+                            </div>
                           </div>
-                          <div>
-                            <p className="font-medium text-foreground">{store.store_name}</p>
-                            <p className="text-sm text-muted-foreground">{store.client_name || 'Sem cliente'}</p>
-                          </div>
-                          <div className="flex gap-1 ml-2">
-                            {!store.client_id && (
-                              <Badge
-                                variant="outline"
-                                className="text-[10px] border-yellow-500/50 text-yellow-600 dark:text-yellow-400 cursor-pointer hover:bg-yellow-500/10 transition-colors"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  setSelectedStore(store)
-                                  setIsLinkModalOpen(true)
-                                }}
-                              >
-                                <AlertTriangle className="h-3 w-3 mr-1" />
-                                Sem cliente vinculado
-                              </Badge>
-                            )}
-                            {store.has_shopify && (
-                              <Badge variant="outline" className="text-[10px] border-success/30 text-success">Shopify</Badge>
-                            )}
-                            {store.has_klaviyo && (
-                              <Badge variant="outline" className="text-[10px] border-primary/30 text-primary">Klaviyo</Badge>
-                            )}
-                          </div>
-                        </div>
-                      </td>
+                        </td>
 
-                      {/* Klaviyo Revenue Total */}
-                      <td className="px-4 py-4 text-center">
-                        {store.revenue_status === 'no_integration' ? (
-                          <span className="text-sm text-muted-foreground">Sem Klaviyo</span>
-                        ) : store.revenue_status === 'error' ? (
+                        {/* Revenue */}
+                        <td className="px-4 py-3.5 text-right">
+                          {store.revenue_status === 'no_integration' ? (
+                            <span className="text-xs text-muted-foreground">-</span>
+                          ) : store.revenue_status === 'error' ? (
+                            <div className="flex items-center justify-end gap-1.5">
+                              <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                              <span className="text-xs text-amber-500">Erro</span>
+                            </div>
+                          ) : (
+                            <div className="text-right">
+                              <span className={cn(
+                                "text-sm font-semibold tabular-nums",
+                                store.klaviyo_revenue_30d > 0 ? 'text-foreground' : 'text-muted-foreground'
+                              )}>
+                                {fmtCurrency(store.klaviyo_revenue_30d, store.currency)}
+                              </span>
+                              <div className="flex items-center justify-end gap-1.5 mt-0.5">
+                                <SyncStatusBadge status={store.sync_status} compact />
+                                <TimeAgo date={store.fetched_at} className="text-[10px] text-muted-foreground/50" />
+                              </div>
+                            </div>
+                          )}
+                        </td>
+
+                        {/* Campaign / Flows */}
+                        <td className="px-4 py-3.5 text-right">
+                          {store.revenue_status !== 'loaded' ? (
+                            <span className="text-xs text-muted-foreground">-</span>
+                          ) : (
+                            <div className="space-y-0.5">
+                              <div className="text-xs text-muted-foreground tabular-nums">
+                                Camp: {fmtCurrency(store.campaign_revenue_30d, store.currency)}
+                              </div>
+                              <div className="text-xs text-muted-foreground tabular-nums">
+                                Flows: {fmtCurrency(store.flow_revenue_30d, store.currency)}
+                              </div>
+                            </div>
+                          )}
+                        </td>
+
+                        {/* Recovery Rate */}
+                        <td className="px-4 py-3.5 text-center">
+                          {store.recovery_rate !== null ? (
+                            <span className={cn(
+                              "text-sm font-semibold tabular-nums",
+                              store.recovery_rate >= 10 ? 'text-emerald-600 dark:text-emerald-400' :
+                              store.recovery_rate >= 5 ? 'text-amber-600 dark:text-amber-400' :
+                              'text-red-600 dark:text-red-400'
+                            )}>
+                              {store.recovery_rate.toFixed(1)}%
+                            </span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">-</span>
+                          )}
+                        </td>
+
+                        {/* Feedback Status */}
+                        <td className="px-4 py-3.5 text-center">
                           <div className="flex flex-col items-center gap-1">
-                            <AlertTriangle className="w-4 h-4 text-warning" />
-                            <span className="text-xs text-warning">Erro ao carregar</span>
+                            <Badge variant="outline" className={cn("text-[11px] font-medium gap-1 border", statusCfg.className)}>
+                              <span className={cn("w-1.5 h-1.5 rounded-full", statusCfg.dotColor)} />
+                              {statusCfg.label}
+                            </Badge>
+                            {store.next_feedback_date && (
+                              <span className="text-[10px] text-muted-foreground">{formatDate(store.next_feedback_date)}</span>
+                            )}
                           </div>
-                        ) : (
-                          <div className="flex flex-col items-center gap-0.5">
-                            <span className={`text-lg font-bold ${store.klaviyo_revenue_30d > 0 ? 'text-success' : 'text-muted-foreground'}`}>
-                              {fmtCurrency(store.klaviyo_revenue_30d, store.currency)}
-                            </span>
-                            <div className="flex items-center gap-1.5">
-                              <SyncStatusBadge status={store.sync_status} compact />
-                              <TimeAgo date={store.fetched_at} className="text-[10px] text-muted-foreground/60" />
+                        </td>
+
+                        {/* Last Call */}
+                        <td className="px-4 py-3.5 text-center">
+                          <div className="flex items-center justify-center gap-1.5">
+                            {store.last_call_source === 'meeting' ? (
+                              <Video className="w-3.5 h-3.5 text-primary" />
+                            ) : store.last_call_source === 'feedback' ? (
+                              <Phone className="w-3.5 h-3.5 text-emerald-500" />
+                            ) : null}
+                            <span className="text-xs text-muted-foreground">{formatDate(store.last_call_date)}</span>
+                          </div>
+                        </td>
+
+                        {/* Responsible */}
+                        <td className="px-4 py-3.5 text-center">
+                          {store.last_feedback_by_name ? (
+                            <div className="flex items-center justify-center gap-1.5">
+                              <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center">
+                                <span className="text-[10px] font-medium text-primary">
+                                  {store.last_feedback_by_name.charAt(0).toUpperCase()}
+                                </span>
+                              </div>
+                              <span className="text-xs text-muted-foreground">{store.last_feedback_by_name}</span>
                             </div>
-                          </div>
-                        )}
-                      </td>
+                          ) : (
+                            <span className="text-xs text-muted-foreground/50">-</span>
+                          )}
+                        </td>
 
-                      {/* Campaign / Flow Breakdown */}
-                      <td className="px-4 py-4 text-center">
-                        {store.revenue_status === 'no_integration' ? (
-                          <span className="text-sm text-muted-foreground">-</span>
-                        ) : store.revenue_status === 'error' ? (
-                          <span className="text-sm text-muted-foreground">-</span>
-                        ) : (
-                          <div className="flex flex-col items-center gap-0.5">
-                            <span className="text-xs text-muted-foreground">
-                              Camp: {fmtCurrency(store.campaign_revenue_30d, store.currency)}
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                              Flows: {fmtCurrency(store.flow_revenue_30d, store.currency)}
-                            </span>
-                          </div>
-                        )}
-                      </td>
+                        {/* Actions */}
+                        <td className="px-4 py-3.5 text-right">
+                          <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setSelectedStore(store)
+                                setIsRegisterDialogOpen(true)
+                              }}
+                              className="h-7 px-2.5 text-xs"
+                            >
+                              <Phone className="w-3 h-3 mr-1" />
+                              Registrar
+                            </Button>
 
-                      {/* Recovery Rate (Klaviyo / Shopify) */}
-                      <td className="px-4 py-4 text-center">
-                        {store.recovery_rate !== null ? (
-                          <span className={`text-lg font-bold ${
-                            store.recovery_rate >= 10 ? 'text-success' :
-                            store.recovery_rate >= 5 ? 'text-warning' :
-                            'text-destructive'
-                          }`}>
-                            {store.recovery_rate.toFixed(1)}%
-                          </span>
-                        ) : (
-                          <span className="text-sm text-muted-foreground">-</span>
-                        )}
-                      </td>
-
-                      {/* Next Feedback */}
-                      <td className="px-4 py-4 text-center">
-                        <Badge className={`${statusBadge.className} gap-1`}>
-                          <StatusIcon className="w-3 h-3" />
-                          {statusBadge.label}
-                        </Badge>
-                        {store.next_feedback_date && (
-                          <p className="text-xs text-muted-foreground mt-1">{formatDate(store.next_feedback_date)}</p>
-                        )}
-                      </td>
-
-                      {/* Last Call */}
-                      <td className="px-4 py-4 text-center">
-                        <div className="flex items-center justify-center gap-1.5">
-                          {store.last_call_source === 'meeting' ? (
-                            <span title="Reuniao"><Video className="w-3.5 h-3.5 text-primary" /></span>
-                          ) : store.last_call_source === 'feedback' ? (
-                            <span title="Feedback"><Phone className="w-3.5 h-3.5 text-success" /></span>
-                          ) : null}
-                          <span className="text-sm text-muted-foreground">
-                            {formatDate(store.last_call_date)}
-                          </span>
-                        </div>
-                      </td>
-
-                      {/* Responsible */}
-                      <td className="px-4 py-4 text-center">
-                        {store.last_feedback_by_name ? (
-                          <div className="flex items-center justify-center gap-2">
-                            <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center">
-                              <User className="w-3 h-3 text-muted-foreground" />
-                            </div>
-                            <span className="text-sm text-muted-foreground">{store.last_feedback_by_name}</span>
-                          </div>
-                        ) : (
-                          <span className="text-sm text-muted-foreground/70">-</span>
-                        )}
-                      </td>
-
-                      {/* Actions */}
-                      <td className="px-4 py-4 text-center">
-                        <div className="flex items-center justify-center gap-2">
-                          <Button
-                            size="sm"
-                            onClick={() => {
-                              setSelectedStore(store)
-                              setIsRegisterDialogOpen(true)
-                            }}
-                            className="h-8 px-3"
-                          >
-                            <Phone className="w-3 h-3 mr-1" />
-                            Registrar
-                          </Button>
-
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-8 w-8">
-                                <MoreVertical className="w-4 h-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => router.push(`/admin/stores/${store.id}`)}>
-                                <Store className="w-4 h-4 mr-2" />
-                                Ver Loja
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => openEditDialog(store)}>
-                                <Settings className="w-4 h-4 mr-2" />
-                                Configurar Loja
-                              </DropdownMenuItem>
-                              {store.client_id && (
-                                <>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem onClick={() => router.push(`/admin/clients/${store.client_id}`)}>
-                                    <ExternalLink className="w-4 h-4 mr-2" />
-                                    Ver Cliente
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-7 w-7">
+                                  <MoreVertical className="w-3.5 h-3.5" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-48">
+                                <DropdownMenuItem onClick={() => router.push(`/admin/stores/${store.id}`)}>
+                                  <Store className="w-4 h-4 mr-2" />
+                                  Ver Loja
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => openEditDialog(store)}>
+                                  <Settings className="w-4 h-4 mr-2" />
+                                  Configurar
+                                </DropdownMenuItem>
+                                {store.client_id && (
+                                  <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem onClick={() => router.push(`/admin/clients/${store.client_id}`)}>
+                                      <ExternalLink className="w-4 h-4 mr-2" />
+                                      Ver Cliente
+                                    </DropdownMenuItem>
+                                  </>
+                                )}
+                                <DropdownMenuSeparator />
+                                {!store.client_id ? (
+                                  <DropdownMenuItem onClick={() => { setSelectedStore(store); setIsLinkModalOpen(true) }}>
+                                    <Link2 className="w-4 h-4 mr-2" />
+                                    Vincular a Cliente
                                   </DropdownMenuItem>
-                                </>
-                              )}
-                              <DropdownMenuSeparator />
-                              {!store.client_id ? (
-                                <DropdownMenuItem onClick={() => {
-                                  setSelectedStore(store)
-                                  setIsLinkModalOpen(true)
-                                }}>
-                                  <Link2 className="w-4 h-4 mr-2" />
-                                  Vincular a Cliente
+                                ) : (
+                                  <DropdownMenuItem onClick={() => { setSelectedStore(store); setIsUnlinkDialogOpen(true) }} className="text-destructive focus:text-destructive">
+                                    <Unlink className="w-4 h-4 mr-2" />
+                                    Desvincular
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={() => { setSelectedStore(store); setIsDeleteDialogOpen(true) }} className="text-destructive focus:text-destructive">
+                                  <Trash2 className="w-4 h-4 mr-2" />
+                                  Excluir Loja
                                 </DropdownMenuItem>
-                              ) : (
-                                <DropdownMenuItem
-                                  onClick={() => {
-                                    setSelectedStore(store)
-                                    setIsUnlinkDialogOpen(true)
-                                  }}
-                                  className="text-destructive focus:text-destructive"
-                                >
-                                  <Unlink className="w-4 h-4 mr-2" />
-                                  Desvincular
-                                </DropdownMenuItem>
-                              )}
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onClick={() => {
-                                  setSelectedStore(store)
-                                  setIsDeleteDialogOpen(true)
-                                }}
-                                className="text-destructive focus:text-destructive"
-                              >
-                                <Trash2 className="w-4 h-4 mr-2" />
-                                Excluir Loja
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Pagination Controls */}
-        {totalItems > 0 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-muted/30">
-            <span className="text-sm text-muted-foreground">
-              Mostrando {paginationStart}-{paginationEnd} de {totalItems} lojas
-            </span>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setPage(p => Math.max(1, p - 1))}
-                disabled={page <= 1 || isLoading}
-              >
-                <ChevronLeft className="w-4 h-4 mr-1" />
-                Anterior
-              </Button>
-              <span className="text-sm text-muted-foreground px-2">
-                {page} / {totalPages}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                disabled={page >= totalPages || isLoading}
-              >
-                Proximo
-                <ChevronRight className="w-4 h-4 ml-1" />
-              </Button>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
-        )}
-      </div>
+
+          {/* Mobile Cards (hidden on desktop) */}
+          <div className="lg:hidden space-y-3">
+            {stores.map((store) => {
+              const statusCfg = getStatusConfig(store.feedback_status, store.days_until_feedback)
+
+              return (
+                <div
+                  key={store.id}
+                  onClick={() => router.push(`/admin/stores/${store.id}`)}
+                  className={cn(
+                    "rounded-xl border border-border bg-card p-4 space-y-3 active:bg-muted/50 transition-colors cursor-pointer",
+                    isLoading && "opacity-50"
+                  )}
+                >
+                  {/* Header */}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/10 flex items-center justify-center shrink-0">
+                        <Store className="w-4.5 h-4.5 text-primary" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-medium text-foreground truncate">{store.store_name}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-xs text-muted-foreground truncate">{store.client_name || 'Sem cliente'}</span>
+                          {store.has_klaviyo && (
+                            <span className="shrink-0 inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded bg-violet-500/10 text-violet-600 dark:text-violet-400">
+                              Klaviyo
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
+                            <MoreVertical className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-48">
+                          <DropdownMenuItem onClick={() => router.push(`/admin/stores/${store.id}`)}>
+                            <Store className="w-4 h-4 mr-2" />
+                            Ver Loja
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openEditDialog(store)}>
+                            <Settings className="w-4 h-4 mr-2" />
+                            Configurar
+                          </DropdownMenuItem>
+                          {store.client_id && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => router.push(`/admin/clients/${store.client_id}`)}>
+                                <ExternalLink className="w-4 h-4 mr-2" />
+                                Ver Cliente
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                          <DropdownMenuSeparator />
+                          {!store.client_id ? (
+                            <DropdownMenuItem onClick={() => { setSelectedStore(store); setIsLinkModalOpen(true) }}>
+                              <Link2 className="w-4 h-4 mr-2" />
+                              Vincular a Cliente
+                            </DropdownMenuItem>
+                          ) : (
+                            <DropdownMenuItem onClick={() => { setSelectedStore(store); setIsUnlinkDialogOpen(true) }} className="text-destructive focus:text-destructive">
+                              <Unlink className="w-4 h-4 mr-2" />
+                              Desvincular
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => { setSelectedStore(store); setIsDeleteDialogOpen(true) }} className="text-destructive focus:text-destructive">
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            Excluir Loja
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </div>
+
+                  {/* Metrics grid */}
+                  <div className="grid grid-cols-3 gap-3 pt-1">
+                    <div>
+                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-0.5">Receita 30d</p>
+                      {store.revenue_status === 'loaded' ? (
+                        <p className={cn(
+                          "text-sm font-semibold tabular-nums",
+                          store.klaviyo_revenue_30d > 0 ? 'text-foreground' : 'text-muted-foreground'
+                        )}>
+                          {fmtCurrency(store.klaviyo_revenue_30d, store.currency)}
+                        </p>
+                      ) : store.revenue_status === 'error' ? (
+                        <div className="flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3 text-amber-500" />
+                          <span className="text-xs text-amber-500">Erro</span>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">-</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-0.5">Recuperacao</p>
+                      {store.recovery_rate !== null ? (
+                        <p className={cn(
+                          "text-sm font-semibold tabular-nums",
+                          store.recovery_rate >= 10 ? 'text-emerald-600 dark:text-emerald-400' :
+                          store.recovery_rate >= 5 ? 'text-amber-600 dark:text-amber-400' :
+                          'text-red-600 dark:text-red-400'
+                        )}>
+                          {store.recovery_rate.toFixed(1)}%
+                        </p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">-</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-0.5">Feedback</p>
+                      <Badge variant="outline" className={cn("text-[10px] font-medium gap-1 border px-1.5 py-0", statusCfg.className)}>
+                        <span className={cn("w-1.5 h-1.5 rounded-full", statusCfg.dotColor)} />
+                        {statusCfg.label}
+                      </Badge>
+                    </div>
+                  </div>
+
+                  {/* Footer actions */}
+                  <div className="flex items-center justify-between pt-2 border-t border-border/50" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      {store.last_call_source === 'meeting' ? (
+                        <Video className="w-3 h-3 text-primary" />
+                      ) : store.last_call_source === 'feedback' ? (
+                        <Phone className="w-3 h-3 text-emerald-500" />
+                      ) : null}
+                      <span>
+                        {store.last_call_date ? `Ultima: ${formatDate(store.last_call_date)}` : 'Sem calls'}
+                      </span>
+                      {store.last_feedback_by_name && (
+                        <>
+                          <span className="text-muted-foreground/30">|</span>
+                          <span>{store.last_feedback_by_name}</span>
+                        </>
+                      )}
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setSelectedStore(store)
+                        setIsRegisterDialogOpen(true)
+                      }}
+                      className="h-7 px-2.5 text-xs"
+                    >
+                      <Phone className="w-3 h-3 mr-1" />
+                      Registrar
+                    </Button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* ─── Pagination ──────────────────────────────────────── */}
+          {totalItems > 0 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+              <span className="text-xs text-muted-foreground order-2 sm:order-1">
+                {paginationStart}-{paginationEnd} de {totalItems} lojas
+              </span>
+              <div className="flex items-center gap-1.5 order-1 sm:order-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={page <= 1 || isLoading}
+                  className="h-8"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  <span className="hidden sm:inline ml-1">Anterior</span>
+                </Button>
+                <div className="flex items-center gap-1 px-2">
+                  <span className="text-xs font-medium text-foreground">{page}</span>
+                  <span className="text-xs text-muted-foreground">/</span>
+                  <span className="text-xs text-muted-foreground">{totalPages}</span>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  disabled={page >= totalPages || isLoading}
+                  className="h-8"
+                >
+                  <span className="hidden sm:inline mr-1">Proximo</span>
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ─── Dialogs ─────────────────────────────────────────── */}
 
       {/* Register Feedback Dialog */}
       <Dialog open={isRegisterDialogOpen} onOpenChange={setIsRegisterDialogOpen}>
@@ -1004,41 +1033,39 @@ export function StoreControlPanel() {
 
           {selectedStore && (
             <div className="space-y-4">
-              {/* Result Summary */}
-              <div className="rounded-lg bg-card border border-border p-4 space-y-2">
+              <div className="rounded-lg bg-muted/30 border border-border p-4 space-y-2">
                 {selectedStore.total_revenue_30d > 0 && (
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Faturamento Total (30d)</span>
-                    <span className="text-lg font-bold text-foreground">
+                    <span className="text-sm font-semibold text-foreground">
                       {fmtCurrency(selectedStore.total_revenue_30d, selectedStore.currency)}
                     </span>
                   </div>
                 )}
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-muted-foreground">Receita Klaviyo (30d)</span>
-                  <span className={`text-lg font-bold ${selectedStore.klaviyo_revenue_30d > 0 ? 'text-success' : 'text-muted-foreground'}`}>
+                  <span className={cn("text-sm font-semibold", selectedStore.klaviyo_revenue_30d > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground')}>
                     {fmtCurrency(selectedStore.klaviyo_revenue_30d, selectedStore.currency)}
                   </span>
                 </div>
                 {selectedStore.recovery_rate !== null && (
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Taxa de Recuperacao</span>
-                    <span className={`text-lg font-bold ${
-                      selectedStore.recovery_rate >= 10 ? 'text-success' :
-                      selectedStore.recovery_rate >= 5 ? 'text-warning' :
-                      'text-destructive'
-                    }`}>
+                    <span className={cn("text-sm font-semibold",
+                      selectedStore.recovery_rate >= 10 ? 'text-emerald-600 dark:text-emerald-400' :
+                      selectedStore.recovery_rate >= 5 ? 'text-amber-600 dark:text-amber-400' :
+                      'text-red-600 dark:text-red-400'
+                    )}>
                       {selectedStore.recovery_rate.toFixed(1)}%
                     </span>
                   </div>
                 )}
-                <div className="flex justify-between items-center text-xs text-muted-foreground pt-1 border-t border-border">
+                <div className="flex justify-between items-center text-xs text-muted-foreground pt-2 border-t border-border/50">
                   <span>Campanhas: {fmtCurrency(selectedStore.campaign_revenue_30d, selectedStore.currency)}</span>
                   <span>Flows: {fmtCurrency(selectedStore.flow_revenue_30d, selectedStore.currency)}</span>
                 </div>
               </div>
 
-              {/* Form */}
               <div className="grid gap-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
@@ -1052,14 +1079,11 @@ export function StoreControlPanel() {
                       </SelectTrigger>
                       <SelectContent>
                         {users.map((user) => (
-                          <SelectItem key={user.id} value={user.id}>
-                            {user.name}
-                          </SelectItem>
+                          <SelectItem key={user.id} value={user.id}>{user.name}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
-
                   <div className="space-y-2">
                     <Label htmlFor="conducted_at">Data da call</Label>
                     <Input
@@ -1070,7 +1094,6 @@ export function StoreControlPanel() {
                     />
                   </div>
                 </div>
-
                 <div className="space-y-2">
                   <Label htmlFor="duration">Duracao (minutos)</Label>
                   <Input
@@ -1081,7 +1104,6 @@ export function StoreControlPanel() {
                     onChange={(e) => setFeedbackForm({ ...feedbackForm, duration_minutes: e.target.value })}
                   />
                 </div>
-
                 <div className="space-y-2">
                   <Label htmlFor="notes">Notas da reuniao</Label>
                   <Textarea
@@ -1092,7 +1114,6 @@ export function StoreControlPanel() {
                     rows={3}
                   />
                 </div>
-
                 <div className="space-y-2">
                   <Label htmlFor="action_items">Proximos passos / Action items</Label>
                   <Textarea
@@ -1108,24 +1129,12 @@ export function StoreControlPanel() {
           )}
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsRegisterDialogOpen(false)}>
-              Cancelar
-            </Button>
-            <Button
-              onClick={handleRegisterFeedback}
-              disabled={isSubmitting}
-              className=""
-            >
+            <Button variant="outline" onClick={() => setIsRegisterDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={handleRegisterFeedback} disabled={isSubmitting}>
               {isSubmitting ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Salvando...
-                </>
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Salvando...</>
               ) : (
-                <>
-                  <CheckCircle className="w-4 h-4 mr-2" />
-                  Registrar Call
-                </>
+                <><CheckCircle className="w-4 h-4 mr-2" />Registrar Call</>
               )}
             </Button>
           </DialogFooter>
@@ -1141,21 +1150,16 @@ export function StoreControlPanel() {
               Configuracoes da Loja
             </DialogTitle>
             <DialogDescription>
-              {selectedStore && (
-                <span>
-                  Configurando <strong>{selectedStore.store_name}</strong>
-                </span>
-              )}
+              {selectedStore && <span>Configurando <strong>{selectedStore.store_name}</strong></span>}
             </DialogDescription>
           </DialogHeader>
 
           {selectedStore && (
             <div className="space-y-4">
-              {/* Store Info */}
-              <div className="rounded-lg bg-card border border-border p-4">
+              <div className="rounded-lg bg-muted/30 border border-border p-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
-                    <Store className="w-5 h-5 text-muted-foreground" />
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center">
+                    <Store className="w-5 h-5 text-primary" />
                   </div>
                   <div>
                     <p className="font-medium text-foreground">{selectedStore.store_name}</p>
@@ -1164,19 +1168,14 @@ export function StoreControlPanel() {
                 </div>
               </div>
 
-              {/* Settings Form */}
               <div className="grid gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="feedback_frequency">Frequencia de Feedback</Label>
                   <Select
                     value={editForm.feedback_frequency}
-                    onValueChange={(value: 'monthly' | '30_days') =>
-                      setEditForm({ ...editForm, feedback_frequency: value })
-                    }
+                    onValueChange={(value: 'monthly' | '30_days') => setEditForm({ ...editForm, feedback_frequency: value })}
                   >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione a frequencia" />
-                    </SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder="Selecione a frequencia" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="monthly">
                         <div className="flex flex-col">
@@ -1193,7 +1192,6 @@ export function StoreControlPanel() {
                     </SelectContent>
                   </Select>
                 </div>
-
                 <div className="space-y-2">
                   <Label htmlFor="next_feedback_date">Proximo Feedback</Label>
                   <Input
@@ -1202,13 +1200,10 @@ export function StoreControlPanel() {
                     value={editForm.next_feedback_date}
                     onChange={(e) => setEditForm({ ...editForm, next_feedback_date: e.target.value })}
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Deixe vazio para calcular automaticamente com base na frequencia
-                  </p>
+                  <p className="text-xs text-muted-foreground">Deixe vazio para calcular automaticamente com base na frequencia</p>
                 </div>
               </div>
 
-              {/* Quick Actions */}
               <div className="pt-2 border-t border-border">
                 <p className="text-xs text-muted-foreground mb-2">Acoes rapidas</p>
                 <div className="flex gap-2">
@@ -1216,7 +1211,7 @@ export function StoreControlPanel() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="flex-1 border-border"
+                      className="flex-1"
                       onClick={() => router.push(`/admin/clients/${selectedStore.client_id}?tab=stores`)}
                     >
                       <Pencil className="w-3 h-3 mr-1" />
@@ -1226,7 +1221,7 @@ export function StoreControlPanel() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="flex-1 border-border"
+                    className="flex-1"
                     onClick={() => router.push(`/admin/reports?store_id=${selectedStore.id}`)}
                   >
                     <TrendingUp className="w-3 h-3 mr-1" />
@@ -1238,34 +1233,19 @@ export function StoreControlPanel() {
           )}
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
-              Cancelar
-            </Button>
-            <Button
-              onClick={handleSaveStoreSettings}
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Salvando...
-                </>
-              ) : (
-                'Salvar Configuracoes'
-              )}
+            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={handleSaveStoreSettings} disabled={isSubmitting}>
+              {isSubmitting ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Salvando...</> : 'Salvar Configuracoes'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Quick Store Registration Dialog */}
+      {/* Quick Store Dialog */}
       <Dialog open={isQuickStoreDialogOpen} onOpenChange={setIsQuickStoreDialogOpen}>
         <DialogContent className="sm:max-w-[450px]">
           <QuickStoreForm
-            onSuccess={() => {
-              setIsQuickStoreDialogOpen(false)
-              fetchStores()
-            }}
+            onSuccess={() => { setIsQuickStoreDialogOpen(false); fetchStores() }}
             onCancel={() => setIsQuickStoreDialogOpen(false)}
           />
         </DialogContent>
@@ -1278,10 +1258,7 @@ export function StoreControlPanel() {
           storeName={selectedStore.store_name}
           orgId={selectedStore.org_id || ""}
           isOpen={isLinkModalOpen}
-          onClose={() => {
-            setIsLinkModalOpen(false)
-            setSelectedStore(null)
-          }}
+          onClose={() => { setIsLinkModalOpen(false); setSelectedStore(null) }}
           onSuccess={fetchStores}
         />
       )}
@@ -1293,15 +1270,12 @@ export function StoreControlPanel() {
           storeName={selectedStore.store_name}
           clientName={selectedStore.client_name || ""}
           isOpen={isUnlinkDialogOpen}
-          onClose={() => {
-            setIsUnlinkDialogOpen(false)
-            setSelectedStore(null)
-          }}
+          onClose={() => { setIsUnlinkDialogOpen(false); setSelectedStore(null) }}
           onSuccess={fetchStores}
         />
       )}
 
-      {/* Delete Store Confirmation Dialog */}
+      {/* Delete Confirmation */}
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={(open) => {
         if (!open) {
           setIsDeleteDialogOpen(false)
@@ -1324,15 +1298,9 @@ export function StoreControlPanel() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {isDeleting ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Excluindo...
-                </>
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Excluindo...</>
               ) : (
-                <>
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Excluir
-                </>
+                <><Trash2 className="w-4 h-4 mr-2" />Excluir</>
               )}
             </AlertDialogAction>
           </AlertDialogFooter>
