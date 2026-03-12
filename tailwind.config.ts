@@ -69,11 +69,11 @@ const config: Config = {
           dark: "#141C26",
         },
         sidebar: {
-          bg: "#0F1117",
-          muted: "#6B7280",
-          hover: "#D1D5DB",
-          icon: "#6B7280",
-          label: "#4B5563",
+          bg: "#0C0E14",
+          muted: "#6E7681",
+          hover: "#E6EDF3",
+          icon: "#545D68",
+          label: "#484F58",
         },
       },
       borderRadius: {

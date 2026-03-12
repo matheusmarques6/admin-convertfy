@@ -5,29 +5,29 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useTheme } from "next-themes"
 import {
-  LayoutDashboard,
+  LayoutGrid,
   Users,
-  Kanban,
-  ClipboardList,
+  KanbanSquare,
+  ListTodo,
   Zap,
-  BarChart3,
+  BarChart2,
   Settings,
   Wrench,
   ChevronLeft,
   ChevronRight,
   LogOut,
   Bell,
-  DollarSign,
-  Calendar,
-  CalendarDays,
+  CircleDollarSign,
+  CalendarCheck,
   Store,
-  Rocket,
+  Sparkles,
   Sun,
   Moon,
   LucideIcon,
   UserCircle,
   ChevronDown,
   Search,
+  Megaphone,
 } from "lucide-react"
 import { motion, LayoutGroup } from "framer-motion"
 import { cn } from "@/lib/utils"
@@ -73,22 +73,22 @@ const NAV_GROUPS = [
 ] as const
 
 const navigation: NavItem[] = [
-  { name: "Dashboard", href: ROUTES.ADMIN.DASHBOARD, icon: LayoutDashboard, group: "principal" },
+  { name: "Dashboard", href: ROUTES.ADMIN.DASHBOARD, icon: LayoutGrid, group: "principal" },
   { name: "Clientes", href: ROUTES.ADMIN.CLIENTS.LIST, icon: Users, group: "crm", requiredFeatures: ["create_clients", "onboarding_control"] },
   { name: "Lojas", href: ROUTES.ADMIN.STORES.LIST, icon: Store, group: "crm", requiresStoreAccess: true },
-  { name: "Onboarding", href: ROUTES.ADMIN.ONBOARDING, icon: Rocket, group: "crm", requiredFeatures: ["onboarding_control", "onboarding_view"] },
-  { name: "Pipeline", href: ROUTES.ADMIN.PIPELINE, icon: Kanban, group: "crm", requiredFeatures: ["request_control", "request_execute"] },
-  { name: "Campanhas", href: ROUTES.ADMIN.CAMPAIGNS.LIST, icon: CalendarDays, group: "marketing", requiredFeatures: ["campaign_control", "campaign_view", "campaign_copy"] },
-  { name: "Automações", href: ROUTES.ADMIN.AUTOMATIONS.LIST, icon: Zap, group: "marketing", requiredFeatures: ["campaign_control"] },
-  { name: "Board", href: ROUTES.ADMIN.BOARD, icon: ClipboardList, group: "operacional", requiredFeatures: ["request_control", "request_execute", "calendar_control"] },
-  { name: "Reuniões", href: ROUTES.ADMIN.MEETINGS.LIST, icon: Calendar, group: "operacional", requiredFeatures: ["calendar_control"] },
-  { name: "Financeiro", href: ROUTES.ADMIN.FINANCIAL, icon: DollarSign, group: "operacional", requiredFeatures: ["view_financial"] },
-  { name: "Relatórios", href: ROUTES.ADMIN.REPORTS.LIST, icon: BarChart3, group: "operacional", requiredFeatures: ["view_reports"] },
+  { name: "Onboarding", href: ROUTES.ADMIN.ONBOARDING, icon: Sparkles, group: "crm", requiredFeatures: ["onboarding_control", "onboarding_view"] },
+  { name: "Pipeline", href: ROUTES.ADMIN.PIPELINE, icon: KanbanSquare, group: "crm", requiredFeatures: ["request_control", "request_execute"] },
+  { name: "Campanhas", href: ROUTES.ADMIN.CAMPAIGNS.LIST, icon: Megaphone, group: "marketing", requiredFeatures: ["campaign_control", "campaign_view", "campaign_copy"] },
+  { name: "Automacoes", href: ROUTES.ADMIN.AUTOMATIONS.LIST, icon: Zap, group: "marketing", requiredFeatures: ["campaign_control"] },
+  { name: "Board", href: ROUTES.ADMIN.BOARD, icon: ListTodo, group: "operacional", requiredFeatures: ["request_control", "request_execute", "calendar_control"] },
+  { name: "Reunioes", href: ROUTES.ADMIN.MEETINGS.LIST, icon: CalendarCheck, group: "operacional", requiredFeatures: ["calendar_control"] },
+  { name: "Financeiro", href: ROUTES.ADMIN.FINANCIAL, icon: CircleDollarSign, group: "operacional", requiredFeatures: ["view_financial"] },
+  { name: "Relatorios", href: ROUTES.ADMIN.REPORTS.LIST, icon: BarChart2, group: "operacional", requiredFeatures: ["view_reports"] },
   { name: "Ferramentas", href: ROUTES.ADMIN.TOOLS, icon: Wrench, group: "ferramentas" },
 ]
 
 const bottomNavigation: NavItem[] = [
-  { name: "Configurações", href: ROUTES.ADMIN.SETTINGS.ROOT, icon: Settings, group: "bottom" },
+  { name: "Configuracoes", href: ROUTES.ADMIN.SETTINGS.ROOT, icon: Settings, group: "bottom" },
 ]
 
 interface SidebarProps {
@@ -120,7 +120,6 @@ export function Sidebar({ user }: SidebarProps) {
   const filteredNavigation = useMemo(() => {
     if (isLoading || !permissions) return []
     if (permissions.isAdmin || permissions.isOrgOwner) return navigation
-
     return navigation.filter(item => {
       if (!item.requiredFeatures || item.requiredFeatures.length === 0) {
         if (item.requiresStoreAccess) return permissions.storeAccess.length > 0
@@ -150,11 +149,7 @@ export function Sidebar({ user }: SidebarProps) {
       router.push(ROUTES.LOGIN)
       router.refresh()
     } catch {
-      toast({
-        variant: "destructive",
-        title: "Erro ao sair",
-        description: "Tente novamente",
-      })
+      toast({ variant: "destructive", title: "Erro ao sair", description: "Tente novamente" })
     } finally {
       setIsLoggingOut(false)
     }
@@ -166,12 +161,7 @@ export function Sidebar({ user }: SidebarProps) {
   }
 
   function getInitials(name: string) {
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase()
-      .slice(0, 2)
+    return name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
   }
 
   function renderNavItem(item: NavItem) {
@@ -185,20 +175,23 @@ export function Sidebar({ user }: SidebarProps) {
             <Link
               href={item.href}
               className={cn(
-                "sidebar-nav-item relative flex items-center justify-center h-10 w-10 mx-auto rounded-lg transition-all duration-150",
+                "sidebar-nav-item relative flex items-center justify-center h-10 w-10 mx-auto rounded-xl transition-all duration-200",
                 active
-                  ? "sidebar-nav-item-active text-white"
-                  : "text-sidebar-muted hover:text-sidebar-hover hover:bg-white/[0.04]"
+                  ? "sidebar-nav-item-active bg-white/[0.08] text-white"
+                  : "text-sidebar-muted hover:text-sidebar-hover hover:bg-white/[0.05]"
               )}
             >
               {active && (
                 <motion.div
-                  layoutId="sidebar-active-pill"
-                  className="absolute inset-0 rounded-lg bg-white/[0.08]"
-                  transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                  layoutId="sidebar-active-bg"
+                  className="absolute inset-0 rounded-xl bg-gradient-to-b from-convertfy-blue/20 to-convertfy-blue/5 border border-convertfy-blue/20"
+                  transition={{ type: "spring", stiffness: 350, damping: 30 }}
                 />
               )}
-              <Icon className="h-5 w-5 relative z-10" strokeWidth={active ? 2 : 1.5} />
+              <Icon
+                className={cn("h-[18px] w-[18px] relative z-10", active && "text-convertfy-blue")}
+                strokeWidth={active ? 2 : 1.5}
+              />
             </Link>
           </TooltipTrigger>
           <TooltipContent side="right" className="font-medium text-xs px-3 py-1.5 rounded-lg">
@@ -213,36 +206,30 @@ export function Sidebar({ user }: SidebarProps) {
         key={item.name}
         href={item.href}
         className={cn(
-          "sidebar-nav-item relative flex items-center gap-3 h-9 px-3 rounded-lg text-[13px] transition-all duration-150 group",
+          "sidebar-nav-item relative flex items-center gap-3 h-9 px-3 rounded-xl text-[13px] transition-all duration-200 group",
           active
             ? "sidebar-nav-item-active text-white font-medium"
             : "text-sidebar-muted hover:text-sidebar-hover hover:bg-white/[0.04]"
         )}
       >
         {active && (
-          <>
-            <motion.div
-              layoutId="sidebar-active-pill"
-              className="absolute inset-0 rounded-lg bg-white/[0.07]"
-              transition={{ type: "spring", stiffness: 380, damping: 30 }}
-            />
-            <motion.div
-              layoutId="sidebar-active-accent"
-              className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-convertfy-blue"
-              transition={{ type: "spring", stiffness: 380, damping: 30 }}
-            />
-          </>
+          <motion.div
+            layoutId="sidebar-active-bg"
+            className="absolute inset-0 rounded-xl bg-gradient-to-r from-convertfy-blue/15 to-convertfy-blue/5 border border-convertfy-blue/15"
+            transition={{ type: "spring", stiffness: 350, damping: 30 }}
+          />
         )}
-        <Icon
-          className={cn(
-            "h-[18px] w-[18px] flex-shrink-0 relative z-10 transition-colors",
-            active ? "text-convertfy-blue" : "text-sidebar-icon group-hover:text-sidebar-hover"
-          )}
-          strokeWidth={active ? 2 : 1.5}
-        />
+        <div className={cn(
+          "flex items-center justify-center w-7 h-7 rounded-lg shrink-0 relative z-10 transition-all duration-200",
+          active
+            ? "bg-convertfy-blue/15 text-convertfy-blue"
+            : "text-sidebar-icon group-hover:text-sidebar-hover"
+        )}>
+          <Icon className="h-[16px] w-[16px]" strokeWidth={active ? 2 : 1.5} />
+        </div>
         <span className="relative z-10 whitespace-nowrap overflow-hidden">{item.name}</span>
         {item.badge && (
-          <span className="relative z-10 ml-auto text-[10px] font-semibold bg-convertfy-blue/15 text-convertfy-blue px-1.5 py-0.5 rounded-md">
+          <span className="relative z-10 ml-auto text-[10px] font-semibold bg-convertfy-blue/20 text-convertfy-blue px-1.5 py-0.5 rounded-md">
             {item.badge}
           </span>
         )}
@@ -256,12 +243,12 @@ export function Sidebar({ user }: SidebarProps) {
         className={cn(
           "flex flex-col h-screen transition-all duration-300 ease-in-out",
           "sidebar-container",
-          sidebarCollapsed ? "w-[68px]" : "w-[240px]"
+          sidebarCollapsed ? "w-[68px]" : "w-[248px]"
         )}
       >
         {/* Logo */}
         <div className={cn(
-          "flex items-center h-[56px] shrink-0 border-b border-white/[0.06]",
+          "flex items-center h-[60px] shrink-0",
           sidebarCollapsed ? "justify-center px-2" : "px-5"
         )}>
           <Link href={ROUTES.ADMIN.DASHBOARD} className="flex items-center">
@@ -275,30 +262,46 @@ export function Sidebar({ user }: SidebarProps) {
 
         {/* Search */}
         {!sidebarCollapsed && (
-          <div className="px-3 pt-3 pb-1">
-            <button className="flex items-center gap-2.5 w-full h-8 px-2.5 rounded-lg bg-white/[0.04] border border-white/[0.06] text-sidebar-muted hover:text-sidebar-hover hover:bg-white/[0.06] hover:border-white/[0.08] transition-all duration-150 text-[12px]">
+          <div className="px-3 pb-2">
+            <button className="flex items-center gap-2.5 w-full h-9 px-3 rounded-xl bg-white/[0.04] border border-white/[0.06] text-sidebar-muted hover:text-sidebar-hover hover:bg-white/[0.06] hover:border-white/[0.10] transition-all duration-200 text-[12px]">
               <Search className="h-3.5 w-3.5 shrink-0" strokeWidth={1.5} />
               <span>Buscar...</span>
-              <kbd className="ml-auto text-[10px] text-slate-600 bg-white/[0.06] px-1.5 py-0.5 rounded font-mono">⌘K</kbd>
+              <kbd className="ml-auto text-[10px] text-slate-500 bg-white/[0.06] px-1.5 py-0.5 rounded-md font-mono">⌘K</kbd>
             </button>
           </div>
         )}
 
+        {sidebarCollapsed && (
+          <div className="px-2 pb-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button className="flex items-center justify-center w-10 h-10 mx-auto rounded-xl text-sidebar-muted hover:text-sidebar-hover hover:bg-white/[0.05] transition-all duration-200">
+                  <Search className="h-[18px] w-[18px]" strokeWidth={1.5} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right" className="text-xs">Buscar (⌘K)</TooltipContent>
+            </Tooltip>
+          </div>
+        )}
+
+        {/* Divider */}
+        <div className="h-px bg-white/[0.06] mx-4 mb-1" />
+
         {/* Navigation */}
-        <ScrollArea className="flex-1 mt-1">
+        <ScrollArea className="flex-1">
           <LayoutGroup>
-            <nav className={cn("py-1", sidebarCollapsed ? "px-2" : "px-2")}>
+            <nav className={cn("py-2", sidebarCollapsed ? "px-2" : "px-2.5")}>
               {groupedNavigation.map((group, idx) => (
-                <div key={group.key} className={cn(idx > 0 && "mt-4")}>
+                <div key={group.key} className={cn(idx > 0 && "mt-5")}>
                   {!sidebarCollapsed && group.label && (
-                    <div className="px-3 mb-1.5">
-                      <p className="text-[10px] font-semibold tracking-[0.1em] text-sidebar-label uppercase">
+                    <div className="px-3 mb-2">
+                      <p className="text-[10px] font-semibold tracking-[0.12em] text-sidebar-label/70 uppercase">
                         {group.label}
                       </p>
                     </div>
                   )}
                   {sidebarCollapsed && idx > 0 && (
-                    <div className="h-px bg-white/[0.06] mx-2 mb-3" />
+                    <div className="h-px bg-white/[0.05] mx-2 mb-3 mt-1" />
                   )}
                   <div className="space-y-0.5">
                     {group.items.map(renderNavItem)}
@@ -311,30 +314,30 @@ export function Sidebar({ user }: SidebarProps) {
 
         {/* Bottom */}
         <div className="mt-auto shrink-0">
-          <div className="h-px bg-white/[0.06] mx-3" />
+          <div className="h-px bg-white/[0.06] mx-4" />
 
           <LayoutGroup>
-            <nav className={cn("py-1.5", sidebarCollapsed ? "px-2" : "px-2")}>
+            <nav className={cn("py-2", sidebarCollapsed ? "px-2" : "px-2.5")}>
               {filteredBottomNavigation.map(renderNavItem)}
             </nav>
           </LayoutGroup>
 
-          <div className="h-px bg-white/[0.06] mx-3" />
+          <div className="h-px bg-white/[0.06] mx-4" />
 
           {/* User */}
-          <div className="p-2">
+          <div className="p-2.5">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
                   className={cn(
-                    "flex items-center w-full rounded-lg transition-all duration-150 outline-none",
-                    "hover:bg-white/[0.04]",
+                    "flex items-center w-full rounded-xl transition-all duration-200 outline-none",
+                    "hover:bg-white/[0.05]",
                     sidebarCollapsed ? "justify-center p-2" : "gap-2.5 p-2"
                   )}
                 >
-                  <Avatar className="h-8 w-8 shrink-0 rounded-lg">
-                    <AvatarImage src={user?.avatar_url} className="rounded-lg" />
-                    <AvatarFallback className="rounded-lg bg-gradient-to-br from-convertfy-blue-deep to-convertfy-blue text-white text-[11px] font-semibold">
+                  <Avatar className="h-8 w-8 shrink-0 rounded-xl ring-1 ring-white/10">
+                    <AvatarImage src={user?.avatar_url} className="rounded-xl" />
+                    <AvatarFallback className="rounded-xl bg-gradient-to-br from-convertfy-blue to-convertfy-blue-deep text-white text-[11px] font-semibold">
                       {getInitials(user?.name || "U")}
                     </AvatarFallback>
                   </Avatar>
@@ -342,13 +345,13 @@ export function Sidebar({ user }: SidebarProps) {
                     <>
                       <div className="text-left overflow-hidden flex-1 min-w-0">
                         <p className="text-[13px] font-medium text-slate-200 truncate leading-tight">
-                          {user?.name || "Usuário"}
+                          {user?.name || "Usuario"}
                         </p>
-                        <p className="text-[11px] text-sidebar-muted truncate leading-tight">
+                        <p className="text-[11px] text-sidebar-muted truncate leading-tight mt-0.5">
                           {user?.email}
                         </p>
                       </div>
-                      <ChevronDown className="h-3 w-3 text-sidebar-muted shrink-0" />
+                      <ChevronDown className="h-3 w-3 text-sidebar-muted/60 shrink-0" />
                     </>
                   )}
                 </button>
@@ -360,7 +363,7 @@ export function Sidebar({ user }: SidebarProps) {
               >
                 <DropdownMenuLabel className="font-normal px-3 py-2.5">
                   <div className="flex flex-col space-y-0.5">
-                    <p className="text-sm font-semibold">{user?.name || "Usuário"}</p>
+                    <p className="text-sm font-semibold">{user?.name || "Usuario"}</p>
                     <p className="text-xs text-muted-foreground">{user?.email}</p>
                   </div>
                 </DropdownMenuLabel>
@@ -374,7 +377,7 @@ export function Sidebar({ user }: SidebarProps) {
                 <DropdownMenuItem asChild className="rounded-lg mx-1 px-2.5">
                   <Link href={ROUTES.ADMIN.NOTIFICATIONS}>
                     <Bell className="mr-2 h-4 w-4 text-muted-foreground" />
-                    Notificações
+                    Notificacoes
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
@@ -403,7 +406,7 @@ export function Sidebar({ user }: SidebarProps) {
             {/* Collapse Toggle */}
             {!sidebarCollapsed ? (
               <button
-                className="flex items-center justify-center w-full h-7 mt-1 rounded-lg text-sidebar-muted hover:text-sidebar-hover hover:bg-white/[0.04] transition-all duration-150"
+                className="flex items-center justify-center w-full h-8 mt-1 rounded-xl text-sidebar-muted/60 hover:text-sidebar-hover hover:bg-white/[0.04] transition-all duration-200"
                 onClick={() => setSidebarCollapsed(true)}
               >
                 <ChevronLeft className="h-3.5 w-3.5" />
@@ -412,15 +415,13 @@ export function Sidebar({ user }: SidebarProps) {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
-                    className="flex items-center justify-center w-full h-7 mt-1 rounded-lg text-sidebar-muted hover:text-sidebar-hover hover:bg-white/[0.04] transition-all duration-150"
+                    className="flex items-center justify-center w-full h-8 mt-1 rounded-xl text-sidebar-muted/60 hover:text-sidebar-hover hover:bg-white/[0.04] transition-all duration-200"
                     onClick={() => setSidebarCollapsed(false)}
                   >
                     <ChevronRight className="h-3.5 w-3.5" />
                   </button>
                 </TooltipTrigger>
-                <TooltipContent side="right" className="text-xs">
-                  Expandir
-                </TooltipContent>
+                <TooltipContent side="right" className="text-xs">Expandir</TooltipContent>
               </Tooltip>
             )}
           </div>
