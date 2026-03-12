@@ -1,6 +1,5 @@
 "use client"
 
-import { Fragment } from "react"
 import { cn } from "@/lib/utils"
 import { Check, type LucideIcon } from "lucide-react"
 
@@ -17,71 +16,83 @@ interface OnboardingStepperProps {
 }
 
 export function OnboardingStepper({ steps, currentIndex, onNavigate }: OnboardingStepperProps) {
+  // Progress line width: fraction of completed steps
+  const progressFraction = steps.length > 1 ? currentIndex / (steps.length - 1) : 0
+
   return (
     <div className="w-full">
       <nav aria-label="Progresso do formulario">
-        <div className="flex items-center mb-2">
+        {/* Container with background line */}
+        <div className="relative flex items-start justify-between">
+          {/* Background line (full, muted) */}
+          <div className="absolute top-[15px] left-[28px] right-[28px] h-0.5 bg-border" />
+          {/* Progress line (filled, primary) */}
+          <div
+            className="absolute top-[15px] left-[28px] h-0.5 bg-primary transition-all duration-[400ms]"
+            style={{ width: `calc(${progressFraction} * (100% - 56px))` }}
+          />
+
           {steps.map((step, i) => {
             const Icon = step.icon
             const isActive = i === currentIndex
             const isComplete = i < currentIndex
 
             return (
-              <Fragment key={step.id}>
-                {/* Step circle + label */}
-                <div className="flex flex-col items-center flex-shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => isComplete && onNavigate(i)}
-                    disabled={!isComplete}
-                    aria-current={isActive ? "step" : undefined}
-                    aria-disabled={!isComplete && !isActive}
+              <button
+                key={step.id}
+                type="button"
+                onClick={() => isComplete && onNavigate(i)}
+                disabled={!isComplete}
+                aria-current={isActive ? "step" : undefined}
+                aria-disabled={!isComplete && !isActive}
+                className="relative z-10 flex flex-col items-center gap-2 cursor-default min-w-[56px] bg-transparent border-0 p-0"
+              >
+                {/* Icon container — bg masks the line behind it */}
+                <div
+                  className={cn(
+                    "flex items-center justify-center w-8 h-8 rounded-md bg-background relative",
+                    isComplete && "cursor-pointer"
+                  )}
+                >
+                  <Icon
                     className={cn(
-                      "flex items-center justify-center rounded-full border-2 transition-colors",
-                      "w-8 h-8 sm:w-10 sm:h-10",
-                      isActive && "border-primary bg-primary text-primary-foreground",
-                      isComplete &&
-                        "border-emerald-500 bg-emerald-500 text-white cursor-pointer hover:bg-emerald-600 hover:border-emerald-600",
-                      !isActive &&
-                        !isComplete &&
-                        "border-muted bg-muted text-muted-foreground cursor-default"
-                    )}
-                  >
-                    {isComplete ? (
-                      <Check className="h-4 w-4 sm:h-5 sm:w-5" />
-                    ) : (
-                      <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
-                    )}
-                  </button>
-                  {/* Desktop label below circle */}
-                  <span
-                    className={cn(
-                      "hidden sm:block text-xs font-medium mt-1.5 text-center leading-tight max-w-[80px]",
-                      isActive && "text-primary",
-                      isComplete && "text-emerald-600 dark:text-emerald-400",
-                      !isActive && !isComplete && "text-muted-foreground"
-                    )}
-                  >
-                    {step.label}
-                  </span>
-                </div>
-
-                {/* Connector line */}
-                {i < steps.length - 1 && (
-                  <div
-                    className={cn(
-                      "h-0.5 flex-1 mx-1 sm:mx-2 self-start mt-4 sm:mt-5",
-                      i < currentIndex ? "bg-emerald-500" : "bg-muted"
+                      "transition-all duration-300",
+                      isActive && "h-6 w-6 text-primary drop-shadow-[0_0_8px_rgba(124,58,237,0.4)]",
+                      isComplete && "h-5 w-5 text-primary opacity-85",
+                      !isActive && !isComplete && "h-5 w-5 text-muted-foreground/30"
                     )}
                   />
+                  {/* Check badge for completed steps */}
+                  {isComplete && (
+                    <span className="absolute -bottom-0.5 -right-1 flex items-center justify-center w-3 h-3 rounded-full bg-emerald-500 border-2 border-background">
+                      <Check className="h-[7px] w-[7px] text-white" strokeWidth={3} />
+                    </span>
+                  )}
+                </div>
+
+                {/* Active dot indicator */}
+                {isActive && (
+                  <span className="w-1 h-1 rounded-full bg-primary -mt-1" />
                 )}
-              </Fragment>
+
+                {/* Desktop label */}
+                <span
+                  className={cn(
+                    "hidden sm:block text-[11px] font-medium text-center leading-tight max-w-[72px]",
+                    isActive && "text-primary font-semibold",
+                    isComplete && "text-muted-foreground",
+                    !isActive && !isComplete && "text-muted-foreground/30"
+                  )}
+                >
+                  {step.label}
+                </span>
+              </button>
             )
           })}
         </div>
       </nav>
       {/* Mobile step indicator */}
-      <p className="text-center text-sm text-muted-foreground mt-1 sm:hidden">
+      <p className="text-center text-sm text-muted-foreground mt-2 sm:hidden">
         Passo {currentIndex + 1} de {steps.length} — {steps[currentIndex]?.label}
       </p>
     </div>
