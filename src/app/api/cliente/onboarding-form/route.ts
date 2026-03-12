@@ -21,7 +21,7 @@ export async function OPTIONS() {
 
 export async function POST(request: NextRequest) {
   // Rate limit
-  const limited = checkRateLimit(request, "public:onboarding", RATE_LIMITS.publicForm)
+  const limited = checkRateLimit(request, "cliente:onboarding", RATE_LIMITS.clienteForm)
   if (limited) return limited
 
   try {

@@ -181,7 +181,7 @@ export default function PublicOnboardingPage() {
       fd.append("file", file)
       fd.append("file_type", fileType)
 
-      const res = await fetch("/api/public/upload", { method: "POST", body: fd })
+      const res = await fetch("/api/cliente/upload", { method: "POST", body: fd })
       const data = await res.json()
 
       if (!res.ok) throw new Error(data.error || "Erro no upload")
@@ -290,7 +290,7 @@ export default function PublicOnboardingPage() {
         website: formData.website,
       }
 
-      const response = await fetch("/api/public/onboarding-form", {
+      const response = await fetch("/api/cliente/onboarding-form", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

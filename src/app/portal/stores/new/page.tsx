@@ -159,7 +159,7 @@ export default function PortalNewStorePage() {
       fd.append("file", file)
       fd.append("file_type", fileType)
 
-      const res = await fetch("/api/public/upload", { method: "POST", body: fd })
+      const res = await fetch("/api/cliente/upload", { method: "POST", body: fd })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Erro no upload")
 

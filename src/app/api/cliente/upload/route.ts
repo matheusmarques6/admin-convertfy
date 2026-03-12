@@ -21,12 +21,12 @@ const ALLOWED_EXTENSIONS = [".png", ".jpg", ".jpeg", ".svg", ".webp", ".pdf"]
 let bucketEnsured = false
 
 /**
- * POST /api/public/upload
+ * POST /api/cliente/upload
  * Public file upload for onboarding form (no auth required).
  * Rate limited to prevent abuse.
  */
 export async function POST(request: NextRequest) {
-  const limited = checkRateLimit(request, "public:upload", RATE_LIMITS.publicUpload)
+  const limited = checkRateLimit(request, "cliente:upload", RATE_LIMITS.clienteUpload)
   if (limited) return limited
 
   try {

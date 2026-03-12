@@ -56,7 +56,7 @@ export const config = {
     "/register",
     "/change-password",
     "/portal/:path*",
-    "/public/:path*",
+    "/cliente/:path*",
     "/track/:path*",
     "/tracking/embed",
     "/api/script/:path*",

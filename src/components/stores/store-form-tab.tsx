@@ -56,14 +56,14 @@ export function StoreFormTab({ storeId, clientId }: StoreFormTabProps) {
           <div className="flex items-center gap-2">
             <Input
               readOnly
-              value={`${origin}/public/onboarding`}
+              value={`${origin}/cliente/onboarding`}
               className="text-xs bg-muted/50"
             />
             <Button
               variant="outline"
               size="sm"
               onClick={() => {
-                const link = `${window.location.origin}/public/onboarding`
+                const link = `${window.location.origin}/cliente/onboarding`
                 navigator.clipboard.writeText(link)
                 toast({ title: "Link copiado!", description: "O link do portal foi copiado para a área de transferência." })
               }}

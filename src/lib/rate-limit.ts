@@ -99,10 +99,10 @@ export const RATE_LIMITS = {
   admin: { limit: 30, windowSeconds: 60 },
   /** Migration endpoints: 3 requests per minute */
   migration: { limit: 3, windowSeconds: 60 },
-  /** Public onboarding form: 3 requests per hour */
-  publicForm: { limit: 3, windowSeconds: 3600 },
-  /** Public file upload: 10 requests per hour */
-  publicUpload: { limit: 10, windowSeconds: 3600 },
+  /** Cliente onboarding form: 3 requests per hour */
+  clienteForm: { limit: 3, windowSeconds: 3600 },
+  /** Cliente file upload: 10 requests per hour */
+  clienteUpload: { limit: 10, windowSeconds: 3600 },
   /** Public tracking by code: 10 requests per minute */
   trackingByCode: { limit: 10, windowSeconds: 60 },
   /** Public tracking by email: 6 requests per minute */
