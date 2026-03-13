@@ -13,7 +13,7 @@ import {
   set,
 } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { Video, ExternalLink } from "lucide-react"
+import { Video, ExternalLink, CheckCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { Meeting, MeetingStatus } from "@/types"
 
@@ -196,6 +196,9 @@ export function CalendarWeekView({
                         <div className="flex items-center gap-1 mt-0.5">
                           <ExternalLink className="h-2.5 w-2.5" />
                           <span className="text-[10px]">Link</span>
+                          {meeting.google_sync_status === "synced" && (
+                            <CheckCircle className="h-2.5 w-2.5 text-green-500" />
+                          )}
                         </div>
                       )}
                     </button>

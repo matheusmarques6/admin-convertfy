@@ -149,6 +149,36 @@ export function useWiseReconciled() {
 }
 
 // ---------------------------------------------------------------------------
+// Hook: Google Calendar Connection Status
+// ---------------------------------------------------------------------------
+export interface GoogleCalendarStatus {
+  connected: boolean
+  google_email: string | null
+  is_active: boolean
+  last_synced_at: string | null
+  sync_error: string | null
+}
+
+export function useGoogleCalendarStatus() {
+  const { data, error, mutate, isLoading } = useSWR<GoogleCalendarStatus>(
+    "/api/integrations/google/calendar/status",
+    apiFetcher,
+    DEFAULT_OPTIONS
+  )
+
+  return {
+    connected: data?.connected ?? false,
+    googleEmail: data?.google_email ?? null,
+    isActive: data?.is_active ?? false,
+    lastSyncedAt: data?.last_synced_at ?? null,
+    syncError: data?.sync_error ?? null,
+    refresh: mutate,
+    isLoading: isLoading && !error,
+    error,
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Hook: Client Performance (aggregated Klaviyo + Shopify + Billing)
 // ---------------------------------------------------------------------------
 export function useClientPerformanceAPI(clientId: string | null, period: string, customDates?: CustomDateRange) {

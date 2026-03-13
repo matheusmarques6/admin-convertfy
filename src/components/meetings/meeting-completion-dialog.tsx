@@ -19,7 +19,9 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { toast } from "@/lib/hooks/use-toast"
 import { MEETING_STATUS_CONFIG } from "@/lib/constants/board"
-import type { Meeting, MeetingParticipant } from "@/types"
+import { GoogleSyncBadge, MeetingJoinButton, RetrySyncButton } from "@/components/meetings/google-sync-badge"
+import { ParticipantRsvpStatus } from "@/components/meetings/participant-rsvp-status"
+import type { Meeting, MeetingParticipant, MeetingResponseStatus } from "@/types"
 
 interface ClientInfo {
   id: string
@@ -171,8 +173,28 @@ export function MeetingCompletionDialog({
 
             {meeting.completed_at && (
               <p className="text-xs text-muted-foreground pl-6">
-                Concluída em {format(new Date(meeting.completed_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                Concluida em {format(new Date(meeting.completed_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
               </p>
+            )}
+
+            {/* Google Sync status + Meet link */}
+            {(meeting.google_sync_status || meeting.meeting_url) && (
+              <div className="flex items-center gap-2 pl-6 pt-1">
+                <GoogleSyncBadge
+                  status={meeting.google_sync_status}
+                  error={meeting.google_sync_error}
+                  compact
+                />
+                <MeetingJoinButton
+                  meetingUrl={meeting.meeting_url}
+                  meetingUrlSource={meeting.meeting_url_source}
+                  size="sm"
+                />
+                <RetrySyncButton
+                  meetingId={meeting.id}
+                  syncStatus={meeting.google_sync_status}
+                />
+              </div>
             )}
           </div>
 
@@ -196,6 +218,11 @@ export function MeetingCompletionDialog({
                         </AvatarFallback>
                       </Avatar>
                       <span>{getShortName(name)}</span>
+                      <ParticipantRsvpStatus
+                        localStatus={p.response_status as MeetingResponseStatus}
+                        googleStatus={p.google_rsvp_status}
+                        compact
+                      />
                     </div>
                   )
                 })}

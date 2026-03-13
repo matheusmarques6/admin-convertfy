@@ -6,7 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { CalendarIcon, Clock, Video, Link as LinkIcon, Users, X } from "lucide-react"
+import { CalendarIcon, Clock, Video, Link as LinkIcon, Users, X, Globe, AlertTriangle, ExternalLink } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -39,7 +39,9 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
 import { toast } from "@/lib/hooks/use-toast"
 import { MEETING_DURATION_OPTIONS, MEETING_STATUS_OPTIONS } from "@/lib/constants/board"
-import type { Meeting, MeetingStatus, MeetingParticipant } from "@/types"
+import { GoogleSyncBadge, MeetingJoinButton, RetrySyncButton } from "@/components/meetings/google-sync-badge"
+import { ParticipantRsvpStatus } from "@/components/meetings/participant-rsvp-status"
+import type { Meeting, MeetingStatus, MeetingParticipant, MeetingResponseStatus } from "@/types"
 
 interface UserProfile {
   id: string
@@ -70,6 +72,21 @@ interface MeetingWithRelations extends Omit<Meeting, "client" | "user"> {
   participants?: MeetingParticipant[]
 }
 
+const TIMEZONE_OPTIONS = [
+  { value: "America/Sao_Paulo", label: "Brasilia (GMT-3)" },
+  { value: "America/Manaus", label: "Manaus (GMT-4)" },
+  { value: "America/Rio_Branco", label: "Rio Branco (GMT-5)" },
+  { value: "America/Noronha", label: "Noronha (GMT-2)" },
+]
+
+function getBrowserTimezone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone
+  } catch {
+    return "America/Sao_Paulo"
+  }
+}
+
 interface MeetingDialogProps {
   open: boolean
   onClose: () => void
@@ -78,6 +95,7 @@ interface MeetingDialogProps {
   clients: ClientInfo[]
   members?: ParticipantOption[]
   initialDate?: Date
+  hasGoogleCalendar?: boolean
 }
 
 const schema = z.object({
@@ -106,12 +124,15 @@ export function MeetingDialog({
   clients,
   members = [],
   initialDate,
+  hasGoogleCalendar = false,
 }: MeetingDialogProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [scheduledDate, setScheduledDate] = useState<Date | undefined>()
   const [scheduledTime, setScheduledTime] = useState("09:00")
   const [status, setStatus] = useState<MeetingStatus>("scheduled")
   const [selectedParticipants, setSelectedParticipants] = useState<ParticipantOption[]>([])
+  const [timezone, setTimezone] = useState(getBrowserTimezone())
+  const [createGoogleMeet, setCreateGoogleMeet] = useState(hasGoogleCalendar)
 
   const isEditing = !!meeting
 
@@ -139,6 +160,8 @@ export function MeetingDialog({
         setValue("meeting_url", meeting.meeting_url || "")
         setValue("notes", meeting.notes || "")
         setStatus(meeting.status)
+        setTimezone(meeting.timezone || getBrowserTimezone())
+        setCreateGoogleMeet(hasGoogleCalendar && meeting.meeting_url_source === "google_meet")
 
         const date = new Date(meeting.scheduled_at)
         setScheduledDate(date)
@@ -180,6 +203,8 @@ export function MeetingDialog({
         })
         setStatus("scheduled")
         setSelectedParticipants([])
+        setTimezone(getBrowserTimezone())
+        setCreateGoogleMeet(hasGoogleCalendar)
         if (initialDate) {
           setScheduledDate(initialDate)
           setScheduledTime(format(initialDate, "HH:mm"))
@@ -192,7 +217,7 @@ export function MeetingDialog({
         }
       }
     }
-  }, [open, meeting, initialDate, setValue, reset])
+  }, [open, meeting, initialDate, setValue, reset, hasGoogleCalendar])
 
   async function onSubmit(data: FormData) {
     if (!scheduledDate) {
@@ -222,6 +247,8 @@ export function MeetingDialog({
         duration_minutes: data.duration_minutes,
         meeting_url: data.meeting_url || null,
         notes: data.notes || null,
+        timezone,
+        create_google_meet: createGoogleMeet,
         participants: selectedParticipants.map(p => ({ id: p.id, type: p.type })),
         ...(isEditing ? { status } : {}),
       }
@@ -326,29 +353,42 @@ export function MeetingDialog({
                   {/* Selected participants badges */}
                   {selectedParticipants.length > 0 && (
                     <div className="flex flex-wrap gap-1 mb-2">
-                      {selectedParticipants.map((participant) => (
-                        <Badge
-                          key={`${participant.type}-${participant.id}`}
-                          variant="secondary"
-                          className="flex items-center gap-1"
-                        >
-                          <Avatar className="h-4 w-4">
-                            <AvatarImage src={participant.avatar_url} />
-                            <AvatarFallback className="text-[8px]">
-                              {participant.name?.charAt(0).toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                          <span className="max-w-[100px] truncate">{participant.name}</span>
-                          <X
-                            className="h-3 w-3 cursor-pointer hover:text-destructive"
-                            onClick={() => {
-                              setSelectedParticipants(prev =>
-                                prev.filter(p => !(p.id === participant.id && p.type === participant.type))
-                              )
-                            }}
-                          />
-                        </Badge>
-                      ))}
+                      {selectedParticipants.map((participant) => {
+                        // Find original participant data to get google_rsvp_status
+                        const originalParticipant = meeting?.participants?.find(
+                          p => p.participant_id === participant.id && p.participant_type === participant.type
+                        )
+                        return (
+                          <Badge
+                            key={`${participant.type}-${participant.id}`}
+                            variant="secondary"
+                            className="flex items-center gap-1"
+                          >
+                            <Avatar className="h-4 w-4">
+                              <AvatarImage src={participant.avatar_url} />
+                              <AvatarFallback className="text-[8px]">
+                                {participant.name?.charAt(0).toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="max-w-[100px] truncate">{participant.name}</span>
+                            {originalParticipant?.google_rsvp_status && (
+                              <ParticipantRsvpStatus
+                                localStatus={originalParticipant.response_status as MeetingResponseStatus}
+                                googleStatus={originalParticipant.google_rsvp_status}
+                                compact
+                              />
+                            )}
+                            <X
+                              className="h-3 w-3 cursor-pointer hover:text-destructive"
+                              onClick={() => {
+                                setSelectedParticipants(prev =>
+                                  prev.filter(p => !(p.id === participant.id && p.type === participant.type))
+                                )
+                              }}
+                            />
+                          </Badge>
+                        )
+                      })}
                     </div>
                   )}
 
@@ -468,18 +508,110 @@ export function MeetingDialog({
                 </Select>
               </div>
 
+              {/* Google Meet checkbox */}
+              {hasGoogleCalendar && (
+                <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
+                  <Checkbox
+                    id="create_google_meet"
+                    checked={createGoogleMeet}
+                    onCheckedChange={(checked) => setCreateGoogleMeet(!!checked)}
+                  />
+                  <label htmlFor="create_google_meet" className="flex-1 cursor-pointer">
+                    <div className="flex items-center gap-2">
+                      <Video className="h-4 w-4 text-primary" />
+                      <span className="text-sm font-medium">Criar Google Meet automaticamente</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Um link do Google Meet sera gerado e a reuniao sincronizada com o Calendar
+                    </p>
+                  </label>
+                </div>
+              )}
+
+              {/* AC 42.7.7: Inline alert when Google Calendar is not connected */}
+              {!hasGoogleCalendar && (
+                <div className="flex items-start gap-3 p-3 rounded-lg border border-amber-500/30 bg-amber-500/5">
+                  <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-amber-500" />
+                  <div className="flex-1">
+                    <p className="text-sm text-amber-700 dark:text-amber-400">
+                      Conecte seu Google Calendar para criar reunioes com Meet automatico
+                    </p>
+                    <a
+                      href="/admin/settings/integrations"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-300 hover:underline mt-1"
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                      Conectar agora
+                    </a>
+                  </div>
+                </div>
+              )}
+
+              {/* Sync status when editing */}
+              {isEditing && meeting?.google_sync_status && (
+                <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
+                  <GoogleSyncBadge
+                    status={meeting.google_sync_status}
+                    error={meeting.google_sync_error}
+                  />
+                  {meeting.meeting_url && meeting.meeting_url_source === "google_meet" && (
+                    <MeetingJoinButton
+                      meetingUrl={meeting.meeting_url}
+                      meetingUrlSource={meeting.meeting_url_source}
+                      size="sm"
+                    />
+                  )}
+                  <RetrySyncButton
+                    meetingId={meeting.id}
+                    syncStatus={meeting.google_sync_status}
+                    className="ml-auto"
+                  />
+                </div>
+              )}
+
               <div className="grid gap-2">
                 <Label className="flex items-center gap-2">
                   <LinkIcon className="h-4 w-4" />
-                  Link da Reunião
+                  Link da Reuniao
                 </Label>
                 <Input
                   placeholder="https://meet.google.com/xxx ou https://zoom.us/j/xxx"
                   {...register("meeting_url")}
+                  disabled={createGoogleMeet}
                 />
+                {createGoogleMeet && (
+                  <p className="text-xs text-muted-foreground">
+                    O link sera gerado automaticamente pelo Google Meet
+                  </p>
+                )}
                 {errors.meeting_url && (
                   <p className="text-sm text-destructive">{errors.meeting_url.message}</p>
                 )}
+              </div>
+
+              {/* Timezone */}
+              <div className="grid gap-2">
+                <Label className="flex items-center gap-2">
+                  <Globe className="h-4 w-4" />
+                  Fuso horario
+                </Label>
+                <Select
+                  value={timezone}
+                  onValueChange={setTimezone}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o fuso horario" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TIMEZONE_OPTIONS.map((tz) => (
+                      <SelectItem key={tz.value} value={tz.value}>
+                        {tz.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="grid gap-2">

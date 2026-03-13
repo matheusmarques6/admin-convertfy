@@ -331,6 +331,127 @@ function mapCacheToPortalKlaviyo(cached: CachedKlaviyoData) {
   }
 }
 
+// ─── resolvePortalMeetings: map meetings + participants with resolved names ──
+
+interface RawParticipant {
+  id: string
+  participant_id: string
+  participant_type: string
+  is_organizer: boolean
+  response_status: string
+  email?: string
+}
+
+interface RawMeeting {
+  id: string
+  title: string
+  scheduled_at: string
+  duration_minutes: number
+  meeting_url?: string
+  meeting_url_source?: string
+  status: string
+  completion_notes?: string
+  completed_at?: string
+  meeting_participants?: RawParticipant[]
+}
+
+async function resolvePortalMeetings(
+  meetings: RawMeeting[],
+  adminClient: SupabaseClient,
+  portalUserEmail?: string,
+) {
+  // Collect all unique participant_ids grouped by type
+  const orgMemberIds = new Set<string>()
+  const profileIds = new Set<string>()
+
+  for (const m of meetings) {
+    for (const p of m.meeting_participants || []) {
+      if (p.participant_type === "org_member") {
+        orgMemberIds.add(p.participant_id)
+      } else if (p.participant_type === "profile") {
+        profileIds.add(p.participant_id)
+      }
+    }
+  }
+
+  // Resolve names in parallel
+  const nameMap = new Map<string, string>()
+
+  const resolvePromises: Promise<void>[] = []
+
+  if (orgMemberIds.size > 0) {
+    resolvePromises.push(
+      (async () => {
+        const { data } = await adminClient
+          .from("org_members")
+          .select("id, user_id, profiles:user_id ( full_name, email )")
+          .in("id", Array.from(orgMemberIds))
+        for (const om of data || []) {
+          const profile = om.profiles as unknown as { full_name?: string; email?: string } | null
+          if (profile?.full_name) {
+            nameMap.set(om.id, profile.full_name)
+          } else if (profile?.email) {
+            nameMap.set(om.id, profile.email)
+          }
+        }
+      })(),
+    )
+  }
+
+  if (profileIds.size > 0) {
+    resolvePromises.push(
+      (async () => {
+        const { data } = await adminClient
+          .from("profiles")
+          .select("id, full_name, email")
+          .in("id", Array.from(profileIds))
+        for (const p of data || []) {
+          if (p.full_name) {
+            nameMap.set(p.id, p.full_name)
+          } else if (p.email) {
+            nameMap.set(p.id, p.email)
+          }
+        }
+      })(),
+    )
+  }
+
+  await Promise.all(resolvePromises)
+
+  return meetings.map((m) => {
+    const participants = m.meeting_participants || []
+
+    // Find portal user's own response_status by email match
+    let responseStatus: string | undefined
+    if (portalUserEmail) {
+      const normalizedEmail = portalUserEmail.toLowerCase()
+      const myParticipant = participants.find(
+        (p) => p.email?.toLowerCase() === normalizedEmail
+      )
+      responseStatus = myParticipant?.response_status || "pending"
+    }
+
+    return {
+      id: m.id,
+      title: m.title,
+      scheduledAt: m.scheduled_at,
+      duration: m.duration_minutes,
+      meetingUrl: m.meeting_url,
+      meetingUrlSource: m.meeting_url_source || undefined,
+      status: m.status,
+      completionNotes: m.completion_notes,
+      completedAt: m.completed_at,
+      responseStatus,
+      participants: participants.map((p) => ({
+        name: nameMap.get(p.participant_id) || p.email || "Participante",
+        email: p.email,
+        response_status: p.response_status || "pending",
+        is_organizer: p.is_organizer || false,
+      })),
+    }
+  })
+}
+
 // GET - Get portal dashboard data (cache-first — no live API calls)
 export async function GET(request: NextRequest) {
   const startTime = Date.now()
@@ -391,7 +512,13 @@ export async function GET(request: NextRequest) {
 
       adminClient
         .from("meetings")
-        .select("*")
+        .select(`
+          *,
+          meeting_participants (
+            id, participant_id, participant_type,
+            is_organizer, response_status, email
+          )
+        `)
         .eq("client_id", clientId)
         .in("status", ["scheduled", "completed"])
         .order("scheduled_at", { ascending: false })
@@ -472,16 +599,7 @@ export async function GET(request: NextRequest) {
         scheduledDate: c.scheduled_date,
       })),
 
-      meetings: meetings.map((m) => ({
-        id: m.id,
-        title: m.title,
-        scheduledAt: m.scheduled_at,
-        duration: m.duration_minutes,
-        meetingUrl: m.meeting_url,
-        status: m.status,
-        completionNotes: m.completion_notes,
-        completedAt: m.completed_at,
-      })),
+      meetings: await resolvePortalMeetings(meetings, adminClient, portalUser.email),
 
       lastUpdated: new Date().toISOString(),
     }

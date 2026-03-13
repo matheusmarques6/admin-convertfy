@@ -38,7 +38,8 @@ export default async function MeetingsPage() {
         participant_id,
         participant_type,
         is_organizer,
-        response_status
+        response_status,
+        google_rsvp_status
       )
     `)
     .eq("org_id", currentMember.org_id)
@@ -128,6 +129,18 @@ export default async function MeetingsPage() {
     })
   }
 
+  // Check if user has Google Calendar connected
+  const { data: googleToken } = await adminClient
+    .from("user_google_tokens")
+    .select("id, last_synced_at")
+    .eq("user_id", user.id)
+    .eq("is_active", true)
+    .limit(1)
+    .maybeSingle()
+
+  const hasGoogleCalendar = !!googleToken
+  const lastSyncedAt = googleToken?.last_synced_at || null
+
   // Transform meetings for client component
   const transformedMeetings = (meetings || []).map((m) => {
     const clientRaw = Array.isArray(m.client) ? m.client[0] : m.client
@@ -167,6 +180,8 @@ export default async function MeetingsPage() {
           meetings={transformedMeetings}
           clients={clients}
           members={members}
+          hasGoogleCalendar={hasGoogleCalendar}
+          lastSyncedAt={lastSyncedAt}
         />
       </div>
     </PagePermissionWrapper>

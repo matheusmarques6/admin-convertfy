@@ -40,6 +40,9 @@ export class GoogleCalendarService {
       )
     }
 
+    // 204 No Content — no body to parse (e.g. DELETE)
+    if (response.status === 204) return null as T
+
     return response.json()
   }
 
@@ -131,12 +134,7 @@ export class GoogleCalendarService {
     const query = queryParams.toString()
     const endpoint = `/calendars/${encodeURIComponent(this.calendarId)}/events/${eventId}${query ? `?${query}` : ""}`
 
-    await fetch(`${CALENDAR_API_URL}${endpoint}`, {
-      method: "DELETE",
-      headers: {
-        Authorization: `Bearer ${this.accessToken}`,
-      },
-    })
+    await this.request(endpoint, { method: "DELETE" })
   }
 
   async listEvents(params?: {
@@ -172,7 +170,7 @@ export class GoogleCalendarService {
       ...event,
       conferenceData: {
         createRequest: {
-          requestId: `meet-${Date.now()}`,
+          requestId: crypto.randomUUID(),
           conferenceSolutionKey: { type: "hangoutsMeet" },
         },
       },
@@ -180,6 +178,7 @@ export class GoogleCalendarService {
 
     const result = await this.createEvent(eventWithConference, {
       conferenceDataVersion: 1,
+      sendUpdates: "all",
     })
 
     const meetLink = result.conferenceData?.entryPoints?.find(

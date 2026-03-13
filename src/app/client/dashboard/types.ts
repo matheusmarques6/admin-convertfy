@@ -108,15 +108,27 @@ export interface ShopifyData {
   }
 }
 
+export interface PortalMeetingParticipant {
+  name: string
+  email?: string
+  response_status: string
+  is_organizer: boolean
+}
+
+export type PortalMeetingResponseStatus = "pending" | "accepted" | "declined" | "tentative"
+
 export interface PortalMeeting {
   id: string
   title: string
   scheduledAt: string
   duration: number
   meetingUrl?: string
+  meetingUrlSource?: string
   status: string
   completionNotes?: string
   completedAt?: string
+  responseStatus?: PortalMeetingResponseStatus
+  participants?: PortalMeetingParticipant[]
 }
 
 export interface UpcomingCampaign {

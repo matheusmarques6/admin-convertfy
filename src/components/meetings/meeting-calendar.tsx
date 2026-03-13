@@ -20,7 +20,7 @@ import {
   parseISO,
 } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { ChevronLeft, ChevronRight, Video } from "lucide-react"
+import { ChevronLeft, ChevronRight, Video, CheckCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
@@ -30,6 +30,7 @@ import { cn } from "@/lib/utils"
 import { MEETING_STATUS_CONFIG, WEEK_DAYS } from "@/lib/constants/board"
 import { CalendarWeekView } from "./calendar-week-view"
 import { CalendarDayView } from "./calendar-day-view"
+import { GoogleSyncBadge } from "./google-sync-badge"
 import type { Meeting, MeetingStatus, MeetingParticipant, CalendarViewMode } from "@/types"
 
 interface MeetingWithRelations extends Omit<Meeting, "client" | "user"> {
@@ -204,13 +205,16 @@ export function MeetingCalendar({
                               <div
                                 key={meeting.id}
                                 className={cn(
-                                  "text-xs truncate px-1 py-0.5 rounded",
+                                  "text-xs truncate px-1 py-0.5 rounded flex items-center gap-0.5",
                                   statusColors[meeting.status]
                                 )}
                                 title={meeting.title}
                               >
-                                <Video className="h-3 w-3 inline mr-0.5" />
-                                {meeting.title}
+                                <Video className="h-3 w-3 flex-shrink-0" />
+                                <span className="truncate">{meeting.title}</span>
+                                {meeting.google_sync_status === "synced" && (
+                                  <CheckCircle className="h-2.5 w-2.5 text-green-500 flex-shrink-0" />
+                                )}
                               </div>
                             ))}
                             {dayMeetings.length > 3 && (
@@ -263,7 +267,14 @@ export function MeetingCalendar({
                             <div className="flex items-start gap-2">
                               <Video className="h-4 w-4 mt-0.5 text-primary dark:text-primary" />
                               <div className="flex-1 min-w-0">
-                                <p className="font-medium text-sm truncate">{meeting.title}</p>
+                                <div className="flex items-center gap-1.5">
+                                  <p className="font-medium text-sm truncate">{meeting.title}</p>
+                                  <GoogleSyncBadge
+                                    status={meeting.google_sync_status}
+                                    error={meeting.google_sync_error}
+                                    compact
+                                  />
+                                </div>
                                 {meeting.client && (
                                   <p className="text-xs text-muted-foreground truncate">{meeting.client.name}</p>
                                 )}

@@ -4,6 +4,7 @@ import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
 import { TaskAutomationService } from "@/lib/services/task-automation.service"
+import { syncMeetingToGoogle } from "@/lib/services/google-calendar-sync.service"
 
 const log = logger.child("Meetings")
 
@@ -176,6 +177,8 @@ export async function POST(request: NextRequest) {
       throw new AppError("Título e data/hora são obrigatórios", 400)
     }
 
+    const timezone = body.timezone || "America/Sao_Paulo"
+
     const { data: meeting, error: insertError } = await adminClient
       .from("meetings")
       .insert({
@@ -189,6 +192,7 @@ export async function POST(request: NextRequest) {
         status: "scheduled",
         meeting_url: body.meeting_url || null,
         notes: body.notes || null,
+        timezone,
       })
       .select(`
         *,
@@ -301,6 +305,40 @@ export async function POST(request: NextRequest) {
       participants: [],
     }
 
+    // Google Calendar sync (fire-and-forget with graceful fallback)
+    let googleSyncWarning: string | undefined
+    try {
+      const syncResult = await syncMeetingToGoogle(meeting.id, user.id)
+      if (syncResult.synced) {
+        // Refresh meeting data to include meet_link and sync status
+        const { data: refreshedMeeting } = await adminClient
+          .from("meetings")
+          .select("meeting_url, meeting_url_source, google_event_id, google_sync_status, google_sync_error, google_synced_at")
+          .eq("id", meeting.id)
+          .single()
+        if (refreshedMeeting) {
+          Object.assign(transformedMeeting, refreshedMeeting)
+        }
+      } else {
+        googleSyncWarning = syncResult.error || syncResult.reason || "Google Calendar sync failed"
+        // Refresh sync status fields even on failure
+        const { data: refreshedMeeting } = await adminClient
+          .from("meetings")
+          .select("google_sync_status, google_sync_error")
+          .eq("id", meeting.id)
+          .single()
+        if (refreshedMeeting) {
+          Object.assign(transformedMeeting, refreshedMeeting)
+        }
+      }
+    } catch (syncError) {
+      log.warn("Google Calendar sync failed for new meeting", {
+        meetingId: meeting.id,
+        error: syncError instanceof Error ? syncError.message : String(syncError),
+      })
+      googleSyncWarning = syncError instanceof Error ? syncError.message : "Google Calendar sync failed"
+    }
+
     // Auto-create board tasks for participants (non-blocking)
     {
       const orgId = await resolveOrgId(supabase, user.id)
@@ -346,7 +384,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return successResponse(request, { meeting: transformedMeeting, message: "Reunião agendada com sucesso" }, { status: 201 })
+    return successResponse(request, {
+      meeting: transformedMeeting,
+      message: "Reunião agendada com sucesso",
+      ...(googleSyncWarning ? { google_sync_warning: googleSyncWarning } : {}),
+    }, { status: 201 })
   } catch (error) {
     return errorResponse(request, error, "Meetings")
   }

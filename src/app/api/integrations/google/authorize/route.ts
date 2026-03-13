@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("GoogleAuthorize")
@@ -19,6 +19,7 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams
     const scope = searchParams.get("scope") || "ads"
     const storeId = searchParams.get("store_id")
+    const context = searchParams.get("context") || "admin" // AC 42.3.1
 
     // Define scopes based on integration type
     const scopes: string[] = [
@@ -37,13 +38,38 @@ export async function GET(request: NextRequest) {
       scopes.push("https://www.googleapis.com/auth/adwords")
     }
 
-    // Generate state for CSRF protection (includes store_id for credential routing)
+    // [M1] Resolve org_id conditionally based on context
+    let orgId = ""
+    if (context === "portal") {
+      // Portal users are NOT in org_members — resolve via client_portal_users -> clients
+      const adminClient = createAdminClient()
+      const { data: portalUser } = await adminClient
+        .from("client_portal_users")
+        .select("clients(org_id)")
+        .eq("auth_user_id", user.id)
+        .single()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      orgId = (portalUser?.clients as any)?.org_id || ""
+    } else {
+      const { data: orgMember } = await supabase
+        .from("org_members")
+        .select("org_id")
+        .eq("user_id", user.id)
+        .single()
+      orgId = orgMember?.org_id || ""
+    }
+
+    // Generate state for CSRF protection with cryptographic nonce (C2)
     const state = Buffer.from(
       JSON.stringify({
         user_id: user.id,
+        user_type: context === "portal" ? "portal_user" : "profile",
         scope,
+        org_id: orgId,
         store_id: storeId || "",
+        nonce: crypto.randomUUID(), // AC 42.3.2 — C2 anti-CSRF nonce
         timestamp: Date.now(),
+        context,
       })
     ).toString("base64")
 
@@ -56,7 +82,7 @@ export async function GET(request: NextRequest) {
           response_type: "code",
           scope: scopes.join(" "),
           access_type: "offline",
-          prompt: "consent",
+          prompt: "consent", // AC 42.3.6 — ensures refresh_token
           state,
         }).toString()
     )

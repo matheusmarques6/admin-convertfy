@@ -1,10 +1,22 @@
 import { NextRequest, NextResponse } from "next/server"
 import { updateStoreCredentials } from "@/lib/services/credentials.service"
+import { saveTokens } from "@/lib/services/google-auth.service"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("GoogleCallback")
 
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+
+interface OAuthStateData {
+  user_id: string
+  user_type: "profile" | "portal_user"
+  scope: string
+  org_id: string
+  store_id: string
+  nonce: string
+  timestamp: number
+  context: string
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -26,21 +38,34 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Validate state
+    // Validate state against cookie
     const storedState = request.cookies.get("google_oauth_state")?.value
-    if (state !== storedState) {
+    if (!storedState) {
       return NextResponse.redirect(
-        new URL("/settings/integrations?error=invalid_state", request.url)
+        new URL("/settings/integrations?error=missing_state_cookie", request.url)
       )
     }
 
-    // Decode state
-    let stateData: { user_id: string; scope: string; store_id: string; timestamp: number }
+    // AC 42.3.4 — Decode both states and validate nonce field-by-field
+    let stateData: OAuthStateData
+    let storedStateData: OAuthStateData
     try {
       stateData = JSON.parse(Buffer.from(state, "base64").toString())
+      storedStateData = JSON.parse(Buffer.from(storedState, "base64").toString())
     } catch {
       return NextResponse.redirect(
         new URL("/settings/integrations?error=invalid_state_format", request.url)
+      )
+    }
+
+    // Validate nonce (C2 anti-CSRF)
+    if (!stateData.nonce || stateData.nonce !== storedStateData.nonce) {
+      log.warn("Nonce mismatch in OAuth state", {
+        receivedNonce: stateData.nonce,
+        expectedNonce: storedStateData.nonce,
+      })
+      return NextResponse.redirect(
+        new URL("/settings/integrations?error=invalid_state", request.url)
       )
     }
 
@@ -68,13 +93,13 @@ export async function GET(request: NextRequest) {
       const errorData = await tokenResponse.json()
       log.error("Google token exchange error:", errorData)
       return NextResponse.redirect(
-        new URL("/settings/integrations?error=token_exchange_failed", request.url)
+        new URL(buildRedirectUrl(stateData, "token_exchange_failed"), request.url)
       )
     }
 
     const tokens = await tokenResponse.json()
 
-    // Get user info to verify
+    // Get user info from Google
     const userInfoResponse = await fetch(
       "https://www.googleapis.com/oauth2/v2/userinfo",
       {
@@ -84,11 +109,35 @@ export async function GET(request: NextRequest) {
 
     const userInfo = await userInfoResponse.json()
 
-    // Determine integration type based on scope
-    const integrationKey = stateData.scope === "calendar" ? "google_calendar" : "google_ads" as const
+    // AC 42.3.5 + AC 42.3.7: Route based on scope
+    if (stateData.scope === "calendar") {
+      // Calendar flow: save to user_google_tokens via google-auth.service
+      await saveTokens(
+        stateData.user_id,
+        stateData.user_type || "profile",
+        stateData.org_id,
+        {
+          access_token: tokens.access_token,
+          refresh_token: tokens.refresh_token,
+          token_type: tokens.token_type,
+          expires_in: tokens.expires_in,
+          scope: tokens.scope || "",
+        },
+        {
+          email: userInfo.email,
+          id: userInfo.id,
+        }
+      )
 
-    // Save credentials to client_stores (unified credential storage)
-    if (stateData.store_id) {
+      log.info("Google Calendar tokens saved to user_google_tokens", {
+        userId: stateData.user_id,
+        userType: stateData.user_type,
+        googleEmail: userInfo.email,
+        hasRefreshToken: !!tokens.refresh_token,
+      })
+    } else if (stateData.store_id) {
+      // AC 42.3.7: Existing flow — save to client_stores (Ads/per-store)
+      const integrationKey = stateData.scope === "calendar" ? "google_calendar" : "google_ads" as const
       const credentialField = integrationKey === "google_calendar"
         ? "google_calendar_credentials"
         : "google_ads_credentials"
@@ -112,12 +161,16 @@ export async function GET(request: NextRequest) {
         type: integrationKey,
       })
     } else {
-      log.warn("No store_id in state - Google credentials not saved to client_stores")
+      log.warn("No store_id in state for non-calendar scope — credentials not saved", {
+        scope: stateData.scope,
+      })
     }
 
-    // Clear state cookie and redirect
+    // AC 42.3.8: Context-based redirect
+    const redirectUrl = buildRedirectUrl(stateData)
+
     const response = NextResponse.redirect(
-      new URL("/settings/integrations?success=google_connected", request.url)
+      new URL(redirectUrl, request.url)
     )
     response.cookies.delete("google_oauth_state")
 
@@ -128,4 +181,30 @@ export async function GET(request: NextRequest) {
       new URL("/settings/integrations?error=callback_failed", request.url)
     )
   }
+}
+
+/**
+ * Build redirect URL based on state context and scope.
+ * AC 42.3.8:
+ * - calendar + admin → /admin/settings?tab=integrations&success=google_calendar_connected
+ * - calendar + portal → /client/settings?success=google_calendar_connected
+ * - ads → /settings/integrations?success=google_connected (existing behavior)
+ */
+function buildRedirectUrl(stateData: OAuthStateData, error?: string): string {
+  if (stateData.scope === "calendar") {
+    if (stateData.context === "portal") {
+      return error
+        ? `/client/settings?error=${error}`
+        : "/client/settings?success=google_calendar_connected"
+    }
+    // admin (default)
+    return error
+      ? `/admin/settings?tab=integrations&error=${error}`
+      : "/admin/settings?tab=integrations&success=google_calendar_connected"
+  }
+
+  // Existing behavior for ads/other scopes
+  return error
+    ? `/settings/integrations?error=${error}`
+    : "/settings/integrations?success=google_connected"
 }

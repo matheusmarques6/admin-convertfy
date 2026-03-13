@@ -46,6 +46,7 @@ import { createClient } from "@/lib/supabase/client"
 import { useIntegrationsStore } from "@/lib/store"
 import { INTEGRATION_CONFIGS, getIntegrationConfig } from "@/lib/integrations/config"
 import { toast } from "@/lib/hooks/use-toast"
+import { GoogleCalendarCard } from "@/components/settings/google-calendar-card"
 import type { IntegrationType, Integration } from "@/types"
 
 // Call backend API to test connection (avoids CORS issues)
@@ -358,7 +359,24 @@ export default function IntegrationsPage() {
         </p>
       </div>
 
-      {/* Integration Cards */}
+      {/* Per-user Integrations (OAuth-based) */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-medium text-muted-foreground">Suas conexoes pessoais</h3>
+          <div className="h-px flex-1 bg-border" />
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <GoogleCalendarCard />
+        </div>
+      </div>
+
+      {/* Org-level Integration Cards */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-medium text-muted-foreground">Integracoes da organizacao</h3>
+          <div className="h-px flex-1 bg-border" />
+        </div>
+      </div>
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />

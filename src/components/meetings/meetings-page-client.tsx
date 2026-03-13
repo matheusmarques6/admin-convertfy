@@ -10,6 +10,7 @@ import {
   isThisMonth,
   parseISO,
   format,
+  formatDistanceToNow,
   isWithinInterval,
 } from "date-fns"
 import { ptBR } from "date-fns/locale"
@@ -21,10 +22,11 @@ import {
   CheckCircle,
   XCircle,
   AlertCircle,
-  ExternalLink,
   MoreHorizontal,
   Pencil,
   Trash2,
+  RefreshCw,
+  Clock,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -41,6 +43,16 @@ import { MeetingDialog } from "@/components/board/meeting-dialog"
 import { MeetingCompletionDialog } from "@/components/meetings/meeting-completion-dialog"
 import { MeetingCalendar } from "@/components/meetings/meeting-calendar"
 import { MeetingFilters, type MeetingFiltersState } from "@/components/meetings/meeting-filters"
+import { GoogleSyncBadge, MeetingJoinButton } from "@/components/meetings/google-sync-badge"
+import { RsvpSummary } from "@/components/meetings/participant-rsvp-status"
+import { AlertBanner } from "@/components/ui/alert-banner"
+import { useGoogleCalendarStatus } from "@/lib/hooks/use-api-data"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { toast } from "@/lib/hooks/use-toast"
 import { cn } from "@/lib/utils"
 import { MEETING_STATUS_CONFIG } from "@/lib/constants/board"
@@ -79,6 +91,8 @@ interface MeetingsPageClientProps {
   meetings: MeetingWithRelations[]
   clients: ClientInfo[]
   members: ParticipantOption[]
+  hasGoogleCalendar?: boolean
+  lastSyncedAt?: string | null
 }
 
 function getShortName(fullName: string): string {
@@ -103,7 +117,10 @@ export function MeetingsPageClient({
   meetings: initialMeetings,
   clients,
   members,
+  hasGoogleCalendar = false,
+  lastSyncedAt,
 }: MeetingsPageClientProps) {
+  const calendarStatus = useGoogleCalendarStatus()
   const [localMeetings, setLocalMeetings] = useState<MeetingWithRelations[]>(initialMeetings)
   const [viewMode, setViewMode] = useState<"list" | "calendar">("list")
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -114,6 +131,7 @@ export function MeetingsPageClient({
     status: "all",
     period: "all",
   })
+  const [isSyncing, setIsSyncing] = useState(false)
 
   // Sync server props → local state
   useEffect(() => {
@@ -246,16 +264,86 @@ export function MeetingsPageClient({
     setDialogOpen(true)
   }
 
+  const handleManualSync = async () => {
+    setIsSyncing(true)
+    try {
+      const res = await fetch("/api/integrations/google/sync", { method: "POST" })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || "Erro ao sincronizar")
+      }
+      toast({
+        title: "Sincronizacao iniciada",
+        description: "Os dados do Google Calendar serao atualizados em instantes",
+      })
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Erro ao sincronizar",
+        description: error instanceof Error ? error.message : "Tente novamente mais tarde",
+      })
+    } finally {
+      setIsSyncing(false)
+    }
+  }
+
   const now = new Date()
 
   return (
     <>
       <div className="space-y-4 h-full flex flex-col">
+        {/* AC 42.7.6: Reconnection banner when Google Calendar is disconnected or has error */}
+        {calendarStatus.connected && !calendarStatus.isActive && !calendarStatus.isLoading && (
+          <AlertBanner
+            variant="warning"
+            title="Seu Google Calendar esta desconectado"
+            description={calendarStatus.syncError || "Reconecte para sincronizar reunioes."}
+            action={{
+              label: "Reconectar",
+              href: "/api/integrations/google/authorize?scope=calendar&context=admin",
+            }}
+          />
+        )}
+
         {/* Header */}
         <div className="flex items-center justify-between">
-          <p className="text-muted-foreground">
-            Gerencie as reuniões com seus clientes
-          </p>
+          <div className="flex items-center gap-3">
+            <p className="text-muted-foreground">
+              Gerencie as reunioes com seus clientes
+            </p>
+            {/* AC 42.13.4: Last sync timestamp */}
+            {hasGoogleCalendar && lastSyncedAt && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <Clock className="h-3 w-3" />
+                      <span>
+                        Sync: {formatDistanceToNow(new Date(lastSyncedAt), { locale: ptBR, addSuffix: true })}
+                      </span>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="text-xs">
+                      Ultimo sync: {format(new Date(lastSyncedAt), "dd/MM/yyyy 'as' HH:mm", { locale: ptBR })}
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+            {hasGoogleCalendar && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1 text-xs text-muted-foreground"
+                onClick={handleManualSync}
+                disabled={isSyncing}
+              >
+                <RefreshCw className={cn("h-3 w-3", isSyncing && "animate-spin")} />
+                {isSyncing ? "Sincronizando..." : "Sincronizar"}
+              </Button>
+            )}
+          </div>
           <div className="flex items-center gap-3">
             <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "list" | "calendar")}>
               <TabsList className="h-9">
@@ -371,6 +459,11 @@ export function MeetingsPageClient({
                                   {isHappeningNow && (
                                     <Badge variant="default" className="text-xs">Agora</Badge>
                                   )}
+                                  <GoogleSyncBadge
+                                    status={meeting.google_sync_status}
+                                    error={meeting.google_sync_error}
+                                    compact
+                                  />
                                 </div>
                                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                   {meeting.client && <span>{formatClientDisplay(meeting.client)}</span>}
@@ -378,18 +471,20 @@ export function MeetingsPageClient({
                                   <span>{formatMeetingDate(meeting.scheduled_at)}</span>
                                   <span>•</span>
                                   <span>{meeting.duration_minutes}min</span>
+                                  {meeting.participants && meeting.participants.length > 0 && (
+                                    <>
+                                      <span>•</span>
+                                      <RsvpSummary participants={meeting.participants} />
+                                    </>
+                                  )}
                                 </div>
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
-                              {meeting.meeting_url && (
-                                <Button variant="outline" size="sm" asChild>
-                                  <a href={meeting.meeting_url} target="_blank" rel="noopener noreferrer">
-                                    <ExternalLink className="mr-1 h-3 w-3" />
-                                    Entrar
-                                  </a>
-                                </Button>
-                              )}
+                              <MeetingJoinButton
+                                meetingUrl={meeting.meeting_url}
+                                meetingUrlSource={meeting.meeting_url_source}
+                              />
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                   <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Ações da reunião">
@@ -456,11 +551,26 @@ export function MeetingsPageClient({
                                 meeting.status === "cancelled" && "text-muted-foreground"
                               )} />
                               <div>
-                                <p className="text-sm font-medium">{meeting.title}</p>
-                                <p className="text-xs text-muted-foreground">
-                                  {meeting.client && `${formatClientDisplay(meeting.client)} • `}
-                                  {format(new Date(meeting.scheduled_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
-                                </p>
+                                <div className="flex items-center gap-2">
+                                  <p className="text-sm font-medium">{meeting.title}</p>
+                                  <GoogleSyncBadge
+                                    status={meeting.google_sync_status}
+                                    error={meeting.google_sync_error}
+                                    compact
+                                  />
+                                </div>
+                                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                  <span>
+                                    {meeting.client && `${formatClientDisplay(meeting.client)} • `}
+                                    {format(new Date(meeting.scheduled_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                                  </span>
+                                  {meeting.participants && meeting.participants.length > 0 && (
+                                    <>
+                                      <span>•</span>
+                                      <RsvpSummary participants={meeting.participants} />
+                                    </>
+                                  )}
+                                </div>
                               </div>
                             </div>
                             <Badge variant={config.variant}>{config.label}</Badge>
@@ -493,6 +603,7 @@ export function MeetingsPageClient({
         clients={clients}
         members={members}
         initialDate={initialDate}
+        hasGoogleCalendar={hasGoogleCalendar}
       />
 
       {completionMeeting && (

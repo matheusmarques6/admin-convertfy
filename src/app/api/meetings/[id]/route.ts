@@ -3,6 +3,7 @@ import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
+import { syncMeetingToGoogle, updateGoogleEvent, deleteGoogleEvent } from "@/lib/services/google-calendar-sync.service"
 
 const log = logger.child("Meetings")
 
@@ -127,10 +128,10 @@ export async function PUT(
     const { id } = await params
     const body = await request.json()
 
-    // Verify meeting belongs to user's org
+    // Verify meeting belongs to user's org (include fields needed for sync decision)
     const { data: existingMeeting, error: fetchErr } = await adminClient
       .from("meetings")
-      .select("id")
+      .select("id, google_event_id, user_id, scheduled_at, status")
       .eq("id", id)
       .eq("org_id", orgId)
       .single()
@@ -150,6 +151,7 @@ export async function PUT(
     if (body.meeting_url !== undefined) updateData.meeting_url = body.meeting_url || null
     if (body.notes !== undefined) updateData.notes = body.notes || null
     if (body.completion_notes !== undefined) updateData.completion_notes = body.completion_notes
+    if (body.timezone !== undefined) updateData.timezone = body.timezone
 
     // Auto-fill completion metadata when marking as completed
     if (body.status === "completed") {
@@ -236,6 +238,50 @@ export async function PUT(
       }
     }
 
+    // Reschedule: reset response_status to 'pending' if scheduled_at changed
+    const isRescheduled = body.scheduled_at !== undefined &&
+      body.scheduled_at !== existingMeeting.scheduled_at
+    if (isRescheduled) {
+      const { error: resetError } = await adminClient
+        .from("meeting_participants")
+        .update({ response_status: "pending" })
+        .eq("meeting_id", id)
+      if (resetError) {
+        log.error("[Meeting] Error resetting participant responses on reschedule:", resetError)
+      }
+    }
+
+    // Status change to cancelled: delete Google Calendar event
+    const isCancelling = body.status === "cancelled" && existingMeeting.status !== "cancelled"
+
+    // Google Calendar sync (fire-and-forget with graceful fallback)
+    try {
+      if (isCancelling && existingMeeting.google_event_id) {
+        // Cancel on Google Calendar
+        await deleteGoogleEvent(id)
+      } else if (!isCancelling) {
+        // Update or create Google Calendar event
+        if (existingMeeting.google_event_id) {
+          await updateGoogleEvent(id)
+        } else {
+          await syncMeetingToGoogle(id, existingMeeting.user_id)
+        }
+      }
+    } catch (syncError) {
+      log.warn("Google Calendar sync failed for meeting update", {
+        meetingId: id,
+        error: syncError instanceof Error ? syncError.message : String(syncError),
+      })
+      // Non-blocking: update sync status to error but don't fail the request
+      await adminClient
+        .from("meetings")
+        .update({
+          google_sync_status: "error",
+          google_sync_error: syncError instanceof Error ? syncError.message : "Google Calendar sync failed",
+        })
+        .eq("id", id)
+    }
+
     // Fetch updated meeting with participants
     const { data: meeting } = await adminClient
       .from("meetings")
@@ -308,16 +354,28 @@ export async function DELETE(
     const { id } = await params
     const adminClient = createAdminClient()
 
-    // Verify meeting belongs to user's org before deleting
-    const { data: existingMeeting, error: fetchErr } = await adminClient
+    // Verify meeting belongs to user's org before deleting (include google_event_id for sync)
+    const { data: meetingToDelete, error: fetchDeleteErr } = await adminClient
       .from("meetings")
-      .select("id")
+      .select("id, google_event_id")
       .eq("id", id)
       .eq("org_id", orgId)
       .single()
 
-    if (fetchErr || !existingMeeting) {
+    if (fetchDeleteErr || !meetingToDelete) {
       throw new AppError("Reunião não encontrada", 404)
+    }
+
+    // Delete from Google Calendar first (fire-and-forget)
+    if (meetingToDelete.google_event_id) {
+      try {
+        await deleteGoogleEvent(id)
+      } catch (syncError) {
+        log.warn("Failed to delete Google Calendar event, proceeding with local delete", {
+          meetingId: id,
+          error: syncError instanceof Error ? syncError.message : String(syncError),
+        })
+      }
     }
 
     const { error: deleteError } = await adminClient

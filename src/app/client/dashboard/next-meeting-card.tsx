@@ -1,8 +1,10 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Video, Clock, ExternalLink, Calendar } from "lucide-react"
+import { Video, Clock, Calendar } from "lucide-react"
+import { MeetingJoinButton } from "@/components/meetings/google-sync-badge"
 import type { PortalMeeting } from "./types"
+import type { MeetingUrlSource } from "@/types"
 
 interface NextMeetingCardProps {
   meetings?: PortalMeeting[]
@@ -30,9 +32,9 @@ export function NextMeetingCard({ meetings }: NextMeetingCardProps) {
           <div className="flex items-center justify-center h-7 w-7 rounded-lg bg-purple-50 dark:bg-purple-500/10">
             <Video className="h-4 w-4 text-purple-600" />
           </div>
-          <span className="text-[13px] text-slate-500 dark:text-slate-400 uppercase tracking-wide">Próxima Reunião</span>
+          <span className="text-[13px] text-slate-500 dark:text-slate-400 uppercase tracking-wide">Proxima Reuniao</span>
         </div>
-        <p className="text-sm text-slate-500 dark:text-slate-400">Nenhuma reunião agendada</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400">Nenhuma reuniao agendada</p>
       </div>
     )
   }
@@ -49,7 +51,7 @@ export function NextMeetingCard({ meetings }: NextMeetingCardProps) {
   const dateLabel = isToday
     ? `Hoje, ${meetingDate.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
     : isTomorrow
-      ? `Amanhã, ${meetingDate.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
+      ? `Amanha, ${meetingDate.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
       : meetingDate.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
 
   return (
@@ -58,7 +60,7 @@ export function NextMeetingCard({ meetings }: NextMeetingCardProps) {
         <div className={`flex items-center justify-center h-7 w-7 rounded-lg ${isWithin24h ? "bg-cyan-50 dark:bg-cyan-500/10" : "bg-purple-50 dark:bg-purple-500/10"}`}>
           <Video className={`h-4 w-4 ${isWithin24h ? "text-cyan-600" : "text-purple-600"}`} />
         </div>
-        <span className="text-[13px] text-slate-500 dark:text-slate-400 uppercase tracking-wide">Próxima Reunião</span>
+        <span className="text-[13px] text-slate-500 dark:text-slate-400 uppercase tracking-wide">Proxima Reuniao</span>
       </div>
 
       <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-1">{nextMeeting.title}</p>
@@ -80,17 +82,11 @@ export function NextMeetingCard({ meetings }: NextMeetingCardProps) {
         </div>
       )}
 
-      {nextMeeting.meetingUrl && (
-        <a
-          href={nextMeeting.meetingUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-50 dark:bg-cyan-500/10 text-[#05AFF2] hover:bg-cyan-100 dark:hover:bg-cyan-500/20 transition-colors text-sm"
-        >
-          <ExternalLink className="h-3 w-3" />
-          Entrar na reunião
-        </a>
-      )}
+      <MeetingJoinButton
+        meetingUrl={nextMeeting.meetingUrl}
+        meetingUrlSource={nextMeeting.meetingUrlSource as MeetingUrlSource | undefined}
+        size="sm"
+      />
     </div>
   )
 }

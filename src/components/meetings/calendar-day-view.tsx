@@ -9,13 +9,14 @@ import {
   eachHourOfInterval,
 } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { Video, ExternalLink, CheckCircle, Users } from "lucide-react"
+import { Video, CheckCircle, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
 import type { Meeting, MeetingStatus, MeetingParticipant } from "@/types"
 import { MEETING_STATUS_CONFIG } from "@/lib/constants/board"
+import { GoogleSyncBadge, MeetingJoinButton } from "./google-sync-badge"
 
 interface MeetingWithRelations extends Omit<Meeting, "client" | "user"> {
   client?: { id: string; name: string; company?: string }
@@ -138,6 +139,11 @@ export function CalendarDayView({
                         <Badge variant={config.variant} className="text-[10px] shrink-0">
                           {config.label}
                         </Badge>
+                        <GoogleSyncBadge
+                          status={meeting.google_sync_status}
+                          error={meeting.google_sync_error}
+                          compact
+                        />
                       </div>
                       {height >= 60 && (
                         <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
@@ -187,18 +193,14 @@ export function CalendarDayView({
                     {height >= 60 && (
                       <div className="flex items-center gap-1 flex-shrink-0">
                         {meeting.meeting_url && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 text-xs"
-                            asChild
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <a href={meeting.meeting_url} target="_blank" rel="noopener noreferrer">
-                              <ExternalLink className="mr-1 h-3 w-3" />
-                              Entrar
-                            </a>
-                          </Button>
+                          <span onClick={(e) => e.stopPropagation()}>
+                            <MeetingJoinButton
+                              meetingUrl={meeting.meeting_url}
+                              meetingUrlSource={meeting.meeting_url_source}
+                              size="sm"
+                              className="h-7 text-xs"
+                            />
+                          </span>
                         )}
                         {meeting.status === "scheduled" && onStatusChange && (
                           <Button
@@ -247,6 +249,11 @@ export function CalendarDayView({
                 <div className="flex items-center gap-2 mb-1">
                   <config.icon className="h-3.5 w-3.5" />
                   <span className="text-sm font-medium truncate">{meeting.title}</span>
+                  <GoogleSyncBadge
+                    status={meeting.google_sync_status}
+                    error={meeting.google_sync_error}
+                    compact
+                  />
                 </div>
                 <div className="text-xs text-muted-foreground space-y-0.5">
                   <p>{format(parseISO(meeting.scheduled_at), "HH:mm")} - {meeting.duration_minutes}min</p>
