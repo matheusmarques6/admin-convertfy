@@ -29,7 +29,7 @@ export class TaskAutomationService {
    * que tenham a fonte habilitada na board_config.
    */
   static async createAutoTask(input: AutoTaskInput): Promise<string[]> {
-    const supabase = await createAdminClient()
+    const supabase = createAdminClient()
     const createdTaskIds: string[] = []
 
     // Map source_type to board_config column
@@ -184,7 +184,7 @@ export class TaskAutomationService {
     orgId: string
   }): Promise<void> {
     // Find designers and copywriters in the org
-    const supabase = await createAdminClient()
+    const supabase = createAdminClient()
     const { data: designersAndCopywriters } = await supabase
       .from("org_members")
       .select("id")
@@ -210,10 +210,198 @@ export class TaskAutomationService {
   }
 
   /**
+   * Trigger: quando um onboarding step transiciona para `pending` (deps satisfeitos).
+   * Cria task no board do assignee e atualiza back-reference no step.
+   *
+   * Retorna o task_id criado, ou null se:
+   * - Nenhum assignee encontrado
+   * - Task duplicada já existe
+   * - Assignee desabilitou onboarding tasks na board_config
+   */
+  static async onOnboardingStepPending(params: {
+    stepId: string
+    stepName: string
+    stepDescription?: string
+    stepPhase?: string
+    onboardingId: string
+    clientId: string
+    clientName: string
+    storeId?: string
+    storeName?: string
+    assignedTo?: string
+    defaultAssigneeRole?: string
+    onboardingAssignedTo?: string
+    orgId: string
+    dueDate?: string
+  }): Promise<string | null> {
+    try {
+      const supabase = createAdminClient()
+
+      // 1. Resolve assignee (AC 40.10.1 / 40.10.2 / 40.10.9-10)
+      let assigneeId = params.assignedTo
+
+      // 1a. If direct assignee provided, verify they are active
+      if (assigneeId) {
+        const { data: activeMember } = await supabase
+          .from("org_members")
+          .select("id")
+          .eq("id", assigneeId)
+          .eq("is_active", true)
+          .maybeSingle()
+
+        if (!activeMember) {
+          log.warn("onOnboardingStepPending: assigned member is inactive, skipping", {
+            stepId: params.stepId,
+            assigneeId,
+            orgId: params.orgId,
+          })
+          assigneeId = undefined
+        }
+      }
+
+      // 1b. Try resolving by role (filters is_active = true)
+      if (!assigneeId && params.defaultAssigneeRole) {
+        const { data: members } = await supabase
+          .from("org_members")
+          .select("id")
+          .eq("org_id", params.orgId)
+          .eq("role", params.defaultAssigneeRole)
+          .eq("is_active", true)
+          .order("created_at", { ascending: true })
+          .limit(1)
+
+        assigneeId = members?.[0]?.id
+
+        // AC 40.10.2: Role exists but no active member — notify managers
+        if (!assigneeId) {
+          log.warn("onOnboardingStepPending: no active member for role", {
+            stepId: params.stepId,
+            stepName: params.stepName,
+            role: params.defaultAssigneeRole,
+            orgId: params.orgId,
+          })
+
+          // Find owners/managers to notify
+          try {
+            const { data: managers } = await supabase
+              .from("org_members")
+              .select("profile_id")
+              .eq("org_id", params.orgId)
+              .eq("is_active", true)
+              .in("role", ["owner", "manager"])
+
+            const profileIds = (managers ?? [])
+              .map((m) => m.profile_id)
+              .filter(Boolean) as string[]
+
+            if (profileIds.length > 0) {
+              const { notifyNoMemberForRole } = await import("./onboarding-notifications")
+              await notifyNoMemberForRole({
+                recipientProfileIds: profileIds,
+                stepName: params.stepName,
+                roleName: params.defaultAssigneeRole,
+                storeName: params.storeName || "Onboarding",
+                onboardingId: params.onboardingId,
+                stepId: params.stepId,
+                orgId: params.orgId,
+              })
+            }
+          } catch (notifyErr) {
+            log.error("onOnboardingStepPending: failed to notify managers", { error: notifyErr })
+          }
+        }
+      }
+
+      // 1c. AC 40.10.1: Fallback to onboarding general assignee
+      if (!assigneeId && params.onboardingAssignedTo) {
+        assigneeId = params.onboardingAssignedTo
+      }
+
+      if (!assigneeId) {
+        log.warn("onOnboardingStepPending: nenhum assignee encontrado", {
+          stepId: params.stepId,
+          stepName: params.stepName,
+          defaultAssigneeRole: params.defaultAssigneeRole,
+          orgId: params.orgId,
+        })
+        return null
+      }
+
+      // 2. Build description
+      const storeLabel = params.storeName ? ` - ${params.storeName}` : ""
+      const description = params.stepDescription
+        || `Etapa de onboarding: ${params.stepName}`
+
+      // 3. Create auto-task (createAutoTask handles idempotency + board_config check)
+      const createdIds = await this.createAutoTask({
+        title: `[Onboarding] ${params.stepName} - ${params.clientName}`,
+        description: `${description}\nCliente: ${params.clientName}${storeLabel}`,
+        type: "onboarding",
+        priority: "medium",
+        source_type: "auto_onboarding_step",
+        source_id: params.stepId,
+        org_id: params.orgId,
+        client_id: params.clientId,
+        store_id: params.storeId,
+        due_date: params.dueDate,
+        candidate_assignees: [assigneeId],
+      })
+
+      const taskId = createdIds[0] ?? null
+
+      // 4. Update metadata on the created task
+      if (taskId) {
+        await supabase
+          .from("tasks")
+          .update({
+            metadata: {
+              onboarding_id: params.onboardingId,
+              step_id: params.stepId,
+              step_name: params.stepName,
+              client_name: params.clientName,
+              store_name: params.storeName ?? null,
+              phase: params.stepPhase ?? null,
+            },
+          })
+          .eq("id", taskId)
+
+        // 5. Update back-reference: step.task_id → task
+        const { error: backrefError } = await supabase
+          .from("client_onboarding_steps")
+          .update({ task_id: taskId })
+          .eq("id", params.stepId)
+
+        if (backrefError) {
+          log.error("Falha ao atualizar task_id no step", {
+            stepId: params.stepId,
+            taskId,
+            error: backrefError,
+          })
+        }
+
+        log.info("Onboarding step task criada", {
+          stepId: params.stepId,
+          stepName: params.stepName,
+          taskId,
+          assigneeId,
+        })
+      }
+
+      return taskId
+    } catch (err) {
+      log.error("Exceção em onOnboardingStepPending", {
+        stepId: params.stepId,
+        err,
+      })
+      return null
+    }
+  }
+
+  /**
    * Cron: verificar feedbacks atrasados (lojas sem feedback há mais de X dias)
    */
   static async checkOverdueFeedbacks(orgId: string, thresholdDays = 30): Promise<void> {
-    const supabase = await createAdminClient()
+    const supabase = createAdminClient()
     const cutoff = new Date()
     cutoff.setDate(cutoff.getDate() - thresholdDays)
 
@@ -259,7 +447,7 @@ export class TaskAutomationService {
    * Cron: verificar contratos expirando nos próximos 30 dias
    */
   static async checkExpiringContracts(orgId: string, daysAhead = 30): Promise<void> {
-    const supabase = await createAdminClient()
+    const supabase = createAdminClient()
     const now = new Date()
     const futureDate = new Date()
     futureDate.setDate(futureDate.getDate() + daysAhead)
@@ -313,6 +501,7 @@ const SOURCE_TO_CONFIG_COLUMN: Record<TaskSourceType, string | null> = {
   auto_feedback: "show_feedback_tasks",
   auto_report: "show_report_tasks",
   auto_contract: "show_contract_tasks",
+  auto_onboarding_step: "show_onboarding_tasks",
 }
 
 /**

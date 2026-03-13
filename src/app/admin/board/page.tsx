@@ -61,8 +61,8 @@ async function getAllowedSourceTypes(orgMemberId: string, role: OrgRole): Promis
 
   const allowed: TaskSourceType[] = ["manual"] // manual tasks always show
 
-  const mapping: [string, TaskSourceType][] = [
-    ["show_onboarding_tasks", "auto_onboarding"],
+  const mapping: [string, TaskSourceType | TaskSourceType[]][] = [
+    ["show_onboarding_tasks", ["auto_onboarding", "auto_onboarding_step"]],
     ["show_meeting_tasks", "auto_meeting"],
     ["show_campaign_tasks", "auto_campaign"],
     ["show_feedback_tasks", "auto_feedback"],
@@ -72,7 +72,11 @@ async function getAllowedSourceTypes(orgMemberId: string, role: OrgRole): Promis
 
   for (const [configKey, sourceType] of mapping) {
     if ((effectiveConfig as Record<string, unknown>)[configKey]) {
-      allowed.push(sourceType)
+      if (Array.isArray(sourceType)) {
+        allowed.push(...sourceType)
+      } else {
+        allowed.push(sourceType)
+      }
     }
   }
 
@@ -354,6 +358,7 @@ export default async function BoardPage() {
             clients={clients}
             stores={stores}
             meetings={meetings}
+            orgMemberId={orgMemberId}
           />
         </Suspense>
       </div>

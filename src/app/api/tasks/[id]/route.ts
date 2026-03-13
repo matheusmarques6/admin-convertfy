@@ -192,6 +192,21 @@ export async function PUT(
       throw new AppError("Erro ao atualizar tarefa", 500)
     }
 
+    // --- Onboarding sync (non-blocking) ---
+    if (
+      task &&
+      body.status &&
+      task.source_type === "auto_onboarding_step" &&
+      !task.metadata?._syncOrigin
+    ) {
+      try {
+        const { OnboardingSyncService } = await import("@/lib/services/onboarding-sync.service")
+        await OnboardingSyncService.onTaskStatusChanged(id, body.status)
+      } catch (syncErr) {
+        log.error("Onboarding sync failed (non-blocking):", syncErr)
+      }
+    }
+
     return successResponse(request, { task, message: "Tarefa atualizada com sucesso" })
   } catch (error) {
     return errorResponse(request, error, "Tasks")

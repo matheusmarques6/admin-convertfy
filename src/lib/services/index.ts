@@ -38,5 +38,17 @@ export {
 
 export { generateEmailSubjects, generateAdCopy } from './ai.service';
 
+export {
+  StepDependencyService,
+  type StepForResolution,
+  type DagValidation
+} from './step-dependency.service';
+
+export {
+  OnboardingSyncService,
+  type StepCompletionResult,
+  type SeedTasksResult
+} from './onboarding-sync.service';
+
 // Re-export event utilities for convenience
 export { publishEvent, logActivity } from '@/lib/events/publisher';

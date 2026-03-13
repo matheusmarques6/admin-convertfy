@@ -179,23 +179,81 @@ export async function POST(request: NextRequest) {
       throw new AppError("Erro ao criar onboarding", 500)
     }
 
-    // Create steps from template
+    // Create steps from template — copy all relevant fields
     if (template?.steps?.length) {
-      interface TStep { id: string; name: string; description?: string; category: string; position: number; metadata: Record<string, unknown> }
-      const steps = (template.steps as TStep[])
-        .sort((a, b) => a.position - b.position)
-        .map((step) => ({
-          onboarding_id: onboarding.id,
-          template_step_id: step.id,
-          name: step.name,
-          description: step.description,
-          category: step.category,
-          position: step.position,
-          status: "pending",
-          metadata: step.metadata || {},
-        }))
+      interface TStep {
+        id: string; name: string; description?: string; category: string
+        position: number; metadata: Record<string, unknown>
+        is_required?: boolean; phase?: string
+        depends_on?: string; depends_on_steps?: string[]
+      }
 
-      await adminClient.from("client_onboarding_steps").insert(steps)
+      // Resolve org_id
+      const { data: clientData } = await adminClient
+        .from("clients")
+        .select("org_id")
+        .eq("id", clientId)
+        .single()
+      const orgId = clientData?.org_id ?? null
+
+      const sortedTemplateSteps = (template.steps as TStep[])
+        .sort((a, b) => a.position - b.position)
+
+      const steps = sortedTemplateSteps.map((step) => ({
+        onboarding_id: onboarding.id,
+        template_step_id: step.id,
+        name: step.name,
+        description: step.description,
+        category: step.category,
+        position: step.position,
+        status: "pending",
+        metadata: step.metadata || {},
+        is_required: step.is_required ?? true,
+        phase: step.phase ?? null,
+        org_id: orgId,
+      }))
+
+      const { data: insertedSteps } = await adminClient
+        .from("client_onboarding_steps")
+        .insert(steps)
+        .select("id, template_step_id")
+
+      // Resolve depends_on_step_ids from template dependencies
+      if (insertedSteps && insertedSteps.length > 0) {
+        const templateToClientStep = new Map(
+          insertedSteps.map((s: { id: string; template_step_id: string }) => [s.template_step_id, s.id])
+        )
+
+        for (const tStep of sortedTemplateSteps) {
+          const templateDepIds: string[] = [
+            ...(tStep.depends_on_steps || []),
+            ...(tStep.depends_on && !(tStep.depends_on_steps || []).includes(tStep.depends_on)
+              ? [tStep.depends_on]
+              : []),
+          ]
+
+          if (templateDepIds.length === 0) continue
+
+          const clientDepIds = templateDepIds
+            .map((tid: string) => templateToClientStep.get(tid))
+            .filter(Boolean) as string[]
+
+          if (clientDepIds.length > 0) {
+            const clientStepId = templateToClientStep.get(tStep.id)
+            if (clientStepId) {
+              await adminClient
+                .from("client_onboarding_steps")
+                .update({ depends_on_step_ids: clientDepIds })
+                .eq("id", clientStepId)
+            }
+          }
+        }
+
+        // Initialize step statuses (set 'waiting' for steps with unmet deps)
+        await adminClient.rpc("initialize_onboarding_step_statuses", {
+          p_onboarding_id: onboarding.id,
+        })
+      }
     }
 
     // Transition not_started → pending_approval (triggers notifyApprovers + notifyClient)

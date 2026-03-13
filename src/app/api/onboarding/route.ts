@@ -4,6 +4,7 @@ import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
 import { TaskAutomationService } from "@/lib/services/task-automation.service"
+import { StepDependencyService } from "@/lib/services/step-dependency.service"
 
 const log = logger.child("Onboarding")
 
@@ -123,6 +124,18 @@ export async function POST(request: NextRequest) {
       throw new AppError("Nenhum template de onboarding encontrado", 400)
     }
 
+    // AC 40.10.13: Validate DAG before creating onboarding
+    if (template.steps && template.steps.length > 0) {
+      const dagResult = StepDependencyService.validateDag(template.steps)
+      if (!dagResult.valid) {
+        const cycleInfo = dagResult.cycle ? ` Ciclo: ${dagResult.cycle.join(" -> ")}` : ""
+        throw new AppError(
+          `Template contém ciclo de dependências e não pode ser usado.${cycleInfo}`,
+          400,
+        )
+      }
+    }
+
     // Calculate target completion date
     const targetDate = new Date()
     targetDate.setDate(targetDate.getDate() + (template.estimated_days || 14))
@@ -148,7 +161,7 @@ export async function POST(request: NextRequest) {
       throw new AppError("Erro ao criar onboarding", 500)
     }
 
-    // Create steps from template
+    // Create steps from template — copy all relevant fields
     interface TemplateStep {
       id: string
       name: string
@@ -157,23 +170,91 @@ export async function POST(request: NextRequest) {
       position: number
       estimated_hours: number
       metadata: Record<string, unknown>
+      is_required?: boolean
+      phase?: string
+      depends_on?: string
+      depends_on_steps?: string[]
     }
 
-    const steps = (template.steps || [])
+    // Resolve org_id from assigned member or client
+    let resolvedOrgId: string | null = null
+    if (body.assigned_to) {
+      const { data: assigneeMember } = await adminClient
+        .from("org_members")
+        .select("org_id")
+        .eq("id", body.assigned_to)
+        .single()
+      resolvedOrgId = assigneeMember?.org_id ?? null
+    }
+    if (!resolvedOrgId) {
+      const { data: clientData } = await adminClient
+        .from("clients")
+        .select("org_id")
+        .eq("id", body.client_id)
+        .single()
+      resolvedOrgId = clientData?.org_id ?? null
+    }
+
+    const sortedTemplateSteps = (template.steps || [])
       .sort((a: TemplateStep, b: TemplateStep) => a.position - b.position)
-      .map((step: TemplateStep) => ({
-        onboarding_id: onboarding.id,
-        template_step_id: step.id,
-        name: step.name,
-        description: step.description,
-        category: step.category,
-        position: step.position,
-        status: "pending",
-        metadata: step.metadata || {},
-      }))
+
+    const steps = sortedTemplateSteps.map((step: TemplateStep) => ({
+      onboarding_id: onboarding.id,
+      template_step_id: step.id,
+      name: step.name,
+      description: step.description,
+      category: step.category,
+      position: step.position,
+      status: "pending",
+      metadata: step.metadata || {},
+      is_required: step.is_required ?? true,
+      phase: step.phase ?? null,
+      org_id: resolvedOrgId,
+    }))
 
     if (steps.length > 0) {
-      await adminClient.from("client_onboarding_steps").insert(steps)
+      const { data: insertedSteps } = await adminClient
+        .from("client_onboarding_steps")
+        .insert(steps)
+        .select("id, template_step_id")
+
+      // Resolve depends_on_step_ids from template dependencies
+      if (insertedSteps && insertedSteps.length > 0) {
+        const templateToClientStep = new Map(
+          insertedSteps.map((s: { id: string; template_step_id: string }) => [s.template_step_id, s.id])
+        )
+
+        for (const tStep of sortedTemplateSteps) {
+          // Gather all template dependency IDs
+          const templateDepIds: string[] = [
+            ...(tStep.depends_on_steps || []),
+            ...(tStep.depends_on && !(tStep.depends_on_steps || []).includes(tStep.depends_on)
+              ? [tStep.depends_on]
+              : []),
+          ]
+
+          if (templateDepIds.length === 0) continue
+
+          const clientDepIds = templateDepIds
+            .map((tid: string) => templateToClientStep.get(tid))
+            .filter(Boolean) as string[]
+
+          if (clientDepIds.length > 0) {
+            const clientStepId = templateToClientStep.get(tStep.id)
+            if (clientStepId) {
+              await adminClient
+                .from("client_onboarding_steps")
+                .update({ depends_on_step_ids: clientDepIds })
+                .eq("id", clientStepId)
+            }
+          }
+        }
+
+        // Initialize step statuses (set 'waiting' for steps with unmet deps)
+        await adminClient.rpc("initialize_onboarding_step_statuses", {
+          p_onboarding_id: onboarding.id,
+        })
+      }
     }
 
     // Update client status to onboarding

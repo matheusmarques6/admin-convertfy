@@ -9,6 +9,7 @@ import { TaskBoard } from "./task-board"
 import { BoardCalendarView } from "./board-calendar-view"
 import { MeetingsTab } from "./meetings-tab"
 import { TaskDialog } from "./task-dialog"
+import { useRealtimeBoard } from "@/hooks/use-realtime-board"
 import type { Task, Meeting } from "@/types"
 
 interface UserProfile {
@@ -56,6 +57,7 @@ interface TaskBoardWithCalendarProps {
   clients: ClientInfo[]
   stores: StoreWithClient[]
   meetings: MeetingWithRelations[]
+  orgMemberId: string
 }
 
 type ViewMode = "kanban" | "meetings" | "calendar"
@@ -66,6 +68,7 @@ export function TaskBoardWithCalendar({
   clients,
   stores,
   meetings,
+  orgMemberId,
 }: TaskBoardWithCalendarProps) {
   const router = useRouter()
   const [viewMode, setViewMode] = useState<ViewMode>("kanban")
@@ -82,6 +85,15 @@ export function TaskBoardWithCalendar({
   useEffect(() => {
     setLocalMeetings(meetings)
   }, [meetings])
+
+  // Realtime subscription: auto-refresh board when tasks change in DB
+  useRealtimeBoard({
+    onDataUpdate: useCallback(() => {
+      router.refresh()
+    }, [router]),
+    orgMemberId,
+    enabled: !!orgMemberId,
+  })
 
   const handleTaskClick = useCallback((task: TaskWithRelations) => {
     setEditingTask(task)

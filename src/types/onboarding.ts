@@ -24,7 +24,7 @@ export type OnboardingPhase =
 export type ApprovalAction = "approved" | "rejected" | "revision_requested"
 
 export type PhaseTransitionTrigger = "coo_approval" | "n8n_webhook" | "manual" | "auto" | "form_submission"
-export type OnboardingStepStatus = "pending" | "in_progress" | "blocked" | "completed" | "skipped"
+export type OnboardingStepStatus = "waiting" | "pending" | "in_progress" | "review" | "blocked" | "completed" | "skipped"
 
 export interface OnboardingTemplate {
   id: string
@@ -47,11 +47,13 @@ export interface OnboardingTemplateStep {
   category: string
   position: number
   depends_on?: string
+  depends_on_steps?: string[]
   default_assignee_role?: string
   estimated_hours: number
   webhook_on_complete?: string
   metadata: Record<string, unknown>
   is_required: boolean
+  phase?: string
   created_at: string
 }
 
@@ -129,6 +131,11 @@ export interface ClientOnboardingStep {
   notes?: string
   blocked_reason?: string
   metadata: Record<string, unknown>
+  task_id?: string
+  depends_on_step_ids?: string[]
+  phase?: string
+  is_required?: boolean
+  org_id?: string
   created_at: string
   updated_at: string
   // Joined data

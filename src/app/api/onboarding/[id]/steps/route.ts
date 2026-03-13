@@ -123,6 +123,36 @@ export async function PUT(
       .eq("id", onboardingId)
       .single()
 
+    // --- Onboarding sync (non-blocking) ---
+    if (body.status && step) {
+      try {
+        const { OnboardingSyncService } = await import("@/lib/services/onboarding-sync.service")
+        if (body.status === "completed") {
+          await OnboardingSyncService.onStepCompleted(body.step_id, user.id)
+        } else if (body.status === "skipped") {
+          await OnboardingSyncService.onStepSkipped(body.step_id, user.id)
+        } else {
+          await OnboardingSyncService.onStepStatusChanged(body.step_id, body.status, user.id)
+        }
+      } catch (syncErr) {
+        log.error("Onboarding sync failed (non-blocking):", syncErr)
+      }
+    }
+
+    // --- Step reassignment sync (non-blocking) ---
+    if (body.assigned_to !== undefined && step && body.assigned_to !== null) {
+      try {
+        const { OnboardingSyncService } = await import("@/lib/services/onboarding-sync.service")
+        await OnboardingSyncService.onStepReassigned(
+          body.step_id,
+          body.assigned_to,
+          step.org_id ?? "",
+        )
+      } catch (syncErr) {
+        log.error("Onboarding reassignment sync failed (non-blocking):", syncErr)
+      }
+    }
+
     return successResponse(request, {
       step,
       onboarding_progress: onboarding?.progress_percent || 0,

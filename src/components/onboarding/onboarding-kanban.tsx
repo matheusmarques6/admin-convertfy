@@ -23,6 +23,8 @@ import {
   Sparkles,
   Palette,
   Code2,
+  Layers,
+  ListChecks,
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -58,6 +60,7 @@ import { toast } from "@/lib/hooks/use-toast"
 import { useRealtimeOnboarding } from "@/hooks/use-realtime-onboarding"
 import { cn, getInitials } from "@/lib/utils"
 import type { OnboardingStatus, Client } from "@/types"
+import { OnboardingStepsKanban } from "./onboarding-steps-kanban"
 
 interface OnboardingWithRelations {
   id: string
@@ -159,6 +162,7 @@ const STEP_CATEGORIES: Record<string, { label: string; color: string }> = {
 }
 
 export function OnboardingKanban() {
+  const [viewMode, setViewMode] = useState<"pipeline" | "steps">("pipeline")
   const [onboardings, setOnboardings] = useState<OnboardingWithRelations[]>([])
   const [orgMembers, setOrgMembers] = useState<OrgMember[]>([])
   const [clients, setClients] = useState<Client[]>([])
@@ -523,14 +527,46 @@ export function OnboardingKanban() {
             {onboardings.filter((o) => o.status !== "completed").length} clientes em onboarding
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={fetchOnboardings} title={realtimeConnected ? "Atualização automática ativa" : "Clique para atualizar"}>
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Atualizar
-            {realtimeConnected && (
-              <span className="ml-1.5 h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-            )}
-          </Button>
+        <div className="flex items-center gap-3">
+          {/* View Mode Toggle */}
+          <div className="flex bg-muted/50 rounded-lg p-0.5">
+            <button
+              type="button"
+              onClick={() => setViewMode("pipeline")}
+              className={cn(
+                "inline-flex items-center gap-1.5 text-xs h-8 px-3 rounded-md font-medium transition-all",
+                viewMode === "pipeline"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <Layers className="h-3.5 w-3.5" />
+              Pipeline
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("steps")}
+              className={cn(
+                "inline-flex items-center gap-1.5 text-xs h-8 px-3 rounded-md font-medium transition-all",
+                viewMode === "steps"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <ListChecks className="h-3.5 w-3.5" />
+              Etapas
+            </button>
+          </div>
+
+          {viewMode === "pipeline" && (
+            <Button variant="outline" size="sm" onClick={fetchOnboardings} title={realtimeConnected ? "Atualização automática ativa" : "Clique para atualizar"}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Atualizar
+              {realtimeConnected && (
+                <span className="ml-1.5 h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+              )}
+            </Button>
+          )}
           <Button onClick={() => setShowNewOnboardingDialog(true)}>
             <Plus className="h-4 w-4 mr-2" />
             Novo Onboarding
@@ -538,7 +574,11 @@ export function OnboardingKanban() {
         </div>
       </div>
 
-      {/* Kanban Board */}
+      {/* Steps View */}
+      {viewMode === "steps" && <OnboardingStepsKanban />}
+
+      {/* Pipeline Kanban Board */}
+      {viewMode === "pipeline" && (
       <DragDropContext onDragEnd={handleDragEnd}>
         <div className="flex gap-4 overflow-x-auto pb-4 h-[calc(100vh-220px)]">
           {STAGES.map((stage) => {
@@ -770,6 +810,7 @@ export function OnboardingKanban() {
           })}
         </div>
       </DragDropContext>
+      )}
 
       {/* New Onboarding Dialog */}
       <Dialog open={showNewOnboardingDialog} onOpenChange={setShowNewOnboardingDialog}>

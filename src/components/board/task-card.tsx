@@ -7,6 +7,8 @@ import {
   AlertCircle,
   Trash2,
   ArrowRight,
+  Link2,
+  ExternalLink,
 } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -115,6 +117,12 @@ export function TaskCard({
           <Badge variant={type.variant} className="text-xs">
             {type.label}
           </Badge>
+          {task.source_type === "auto_onboarding_step" && (
+            <Badge variant="secondary" className="text-[10px] gap-1">
+              <Link2 className="h-3 w-3" />
+              Etapa de onboarding
+            </Badge>
+          )}
           <div className={cn("w-2.5 h-2.5 rounded-full ring-2 ring-offset-1 ring-offset-card", priority.color, priority.color.replace("bg-", "ring-").replace("/50", "/30"))} title={priority.label} />
         </div>
         <DropdownMenu>
@@ -195,6 +203,19 @@ export function TaskCard({
               <MessageSquare className="h-3 w-3" />
               {task.comments_count}
             </div>
+          )}
+
+          {/* Onboarding pipeline link */}
+          {task.source_type === "auto_onboarding_step" && (
+            <button
+              type="button"
+              onClick={(e) => e.stopPropagation()}
+              className="flex items-center gap-1 text-xs text-primary hover:underline"
+              aria-label="Ver pipeline de onboarding"
+            >
+              <ExternalLink className="h-3 w-3" />
+              Ver pipeline
+            </button>
           )}
         </div>
 
