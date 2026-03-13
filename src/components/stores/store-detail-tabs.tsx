@@ -109,47 +109,6 @@ const VALID_TABS = [
   "form", "briefing", "alerts", "rastreio", "settings",
 ] as const
 
-/**
- * Mark an onboarding step as completed client-side.
- * TODO: Phase C (Story 39.3) will migrate this to the backend.
- */
-async function markOnboardingStepCompleted(
-  clientId: string,
-  stepName: string
-) {
-  try {
-    let onboarding = null
-    for (const status of ["in_progress", "not_started"]) {
-      const onbRes = await fetch(`/api/onboarding?client_id=${clientId}&status=${status}`)
-      if (!onbRes.ok) continue
-      const onbData = await onbRes.json()
-      if (onbData.onboardings?.[0]) {
-        onboarding = onbData.onboardings[0]
-        break
-      }
-    }
-    if (!onboarding) return
-
-    const stepsRes = await fetch(`/api/onboarding/${onboarding.id}/steps`)
-    if (!stepsRes.ok) return
-    const stepsData = await stepsRes.json()
-    const step = stepsData.steps?.find(
-      (s: { name: string; status: string }) => s.name === stepName && s.status !== "completed"
-    )
-    if (!step) return
-
-    await fetch(`/api/onboarding/${onboarding.id}/steps`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        step_id: step.id,
-        status: "completed",
-      }),
-    })
-  } catch (error) {
-    console.error(`[Onboarding] Error auto-marking "${stepName}":`, error)
-  }
-}
 
 interface CredentialsFormState {
   shopify_store_domain: string
@@ -1026,15 +985,7 @@ function CredentialsForm({
         throw new Error(data.error || "Erro ao salvar credenciais")
       }
 
-      // AC 39.1.7: Mark onboarding steps when Klaviyo or Shopify saved
-      if (clientId) {
-        if (form.klaviyo_private_key.trim()) {
-          markOnboardingStepCompleted(clientId, "Klaviyo Conectado")
-        }
-        if (form.shopify_access_token.trim()) {
-          markOnboardingStepCompleted(clientId, "Acesso a Loja Configurado")
-        }
-      }
+      // Onboarding auto-complete is now handled server-side in the credentials API (Story 39.3)
 
       // AC 39.1.5: Toast + refresh
       toast({

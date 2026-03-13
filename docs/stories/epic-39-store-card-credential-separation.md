@@ -107,13 +107,13 @@ Mover a logica de auto-complete de onboarding para o endpoint de credenciais no 
 
 ### Acceptance Criteria
 
-- [ ] **AC 39.3.1**: Quando `PUT /api/client-stores/credentials` recebe `klaviyo_private_key`, o backend marca o step "Klaviyo Conectado" como completed
-- [ ] **AC 39.3.2**: Quando `PUT /api/client-stores/credentials` recebe `shopify_access_token`, o backend marca o step "Acesso a Loja Configurado" como completed
-- [ ] **AC 39.3.3**: A logica usa `adminClient` direto (padrao do portal em `/api/portal/stores/route.ts` linhas 158-227), NAO fetch chain
-- [ ] **AC 39.3.4**: Funcao `markOnboardingStepCompleted` client-side e removida de `client-stores.tsx`
-- [ ] **AC 39.3.5**: Funcao `markOnboardingStepCompleted` client-side e removida de `store-detail-tabs.tsx` (se adicionada na 39.1)
-- [ ] **AC 39.3.6**: Auto-complete funciona independente de qual tela salva as credenciais (admin, portal, API direta)
-- [ ] **AC 39.3.7**: Falha no auto-complete NAO impede o save de credenciais (try-catch silencioso, igual ao atual)
+- [x] **AC 39.3.1**: Quando `PUT /api/client-stores/credentials` recebe `klaviyo_private_key`, o backend marca o step "Klaviyo Conectado" como completed
+- [x] **AC 39.3.2**: Quando `PUT /api/client-stores/credentials` recebe `shopify_access_token`, o backend marca o step "Acesso a Loja Configurado" como completed
+- [x] **AC 39.3.3**: A logica usa `adminClient` direto (padrao do portal em `/api/portal/stores/route.ts` linhas 158-227), NAO fetch chain
+- [x] **AC 39.3.4**: Funcao `markOnboardingStepCompleted` client-side e removida de `client-stores.tsx`
+- [x] **AC 39.3.5**: Funcao `markOnboardingStepCompleted` client-side e removida de `store-detail-tabs.tsx` (se adicionada na 39.1)
+- [x] **AC 39.3.6**: Auto-complete funciona independente de qual tela salva as credenciais (admin, portal, API direta)
+- [x] **AC 39.3.7**: Falha no auto-complete NAO impede o save de credenciais (try-catch silencioso, igual ao atual)
 
 ### Notas de Implementacao
 - O handler PUT de `/api/client-stores/credentials` recebe `store_id` mas NAO `client_id`. O backend precisara fazer lookup de `client_id` na tabela `client_stores` para passar ao `markStep`.

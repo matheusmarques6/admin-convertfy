@@ -9,6 +9,91 @@ import { logger } from "@/lib/logger"
 
 const log = logger.child("ClientStoresCredentials")
 
+/**
+ * Auto-mark an onboarding step as completed when credentials are saved.
+ * Uses adminClient to bypass RLS (same pattern as /api/portal/stores/route.ts).
+ * Fails silently — credential save must never be blocked by onboarding logic.
+ */
+async function markOnboardingStepCompleted(
+  storeId: string,
+  stepName: string
+) {
+  try {
+    const adminClient = createAdminClient()
+
+    // Lookup client_id from the store (PUT handler only has store_id)
+    const { data: store } = await adminClient
+      .from("client_stores")
+      .select("client_id")
+      .eq("id", storeId)
+      .single()
+
+    if (!store?.client_id) return
+
+    // Find active onboarding for this client
+    const { data: onboarding } = await adminClient
+      .from("client_onboardings")
+      .select("id")
+      .eq("client_id", store.client_id)
+      .in("status", ["in_progress", "not_started"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single()
+
+    if (!onboarding) return
+
+    // Find the matching step that is not yet completed
+    const { data: step } = await adminClient
+      .from("client_onboarding_steps")
+      .select("id, status")
+      .eq("onboarding_id", onboarding.id)
+      .eq("name", stepName)
+      .neq("status", "completed")
+      .limit(1)
+      .single()
+
+    if (!step) return
+
+    // Mark step as completed
+    await adminClient
+      .from("client_onboarding_steps")
+      .update({
+        status: "completed",
+        completed_at: new Date().toISOString(),
+      })
+      .eq("id", step.id)
+
+    // Recalculate onboarding progress
+    const { data: allSteps } = await adminClient
+      .from("client_onboarding_steps")
+      .select("status")
+      .eq("onboarding_id", onboarding.id)
+
+    if (allSteps) {
+      const total = allSteps.length
+      const completed = allSteps.filter(
+        (s) => s.status === "completed" || s.status === "skipped"
+      ).length
+      const percent = total > 0 ? Math.round((completed / total) * 100) : 0
+
+      const onboardingUpdate: Record<string, unknown> = {
+        progress_percent: percent,
+      }
+      if (percent === 100) {
+        onboardingUpdate.status = "completed"
+        onboardingUpdate.completed_at = new Date().toISOString()
+      }
+
+      await adminClient
+        .from("client_onboardings")
+        .update(onboardingUpdate)
+        .eq("id", onboarding.id)
+    }
+  } catch (error) {
+    log.error(`[Credentials] Error auto-marking onboarding step "${stepName}":`, error)
+  }
+}
+
 function escapeLike(str: string): string {
   return str.replace(/%/g, "\\%").replace(/_/g, "\\_")
 }
@@ -185,6 +270,14 @@ export async function POST(request: NextRequest) {
       log.warn("Credential validation failed (store already created)", { store_id: data.id, error: validationError })
     }
 
+    // STEP 3: Auto-mark onboarding steps (silent, non-blocking)
+    if (fields.klaviyo_private_key || fields.klaviyo_api_key) {
+      await markOnboardingStepCompleted(data.id, "Klaviyo Conectado")
+    }
+    if (fields.shopify_access_token) {
+      await markOnboardingStepCompleted(data.id, "Acesso à Loja Configurado")
+    }
+
     return successResponse(request, { success: true, store: data, validation_results: validationResults })
   } catch (error) {
     return errorResponse(request, error, "ClientStoresCredentials")
@@ -273,6 +366,14 @@ export async function PUT(request: NextRequest) {
       }
     } catch (validationError) {
       log.warn("Credential validation failed (credentials already saved)", { store_id, error: validationError })
+    }
+
+    // STEP 3: Auto-mark onboarding steps (silent, non-blocking)
+    if (fields.klaviyo_private_key || fields.klaviyo_api_key) {
+      await markOnboardingStepCompleted(store_id, "Klaviyo Conectado")
+    }
+    if (fields.shopify_access_token) {
+      await markOnboardingStepCompleted(store_id, "Acesso à Loja Configurado")
     }
 
     return successResponse(request, { success: true, store: data, validation_results: validationResults })
