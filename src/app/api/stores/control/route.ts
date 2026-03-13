@@ -16,7 +16,6 @@ const storeControlQuerySchema = paginationSchema.extend({
   per_page: z.coerce.number().int().min(1).max(50).default(10),
   search: z.string().trim().optional().default(""),
   status: z.enum(["on_track", "due_soon", "overdue", "never", ""]).optional().default(""),
-  link_filter: z.enum(["all", "avulsas", "vinculadas"]).optional().default("all"),
 })
 
 interface KlaviyoStoreRevenue {
@@ -131,7 +130,7 @@ export async function GET(request: Request) {
 
     // Parse and validate query params
     const params = storeControlQuerySchema.parse(Object.fromEntries(searchParams))
-    const { page, per_page: perPage, search: rawSearch, status: statusFilter, link_filter: linkFilter } = params
+    const { page, per_page: perPage, search: rawSearch, status: statusFilter } = params
 
     // Sanitize search
     const search = rawSearch ? sanitizeSearch(rawSearch) : ""
@@ -146,7 +145,7 @@ export async function GET(request: Request) {
     // ==============================
     const { data: allStoresForSummary } = await supabase
       .from("client_stores")
-      .select("id, next_feedback_date, last_feedback_date, client_id")
+      .select("id, client_id, next_feedback_date, last_feedback_date")
       .eq("org_id", orgId)
       .eq("is_active", true)
 
@@ -170,14 +169,9 @@ export async function GET(request: Request) {
     today.setHours(0, 0, 0, 0)
 
     const summary = { total: 0, overdue: 0, due_soon: 0, on_track: 0, never: 0 }
-    const linkCounts = { all: 0, avulsas: 0, vinculadas: 0 }
 
     for (const store of allStoresForSummary || []) {
       summary.total++
-      linkCounts.all++
-
-      if (!store.client_id) linkCounts.avulsas++
-      else linkCounts.vinculadas++
 
       // Compute status - consider meetings for never->overdue promotion
       const { status: baseStatus } = computeFeedbackStatus(store, today)
@@ -244,13 +238,6 @@ export async function GET(request: Request) {
 
     if (activeOnly) {
       query = query.eq('is_active', true)
-    }
-
-    // Link filter
-    if (linkFilter === "avulsas") {
-      query = query.is("client_id", null)
-    } else if (linkFilter === "vinculadas") {
-      query = query.not("client_id", "is", null)
     }
 
     // Search filter
@@ -592,7 +579,6 @@ export async function GET(request: Request) {
         success: true,
         stores: enrichedStores,
         summary,
-        link_counts: linkCounts,
         ...(isPaginated && {
           pagination: {
             page,
@@ -622,8 +608,7 @@ export async function GET(request: Request) {
           success: true,
           stores: [],
           summary,
-          link_counts: linkCounts,
-          ...(isPaginated && {
+            ...(isPaginated && {
             pagination: { page, per_page: perPage, total: count || 0, total_pages: Math.ceil((count || 0) / perPage) },
           }),
         })
@@ -659,7 +644,6 @@ export async function GET(request: Request) {
         success: true,
         stores: enrichedStores,
         summary,
-        link_counts: linkCounts,
         ...(isPaginated && {
           pagination: {
             page,

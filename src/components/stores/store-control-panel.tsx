@@ -18,9 +18,6 @@ import {
   Settings,
   Pencil,
   Video,
-  Plus,
-  Link2,
-  Unlink,
   Trash2,
   ChevronLeft,
   ChevronRight,
@@ -67,9 +64,6 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/lib/hooks/use-toast"
 import { TimeAgo } from "@/components/ui/time-ago"
 import { SyncStatusBadge } from "@/components/ui/sync-status-badge"
-import { QuickStoreForm } from "@/components/stores/quick-store-form"
-import { StoreLinkModal } from "@/components/stores/store-link-modal"
-import { StoreUnlinkDialog } from "@/components/stores/store-unlink-dialog"
 import { cn } from "@/lib/utils"
 
 interface StoreData {
@@ -110,12 +104,6 @@ interface Summary {
   due_soon: number
   on_track: number
   never: number
-}
-
-interface LinkCounts {
-  all: number
-  avulsas: number
-  vinculadas: number
 }
 
 interface UserData {
@@ -190,7 +178,6 @@ export function StoreControlPanel() {
   const { toast } = useToast()
   const [stores, setStores] = useState<StoreData[]>([])
   const [summary, setSummary] = useState<Summary | null>(null)
-  const [linkCounts, setLinkCounts] = useState<LinkCounts>({ all: 0, avulsas: 0, vinculadas: 0 })
   const [isLoading, setIsLoading] = useState(true)
   const [users, setUsers] = useState<UserData[]>([])
 
@@ -204,7 +191,6 @@ export function StoreControlPanel() {
   const [searchInput, setSearchInput] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState<string>('all')
-  const [filterLink, setFilterLink] = useState<'all' | 'avulsas' | 'vinculadas'>('all')
 
   // Refs
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -214,9 +200,6 @@ export function StoreControlPanel() {
   const [selectedStore, setSelectedStore] = useState<StoreData | null>(null)
   const [isRegisterDialogOpen, setIsRegisterDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
-  const [isQuickStoreDialogOpen, setIsQuickStoreDialogOpen] = useState(false)
-  const [isLinkModalOpen, setIsLinkModalOpen] = useState(false)
-  const [isUnlinkDialogOpen, setIsUnlinkDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -255,11 +238,6 @@ export function StoreControlPanel() {
     setPage(1)
   }, [])
 
-  const handleFilterLinkChange = useCallback((value: 'all' | 'avulsas' | 'vinculadas') => {
-    setFilterLink(value)
-    setPage(1)
-  }, [])
-
   // Fetch stores
   const fetchStores = useCallback(async () => {
     if (abortControllerRef.current) abortControllerRef.current.abort()
@@ -274,8 +252,6 @@ export function StoreControlPanel() {
       })
       if (debouncedSearch) params.set('search', debouncedSearch)
       if (filterStatus && filterStatus !== 'all') params.set('status', filterStatus)
-      if (filterLink && filterLink !== 'all') params.set('link_filter', filterLink)
-
       const res = await fetch(`/api/stores/control?${params}`, { signal: controller.signal })
       if (controller.signal.aborted) return
 
@@ -283,7 +259,6 @@ export function StoreControlPanel() {
       if (data.success) {
         setStores(data.stores)
         if (data.summary) setSummary(data.summary)
-        if (data.link_counts) setLinkCounts(data.link_counts)
         if (data.pagination) {
           setTotalPages(data.pagination.total_pages)
           setTotalItems(data.pagination.total)
@@ -301,7 +276,7 @@ export function StoreControlPanel() {
     } finally {
       if (!controller.signal.aborted) setIsLoading(false)
     }
-  }, [page, perPage, debouncedSearch, filterStatus, filterLink, toast])
+  }, [page, perPage, debouncedSearch, filterStatus, toast])
 
   useEffect(() => {
     return () => { if (abortControllerRef.current) abortControllerRef.current.abort() }
@@ -424,7 +399,7 @@ export function StoreControlPanel() {
 
   const paginationStart = totalItems > 0 ? ((page - 1) * perPage) + 1 : 0
   const paginationEnd = Math.min(page * perPage, totalItems)
-  const hasActiveFilters = filterStatus !== 'all' || filterLink !== 'all' || searchInput !== ''
+  const hasActiveFilters = filterStatus !== 'all' || searchInput !== ''
 
   // ─── Loading skeleton ─────────────────────────────────────────
   if (isLoading && stores.length === 0) {
@@ -527,43 +502,15 @@ export function StoreControlPanel() {
             >
               <RefreshCw className={cn("w-4 h-4", isLoading && "animate-spin")} />
             </Button>
-            <Button onClick={() => setIsQuickStoreDialogOpen(true)} className="h-10 whitespace-nowrap">
-              <Plus className="w-4 h-4 mr-2" />
-              <span className="hidden sm:inline">Cadastro Rapido</span>
-              <span className="sm:hidden">Nova</span>
-            </Button>
           </div>
         </div>
 
-        {/* Link filter tabs + active filter chips */}
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-1 p-0.5 bg-muted/50 rounded-lg">
-            {([
-              { key: 'all' as const, label: 'Todas', count: linkCounts.all },
-              { key: 'avulsas' as const, label: 'Avulsas', count: linkCounts.avulsas },
-              { key: 'vinculadas' as const, label: 'Vinculadas', count: linkCounts.vinculadas },
-            ]).map(tab => (
-              <button
-                key={tab.key}
-                onClick={() => handleFilterLinkChange(tab.key)}
-                className={cn(
-                  "px-3 py-1.5 text-xs font-medium rounded-md transition-all",
-                  filterLink === tab.key
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {tab.label}
-                <span className="ml-1 text-muted-foreground/70">{tab.count}</span>
-              </button>
-            ))}
-          </div>
-
-          {hasActiveFilters && (
+        {/* Active filter chips */}
+        {hasActiveFilters && (
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => {
                 setFilterStatus('all')
-                setFilterLink('all')
                 handleSearchChange('')
                 setSearchInput('')
                 setPage(1)
@@ -573,8 +520,8 @@ export function StoreControlPanel() {
               <X className="w-3 h-3" />
               Limpar filtros
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* ─── Store List ────────────────────────────────────────── */}
@@ -784,18 +731,6 @@ export function StoreControlPanel() {
                                   </>
                                 )}
                                 <DropdownMenuSeparator />
-                                {!store.client_id ? (
-                                  <DropdownMenuItem onClick={() => { setSelectedStore(store); setIsLinkModalOpen(true) }}>
-                                    <Link2 className="w-4 h-4 mr-2" />
-                                    Vincular a Cliente
-                                  </DropdownMenuItem>
-                                ) : (
-                                  <DropdownMenuItem onClick={() => { setSelectedStore(store); setIsUnlinkDialogOpen(true) }} className="text-destructive focus:text-destructive">
-                                    <Unlink className="w-4 h-4 mr-2" />
-                                    Desvincular
-                                  </DropdownMenuItem>
-                                )}
-                                <DropdownMenuSeparator />
                                 <DropdownMenuItem onClick={() => { setSelectedStore(store); setIsDeleteDialogOpen(true) }} className="text-destructive focus:text-destructive">
                                   <Trash2 className="w-4 h-4 mr-2" />
                                   Excluir Loja
@@ -869,18 +804,6 @@ export function StoreControlPanel() {
                                 Ver Cliente
                               </DropdownMenuItem>
                             </>
-                          )}
-                          <DropdownMenuSeparator />
-                          {!store.client_id ? (
-                            <DropdownMenuItem onClick={() => { setSelectedStore(store); setIsLinkModalOpen(true) }}>
-                              <Link2 className="w-4 h-4 mr-2" />
-                              Vincular a Cliente
-                            </DropdownMenuItem>
-                          ) : (
-                            <DropdownMenuItem onClick={() => { setSelectedStore(store); setIsUnlinkDialogOpen(true) }} className="text-destructive focus:text-destructive">
-                              <Unlink className="w-4 h-4 mr-2" />
-                              Desvincular
-                            </DropdownMenuItem>
                           )}
                           <DropdownMenuSeparator />
                           <DropdownMenuItem onClick={() => { setSelectedStore(store); setIsDeleteDialogOpen(true) }} className="text-destructive focus:text-destructive">
@@ -1025,7 +948,7 @@ export function StoreControlPanel() {
             <DialogDescription>
               {selectedStore && (
                 <span>
-                  Registrando feedback para <strong>{selectedStore.store_name}</strong> ({selectedStore.client_name || 'Avulsa'})
+                  Registrando feedback para <strong>{selectedStore.store_name}</strong> ({selectedStore.client_name})
                 </span>
               )}
             </DialogDescription>
@@ -1163,7 +1086,7 @@ export function StoreControlPanel() {
                   </div>
                   <div>
                     <p className="font-medium text-foreground">{selectedStore.store_name}</p>
-                    <p className="text-sm text-muted-foreground">{selectedStore.client_name || 'Avulsa'}</p>
+                    <p className="text-sm text-muted-foreground">{selectedStore.client_name}</p>
                   </div>
                 </div>
               </div>
@@ -1240,40 +1163,6 @@ export function StoreControlPanel() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Quick Store Dialog */}
-      <Dialog open={isQuickStoreDialogOpen} onOpenChange={setIsQuickStoreDialogOpen}>
-        <DialogContent className="sm:max-w-[450px]">
-          <QuickStoreForm
-            onSuccess={() => { setIsQuickStoreDialogOpen(false); fetchStores() }}
-            onCancel={() => setIsQuickStoreDialogOpen(false)}
-          />
-        </DialogContent>
-      </Dialog>
-
-      {/* Store Link Modal */}
-      {selectedStore && (
-        <StoreLinkModal
-          storeId={selectedStore.id}
-          storeName={selectedStore.store_name}
-          orgId={selectedStore.org_id || ""}
-          isOpen={isLinkModalOpen}
-          onClose={() => { setIsLinkModalOpen(false); setSelectedStore(null) }}
-          onSuccess={fetchStores}
-        />
-      )}
-
-      {/* Store Unlink Dialog */}
-      {selectedStore && (
-        <StoreUnlinkDialog
-          storeId={selectedStore.id}
-          storeName={selectedStore.store_name}
-          clientName={selectedStore.client_name || ""}
-          isOpen={isUnlinkDialogOpen}
-          onClose={() => { setIsUnlinkDialogOpen(false); setSelectedStore(null) }}
-          onSuccess={fetchStores}
-        />
-      )}
 
       {/* Delete Confirmation */}
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={(open) => {

@@ -7,9 +7,7 @@ import { getStoreIntegrationStatus } from "@/lib/services/credentials.service"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { StoreDetailTabs } from "@/components/stores/store-detail-tabs"
-import { StoreLinkActions } from "@/components/stores/store-link-actions"
 import { StoreDeleteAction } from "@/components/stores/store-delete-action"
-import { StoreUnlinkedBanner } from "@/components/stores/store-unlinked-banner"
 
 export const dynamic = "force-dynamic"
 
@@ -142,15 +140,6 @@ export default async function StoreDetailPage({
 
   return (
     <div className="space-y-6">
-      {/* Warning banner for unlinked stores */}
-      {!store.client_id && (
-        <StoreUnlinkedBanner
-          storeId={store.id}
-          storeName={store.store_name}
-          orgId={store.org_id || ""}
-        />
-      )}
-
       {/* Header */}
       <div className="flex items-start justify-between">
         <div className="flex items-start gap-4">
@@ -171,30 +160,19 @@ export default async function StoreDetailPage({
             </div>
             <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
               {store.store_url && <span>{store.store_url}</span>}
-              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-              {store.client_id && (store.clients as any)?.name ? (
+              {store.client_id && clientName && (
                 <Link
                   href={`/admin/clients/${store.client_id}`}
                   className="text-primary hover:underline"
                 >
-                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                  Cliente: {(store.clients as any).name}
+                  Cliente: {clientName}
                 </Link>
-              ) : (
-                <span>Loja Avulsa — Sem cliente vinculado</span>
               )}
               <span>{connectedCount} integração(ões) conectada(s)</span>
             </div>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <StoreLinkActions
-            storeId={store.id}
-            storeName={store.store_name}
-            orgId={store.org_id || ""}
-            clientId={store.client_id}
-            clientName={clientName}
-          />
           <StoreDeleteAction
             storeId={store.id}
             storeName={store.store_name}

@@ -33,7 +33,6 @@ import { StoreTrackingTab } from "@/components/stores/store-tracking-tab"
 import { StoreUtmTab } from "@/components/stores/store-utm-tab"
 import { StorePerformanceKPIs } from "@/components/stores/store-performance-kpis"
 import { StorePerformanceTables } from "@/components/stores/store-performance-tables"
-import { StoreLinkModal } from "@/components/stores/store-link-modal"
 import { DateRangePicker } from "@/components/ui/date-range-picker"
 import { useStorePerformance, StorePerformanceContext } from "@/lib/hooks/use-store-performance"
 import { toast } from "@/lib/hooks/use-toast"
@@ -119,7 +118,7 @@ export function StoreDetailTabs({
   const [customStart, setCustomStart] = useState<Date | undefined>()
   const [customEnd, setCustomEnd] = useState<Date | undefined>()
   const [activeAlertsCount, setActiveAlertsCount] = useState(0)
-  const [linkModalOpen, setLinkModalOpen] = useState(false)
+
 
   const setPeriod = (p: Period) => {
     setPeriodRaw(p)
@@ -260,18 +259,7 @@ export function StoreDetailTabs({
                   )}
                   <div className="flex justify-between items-center">
                     <span className="text-muted-foreground">Cliente</span>
-                    {clientId ? (
-                      <span className="font-medium">Vinculado</span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setLinkModalOpen(true)}
-                        className="flex items-center gap-1 text-yellow-600 dark:text-yellow-400 hover:underline cursor-pointer text-sm"
-                      >
-                        <AlertTriangle className="h-3 w-3" />
-                        Nao vinculado - Vincular
-                      </button>
-                    )}
+                    <span className="font-medium">Vinculado</span>
                   </div>
                   {niche && (
                     <div className="flex justify-between">
@@ -440,16 +428,6 @@ export function StoreDetailTabs({
         </Card>
       </TabsContent>
 
-      {/* Store Link Modal - opened from overview "Nao vinculado" */}
-      {!clientId && (
-        <StoreLinkModal
-          storeId={storeId}
-          storeName={storeName}
-          isOpen={linkModalOpen}
-          onClose={() => setLinkModalOpen(false)}
-          onSuccess={() => window.location.reload()}
-        />
-      )}
     </Tabs>
   )
 }
