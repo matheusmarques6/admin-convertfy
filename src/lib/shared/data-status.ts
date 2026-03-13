@@ -45,7 +45,7 @@ export interface SyncResult<T> {
   success: boolean
   data: T | null
   error?: string
-  source: "cache" | "live"
+  source: "cache" | "live" | "stale-cache"
   fetchedAt: string
 }
 

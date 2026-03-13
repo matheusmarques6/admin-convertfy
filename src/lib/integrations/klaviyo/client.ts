@@ -69,6 +69,11 @@ const MAX_RETRY_AFTER_MS = 10_000
 // AbortSignal.timeout() is supported in Node.js 17.3+ and Vercel runtimes without polyfill.
 const KLAVIYO_FETCH_TIMEOUT_MS = 15_000
 
+// Maximum cache age for rate-limit fallback.
+// When Klaviyo returns 429, we serve cached data up to 48h old.
+// Beyond 48h the data is too stale — show a friendly message instead.
+export const RATE_LIMIT_MAX_CACHE_AGE_MS = 48 * 60 * 60 * 1000 // 48 hours
+
 export const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
 /**

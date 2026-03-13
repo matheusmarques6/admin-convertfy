@@ -34,6 +34,7 @@ import { Label } from "@/components/ui/label"
 import { KlaviyoPerformanceReport } from "@/components/clients/klaviyo-performance-report"
 import { formatCurrency } from "@/lib/utils"
 import { useKlaviyoCampaigns, useKlaviyoFlows } from "@/lib/hooks/use-api-data"
+import { RateLimitBanner } from "@/components/ui/rate-limit-banner"
 import { StoreBriefingTab } from "@/components/stores/store-briefing-tab"
 import { StoreFormTab } from "@/components/stores/store-form-tab"
 import { StoreAlertsTab } from "@/components/stores/store-alerts-tab"
@@ -502,7 +503,7 @@ function CampaignsTab({
   customEnd,
   onCustomDateApply,
 }: {
-  data: { summary: Record<string, number>; campaigns: CampaignData[]; currency?: string } | undefined
+  data: { summary: Record<string, number>; campaigns: CampaignData[]; currency?: string; rateLimited?: boolean; fromCache?: boolean; fetchedAt?: string } | undefined
   loading: boolean
   refreshing: boolean
   period: Period
@@ -524,6 +525,9 @@ function CampaignsTab({
 
   return (
     <div className="space-y-4">
+      {data?.rateLimited && (
+        <RateLimitBanner fromCache={!!data.fromCache} fetchedAt={data.fetchedAt} />
+      )}
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">Campanhas Klaviyo</h3>
         <div className="flex items-center gap-2">
@@ -617,7 +621,7 @@ function FlowsTab({
   onCustomDateApply,
   driveFolderUrl,
 }: {
-  data: { summary: Record<string, number>; flows: FlowData[]; currency?: string } | undefined
+  data: { summary: Record<string, number>; flows: FlowData[]; currency?: string; rateLimited?: boolean; fromCache?: boolean; fetchedAt?: string } | undefined
   loading: boolean
   refreshing: boolean
   period: Period
@@ -640,6 +644,9 @@ function FlowsTab({
 
   return (
     <div className="space-y-4">
+      {data?.rateLimited && (
+        <RateLimitBanner fromCache={!!data.fromCache} fetchedAt={data.fetchedAt} />
+      )}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <h3 className="text-lg font-semibold">Flows Klaviyo</h3>

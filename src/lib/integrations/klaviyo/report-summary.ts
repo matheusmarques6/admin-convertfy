@@ -7,11 +7,13 @@
 
 import { getStoreCredentials } from "@/lib/services/credentials.service"
 import { logger } from "@/lib/logger"
-import { klaviyoRequest, parseDateRangeInTimezone } from "./client"
+import { klaviyoRequest, parseDateRangeInTimezone, RATE_LIMIT_MAX_CACHE_AGE_MS } from "./client"
+import { KlaviyoRateLimitError } from "./client"
 import { getTimezoneOffset } from "./account"
 import { getCachedAccountInfo } from "./cached-metadata"
 import { getCachedPlacedOrderMetric } from "./cached-metadata"
-import { type SyncResult } from "@/lib/shared/data-status"
+import { type SyncResult, isCachedPeriod } from "@/lib/shared/data-status"
+import { createAdminClient } from "@/lib/supabase/server"
 
 const log = logger.child("KlaviyoReportSummary")
 
@@ -158,6 +160,51 @@ export async function getKlaviyoRevenueForStore(
       source: "live", fetchedAt: new Date().toISOString(),
     }
   } catch (error) {
+    // Rate limit: try to serve stale data from store_revenue_summary
+    if (error instanceof KlaviyoRateLimitError) {
+      log.warn(`Store ${storeId}: rate limited, attempting stale cache fallback...`)
+      try {
+        if (isCachedPeriod(period)) {
+          const adminClient = createAdminClient()
+          const { data: row } = await adminClient
+            .from("store_revenue_summary")
+            .select("*")
+            .eq("store_id", storeId)
+            .eq("period_label", period)
+            .order("fetched_at", { ascending: false })
+            .limit(1)
+            .single()
+
+          if (row) {
+            const fetchedAt = new Date(row.fetched_at as string)
+            const isStale = Date.now() - fetchedAt.getTime() > RATE_LIMIT_MAX_CACHE_AGE_MS
+            const isError = row.sync_status === "error" && row.campaign_revenue === 0 && row.flow_revenue === 0
+
+            if (!isStale && !isError) {
+              const cached: KlaviyoRevenueSummary = {
+                totalRevenue: ((row.campaign_revenue as number) || 0) + ((row.flow_revenue as number) || 0),
+                campaignRevenue: (row.campaign_revenue as number) || 0,
+                flowRevenue: (row.flow_revenue as number) || 0,
+                currency: (row.currency as string) || "BRL",
+              }
+              log.info(`Store ${storeId}: rate limit fallback serving stale cache from ${row.fetched_at}`)
+              return {
+                success: true, data: cached,
+                source: "stale-cache", fetchedAt: row.fetched_at as string,
+              }
+            }
+          }
+        }
+      } catch (fallbackErr) {
+        log.error(`Store ${storeId}: rate limit fallback error:`, fallbackErr)
+      }
+      return {
+        success: false, data: null,
+        error: "Rate limited, sem dados em cache",
+        source: "live", fetchedAt: new Date().toISOString(),
+      }
+    }
+
     log.error("Error in getKlaviyoRevenueForStore:", error)
     return {
       success: false, data: null,

@@ -29,6 +29,7 @@ import {
   ArrowLeft,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { RateLimitBanner } from "@/components/ui/rate-limit-banner"
 import { formatCurrency as formatCurrencyUtil, formatCurrencyCompact as formatCurrencyCompactUtil } from "@/lib/utils/format"
 
 // ============ INTERFACES ============
@@ -432,6 +433,20 @@ export function KlaviyoFullscreenReport({ storeId, storeName, period }: KlaviyoF
           </Button>
         </div>
       </div>
+
+      {/* Rate limit banner */}
+      {(() => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const raw = klaviyoRaw as any
+        if (raw?.rateLimited) {
+          return (
+            <div className="max-w-6xl mx-auto px-8 pt-4">
+              <RateLimitBanner fromCache={!!raw.fromCache} fetchedAt={raw.fetchedAt} />
+            </div>
+          )
+        }
+        return null
+      })()}
 
       {/* Report Content */}
       <div ref={reportRef} className="bg-card text-foreground">

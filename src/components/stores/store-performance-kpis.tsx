@@ -19,6 +19,7 @@ import {
   useStorePerformanceContext,
   PERIODS,
 } from "@/lib/hooks/use-store-performance"
+import { RateLimitBanner } from "@/components/ui/rate-limit-banner"
 
 function KPISkeletons() {
   return (
@@ -40,6 +41,7 @@ export function StorePerformanceKPIs() {
     setPeriod,
     setCustomDates,
     refresh,
+    rateLimitInfo,
   } = useStorePerformanceContext()
 
   const [customStart, setCustomStart] = useState<Date | undefined>()
@@ -96,6 +98,14 @@ export function StorePerformanceKPIs() {
           </Button>
         </div>
       </div>
+
+      {/* Rate limit banner */}
+      {rateLimitInfo?.rateLimited && (
+        <RateLimitBanner
+          fromCache={rateLimitInfo.fromCache}
+          fetchedAt={rateLimitInfo.fetchedAt}
+        />
+      )}
 
       {/* Loading */}
       {loading && <KPISkeletons />}

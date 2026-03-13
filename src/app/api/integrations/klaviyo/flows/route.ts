@@ -21,6 +21,7 @@ import {
 } from "@/lib/integrations/klaviyo"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { isCachedPeriod } from "@/lib/shared/data-status"
+import { RATE_LIMIT_MAX_CACHE_AGE_MS } from "@/lib/integrations/klaviyo"
 import type { SupabaseClient } from "@supabase/supabase-js"
 
 export const maxDuration = 300
@@ -249,7 +250,8 @@ async function getFlowMetrics(
 async function readFlowsFromCache(
   storeId: string,
   period: string,
-  supabase: SupabaseClient
+  supabase: SupabaseClient,
+  maxAgeMs: number = CACHE_MAX_AGE_MS
 ) {
   const { data: rows, error } = await supabase
     .from("klaviyo_flow_metrics")
@@ -262,7 +264,7 @@ async function readFlowsFromCache(
 
   // Check freshness: if newest row is older than threshold, cache is stale
   const latestFetchedAt = new Date(rows[0].fetched_at)
-  if (Date.now() - latestFetchedAt.getTime() > CACHE_MAX_AGE_MS) return null
+  if (Date.now() - latestFetchedAt.getTime() > maxAgeMs) return null
 
   // Map cached rows to response format (exclude archived)
   const flows = rows
@@ -599,9 +601,45 @@ export async function GET(request: NextRequest) {
       )
     }
     if (error instanceof KlaviyoRateLimitError) {
+      log.warn("[Klaviyo Flows] Rate limited, attempting cache fallback...")
+      try {
+        const adminClient = createAdminClient()
+        const searchParams = request.nextUrl.searchParams
+        const fallbackStoreId = searchParams.get("store_id")
+        const fallbackPeriod = searchParams.get("period") || "30d"
+        if (fallbackStoreId && isCachedPeriod(fallbackPeriod)) {
+          const cached = await readFlowsFromCache(fallbackStoreId, fallbackPeriod, adminClient, RATE_LIMIT_MAX_CACHE_AGE_MS)
+          if (cached) {
+            let cachedCurrency = "BRL"
+            try {
+              const { data: summaryRow } = await adminClient
+                .from("store_revenue_summary")
+                .select("currency")
+                .eq("store_id", fallbackStoreId)
+                .limit(1)
+                .single()
+              if (summaryRow?.currency) cachedCurrency = summaryRow.currency
+            } catch { /* fallback to BRL */ }
+
+            log.info(`[Klaviyo Flows] Rate limit fallback: serving stale cache for store ${fallbackStoreId}`)
+            return NextResponse.json({
+              success: true,
+              rateLimited: true,
+              fromCache: true,
+              fetchedAt: cached.fetchedAt,
+              currency: cachedCurrency,
+              summary: cached.summary,
+              flows: cached.flows,
+            }, { headers: corsHeaders(origin) })
+          }
+        }
+      } catch (fallbackErr) {
+        log.error("[Klaviyo Flows] Rate limit fallback error:", fallbackErr)
+      }
+      // No cache available — return friendly message (status 200, not 429)
       return NextResponse.json(
-        { success: false, error: "Klaviyo temporariamente indisponível (limite de requisições). Tente novamente em alguns segundos.", code: "KLAVIYO_RATE_LIMIT" },
-        { status: 429, headers: { ...corsHeaders(origin), "Retry-After": String(Math.ceil(error.retryAfterMs / 1000)) } }
+        { success: true, rateLimited: true, error: "rate_limited_no_cache", message: "Dados temporariamente indisponiveis por limitacao da Klaviyo." },
+        { headers: corsHeaders(origin) }
       )
     }
     return errorResponse(request, error, "IntegrationsKlaviyoFlows")

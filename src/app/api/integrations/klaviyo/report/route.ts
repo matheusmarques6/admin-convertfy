@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth } from "@/lib/api/errors"
 import { requireStoreAccess } from "@/lib/api/require-store-access"
 import { getStoreCredentials } from "@/lib/services/credentials.service"
@@ -22,6 +22,9 @@ import {
   KlaviyoInvalidKeyError,
 } from "@/lib/integrations/klaviyo"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
+import { RATE_LIMIT_MAX_CACHE_AGE_MS } from "@/lib/integrations/klaviyo"
+import { isCachedPeriod } from "@/lib/shared/data-status"
+import type { SupabaseClient } from "@supabase/supabase-js"
 
 // Vercel serverless function configuration
 // Extended timeout to allow fetching all Klaviyo data
@@ -807,6 +810,53 @@ async function getCampaignValuesReport(
   }
 }
 
+// Read partial report data from cache (store_revenue_summary) for rate-limit fallback.
+// Only returns revenue/audience/engagement data — detailed sections are not available.
+async function readReportFromCache(
+  storeId: string,
+  period: string,
+  adminClient: SupabaseClient
+) {
+  const { data: row, error } = await adminClient
+    .from("store_revenue_summary")
+    .select("*")
+    .eq("store_id", storeId)
+    .eq("period_label", period)
+    .order("fetched_at", { ascending: false })
+    .limit(1)
+    .single()
+
+  if (error || !row) return null
+
+  // Check freshness
+  const fetchedAt = new Date(row.fetched_at as string)
+  if (Date.now() - fetchedAt.getTime() > RATE_LIMIT_MAX_CACHE_AGE_MS) return null
+
+  // Verify it's not an error row with zero revenue
+  if (row.sync_status === "error" && (row.campaign_revenue === 0 && row.flow_revenue === 0)) return null
+
+  return {
+    fetchedAt: row.fetched_at as string,
+    revenue: {
+      storeRevenue: (row.store_revenue as number) || 0,
+      storeOrders: (row.store_orders as number) || 0,
+      totalRevenue: ((row.campaign_revenue as number) || 0) + ((row.flow_revenue as number) || 0),
+      klaviyoAttributedRevenue: ((row.campaign_revenue as number) || 0) + ((row.flow_revenue as number) || 0),
+      campaignRevenue: (row.campaign_revenue as number) || 0,
+      flowRevenue: (row.flow_revenue as number) || 0,
+      recoveryRate: (row.store_revenue as number) > 0
+        ? (((row.campaign_revenue as number) || 0) + ((row.flow_revenue as number) || 0)) / (row.store_revenue as number) * 100
+        : 0,
+    },
+    audience: {
+      totalSubscribers: (row.total_subscribers as number) || 0,
+      engagedProfiles: (row.engaged_profiles as number) || 0,
+      engagementRate: (row.engagement_rate as number) || 0,
+    },
+    currency: (row.currency as string) || "BRL",
+  }
+}
+
 // Main GET handler
 export async function GET(request: NextRequest) {
   try {
@@ -1337,9 +1387,45 @@ export async function GET(request: NextRequest) {
       )
     }
     if (error instanceof KlaviyoRateLimitError) {
+      log.warn("[Klaviyo Report] Rate limited, attempting cache fallback...")
+      try {
+        const adminClient = createAdminClient()
+        const searchParams = request.nextUrl.searchParams
+        const fallbackStoreId = searchParams.get("store_id")
+        const fallbackPeriod = searchParams.get("period") || "30d"
+        if (fallbackStoreId && isCachedPeriod(fallbackPeriod)) {
+          const cached = await readReportFromCache(fallbackStoreId, fallbackPeriod, adminClient)
+          if (cached) {
+            log.info(`[Klaviyo Report] Rate limit fallback: serving partial cache for store ${fallbackStoreId}`)
+            return NextResponse.json({
+              success: true,
+              rateLimited: true,
+              partial: true,
+              fromCache: true,
+              fetchedAt: cached.fetchedAt,
+              connected: true,
+              account: {
+                currency: cached.currency,
+                currencySymbol: getCurrencySymbol(cached.currency),
+              },
+              revenue: cached.revenue,
+              overview: {
+                totalSubscribers: cached.audience.totalSubscribers,
+              },
+              engagement: {
+                engagedProfiles: cached.audience.engagedProfiles,
+                engagementRate: String(cached.audience.engagementRate),
+              },
+            }, { headers: corsHeaders(origin) })
+          }
+        }
+      } catch (fallbackErr) {
+        log.error("[Klaviyo Report] Rate limit fallback error:", fallbackErr)
+      }
+      // No cache available — return friendly message (status 200, not 429)
       return NextResponse.json(
-        { success: false, error: "Klaviyo temporariamente indisponível (limite de requisições). Tente novamente em alguns segundos.", code: "KLAVIYO_RATE_LIMIT" },
-        { status: 429, headers: { ...corsHeaders(origin), "Retry-After": String(Math.ceil(error.retryAfterMs / 1000)) } }
+        { success: true, rateLimited: true, error: "rate_limited_no_cache", message: "Dados temporariamente indisponiveis por limitacao da Klaviyo." },
+        { headers: corsHeaders(origin) }
       )
     }
     return errorResponse(request, error, "IntegrationsKlaviyoReport")

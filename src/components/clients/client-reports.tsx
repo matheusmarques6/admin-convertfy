@@ -232,6 +232,28 @@ export function ClientReports({ clientId }: ClientReportsProps) {
         throw new Error(reportData.error || "Erro ao gerar relatório")
       }
 
+      // Handle rate-limited response with no cache
+      if (reportData.rateLimited && reportData.error === "rate_limited_no_cache") {
+        toast({
+          variant: "destructive",
+          title: "Klaviyo temporariamente limitada",
+          description: reportData.message || "Tente novamente em alguns minutos.",
+        })
+        setIsCreating(false)
+        return
+      }
+
+      // Block saving partial/stale data from rate-limited cache
+      if (reportData.rateLimited && reportData.partial) {
+        toast({
+          variant: "destructive",
+          title: "Dados parciais - não é possível salvar",
+          description: "O relatório contém dados incompletos do cache devido a rate-limit da Klaviyo. Tente novamente em alguns minutos para obter dados completos.",
+        })
+        setIsCreating(false)
+        return
+      }
+
       // Get store name
       const store = stores.find(s => s.id === selectedStore)
 

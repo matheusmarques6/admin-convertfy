@@ -55,6 +55,13 @@ interface FlowItem {
   revenue: number
 }
 
+export interface RateLimitInfo {
+  rateLimited: boolean
+  fromCache: boolean
+  fetchedAt?: string
+  partial?: boolean
+}
+
 export interface StorePerformanceState {
   totals: StorePerformanceTotals | null
   campaigns: CampaignItem[]
@@ -67,6 +74,7 @@ export interface StorePerformanceState {
   customDates?: CustomDateRange
   setCustomDates: (dates: CustomDateRange | undefined) => void
   refresh: () => void
+  rateLimitInfo: RateLimitInfo | null
 }
 
 export function useStorePerformance(storeId: string, klaviyoConnected: boolean): StorePerformanceState {
@@ -106,8 +114,8 @@ export function useStorePerformance(storeId: string, klaviyoConnected: boolean):
     mutate: mutateReport,
   } = useKlaviyoReport(effectiveStoreId, period, customDates)
 
-  const campaignsData = campaignsRaw as { summary: Record<string, number>; campaigns: CampaignItem[]; currency?: string } | undefined
-  const flowsData = flowsRaw as { summary: Record<string, number>; flows: FlowItem[]; currency?: string } | undefined
+  const campaignsData = campaignsRaw as { summary: Record<string, number>; campaigns: CampaignItem[]; currency?: string; rateLimited?: boolean; fromCache?: boolean; fetchedAt?: string } | undefined
+  const flowsData = flowsRaw as { summary: Record<string, number>; flows: FlowItem[]; currency?: string; rateLimited?: boolean; fromCache?: boolean; fetchedAt?: string } | undefined
 
   // Klaviyo report returns pre-calculated revenue & recovery data from the backend
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -170,6 +178,20 @@ export function useStorePerformance(storeId: string, klaviyoConnected: boolean):
     mutateReport()
   }, [mutateCampaigns, mutateFlows, mutateReport])
 
+  // Detect rate limiting from any of the three endpoints
+  const rateLimitInfo = useMemo<RateLimitInfo | null>(() => {
+    const sources = [campaignsData, flowsData, reportData]
+    const rateLimited = sources.some((s) => s?.rateLimited === true)
+    if (!rateLimited) return null
+
+    // Find the best fetchedAt from any source with cache data
+    const fromCache = sources.some((s) => s?.rateLimited && s?.fromCache)
+    const fetchedAt = sources.find((s) => s?.rateLimited && s?.fetchedAt)?.fetchedAt
+    const partial = reportData?.partial === true
+
+    return { rateLimited: true, fromCache, fetchedAt, partial }
+  }, [campaignsData, flowsData, reportData])
+
   return {
     totals,
     campaigns,
@@ -182,6 +204,7 @@ export function useStorePerformance(storeId: string, klaviyoConnected: boolean):
     customDates,
     setCustomDates,
     refresh,
+    rateLimitInfo,
   }
 }
 

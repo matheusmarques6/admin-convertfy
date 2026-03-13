@@ -32,6 +32,7 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { DateRangePicker } from "@/components/ui/date-range-picker"
+import { RateLimitBanner } from "@/components/ui/rate-limit-banner"
 import { formatCurrency as formatCurrencyUtil, formatCurrencyCompact as formatCurrencyCompactUtil } from "@/lib/utils/format"
 
 // ============ INTERFACES ============
@@ -879,10 +880,21 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
   const isAllDataZero = campaignRevenue === 0 && flowRevenue === 0
     && sentCampaigns === 0 && totalFlows === 0 && delivered === 0
 
+  // Detect rate limiting from report response
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const isRateLimited = (klaviyoRaw as any)?.rateLimited === true
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rateLimitFromCache = (klaviyoRaw as any)?.fromCache === true
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rateLimitFetchedAt = (klaviyoRaw as any)?.fetchedAt as string | undefined
+
   // Main Render
   return (
     <>
-      {isAllDataZero && (
+      {isRateLimited && (
+        <RateLimitBanner fromCache={rateLimitFromCache} fetchedAt={rateLimitFetchedAt} />
+      )}
+      {isAllDataZero && !isRateLimited && (
         <div className="flex items-center gap-3 p-4 mb-4 rounded-xl border border-warning/30 bg-warning/5">
           <AlertTriangle className="h-5 w-5 text-warning shrink-0" />
           <div>
