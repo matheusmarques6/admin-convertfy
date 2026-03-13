@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { resolvePortalClient } from "@/lib/api/portal-auth"
 import { handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
 
@@ -11,7 +12,7 @@ export async function OPTIONS(request: NextRequest) {
 }
 
 // GET - List campaigns for the client's stores (portal view)
-// Unified: campaigns (Klaviyo sync + manual) + campaign_batches
+// Unified: campaigns (Klaviyo sync + manual via RPC) + campaign_batches
 // IMPORTANT: Does NOT return instructions_doc_url, notes, or preview_text (internal fields)
 export async function GET(request: NextRequest) {
   try {
@@ -20,37 +21,19 @@ export async function GET(request: NextRequest) {
 
     const user = await requireAuth(supabase)
 
-    // Get portal user to find their client_id
-    const { data: portalUser } = await adminClient
-      .from("client_portal_users")
-      .select("client_id")
-      .eq("auth_user_id", user.id)
-      .eq("is_active", true)
-      .single()
+    // Resolve portal client context (auth + stores)
+    const ctx = await resolvePortalClient(adminClient, user.id)
 
-    if (!portalUser) {
-      throw new AppError("Não autorizado", 401)
-    }
-
-    const clientId = portalUser.client_id
-
-    // Get all stores for this client
-    const { data: clientStores } = await adminClient
-      .from("client_stores")
-      .select("id, store_name")
-      .eq("client_id", clientId)
-      .eq("is_active", true)
-
-    if (!clientStores || clientStores.length === 0) {
+    if (ctx.storeIds.length === 0) {
       return successResponse(request, {
         campaigns: [],
         totalCount: 0,
       })
     }
 
-    const clientStoreIds = clientStores.map(s => s.id)
-    const storeNameMap = Object.fromEntries(clientStores.map(s => [s.id, s.store_name]))
-    const storeCurrencyMap = Object.fromEntries(clientStores.map(s => [s.id, "BRL"]))
+    const storeNameMap = ctx.storeNameMap
+    const clientStoreIds = ctx.storeIds
+    const storeCurrencyMap = Object.fromEntries(clientStoreIds.map(id => [id, "BRL"]))
 
     // Parse query parameters
     const searchParams = request.nextUrl.searchParams
@@ -72,60 +55,36 @@ export async function GET(request: NextRequest) {
     }
 
     // ============================================
-    // 1. Fetch from campaigns table (Klaviyo + manual)
+    // 1. Fetch from RPC get_portal_campaigns_with_metrics
+    //    (replaces direct query to campaigns table)
     // ============================================
-    let campaignsQuery = adminClient
-      .from("campaigns")
-      .select(`
-        id,
-        name,
-        description,
-        scheduled_date,
-        scheduled_time,
-        send_datetime,
-        channel,
-        campaign_type,
-        status,
-        subject_line,
-        segment_name,
-        estimated_recipients,
-        recipients,
-        delivered,
-        opened,
-        clicked,
-        converted,
-        revenue,
-        klaviyo_campaign_id,
-        color,
-        store_id,
-        created_at
-      `)
-      .in("store_id", filterStoreIds)
-      .order("scheduled_date", { ascending: true })
-
-    if (startDate) campaignsQuery = campaignsQuery.gte("scheduled_date", startDate)
-    if (endDate) campaignsQuery = campaignsQuery.lte("scheduled_date", endDate)
-    if (status) campaignsQuery = campaignsQuery.eq("status", status)
-    if (channel) campaignsQuery = campaignsQuery.eq("channel", channel)
-
-    const { data: campaigns, error: campaignsError } = await campaignsQuery
+    const { data: campaigns, error: campaignsError } = await adminClient.rpc(
+      "get_portal_campaigns_with_metrics",
+      {
+        p_store_ids: filterStoreIds,
+        p_start_date: startDate,
+        p_end_date: endDate,
+        p_status: status || null,
+        p_channel: channel || null,
+      }
+    )
 
     if (campaignsError) {
-      log.error("[Portal Campaigns] Error fetching campaigns:", campaignsError)
+      log.error("[Portal Campaigns] Error fetching campaigns via RPC:", campaignsError)
       throw new AppError("Erro ao buscar campanhas", 500)
     }
 
-    // Transform campaigns to portal format
-    const portalCampaigns = (campaigns || []).map(c => {
-      const storeId = c.store_id
+    // Transform campaigns to portal format (with enriched metrics from RPC)
+    const portalCampaigns = (campaigns || []).map((c: Record<string, unknown>) => {
+      const cStoreId = c.store_id as string | null
       const hasValidDate = c.scheduled_date != null
 
       return {
         id: c.id,
         name: c.name,
         description: c.description,
-        campaign_type: c.channel || "email",
-        scheduled_at: c.send_datetime || (hasValidDate ? `${c.scheduled_date}T${c.scheduled_time || "00:00"}:00` : c.created_at),
+        campaign_type: (c.channel as string) || "email",
+        scheduled_at: c.send_datetime || (hasValidDate ? `${c.scheduled_date}T${c.scheduled_time || "00:00"}:00` : null),
         scheduled_date: c.scheduled_date,
         scheduled_time: c.scheduled_time,
         status: c.status,
@@ -138,12 +97,21 @@ export async function GET(request: NextRequest) {
         clicked: c.clicked,
         converted: c.converted,
         revenue: c.revenue,
-        currency: storeId ? (storeCurrencyMap[storeId] || "BRL") : "BRL",
-        color: c.color || "#3b82f6",
-        created_at: c.created_at,
-        store_ids: storeId ? [storeId] : [],
-        store_names: storeId ? [storeNameMap[storeId] || "Loja"] : [],
-        stores_count: storeId ? 1 : 0,
+        // New enriched metrics from RPC
+        open_rate: c.open_rate,
+        click_rate: c.click_rate,
+        bounce_rate: c.bounce_rate,
+        conversion_rate: c.conversion_rate,
+        revenue_per_recipient: c.revenue_per_recipient,
+        average_order_value: c.average_order_value,
+        has_klaviyo_metrics: c.has_klaviyo_metrics,
+        metrics_fetched_at: c.metrics_fetched_at,
+        currency: cStoreId ? (storeCurrencyMap[cStoreId] || "BRL") : "BRL",
+        color: (c.color as string) || "#3b82f6",
+        created_at: c.send_datetime || c.scheduled_date,
+        store_ids: cStoreId ? [cStoreId] : [],
+        store_names: cStoreId ? [storeNameMap[cStoreId] || "Loja"] : [],
+        stores_count: cStoreId ? 1 : 0,
         source: c.klaviyo_campaign_id ? "klaviyo" : "manual",
       }
     })
@@ -227,6 +195,15 @@ export async function GET(request: NextRequest) {
         clicked: null,
         converted: null,
         revenue: null,
+        // Batches do NOT have Klaviyo metrics
+        open_rate: null,
+        click_rate: null,
+        bounce_rate: null,
+        conversion_rate: null,
+        revenue_per_recipient: null,
+        average_order_value: null,
+        has_klaviyo_metrics: false,
+        metrics_fetched_at: null,
         currency: relevantStoreIds[0] ? (storeCurrencyMap[relevantStoreIds[0]] || "BRL") : "BRL",
         color: batch.campaign_type === "sms" ? "#10b981" : batch.campaign_type === "whatsapp" ? "#25d366" : "#3b82f6",
         created_at: batch.created_at,
