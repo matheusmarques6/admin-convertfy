@@ -17,11 +17,11 @@ ALTER TABLE clients DROP COLUMN IF EXISTS onboarding_started_at;
 ALTER TABLE clients DROP COLUMN IF EXISTS onboarding_completed_at;
 ALTER TABLE clients DROP COLUMN IF EXISTS onboarding_assigned_to;
 
--- 4. Drop legacy enum type (only if no longer used by any column)
-DROP TYPE IF EXISTS onboarding_stage;
-
--- 5. Drop legacy audit table
+-- 4. Drop legacy audit table BEFORE the enum type (table depends on it)
 DROP TABLE IF EXISTS onboarding_history;
+
+-- 5. Drop legacy enum type (now safe, no dependents)
+DROP TYPE IF EXISTS onboarding_stage;
 
 -- Note: The index idx_clients_onboarding_stage is automatically dropped
 -- when the onboarding_stage column is dropped.
