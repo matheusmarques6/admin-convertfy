@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { resolveOrgId } from "@/lib/api/resolve-org"
+import { getAccessibleStoreIds } from "@/lib/api/require-store-access"
 import { logger } from "@/lib/logger"
 import { paginationSchema } from "@/lib/schemas/common"
 import { z } from "zod"
@@ -126,6 +127,9 @@ export async function GET(request: Request) {
 
     const orgId = await resolveOrgId(user.id)
 
+    // Store-level access: restrict non-admin/non-owner to their granted stores
+    const accessibleIds = await getAccessibleStoreIds(user.id, orgId)
+
     const { searchParams } = new URL(request.url)
 
     // Parse and validate query params
@@ -143,11 +147,29 @@ export async function GET(request: Request) {
     // ==============================
     // Summary + Link Counts (global, lightweight query - no API calls)
     // ==============================
-    const { data: allStoresForSummary } = await supabase
+    // Early exit if member has no store access at all
+    if (accessibleIds !== null && accessibleIds.length === 0) {
+      return NextResponse.json({
+        success: true,
+        stores: [],
+        summary: { total: 0, overdue: 0, due_soon: 0, on_track: 0, never: 0 },
+        ...(searchParams.has("page") || searchParams.has("per_page")
+          ? { pagination: { page: 1, per_page: 10, total: 0, total_pages: 0 } }
+          : {}),
+      })
+    }
+
+    let summaryQuery = supabase
       .from("client_stores")
       .select("id, client_id, next_feedback_date, last_feedback_date")
       .eq("org_id", orgId)
       .eq("is_active", true)
+
+    if (accessibleIds !== null) {
+      summaryQuery = summaryQuery.in("id", accessibleIds)
+    }
+
+    const { data: allStoresForSummary } = await summaryQuery
 
     // Fetch last completed meeting per client ONCE (reused by summary + enrichment)
     const { data: meetingsData } = await supabase
@@ -235,6 +257,11 @@ export async function GET(request: Request) {
       `, statusFilter ? undefined : { count: "exact" })
       .eq('org_id', orgId)
       .order('store_name')
+
+    // Apply store-level filtering for non-admin/non-owner members
+    if (accessibleIds !== null) {
+      query = query.in("id", accessibleIds)
+    }
 
     if (activeOnly) {
       query = query.eq('is_active', true)

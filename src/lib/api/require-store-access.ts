@@ -4,12 +4,23 @@ import { logger } from "@/lib/logger"
 
 const log = logger.child("requireStoreAccess")
 
-interface StoreAccessResult {
+export interface StoreAccessResult {
   storeId: string
   orgId: string
   storeName: string
   clientId: string | null
+  // Granular permissions
+  canEdit: boolean
+  canManageOnboarding: boolean
+  canManageCampaigns: boolean
+  canManageReports: boolean
 }
+
+type GranularPermission =
+  | "can_edit"
+  | "can_manage_onboarding"
+  | "can_manage_campaigns"
+  | "can_manage_reports"
 
 /**
  * Valida que o usuario autenticado tem acesso a uma loja especifica.
@@ -17,16 +28,21 @@ interface StoreAccessResult {
  * Fluxo:
  * 1. Busca loja por ID (via adminClient, bypassa RLS)
  * 2. Verifica que loja tem org_id (lojas sem org sao bloqueadas)
- * 3. Busca org do usuario em org_members
- * 4. Compara org da loja com org do usuario
- * 5. Retorna dados da loja se match
+ * 3. Busca profile para checar se e system admin
+ * 4. Admin global → acesso total (todas flags true), sem necessidade de org membership
+ * 5. Busca org_member para o usuario nesta org (obrigatorio para nao-admin)
+ * 6. Owner da org → acesso total (todas flags true)
+ * 7. Demais → consulta agent_store_access para org_member_id + store_id
+ * 8. Se nao ha row com can_view=true → ForbiddenError
+ * 9. Se requiredPermission fornecido e usuario nao tem → ForbiddenError
  *
  * Usar em rotas que usam createAdminClient() ou getStoreCredentials()
  * para garantir isolamento multi-tenant.
  */
 export async function requireStoreAccess(
   storeId: string,
-  userId: string
+  userId: string,
+  requiredPermission?: GranularPermission
 ): Promise<StoreAccessResult> {
   const adminClient = createAdminClient()
 
@@ -51,27 +67,143 @@ export async function requireStoreAccess(
     throw new AppError("Loja sem organização associada", 400)
   }
 
-  // 3. Verificar que usuario pertence a mesma org
+  // 3. Check if system admin
+  const { data: profile } = await adminClient
+    .from("profiles")
+    .select("role")
+    .eq("id", userId)
+    .single()
+
+  const isAdmin = profile?.role === "admin"
+
+  // 4. Buscar org_member para este usuario nesta org
   const { data: orgMember, error: orgError } = await adminClient
     .from("org_members")
-    .select("id")
+    .select("id, role")
     .eq("profile_id", userId)
     .eq("org_id", store.org_id)
     .eq("is_active", true)
     .single()
 
-  if (orgError) {
-    log.error("Failed to check org membership", { userId, orgId: store.org_id, code: orgError.code, message: orgError.message })
+  if (orgError && !isAdmin) {
+    log.error("Failed to check org membership", {
+      userId,
+      orgId: store.org_id,
+      code: orgError.code,
+      message: orgError.message,
+    })
   }
 
-  if (!orgMember) {
+  // Admin bypasses org membership check entirely
+  if (!orgMember && !isAdmin) {
     throw new ForbiddenError("Sem acesso a esta loja")
   }
 
-  return {
+  // 5. Admin or owner → full access
+  if (isAdmin || orgMember?.role === "owner") {
+    const result: StoreAccessResult = {
+      storeId: store.id,
+      orgId: store.org_id,
+      storeName: store.store_name,
+      clientId: store.client_id,
+      canEdit: true,
+      canManageOnboarding: true,
+      canManageCampaigns: true,
+      canManageReports: true,
+    }
+    return result
+  }
+
+  // 6. Regular member → query agent_store_access
+  const { data: access } = await adminClient
+    .from("agent_store_access")
+    .select("can_view, can_edit, can_manage_onboarding, can_manage_campaigns, can_manage_reports")
+    .eq("org_member_id", orgMember!.id)
+    .eq("store_id", storeId)
+    .eq("can_view", true)
+    .single()
+
+  // 7. No access row → forbidden
+  if (!access) {
+    throw new ForbiddenError("Sem acesso a esta loja")
+  }
+
+  const result: StoreAccessResult = {
     storeId: store.id,
     orgId: store.org_id,
     storeName: store.store_name,
     clientId: store.client_id,
+    canEdit: access.can_edit ?? false,
+    canManageOnboarding: access.can_manage_onboarding ?? false,
+    canManageCampaigns: access.can_manage_campaigns ?? false,
+    canManageReports: access.can_manage_reports ?? false,
   }
+
+  // 8. Check required granular permission
+  if (requiredPermission) {
+    const permissionMap: Record<GranularPermission, boolean> = {
+      can_edit: result.canEdit,
+      can_manage_onboarding: result.canManageOnboarding,
+      can_manage_campaigns: result.canManageCampaigns,
+      can_manage_reports: result.canManageReports,
+    }
+
+    if (!permissionMap[requiredPermission]) {
+      throw new ForbiddenError(
+        `Permissão insuficiente: ${requiredPermission.replace(/_/g, " ")} não concedida para esta loja`
+      )
+    }
+  }
+
+  return result
+}
+
+/**
+ * Returns the list of store IDs the user can access within an org.
+ * Returns null for admin/owner (meaning "all stores" — caller should skip filtering).
+ */
+export async function getAccessibleStoreIds(
+  userId: string,
+  orgId: string
+): Promise<string[] | null> {
+  const adminClient = createAdminClient()
+
+  // 1. Check if system admin
+  const { data: profile } = await adminClient
+    .from("profiles")
+    .select("role")
+    .eq("id", userId)
+    .single()
+
+  if (profile?.role === "admin") {
+    return null
+  }
+
+  // 2. Check org_member role
+  const { data: orgMember } = await adminClient
+    .from("org_members")
+    .select("id, role")
+    .eq("profile_id", userId)
+    .eq("org_id", orgId)
+    .eq("is_active", true)
+    .single()
+
+  if (!orgMember) {
+    // Not a member of this org — return empty array (no stores accessible)
+    return []
+  }
+
+  if (orgMember.role === "owner") {
+    return null
+  }
+
+  // 3. Regular member — query agent_store_access (only active stores)
+  const { data: accessRows } = await adminClient
+    .from("agent_store_access")
+    .select("store_id, store:client_stores!inner(is_active)")
+    .eq("org_member_id", orgMember.id)
+    .eq("can_view", true)
+    .eq("store.is_active", true)
+
+  return (accessRows || []).map((row) => row.store_id)
 }

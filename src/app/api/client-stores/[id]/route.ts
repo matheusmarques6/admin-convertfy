@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
-import { errorResponse, successResponse, requireAuth, AppError, ForbiddenError } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { requireStoreAccess } from "@/lib/api/require-store-access"
 import { logger } from "@/lib/logger"
 
@@ -20,38 +20,10 @@ export async function DELETE(
       throw new AppError("store_id é obrigatório", 400)
     }
 
-    // Validate user has access to this store (multi-tenant isolation)
-    const store = await requireStoreAccess(storeId, user.id)
+    // Validate access + require can_edit permission (admin/owner bypass built-in)
+    const store = await requireStoreAccess(storeId, user.id, "can_edit")
 
     const adminClient = createAdminClient()
-
-    // Authorization: must be admin OR have can_edit access on this store
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single()
-
-    const isAdmin = profile?.role === "admin"
-
-    if (!isAdmin) {
-      const { data: orgMember } = await adminClient
-        .from("org_members")
-        .select("id")
-        .eq("profile_id", user.id)
-        .single()
-
-      const { data: access } = await adminClient
-        .from("agent_store_access")
-        .select("can_edit")
-        .eq("store_id", storeId)
-        .eq("org_member_id", orgMember?.id || "")
-        .single()
-
-      if (!access?.can_edit) {
-        throw new ForbiddenError("Sem permissão para excluir esta loja")
-      }
-    }
 
     // Delete the store — all satellite tables have ON DELETE CASCADE
     // (store_alerts, store_briefings, store_onboarding_data, agent_store_access,

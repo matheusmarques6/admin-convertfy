@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { errorResponse, AppError } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
+import { getAccessibleStoreIds } from "@/lib/api/require-store-access"
 import { createClient } from "@/lib/supabase/server"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { decrypt } from "@/lib/crypto"
@@ -30,6 +31,9 @@ export async function GET(request: NextRequest) {
     // Defense-in-depth: filter by org_id (RLS already protects, but explicit is safer)
     const orgId = await resolveOrgId(user.id)
 
+    // Store-level access: restrict non-admin/non-owner to their granted stores
+    const accessibleIds = await getAccessibleStoreIds(user.id, orgId)
+
     const searchParams = request.nextUrl.searchParams
     const clientId = searchParams.get("client_id")
     const activeOnly = searchParams.get("active") === "true"
@@ -39,6 +43,18 @@ export async function GET(request: NextRequest) {
       .select(`*, client:clients(id, name, company, email)`)
       .eq("org_id", orgId)
       .order("store_name")
+
+    // Apply store-level filtering for non-admin/non-owner members
+    if (accessibleIds !== null) {
+      if (accessibleIds.length === 0) {
+        // No stores accessible — return empty
+        return NextResponse.json(
+          { stores: [] },
+          { headers: corsHeaders(request.headers.get("origin")) }
+        )
+      }
+      query = query.in("id", accessibleIds)
+    }
 
     if (clientId) {
       query = query.eq("client_id", clientId)
