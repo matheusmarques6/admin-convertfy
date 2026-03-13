@@ -4,21 +4,11 @@ import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { useToast } from "@/lib/hooks/use-toast"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import {
-  Check, X, MessageSquare, Store, User, Calendar, Loader2,
-  FileText, ExternalLink, ImageIcon, BookOpen, Palette,
-  AlertTriangle, Pencil, Save, XCircle,
-} from "lucide-react"
+import { Check, X, MessageSquare, Store, User, Calendar, Loader2, FileText, ExternalLink, ImageIcon, BookOpen, Palette } from "lucide-react"
 import Link from "next/link"
-import {
-  PLATFORMS, COUNTRIES, LANGUAGES, SHIPPING_TYPES, PRICE_SENSITIVITIES,
-} from "@/lib/constants/onboarding"
 
 interface PendingOnboarding {
   id: string
@@ -57,102 +47,37 @@ interface PendingOnboarding {
   }
 }
 
-const countryLabel: Record<string, string> = Object.fromEntries(COUNTRIES.map((c) => [c.value, c.label]))
-const languageLabel: Record<string, string> = Object.fromEntries(LANGUAGES.map((l) => [l.value, l.label]))
-const freeShippingLabel: Record<string, string> = Object.fromEntries(SHIPPING_TYPES.map((s) => [s.value, s.label]))
-const priceSensitivityLabel: Record<string, string> = Object.fromEntries(PRICE_SENSITIVITIES.map((p) => [p.value, p.label]))
-const platformLabel: Record<string, string> = Object.fromEntries(PLATFORMS.map((p) => [p.value, p.label]))
+const countryLabel: Record<string, string> = {
+  BR: "Brasil",
+  US: "Estados Unidos",
+  PT: "Portugal",
+  ES: "Espanha",
+  MX: "México",
+  AR: "Argentina",
+  CO: "Colômbia",
+  CL: "Chile",
+}
 
-// Editable field component
-function EditableField({
-  label,
-  value,
-  fieldKey,
-  editingFields,
-  editValues,
-  savedFields,
-  onEdit,
-  onChange,
-  type = "text",
-  options,
-  className,
-}: {
-  label: string
-  value: string
-  fieldKey: string
-  editingFields: Set<string>
-  editValues: Record<string, string>
-  savedFields: Set<string>
-  onEdit: (key: string) => void
-  onChange: (key: string, value: string) => void
-  type?: "text" | "select" | "textarea"
-  options?: readonly { value: string; label: string }[]
-  className?: string
-}) {
-  const isEditing = editingFields.has(fieldKey)
-  const isSaved = savedFields.has(fieldKey)
-  const displayValue = fieldKey in editValues ? editValues[fieldKey] : value
+const languageLabel: Record<string, string> = {
+  "pt-BR": "Português (BR)",
+  "pt-PT": "Português (PT)",
+  "en-US": "Inglês (US)",
+  "es-ES": "Espanhol (ES)",
+  "es-MX": "Espanhol (MX)",
+}
 
-  if (isEditing) {
-    if (type === "select" && options) {
-      return (
-        <div className={className}>
-          <span className="text-muted-foreground text-xs">{label}</span>
-          <Select value={displayValue} onValueChange={(v) => onChange(fieldKey, v)}>
-            <SelectTrigger className="h-8 text-sm">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {options.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      )
-    }
-    if (type === "textarea") {
-      return (
-        <div className={className}>
-          <span className="text-muted-foreground text-xs">{label}</span>
-          <Textarea
-            value={displayValue}
-            onChange={(e) => onChange(fieldKey, e.target.value)}
-            rows={2}
-            className="text-sm"
-          />
-        </div>
-      )
-    }
-    return (
-      <div className={className}>
-        <span className="text-muted-foreground text-xs">{label}</span>
-        <Input
-          value={displayValue}
-          onChange={(e) => onChange(fieldKey, e.target.value)}
-          className="h-8 text-sm"
-        />
-      </div>
-    )
-  }
+const freeShippingLabel: Record<string, string> = {
+  free: "Frete Grátis",
+  conditional: "Frete Grátis Condicional",
+  paid: "Frete Pago",
+  none: "Sem Frete Grátis",
+}
 
-  return (
-    <div className={`group relative ${className || ""}`}>
-      <span className="text-muted-foreground text-xs">{label}</span>
-      <div className="flex items-center gap-1">
-        <p className={type === "text" ? "truncate" : ""}>{displayValue || "-"}</p>
-        {isSaved && <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 text-blue-600 border-blue-300">Editado</Badge>}
-        <button
-          type="button"
-          onClick={() => onEdit(fieldKey)}
-          className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-muted"
-          title={`Editar ${label}`}
-        >
-          <Pencil className="h-3 w-3 text-muted-foreground" />
-        </button>
-      </div>
-    </div>
-  )
+const priceSensitivityLabel: Record<string, string> = {
+  price: "Focado em Preço",
+  value: "Focado em Valor",
+  premium: "Premium",
+  mixed: "Misto",
 }
 
 export function OnboardingApprovals() {
@@ -166,12 +91,6 @@ export function OnboardingApprovals() {
   }>({ open: false })
   const [comments, setComments] = useState("")
   const [processing, setProcessing] = useState(false)
-
-  // Edit state per onboarding
-  const [editingFields, setEditingFields] = useState<Record<string, Set<string>>>({})
-  const [editValues, setEditValues] = useState<Record<string, Record<string, string>>>({})
-  const [savedFields, setSavedFields] = useState<Record<string, Set<string>>>({})
-  const [saving, setSaving] = useState<string | null>(null)
 
   const fetchPending = useCallback(async () => {
     try {
@@ -235,110 +154,6 @@ export function OnboardingApprovals() {
     setComments("")
   }
 
-  // Edit handlers
-  const startEdit = (onbId: string, fieldKey: string, currentValue: string) => {
-    setEditingFields((prev) => {
-      const fields = new Set(prev[onbId] || [])
-      fields.add(fieldKey)
-      return { ...prev, [onbId]: fields }
-    })
-    setEditValues((prev) => ({
-      ...prev,
-      [onbId]: { ...prev[onbId], [fieldKey]: currentValue || "" },
-    }))
-  }
-
-  const updateEditValue = (onbId: string, fieldKey: string, value: string) => {
-    setEditValues((prev) => ({
-      ...prev,
-      [onbId]: { ...prev[onbId], [fieldKey]: value },
-    }))
-  }
-
-  const cancelEdit = (onbId: string) => {
-    setEditingFields((prev) => ({ ...prev, [onbId]: new Set() }))
-    setEditValues((prev) => ({ ...prev, [onbId]: {} }))
-  }
-
-  const getChangedFields = (onb: PendingOnboarding): Record<string, string> => {
-    const values = editValues[onb.id] || {}
-    const changes: Record<string, string> = {}
-
-    for (const [key, newValue] of Object.entries(values)) {
-      // Get original value
-      let originalValue = ""
-      if (key === "name") originalValue = onb.client?.name || ""
-      else if (key === "email") originalValue = onb.client?.email || ""
-      else if (key === "phone") originalValue = onb.client?.phone || ""
-      else if (key === "cpf_cnpj") originalValue = onb.client?.cpf_cnpj || ""
-      else if (key === "store_name") originalValue = onb.store?.store_name || ""
-      else if (key === "store_url") originalValue = onb.store?.store_url || ""
-      else if (key === "platform") originalValue = onb.store?.platform || ""
-      else if (key === "niche") originalValue = onb.store?.niche || ""
-      else if (key === "country") originalValue = onb.store?.country || ""
-      else if (key === "language") originalValue = onb.store?.language || ""
-      else if (key === "target_audience") originalValue = onb.store?.target_audience || ""
-      else if (key === "free_shipping_type") originalValue = onb.store?.free_shipping_type || ""
-      else if (key === "shopify_collaborator_code") originalValue = onb.store?.shopify_collaborator_code || ""
-      else if (key === "price_sensitivity") originalValue = onb.store_onboarding_data?.price_sensitivity || ""
-      else if (key === "additional_notes") originalValue = onb.store_onboarding_data?.additional_notes || ""
-      else if (key === "design_direction_text") originalValue = onb.store_onboarding_data?.design_direction_text || ""
-
-      if (newValue !== originalValue) {
-        changes[key] = newValue
-      }
-    }
-    return changes
-  }
-
-  const saveEdits = async (onb: PendingOnboarding) => {
-    const changes = getChangedFields(onb)
-    if (Object.keys(changes).length === 0) {
-      cancelEdit(onb.id)
-      return
-    }
-
-    setSaving(onb.id)
-    try {
-      const response = await fetch(`/api/onboarding/${onb.id}/edit`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(changes),
-      })
-
-      const data = await response.json()
-      if (!response.ok) {
-        throw new Error(data.error || "Erro ao salvar")
-      }
-
-      // Update local state with new values
-      setSavedFields((prev) => {
-        const fields = new Set(prev[onb.id] || [])
-        for (const key of Object.keys(changes)) fields.add(key)
-        return { ...prev, [onb.id]: fields }
-      })
-
-      // Clear editing state
-      setEditingFields((prev) => ({ ...prev, [onb.id]: new Set() }))
-
-      // Refresh to get updated data
-      fetchPending()
-
-      toast({
-        title: "Salvo",
-        description: data.message || "Alterações salvas",
-      })
-    } catch (error) {
-      toast({
-        title: "Erro ao salvar",
-        description: error instanceof Error ? error.message : "Erro ao salvar alterações",
-        variant: "destructive",
-      })
-    } finally {
-      setSaving(null)
-    }
-  }
-
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return "-"
     return new Date(dateStr).toLocaleDateString("pt-BR", {
@@ -350,15 +165,14 @@ export function OnboardingApprovals() {
     })
   }
 
-  // Helper to get the resolved display value (edit value or original)
-  const getFieldValue = (onbId: string, fieldKey: string, originalValue: string) => {
-    const values = editValues[onbId]
-    if (values && fieldKey in values) return values[fieldKey]
-    return originalValue
+  const platformLabel: Record<string, string> = {
+    shopify: "Shopify",
+    nuvemshop: "Nuvemshop",
+    woocommerce: "WooCommerce",
+    tray: "Tray",
+    vtex: "VTEX",
+    other: "Outra",
   }
-
-  // Helper to get label from maps
-  const resolveLabel = (value: string, map: Record<string, string>) => map[value] || value || "-"
 
   if (loading) {
     return (
@@ -385,265 +199,126 @@ export function OnboardingApprovals() {
         <Badge variant="secondary">{onboardings.length} pendente{onboardings.length > 1 ? "s" : ""}</Badge>
       </div>
 
-      {onboardings.map((onb) => {
-        const onbEditing = editingFields[onb.id] || new Set<string>()
-        const onbEditValues = editValues[onb.id] || {}
-        const onbSavedFields = savedFields[onb.id] || new Set<string>()
-        const hasEdits = onbEditing.size > 0
-        const changes = hasEdits ? getChangedFields(onb) : {}
-        const hasChanges = Object.keys(changes).length > 0
-        const isSaving = saving === onb.id
-
-        const editField = (key: string) => {
-          // Get current value based on field
-          let currentValue = ""
-          if (key === "name") currentValue = onb.client?.name || ""
-          else if (key === "email") currentValue = onb.client?.email || ""
-          else if (key === "phone") currentValue = onb.client?.phone || ""
-          else if (key === "cpf_cnpj") currentValue = onb.client?.cpf_cnpj || ""
-          else if (key === "store_name") currentValue = onb.store?.store_name || ""
-          else if (key === "store_url") currentValue = onb.store?.store_url || ""
-          else if (key === "platform") currentValue = onb.store?.platform || ""
-          else if (key === "niche") currentValue = onb.store?.niche || ""
-          else if (key === "country") currentValue = onb.store?.country || ""
-          else if (key === "language") currentValue = onb.store?.language || ""
-          else if (key === "target_audience") currentValue = onb.store?.target_audience || ""
-          else if (key === "free_shipping_type") currentValue = onb.store?.free_shipping_type || ""
-          else if (key === "shopify_collaborator_code") currentValue = onb.store?.shopify_collaborator_code || ""
-          else if (key === "price_sensitivity") currentValue = onb.store_onboarding_data?.price_sensitivity || ""
-          else if (key === "additional_notes") currentValue = onb.store_onboarding_data?.additional_notes || ""
-          else if (key === "design_direction_text") currentValue = onb.store_onboarding_data?.design_direction_text || ""
-
-          startEdit(onb.id, key, currentValue)
-        }
-
-        const fieldProps = (key: string) => ({
-          fieldKey: key,
-          editingFields: onbEditing,
-          editValues: onbEditValues,
-          savedFields: onbSavedFields,
-          onEdit: editField,
-          onChange: (k: string, v: string) => updateEditValue(onb.id, k, v),
-        })
-
-        return (
-          <Card key={onb.id} className="border-l-4 border-l-orange-400">
-            <CardHeader className="pb-3">
-              <div className="flex items-start justify-between">
+      {onboardings.map((onb) => (
+        <Card key={onb.id} className="border-l-4 border-l-orange-400">
+          <CardHeader className="pb-3">
+            <div className="flex items-start justify-between">
+              <div>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Store className="h-4 w-4" />
+                  {onb.store?.store_name || "Loja sem nome"}
+                </CardTitle>
+                <CardDescription className="flex items-center gap-2 mt-1">
+                  <User className="h-3 w-3" />
+                  {onb.client?.name} {onb.client?.company ? `(${onb.client.company})` : ""}
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Calendar className="h-3 w-3" />
+                {formatDate(onb.submitted_at)}
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Dados do Cliente */}
+            <div>
+              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Dados do Cliente</h4>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
                 <div>
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Store className="h-4 w-4" />
-                    {onb.store?.store_name || "Loja sem nome"}
-                  </CardTitle>
-                  <CardDescription className="flex items-center gap-2 mt-1">
-                    <User className="h-3 w-3" />
-                    {onb.client?.name} {onb.client?.company ? `(${onb.client.company})` : ""}
-                  </CardDescription>
+                  <span className="text-muted-foreground text-xs">Email</span>
+                  <p className="truncate">{onb.client?.email || "-"}</p>
                 </div>
-                <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                  <Calendar className="h-3 w-3" />
-                  {formatDate(onb.submitted_at)}
+                <div>
+                  <span className="text-muted-foreground text-xs">Telefone</span>
+                  <p>{onb.client?.phone || "-"}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground text-xs">CPF/CNPJ</span>
+                  <p>{onb.client?.cpf_cnpj || "-"}</p>
                 </div>
               </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Dados do Cliente */}
-              <div>
-                <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Dados do Cliente</h4>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-                  <EditableField
-                    label="Nome"
-                    value={onb.client?.name || ""}
-                    {...fieldProps("name")}
-                  />
-                  <EditableField
-                    label="Email"
-                    value={onb.client?.email || ""}
-                    {...fieldProps("email")}
-                  />
-                  <EditableField
-                    label="Telefone"
-                    value={onb.client?.phone || ""}
-                    {...fieldProps("phone")}
-                  />
-                  <EditableField
-                    label="CPF/CNPJ"
-                    value={onb.client?.cpf_cnpj || ""}
-                    {...fieldProps("cpf_cnpj")}
-                  />
-                </div>
-              </div>
+            </div>
 
-              {/* Dados da Loja */}
-              <div>
-                <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Dados da Loja</h4>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 text-sm">
-                  <EditableField
-                    label="Nome da Loja"
-                    value={onb.store?.store_name || ""}
-                    {...fieldProps("store_name")}
-                  />
-                  <EditableField
-                    label="Plataforma"
-                    value={resolveLabel(
-                      getFieldValue(onb.id, "platform", onb.store?.platform || ""),
-                      platformLabel
-                    )}
-                    {...fieldProps("platform")}
-                    type="select"
-                    options={PLATFORMS}
-                  />
-                  <EditableField
-                    label="Nicho"
-                    value={onb.store?.niche || ""}
-                    {...fieldProps("niche")}
-                  />
-                  <EditableField
-                    label="País"
-                    value={resolveLabel(
-                      getFieldValue(onb.id, "country", onb.store?.country || ""),
-                      countryLabel
-                    )}
-                    {...fieldProps("country")}
-                    type="select"
-                    options={COUNTRIES}
-                  />
-                  <EditableField
-                    label="Idioma"
-                    value={resolveLabel(
-                      getFieldValue(onb.id, "language", onb.store?.language || ""),
-                      languageLabel
-                    )}
-                    {...fieldProps("language")}
-                    type="select"
-                    options={LANGUAGES}
-                  />
-                  <EditableField
-                    label="Frete"
-                    value={resolveLabel(
-                      getFieldValue(onb.id, "free_shipping_type", onb.store?.free_shipping_type || ""),
-                      freeShippingLabel
-                    )}
-                    {...fieldProps("free_shipping_type")}
-                    type="select"
-                    options={SHIPPING_TYPES}
-                  />
-                  <EditableField
-                    label="Código Colaborador"
-                    value={onb.store?.shopify_collaborator_code || ""}
-                    {...fieldProps("shopify_collaborator_code")}
-                  />
-                  <EditableField
-                    label="URL"
-                    value={onb.store?.store_url || ""}
-                    {...fieldProps("store_url")}
-                    className="col-span-2"
-                  />
+            {/* Dados da Loja */}
+            <div>
+              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Dados da Loja</h4>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 text-sm">
+                <div>
+                  <span className="text-muted-foreground text-xs">Plataforma</span>
+                  <p>{platformLabel[onb.store?.platform || ""] || onb.store?.platform || "-"}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground text-xs">Nicho</span>
+                  <p>{onb.store?.niche || "-"}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground text-xs">País</span>
+                  <p>{countryLabel[onb.store?.country || ""] || onb.store?.country || "-"}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground text-xs">Idioma</span>
+                  <p>{languageLabel[onb.store?.language || ""] || onb.store?.language || "-"}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground text-xs">Frete</span>
+                  <p>{freeShippingLabel[onb.store?.free_shipping_type || ""] || onb.store?.free_shipping_type || "-"}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground text-xs">Código Colaborador</span>
+                  <p className="font-mono text-xs">{onb.store?.shopify_collaborator_code || "-"}</p>
+                </div>
+                <div className="col-span-2">
+                  <span className="text-muted-foreground text-xs">URL</span>
+                  {onb.store?.store_url ? (
+                    <p>
+                      <a href={onb.store.store_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">
+                        {onb.store.store_url}
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    </p>
+                  ) : (
+                    <p>-</p>
+                  )}
                 </div>
               </div>
+            </div>
 
-              {/* Público e Marca */}
+            {/* Público e Marca */}
+            {(onb.store?.target_audience || onb.store_onboarding_data?.price_sensitivity || onb.store_onboarding_data?.design_direction_text || onb.store_onboarding_data?.additional_notes) && (
               <div>
                 <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Público e Marca</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                  <EditableField
-                    label="Público-alvo"
-                    value={onb.store?.target_audience || ""}
-                    {...fieldProps("target_audience")}
-                    type="textarea"
-                  />
-                  <EditableField
-                    label="Sensibilidade de preço"
-                    value={resolveLabel(
-                      getFieldValue(onb.id, "price_sensitivity", onb.store_onboarding_data?.price_sensitivity || ""),
-                      priceSensitivityLabel
-                    )}
-                    {...fieldProps("price_sensitivity")}
-                    type="select"
-                    options={PRICE_SENSITIVITIES}
-                  />
-                  <EditableField
-                    label="Direção de design"
-                    value={onb.store_onboarding_data?.design_direction_text || ""}
-                    {...fieldProps("design_direction_text")}
-                    type="textarea"
-                  />
-                  <EditableField
-                    label="Notas adicionais"
-                    value={onb.store_onboarding_data?.additional_notes || ""}
-                    {...fieldProps("additional_notes")}
-                    type="textarea"
-                  />
+                <div className="space-y-2 text-sm">
+                  {onb.store?.target_audience && (
+                    <div>
+                      <span className="text-muted-foreground text-xs">Público-alvo</span>
+                      <p>{onb.store.target_audience}</p>
+                    </div>
+                  )}
+                  {onb.store_onboarding_data?.price_sensitivity && (
+                    <div>
+                      <span className="text-muted-foreground text-xs">Sensibilidade de preço</span>
+                      <p>
+                        <Badge variant="outline" className="text-xs">
+                          {priceSensitivityLabel[onb.store_onboarding_data.price_sensitivity] || onb.store_onboarding_data.price_sensitivity}
+                        </Badge>
+                      </p>
+                    </div>
+                  )}
+                  {onb.store_onboarding_data?.design_direction_text && (
+                    <div>
+                      <span className="text-muted-foreground text-xs">Direção de design</span>
+                      <p>{onb.store_onboarding_data.design_direction_text}</p>
+                    </div>
+                  )}
+                  {onb.store_onboarding_data?.additional_notes && (
+                    <div>
+                      <span className="text-muted-foreground text-xs">Notas adicionais</span>
+                      <p className="text-muted-foreground">{onb.store_onboarding_data.additional_notes}</p>
+                    </div>
+                  )}
                 </div>
               </div>
-
-              {/* Arquivos */}
-              {(onb.store_onboarding_data?.logo_url || onb.store_onboarding_data?.brand_manual_url || onb.store_onboarding_data?.visual_reference_url) && (
-                <div>
-                  <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Arquivos</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {onb.store_onboarding_data?.logo_url && (
-                      <a href={onb.store_onboarding_data.logo_url} target="_blank" rel="noopener noreferrer">
-                        <Badge variant="secondary" className="cursor-pointer hover:bg-muted gap-1">
-                          <ImageIcon className="h-3 w-3" />
-                          Logo
-                          <ExternalLink className="h-3 w-3" />
-                        </Badge>
-                      </a>
-                    )}
-                    {onb.store_onboarding_data?.brand_manual_url && (
-                      <a href={onb.store_onboarding_data.brand_manual_url} target="_blank" rel="noopener noreferrer">
-                        <Badge variant="secondary" className="cursor-pointer hover:bg-muted gap-1">
-                          <BookOpen className="h-3 w-3" />
-                          Manual da Marca
-                          <ExternalLink className="h-3 w-3" />
-                        </Badge>
-                      </a>
-                    )}
-                    {onb.store_onboarding_data?.visual_reference_url && (
-                      <a href={onb.store_onboarding_data.visual_reference_url} target="_blank" rel="noopener noreferrer">
-                        <Badge variant="secondary" className="cursor-pointer hover:bg-muted gap-1">
-                          <Palette className="h-3 w-3" />
-                          Referência Visual
-                          <ExternalLink className="h-3 w-3" />
-                        </Badge>
-                      </a>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Notas do formulário */}
-              {onb.notes && (
-                <div className="p-2 rounded bg-amber-500/10 text-amber-700 dark:text-amber-400 text-sm">
-                  <FileText className="h-3 w-3 inline mr-1" />
-                  {onb.notes}
-                </div>
-              )}
-
-              {/* Edit action bar */}
-              {hasEdits && (
-                <div className="flex items-center justify-end gap-2 pt-2 border-t border-dashed border-blue-300">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => cancelEdit(onb.id)}
-                    disabled={isSaving}
-                  >
-                    <XCircle className="h-4 w-4 mr-1" />
-                    Cancelar Edição
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={() => saveEdits(onb)}
-                    disabled={isSaving || !hasChanges}
-                    className="bg-blue-600 hover:bg-blue-700 text-white"
-                  >
-                    {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
-                    Salvar Alterações
-                  </Button>
-                </div>
-              )}
+            )}
 
             {/* Arquivos */}
             {(onb.store_onboarding_data?.logo_url || onb.store_onboarding_data?.brand_manual_url || onb.store_onboarding_data?.visual_reference_url) && (
@@ -744,27 +419,13 @@ export function OnboardingApprovals() {
               <br />
               <span className="font-medium">Loja:</span> {actionDialog.onboarding?.store?.store_name}
             </div>
-
-            {/* AC 37.1.4: Warning de delecao para rejeicao/revisao (ambos deletam dados) */}
-            {(actionDialog.action === "rejected" || actionDialog.action === "revision_requested") && (
-              <Alert variant="destructive">
-                <AlertTriangle className="h-4 w-4" />
-                <AlertDescription>
-                  Esta ação irá apagar todos os dados do formulário. O cliente precisará preencher novamente.
-                </AlertDescription>
-              </Alert>
-            )}
-
             <div className="space-y-2">
-              <label htmlFor="approval-comments" className="text-sm font-medium">
+              <label className="text-sm font-medium">
                 Comentários {actionDialog.action !== "approved" ? "(obrigatório)" : "(opcional)"}
               </label>
               <Textarea
-                id="approval-comments"
-                aria-required={actionDialog.action !== "approved"}
                 value={comments}
                 onChange={(e) => setComments(e.target.value)}
-                maxLength={2000}
                 placeholder={
                   actionDialog.action === "approved"
                     ? "Comentários opcionais..."
@@ -772,10 +433,6 @@ export function OnboardingApprovals() {
                 }
                 rows={3}
               />
-              {/* AC 37.1.7: Contador de caracteres */}
-              <p className="text-xs text-muted-foreground text-right">
-                {comments.length}/2000
-              </p>
             </div>
           </div>
           <DialogFooter>
@@ -785,18 +442,16 @@ export function OnboardingApprovals() {
             <Button
               onClick={handleAction}
               disabled={processing || (actionDialog.action !== "approved" && !comments.trim())}
-              variant={actionDialog.action === "rejected" ? "destructive" : "default"}
               className={
                 actionDialog.action === "approved"
                   ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                  : actionDialog.action === "rejected"
+                  ? "bg-destructive hover:bg-destructive/90 text-destructive-foreground"
                   : ""
               }
             >
               {processing ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
-              {/* AC 37.1.5 + 37.1.6: Texto especifico por acao */}
-              {actionDialog.action === "approved" && "Confirmar Aprovação"}
-              {actionDialog.action === "rejected" && "Rejeitar Onboarding"}
-              {actionDialog.action === "revision_requested" && "Solicitar Revisão"}
+              {actionDialog.action === "approved" ? "Confirmar Aprovação" : "Confirmar"}
             </Button>
           </DialogFooter>
         </DialogContent>
