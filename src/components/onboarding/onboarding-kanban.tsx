@@ -55,6 +55,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { toast } from "@/lib/hooks/use-toast"
+import { useRealtimeOnboarding } from "@/hooks/use-realtime-onboarding"
 import { cn, getInitials } from "@/lib/utils"
 import type { OnboardingStatus, Client } from "@/types"
 
@@ -175,6 +176,28 @@ export function OnboardingKanban() {
 
   // New onboarding form
   const [newOnboardingClientId, setNewOnboardingClientId] = useState("")
+
+  // Realtime subscription: auto-refresh when onboardings change in DB
+  const { realtimeConnected } = useRealtimeOnboarding({
+    onDataUpdate: useCallback(() => {
+      fetch("/api/onboarding")
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.onboardings) {
+            setOnboardings((prev) => {
+              // Preserve form_complete from previous state
+              const formMap = new Map(prev.map((o) => [o.id, o.form_complete]))
+              return data.onboardings.map((o: OnboardingWithRelations) => ({
+                ...o,
+                form_complete: formMap.get(o.id),
+              }))
+            })
+          }
+        })
+        .catch((err) => console.warn("[RealtimeOnboarding] Background refresh failed:", err))
+    }, []),
+    enabled: !loading,
+  })
 
   const fetchOnboardings = useCallback(async () => {
     try {
@@ -501,9 +524,12 @@ export function OnboardingKanban() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={fetchOnboardings}>
+          <Button variant="outline" size="sm" onClick={fetchOnboardings} title={realtimeConnected ? "Atualização automática ativa" : "Clique para atualizar"}>
             <RefreshCw className="h-4 w-4 mr-2" />
             Atualizar
+            {realtimeConnected && (
+              <span className="ml-1.5 h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+            )}
           </Button>
           <Button onClick={() => setShowNewOnboardingDialog(true)}>
             <Plus className="h-4 w-4 mr-2" />
