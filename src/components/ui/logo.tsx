@@ -10,10 +10,10 @@ interface LogoProps {
 }
 
 const sizes = {
-  sm: { height: 22, width: 100 },
-  md: { height: 26, width: 120 },
-  lg: { height: 30, width: 140 },
-  xl: { height: 40, width: 180 },
+  sm: { height: 28, width: 130 },
+  md: { height: 34, width: 160 },
+  lg: { height: 40, width: 186 },
+  xl: { height: 52, width: 240 },
 }
 
 export function Logo({ className, size = "md" }: LogoProps) {

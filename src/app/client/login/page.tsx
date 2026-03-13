@@ -102,8 +102,8 @@ export default function PortalLoginPage() {
           <Image
             src="/images/logo da convertfy com escrito branco.png"
             alt="Convertfy"
-            width={220}
-            height={50}
+            width={260}
+            height={56}
             className="mx-auto mb-8"
             priority
           />

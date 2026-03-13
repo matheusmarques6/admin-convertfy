@@ -355,19 +355,19 @@ export default function PublicOnboardingPage() {
         <Image
           src="/images/logo da convertfy com escrito branco.png"
           alt="Convertfy"
-          width={180}
-          height={40}
+          width={260}
+          height={56}
           className="mx-auto mb-6 h-auto w-auto object-contain hidden dark:block"
-          style={{ maxHeight: 40, maxWidth: 180 }}
+          style={{ maxHeight: 56, maxWidth: 260 }}
           priority
         />
         <Image
           src="/images/logo da convertfy com escrito preto.png"
           alt="Convertfy"
-          width={180}
-          height={40}
+          width={260}
+          height={56}
           className="mx-auto mb-6 h-auto w-auto object-contain dark:hidden"
-          style={{ maxHeight: 40, maxWidth: 180 }}
+          style={{ maxHeight: 56, maxWidth: 260 }}
           priority
         />
         <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Cadastro de Onboarding</h1>
