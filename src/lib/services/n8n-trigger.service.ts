@@ -90,7 +90,6 @@ export class N8nTriggerService {
       design_direction_text?: string | null
       design_direction_file_url?: string | null
       brand_manual_url?: string | null
-      visual_reference_url?: string | null
     } | null
     callback_url: string
   }): Promise<TriggerResult> {
@@ -163,7 +162,6 @@ export class N8nTriggerService {
       design_direction_text?: string | null
       design_direction_file_url?: string | null
       brand_manual_url?: string | null
-      visual_reference_url?: string | null
     } | null
     callback_url: string
   }): Promise<TriggerResult> {

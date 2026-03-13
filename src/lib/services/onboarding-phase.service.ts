@@ -180,7 +180,7 @@ export class OnboardingPhaseService {
 
         const { data: formData } = await adminClient
           .from("store_onboarding_data")
-          .select("price_sensitivity, additional_notes, logo_url, design_direction_text, design_direction_file_url, brand_manual_url, visual_reference_url")
+          .select("price_sensitivity, additional_notes, logo_url, design_direction_text, design_direction_file_url, brand_manual_url")
           .eq("store_id", onboarding.store_id)
           .maybeSingle()
 
@@ -219,7 +219,6 @@ export class OnboardingPhaseService {
             design_direction_text: formData.design_direction_text || null,
             design_direction_file_url: formData.design_direction_file_url || null,
             brand_manual_url: formData.brand_manual_url || null,
-            visual_reference_url: formData.visual_reference_url || null,
           } : null,
           callback_url: `${appUrl}/api/onboarding/webhook`,
         })
