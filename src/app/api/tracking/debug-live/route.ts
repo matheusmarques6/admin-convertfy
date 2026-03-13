@@ -3,9 +3,6 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { decrypt } from "@/lib/crypto"
 import { trackWithBestProvider, type CarrierKeys, detectCarrierProvider } from "@/lib/tracking/carriers"
 import { trackVia17track } from "@/lib/services/tracking.service"
-import { logger } from "@/lib/logger"
-
-const log = logger.child("DebugLiveTracking")
 
 /**
  * Debug endpoint to test live tracking for a tracking number.

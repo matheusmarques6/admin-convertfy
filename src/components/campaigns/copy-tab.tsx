@@ -589,7 +589,7 @@ export function CopyTab() {
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 Nenhuma loja disponivel para gerar copies. Verifique se as lojas estao vinculadas a um cliente.{" "}
                 <Link
-                  href="/stores"
+                  href="/admin/stores"
                   className="text-primary hover:underline"
                 >
                   Gerenciar lojas

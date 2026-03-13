@@ -28,7 +28,7 @@ export async function GET() {
     }
 
     // 3. Query ALL stores via admin (bypass RLS) - see raw data
-    const { data: allStoresAdmin, error: adminError } = await adminClient
+    const { data: allStoresAdmin } = await adminClient
       .from("client_stores")
       .select("id, store_name, client_id, org_id, is_active, created_at")
       .order("created_at", { ascending: false })

@@ -1,13 +1,16 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Store, AlertTriangle } from "lucide-react"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Store, Bell } from "lucide-react"
+import { AlertBanner } from "@/components/ui/alert-banner"
 import { StoreControlPanel } from "@/components/stores/store-control-panel"
 import { StoreAlertsPanel } from "@/components/stores/store-alerts-panel"
+import { cn } from "@/lib/utils"
 
 export function StoresPageTabs() {
+  const [activeTab, setActiveTab] = useState<"stores" | "alerts">("stores")
   const [activeAlertsCount, setActiveAlertsCount] = useState(0)
+  const [noFeedbackCount, setNoFeedbackCount] = useState(0)
 
   useEffect(() => {
     async function fetchAlertCount() {
@@ -21,34 +24,73 @@ export function StoresPageTabs() {
         // Silently fail
       }
     }
+
+    async function fetchNoFeedbackCount() {
+      try {
+        const res = await fetch("/api/stores/control?per_page=1")
+        const data = await res.json()
+        if (data.success && data.summary) {
+          setNoFeedbackCount(data.summary.never + data.summary.overdue)
+        }
+      } catch {
+        // Silently fail
+      }
+    }
+
     fetchAlertCount()
+    fetchNoFeedbackCount()
   }, [])
 
   return (
-    <Tabs defaultValue="stores" className="space-y-6">
-      <TabsList>
-        <TabsTrigger value="stores">
-          <Store className="h-4 w-4 mr-2" />
+    <div className="space-y-4">
+      {noFeedbackCount > 0 && (
+        <AlertBanner
+          variant="warning"
+          title="Lojas sem feedback agendado"
+          description="Agende calls de feedback para manter a saude dos clientes"
+          action={{ label: "Ver lojas", href: "/admin/stores" }}
+        />
+      )}
+
+      {/* Custom tab bar */}
+      <div className="flex items-center gap-1 p-1 bg-muted/50 rounded-xl w-fit">
+        <button
+          onClick={() => setActiveTab("stores")}
+          className={cn(
+            "flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all",
+            activeTab === "stores"
+              ? "bg-background text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <Store className="h-4 w-4" />
           Lojas
-        </TabsTrigger>
-        <TabsTrigger value="alerts" className="relative">
-          <AlertTriangle className="h-4 w-4 mr-2" />
+        </button>
+        <button
+          onClick={() => setActiveTab("alerts")}
+          className={cn(
+            "flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all relative",
+            activeTab === "alerts"
+              ? "bg-background text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <Bell className="h-4 w-4" />
           Alertas
           {activeAlertsCount > 0 && (
-            <span className="ml-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground px-1.5">
+            <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground px-1.5">
               {activeAlertsCount}
             </span>
           )}
-        </TabsTrigger>
-      </TabsList>
+        </button>
+      </div>
 
-      <TabsContent value="stores">
+      {/* Tab content */}
+      {activeTab === "stores" ? (
         <StoreControlPanel />
-      </TabsContent>
-
-      <TabsContent value="alerts">
+      ) : (
         <StoreAlertsPanel />
-      </TabsContent>
-    </Tabs>
+      )}
+    </div>
   )
 }

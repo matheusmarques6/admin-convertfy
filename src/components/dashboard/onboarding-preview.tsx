@@ -1,8 +1,9 @@
 "use client"
 
 import Link from "next/link"
-import { Rocket, Clock, AlertTriangle } from "lucide-react"
+import { Rocket, Clock, AlertTriangle, ArrowRight } from "lucide-react"
 import { CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 
@@ -22,10 +23,10 @@ interface OnboardingPreviewProps {
 }
 
 const PHASES = [
-  { id: "pending_approval", label: "Aguardando Aprovação", icon: "⏳" },
-  { id: "generating_copies", label: "Gerando Copies", icon: "✍️" },
-  { id: "design", label: "Design", icon: "🎨" },
-  { id: "implementation", label: "Implementação", icon: "🔧" },
+  { id: "pending_approval", label: "Aguardando Aprovacao", icon: "hourglass" },
+  { id: "generating_copies", label: "Gerando Copies", icon: "pen" },
+  { id: "design", label: "Design", icon: "palette" },
+  { id: "implementation", label: "Implementacao", icon: "wrench" },
 ] as const
 
 const ROLE_PHASE_MAP: Record<string, string[]> = {
@@ -58,21 +59,27 @@ export function OnboardingPreview({ onboardings, userRole }: OnboardingPreviewPr
     .slice(0, 3)
 
   return (
-    <div className="rounded-xl border border-border bg-card h-full">
+    <div className="rounded-xl border border-border bg-card h-full flex flex-col">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Rocket className="h-4 w-4 text-muted-foreground" />
+          <div className="flex items-center gap-2.5">
+            <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+              <Rocket className="h-4 w-4 text-primary" />
+            </div>
             <CardTitle className="text-sm font-semibold">
               {isOverviewRole ? "Onboardings" : `Seus ${PHASES.find((p) => p.id === allowedPhases?.[0])?.label || "Onboardings"}`}
             </CardTitle>
           </div>
-          <span className="text-xs text-muted-foreground">{filtered.length} ativos</span>
+          <Badge variant="secondary" className="text-xs font-medium">
+            {filtered.length} ativos
+          </Badge>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-4 flex-1 flex flex-col">
         {filtered.length === 0 ? (
-          <p className="text-xs text-muted-foreground text-center py-4">Nenhum onboarding ativo</p>
+          <div className="flex-1 flex items-center justify-center text-xs text-muted-foreground text-center py-4">
+            Nenhum onboarding ativo
+          </div>
         ) : (
           <>
             {/* Phase counts (overview role) */}
@@ -86,12 +93,9 @@ export function OnboardingPreview({ onboardings, userRole }: OnboardingPreviewPr
                   }).length
                   if (count === 0) return null
                   return (
-                    <div key={phase.id} className="flex items-center justify-between text-xs">
-                      <span>
-                        <span className="mr-1.5">{phase.icon}</span>
-                        {phase.label}
-                      </span>
-                      <span className="font-semibold text-foreground">{count}</span>
+                    <div key={phase.id} className="flex items-center justify-between text-xs p-2 rounded-lg bg-muted/20">
+                      <span className="text-muted-foreground">{phase.label}</span>
+                      <span className="font-bold text-foreground">{count}</span>
                     </div>
                   )
                 })}
@@ -102,10 +106,10 @@ export function OnboardingPreview({ onboardings, userRole }: OnboardingPreviewPr
             {!isOverviewRole && filtered.slice(0, 4).map((o) => {
               const store = resolveRelation(o.store)
               return (
-                <div key={o.id} className="space-y-1">
+                <div key={o.id} className="space-y-1.5">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="truncate text-foreground">{store?.store_name || "Loja"}</span>
-                    <span className="text-muted-foreground">{o.progress_percent || 0}%</span>
+                    <span className="truncate text-foreground font-medium">{store?.store_name || "Loja"}</span>
+                    <span className="text-muted-foreground tabular-nums">{o.progress_percent || 0}%</span>
                   </div>
                   <Progress value={o.progress_percent || 0} className="h-1.5" />
                 </div>
@@ -113,30 +117,30 @@ export function OnboardingPreview({ onboardings, userRole }: OnboardingPreviewPr
             })}
 
             {/* Average progress */}
-            <div className="space-y-1">
+            <div className="space-y-1.5 p-3 rounded-xl bg-muted/20">
               <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">Progresso Médio</span>
-                <span className="font-semibold text-foreground">{avgProgress}%</span>
+                <span className="text-muted-foreground font-medium">Progresso Medio</span>
+                <span className="font-bold text-foreground">{avgProgress}%</span>
               </div>
-              <Progress value={avgProgress} className="h-1.5" />
+              <Progress value={avgProgress} className="h-2" />
             </div>
 
             {/* Near deadline */}
             {nearDeadline.length > 0 && (
               <div className="space-y-1.5">
                 <div className="flex items-center gap-1.5 text-xs text-warning">
-                  <AlertTriangle className="h-3 w-3" />
-                  <span className="font-medium">Próximos a vencer</span>
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  <span className="font-semibold">Proximos a vencer</span>
                 </div>
                 {nearDeadline.map((o) => {
                   const store = resolveRelation(o.store)
                   return (
-                    <div key={o.id} className="flex items-center justify-between text-xs">
+                    <div key={o.id} className="flex items-center justify-between text-xs p-2 rounded-lg bg-warning/5">
                       <span className="truncate text-foreground">{store?.store_name || "Loja"}</span>
                       <div className="flex items-center gap-1.5 text-muted-foreground">
                         <Clock className="h-3 w-3" />
                         <span>{new Date(o.target_completion_date!).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}</span>
-                        <span className="font-medium text-foreground">{o.progress_percent || 0}%</span>
+                        <span className="font-semibold text-foreground">{o.progress_percent || 0}%</span>
                       </div>
                     </div>
                   )
@@ -146,9 +150,14 @@ export function OnboardingPreview({ onboardings, userRole }: OnboardingPreviewPr
           </>
         )}
 
-        <Button variant="ghost" size="sm" className="w-full text-xs text-primary" asChild>
-          <Link href="/onboarding">Ver Onboardings</Link>
-        </Button>
+        <div className="mt-auto pt-2">
+          <Button variant="ghost" size="sm" className="w-full text-xs text-primary group" asChild>
+            <Link href="/admin/onboarding">
+              Ver Onboardings
+              <ArrowRight className="h-3.5 w-3.5 ml-1 transition-transform group-hover:translate-x-0.5" />
+            </Link>
+          </Button>
+        </div>
       </CardContent>
     </div>
   )

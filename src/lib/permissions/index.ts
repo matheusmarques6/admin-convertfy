@@ -166,17 +166,17 @@ export function canManage(role: UserRole | undefined, resource: string): boolean
  * Route access configuration by role
  */
 export const routeAccess: Record<string, UserRole[]> = {
-  '/dashboard': ['admin', 'manager', 'coo', 'sdr', 'closer', 'cs', 'financial'],
-  '/clients': ['admin', 'manager', 'coo', 'sdr', 'closer', 'cs', 'financial'],
-  '/clients/new': ['admin', 'manager', 'coo'],
-  '/pipeline': ['admin', 'manager', 'coo', 'sdr', 'closer', 'cs'],
-  '/meetings': ['admin', 'manager', 'coo', 'sdr', 'closer', 'cs'],
-  '/reports': ['admin', 'manager', 'coo', 'cs', 'financial'],
-  '/financial': ['admin', 'manager', 'coo', 'financial'],
-  '/automations': ['admin', 'manager', 'coo'],
-  '/settings': ['admin', 'manager', 'coo'],
-  '/settings/users': ['admin'],
-  '/tools': ['admin', 'manager', 'coo', 'sdr', 'closer', 'cs'],
+  '/admin/dashboard': ['admin', 'manager', 'coo', 'sdr', 'closer', 'cs', 'financial'],
+  '/admin/clients': ['admin', 'manager', 'coo', 'sdr', 'closer', 'cs', 'financial'],
+  '/admin/clients/new': ['admin', 'manager', 'coo'],
+  '/admin/pipeline': ['admin', 'manager', 'coo', 'sdr', 'closer', 'cs'],
+  '/admin/meetings': ['admin', 'manager', 'coo', 'sdr', 'closer', 'cs'],
+  '/admin/reports': ['admin', 'manager', 'coo', 'cs', 'financial'],
+  '/admin/financial': ['admin', 'manager', 'coo', 'financial'],
+  '/admin/automations': ['admin', 'manager', 'coo'],
+  '/admin/settings': ['admin', 'manager', 'coo'],
+  '/admin/settings/users': ['admin'],
+  '/admin/tools': ['admin', 'manager', 'coo', 'sdr', 'closer', 'cs'],
 };
 
 /**

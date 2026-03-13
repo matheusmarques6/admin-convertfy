@@ -340,7 +340,7 @@ export function SubscriptionsManager() {
                   <TableRow key={sub.id}>
                     <TableCell>
                       {sub.clientId ? (
-                        <Link href={`/clients/${sub.clientId}`} className="hover:underline">
+                        <Link href={`/admin/clients/${sub.clientId}`} className="hover:underline">
                           <div className="font-medium">{sub.clientName}</div>
                           {sub.clientCompany && (
                             <div className="text-xs text-muted-foreground">{sub.clientCompany}</div>

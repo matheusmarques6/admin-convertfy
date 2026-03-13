@@ -63,7 +63,7 @@ export function PipelineHeader({
   const activeRulesCount = importRules.filter((r) => r.is_active).length
 
   function handleSwitchPipeline(pipelineId: string) {
-    router.push(`/pipeline?id=${pipelineId}`)
+    router.push(`/admin/pipeline?id=${pipelineId}`)
   }
 
   const roleLabels: Record<PipelineMemberRole, string> = {

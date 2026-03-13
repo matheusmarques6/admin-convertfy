@@ -66,7 +66,7 @@ export default function ChangePasswordPage() {
           description: "Você será redirecionado para o dashboard.",
         })
         // Use window.location for full page reload to ensure session cookies are refreshed
-        window.location.href = "/dashboard"
+        window.location.href = "/admin/dashboard"
       } else {
         toast({
           title: "Erro ao alterar senha",

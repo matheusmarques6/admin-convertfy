@@ -128,7 +128,7 @@ export function ClientsTable({ clients, totalCount, currentPage, hasActiveFilter
       params.set("page", String(page))
     }
     const qs = params.toString()
-    return qs ? `/clients?${qs}` : "/clients"
+    return qs ? `/admin/clients?${qs}` : "/admin/clients"
   }
   const { permissions } = usePermissions()
   const canDelete = permissions?.isAdmin || permissions?.isOrgOwner
@@ -267,7 +267,7 @@ export function ClientsTable({ clients, totalCount, currentPage, hasActiveFilter
             Tente ajustar os filtros ou limpar a busca
           </p>
           <Button variant="outline" asChild className="mt-4">
-            <Link href="/clients">Limpar filtros</Link>
+            <Link href="/admin/clients">Limpar filtros</Link>
           </Button>
         </div>
       )
@@ -283,7 +283,7 @@ export function ClientsTable({ clients, totalCount, currentPage, hasActiveFilter
           Comece adicionando seu primeiro cliente
         </p>
         <Button asChild className="mt-4">
-          <Link href="/clients/new">Adicionar Cliente</Link>
+          <Link href="/admin/clients/new">Adicionar Cliente</Link>
         </Button>
       </div>
     )
@@ -347,7 +347,7 @@ export function ClientsTable({ clients, totalCount, currentPage, hasActiveFilter
                       </Avatar>
                       <div>
                         <Link
-                          href={`/clients/${client.id}`}
+                          href={`/admin/clients/${client.id}`}
                           className="font-medium hover:underline flex items-center gap-2"
                         >
                           {client.name}
@@ -498,14 +498,14 @@ export function ClientsTable({ clients, totalCount, currentPage, hasActiveFilter
                         <DropdownMenuLabel>Ações</DropdownMenuLabel>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem asChild>
-                          <Link href={`/clients/${client.id}`}>
+                          <Link href={`/admin/clients/${client.id}`}>
                             <Eye className="mr-2 h-4 w-4" />
                             Ver detalhes
                           </Link>
                         </DropdownMenuItem>
                         {canEdit && (
                           <DropdownMenuItem asChild>
-                            <Link href={`/clients/${client.id}/edit`}>
+                            <Link href={`/admin/clients/${client.id}/edit`}>
                               <Edit className="mr-2 h-4 w-4" />
                               Editar
                             </Link>

@@ -675,10 +675,85 @@ export function OnboardingApprovals() {
                   </Button>
                 </div>
               </div>
-            </CardContent>
-          </Card>
-        )
-      })}
+            )}
+
+            {/* Arquivos */}
+            {(onb.store_onboarding_data?.logo_url || onb.store_onboarding_data?.brand_manual_url || onb.store_onboarding_data?.visual_reference_url) && (
+              <div>
+                <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Arquivos</h4>
+                <div className="flex flex-wrap gap-2">
+                  {onb.store_onboarding_data?.logo_url && (
+                    <a href={onb.store_onboarding_data.logo_url} target="_blank" rel="noopener noreferrer">
+                      <Badge variant="secondary" className="cursor-pointer hover:bg-muted gap-1">
+                        <ImageIcon className="h-3 w-3" />
+                        Logo
+                        <ExternalLink className="h-3 w-3" />
+                      </Badge>
+                    </a>
+                  )}
+                  {onb.store_onboarding_data?.brand_manual_url && (
+                    <a href={onb.store_onboarding_data.brand_manual_url} target="_blank" rel="noopener noreferrer">
+                      <Badge variant="secondary" className="cursor-pointer hover:bg-muted gap-1">
+                        <BookOpen className="h-3 w-3" />
+                        Manual da Marca
+                        <ExternalLink className="h-3 w-3" />
+                      </Badge>
+                    </a>
+                  )}
+                  {onb.store_onboarding_data?.visual_reference_url && (
+                    <a href={onb.store_onboarding_data.visual_reference_url} target="_blank" rel="noopener noreferrer">
+                      <Badge variant="secondary" className="cursor-pointer hover:bg-muted gap-1">
+                        <Palette className="h-3 w-3" />
+                        Referência Visual
+                        <ExternalLink className="h-3 w-3" />
+                      </Badge>
+                    </a>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Notas do formulário */}
+            {onb.notes && (
+              <div className="p-2 rounded bg-amber-500/10 text-amber-700 dark:text-amber-400 text-sm">
+                <FileText className="h-3 w-3 inline mr-1" />
+                {onb.notes}
+              </div>
+            )}
+
+            {/* Formulário status + Ações */}
+            <div className="flex items-center justify-between pt-2 border-t">
+              <div className="flex items-center gap-2">
+                {onb.store_onboarding_data?.is_complete ? (
+                  <Badge variant="default" className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs">Formulário Completo</Badge>
+                ) : (
+                  <Badge variant="secondary" className="text-xs">Formulário Parcial</Badge>
+                )}
+                <Button size="sm" variant="ghost" asChild>
+                  <Link href={`/admin/stores/${onb.store_id}`}>
+                    <Store className="h-4 w-4 mr-1" />
+                    Ver Loja
+                  </Link>
+                </Button>
+              </div>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={() => openAction(onb, "approved")} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                  <Check className="h-4 w-4 mr-1" />
+                  Aprovar
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => openAction(onb, "revision_requested")}>
+                  <MessageSquare className="h-4 w-4 mr-1" />
+                  Revisão
+                </Button>
+                <Button size="sm" variant="destructive" onClick={() => openAction(onb, "rejected")}>
+                  <X className="h-4 w-4 mr-1" />
+                  Rejeitar
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
 
       {/* Action confirmation dialog */}
       <Dialog open={actionDialog.open} onOpenChange={(open) => setActionDialog({ ...actionDialog, open })}>

@@ -93,7 +93,7 @@ class StoreAlertService {
         title: `🚨 ${data.title}`,
         body: data.message,
         type: data.severity === 'critical' ? 'error' : 'warning',
-        link: `/stores/${data.store_id}`,
+        link: `/admin/stores/${data.store_id}`,
         metadata: {
           alert_id: alert.id,
           alert_type: data.type,

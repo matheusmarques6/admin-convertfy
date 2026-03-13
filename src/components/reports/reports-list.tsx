@@ -394,7 +394,7 @@ export function ReportsList({
             </SelectContent>
           </Select>
           <Button asChild>
-            <Link href="/reports/new">
+            <Link href="/admin/reports/new">
               <Plus className="mr-2 h-4 w-4" />
               Novo Relatório
             </Link>
@@ -478,7 +478,7 @@ export function ReportsList({
                   </div>
                   <Button size="sm" asChild>
                     <Link
-                      href={`/reports/new?client_id=${store.client_id}&store_id=${store.id}`}
+                      href={`/admin/reports/new?client_id=${store.client_id}&store_id=${store.id}`}
                     >
                       <Zap className="mr-1 h-3 w-3" />
                       Gerar
@@ -639,7 +639,7 @@ export function ReportsList({
                 </Button>
               )}
               <Button asChild>
-                <Link href="/reports/new">
+                <Link href="/admin/reports/new">
                   <Plus className="mr-2 h-4 w-4" />
                   Criar Relatório
                 </Link>
@@ -682,13 +682,13 @@ export function ReportsList({
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem asChild>
-                                <Link href={`/reports/${report.id}`}>
+                                <Link href={`/admin/reports/${report.id}`}>
                                   <Eye className="mr-2 h-4 w-4" />
                                   Visualizar
                                 </Link>
                               </DropdownMenuItem>
                               <DropdownMenuItem asChild>
-                                <Link href={`/reports/${report.id}/edit`}>
+                                <Link href={`/admin/reports/${report.id}/edit`}>
                                   <Pencil className="mr-2 h-4 w-4" />
                                   Editar
                                 </Link>
@@ -778,13 +778,13 @@ export function ReportsList({
                         {/* Actions */}
                         <div className="flex gap-2">
                           <Button variant="outline" size="sm" className="flex-1" asChild>
-                            <Link href={`/reports/${report.id}`}>
+                            <Link href={`/admin/reports/${report.id}`}>
                               <Eye className="mr-2 h-3 w-3" />
                               Ver
                             </Link>
                           </Button>
                           <Button variant="outline" size="sm" asChild>
-                            <Link href={`/reports/${report.id}/edit`}>
+                            <Link href={`/admin/reports/${report.id}/edit`}>
                               <Pencil className="h-3 w-3" />
                             </Link>
                           </Button>

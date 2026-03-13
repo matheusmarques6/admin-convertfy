@@ -68,6 +68,13 @@ const config: Config = {
           cyan: "#05AFF2",
           dark: "#141C26",
         },
+        sidebar: {
+          bg: "#0d1117",
+          muted: "#b0b8c1",
+          hover: "#e6edf3",
+          icon: "#b0b8c1",
+          label: "#6e7681",
+        },
       },
       borderRadius: {
         "2xl": "calc(var(--radius) + 4px)",

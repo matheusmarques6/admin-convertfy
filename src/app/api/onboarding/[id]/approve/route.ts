@@ -222,17 +222,15 @@ export async function POST(
         .eq("id", onboarding.store_id)
         .maybeSingle()
 
-      // Persist audit trail in dedicated table (survives data deletion)
-      await adminClient.from("onboarding_rejection_log").insert({
-        org_id: orgMember.org_id,
-        onboarding_id: id,
-        client_email: client?.email || "unknown",
-        client_name: client?.name || null,
-        store_name: storeData?.store_name || null,
-        rejected_by: orgMember.id,
-        comments: body.comments || null,
-        form_snapshot: formData || null,
-      })
+        if (portalUser?.auth_user_id) {
+          await notificationService.create({
+            user_id: portalUser.auth_user_id,
+            title: body.action === "rejected" ? "Cadastro precisa de ajustes" : "Revisão solicitada",
+            body: body.comments || "Por favor, revise seu cadastro e faça os ajustes necessários.",
+            type: "warning",
+            link: "/client/onboarding",
+          })
+        }
 
       // Also log to application logs for operational visibility
       log.info(`Onboarding ${id} ${body.action} — data will be deleted`, {

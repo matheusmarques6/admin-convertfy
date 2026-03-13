@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { detectCarrierProvider, type CarrierInfo } from "../carriers"
+import { detectCarrierProvider } from "../carriers"
 
 // Helper to assert carrier detection results
 function expectCarrier(

@@ -201,7 +201,7 @@ export function FinancialCharts({
                   {formatCurrency(financialData?.newDeals.pipelineValue ?? 0)} em pipeline
                 </p>
                 <Button variant="ghost" size="sm" className="mt-1.5 -ml-2 h-7 text-primary text-xs" asChild>
-                  <Link href="/pipeline">
+                  <Link href="/admin/pipeline">
                     Ver Pipeline <ArrowRight className="ml-1 h-3 w-3" />
                   </Link>
                 </Button>

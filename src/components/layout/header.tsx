@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   XCircle,
   Megaphone,
+  ChevronRight,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { Button } from "@/components/ui/button"
@@ -30,37 +31,58 @@ import { Sidebar } from "./sidebar"
 import { notificationService, type Notification } from "@/lib/services"
 import { useAuthStore } from "@/lib/store"
 import { toast } from "@/lib/hooks/use-toast"
+import { cn } from "@/lib/utils"
+import { ROUTES } from "@/lib/routes"
 
 const pageTitles: Record<string, string> = {
-  "/dashboard": "Dashboard",
-  "/clients/new": "Novo Cliente",
-  "/clients": "Clientes",
-  "/pipeline": "Pipeline de Vendas",
-  "/board": "Quadro de Tarefas",
-  "/financial": "Financeiro",
-  "/meetings/new": "Nova Reunião",
-  "/meetings": "Reuniões",
-  "/reports/new": "Novo Relatório",
-  "/reports": "Relatórios",
-  "/automations/new": "Nova Automação",
-  "/automations": "Automações",
-  "/campaigns": "Campanhas",
-  "/stores": "Lojas",
-  "/onboarding": "Onboarding",
-  "/tools": "Ferramentas",
-  "/notifications": "Notificações",
-  "/team": "Equipe",
-  "/settings/appearance": "Aparência",
-  "/settings/profile": "Perfil",
-  "/settings/company": "Empresa",
-  "/settings/integrations": "Integrações",
-  "/settings/users": "Usuários",
-  "/settings/permissions": "Permissões",
-  "/settings/tags": "Tags",
-  "/settings/custom-fields": "Campos Personalizados",
-  "/settings/notifications": "Notificações",
-  "/settings/email-templates": "Templates de Email",
-  "/settings": "Configurações",
+  [ROUTES.ADMIN.DASHBOARD]: "Dashboard",
+  [ROUTES.ADMIN.DASHBOARD_OPERATIONAL]: "Operacional",
+  [ROUTES.ADMIN.CLIENTS.NEW]: "Novo Cliente",
+  [ROUTES.ADMIN.CLIENTS.LIST]: "Clientes",
+  [ROUTES.ADMIN.PIPELINE]: "Pipeline de Vendas",
+  [ROUTES.ADMIN.BOARD]: "Quadro de Tarefas",
+  [ROUTES.ADMIN.FINANCIAL]: "Financeiro",
+  [ROUTES.ADMIN.MEETINGS.NEW]: "Nova Reuniao",
+  [ROUTES.ADMIN.MEETINGS.LIST]: "Reunioes",
+  [ROUTES.ADMIN.REPORTS.NEW]: "Novo Relatorio",
+  [ROUTES.ADMIN.REPORTS.LIST]: "Relatorios",
+  [ROUTES.ADMIN.AUTOMATIONS.NEW]: "Nova Automacao",
+  [ROUTES.ADMIN.AUTOMATIONS.LIST]: "Automacoes",
+  [ROUTES.ADMIN.CAMPAIGNS.LIST]: "Campanhas",
+  [ROUTES.ADMIN.STORES.LIST]: "Lojas",
+  [ROUTES.ADMIN.ONBOARDING]: "Onboarding",
+  [ROUTES.ADMIN.TOOLS]: "Ferramentas",
+  [ROUTES.ADMIN.NOTIFICATIONS]: "Notificacoes",
+  [ROUTES.ADMIN.TEAM]: "Equipe",
+  [ROUTES.ADMIN.SETTINGS.APPEARANCE]: "Aparencia",
+  [ROUTES.ADMIN.SETTINGS.PROFILE]: "Perfil",
+  [ROUTES.ADMIN.SETTINGS.COMPANY]: "Empresa",
+  [ROUTES.ADMIN.SETTINGS.INTEGRATIONS]: "Integracoes",
+  [ROUTES.ADMIN.SETTINGS.USERS]: "Usuarios",
+  [ROUTES.ADMIN.SETTINGS.PERMISSIONS]: "Permissoes",
+  [ROUTES.ADMIN.SETTINGS.TAGS]: "Tags",
+  [ROUTES.ADMIN.SETTINGS.CUSTOM_FIELDS]: "Campos Personalizados",
+  [ROUTES.ADMIN.SETTINGS.NOTIFICATIONS]: "Notificacoes",
+  [ROUTES.ADMIN.SETTINGS.EMAIL_TEMPLATES]: "Templates de Email",
+  [ROUTES.ADMIN.SETTINGS.ROOT]: "Configuracoes",
+}
+
+const parentRoutes: Record<string, { label: string; href: string }> = {
+  [ROUTES.ADMIN.CLIENTS.NEW]: { label: "Clientes", href: ROUTES.ADMIN.CLIENTS.LIST },
+  [ROUTES.ADMIN.MEETINGS.NEW]: { label: "Reunioes", href: ROUTES.ADMIN.MEETINGS.LIST },
+  [ROUTES.ADMIN.REPORTS.NEW]: { label: "Relatorios", href: ROUTES.ADMIN.REPORTS.LIST },
+  [ROUTES.ADMIN.AUTOMATIONS.NEW]: { label: "Automacoes", href: ROUTES.ADMIN.AUTOMATIONS.LIST },
+  [ROUTES.ADMIN.SETTINGS.APPEARANCE]: { label: "Configuracoes", href: ROUTES.ADMIN.SETTINGS.ROOT },
+  [ROUTES.ADMIN.SETTINGS.PROFILE]: { label: "Configuracoes", href: ROUTES.ADMIN.SETTINGS.ROOT },
+  [ROUTES.ADMIN.SETTINGS.COMPANY]: { label: "Configuracoes", href: ROUTES.ADMIN.SETTINGS.ROOT },
+  [ROUTES.ADMIN.SETTINGS.INTEGRATIONS]: { label: "Configuracoes", href: ROUTES.ADMIN.SETTINGS.ROOT },
+  [ROUTES.ADMIN.SETTINGS.USERS]: { label: "Configuracoes", href: ROUTES.ADMIN.SETTINGS.ROOT },
+  [ROUTES.ADMIN.SETTINGS.PERMISSIONS]: { label: "Configuracoes", href: ROUTES.ADMIN.SETTINGS.ROOT },
+  [ROUTES.ADMIN.SETTINGS.TAGS]: { label: "Configuracoes", href: ROUTES.ADMIN.SETTINGS.ROOT },
+  [ROUTES.ADMIN.SETTINGS.CUSTOM_FIELDS]: { label: "Configuracoes", href: ROUTES.ADMIN.SETTINGS.ROOT },
+  [ROUTES.ADMIN.SETTINGS.NOTIFICATIONS]: { label: "Configuracoes", href: ROUTES.ADMIN.SETTINGS.ROOT },
+  [ROUTES.ADMIN.SETTINGS.EMAIL_TEMPLATES]: { label: "Configuracoes", href: ROUTES.ADMIN.SETTINGS.ROOT },
+  [ROUTES.ADMIN.DASHBOARD_OPERATIONAL]: { label: "Dashboard", href: ROUTES.ADMIN.DASHBOARD },
 }
 
 interface HeaderProps {
@@ -98,8 +120,6 @@ export function Header({ user: userProp }: HeaderProps) {
 
   useEffect(() => {
     fetchNotifications()
-
-    // Poll for new notifications every 30 seconds
     const interval = setInterval(fetchNotifications, 30000)
     return () => clearInterval(interval)
   }, [fetchNotifications])
@@ -112,14 +132,14 @@ export function Header({ user: userProp }: HeaderProps) {
       setNotifications(prev => prev.map(n => ({ ...n, read: true })))
       setUnreadCount(0)
       toast({
-        title: "Notificações lidas",
-        description: "Todas as notificações foram marcadas como lidas.",
+        title: "Notificacoes lidas",
+        description: "Todas as notificacoes foram marcadas como lidas.",
       })
     } catch {
       toast({
         variant: "destructive",
         title: "Erro",
-        description: "Não foi possível marcar as notificações como lidas.",
+        description: "Nao foi possivel marcar as notificacoes como lidas.",
       })
     }
   }
@@ -164,15 +184,43 @@ export function Header({ user: userProp }: HeaderProps) {
     }
   }
 
-  const getPageTitle = () => {
+  const pageInfo = useMemo(() => {
     const sortedPaths = Object.keys(pageTitles).sort((a, b) => b.length - a.length)
+    let title = "Convertfy Admin"
     for (const path of sortedPaths) {
       if (pathname.startsWith(path)) {
-        return pageTitles[path]
+        title = pageTitles[path]
+        break
       }
     }
-    return "Convertfy Admin"
-  }
+
+    const segments = pathname.split("/").filter(Boolean)
+    const breadcrumbs: Array<{ label: string; href: string; current?: boolean }> = []
+
+    const matchedParent = Object.keys(parentRoutes).sort((a, b) => b.length - a.length).find(p => pathname.startsWith(p))
+    if (matchedParent) {
+      const parent = parentRoutes[matchedParent]
+      breadcrumbs.push({ label: parent.label, href: parent.href })
+      breadcrumbs.push({ label: title, href: pathname, current: true })
+    } else if (segments.length > 2) {
+      // For /admin/clients/[id] etc. - segments[0] is "admin", segments[1] is resource
+      const basePath = `/${segments[0]}/${segments[1]}`
+      const baseTitle = pageTitles[basePath]
+      if (baseTitle) {
+        breadcrumbs.push({ label: baseTitle, href: basePath })
+        if (segments.length === 3 && segments[2] !== "new") {
+          breadcrumbs.push({ label: "Detalhes", href: pathname, current: true })
+        } else if (segments.length === 4) {
+          breadcrumbs.push({ label: "Detalhes", href: `/${segments[0]}/${segments[1]}/${segments[2]}` })
+          const lastSegment = segments[3]
+          const subTitle = lastSegment === "edit" ? "Editar" : lastSegment.charAt(0).toUpperCase() + lastSegment.slice(1)
+          breadcrumbs.push({ label: subTitle, href: pathname, current: true })
+        }
+      }
+    }
+
+    return { title, breadcrumbs }
+  }, [pathname])
 
   return (
     <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b border-border bg-background/95 backdrop-blur-sm px-6">
@@ -183,24 +231,43 @@ export function Header({ user: userProp }: HeaderProps) {
             <Menu className="h-4 w-4" />
           </Button>
         </SheetTrigger>
-        <SheetContent side="left" className="p-0 w-[240px]">
+        <SheetContent side="left" className="p-0 w-[250px]">
           <Sidebar user={userProp} />
         </SheetContent>
       </Sheet>
 
-      {/* Page Title */}
-      <h1 className="text-base font-semibold text-foreground truncate">{getPageTitle()}</h1>
-
-      {/* Spacer */}
-      <div className="flex-1" />
+      {/* Page Title with Breadcrumbs */}
+      <div className="flex items-center gap-1.5 min-w-0 flex-1">
+        {pageInfo.breadcrumbs.length > 0 ? (
+          <nav className="flex items-center gap-1 text-sm min-w-0">
+            {pageInfo.breadcrumbs.map((crumb, idx) => (
+              <span key={crumb.href} className="flex items-center gap-1 min-w-0">
+                {idx > 0 && <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0" />}
+                {crumb.current ? (
+                  <span className="font-semibold text-foreground truncate">{crumb.label}</span>
+                ) : (
+                  <Link
+                    href={crumb.href}
+                    className="text-muted-foreground hover:text-foreground transition-colors truncate"
+                  >
+                    {crumb.label}
+                  </Link>
+                )}
+              </span>
+            ))}
+          </nav>
+        ) : (
+          <h1 className="text-base font-semibold text-foreground truncate">{pageInfo.title}</h1>
+        )}
+      </div>
 
       {/* Actions */}
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1.5">
         {/* Theme Toggle */}
         <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8 text-muted-foreground hover:text-foreground"
+          className="h-9 w-9 text-muted-foreground hover:text-foreground rounded-xl"
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
         >
           <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
@@ -211,10 +278,10 @@ export function Header({ user: userProp }: HeaderProps) {
         {/* Notifications */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="relative h-8 w-8 text-muted-foreground hover:text-foreground">
+            <Button variant="ghost" size="icon" className="relative h-9 w-9 text-muted-foreground hover:text-foreground rounded-xl">
               <Bell className="h-4 w-4" />
               {unreadCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full bg-primary flex items-center justify-center text-[10px] font-medium text-white">
+                <span className="absolute -top-0.5 -right-0.5 h-[18px] min-w-[18px] px-1 rounded-full bg-primary flex items-center justify-center text-[10px] font-bold text-white">
                   {unreadCount > 9 ? "9+" : unreadCount}
                 </span>
               )}
@@ -222,7 +289,7 @@ export function Header({ user: userProp }: HeaderProps) {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-80">
             <DropdownMenuLabel className="flex items-center justify-between">
-              <span className="text-sm">Notificações</span>
+              <span className="text-sm font-semibold">Notificacoes</span>
               <Button
                 variant="ghost"
                 size="sm"
@@ -240,14 +307,18 @@ export function Header({ user: userProp }: HeaderProps) {
                 <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
               </div>
             ) : notifications.length === 0 ? (
-              <div className="py-8 text-center text-sm text-muted-foreground">
-                Nenhuma notificação
+              <div className="py-8 text-center">
+                <Bell className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+                <p className="text-sm text-muted-foreground">Nenhuma notificacao</p>
               </div>
             ) : (
               notifications.map((notification) => (
                 <DropdownMenuItem
                   key={notification.id}
-                  className={`flex flex-col items-start p-3 cursor-pointer ${notification.read ? 'opacity-50' : ''}`}
+                  className={cn(
+                    "flex flex-col items-start p-3 cursor-pointer rounded-lg",
+                    notification.read ? "opacity-50" : ""
+                  )}
                   onClick={() => markAsRead(notification.id)}
                 >
                   <div className="flex items-center justify-between w-full">
@@ -270,9 +341,9 @@ export function Header({ user: userProp }: HeaderProps) {
             )}
 
             <DropdownMenuSeparator />
-            <DropdownMenuItem asChild className="justify-center text-primary cursor-pointer text-xs">
-              <Link href="/notifications">
-                Ver todas as notificações
+            <DropdownMenuItem asChild className="justify-center text-primary cursor-pointer text-xs font-medium">
+              <Link href={ROUTES.ADMIN.NOTIFICATIONS}>
+                Ver todas as notificacoes
               </Link>
             </DropdownMenuItem>
           </DropdownMenuContent>

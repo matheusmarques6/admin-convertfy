@@ -33,11 +33,13 @@ export function TopStoresCard({ stores: storesProp, allStores, isLoading, dataSt
   const maxRevenue = stores[0]?.totalRevenueBRL ?? stores[0]?.totalRevenue ?? 1
 
   return (
-    <div className="rounded-xl border border-border bg-card h-full">
+    <div className="rounded-xl border border-border bg-card h-full flex flex-col">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Trophy className="h-4 w-4 text-success" />
+          <div className="flex items-center gap-2.5">
+            <div className="h-8 w-8 rounded-lg bg-success/10 flex items-center justify-center">
+              <Trophy className="h-4 w-4 text-success" />
+            </div>
             <CardTitle className="text-sm font-semibold">Top Lojas</CardTitle>
           </div>
           {showViewAll && (
@@ -47,7 +49,7 @@ export function TopStoresCard({ stores: storesProp, allStores, isLoading, dataSt
           )}
         </div>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-3 flex-1">
         {isLoading && stores.length === 0 ? (
           <div className="space-y-3">
             {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-10 w-full rounded-lg" />)}
@@ -58,20 +60,20 @@ export function TopStoresCard({ stores: storesProp, allStores, isLoading, dataSt
             {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-10 w-full rounded-lg" />)}
           </div>
         ) : stores.length === 0 ? (
-          <p className="text-xs text-muted-foreground text-center py-4">Nenhuma loja com receita no período</p>
+          <p className="text-xs text-muted-foreground text-center py-4">Nenhuma loja com receita no periodo</p>
         ) : (
           stores.map((store, i) => {
             const storeRevBRL = store.totalRevenueBRL ?? store.totalRevenue
             const widthPercent = Math.max((storeRevBRL / maxRevenue) * 100, 4)
             const curr = store.currency || "BRL"
             return (
-              <Link key={store.storeId} href={`/stores/${store.storeId}`} className="block group">
+              <Link key={store.storeId} href={`/admin/stores/${store.storeId}`} className="block group">
                 <div className="flex items-center justify-between text-xs mb-1">
                   <span className="truncate max-w-[55%] text-foreground group-hover:text-primary transition-colors">
-                    <span className="text-muted-foreground mr-1.5">{i + 1}.</span>
+                    <span className="text-muted-foreground mr-1.5 font-medium">{i + 1}.</span>
                     {store.storeName}
                   </span>
-                  <span className="font-medium tabular-nums text-foreground">{formatCurrency(store.totalRevenue, curr)}</span>
+                  <span className="font-semibold tabular-nums text-foreground">{formatCurrency(store.totalRevenue, curr)}</span>
                 </div>
                 <div className="h-1.5 rounded-full bg-muted overflow-hidden">
                   <div

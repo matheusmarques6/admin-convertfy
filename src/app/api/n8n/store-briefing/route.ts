@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { requireWebhookSecret } from "@/lib/api/n8n-auth"
 import { AppError, errorResponse, successResponse } from "@/lib/api/errors"

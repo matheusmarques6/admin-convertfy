@@ -274,6 +274,15 @@
   }
 }
 
+/* ═══════════════════════════════════════════════
+   SIDEBAR — Clean dark sidebar
+   ═══════════════════════════════════════════════ */
+
+.sidebar-container {
+  background: #0d1117;
+  border-right: 1px solid rgba(240, 246, 252, 0.06);
+}
+
 /* React Flow custom styles */
 .react-flow__node-custom {
   @apply bg-card border border-border rounded-lg shadow-sm;

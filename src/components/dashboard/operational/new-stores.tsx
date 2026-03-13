@@ -91,7 +91,7 @@ export function NewStores({ stores }: NewStoresProps) {
                 return (
                   <Link
                     key={store.id}
-                    href={`/stores/${store.id}`}
+                    href={`/admin/stores/${store.id}`}
                     className={cn(
                       "block p-3 rounded-lg border border-border hover:bg-muted/30 transition-colors",
                       hasNoOnboarding && "border-warning/30"

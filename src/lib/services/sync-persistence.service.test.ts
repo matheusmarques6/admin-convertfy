@@ -176,7 +176,7 @@ describe("upsertSyncResults", () => {
   })
 
   it("should skip flow upsert when flowRows is empty", async () => {
-    const { client, from, upsert } = createMockSupabase()
+    const { client, from } = createMockSupabase()
     const dataNoFlows = { ...SYNC_DATA, flowRows: [] }
 
     await upsertSyncResults(client, STORE, dataNoFlows, "30d")
@@ -188,7 +188,7 @@ describe("upsertSyncResults", () => {
   })
 
   it("should skip campaign upsert when campRows is empty", async () => {
-    const { client, from, upsert } = createMockSupabase()
+    const { client, from } = createMockSupabase()
     const dataNoFlows = { ...SYNC_DATA, campRows: [] }
 
     await upsertSyncResults(client, STORE, dataNoFlows, "30d")

@@ -145,7 +145,7 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
               Tentar Novamente
             </Button>
             <Button variant="outline" size="sm" asChild>
-              <Link href="/settings/integrations">Verificar Integração</Link>
+              <Link href="/admin/settings/integrations">Verificar Integração</Link>
             </Button>
           </div>
         </div>
@@ -164,7 +164,7 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
             Configure a integração com Asaas para ver métricas de faturamento
           </p>
           <Button variant="outline" size="sm" className="mt-4" asChild>
-            <Link href="/settings/integrations">Configurar Integração</Link>
+            <Link href="/admin/settings/integrations">Configurar Integração</Link>
           </Button>
         </div>
       </div>
@@ -370,7 +370,7 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
                   </p>
                 </div>
                 <Button variant="destructive" size="sm" asChild>
-                  <Link href="/clients?filter=overdue">Ver Inadimplentes</Link>
+                  <Link href="/admin/clients?filter=overdue">Ver Inadimplentes</Link>
                 </Button>
               </div>
             </div>

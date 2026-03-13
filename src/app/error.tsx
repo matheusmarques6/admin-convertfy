@@ -33,7 +33,7 @@ export default function GlobalError({
           Tentar novamente
         </Button>
         <Button variant="outline" asChild>
-          <a href="/dashboard">
+          <a href="/admin/dashboard">
             <Home className="h-4 w-4 mr-2" />
             Voltar ao início
           </a>

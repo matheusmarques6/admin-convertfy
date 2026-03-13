@@ -75,7 +75,7 @@ export function StoresListModal({ stores, variant, open, onOpenChange }: StoresL
                 return (
                   <Link
                     key={store.storeId}
-                    href={`/stores/${store.storeId}`}
+                    href={`/admin/stores/${store.storeId}`}
                     className="block group"
                     onClick={() => onOpenChange(false)}
                   >

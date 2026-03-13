@@ -41,7 +41,7 @@ export function StoreDeleteAction({ storeId, storeName }: StoreDeleteActionProps
           title: "Loja excluída!",
           description: `"${storeName}" foi removida com sucesso`,
         })
-        router.push("/stores")
+        router.push("/admin/stores")
       } else {
         toast({
           title: "Erro ao excluir",
