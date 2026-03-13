@@ -645,38 +645,6 @@ export function OnboardingApprovals() {
                 </div>
               )}
 
-              {/* Formulário status + Ações */}
-              <div className="flex items-center justify-between pt-2 border-t">
-                <div className="flex items-center gap-2">
-                  {onb.store_onboarding_data?.is_complete ? (
-                    <Badge variant="default" className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs">Formulário Completo</Badge>
-                  ) : (
-                    <Badge variant="secondary" className="text-xs">Formulário Parcial</Badge>
-                  )}
-                  <Button size="sm" variant="ghost" asChild>
-                    <Link href={`/stores/${onb.store_id}`}>
-                      <Store className="h-4 w-4 mr-1" />
-                      Ver Loja
-                    </Link>
-                  </Button>
-                </div>
-                <div className="flex gap-2">
-                  <Button size="sm" onClick={() => openAction(onb, "approved")} className="bg-emerald-600 hover:bg-emerald-700 text-white">
-                    <Check className="h-4 w-4 mr-1" />
-                    Aprovar
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => openAction(onb, "revision_requested")}>
-                    <MessageSquare className="h-4 w-4 mr-1" />
-                    Revisão
-                  </Button>
-                  <Button size="sm" variant="destructive" onClick={() => openAction(onb, "rejected")}>
-                    <X className="h-4 w-4 mr-1" />
-                    Rejeitar
-                  </Button>
-                </div>
-              </div>
-            )}
-
             {/* Arquivos */}
             {(onb.store_onboarding_data?.logo_url || onb.store_onboarding_data?.brand_manual_url || onb.store_onboarding_data?.visual_reference_url) && (
               <div>
