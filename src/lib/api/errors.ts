@@ -111,6 +111,35 @@ export function errorResponse(
     )
   }
 
+  // Supabase PostgrestError (plain object with message/code, not instanceof Error)
+  if (
+    error &&
+    typeof error === "object" &&
+    "message" in error &&
+    "code" in error &&
+    !(error instanceof Error)
+  ) {
+    const pgError = error as { message: string; code: string; details?: string; hint?: string }
+    logger.error(`[${context || "API"}] Database error: ${pgError.message}`, {
+      code: pgError.code,
+      details: pgError.details,
+      hint: pgError.hint,
+    })
+
+    // Map common Postgres error codes to user-friendly messages and HTTP status
+    const pgErrorMap: Record<string, { status: number; message: string }> = {
+      "42501": { status: 403, message: "Permissão negada" },        // insufficient_privilege (RLS)
+      "23503": { status: 400, message: "Registro referenciado não encontrado" }, // foreign_key_violation
+      "23505": { status: 409, message: "Registro duplicado" },      // unique_violation
+    }
+    const mapped = pgErrorMap[pgError.code] || { status: 500, message: "Erro interno" }
+
+    return NextResponse.json(
+      { error: mapped.message, code: "DATABASE_ERROR" },
+      { status: mapped.status, headers: corsHeaders(origin) }
+    )
+  }
+
   // Unknown errors
   const message = error instanceof Error ? error.message : "Erro interno"
   logger.error(`[${context || "API"}] Unexpected error: ${message}`, {
