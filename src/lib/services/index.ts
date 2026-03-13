@@ -38,17 +38,10 @@ export {
 
 export { generateEmailSubjects, generateAdCopy } from './ai.service';
 
-export {
-  StepDependencyService,
-  type StepForResolution,
-  type DagValidation
-} from './step-dependency.service';
-
-export {
-  OnboardingSyncService,
-  type StepCompletionResult,
-  type SeedTasksResult
-} from './onboarding-sync.service';
+// NOTE: StepDependencyService and OnboardingSyncService are server-only
+// (they import createAdminClient which uses next/headers).
+// Import them directly from their files, NOT from this barrel.
+// e.g.: import { StepDependencyService } from '@/lib/services/step-dependency.service'
 
 // Re-export event utilities for convenience
 export { publishEvent, logActivity } from '@/lib/events/publisher';
