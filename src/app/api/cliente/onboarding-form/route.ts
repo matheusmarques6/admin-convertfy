@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
         email: data.email,
         phone: data.phone || null,
         cpf_cnpj: data.cpf_cnpj || null,
-        status: "prospect",
+        status: "onboarding",
         org_id: orgId,
       })
       .select("id")

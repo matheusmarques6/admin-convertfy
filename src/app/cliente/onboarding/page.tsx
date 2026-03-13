@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { useToast } from "@/lib/hooks/use-toast"
+import Image from "next/image"
 import { Check, ChevronLeft, ChevronRight, Loader2, Store, User, Palette, Send, Upload, X, FileText, ImageIcon, Mail, Key, Info, Users, Pencil, AppWindow, Copy, CheckCheck } from "lucide-react"
 import { PhoneInputIntl, formatPhoneDisplay } from "@/components/ui/phone-input"
 import { CpfCnpjInput } from "@/components/ui/cpf-cnpj-input"
@@ -348,9 +349,27 @@ export default function PublicOnboardingPage() {
   // ── Main form ──
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen p-4">
+    <div className="flex flex-col items-center justify-center min-h-screen px-3 py-6 sm:p-4">
       {/* Header */}
-      <div className="text-center mb-8">
+      <div className="text-center mb-6 sm:mb-8">
+        <Image
+          src="/images/logo da convertfy com escrito branco.png"
+          alt="Convertfy"
+          width={180}
+          height={40}
+          className="mx-auto mb-6 h-auto w-auto object-contain hidden dark:block"
+          style={{ maxHeight: 40, maxWidth: 180 }}
+          priority
+        />
+        <Image
+          src="/images/logo da convertfy com escrito preto.png"
+          alt="Convertfy"
+          width={180}
+          height={40}
+          className="mx-auto mb-6 h-auto w-auto object-contain dark:hidden"
+          style={{ maxHeight: 40, maxWidth: 180 }}
+          priority
+        />
         <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Cadastro de Onboarding</h1>
         <p className="text-muted-foreground mt-2">Preencha os dados para iniciar o processo</p>
         <p className="text-muted-foreground/70 text-sm mt-1">
@@ -359,7 +378,7 @@ export default function PublicOnboardingPage() {
       </div>
 
       {/* Progress Steps */}
-      <div className="w-full max-w-2xl mb-8">
+      <div className="w-full max-w-2xl mb-6 sm:mb-8">
         <OnboardingStepper
           steps={visibleSteps.map((s) => ({ id: s.id, label: s.title, icon: s.icon }))}
           currentIndex={currentStepIndex}

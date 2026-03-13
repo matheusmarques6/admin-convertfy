@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { useToast } from "@/lib/hooks/use-toast"
-import { Check, X, MessageSquare, Store, User, Calendar, Loader2, FileText, ExternalLink, ImageIcon, BookOpen, Palette } from "lucide-react"
+import { Check, X, MessageSquare, Store, User, Calendar, Loader2, FileText, ExternalLink, ImageIcon, BookOpen } from "lucide-react"
 import Link from "next/link"
 
 interface PendingOnboarding {
@@ -42,7 +42,6 @@ interface PendingOnboarding {
     logo_url?: string
     design_direction_text?: string
     brand_manual_url?: string
-    visual_reference_url?: string
     is_complete?: boolean
   }
 }
@@ -67,17 +66,15 @@ const languageLabel: Record<string, string> = {
 }
 
 const freeShippingLabel: Record<string, string> = {
-  free: "Frete Grátis",
+  all: "Frete Grátis Total",
   conditional: "Frete Grátis Condicional",
-  paid: "Frete Pago",
   none: "Sem Frete Grátis",
 }
 
 const priceSensitivityLabel: Record<string, string> = {
   price: "Focado em Preço",
-  value: "Focado em Valor",
-  premium: "Premium",
-  mixed: "Misto",
+  balanced: "Equilibrado",
+  quality: "Qualidade",
 }
 
 export function OnboardingApprovals() {
@@ -321,7 +318,7 @@ export function OnboardingApprovals() {
             )}
 
             {/* Arquivos */}
-            {(onb.store_onboarding_data?.logo_url || onb.store_onboarding_data?.brand_manual_url || onb.store_onboarding_data?.visual_reference_url) && (
+            {(onb.store_onboarding_data?.logo_url || onb.store_onboarding_data?.brand_manual_url) && (
               <div>
                 <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Arquivos</h4>
                 <div className="flex flex-wrap gap-2">
@@ -343,15 +340,7 @@ export function OnboardingApprovals() {
                       </Badge>
                     </a>
                   )}
-                  {onb.store_onboarding_data?.visual_reference_url && (
-                    <a href={onb.store_onboarding_data.visual_reference_url} target="_blank" rel="noopener noreferrer">
-                      <Badge variant="secondary" className="cursor-pointer hover:bg-muted gap-1">
-                        <Palette className="h-3 w-3" />
-                        Referência Visual
-                        <ExternalLink className="h-3 w-3" />
-                      </Badge>
-                    </a>
-                  )}
+
                 </div>
               </div>
             )}

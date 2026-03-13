@@ -32,6 +32,7 @@ import { TopFlowCard } from "./top-flow-card"
 import { AnimatedContainer, AnimatedItem } from "@/components/ui/animated-container"
 import { DataStatusBanner } from "@/components/ui/data-status-banner"
 import { useRealtimeRevenue } from "@/hooks/use-realtime-revenue"
+import { OnboardingDashboard } from "./onboarding-dashboard"
 import type { DashboardData } from "./types"
 
 export default function PortalDashboardPage() {
@@ -41,6 +42,35 @@ export default function PortalDashboardPage() {
   const [error, setError] = useState<string | null>(null)
   const [period, setPeriod] = useState("30d")
   const abortRef = useRef<AbortController | null>(null)
+  const [onboardingStatus, setOnboardingStatus] = useState<string | null>(null)
+  const [onboardingChecked, setOnboardingChecked] = useState(false)
+  const [portalUserName, setPortalUserName] = useState("")
+
+  // Check onboarding status first
+  useEffect(() => {
+    async function checkOnboarding() {
+      try {
+        const res = await fetch("/api/portal/onboarding")
+        if (res.ok) {
+          const json = await res.json()
+          setOnboardingStatus(json.onboarding?.status || null)
+        }
+        // Get portal user name
+        try {
+          const stored = localStorage.getItem("portal_user")
+          if (stored) {
+            const parsed = JSON.parse(stored)
+            setPortalUserName(parsed.name?.split(" ")[0] || "")
+          }
+        } catch { /* ignore */ }
+      } catch {
+        setOnboardingStatus(null)
+      } finally {
+        setOnboardingChecked(true)
+      }
+    }
+    checkOnboarding()
+  }, [])
 
   const fetchDashboard = useCallback(async (showRefresh = false) => {
     // Cancel any in-flight request so stale responses don't overwrite newer ones
@@ -106,6 +136,11 @@ export default function PortalDashboardPage() {
   useEffect(() => {
     fetchDashboard()
   }, [fetchDashboard])
+
+  // Gate: show onboarding dashboard if onboarding is active
+  if (onboardingChecked && onboardingStatus && onboardingStatus !== "completed") {
+    return <OnboardingDashboard firstName={portalUserName} />
+  }
 
   if (loading) {
     return (

@@ -24,12 +24,12 @@ export function OnboardingStepper({ steps, currentIndex, onNavigate }: Onboardin
       <nav aria-label="Progresso do formulario">
         {/* Container with background line */}
         <div className="relative flex items-start justify-between">
-          {/* Background line (full, muted) — centered on inactive icon height (44px / 2 = 22px) */}
-          <div className="absolute top-[21px] left-[28px] right-[28px] h-[2px] bg-border" />
+          {/* Background line (full, muted) — centered on icon height */}
+          <div className="absolute top-[15px] sm:top-[21px] left-[16px] sm:left-[28px] right-[16px] sm:right-[28px] h-[2px] bg-border" />
           {/* Progress line (filled, primary) */}
           <div
-            className="absolute top-[21px] left-[28px] h-[2px] bg-primary transition-all duration-[400ms]"
-            style={{ width: `calc(${progressFraction} * (100% - 56px))` }}
+            className="absolute top-[15px] sm:top-[21px] left-[16px] sm:left-[28px] h-[2px] bg-primary transition-all duration-[400ms]"
+            style={{ width: `calc(${progressFraction} * (100% - 32px))` }}
           />
 
           {steps.map((step, i) => {
@@ -45,36 +45,36 @@ export function OnboardingStepper({ steps, currentIndex, onNavigate }: Onboardin
                 disabled={!isComplete}
                 aria-current={isActive ? "step" : undefined}
                 aria-disabled={!isComplete && !isActive}
-                className="relative z-10 flex flex-col items-center cursor-default min-w-[48px] bg-transparent border-0 p-0"
+                className="relative z-10 flex flex-col items-center cursor-default min-w-[32px] sm:min-w-[48px] bg-transparent border-0 p-0"
               >
                 {/* Icon container — active is larger, bg masks the line */}
                 <div
                   className={cn(
                     "flex items-center justify-center rounded-lg bg-background relative transition-all duration-300",
-                    isActive && "w-14 h-14",
-                    !isActive && "w-11 h-11",
+                    isActive && "w-10 h-10 sm:w-14 sm:h-14",
+                    !isActive && "w-8 h-8 sm:w-11 sm:h-11",
                     isComplete && "cursor-pointer"
                   )}
                 >
                   <Icon
                     className={cn(
                       "transition-all duration-300",
-                      isActive && "h-8 w-8 text-primary drop-shadow-[0_0_10px_rgba(124,58,237,0.4)]",
-                      isComplete && "h-6 w-6 text-primary opacity-85",
-                      !isActive && !isComplete && "h-6 w-6 text-muted-foreground/20"
+                      isActive && "h-5 w-5 sm:h-8 sm:w-8 text-primary drop-shadow-[0_0_10px_rgba(124,58,237,0.4)]",
+                      isComplete && "h-4 w-4 sm:h-6 sm:w-6 text-primary opacity-85",
+                      !isActive && !isComplete && "h-4 w-4 sm:h-6 sm:w-6 text-muted-foreground/20"
                     )}
                   />
                   {/* Check badge for completed steps */}
                   {isComplete && (
-                    <span className="absolute -bottom-0.5 -right-1 flex items-center justify-center w-4 h-4 rounded-full bg-emerald-500 border-2 border-background">
-                      <Check className="h-2.5 w-2.5 text-white" strokeWidth={3} />
+                    <span className="absolute -bottom-0.5 -right-1 flex items-center justify-center w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full bg-emerald-500 border-2 border-background">
+                      <Check className="h-2 w-2 sm:h-2.5 sm:w-2.5 text-white" strokeWidth={3} />
                     </span>
                   )}
                 </div>
 
-                {/* Label — only visible on active step */}
+                {/* Label — only visible on active step, hidden on mobile */}
                 {isActive && (
-                  <span className="mt-2 text-xs font-semibold text-primary text-center leading-tight max-w-[90px]">
+                  <span className="mt-2 text-xs font-semibold text-primary text-center leading-tight max-w-[90px] hidden sm:block">
                     {step.label}
                   </span>
                 )}
