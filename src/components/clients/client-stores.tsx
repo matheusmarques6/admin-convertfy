@@ -2,20 +2,18 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import {
   Store,
   Plus,
   Trash2,
   Edit,
-  Key,
   ExternalLink,
   Eye,
   Loader2,
-  Check,
-  X,
   Database,
-  BarChart3,
-  FileJson,
+  Info,
+  Settings,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -69,58 +67,6 @@ interface ClientStoresProps {
   clientName: string
 }
 
-/**
- * Auto-mark onboarding step as completed when credentials are saved.
- * Uses the existing steps API which handles adminClient, timestamps, and progress recalculation.
- * Fails silently — saving the store should never fail because of onboarding.
- *
- * TODO: Migrate auxiliary queries to a dedicated server-side endpoint
- * (e.g. POST /api/onboarding/auto-complete) that receives client_id + step_name
- * and handles the lookup + update entirely server-side. Currently the lookup
- * queries use fetch to API routes as a workaround to avoid browser Supabase.
- */
-async function markOnboardingStepCompleted(
-  clientId: string,
-  stepName: string
-) {
-  try {
-    // Find active onboarding for this client via API
-    // Try in_progress first, then not_started
-    let onboarding = null
-    for (const status of ["in_progress", "not_started"]) {
-      const onbRes = await fetch(`/api/onboarding?client_id=${clientId}&status=${status}`)
-      if (!onbRes.ok) continue
-      const onbData = await onbRes.json()
-      if (onbData.onboardings?.[0]) {
-        onboarding = onbData.onboardings[0]
-        break
-      }
-    }
-    if (!onboarding) return
-
-    // Find the step that matches by name via API
-    const stepsRes = await fetch(`/api/onboarding/${onboarding.id}/steps`)
-    if (!stepsRes.ok) return
-    const stepsData = await stepsRes.json()
-    const step = stepsData.steps?.find(
-      (s: { name: string; status: string }) => s.name === stepName && s.status !== "completed"
-    )
-    if (!step) return // Already completed or doesn't exist
-
-    // Mark as completed via existing API (handles adminClient + progress recalc)
-    await fetch(`/api/onboarding/${onboarding.id}/steps`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        step_id: step.id,
-        status: "completed",
-      }),
-    })
-  } catch (error) {
-    console.error(`[Onboarding] Error auto-marking "${stepName}":`, error)
-  }
-}
-
 export function ClientStores({ clientId, clientName }: ClientStoresProps) {
   const router = useRouter()
   const [stores, setStores] = useState<ClientStore[]>([])
@@ -129,24 +75,12 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
   const [deleteStore, setDeleteStore] = useState<ClientStore | null>(null)
   const [editStore, setEditStore] = useState<ClientStore | null>(null)
   const [isSaving, setIsSaving] = useState(false)
-  // Test connection buttons removed — credentials are no longer sent to the browser.
-  // Connection testing is available via the edit dialog (re-enter credentials) or store detail page.
 
   const [form, setForm] = useState({
     name: "",
     url: "",
     platform: "Shopify",
     currency: "BRL",
-    // Shopify
-    shopify_store_domain: "",
-    shopify_access_token: "",
-    // Klaviyo
-    klaviyo_public_key: "",
-    klaviyo_private_key: "",
-    klaviyo_list_id: "",
-    // Google Analytics
-    ga4_property_id: "",
-    ga4_credentials_json: "",
   })
 
   useEffect(() => {
@@ -184,20 +118,11 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
       const platformCapitalized = store.platform
         ? store.platform.charAt(0).toUpperCase() + store.platform.slice(1)
         : "Shopify"
-      // Credentials are NOT returned by the API (sanitized server-side).
-      // Pre-fill only non-sensitive fields. User must re-enter credentials when editing.
       setForm({
         name: store.store_name,
         url: store.store_url || "",
         platform: platformCapitalized,
         currency: store.currency || "BRL",
-        shopify_store_domain: store.shopify_store_domain || "",
-        shopify_access_token: "",
-        klaviyo_public_key: store.klaviyo_public_key || "",
-        klaviyo_private_key: "",
-        klaviyo_list_id: store.klaviyo_list_id || "",
-        ga4_property_id: store.ga4_property_id || "",
-        ga4_credentials_json: "",
       })
     } else {
       setEditStore(null)
@@ -206,13 +131,6 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
         url: "",
         platform: "Shopify",
         currency: "BRL",
-        shopify_store_domain: "",
-        shopify_access_token: "",
-        klaviyo_public_key: "",
-        klaviyo_private_key: "",
-        klaviyo_list_id: "",
-        ga4_property_id: "",
-        ga4_credentials_json: "",
       })
     }
     setDialogOpen(true)
@@ -230,7 +148,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
 
     setIsSaving(true)
     try {
-      // Build store data - credentials will be encrypted server-side
+      // Build store data - only basic metadata fields
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const storeData: Record<string, any> = {
         store_name: form.name,
@@ -241,37 +159,9 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
       if (form.url) storeData.store_url = form.url
       // Platform is an ENUM - convert to lowercase
       if (form.platform) storeData.platform = form.platform.toLowerCase()
+      if (form.currency) storeData.currency = form.currency
 
-      // Shopify fields
-      if (form.shopify_store_domain) storeData.shopify_store_domain = form.shopify_store_domain
-      if (form.shopify_access_token) storeData.shopify_access_token = form.shopify_access_token
-
-      // Klaviyo fields
-      if (form.klaviyo_public_key) storeData.klaviyo_public_key = form.klaviyo_public_key
-      if (form.klaviyo_private_key) {
-        storeData.klaviyo_private_key = form.klaviyo_private_key
-        // Also set legacy field for backwards compatibility
-        storeData.klaviyo_api_key = form.klaviyo_private_key
-      }
-      if (form.klaviyo_list_id) storeData.klaviyo_list_id = form.klaviyo_list_id
-
-      // Google Analytics fields
-      if (form.ga4_property_id) storeData.ga4_property_id = form.ga4_property_id
-      if (form.ga4_credentials_json) {
-        try {
-          storeData.ga4_credentials = JSON.parse(form.ga4_credentials_json)
-        } catch {
-          toast({
-            variant: "destructive",
-            title: "JSON inválido",
-            description: "As credenciais do Google Analytics devem ser um JSON válido",
-          })
-          setIsSaving(false)
-          return
-        }
-      }
-
-      // Save via server-side API (encrypts credentials)
+      // Save via server-side API
       if (editStore) {
         const response = await fetch("/api/client-stores/credentials", {
           method: "PUT",
@@ -281,6 +171,8 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
         const result = await response.json()
         if (!response.ok) throw new Error(result.error || "Erro ao atualizar")
         toast({ title: "Loja atualizada!" })
+        setDialogOpen(false)
+        loadStores()
       } else {
         const response = await fetch("/api/client-stores/credentials", {
           method: "POST",
@@ -289,19 +181,11 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
         })
         const result = await response.json()
         if (!response.ok) throw new Error(result.error || "Erro ao criar")
-        toast({ title: "Loja adicionada!" })
+        toast({ title: "Loja criada! Configure as integrações." })
+        setDialogOpen(false)
+        // Redirect to store settings for credential configuration
+        router.push(`/admin/stores/${result.store.id}?tab=settings`)
       }
-
-      // Auto-mark onboarding steps when integration credentials are saved
-      if (form.klaviyo_private_key) {
-        markOnboardingStepCompleted(clientId, "Klaviyo Conectado")
-      }
-      if (form.shopify_access_token) {
-        markOnboardingStepCompleted(clientId, "Acesso à Loja Configurado")
-      }
-
-      setDialogOpen(false)
-      loadStores()
     } catch (error) {
       console.error("Error saving store:", error)
       const errorMsg = error instanceof Error ? error.message : String(error)
@@ -368,6 +252,11 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
     }
   }
 
+  /** Helper: check if any integration is missing credentials */
+  function hasPendingIntegrations(store: ClientStore): boolean {
+    return !store.has_shopify_credentials || !store.has_klaviyo_credentials || !store.has_ga4_credentials
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -432,9 +321,11 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
                     </div>
                     <div>
                       <CardTitle className="text-base">{store.store_name}</CardTitle>
-                      {store.platform && (
-                        <CardDescription>{store.platform}</CardDescription>
-                      )}
+                      <CardDescription>
+                        {store.platform && <>{store.platform}</>}
+                        {store.platform && store.currency && <> &middot; </>}
+                        {store.currency && <>{store.currency}</>}
+                      </CardDescription>
                     </div>
                   </div>
                   <Badge variant={store.is_active ? "success" : "secondary"}>
@@ -457,100 +348,30 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
                   </div>
                 )}
 
-                {/* Shopify Integration Status */}
-                {store.platform?.toLowerCase() === "shopify" && (
-                  <div className="p-3 rounded-lg bg-muted/50 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Store className="h-4 w-4 text-success" />
-                        <span className="text-sm font-medium">Shopify</span>
-                      </div>
-                      {store.has_shopify_credentials ? (
-                        <Badge variant="success" className="flex items-center gap-1">
-                          <Check className="h-3 w-3" />
-                          Configurado
-                        </Badge>
-                      ) : (
-                        <Badge variant="secondary" className="flex items-center gap-1">
-                          <X className="h-3 w-3" />
-                          Não configurado
-                        </Badge>
-                      )}
+                {/* Compact Integration Status Row */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4 text-sm">
+                    <div className="flex items-center gap-1.5">
+                      <span className={`h-2 w-2 rounded-full ${store.has_shopify_credentials ? "bg-emerald-500" : "bg-muted-foreground/30"}`} />
+                      <span className="text-muted-foreground">Shopify</span>
                     </div>
-                    {store.shopify_store_domain && (
-                      <div className="text-xs text-muted-foreground">
-                        Domínio: {store.shopify_store_domain}
-                      </div>
-                    )}
-                    {store.currency && (
-                      <div className="text-xs text-muted-foreground">
-                        Moeda: {store.currency}
-                      </div>
-                    )}
+                    <div className="flex items-center gap-1.5">
+                      <span className={`h-2 w-2 rounded-full ${store.has_klaviyo_credentials ? "bg-emerald-500" : "bg-muted-foreground/30"}`} />
+                      <span className="text-muted-foreground">Klaviyo</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`h-2 w-2 rounded-full ${store.has_ga4_credentials ? "bg-emerald-500" : "bg-muted-foreground/30"}`} />
+                      <span className="text-muted-foreground">GA4</span>
+                    </div>
                   </div>
-                )}
-
-                {/* Klaviyo Integration Status */}
-                <div className="p-3 rounded-lg bg-muted/50 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Key className="h-4 w-4 text-primary" />
-                      <span className="text-sm font-medium">Klaviyo</span>
-                    </div>
-                    {store.has_klaviyo_credentials ? (
-                      <Badge variant="success" className="flex items-center gap-1">
-                        <Check className="h-3 w-3" />
-                        Configurado
-                      </Badge>
-                    ) : (
-                      <Badge variant="secondary" className="flex items-center gap-1">
-                        <X className="h-3 w-3" />
-                        Não configurado
-                      </Badge>
-                    )}
-                  </div>
-                  {store.has_klaviyo_credentials && (
-                    <>
-                      {store.klaviyo_public_key && (
-                        <div className="text-xs text-muted-foreground">
-                          Site ID: {store.klaviyo_public_key}
-                        </div>
-                      )}
-                      <div className="text-xs text-muted-foreground">
-                        Private Key: ••••••••
-                      </div>
-                      {store.klaviyo_list_id && (
-                        <div className="text-xs text-muted-foreground">
-                          List ID: {store.klaviyo_list_id}
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-
-                {/* Google Analytics Integration Status */}
-                <div className="p-3 rounded-lg bg-muted/50 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <BarChart3 className="h-4 w-4 text-warning" />
-                      <span className="text-sm font-medium">Google Analytics</span>
-                    </div>
-                    {store.ga4_property_id ? (
-                      <Badge variant="success" className="flex items-center gap-1">
-                        <Check className="h-3 w-3" />
-                        Configurado
-                      </Badge>
-                    ) : (
-                      <Badge variant="secondary" className="flex items-center gap-1">
-                        <X className="h-3 w-3" />
-                        Não configurado
-                      </Badge>
-                    )}
-                  </div>
-                  {store.ga4_property_id && (
-                    <div className="text-xs text-muted-foreground">
-                      Property ID: {store.ga4_property_id}
-                    </div>
+                  {hasPendingIntegrations(store) && (
+                    <Link
+                      href={`/admin/stores/${store.id}?tab=settings`}
+                      className="text-xs text-primary hover:underline flex items-center gap-1"
+                    >
+                      <Settings className="h-3 w-3" />
+                      Configurar
+                    </Link>
                   )}
                 </div>
 
@@ -591,18 +412,18 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
 
       {/* Add/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Store className="h-5 w-5" />
               {editStore ? "Editar Loja" : "Nova Loja"}
             </DialogTitle>
             <DialogDescription>
-              Configure os dados da loja e integrações
+              Altere as informações básicas da loja
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4 overflow-y-auto flex-1 pr-2">
+          <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>Nome da Loja *</Label>
               <Input
@@ -659,122 +480,21 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
               </p>
             </div>
 
-            {/* Shopify Integration */}
-            {form.platform === "Shopify" && (
-              <div className="border-t pt-4 mt-4">
-                <h4 className="font-medium flex items-center gap-2 mb-4">
-                  <Store className="h-4 w-4 text-success" />
-                  Integração Shopify
-                </h4>
-
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Domínio da Loja</Label>
-                    <Input
-                      placeholder="minhaloja.myshopify.com"
-                      value={form.shopify_store_domain}
-                      onChange={(e) => setForm({ ...form, shopify_store_domain: e.target.value })}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Domínio .myshopify.com da sua loja
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Admin API Access Token</Label>
-                    <Input
-                      type="password"
-                      placeholder="shpat_xxxxxxxxxxxxxxxx"
-                      value={form.shopify_access_token}
-                      onChange={(e) => setForm({ ...form, shopify_access_token: e.target.value })}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Crie em Settings → Apps → Develop apps → Create app → Admin API access token
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Klaviyo Integration */}
-            <div className="border-t pt-4 mt-4">
-              <h4 className="font-medium flex items-center gap-2 mb-4">
-                <Key className="h-4 w-4 text-primary" />
-                Integração Klaviyo
-              </h4>
-
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Public API Key / Site ID</Label>
-                  <Input
-                    placeholder="XXXXXX (6 caracteres)"
-                    value={form.klaviyo_public_key}
-                    onChange={(e) => setForm({ ...form, klaviyo_public_key: e.target.value })}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Encontre em Klaviyo → Settings → API Keys → Public API Key (Site ID)
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Private API Key *</Label>
-                  <Input
-                    type="password"
-                    placeholder="pk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                    value={form.klaviyo_private_key}
-                    onChange={(e) => setForm({ ...form, klaviyo_private_key: e.target.value })}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Encontre em Klaviyo → Settings → API Keys → Create Private API Key
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>List ID (opcional)</Label>
-                  <Input
-                    placeholder="ID da lista principal"
-                    value={form.klaviyo_list_id}
-                    onChange={(e) => setForm({ ...form, klaviyo_list_id: e.target.value })}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Google Analytics Integration */}
-            <div className="border-t pt-4 mt-4">
-              <h4 className="font-medium flex items-center gap-2 mb-4">
-                <BarChart3 className="h-4 w-4 text-warning" />
-                Integração Google Analytics (GA4)
-              </h4>
-
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Property ID</Label>
-                  <Input
-                    placeholder="123456789"
-                    value={form.ga4_property_id}
-                    onChange={(e) => setForm({ ...form, ga4_property_id: e.target.value })}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Encontre em GA4 → Admin → Property Settings → Property ID
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="flex items-center gap-2">
-                    <FileJson className="h-4 w-4" />
-                    Service Account Credentials (JSON)
-                  </Label>
-                  <textarea
-                    className="flex min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 font-mono text-xs"
-                    placeholder='{"type": "service_account", "project_id": "...", "private_key_id": "...", "private_key": "...", "client_email": "...", ...}'
-                    value={form.ga4_credentials_json}
-                    onChange={(e) => setForm({ ...form, ga4_credentials_json: e.target.value })}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Cole o JSON completo da service account. Crie em Google Cloud Console → IAM → Service Accounts → Create → Keys → Add Key → JSON
-                  </p>
-                </div>
+            {/* Info banner: credentials are managed in store settings */}
+            <div className="rounded-lg border bg-muted/50 p-3 flex items-start gap-3">
+              <Info className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+              <div className="text-sm text-muted-foreground">
+                Para configurar credenciais (Shopify, Klaviyo, GA4), acesse a{" "}
+                {editStore ? (
+                  <Link
+                    href={`/admin/stores/${editStore.id}?tab=settings`}
+                    className="text-primary hover:underline font-medium"
+                  >
+                    página da loja &rarr; Configurações
+                  </Link>
+                ) : (
+                  <span className="font-medium">página da loja &rarr; Configurações</span>
+                )}
               </div>
             </div>
           </div>
