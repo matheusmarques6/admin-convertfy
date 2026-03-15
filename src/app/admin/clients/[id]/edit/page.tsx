@@ -260,6 +260,7 @@ export default function EditClientPage({
         website = `https://${website}`
       }
 
+      // Save locally FIRST so the Asaas sync route reads fresh data from DB
       const { data: updated, error } = await supabase
         .from("clients")
         .update({
@@ -288,6 +289,40 @@ export default function EditClientPage({
         throw new Error("Nenhum registro foi atualizado. Verifique suas permissões.")
       }
 
+      // Sync to Asaas AFTER local save, so the API route reads fresh data from DB
+      let asaasSyncSuccess = false
+      let asaasSyncAttempted = false
+      if (!skipAsaas && asaasCustomerId && asaasCustomerId !== "000") {
+        asaasSyncAttempted = true
+        try {
+          const asaasUpdateResponse = await fetch("/api/integrations/asaas/customers/update", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ clientId: id }),
+          })
+
+          const asaasUpdateData = await asaasUpdateResponse.json()
+
+          if (asaasUpdateData.success) {
+            asaasSyncSuccess = true
+          } else {
+            console.warn("Asaas customer update failed:", asaasUpdateData.error)
+            toast({
+              variant: "destructive",
+              title: "Aviso: Erro ao sincronizar com Asaas",
+              description: "Cliente atualizado localmente, mas houve erro ao sincronizar com o Asaas.",
+            })
+          }
+        } catch (asaasUpdateError) {
+          console.warn("Error updating Asaas customer:", asaasUpdateError)
+          toast({
+            variant: "destructive",
+            title: "Aviso: Erro ao sincronizar com Asaas",
+            description: "Cliente atualizado localmente, mas houve erro ao sincronizar com o Asaas.",
+          })
+        }
+      }
+
       // Create activity
       await supabase.from("activities").insert({
         client_id: id,
@@ -300,7 +335,9 @@ export default function EditClientPage({
         title: "Cliente atualizado!",
         description: asaasCustomerId && !data.asaas_customer_id
           ? "Cliente atualizado e vinculado ao Asaas com sucesso."
-          : "As informações foram salvas com sucesso.",
+          : asaasSyncAttempted && asaasSyncSuccess
+            ? "As informações foram salvas e sincronizadas com o Asaas."
+            : "As informações foram salvas com sucesso.",
       })
 
       router.push(`/admin/clients/${id}`)

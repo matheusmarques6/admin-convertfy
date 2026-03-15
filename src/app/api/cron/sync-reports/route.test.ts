@@ -20,7 +20,10 @@ function chainable(table: string) {
   self.select = () => self
   self.eq = () => self
   self.not = () => self
-  self.single = () => ({ data: { is_running: false }, error: null })
+  self.single = () => {
+    if (table === "cron_locks") return { data: { is_running: false }, error: null }
+    return { data: null, error: null }
+  }
   self.or = () => ({
     not: () => ({ data: mockStoreList, error: null }),
   })
@@ -40,7 +43,10 @@ function chainable(table: string) {
 vi.mock("@/lib/supabase/server", () => ({
   createAdminClient: () => ({
     from: (table: string) => chainable(table),
-    rpc: () => ({ data: 0, error: null }),
+    rpc: (fnName: string) => {
+      if (fnName === "acquire_sync_lock") return { data: true, error: null }
+      return { data: 0, error: null }
+    },
   }),
 }))
 
@@ -88,6 +94,7 @@ vi.mock("@/lib/services/klaviyo-sync.service", () => ({
 
 vi.mock("@/lib/services/sync-persistence.service", () => ({
   upsertSyncResults: vi.fn().mockResolvedValue(undefined),
+  upsertAudiences: vi.fn().mockResolvedValue(undefined),
 }))
 
 const mockGetStoreCredentials = vi.fn()
