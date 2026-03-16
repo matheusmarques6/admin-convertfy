@@ -17,6 +17,7 @@ import {
   ChevronDown,
   Filter,
   Search,
+  RotateCcw,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -55,6 +56,7 @@ import {
 import { Calendar as CalendarComponent } from "@/components/ui/calendar"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { toast } from "@/lib/hooks/use-toast"
+import { RefundDialog, type RefundCharge } from "@/components/financial/refund-dialog"
 import Link from "next/link"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
@@ -71,6 +73,9 @@ interface Charge {
   paymentDate?: string
   description?: string
   invoiceUrl?: string
+  asaas_id?: string | null
+  subscription_id?: string | null
+  refund_total?: number
   client: {
     id: string
     name: string
@@ -105,6 +110,8 @@ export function ChargesManager() {
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
   const [selectedCharge, setSelectedCharge] = useState<Charge | null>(null)
   const [isCancelling, setIsCancelling] = useState(false)
+  const [refundDialogOpen, setRefundDialogOpen] = useState(false)
+  const [refundCharge, setRefundCharge] = useState<RefundCharge | null>(null)
 
   const startDate = dateRange.from ? format(dateRange.from, "yyyy-MM-dd") : null
   const endDate = dateRange.to ? format(dateRange.to, "yyyy-MM-dd") : null
@@ -193,12 +200,20 @@ export function ChargesManager() {
         )
       case "REFUNDED":
         return (
-          <Badge variant="secondary" className="gap-1">
-            <XCircle className="h-3 w-3" />
-            Estornado
+          <Badge className="gap-1 bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300 border-violet-200 dark:border-violet-800">
+            <RotateCcw className="h-3 w-3" />
+            Reembolsado
           </Badge>
         )
       default:
+        if ((charge.refund_total ?? 0) > 0 && charge.status !== "REFUNDED") {
+          return (
+            <Badge className="gap-1 bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 border-amber-200 dark:border-amber-800">
+              <RotateCcw className="h-3 w-3" />
+              Reembolso parcial
+            </Badge>
+          )
+        }
         return <Badge variant="secondary">{charge.statusLabel}</Badge>
     }
   }
@@ -322,6 +337,25 @@ export function ChargesManager() {
                         >
                           <Ban className="h-4 w-4 mr-2" />
                           Cancelar Cobrança
+                        </DropdownMenuItem>
+                      )}
+                      {(charge.status === "RECEIVED" || charge.status === "CONFIRMED" || charge.status === "RECEIVED_IN_CASH") && (
+                        <DropdownMenuItem
+                          onClick={() => {
+                            setRefundCharge({
+                              id: charge.id,
+                              amount: charge.value,
+                              description: charge.description,
+                              asaas_id: charge.asaas_id,
+                              subscription_id: charge.subscription_id,
+                              refund_total: charge.refund_total,
+                              client_name: charge.client?.name,
+                            })
+                            setRefundDialogOpen(true)
+                          }}
+                        >
+                          <RotateCcw className="h-4 w-4 mr-2" />
+                          Reembolsar
                         </DropdownMenuItem>
                       )}
                     </DropdownMenuContent>
@@ -554,6 +588,17 @@ export function ChargesManager() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Refund Dialog */}
+      <RefundDialog
+        open={refundDialogOpen}
+        onOpenChange={setRefundDialogOpen}
+        charge={refundCharge}
+        onSuccess={() => {
+          setRefundCharge(null)
+          mutate()
+        }}
+      />
     </div>
   )
 }

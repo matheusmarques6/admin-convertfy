@@ -15,6 +15,7 @@ import {
   RefreshCw,
   Calendar,
   Loader2,
+  RotateCcw,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -27,6 +28,7 @@ import {
 import { DateRangePicker } from "@/components/ui/date-range-picker"
 import { formatCurrency } from "@/lib/utils"
 import { cn } from "@/lib/utils"
+import { createClient } from "@/lib/supabase/client"
 
 interface BillingData {
   connected: boolean
@@ -72,6 +74,12 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [data, setData] = useState<BillingData | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [refundMetrics, setRefundMetrics] = useState<{ total: number; count: number } | null>(null)
+  const [refundMetricsLoading, setRefundMetricsLoading] = useState(true)
+
+  useEffect(() => {
+    loadRefundMetrics()
+  }, [])
 
   useEffect(() => {
     if (period !== "custom") {
@@ -79,6 +87,35 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [period])
+
+  async function loadRefundMetrics() {
+    setRefundMetricsLoading(true)
+    try {
+      const supabase = createClient()
+      const thirtyDaysAgo = new Date()
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+
+      const { data: rows, error: queryError } = await supabase
+        .from("refunds")
+        .select("amount")
+        .eq("status", "processed")
+        .gte("processed_at", thirtyDaysAgo.toISOString())
+
+      if (queryError) {
+        console.error("Error loading refund metrics:", queryError)
+        setRefundMetrics(null)
+        return
+      }
+
+      const total = (rows || []).reduce((sum, r) => sum + Number(r.amount), 0)
+      setRefundMetrics({ total, count: (rows || []).length })
+    } catch (err) {
+      console.error("Error loading refund metrics:", err)
+      setRefundMetrics(null)
+    } finally {
+      setRefundMetricsLoading(false)
+    }
+  }
 
   async function loadData(customPeriod?: { start: string; end: string }) {
     setIsLoading(true)
@@ -300,7 +337,7 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
           </div>
 
           {/* Secondary row */}
-          <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-3 grid-cols-2 lg:grid-cols-5">
             <div className="rounded-xl border border-border bg-card p-4">
               <div className="flex items-center gap-2 mb-2">
                 <Users className="h-3.5 w-3.5 text-muted-foreground" />
@@ -331,6 +368,26 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
                 <span className="text-xs text-muted-foreground">Estornado</span>
               </div>
               <p className="text-lg font-semibold text-foreground">{formatCurrency(data?.summary.refunded || 0)}</p>
+            </div>
+            <div className="rounded-xl border border-border bg-card p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <RotateCcw className="h-3.5 w-3.5 text-violet-500" />
+                <span className="text-xs text-muted-foreground">Reembolsos (30d)</span>
+              </div>
+              {refundMetricsLoading ? (
+                <div className="flex items-center justify-center h-10">
+                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                <>
+                  <p className="text-lg font-semibold text-foreground">
+                    {refundMetrics ? formatCurrency(refundMetrics.total) : "--"}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    {refundMetrics ? `${refundMetrics.count} ${refundMetrics.count === 1 ? "reembolso" : "reembolsos"}` : "--"}
+                  </p>
+                </>
+              )}
             </div>
           </div>
 

@@ -8,6 +8,7 @@ import {
   CheckCircle,
   AlertCircle,
   AlertTriangle,
+  RotateCcw,
   Calendar,
   RefreshCw,
   TrendingUp,
@@ -64,6 +65,8 @@ interface Invoice {
     payload: string
   }
   billing_type?: string
+  refund_total: number
+  net_amount: number
 }
 
 interface InvoicesResponse {
@@ -74,9 +77,11 @@ interface InvoicesResponse {
     pending: number
     paid: number
     overdue: number
+    refunded: number
     totalPending: number
     totalPaid: number
     totalOverdue: number
+    totalRefunded: number
   }
 }
 
@@ -111,9 +116,9 @@ const STATUS_CONFIG = {
   },
   refunded: {
     label: "Reembolsada",
-    color: "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-500/10 dark:text-purple-400 dark:border-purple-500/20",
-    dotColor: "bg-purple-500",
-    icon: DollarSign,
+    color: "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-500/10 dark:text-violet-400 dark:border-violet-500/20",
+    dotColor: "bg-violet-500",
+    icon: RotateCcw,
   },
 }
 
@@ -281,10 +286,24 @@ function BoletoCard({ invoice, onPayClick }: { invoice: Invoice; onPayClick: () 
       <div className="p-6 space-y-6">
         {/* Amount */}
         <div className="text-center">
-          <p className="text-sm text-muted-foreground mb-1">Valor a Pagar</p>
-          <p className={`text-5xl font-bold ${isOverdue ? "text-red-600" : "text-emerald-600"}`}>
+          <p className="text-sm text-muted-foreground mb-1">
+            {invoice.status === "refunded" ? "Valor Original" : "Valor a Pagar"}
+          </p>
+          <p className={`text-5xl font-bold ${isOverdue ? "text-red-600" : invoice.status === "refunded" ? "text-violet-600" : "text-emerald-600"}`}>
             {formatCurrency(invoice.amount)}
           </p>
+          {invoice.refund_total > 0 && (
+            <div className="mt-2 text-sm text-muted-foreground">
+              {invoice.status === "refunded" ? (
+                <span>Reembolsado: {formatCurrency(invoice.refund_total)}</span>
+              ) : (
+                <>
+                  <span>Reembolsado: {formatCurrency(invoice.refund_total)} de {formatCurrency(invoice.amount)}</span>
+                  <span className="ml-2">Valor liquido: {formatCurrency(invoice.net_amount)}</span>
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Due Date Info */}
@@ -428,6 +447,14 @@ function InvoiceRow({ invoice, onClick }: { invoice: Invoice; onClick: () => voi
       {/* Amount */}
       <div className="text-right">
         <p className="font-bold text-foreground">{formatCurrency(invoice.amount)}</p>
+        {invoice.refund_total > 0 && (
+          <p className="text-xs text-muted-foreground">
+            {invoice.status === "refunded"
+              ? `Reembolsado: ${formatCurrency(invoice.refund_total)}`
+              : `Liquido: ${formatCurrency(invoice.net_amount)}`
+            }
+          </p>
+        )}
         <Badge variant="outline" className={`text-xs ${statusConfig.color}`}>
           {statusConfig.label}
         </Badge>
@@ -801,6 +828,7 @@ export default function PortalInvoicesPage() {
                   <SelectItem value="overdue">Vencidas</SelectItem>
                   <SelectItem value="paid">Pagas</SelectItem>
                   <SelectItem value="cancelled">Canceladas</SelectItem>
+                  <SelectItem value="refunded">Reembolsadas</SelectItem>
                 </SelectContent>
               </Select>
             </div>

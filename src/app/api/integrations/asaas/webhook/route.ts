@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import { timingSafeEqual } from "crypto"
 import { mapAsaasStatusToInternal } from "@/lib/integrations/asaas"
+import type { AsaasPaymentStatus } from "@/lib/integrations/types"
+import { handleAsaasRefundWebhook } from "@/lib/services/refund.service"
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { logger } from "@/lib/logger"
 
@@ -74,9 +76,17 @@ export async function POST(request: NextRequest) {
       case "PAYMENT_CONFIRMED":
       case "PAYMENT_RECEIVED":
       case "PAYMENT_OVERDUE":
-      case "PAYMENT_REFUNDED":
       case "PAYMENT_DELETED":
         await handlePaymentEvent(payload)
+        break
+      case "PAYMENT_REFUNDED":
+        await handlePaymentEvent(payload, { skipStatusUpdate: true })
+        try {
+          await handleRefundCompletion(payload)
+        } catch (error) {
+          log.error("[Refund Webhook] Error processing refund completion:", error)
+          // Do not re-throw — Asaas will resend if needed
+        }
         break
 
       case "PAYMENT_DUNNING_RECEIVED":
@@ -98,12 +108,17 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function handlePaymentEvent(payload: AsaasWebhookPayload) {
+interface HandlePaymentOptions {
+  /** When true, skip invoice status update (let refund service decide) */
+  skipStatusUpdate?: boolean
+}
+
+async function handlePaymentEvent(payload: AsaasWebhookPayload, options?: HandlePaymentOptions) {
   const payment = payload.payment
   if (!payment) return
 
   const supabase = getSupabaseAdmin()
-  const status = mapAsaasStatusToInternal(payment.status as never)
+  const status = mapAsaasStatusToInternal(payment.status as AsaasPaymentStatus)
 
   // Find invoice by Asaas ID
   const { data: invoice, error: findError } = await supabase
@@ -119,13 +134,19 @@ async function handlePaymentEvent(payload: AsaasWebhookPayload) {
 
   if (invoice) {
     // Update existing invoice
+    // When skipStatusUpdate is true (PAYMENT_REFUNDED), the refund service
+    // determines the final status (partial refund stays 'paid', full refund becomes 'refunded')
+    const updateData: Record<string, unknown> = {
+      payment_date: payment.paymentDate || payment.clientPaymentDate,
+      updated_at: new Date().toISOString(),
+    }
+    if (!options?.skipStatusUpdate) {
+      updateData.status = status
+    }
+
     const { error: updateError } = await supabase
       .from("invoices")
-      .update({
-        status,
-        payment_date: payment.paymentDate || payment.clientPaymentDate,
-        updated_at: new Date().toISOString(),
-      })
+      .update(updateData)
       .eq("id", invoice.id)
 
     if (updateError) {
@@ -133,13 +154,15 @@ async function handlePaymentEvent(payload: AsaasWebhookPayload) {
       return
     }
 
-    // Log activity
-    await supabase.from("activities").insert({
-      client_id: invoice.client_id,
-      type: status === "paid" ? "payment_received" : "payment_overdue",
-      description: `Pagamento ${status === "paid" ? "confirmado" : "atualizado"}: R$ ${payment.value.toFixed(2)}`,
-      metadata: { asaas_id: payment.id, status },
-    })
+    // Log activity (skip for refund events — refund service handles its own logging)
+    if (!options?.skipStatusUpdate) {
+      await supabase.from("activities").insert({
+        client_id: invoice.client_id,
+        type: status === "paid" ? "payment_received" : "payment_overdue",
+        description: `Pagamento ${status === "paid" ? "confirmado" : "atualizado"}: R$ ${payment.value.toFixed(2)}`,
+        metadata: { asaas_id: payment.id, status },
+      })
+    }
 
     log.debug(`Invoice ${invoice.id} updated to status: ${status}`)
   } else if (payment.externalReference) {
@@ -169,6 +192,20 @@ async function handlePaymentEvent(payload: AsaasWebhookPayload) {
       }
     }
   }
+}
+
+async function handleRefundCompletion(payload: AsaasWebhookPayload) {
+  const payment = payload.payment
+  if (!payment) return
+
+  // NOTE: Asaas PAYMENT_REFUNDED webhook payload does not include a separate
+  // refund amount field. payment.value is the full payment value, not the refunded
+  // amount. For partial refunds, the refund service queries the actual refund records
+  // from the database to determine the correct amount.
+  await handleAsaasRefundWebhook({
+    asaasPaymentId: payment.id,
+    refundedValue: payment.value,
+  })
 }
 
 async function handleDunningEvent(payload: AsaasWebhookPayload) {

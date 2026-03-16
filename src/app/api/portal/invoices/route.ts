@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
     // Build query (adminClient bypasses RLS; isolation via client_id filter)
     let query = adminClient
       .from("unified_invoices")
-      .select("id, client_id, asaas_id, amount, due_date, payment_date, status, description, created_at, source, payment_method, actual_payment_method, subscription_id, notes")
+      .select("id, client_id, asaas_id, amount, due_date, payment_date, status, description, created_at, source, payment_method, actual_payment_method, subscription_id, notes, refund_total, net_amount")
       .eq("client_id", portalUser.client_id)
       .order("due_date", { ascending: false })
 
@@ -165,6 +165,8 @@ export async function GET(request: NextRequest) {
           bank_slip_url: bankSlipUrl,
           pix_qr_code: pixQrCode,
           billing_type: billingType,
+          refund_total: Number(i.refund_total) || 0,
+          net_amount: Number(i.net_amount) || Number(i.amount) || 0,
         }
       })
     )
@@ -186,15 +188,18 @@ export async function GET(request: NextRequest) {
     const pending = processedInvoices.filter((i) => i.status === "pending")
     const overdue = processedInvoices.filter((i) => i.status === "overdue")
     const paid = processedInvoices.filter((i) => i.status === "paid")
+    const refunded = processedInvoices.filter((i) => i.status === "refunded")
 
     const stats = {
       total: processedInvoices.length,
       pending: pending.length,
       overdue: overdue.length,
       paid: paid.length,
+      refunded: refunded.length,
       totalPending: pending.reduce((sum, i) => sum + i.amount, 0),
       totalOverdue: overdue.reduce((sum, i) => sum + i.amount, 0),
       totalPaid: paid.reduce((sum, i) => sum + i.amount, 0),
+      totalRefunded: refunded.reduce((sum, i) => sum + i.refund_total, 0),
     }
 
     // Log portal activity
