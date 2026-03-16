@@ -1,5 +1,20 @@
 -- Story 53.1: Fix org_id NULLs and add constraints to prevent recurrence
--- Problem: 5 client_stores and 3 clients have org_id = NULL, making them invisible
+-- Problem: 5 client_stores and 3+ clients have org_id = NULL, making them invisible
+-- Applied to production on 2026-03-16. Conflicts resolved manually before migration:
+--   - clients: Romario (email +romario), Augusto (email +augusto) to avoid unique(org_id, email)
+--   - client_stores: "Teste" renamed to "Teste 2" to avoid unique(org_id, store_name)
+
+-- =============================================================================
+-- STEP 0: Fix unique constraint conflicts before backfill
+-- =============================================================================
+UPDATE clients SET email = regexp_replace(email, '@', '+romario@')
+WHERE id = 'de30b342-7a48-4d28-bedb-770f32f71837' AND org_id IS NULL AND email NOT LIKE '%+romario%';
+
+UPDATE clients SET email = regexp_replace(email, '@', '+augusto@')
+WHERE id = '9d8248ff-f227-4442-b5de-eda56f058dcc' AND org_id IS NULL AND email NOT LIKE '%+augusto%';
+
+UPDATE client_stores SET store_name = 'Teste 2'
+WHERE id = 'f49bb5ef-7c4a-4521-a772-9f3d4fd487c1' AND org_id IS NULL AND store_name = 'Teste';
 
 -- =============================================================================
 -- STEP 1: Backfill clients.org_id from org_members (first active member's org)
