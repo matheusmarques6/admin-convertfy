@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, AppError } from "@/lib/api/errors"
-import { decrypt, encrypt } from "@/lib/crypto"
+import { encrypt } from "@/lib/crypto"
+import { getStoreCredentials } from "@/lib/services/credentials.service"
 import { logger } from "@/lib/logger"
 import { getPortalUser } from "@/lib/portal/auth"
 
@@ -56,7 +57,8 @@ async function autoProvisionTrackingStore(
     let accessToken = ""
     try {
       if (shopifyStore.shopify_access_token) {
-        accessToken = decrypt(shopifyStore.shopify_access_token) || ""
+        const creds = await getStoreCredentials(shopifyStore.id)
+        accessToken = creds.shopify_access_token || ""
       }
     } catch {
       log.warn("Could not decrypt Shopify token for auto-provision", { clientId })

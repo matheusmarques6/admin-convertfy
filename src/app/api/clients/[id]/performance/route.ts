@@ -5,7 +5,7 @@ import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api
 import { logger } from "@/lib/logger"
 import { parseDateRange, formatDateStr, withConcurrencyLimit } from "@/lib/integrations/klaviyo"
 import { getShopifyReportForStore } from "@/lib/integrations/shopify/report"
-import { decryptStoreCredentials } from "@/lib/crypto"
+// decryptStoreCredentials removed — boolean checks work on ciphertext (Story 51.3)
 import { CACHED_PERIODS } from "@/lib/shared/data-status"
 import type { KlaviyoPerformanceData } from "@/lib/services/klaviyo-performance.service"
 
@@ -203,7 +203,8 @@ export async function GET(
       .eq("is_active", true)
 
     if (storesError) throw storesError
-    const stores = (rawStores || []).map(s => decryptStoreCredentials(s))
+    // No decryption needed — only boolean checks used downstream (Story 51.3)
+    const stores = rawStores || []
     if (!stores || stores.length === 0) {
       return successResponse(request, {
         period,

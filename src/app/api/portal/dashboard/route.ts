@@ -4,7 +4,7 @@ import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { SupabaseClient } from "@supabase/supabase-js"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
-import { decryptStoreCredentials } from "@/lib/crypto"
+// decryptStoreCredentials removed — boolean checks work on ciphertext (Story 51.3)
 import { CACHE_VERSION } from "@/lib/cache"
 import { parseDateRangeInTimezone } from "@/lib/integrations/klaviyo"
 import type { DataStatus } from "@/lib/shared/data-status"
@@ -527,7 +527,9 @@ export async function GET(request: NextRequest) {
 
     const client = clientData.data
     const rawStores = rawStoresData.data || []
-    const stores = rawStores.map(s => decryptStoreCredentials(s))
+    // No decryption needed — boolean checks (!!field) work on ciphertext,
+    // and downstream functions use store.id to fetch credentials internally
+    const stores = rawStores
     const allInvoices = unifiedInvoicesData.data || []
     const meetings = meetingsData.data || []
 

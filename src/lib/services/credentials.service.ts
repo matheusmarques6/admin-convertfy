@@ -171,6 +171,52 @@ export async function getStoreCredentials(storeId: string, orgId?: string): Prom
 }
 
 /**
+ * Get decrypted credentials for multiple stores in a single batch query.
+ * Returns a Map indexed by store ID.
+ */
+export async function getMultipleStoreCredentials(
+  storeIds: string[]
+): Promise<Map<string, StoreCredentials & { store_name: string; client_id: string | null }>> {
+  if (storeIds.length === 0) return new Map()
+
+  const adminClient = createAdminClient()
+  const { data: stores, error } = await adminClient
+    .from("client_stores")
+    .select("*")
+    .in("id", storeIds)
+
+  if (error) {
+    log.error("Failed to fetch multiple store credentials", { error })
+    throw new AppError("Failed to fetch store credentials", 500)
+  }
+
+  const result = new Map<string, StoreCredentials & { store_name: string; client_id: string | null }>()
+
+  for (const store of stores || []) {
+    const decrypted = decryptStoreCredentials(store)
+    const entry: StoreCredentials & { store_name: string; client_id: string | null } = {
+      ...decrypted,
+      store_name: store.store_name,
+      client_id: store.client_id,
+    }
+
+    if (store.ga4_credentials && typeof store.ga4_credentials === "string") {
+      entry.ga4_credentials = decryptCredentialsJson(store.ga4_credentials)
+    }
+    if (store.google_ads_credentials && typeof store.google_ads_credentials === "string") {
+      entry.google_ads_credentials = decryptCredentialsJson(store.google_ads_credentials)
+    }
+    if (store.google_calendar_credentials && typeof store.google_calendar_credentials === "string") {
+      entry.google_calendar_credentials = decryptCredentialsJson(store.google_calendar_credentials)
+    }
+
+    result.set(store.id, entry)
+  }
+
+  return result
+}
+
+/**
  * Update credentials for a specific store.
  * Encrypts all sensitive fields before writing.
  */
