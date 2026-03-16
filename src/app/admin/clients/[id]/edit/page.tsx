@@ -310,7 +310,9 @@ export default function EditClientPage({
             toast({
               variant: "destructive",
               title: "Aviso: Erro ao sincronizar com Asaas",
-              description: "Cliente atualizado localmente, mas houve erro ao sincronizar com o Asaas.",
+              description: asaasUpdateData.error
+                ? `Erro do Asaas: ${asaasUpdateData.error}`
+                : "Cliente atualizado localmente, mas houve erro ao sincronizar com o Asaas.",
             })
           }
         } catch (asaasUpdateError) {
@@ -318,7 +320,9 @@ export default function EditClientPage({
           toast({
             variant: "destructive",
             title: "Aviso: Erro ao sincronizar com Asaas",
-            description: "Cliente atualizado localmente, mas houve erro ao sincronizar com o Asaas.",
+            description: asaasUpdateError instanceof Error
+              ? `Erro: ${asaasUpdateError.message}`
+              : "Cliente atualizado localmente, mas houve erro ao sincronizar com o Asaas.",
           })
         }
       }

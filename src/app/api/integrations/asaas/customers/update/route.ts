@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAsaasService } from "@/lib/integrations/asaas"
 import { decryptCredentialsJson } from "@/lib/crypto"
 import { logger } from "@/lib/logger"
+import { stripBrazilCountryCode } from "@/lib/utils/phone"
 
 const log = logger.child("IntegrationsAsaasCustomersUpdate")
 
@@ -65,7 +66,7 @@ export async function PATCH(request: Request) {
 
     // Sanitize inputs: strip non-digits from cpfCnpj, phone, postalCode
     const cleanCpfCnpj = client.cpf_cnpj?.replace(/\D/g, "") || undefined
-    const cleanPhone = client.phone?.replace(/\D/g, "") || undefined
+    const cleanPhone = stripBrazilCountryCode(client.phone)
     const cleanPostalCode = addressData.postal_code?.replace(/\D/g, "") || undefined
 
     // Build payload with ALL syncable fields (no diff computation)

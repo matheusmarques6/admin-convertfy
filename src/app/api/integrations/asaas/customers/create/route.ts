@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAsaasService } from "@/lib/integrations/asaas"
 import { decryptCredentialsJson } from "@/lib/crypto"
 import { logger } from "@/lib/logger"
+import { stripBrazilCountryCode } from "@/lib/utils/phone"
 
 const log = logger.child("IntegrationsAsaasCustomersCreate")
 
@@ -78,8 +79,8 @@ export async function POST(request: Request) {
     const cleanCpfCnpj = body.cpfCnpj.replace(/\D/g, "")
 
     // Clean phone numbers
-    const cleanPhone = body.phone?.replace(/\D/g, "") || undefined
-    const cleanMobilePhone = body.mobilePhone?.replace(/\D/g, "") || cleanPhone
+    const cleanPhone = stripBrazilCountryCode(body.phone)
+    const cleanMobilePhone = stripBrazilCountryCode(body.mobilePhone) || cleanPhone
 
     // Clean postal code
     const cleanPostalCode = body.postalCode?.replace(/\D/g, "") || undefined
@@ -112,7 +113,7 @@ export async function POST(request: Request) {
         success: false,
         error: error instanceof Error ? error.message : "Erro ao criar cliente no Asaas",
       },
-      { status: 500 }
+      { status: error instanceof AppError ? error.statusCode : 500 }
     )
   }
 }
