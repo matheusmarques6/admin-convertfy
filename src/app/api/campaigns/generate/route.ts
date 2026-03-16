@@ -63,30 +63,15 @@ export async function POST(request: NextRequest) {
         throw new AppError("Nenhuma loja valida encontrada", 400)
       }
 
-      // Null check FIRST: reject stores not linked to a client
-      const orphanStores = orgStores.filter((s) => !s.client_id)
-      if (orphanStores.length > 0) {
-        log.warn("Rejected orphan stores (no client_id)", {
-          store_ids: orphanStores.map((s) => s.id),
-        })
+      // Use client_id from the first store that has one (for DB record-keeping)
+      const storeWithClient = orgStores.find((s) => s.client_id)
+      if (!storeWithClient) {
         throw new AppError(
-          "Loja(s) selecionada(s) nao vinculada(s) a um cliente. Vincule antes de gerar copies.",
+          "Nenhuma loja selecionada possui cliente vinculado. Vincule a loja a um cliente antes de gerar campanhas.",
           400,
         )
       }
-
-      // Multi-client check SECOND: all stores must belong to same client
-      const uniqueClientIds = [...new Set(orgStores.map((s) => s.client_id))]
-      if (uniqueClientIds.length > 1) {
-        log.warn("Rejected multi-client store selection", {
-          client_ids: uniqueClientIds,
-          store_ids: orgStores.map((s) => s.id),
-        })
-        throw new AppError("Selecione lojas do mesmo cliente para gerar copies.", 400)
-      }
-
-      // clientId is guaranteed non-null at this point
-      clientId = uniqueClientIds[0] as string
+      clientId = storeWithClient.client_id
 
       // Build store map from already-fetched data (no second query needed)
       validStoreMap = new Map(
@@ -149,7 +134,8 @@ export async function POST(request: NextRequest) {
         throw new AppError("Campanha nao encontrada", 404)
       }
 
-      if (existingGen.client_id !== clientId) {
+      // Only enforce client_id match for portal users (org members can regenerate cross-client)
+      if (!orgMember && existingGen.client_id !== clientId) {
         throw new AppError("Acesso negado", 403)
       }
 

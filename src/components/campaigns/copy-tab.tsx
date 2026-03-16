@@ -455,21 +455,6 @@ export function CopyTab() {
   const onSubmit = async (formData: FormValues) => {
     if (!canSubmit) return
 
-    // Validate all selected stores belong to the same client
-    const selectedClientIds = new Set(
-      stores
-        .filter((s) => selectedStoreIds.includes(s.id))
-        .map((s) => s.client_id),
-    )
-    if (selectedClientIds.size > 1) {
-      toast({
-        variant: "destructive",
-        title: "Selecione lojas do mesmo cliente",
-        description: "As lojas selecionadas pertencem a clientes diferentes.",
-      })
-      return
-    }
-
     setSubmitting(true)
     try {
       const body: GenerateRequest = {
