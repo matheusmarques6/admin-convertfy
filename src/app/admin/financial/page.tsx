@@ -20,7 +20,7 @@ export default function FinancialPage() {
         </div>
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Financeiro</h1>
-          <p className="text-sm text-muted-foreground">Gerencie cobranças, assinaturas e pagamentos</p>
+          <p className="text-sm text-muted-foreground">Gerencie faturas e assinaturas</p>
         </div>
       </div>
 
@@ -33,7 +33,7 @@ export default function FinancialPage() {
           </TabsTrigger>
           <TabsTrigger value="charges" className="gap-2">
             <DollarSign className="h-4 w-4" />
-            Cobranças
+            Faturas
           </TabsTrigger>
           <TabsTrigger value="subscriptions" className="gap-2">
             <Repeat className="h-4 w-4" />

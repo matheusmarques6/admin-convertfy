@@ -357,7 +357,7 @@ export function ClientsTable({ clients, totalCount, currentPage, hasActiveFilter
                                 <AlertCircle className="h-4 w-4 text-destructive" />
                               </TooltipTrigger>
                               <TooltipContent>
-                                <p>Inadimplente - {clientStatus.overdueCount} cobranças vencidas</p>
+                                <p>Inadimplente - {clientStatus.overdueCount} assinaturas vencidas</p>
                               </TooltipContent>
                             </Tooltip>
                           )}

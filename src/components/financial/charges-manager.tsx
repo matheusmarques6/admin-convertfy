@@ -6,7 +6,6 @@ import {
   AlertCircle,
   Clock,
   CheckCircle2,
-  XCircle,
   Loader2,
   RefreshCw,
   ExternalLink,
@@ -122,8 +121,8 @@ export function ChargesManager() {
     if (fetchError) {
       toast({
         variant: "destructive",
-        title: "Erro ao carregar cobranças",
-        description: "Não foi possível carregar as cobranças. Tente novamente.",
+        title: "Erro ao carregar faturas",
+        description: "Não foi possível carregar as faturas. Tente novamente.",
       })
     }
   }, [fetchError])
@@ -140,8 +139,8 @@ export function ChargesManager() {
 
       if (result.success) {
         toast({
-          title: "Cobrança cancelada",
-          description: "A cobrança foi cancelada com sucesso.",
+          title: "Fatura cancelada",
+          description: "A fatura foi cancelada com sucesso.",
         })
         mutate()
       } else {
@@ -151,7 +150,7 @@ export function ChargesManager() {
       toast({
         variant: "destructive",
         title: "Erro ao cancelar",
-        description: error instanceof Error ? error.message : "Erro ao cancelar cobrança",
+        description: error instanceof Error ? error.message : "Erro ao cancelar fatura",
       })
     } finally {
       setIsCancelling(false)
@@ -246,7 +245,7 @@ export function ChargesManager() {
           <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
           <h3 className="text-lg font-medium mb-2">Asaas não conectado</h3>
           <p className="text-muted-foreground text-center mb-4">
-            Conecte sua conta Asaas para gerenciar cobranças
+            Conecte sua conta Asaas para gerenciar faturas
           </p>
           <Button asChild>
             <Link href="/admin/settings/integrations">Configurar Integração</Link>
@@ -273,7 +272,7 @@ export function ChargesManager() {
         {charges.length === 0 ? (
           <TableRow>
             <TableCell colSpan={showActions ? 7 : 6} className="text-center text-muted-foreground py-8">
-              Nenhuma cobrança encontrada
+              Nenhuma fatura encontrada
             </TableCell>
           </TableRow>
         ) : (
@@ -292,7 +291,7 @@ export function ChargesManager() {
                 )}
               </TableCell>
               <TableCell className="max-w-[200px] truncate">
-                {charge.description || "Cobrança"}
+                {charge.description || "Fatura"}
               </TableCell>
               <TableCell className="font-medium">
                 {formatCurrency(charge.value)}
@@ -336,7 +335,7 @@ export function ChargesManager() {
                           }}
                         >
                           <Ban className="h-4 w-4 mr-2" />
-                          Cancelar Cobrança
+                          Cancelar Fatura
                         </DropdownMenuItem>
                       )}
                       {(charge.status === "RECEIVED" || charge.status === "CONFIRMED" || charge.status === "RECEIVED_IN_CASH") && (
@@ -384,7 +383,7 @@ export function ChargesManager() {
             {formatCurrency(data.summary.overdue.value)}
           </div>
           <p className="text-[11px] text-muted-foreground mt-1">
-            {data.summary.overdue.count} cobranças
+            {data.summary.overdue.count} faturas
           </p>
         </Card>
 
@@ -399,7 +398,7 @@ export function ChargesManager() {
             {formatCurrency(data.summary.pending.value)}
           </div>
           <p className="text-[11px] text-muted-foreground mt-1">
-            {data.summary.pending.count} cobranças
+            {data.summary.pending.count} faturas
           </p>
         </Card>
 
@@ -414,7 +413,7 @@ export function ChargesManager() {
             {formatCurrency(data.summary.upcoming.value)}
           </div>
           <p className="text-[11px] text-muted-foreground mt-1">
-            {data.summary.upcoming.count} cobranças
+            {data.summary.upcoming.count} faturas
           </p>
         </Card>
 
@@ -429,7 +428,7 @@ export function ChargesManager() {
             {formatCurrency(data.summary.received.value)}
           </div>
           <p className="text-[11px] text-muted-foreground mt-1">
-            {data.summary.received.count} cobranças
+            {data.summary.received.count} faturas
           </p>
         </Card>
       </div>
@@ -439,9 +438,9 @@ export function ChargesManager() {
         <CardHeader>
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
-              <CardTitle>Gerenciamento de Cobranças</CardTitle>
+              <CardTitle>Gerenciamento de Faturas</CardTitle>
               <CardDescription>
-                Visualize e gerencie todas as cobranças do sistema
+                Visualize e gerencie todas as faturas do sistema
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
@@ -554,9 +553,9 @@ export function ChargesManager() {
       <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Cancelar Cobrança</AlertDialogTitle>
+            <AlertDialogTitle>Cancelar Fatura</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja cancelar esta cobrança?
+              Tem certeza que deseja cancelar esta fatura?
               {selectedCharge && (
                 <div className="mt-2 p-3 rounded-lg bg-muted">
                   <p><strong>Cliente:</strong> {selectedCharge.client?.name || "—"}</p>

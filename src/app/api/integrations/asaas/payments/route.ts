@@ -147,7 +147,7 @@ export async function POST(request: NextRequest) {
         const invoiceData = {
           asaas_id: payment.id, client_id: clientId || null, amount: payment.value,
           due_date: payment.dueDate, payment_date: payment.paymentDate || null,
-          status, description: payment.description || `Cobrança #${payment.id}`,
+          status, description: payment.description || `Assinatura #${payment.id}`,
         }
 
         const { data: existing } = await supabase.from("invoices").select("id").eq("asaas_id", payment.id).single()

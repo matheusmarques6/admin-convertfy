@@ -291,7 +291,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
             value: centsToReais(chargeForm.value),
             billingType: chargeForm.billingType,
             dueDate: chargeForm.dueDate,
-            description: chargeForm.description || `Cobrança - ${clientName}`,
+            description: chargeForm.description || `Fatura - ${clientName}`,
             installmentCount: parseInt(chargeForm.installmentCount),
           }),
         })
@@ -301,14 +301,14 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
         if (response.ok && result.payment) {
           setCreatedPayment(result.payment)
           toast({
-            title: "Cobrança criada!",
-            description: "A cobrança foi criada com sucesso no Asaas.",
+            title: "Fatura criada!",
+            description: "A fatura foi criada com sucesso no Asaas.",
           })
           mutatePayments(); mutateSubscriptions()
         } else {
           toast({
             variant: "destructive",
-            title: "Erro ao criar cobrança",
+            title: "Erro ao criar fatura",
             description: result.error,
           })
         }
@@ -319,7 +319,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             client_id: clientId,
-            description: chargeForm.description || `Cobrança - ${clientName}`,
+            description: chargeForm.description || `Fatura - ${clientName}`,
             value: centsToReais(chargeForm.value),
             due_date: chargeForm.dueDate,
             status: "pending",
@@ -327,11 +327,11 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           }),
         })
         const resData = await res.json()
-        if (!res.ok) throw new Error(resData.error || "Erro ao criar cobrança")
+        if (!res.ok) throw new Error(resData.error || "Erro ao criar fatura")
 
         toast({
-          title: "Cobrança criada!",
-          description: "A cobrança foi registrada com sucesso.",
+          title: "Fatura criada!",
+          description: "A fatura foi registrada com sucesso.",
         })
 
         loadLocalData()
@@ -343,7 +343,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
       toast({
         variant: "destructive",
         title: "Erro",
-        description: "Erro ao criar cobrança",
+        description: "Erro ao criar fatura",
       })
     } finally {
       setIsCreating(false)
@@ -437,16 +437,16 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
   }
 
   async function handleDeleteCharge(charge: LocalCharge) {
-    if (!confirm("Tem certeza que deseja excluir esta cobrança?")) return
+    if (!confirm("Tem certeza que deseja excluir esta fatura?")) return
 
     try {
       const res = await fetch(`/api/client-charges?id=${charge.id}`, { method: "DELETE" })
       const resData = await res.json()
-      if (!res.ok) throw new Error(resData.error || "Erro ao excluir cobrança")
+      if (!res.ok) throw new Error(resData.error || "Erro ao excluir fatura")
 
       toast({
-        title: "Cobrança excluída!",
-        description: "A cobrança foi removida com sucesso.",
+        title: "Fatura excluída!",
+        description: "A fatura foi removida com sucesso.",
       })
 
       loadLocalData()
@@ -455,13 +455,13 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
       toast({
         variant: "destructive",
         title: "Erro",
-        description: "Erro ao excluir cobrança",
+        description: "Erro ao excluir fatura",
       })
     }
   }
 
   async function handleCancelCharge(charge: LocalCharge) {
-    if (!confirm("Tem certeza que deseja cancelar esta cobrança?")) return
+    if (!confirm("Tem certeza que deseja cancelar esta fatura?")) return
 
     try {
       const res = await fetch("/api/client-charges", {
@@ -470,11 +470,11 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
         body: JSON.stringify({ id: charge.id }),
       })
       const resData = await res.json()
-      if (!res.ok) throw new Error(resData.error || "Erro ao cancelar cobrança")
+      if (!res.ok) throw new Error(resData.error || "Erro ao cancelar fatura")
 
       toast({
-        title: "Cobrança cancelada!",
-        description: "A cobrança foi cancelada com sucesso.",
+        title: "Fatura cancelada!",
+        description: "A fatura foi cancelada com sucesso.",
       })
 
       loadLocalData()
@@ -483,7 +483,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
       toast({
         variant: "destructive",
         title: "Erro",
-        description: "Erro ao cancelar cobrança",
+        description: "Erro ao cancelar fatura",
       })
     }
   }
@@ -574,7 +574,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
   }
 
   async function handleCancelAsaasPayment(paymentId: string) {
-    if (!confirm("Tem certeza que deseja cancelar esta cobrança no Asaas?")) return
+    if (!confirm("Tem certeza que deseja cancelar esta assinatura no Asaas?")) return
 
     try {
       const response = await fetch(`/api/integrations/asaas/charges?payment_id=${paymentId}`, {
@@ -585,8 +585,8 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
 
       if (response.ok) {
         toast({
-          title: "Cobrança cancelada!",
-          description: "A cobrança foi cancelada no Asaas.",
+          title: "Assinatura cancelada!",
+          description: "A assinatura foi cancelada no Asaas.",
         })
         mutatePayments(); mutateSubscriptions()
       } else {
@@ -601,7 +601,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
       toast({
         variant: "destructive",
         title: "Erro",
-        description: "Erro ao cancelar cobrança no Asaas",
+        description: "Erro ao cancelar assinatura no Asaas",
       })
     }
   }
@@ -628,7 +628,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
 
       toast({
         title: "Status atualizado!",
-        description: "O status da cobrança foi atualizado.",
+        description: "O status da fatura foi atualizado.",
       })
 
       loadLocalData()
@@ -770,7 +770,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
             {formatCurrency(computedSummary.paidValue)}
           </p>
           <p className="text-[11px] text-muted-foreground mt-1">
-            {computedSummary.paidCount} cobranças pagas
+            {computedSummary.paidCount} faturas pagas
           </p>
         </Card>
 
@@ -783,7 +783,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
             {formatCurrency(computedSummary.pendingValue)}
           </p>
           <p className="text-[11px] text-muted-foreground mt-1">
-            {computedSummary.pendingCount} cobranças pendentes
+            {computedSummary.pendingCount} faturas pendentes
           </p>
         </Card>
 
@@ -796,7 +796,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
             {formatCurrency(computedSummary.overdueValue)}
           </p>
           <p className="text-[11px] text-muted-foreground mt-1">
-            {computedSummary.overdueCount} cobranças vencidas
+            {computedSummary.overdueCount} faturas vencidas
           </p>
         </Card>
 
@@ -835,7 +835,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           </Button>
           <Button onClick={() => { resetForm(); setCreateDialogOpen(true) }}>
             <Plus className="mr-2 h-4 w-4" />
-            Nova Cobrança
+            Nova Fatura
           </Button>
         </div>
       </div>
@@ -845,7 +845,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
         <TabsList>
           <TabsTrigger value="charges">
             <Receipt className="mr-2 h-4 w-4" />
-            Cobranças ({payments.length + localCharges.length})
+            Faturas ({payments.length + localCharges.length})
           </TabsTrigger>
           <TabsTrigger value="subscriptions">
             <Repeat className="mr-2 h-4 w-4" />
@@ -861,8 +861,8 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           ) : (payments.length === 0 && localCharges.length === 0) ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <Receipt className="h-12 w-12 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-medium">Nenhuma cobrança</h3>
-              <p className="text-muted-foreground mt-1">Crie uma nova cobrança para este cliente</p>
+              <h3 className="text-lg font-medium">Nenhuma fatura</h3>
+              <p className="text-muted-foreground mt-1">Crie uma nova fatura para este cliente</p>
             </div>
           ) : (
             <div className="rounded-lg border">
@@ -917,7 +917,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                             {charge.status !== "cancelled" && (
                               <DropdownMenuItem onClick={() => handleCancelCharge(charge)}>
                                 <Ban className="mr-2 h-4 w-4" />
-                                Cancelar Cobrança
+                                Cancelar Fatura
                               </DropdownMenuItem>
                             )}
                             <DropdownMenuSeparator />
@@ -938,7 +938,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                     <TableRow key={payment.id}>
                       <TableCell>
                         <div>
-                          <p className="font-medium">{payment.description || `Cobrança #${payment.id.slice(-6)}`}</p>
+                          <p className="font-medium">{payment.description || `Fatura #${payment.id.slice(-6)}`}</p>
                           <p className="text-xs text-muted-foreground">Asaas: {payment.id}</p>
                         </div>
                       </TableCell>
@@ -965,14 +965,14 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                               <DropdownMenuItem asChild>
                                 <a href={payment.invoiceUrl} target="_blank" rel="noopener noreferrer">
                                   <ExternalLink className="mr-2 h-4 w-4" />
-                                  Ver Cobrança
+                                  Ver Fatura
                                 </a>
                               </DropdownMenuItem>
                             )}
                             {(payment.status === "PENDING" || payment.status === "OVERDUE") && (
                               <DropdownMenuItem onClick={() => handleCancelAsaasPayment(payment.id)}>
                                 <Ban className="mr-2 h-4 w-4" />
-                                Cancelar Cobrança
+                                Cancelar Fatura
                               </DropdownMenuItem>
                             )}
                           </DropdownMenuContent>
@@ -1119,16 +1119,16 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <DollarSign className="h-5 w-5" />
-              Nova Cobrança
+              Nova Fatura
             </DialogTitle>
-            <DialogDescription>Criar cobrança para {clientName}</DialogDescription>
+            <DialogDescription>Criar fatura para {clientName}</DialogDescription>
           </DialogHeader>
 
           {!createdPayment ? (
             <>
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
-                  <Label>Método de Cobrança *</Label>
+                  <Label>Método de Pagamento *</Label>
                   <Select
                     value={chargeForm.paymentMethod}
                     onValueChange={(value) => setChargeForm({ ...chargeForm, paymentMethod: value })}
@@ -1216,7 +1216,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                 <div className="space-y-2">
                   <Label>Descrição</Label>
                   <Textarea
-                    placeholder="Descrição da cobrança..."
+                    placeholder="Descrição da fatura..."
                     value={chargeForm.description}
                     onChange={(e) => setChargeForm({ ...chargeForm, description: e.target.value })}
                   />
@@ -1227,7 +1227,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                 <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>Cancelar</Button>
                 <Button onClick={handleCreateCharge} disabled={isCreating || chargeForm.value === 0}>
                   {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Criar Cobrança
+                  Criar Fatura
                 </Button>
               </DialogFooter>
             </>
@@ -1236,7 +1236,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
               <div className="space-y-4 py-4">
                 <div className="rounded-lg border border-success/50 bg-success/10 p-4 text-center">
                   <CheckCircle2 className="h-12 w-12 text-success mx-auto mb-2" />
-                  <p className="font-medium text-success">Cobrança criada com sucesso!</p>
+                  <p className="font-medium text-success">Fatura criada com sucesso!</p>
                 </div>
 
                 {createdPayment.pixQrCode && (
@@ -1324,7 +1324,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
             </div>
 
             <div className="space-y-2">
-              <Label>Ciclo de Cobrança *</Label>
+              <Label>Ciclo de Assinatura *</Label>
               <Select
                 value={subscriptionForm.cycle}
                 onValueChange={(value) => setSubscriptionForm({ ...subscriptionForm, cycle: value as LocalSubscription["cycle"] })}
@@ -1404,7 +1404,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Edit2 className="h-5 w-5" />
-              Alterar Status da Cobrança
+              Alterar Status da Fatura
             </DialogTitle>
             <DialogDescription>
               {selectedCharge?.description} - {selectedCharge && formatCurrency(selectedCharge.value)}
@@ -1451,7 +1451,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    Use quando o cliente pagou por um método diferente (ex: cobrança Asaas paga via Wise)
+                    Use quando o cliente pagou por um método diferente (ex: fatura Asaas paga via Wise)
                   </p>
                 </div>
 

@@ -231,7 +231,7 @@ async function handleDunningEvent(payload: AsaasWebhookPayload) {
     await supabase.from("activities").insert({
       client_id: invoice.client_id,
       type: "payment_overdue",
-      description: `Cobrança em atraso: R$ ${payment.value.toFixed(2)}`,
+      description: `Assinatura em atraso: R$ ${payment.value.toFixed(2)}`,
       metadata: { asaas_id: payment.id },
     })
   }

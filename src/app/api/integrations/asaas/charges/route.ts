@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
       interest?: { value: number }; fine?: { value: number };
     } = {
       customer: asaasCustomerId, billingType, value: Number(value), dueDate,
-      description: description || `Cobrança - ${client?.name}`,
+      description: description || `Assinatura - ${client?.name}`,
       externalReference: clientId,
     }
 

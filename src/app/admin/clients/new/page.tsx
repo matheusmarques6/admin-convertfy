@@ -181,7 +181,7 @@ export default function NewClientPage() {
         title: "Cliente criado!",
         description: asaasCustomerId
           ? "Cliente criado e vinculado ao Asaas com sucesso."
-          : "Cliente criado com sucesso. Preencha CPF/CNPJ e email/telefone para criar cobranças.",
+          : "Cliente criado com sucesso. Preencha CPF/CNPJ e email/telefone para criar assinaturas.",
       })
 
       router.push(`/admin/clients/${newClient.id}`)
@@ -221,7 +221,7 @@ export default function NewClientPage() {
           <CardContent className="flex items-start gap-3 py-4">
             <AlertCircle className="h-5 w-5 text-warning mt-0.5" />
             <div>
-              <p className="font-medium text-warning">Campos obrigatórios para cobranças automáticas</p>
+              <p className="font-medium text-warning">Campos obrigatórios para assinaturas automáticas</p>
               <p className="text-sm text-muted-foreground">
                 Para criar o cliente no Asaas automaticamente, preencha: <strong>Nome</strong>, <strong>CPF/CNPJ</strong> e <strong>Email ou Telefone</strong>
               </p>
@@ -251,10 +251,10 @@ export default function NewClientPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               Dados Obrigatórios
-              <span className="text-xs font-normal text-muted-foreground">(para cobranças)</span>
+              <span className="text-xs font-normal text-muted-foreground">(para assinaturas)</span>
             </CardTitle>
             <CardDescription>
-              Estes campos são necessários para criar o cliente no Asaas e gerar cobranças
+              Estes campos são necessários para criar o cliente no Asaas e gerar assinaturas
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">

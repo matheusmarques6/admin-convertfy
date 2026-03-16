@@ -4,7 +4,7 @@ export const INTEGRATION_CONFIGS: Record<string, IntegrationConfig> = {
   asaas: {
     type: "asaas",
     name: "Asaas",
-    description: "Plataforma de pagamentos para cobranças, boletos, Pix e cartão de crédito",
+    description: "Plataforma de pagamentos para assinaturas, boletos, Pix e cartão de crédito",
     icon: "DollarSign",
     color: "#00C853",
     requiredCredentials: [
@@ -34,7 +34,7 @@ export const INTEGRATION_CONFIGS: Record<string, IntegrationConfig> = {
       },
     ],
     features: [
-      "Criar e gerenciar cobranças",
+      "Criar e gerenciar assinaturas",
       "Gerar boletos, Pix e links de pagamento",
       "Receber notificações de pagamento",
       "Sincronizar status de faturas",

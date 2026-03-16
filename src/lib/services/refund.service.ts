@@ -198,7 +198,7 @@ export async function initiateAsaasRefund(
 
   if (!invoice.asaas_id) {
     throw new AppError(
-      "Esta fatura não possui cobrança Asaas vinculada. Use reembolso manual.",
+      "Esta fatura não possui pagamento Asaas vinculado. Use reembolso manual.",
       400,
     )
   }
@@ -334,11 +334,11 @@ export async function processManualRefund(
     .single()
 
   if (chargeError || !charge) {
-    throw new AppError("Cobrança não encontrada", 400)
+    throw new AppError("Assinatura não encontrada", 400)
   }
 
   if (charge.status !== "paid") {
-    throw new AppError("Apenas cobranças pagas podem ser reembolsadas", 400)
+    throw new AppError("Apenas assinaturas pagas podem ser reembolsadas", 400)
   }
 
   // 2. Validate org ownership (charge -> client -> org_id)
@@ -364,7 +364,7 @@ export async function processManualRefund(
   const remaining = originalAmount - alreadyRefunded
 
   if (remaining <= 0) {
-    throw new AppError("Esta cobrança já foi totalmente reembolsada", 409)
+    throw new AppError("Esta assinatura já foi totalmente reembolsada", 409)
   }
 
   const refundAmount = amount ?? remaining

@@ -271,7 +271,7 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
                 {formatCurrency(data?.summary.received || 0)}
               </p>
               <p className="text-[11px] text-muted-foreground mt-1">
-                {data?.counts.received || 0} cobranças pagas
+                {data?.counts.received || 0} assinaturas pagas
               </p>
             </div>
 
@@ -286,7 +286,7 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
                 {formatCurrency(data?.summary.pending || 0)}
               </p>
               <p className="text-[11px] text-muted-foreground mt-1">
-                {data?.counts.pending || 0} cobranças a receber
+                {data?.counts.pending || 0} assinaturas a receber
               </p>
             </div>
 
@@ -301,7 +301,7 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
                 {formatCurrency(data?.summary.overdue || 0)}
               </p>
               <p className="text-[11px] text-muted-foreground mt-1">
-                {data?.counts.overdue || 0} cobranças vencidas
+                {data?.counts.overdue || 0} assinaturas vencidas
               </p>
             </div>
 
@@ -316,7 +316,7 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
                 {formatCurrency((data?.summary.received || 0) + (data?.summary.pending || 0))}
               </p>
               <p className="text-[11px] text-muted-foreground mt-1">
-                {data?.counts.total || 0} cobranças no período
+                {data?.counts.total || 0} assinaturas no período
               </p>
             </div>
 
@@ -352,7 +352,7 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
               </div>
               <p className="text-lg font-semibold text-foreground">{data?.inadimplentes?.totalClients || 0}</p>
               <p className="text-[11px] text-muted-foreground mt-0.5">
-                {data?.inadimplentes?.totalCharges || 0} cobranças · {formatCurrency(data?.inadimplentes?.totalValue || 0)}
+                {data?.inadimplentes?.totalCharges || 0} assinaturas · {formatCurrency(data?.inadimplentes?.totalValue || 0)}
               </p>
             </div>
             <div className="rounded-xl border border-border bg-card p-4">
@@ -421,9 +421,9 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
                   <AlertCircle className="h-5 w-5 text-destructive" />
                 </div>
                 <div className="flex-1">
-                  <p className="text-sm font-medium text-destructive">Atenção: Cobranças Vencidas</p>
+                  <p className="text-sm font-medium text-destructive">Atenção: Assinaturas Vencidas</p>
                   <p className="text-xs text-muted-foreground">
-                    Você tem {data?.counts.overdue} cobranças vencidas totalizando {formatCurrency(data?.summary.overdue || 0)}
+                    Você tem {data?.counts.overdue} assinaturas vencidas totalizando {formatCurrency(data?.summary.overdue || 0)}
                   </p>
                 </div>
                 <Button variant="destructive" size="sm" asChild>

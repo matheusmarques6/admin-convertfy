@@ -107,7 +107,7 @@ function ClientHealthSummary({ alerts }: { alerts: DashboardAlert[] }) {
                 </div>
                 <div>
                   <p className="text-xs font-medium text-foreground">Pagamentos vencidos</p>
-                  <p className="text-[11px] text-muted-foreground">{paymentAlerts.length} {paymentAlerts.length === 1 ? "cobrança" : "cobranças"}</p>
+                  <p className="text-[11px] text-muted-foreground">{paymentAlerts.length} {paymentAlerts.length === 1 ? "assinatura" : "assinaturas"}</p>
                 </div>
               </div>
               <ArrowRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />

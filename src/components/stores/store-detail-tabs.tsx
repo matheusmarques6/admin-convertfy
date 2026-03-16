@@ -898,7 +898,7 @@ function IntegrationStatusCard({
 // --- Credentials Form (Settings Tab) ---
 function CredentialsForm({
   storeId,
-  clientId,
+  clientId: _clientId,
   integrationStatus,
   platform,
   onSaved,
@@ -909,8 +909,9 @@ function CredentialsForm({
   platform?: string | null
   onSaved: () => void
 }) {
-  // platform is accepted for future conditional rendering but currently all 3 sections are shown
+  // platform and clientId are accepted for future conditional rendering but currently unused
   void platform
+  void _clientId
   const [form, setForm] = useState<CredentialsFormState>({ ...EMPTY_CREDENTIALS })
   const [isSaving, setIsSaving] = useState(false)
   const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({})

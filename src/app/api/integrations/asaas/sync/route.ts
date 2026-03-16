@@ -75,7 +75,7 @@ export async function POST() {
           due_date: payment.dueDate,
           payment_date: payment.paymentDate || payment.clientPaymentDate || null,
           status,
-          description: payment.description || `Cobrança Asaas #${payment.id}`,
+          description: payment.description || `Assinatura Asaas #${payment.id}`,
         }
 
         if (existingInvoice) {

@@ -443,7 +443,7 @@ export default function EditClientPage({
           <CardContent className="flex items-start gap-3 py-4">
             <AlertCircle className="h-5 w-5 text-warning mt-0.5" />
             <div>
-              <p className="font-medium text-warning">Campos obrigatórios para cobranças</p>
+              <p className="font-medium text-warning">Campos obrigatórios para assinaturas</p>
               <p className="text-sm text-muted-foreground">
                 Para criar o cliente no Asaas automaticamente, preencha: <strong>Nome</strong>, <strong>CPF/CNPJ</strong> e <strong>Email ou Telefone</strong>
               </p>
@@ -471,10 +471,10 @@ export default function EditClientPage({
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               Dados Obrigatórios
-              <span className="text-xs font-normal text-muted-foreground">(para cobranças)</span>
+              <span className="text-xs font-normal text-muted-foreground">(para assinaturas)</span>
             </CardTitle>
             <CardDescription>
-              Estes campos são necessários para gerar cobranças no Asaas
+              Estes campos são necessários para gerar assinaturas no Asaas
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -504,7 +504,7 @@ export default function EditClientPage({
               {errors.cpf_cnpj && (
                 <p className="text-sm text-destructive">{errors.cpf_cnpj.message}</p>
               )}
-              <p className="text-xs text-muted-foreground">Obrigatório para cobranças via Asaas</p>
+              <p className="text-xs text-muted-foreground">Obrigatório para assinaturas via Asaas</p>
             </div>
 
             {/* Email and Phone */}
@@ -535,7 +535,7 @@ export default function EditClientPage({
                 )}
               </div>
             </div>
-            <p className="text-xs text-muted-foreground">* Pelo menos email ou telefone é obrigatório para cobranças</p>
+            <p className="text-xs text-muted-foreground">* Pelo menos email ou telefone é obrigatório para assinaturas</p>
           </CardContent>
         </Card>
 
@@ -601,7 +601,7 @@ export default function EditClientPage({
           <CardHeader>
             <CardTitle>Endereço</CardTitle>
             <CardDescription>
-              Necessário para cobranças via boleto
+              Necessário para assinaturas via boleto
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">

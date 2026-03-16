@@ -895,7 +895,7 @@ export default function PortalInvoicesPage() {
           </ul>
           <div className="mt-4 pt-4 border-t border-border">
             <p className="text-sm text-muted-foreground">
-              Dúvidas sobre cobranças?{" "}
+              Dúvidas sobre assinaturas?{" "}
               <a
                 href="mailto:financeiro@convertfy.com.br"
                 className="text-info hover:underline"

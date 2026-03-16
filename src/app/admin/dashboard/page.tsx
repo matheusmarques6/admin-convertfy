@@ -126,7 +126,7 @@ async function getDashboardData() {
       id: `overdue-${c.id}`,
       type: "payment_overdue",
       title: "Pagamento vencido",
-      description: `${clientName} - ${c.description || "Cobrança"} vencida em ${new Date(c.due_date).toLocaleDateString("pt-BR")}`,
+      description: `${clientName} - ${c.description || "Assinatura"} vencida em ${new Date(c.due_date).toLocaleDateString("pt-BR")}`,
       severity: "high",
     })
   })

@@ -217,7 +217,7 @@ export function FinancialCharts({
                 <p className="text-lg font-bold text-foreground">
                   {financialData?.upcoming7Days.count ?? 0}{" "}
                   <span className="text-xs font-normal text-muted-foreground">
-                    {(financialData?.upcoming7Days.count ?? 0) === 1 ? "cobrança" : "cobranças"}
+                    {(financialData?.upcoming7Days.count ?? 0) === 1 ? "assinatura" : "assinaturas"}
                   </span>
                 </p>
                 <p className="text-xs text-muted-foreground">
