@@ -146,6 +146,8 @@ export interface PortalCampaignRpcRow {
   unsubscribe_rate: number | null
   has_klaviyo_metrics: boolean | null
   metrics_fetched_at: string | null
+  source: string | null
+  total_count: number | null
 }
 
 /**

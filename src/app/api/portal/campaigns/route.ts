@@ -13,7 +13,7 @@ export async function OPTIONS(request: NextRequest) {
 }
 
 // GET - List campaigns for the client's stores (portal view)
-// Unified: campaigns (Klaviyo sync + manual via RPC) + campaign_batches
+// Unified: campaigns (Klaviyo sync + manual) + campaign_batches — all via single RPC
 // IMPORTANT: Does NOT return instructions_doc_url, notes, or preview_text (internal fields)
 export async function GET(request: NextRequest) {
   try {
@@ -43,6 +43,10 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get("status")
     const storeId = searchParams.get("store_id")
     const channel = searchParams.get("channel")
+    const limitRaw = parseInt(searchParams.get("limit") || "500", 10)
+    const offsetRaw = parseInt(searchParams.get("offset") || "0", 10)
+    const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 500
+    const offset = Number.isFinite(offsetRaw) ? Math.max(offsetRaw, 0) : 0
 
     // Determine which stores to filter by — validate storeId belongs to client
     let filterStoreIds = clientStoreIds
@@ -55,10 +59,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // ============================================
-    // 1. Fetch from RPC get_portal_campaigns_with_metrics
-    //    (replaces direct query to campaigns table)
-    // ============================================
+    // Single RPC call — campaigns + batches unified with pagination
     const { data: campaigns, error: campaignsError } = await adminClient.rpc(
       "get_portal_campaigns_with_metrics",
       {
@@ -67,6 +68,8 @@ export async function GET(request: NextRequest) {
         p_end_date: endDate,
         p_status: status || null,
         p_channel: channel || null,
+        p_limit: limit,
+        p_offset: offset,
       }
     )
 
@@ -75,8 +78,13 @@ export async function GET(request: NextRequest) {
       throw new AppError("Erro ao buscar campanhas", 500)
     }
 
-    // Transform campaigns to portal format (with enriched metrics from RPC)
-    const portalCampaigns = (campaigns || []).map((c: PortalCampaignRpcRow) => {
+    const rows = (campaigns || []) as PortalCampaignRpcRow[]
+
+    // total_count comes from COUNT(*) OVER() — same value on every row
+    const totalCount = rows.length > 0 ? Number(rows[0].total_count) : 0
+
+    // Transform to portal API response format
+    const portalCampaigns = rows.map((c) => {
       const cStoreId = c.store_id
       const hasValidDate = c.scheduled_date != null
 
@@ -98,7 +106,6 @@ export async function GET(request: NextRequest) {
         clicked: c.clicked,
         converted: c.converted,
         revenue: c.revenue,
-        // New enriched metrics from RPC
         open_rate: c.open_rate,
         click_rate: c.click_rate,
         bounce_rate: c.bounce_rate,
@@ -113,123 +120,15 @@ export async function GET(request: NextRequest) {
         store_ids: cStoreId ? [cStoreId] : [],
         store_names: cStoreId ? [storeNameMap[cStoreId] || "Loja"] : [],
         stores_count: cStoreId ? 1 : 0,
-        source: c.klaviyo_campaign_id ? "klaviyo" : "manual",
+        source: c.source || (c.klaviyo_campaign_id ? "klaviyo" : "manual"),
       }
     })
 
-    // ============================================
-    // 2. Fetch from campaign_batches table — scoped to client stores
-    // ============================================
-    let batchesQuery = adminClient
-      .from("campaign_batches")
-      .select(`
-        id,
-        name,
-        campaign_type,
-        scheduled_at,
-        status,
-        store_ids,
-        created_at
-      `)
-      .overlaps("store_ids", filterStoreIds)
-      .order("scheduled_at", { ascending: true })
-
-    if (startDate) batchesQuery = batchesQuery.gte("scheduled_at", startDate)
-    if (endDate) batchesQuery = batchesQuery.lte("scheduled_at", endDate + "T23:59:59.999Z")
-    if (status) {
-      const batchStatusMap: Record<string, string> = {
-        sent: "completed",
-        scheduled: "scheduled",
-        cancelled: "cancelled",
-        draft: "scheduled",
-      }
-      batchesQuery = batchesQuery.eq("status", batchStatusMap[status] || status)
-    }
-    if (channel) {
-      if (channel === "sms") {
-        batchesQuery = batchesQuery.in("campaign_type", ["sms", "whatsapp"])
-      } else {
-        batchesQuery = batchesQuery.eq("campaign_type", channel)
-      }
-    }
-
-    const { data: allBatches, error: batchesError } = await batchesQuery
-
-    if (batchesError) {
-      log.error("[Portal Campaigns] Error fetching batches:", batchesError)
-      // Continue with campaigns only
-    }
-
-    // Map batch status to campaign status
-    const batchStatusMap: Record<string, string> = {
-      scheduled: "scheduled",
-      processing: "scheduled",
-      completed: "sent",
-      failed: "cancelled",
-      cancelled: "cancelled",
-    }
-
-    // Transform batches to portal format — only show client's stores
-    const portalBatches = (allBatches || []).map(batch => {
-      const batchStoreIds: string[] = (batch.store_ids || []).filter(Boolean)
-      const relevantStoreIds = batchStoreIds.filter((id: string) => clientStoreIds.includes(id))
-      const relevantStoreNames = relevantStoreIds.map((id: string) => storeNameMap[id] || "Loja")
-
-      const scheduledAt = new Date(batch.scheduled_at)
-      const isValidDate = !isNaN(scheduledAt.getTime())
-
-      return {
-        id: batch.id,
-        name: batch.name,
-        description: null,
-        campaign_type: batch.campaign_type,
-        scheduled_at: batch.scheduled_at,
-        scheduled_date: isValidDate ? scheduledAt.toISOString().split("T")[0] : null,
-        scheduled_time: isValidDate ? scheduledAt.toISOString().split("T")[1]?.substring(0, 5) : null,
-        status: batchStatusMap[batch.status] || batch.status,
-        subject_line: null,
-        segment_name: null,
-        estimated_recipients: null,
-        recipients: null,
-        delivered: null,
-        opened: null,
-        clicked: null,
-        converted: null,
-        revenue: null,
-        // Batches do NOT have Klaviyo metrics
-        open_rate: null,
-        click_rate: null,
-        bounce_rate: null,
-        conversion_rate: null,
-        revenue_per_recipient: null,
-        average_order_value: null,
-        has_klaviyo_metrics: false,
-        metrics_fetched_at: null,
-        currency: relevantStoreIds[0] ? (storeCurrencyMap[relevantStoreIds[0]] || "BRL") : "BRL",
-        color: batch.campaign_type === "sms" ? "#10b981" : batch.campaign_type === "whatsapp" ? "#25d366" : "#3b82f6",
-        created_at: batch.created_at,
-        store_ids: relevantStoreIds,
-        store_names: relevantStoreNames,
-        stores_count: relevantStoreIds.length,
-        source: "batch",
-      }
-    })
-
-    // ============================================
-    // 3. Merge and sort by full datetime for precision
-    // ============================================
-    const allCampaigns = [...portalCampaigns, ...portalBatches]
-      .sort((a, b) => {
-        const dateA = a.scheduled_at || ""
-        const dateB = b.scheduled_at || ""
-        return dateA.localeCompare(dateB)
-      })
-
-    log.debug(`[Portal Campaigns] Returning ${allCampaigns.length} campaigns (${portalCampaigns.length} individual + ${portalBatches.length} batches)`)
+    log.debug(`[Portal Campaigns] Returning ${portalCampaigns.length} campaigns (total: ${totalCount})`)
 
     return successResponse(request, {
-      campaigns: allCampaigns,
-      totalCount: allCampaigns.length,
+      campaigns: portalCampaigns,
+      totalCount,
     })
   } catch (error) {
     return errorResponse(request, error, "PortalCampaigns")
