@@ -5,8 +5,10 @@ import { AppError } from "@/lib/api/errors"
 
 export interface PortalClientContext {
   clientId: string
+  orgId: string
   storeIds: string[]
   storeNameMap: Record<string, string>
+  storeCurrencyMap: Record<string, string>
 }
 
 // --- Errors ---
@@ -49,7 +51,7 @@ export async function resolvePortalClient(
   // 2. Buscar lojas ATIVAS do cliente (F6 fix)
   const { data: stores, error: stError } = await adminClient
     .from("client_stores")
-    .select("id, store_name")
+    .select("id, store_name, currency, org_id")
     .eq("client_id", portalUser.client_id)
     .eq("is_active", true)
 
@@ -59,13 +61,20 @@ export async function resolvePortalClient(
 
   const storeIds = stores.map((s) => s.id)
   const storeNameMap: Record<string, string> = {}
+  const storeCurrencyMap: Record<string, string> = {}
   for (const s of stores) {
     storeNameMap[s.id] = s.store_name ?? ""
+    storeCurrencyMap[s.id] = s.currency || "BRL"
   }
+
+  // org_id from first store (all stores for same client share org_id)
+  const orgId = stores[0]?.org_id ?? ""
 
   return {
     clientId: portalUser.client_id,
+    orgId,
     storeIds,
     storeNameMap,
+    storeCurrencyMap,
   }
 }

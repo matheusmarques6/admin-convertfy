@@ -4,6 +4,7 @@ import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { resolvePortalClient } from "@/lib/api/portal-auth"
 import { handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
+import type { PortalCampaignRpcRow } from "@/types/campaign"
 
 const log = logger.child("PortalCampaigns")
 
@@ -33,7 +34,7 @@ export async function GET(request: NextRequest) {
 
     const storeNameMap = ctx.storeNameMap
     const clientStoreIds = ctx.storeIds
-    const storeCurrencyMap = Object.fromEntries(clientStoreIds.map(id => [id, "BRL"]))
+    const storeCurrencyMap = ctx.storeCurrencyMap
 
     // Parse query parameters
     const searchParams = request.nextUrl.searchParams
@@ -75,15 +76,15 @@ export async function GET(request: NextRequest) {
     }
 
     // Transform campaigns to portal format (with enriched metrics from RPC)
-    const portalCampaigns = (campaigns || []).map((c: Record<string, unknown>) => {
-      const cStoreId = c.store_id as string | null
+    const portalCampaigns = (campaigns || []).map((c: PortalCampaignRpcRow) => {
+      const cStoreId = c.store_id
       const hasValidDate = c.scheduled_date != null
 
       return {
         id: c.id,
         name: c.name,
         description: c.description,
-        campaign_type: (c.channel as string) || "email",
+        campaign_type: c.channel || "email",
         scheduled_at: c.send_datetime || (hasValidDate ? `${c.scheduled_date}T${c.scheduled_time || "00:00"}:00` : null),
         scheduled_date: c.scheduled_date,
         scheduled_time: c.scheduled_time,
@@ -107,7 +108,7 @@ export async function GET(request: NextRequest) {
         has_klaviyo_metrics: c.has_klaviyo_metrics,
         metrics_fetched_at: c.metrics_fetched_at,
         currency: cStoreId ? (storeCurrencyMap[cStoreId] || "BRL") : "BRL",
-        color: (c.color as string) || "#3b82f6",
+        color: c.color || "#3b82f6",
         created_at: c.send_datetime || c.scheduled_date,
         store_ids: cStoreId ? [cStoreId] : [],
         store_names: cStoreId ? [storeNameMap[cStoreId] || "Loja"] : [],

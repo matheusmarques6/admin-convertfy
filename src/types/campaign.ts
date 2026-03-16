@@ -103,3 +103,92 @@ export interface CalendarCampaign {
   store_name: string
   client_name: string
 }
+
+/**
+ * Row shape returned by the `get_portal_campaigns_with_metrics` RPC.
+ * Field names and types match the RETURNS TABLE definition in
+ * `supabase/migrations/20260315_fix_campaign_rpc_null_rates.sql`.
+ */
+export interface PortalCampaignRpcRow {
+  id: string
+  store_id: string | null
+  store_name: string | null
+  name: string
+  klaviyo_campaign_id: string | null
+  description: string | null
+  status: string
+  /** The RPC returns both `channel` and `campaign_type` as separate columns. */
+  channel: string | null
+  campaign_type: string | null
+  scheduled_date: string | null
+  scheduled_time: string | null
+  send_datetime: string | null
+  subject_line: string | null
+  segment_name: string | null
+  estimated_recipients: number | null
+  color: string | null
+  recipients: number | null
+  delivered: number | null
+  opened: number | null
+  clicked: number | null
+  converted: number | null
+  revenue: number | null
+  open_rate: number | null
+  click_rate: number | null
+  bounce_rate: number | null
+  conversion_rate: number | null
+  delivery_rate: number | null
+  click_to_open_rate: number | null
+  revenue_per_recipient: number | null
+  average_order_value: number | null
+  bounced: number | null
+  unsubscribed: number | null
+  unsubscribe_rate: number | null
+  has_klaviyo_metrics: boolean | null
+  metrics_fetched_at: string | null
+}
+
+/**
+ * Raw campaign shape returned by the portal campaigns API (snake_case).
+ * Used by the portal calendar hook and page to type the SWR response
+ * before transforming into the camelCase `PortalCampaign` display type.
+ */
+export interface PortalCampaignApiResponse {
+  id: string
+  name: string
+  description?: string | null
+  campaign_type: string
+  /**
+   * Mapped from the RPC `channel` column (the API transforms
+   * `campaign_type` from the RPC into this `channel` field for display).
+   */
+  channel?: string
+  scheduled_at?: string
+  scheduled_date?: string
+  scheduled_time?: string
+  status: string
+  subject_line?: string | null
+  segment_name?: string | null
+  estimated_recipients?: number | null
+  recipients?: number | null
+  delivered?: number | null
+  opened?: number | null
+  clicked?: number | null
+  converted?: number | null
+  revenue?: number | null
+  open_rate?: number | null
+  click_rate?: number | null
+  bounce_rate?: number | null
+  conversion_rate?: number | null
+  revenue_per_recipient?: number | null
+  average_order_value?: number | null
+  has_klaviyo_metrics?: boolean | null
+  metrics_fetched_at?: string | null
+  currency?: string | null
+  color?: string | null
+  created_at?: string | null
+  store_ids?: string[]
+  store_names?: string[]
+  stores_count?: number
+  source?: string
+}

@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react"
 import useSWR from "swr"
+import type { PortalCampaignApiResponse } from "@/types/campaign"
 
 // ============================================
 // TYPES
@@ -111,16 +112,12 @@ export interface UsePortalCampaignsCalendarOptions {
   storeId?: string
 }
 
-/**
- * Raw campaign record as returned by the portal API (snake_case).
- * The consumer is responsible for transforming to their local Campaign type.
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type RawApiCampaign = Record<string, any>
+// Re-export for consumers that imported PortalCampaignApiResponse from here
+export type { PortalCampaignApiResponse } from "@/types/campaign"
 
 export interface UsePortalCampaignsCalendarReturn {
   // Data — raw API campaigns (snake_case), consumer transforms them
-  campaigns: RawApiCampaign[]
+  campaigns: PortalCampaignApiResponse[]
   selectedCampaign: PortalCampaign | null
   campaignMetrics: PortalCampaignDetailMetrics | null
 
@@ -180,7 +177,7 @@ export function usePortalCampaignsCalendar(
     error: listError,
     isLoading: isLoadingList,
     mutate,
-  } = useSWR<{ success: boolean; campaigns: RawApiCampaign[]; totalCount: number }>(
+  } = useSWR<{ success: boolean; campaigns: PortalCampaignApiResponse[]; totalCount: number }>(
     ["/api/portal/campaigns", month, year, selectedStore],
     () => portalFetcher(buildListUrl()),
     {
@@ -221,7 +218,8 @@ export function usePortalCampaignsCalendar(
   }, [])
 
   const goToToday = useCallback(() => {
-    setCurrentDate(new Date())
+    const now = new Date()
+    setCurrentDate(new Date(now.getFullYear(), now.getMonth(), 1))
     setSelectedCampaign(null)
   }, [])
 

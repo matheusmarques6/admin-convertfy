@@ -1,16 +1,12 @@
-import { Mail, MessageSquare, Bell } from "lucide-react"
+import { Mail } from "lucide-react"
 import { Campaign } from "@/types"
+import { CHANNEL_CONFIG, WEEK_DAYS } from "@/lib/constants/calendar"
 
-const channelConfig: Record<string, { icon: typeof Mail; color: string; label: string }> = {
-  email: { icon: Mail, color: "bg-blue-500", label: "Email" },
-  sms: { icon: MessageSquare, color: "bg-green-500", label: "SMS" },
-  push: { icon: Bell, color: "bg-purple-500", label: "Push" },
-  whatsapp: { icon: MessageSquare, color: "bg-emerald-500", label: "WhatsApp" },
-}
-
-export { channelConfig }
-
-const weekDays = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"]
+/**
+ * Re-export for any admin consumers that imported channelConfig from here.
+ * Uses shared CHANNEL_CONFIG from calendar constants.
+ */
+export const channelConfig = CHANNEL_CONFIG
 
 interface CalendarGridProps {
   daysInMonth: number
@@ -33,7 +29,7 @@ export function CalendarGrid({
     <>
       {/* Week days header */}
       <div className="grid grid-cols-7 border-b">
-        {weekDays.map((day) => (
+        {WEEK_DAYS.map((day) => (
           <div
             key={day}
             className="p-2 text-center text-sm font-medium text-muted-foreground border-r last:border-r-0"
