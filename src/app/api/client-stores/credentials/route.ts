@@ -4,6 +4,7 @@ import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api
 import { requireStoreAccess } from "@/lib/api/require-store-access"
 import { encrypt, encryptCredentialsJson } from "@/lib/crypto"
 import { ENCRYPTED_FIELDS } from "@/lib/constants/credentials"
+import { sanitizeStoreResponse, validateCredentialField } from "@/lib/services/credentials.service"
 import { validateShopifyCredentials, validateKlaviyoCredentials } from "@/lib/services/credential-validator.service"
 import type { ValidationResult } from "@/lib/services/credential-validator.service"
 import { logger } from "@/lib/logger"
@@ -122,7 +123,8 @@ function processFields(fields: Record<string, any>): Record<string, any> {
     if (value === undefined || value === null) continue
 
     if ((ENCRYPTED_FIELDS as ReadonlyArray<string>).includes(key) && typeof value === "string" && value) {
-      processed[key] = encrypt(value)
+      const validated = validateCredentialField(key, value)
+      processed[key] = encrypt(validated)
     } else {
       processed[key] = value
     }
@@ -199,6 +201,14 @@ export async function POST(request: NextRequest) {
 
     if (client?.org_id) {
       storeData.org_id = client.org_id
+    } else {
+      // Fallback: derive org_id from the authenticated user's primary org
+      // This handles cases where client.org_id is NULL (legacy data or race condition)
+      const user = await requireAuth(supabase)
+      const { resolveOrgId } = await import("@/lib/api/resolve-org")
+      const fallbackOrgId = await resolveOrgId(user.id)
+      storeData.org_id = fallbackOrgId
+      console.warn(`[client-stores] Client ${client_id} has NULL org_id — using fallback org_id=${fallbackOrgId} from authenticated user`)
     }
 
     // Handle ga4_credentials (encrypt as JSON string)
@@ -270,7 +280,7 @@ export async function POST(request: NextRequest) {
       await markOnboardingStepCompleted(data.id, "Acesso à Loja Configurado")
     }
 
-    return successResponse(request, { success: true, store: data, validation_results: validationResults })
+    return successResponse(request, { success: true, store: sanitizeStoreResponse(data), validation_results: validationResults })
   } catch (error) {
     return errorResponse(request, error, "ClientStoresCredentials")
   }
@@ -368,7 +378,7 @@ export async function PUT(request: NextRequest) {
       await markOnboardingStepCompleted(store_id, "Acesso à Loja Configurado")
     }
 
-    return successResponse(request, { success: true, store: data, validation_results: validationResults })
+    return successResponse(request, { success: true, store: sanitizeStoreResponse(data), validation_results: validationResults })
   } catch (error) {
     return errorResponse(request, error, "ClientStoresCredentials")
   }

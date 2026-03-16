@@ -2,8 +2,7 @@ import { NextRequest } from "next/server"
 import { errorResponse, successResponse, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
-import { encrypt } from "@/lib/crypto"
-import { deriveStatus } from "@/lib/services/credentials.service"
+import { deriveStatus, updateStoreCredentials } from "@/lib/services/credentials.service"
 import { logger } from "@/lib/logger"
 import { getPortalUser } from "@/lib/portal/auth"
 
@@ -121,38 +120,37 @@ export async function PUT(request: NextRequest) {
       throw new AppError("Loja não encontrada", 404)
     }
 
-    // Build update data — write to individual validation columns, not legacy JSON
-    const updateData: Record<string, unknown> = {}
+    // Update metadata (non-credential fields) directly
+    if (shopify_store_domain) {
+      const { error: metaError } = await adminClient
+        .from("client_stores")
+        .update({ shopify_store_domain })
+        .eq("id", store_id)
+      if (metaError) {
+        log.error("[Portal Stores] Metadata update error:", metaError)
+        throw new AppError("Erro ao salvar domínio da loja", 500)
+      }
+    }
+
+    // Update credentials via centralized service (validates ASCII, encrypts)
+    let hasCredentials = false
 
     if (klaviyo_private_key) {
-      updateData.klaviyo_private_key = encrypt(klaviyo_private_key)
-      updateData.klaviyo_api_key = encrypt(klaviyo_private_key) // backward compat
-      updateData.klaviyo_validated_at = null
-      updateData.klaviyo_validation_error = null
-      updateData.klaviyo_missing_scopes = null
-      updateData.klaviyo_has_reporting_access = null
-    }
-    if (shopify_store_domain) {
-      updateData.shopify_store_domain = shopify_store_domain
+      await updateStoreCredentials(store_id, {
+        klaviyo_private_key,
+        klaviyo_api_key: klaviyo_private_key, // backward compat
+      }, "klaviyo", { resetValidation: true })
+      hasCredentials = true
     }
     if (shopify_access_token) {
-      updateData.shopify_access_token = encrypt(shopify_access_token)
-      updateData.shopify_validated_at = null
-      updateData.shopify_validation_error = null
+      await updateStoreCredentials(store_id, {
+        shopify_access_token,
+      }, "shopify", { resetValidation: true })
+      hasCredentials = true
     }
 
-    if (Object.keys(updateData).length === 0) {
+    if (!hasCredentials && !shopify_store_domain) {
       throw new AppError("Nenhuma credencial informada", 400)
-    }
-
-    const { error: updateError } = await adminClient
-      .from("client_stores")
-      .update(updateData)
-      .eq("id", store_id)
-
-    if (updateError) {
-      log.error("[Portal Stores] Update error:", updateError)
-      throw new AppError("Erro ao salvar credenciais", 500)
     }
 
     // Auto-mark onboarding steps

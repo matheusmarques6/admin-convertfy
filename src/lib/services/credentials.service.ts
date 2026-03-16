@@ -14,7 +14,7 @@ import {
 } from "@/lib/crypto"
 import { AppError, NotFoundError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
-import { ENCRYPTED_FIELDS } from "@/lib/constants/credentials"
+import { ENCRYPTED_FIELDS, ALL_SENSITIVE_FIELDS } from "@/lib/constants/credentials"
 
 // Re-export for backward compatibility
 export { ENCRYPTED_FIELDS, ENCRYPTED_JSON_FIELDS, ALL_SENSITIVE_FIELDS } from "@/lib/constants/credentials"
@@ -45,6 +45,21 @@ const FIELDS_TO_VALIDATE: ReadonlySet<string> = new Set([
 ])
 
 const ASCII_PRINTABLE = /^[\x20-\x7E]+$/
+
+/**
+ * Sanitize a store object for API responses.
+ * Replaces all sensitive credential fields with boolean flags (true/false)
+ * to prevent ciphertext leaking to the frontend.
+ */
+export function sanitizeStoreResponse(store: Record<string, unknown>): Record<string, unknown> {
+  const sanitized = { ...store }
+  for (const field of ALL_SENSITIVE_FIELDS) {
+    if (field in sanitized) {
+      sanitized[field] = sanitized[field] ? true : false
+    }
+  }
+  return sanitized
+}
 
 export function validateCredentialField(field: string, value: string): string {
   const trimmed = value.trim()
@@ -162,7 +177,8 @@ export async function getStoreCredentials(storeId: string, orgId?: string): Prom
 export async function updateStoreCredentials(
   storeId: string,
   credentials: Partial<StoreCredentials>,
-  integrationKey?: keyof IntegrationStatus
+  integrationKey?: keyof IntegrationStatus,
+  options?: { resetValidation?: boolean }
 ): Promise<void> {
   const adminClient = createAdminClient()
 
@@ -191,15 +207,16 @@ export async function updateStoreCredentials(
 
   // Update integration status if key provided
   if (integrationKey) {
+    const resetValidation = options?.resetValidation ?? false
     const now = new Date().toISOString()
 
     if (integrationKey === "shopify") {
       // Use individual validation columns for Shopify
-      updateData.shopify_validated_at = now
+      updateData.shopify_validated_at = resetValidation ? null : now
       updateData.shopify_validation_error = null
     } else if (integrationKey === "klaviyo") {
       // Use individual validation columns for Klaviyo
-      updateData.klaviyo_validated_at = now
+      updateData.klaviyo_validated_at = resetValidation ? null : now
       updateData.klaviyo_validation_error = null
       updateData.klaviyo_missing_scopes = null
       updateData.klaviyo_has_reporting_access = null

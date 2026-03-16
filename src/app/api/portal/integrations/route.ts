@@ -3,7 +3,7 @@ import { errorResponse, successResponse, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { handleCorsPreFlight } from "@/lib/cors"
 import { encrypt } from "@/lib/crypto"
-import { deriveStatus } from "@/lib/services/credentials.service"
+import { deriveStatus, updateStoreCredentials } from "@/lib/services/credentials.service"
 import { logger } from "@/lib/logger"
 import { getPortalUser } from "@/lib/portal/auth"
 
@@ -180,64 +180,45 @@ export async function PUT(request: NextRequest) {
     }
 
     if (integration_type === "shopify") {
-      const updateData: Record<string, unknown> = {}
-
+      // Update domain as metadata (non-credential)
       if (shopify_store_domain) {
-        updateData.shopify_store_domain = shopify_store_domain
+        const { error: metaError } = await adminClient
+          .from("client_stores")
+          .update({ shopify_store_domain })
+          .eq("id", store_id)
+        if (metaError) {
+          log.error("Error updating Shopify domain:", metaError)
+          throw new AppError("Erro ao salvar domínio Shopify", 500)
+        }
       }
+
       if (shopify_access_token) {
-        updateData.shopify_access_token = encrypt(shopify_access_token)
-        // Mark as pending validation (will be validated via revalidate endpoint)
-        updateData.shopify_validated_at = null
-        updateData.shopify_validation_error = null
-      }
-
-      if (Object.keys(updateData).length === 0) {
+        await updateStoreCredentials(store_id, {
+          shopify_access_token,
+        }, "shopify", { resetValidation: true })
+      } else if (!shopify_store_domain) {
         throw new AppError("Nenhuma credencial informada", 400)
-      }
-
-      const { error: updateError } = await adminClient
-        .from("client_stores")
-        .update(updateData)
-        .eq("id", store_id)
-
-      if (updateError) {
-        log.error("Error updating Shopify credentials:", updateError)
-        throw new AppError("Erro ao salvar credenciais Shopify", 500)
       }
 
       return successResponse(request, { success: true, message: "Credenciais Shopify atualizadas" })
     }
 
     if (integration_type === "klaviyo") {
-      const updateData: Record<string, unknown> = {}
+      const creds: Record<string, string> = {}
 
       if (klaviyo_private_key) {
-        updateData.klaviyo_private_key = encrypt(klaviyo_private_key)
-        updateData.klaviyo_api_key = encrypt(klaviyo_private_key)
-        // Mark as pending validation (will be validated via revalidate endpoint)
-        updateData.klaviyo_validated_at = null
-        updateData.klaviyo_validation_error = null
-        updateData.klaviyo_missing_scopes = null
-        updateData.klaviyo_has_reporting_access = null
+        creds.klaviyo_private_key = klaviyo_private_key
+        creds.klaviyo_api_key = klaviyo_private_key // backward compat
       }
       if (klaviyo_public_key) {
-        updateData.klaviyo_public_key = encrypt(klaviyo_public_key)
+        creds.klaviyo_public_key = klaviyo_public_key
       }
 
-      if (Object.keys(updateData).length === 0) {
+      if (Object.keys(creds).length === 0) {
         throw new AppError("Nenhuma credencial informada", 400)
       }
 
-      const { error: updateError } = await adminClient
-        .from("client_stores")
-        .update(updateData)
-        .eq("id", store_id)
-
-      if (updateError) {
-        log.error("Error updating Klaviyo credentials:", updateError)
-        throw new AppError("Erro ao salvar credenciais Klaviyo", 500)
-      }
+      await updateStoreCredentials(store_id, creds, "klaviyo", { resetValidation: true })
 
       return successResponse(request, { success: true, message: "Credenciais Klaviyo atualizadas" })
     }

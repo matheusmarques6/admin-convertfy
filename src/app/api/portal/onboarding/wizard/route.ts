@@ -1,7 +1,6 @@
 import { NextRequest } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
-import { encrypt } from "@/lib/crypto"
 import { updateStoreCredentials } from "@/lib/services/credentials.service"
 import { logger } from "@/lib/logger"
 
@@ -391,18 +390,17 @@ export async function POST(request: NextRequest) {
           throw new AppError("Erro ao validar chave do Klaviyo. Tente novamente.", 400)
         }
 
-        // Save encrypted key — use individual validation columns, not legacy JSON
+        // Save encrypted key via centralized service (validates ASCII, encrypts)
+        // Key already validated against API above, so resetValidation: false (sets validated_at = NOW)
+        await updateStoreCredentials(store_id, {
+          klaviyo_private_key: private_key,
+          klaviyo_api_key: private_key,
+        }, "klaviyo")
+
+        // Set reporting access flag (confirmed by API test above)
         await adminClient
           .from("client_stores")
-          .update({
-            klaviyo_private_key: encrypt(private_key),
-            klaviyo_api_key: encrypt(private_key),
-            klaviyo_validated_at: new Date().toISOString(),
-            klaviyo_validation_error: null,
-            klaviyo_missing_scopes: null,
-            klaviyo_has_reporting_access: true,
-            updated_at: new Date().toISOString(),
-          })
+          .update({ klaviyo_has_reporting_access: true })
           .eq("id", store_id)
 
         log.info("Wizard step 4 saved", { storeId: store_id })
