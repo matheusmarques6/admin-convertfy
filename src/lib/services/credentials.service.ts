@@ -61,9 +61,18 @@ export function sanitizeStoreResponse(store: Record<string, unknown>): Record<st
   return sanitized
 }
 
+const DEFAULT_MAX_LENGTH = 2048
+const JSON_BLOB_MAX_LENGTH = 16384
+
 export function validateCredentialField(field: string, value: string): string {
   const trimmed = value.trim()
   if (!trimmed) return trimmed
+  if (trimmed.length > DEFAULT_MAX_LENGTH) {
+    throw new AppError(
+      `Credential field '${field}' exceeds maximum length of ${DEFAULT_MAX_LENGTH} characters`,
+      400
+    )
+  }
   if (!ASCII_PRINTABLE.test(trimmed)) {
     throw new AppError(
       `O campo ${field} contem caracteres invalidos. Copie a API key novamente sem formatacao.`,
@@ -148,6 +157,14 @@ export async function getStoreCredentials(storeId: string, orgId?: string): Prom
 
   const decrypted = decryptStoreCredentials(store)
 
+  // Detect decryption failures: field was non-null in DB but null after decrypt
+  const failedFields = ENCRYPTED_FIELDS.filter(
+    (field) => store[field] != null && decrypted[field] == null
+  )
+  if (failedFields.length > 0) {
+    log.warn(`Decryption failed for store ${storeId}: ${failedFields.join(", ")}`)
+  }
+
   // Decrypt JSON fields separately
   const result: StoreCredentials & { store_name: string; client_id: string | null } = {
     ...decrypted,
@@ -194,6 +211,15 @@ export async function getMultipleStoreCredentials(
 
   for (const store of stores || []) {
     const decrypted = decryptStoreCredentials(store)
+
+    // Detect decryption failures
+    const failedFields = ENCRYPTED_FIELDS.filter(
+      (field) => store[field] != null && decrypted[field] == null
+    )
+    if (failedFields.length > 0) {
+      log.warn(`Decryption failed for store ${store.id}: ${failedFields.join(", ")}`)
+    }
+
     const entry: StoreCredentials & { store_name: string; client_id: string | null } = {
       ...decrypted,
       store_name: store.store_name,
@@ -241,10 +267,22 @@ export async function updateStoreCredentials(
       const cleaned = FIELDS_TO_VALIDATE.has(key) ? validateCredentialField(key, value) : value
       updateData[key] = encrypt(cleaned)
     } else if (key === "ga4_credentials" && typeof value === "object") {
+      const json = JSON.stringify(value)
+      if (json.length > JSON_BLOB_MAX_LENGTH) {
+        throw new AppError(`Credential field '${key}' exceeds maximum length of ${JSON_BLOB_MAX_LENGTH} characters`, 400)
+      }
       updateData[key] = encryptCredentialsJson(value as Record<string, unknown>)
     } else if (key === "google_ads_credentials" && typeof value === "object") {
+      const json = JSON.stringify(value)
+      if (json.length > JSON_BLOB_MAX_LENGTH) {
+        throw new AppError(`Credential field '${key}' exceeds maximum length of ${JSON_BLOB_MAX_LENGTH} characters`, 400)
+      }
       updateData[key] = encryptCredentialsJson(value as Record<string, unknown>)
     } else if (key === "google_calendar_credentials" && typeof value === "object") {
+      const json = JSON.stringify(value)
+      if (json.length > JSON_BLOB_MAX_LENGTH) {
+        throw new AppError(`Credential field '${key}' exceeds maximum length of ${JSON_BLOB_MAX_LENGTH} characters`, 400)
+      }
       updateData[key] = encryptCredentialsJson(value as Record<string, unknown>)
     } else {
       updateData[key] = value

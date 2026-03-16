@@ -67,8 +67,9 @@ export function decryptStoreCredentials<T extends Record<string, unknown>>(store
     if (typeof value === "string" && value) {
       try {
         (result as Record<string, unknown>)[field] = decrypt(value)
-      } catch (error) {
-        log.error(`Failed to decrypt store field: ${field}`, { error })
+      } catch {
+        log.error(`Failed to decrypt field: ${field}`)
+        ;(result as Record<string, unknown>)[field] = null
       }
     }
   }
