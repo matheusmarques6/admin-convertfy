@@ -14,6 +14,11 @@ import {
 } from "@/lib/crypto"
 import { AppError, NotFoundError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
+import { ENCRYPTED_FIELDS } from "@/lib/constants/credentials"
+
+// Re-export for backward compatibility
+export { ENCRYPTED_FIELDS, ENCRYPTED_JSON_FIELDS, ALL_SENSITIVE_FIELDS } from "@/lib/constants/credentials"
+export type { EncryptedField } from "@/lib/constants/credentials"
 
 const log = logger.child("CredentialsService")
 
@@ -27,17 +32,6 @@ const log = logger.child("CredentialsService")
  */
 export const KLAVIYO_CREDENTIALS_FILTER =
   "klaviyo_private_key.not.is.null,klaviyo_api_key.not.is.null"
-
-// Fields that are always encrypted in client_stores
-const ENCRYPTED_FIELDS = [
-  "shopify_access_token",
-  "shopify_api_key",
-  "shopify_api_secret",
-  "klaviyo_api_key",
-  "klaviyo_private_key",
-  "klaviyo_public_key",
-  "meta_access_token",
-] as const
 
 // Fields that must contain only ASCII printable characters (0x20-0x7E).
 // meta_access_token is excluded — it comes from OAuth callback, not manual input.

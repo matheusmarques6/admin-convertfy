@@ -3,6 +3,7 @@ import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { requireStoreAccess } from "@/lib/api/require-store-access"
 import { encrypt, encryptCredentialsJson } from "@/lib/crypto"
+import { ENCRYPTED_FIELDS } from "@/lib/constants/credentials"
 import { validateShopifyCredentials, validateKlaviyoCredentials } from "@/lib/services/credential-validator.service"
 import type { ValidationResult } from "@/lib/services/credential-validator.service"
 import { logger } from "@/lib/logger"
@@ -98,15 +99,6 @@ function escapeLike(str: string): string {
   return str.replace(/%/g, "\\%").replace(/_/g, "\\_")
 }
 
-const ENCRYPTED_FIELDS = [
-  "shopify_access_token",
-  "shopify_api_key",
-  "shopify_api_secret",
-  "klaviyo_api_key",
-  "klaviyo_private_key",
-  "klaviyo_public_key",
-]
-
 const PLAIN_FIELDS = [
   "store_name",
   "store_url",
@@ -129,7 +121,7 @@ function processFields(fields: Record<string, any>): Record<string, any> {
     if (!ALLOWED_FIELDS.includes(key)) continue
     if (value === undefined || value === null) continue
 
-    if (ENCRYPTED_FIELDS.includes(key) && typeof value === "string" && value) {
+    if ((ENCRYPTED_FIELDS as ReadonlyArray<string>).includes(key) && typeof value === "string" && value) {
       processed[key] = encrypt(value)
     } else {
       processed[key] = value

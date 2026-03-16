@@ -1,5 +1,6 @@
 import crypto from "crypto"
 import { logger } from "@/lib/logger"
+import { ENCRYPTED_FIELDS } from "@/lib/constants/credentials"
 
 const log = logger.child("Crypto")
 
@@ -48,19 +49,9 @@ export function decrypt(ciphertext: string): string {
   }
 }
 
-// Store credential fields that should be encrypted
-const STORE_CREDENTIAL_FIELDS = [
-  "shopify_access_token",
-  "shopify_api_key",
-  "shopify_api_secret",
-  "klaviyo_api_key",
-  "klaviyo_private_key",
-  "klaviyo_public_key",
-] as const
-
 export function encryptStoreCredentials<T extends Record<string, unknown>>(store: T): T {
   const result = { ...store }
-  for (const field of STORE_CREDENTIAL_FIELDS) {
+  for (const field of ENCRYPTED_FIELDS) {
     const value = result[field]
     if (typeof value === "string" && value) {
       (result as Record<string, unknown>)[field] = encrypt(value)
@@ -71,7 +62,7 @@ export function encryptStoreCredentials<T extends Record<string, unknown>>(store
 
 export function decryptStoreCredentials<T extends Record<string, unknown>>(store: T): T {
   const result = { ...store }
-  for (const field of STORE_CREDENTIAL_FIELDS) {
+  for (const field of ENCRYPTED_FIELDS) {
     const value = result[field]
     if (typeof value === "string" && value) {
       try {

@@ -2,19 +2,11 @@ import { NextRequest } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireRole } from "@/lib/api/errors"
 import { encrypt, encryptCredentialsJson } from "@/lib/crypto"
+import { ENCRYPTED_FIELDS } from "@/lib/constants/credentials"
 import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("EncryptCredentials")
-
-const STORE_CREDENTIAL_FIELDS = [
-  "shopify_access_token",
-  "shopify_api_key",
-  "shopify_api_secret",
-  "klaviyo_api_key",
-  "klaviyo_private_key",
-  "klaviyo_public_key",
-]
 
 const PREFIX = "enc:v1:"
 
@@ -35,7 +27,7 @@ export async function POST(request: NextRequest) {
     // 1. Encrypt client_stores credentials (string fields)
     const { data: stores } = await adminClient
       .from("client_stores")
-      .select("id, shopify_access_token, shopify_api_key, shopify_api_secret, klaviyo_api_key, klaviyo_private_key, klaviyo_public_key, ga4_credentials")
+      .select("id, shopify_access_token, shopify_api_key, shopify_api_secret, klaviyo_api_key, klaviyo_private_key, klaviyo_public_key, meta_access_token, ga4_credentials")
 
     if (stores) {
       for (const store of stores) {
@@ -43,7 +35,7 @@ export async function POST(request: NextRequest) {
         const updates: Record<string, any> = {}
         let hasUpdates = false
 
-        for (const field of STORE_CREDENTIAL_FIELDS) {
+        for (const field of ENCRYPTED_FIELDS) {
           const value = store[field as keyof typeof store] as string | null
           if (value && typeof value === "string" && !value.startsWith(PREFIX)) {
             updates[field] = encrypt(value)
