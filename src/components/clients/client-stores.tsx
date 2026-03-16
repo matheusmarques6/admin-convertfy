@@ -14,6 +14,8 @@ import {
   Database,
   Info,
   Settings,
+  AlertTriangle,
+  RefreshCw,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -71,6 +73,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
   const router = useRouter()
   const [stores, setStores] = useState<ClientStore[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [deleteStore, setDeleteStore] = useState<ClientStore | null>(null)
   const [editStore, setEditStore] = useState<ClientStore | null>(null)
@@ -90,6 +93,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
 
   async function loadStores() {
     setIsLoading(true)
+    setLoadError(null)
     try {
       const res = await fetch(`/api/stores?client_id=${clientId}`)
       if (!res.ok) {
@@ -100,12 +104,13 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
       setStores(data || [])
     } catch (error) {
       console.error("Error loading stores:", error)
+      const msg = error instanceof Error ? error.message : "Erro desconhecido"
+      setLoadError(msg)
       toast({
         variant: "destructive",
         title: "Erro ao carregar lojas",
-        description: error instanceof Error ? error.message : "Erro desconhecido",
+        description: msg,
       })
-      // Do NOT reset to [] — keep previous state to avoid false empty state
     } finally {
       setIsLoading(false)
     }
@@ -288,8 +293,25 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
         </Button>
       </div>
 
+      {/* Error State */}
+      {loadError && stores.length === 0 && (
+        <Card className="border-destructive">
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
+            <h3 className="text-lg font-medium">Erro ao carregar lojas</h3>
+            <p className="text-muted-foreground text-center mt-1">
+              {loadError}
+            </p>
+            <Button variant="outline" onClick={loadStores} className="mt-4">
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Tentar novamente
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Stores List */}
-      {stores.length === 0 ? (
+      {!loadError && stores.length === 0 ? (
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Store className="h-12 w-12 text-muted-foreground mb-4" />
@@ -309,7 +331,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
             </div>
           </CardContent>
         </Card>
-      ) : (
+      ) : stores.length > 0 ? (
         <div className="grid gap-4 md:grid-cols-2">
           {stores.map((store) => (
             <Card key={store.id} className="rounded-xl border bg-card">
@@ -408,7 +430,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
             </Card>
           ))}
         </div>
-      )}
+      ) : null}
 
       {/* Add/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

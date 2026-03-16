@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
     const orgId = await resolveOrgId(user.id)
 
     // Store-level access: restrict non-admin/non-owner to their granted stores
-    const accessibleIds = await getAccessibleStoreIds(user.id, orgId)
+    const { storeIds: accessibleIds, isSystemAdmin } = await getAccessibleStoreIds(user.id, orgId, { detailed: true })
 
     const searchParams = request.nextUrl.searchParams
     const clientId = searchParams.get("client_id")
@@ -41,8 +41,15 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from("client_stores")
       .select(`*, client:clients(id, name, company, email)`)
-      .eq("org_id", orgId)
       .order("store_name")
+
+    // For system admins viewing a specific client, skip org_id filter
+    // (the client may belong to a different org than the admin's primary org).
+    // RLS is_admin() already allows full access; .eq("client_id") scopes correctly.
+    // For non-admins or general listing (no client_id), keep org_id filter.
+    if (!(isSystemAdmin && clientId)) {
+      query = query.eq("org_id", orgId)
+    }
 
     // Apply store-level filtering for non-admin/non-owner members
     if (accessibleIds !== null) {

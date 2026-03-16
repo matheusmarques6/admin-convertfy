@@ -175,7 +175,7 @@ async function runCredentialValidation(
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
-    await requireAuth(supabase)
+    const authUser = await requireAuth(supabase)
 
     const body = await request.json()
     const { client_id, ga4_credentials, ...fields } = body
@@ -204,9 +204,8 @@ export async function POST(request: NextRequest) {
     } else {
       // Fallback: derive org_id from the authenticated user's primary org
       // This handles cases where client.org_id is NULL (legacy data or race condition)
-      const user = await requireAuth(supabase)
       const { resolveOrgId } = await import("@/lib/api/resolve-org")
-      const fallbackOrgId = await resolveOrgId(user.id)
+      const fallbackOrgId = await resolveOrgId(authUser.id)
       storeData.org_id = fallbackOrgId
       console.warn(`[client-stores] Client ${client_id} has NULL org_id — using fallback org_id=${fallbackOrgId} from authenticated user`)
     }

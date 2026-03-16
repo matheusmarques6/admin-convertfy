@@ -158,6 +158,13 @@ export async function requireStoreAccess(
   return result
 }
 
+export interface AccessibleStoresResult {
+  /** Store IDs the user can access, or null for admin/owner (all stores). */
+  storeIds: string[] | null
+  /** Whether the user is a system admin (profiles.role = 'admin'). */
+  isSystemAdmin: boolean
+}
+
 /**
  * Returns the list of store IDs the user can access within an org.
  * Returns null for admin/owner (meaning "all stores" — caller should skip filtering).
@@ -165,7 +172,17 @@ export async function requireStoreAccess(
 export async function getAccessibleStoreIds(
   userId: string,
   orgId: string
-): Promise<string[] | null> {
+): Promise<string[] | null>
+export async function getAccessibleStoreIds(
+  userId: string,
+  orgId: string,
+  options: { detailed: true }
+): Promise<AccessibleStoresResult>
+export async function getAccessibleStoreIds(
+  userId: string,
+  orgId: string,
+  options?: { detailed: true }
+): Promise<string[] | null | AccessibleStoresResult> {
   const adminClient = createAdminClient()
 
   // 1. Check if system admin
@@ -176,6 +193,7 @@ export async function getAccessibleStoreIds(
     .single()
 
   if (profile?.role === "admin") {
+    if (options?.detailed) return { storeIds: null, isSystemAdmin: true }
     return null
   }
 
@@ -190,10 +208,12 @@ export async function getAccessibleStoreIds(
 
   if (!orgMember) {
     // Not a member of this org — return empty array (no stores accessible)
+    if (options?.detailed) return { storeIds: [], isSystemAdmin: false }
     return []
   }
 
   if (orgMember.role === "owner") {
+    if (options?.detailed) return { storeIds: null, isSystemAdmin: false }
     return null
   }
 
@@ -205,5 +225,7 @@ export async function getAccessibleStoreIds(
     .eq("can_view", true)
     .eq("store.is_active", true)
 
-  return (accessRows || []).map((row) => row.store_id)
+  const ids = (accessRows || []).map((row) => row.store_id)
+  if (options?.detailed) return { storeIds: ids, isSystemAdmin: false }
+  return ids
 }
