@@ -610,6 +610,51 @@ describe("savePerfDataToCache", () => {
     expect(from).toHaveBeenCalledWith("client_stores")
     expect(eq).toHaveBeenCalledWith("id", "store-1")
   })
+
+  it("C1: should early-return when orgId is empty string (no upsert called)", async () => {
+    const { client, from } = createMockSupabase()
+
+    await savePerfDataToCache(client, "store-1", "", "30d", PERF_DATA, "2026-01-01", "2026-01-31")
+
+    // Empty orgId triggers the guard before any DB call
+    expect(from).not.toHaveBeenCalled()
+  })
+})
+
+describe("upsertSyncResults - org_id null still saves metrics", () => {
+  it("C2: should upsert flow and campaign metrics but skip revenue summary when org_id is null", async () => {
+    const { client, from, upsert } = createMockSupabase()
+    const storeNoOrg = { id: "store-1", org_id: null }
+
+    await upsertSyncResults(client, storeNoOrg, SYNC_DATA, "30d")
+
+    // Flow metrics MUST be saved
+    expect(from).toHaveBeenCalledWith("klaviyo_flow_metrics")
+    // Campaign metrics MUST be saved
+    expect(from).toHaveBeenCalledWith("klaviyo_campaign_metrics")
+
+    // Revenue summary MUST NOT be saved
+    const summaryCall = upsert.mock.calls.find(
+      (call: unknown[]) => {
+        const arg = call[0] as Record<string, unknown>
+        return !Array.isArray(arg) && "sync_status" in arg
+      },
+    )
+    expect(summaryCall).toBeUndefined()
+  })
+
+  it("C3: should NOT call syncCampaignsToCalendarFromCron when org_id is null", async () => {
+    const { client, from } = createMockSupabase()
+    const storeNoOrg = { id: "store-1", org_id: null }
+
+    await upsertSyncResults(client, storeNoOrg, SYNC_DATA, "30d")
+
+    // The "campaigns" table should NOT be accessed (calendar sync is after the guard)
+    const campaignsCall = from.mock.calls.find(
+      (c: string[]) => c[0] === "campaigns"
+    )
+    expect(campaignsCall).toBeUndefined()
+  })
 })
 
 describe("upsertSyncResults - calendar sync", () => {
