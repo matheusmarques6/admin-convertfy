@@ -4,7 +4,7 @@ import type { KlaviyoData, ShopifyData } from "../dashboard/types"
 
 interface AudienceMetricsProps {
   klaviyo?: KlaviyoData
-  shopify?: ShopifyData
+  shopify?: ShopifyData | null
 }
 
 function StatBlock({

@@ -4,7 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { ShopifyData } from "./types"
 
 interface ConversionsSectionProps {
-  shopify?: ShopifyData
+  shopify?: ShopifyData | null
 }
 
 /** Reusable ranked list for UTM data (top 5) */

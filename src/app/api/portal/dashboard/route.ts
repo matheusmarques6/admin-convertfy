@@ -652,32 +652,54 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // ─── Helper: Fetch Shopify data for a store ─────────────────────────────────
+    // ─── Helper: Fetch Shopify data for a store (cache-only, async background sync) ─
+    // Story 54.5: Never block the portal response waiting for Shopify.
+    // If cache hit → return data. If cache miss → fire background sync and return null.
 
-    const fetchShopifyData = async (store: typeof stores[0]): Promise<Record<string, unknown> | null> => {
-      if (!(store.shopify_access_token && store.shopify_store_domain)) return null
+    /** Result of reading Shopify cache: data + whether a background sync was triggered */
+    interface ShopifyCacheReadResult {
+      data: Record<string, unknown> | null
+      /** true when cache was empty/expired and a background sync was kicked off */
+      isSyncing: boolean
+    }
+
+    const fetchShopifyData = async (store: typeof stores[0]): Promise<ShopifyCacheReadResult> => {
+      if (!(store.shopify_access_token && store.shopify_store_domain)) {
+        return { data: null, isSyncing: false }
+      }
 
       const cached = await getCachedShopifyData(store.id)
-      if (cached) return cached
+      if (cached) return { data: cached, isSyncing: false }
 
-      // Use cooldown to prevent duplicate Shopify fetches
+      // Cache miss — fire background sync (fire-and-forget, does NOT block response)
       const shopifyFetchKey = `shopify_${period}`
       const canFetch = await tryAcquireLiveFetch(adminClient, store.id, shopifyFetchKey, "portal-shopify")
-      if (!canFetch) return null
 
-      try {
-        const result = await syncShopifyForStore(store.id, period)
-        if (result.success && result.data) {
-          saveShopifyToCache(store.id, result.data as unknown as Record<string, unknown>)
-          await releaseLiveFetch(adminClient, store.id, shopifyFetchKey, "completed")
-          return result.data as unknown as Record<string, unknown>
-        }
-        await releaseLiveFetch(adminClient, store.id, shopifyFetchKey, "failed")
-      } catch (error) {
-        await releaseLiveFetch(adminClient, store.id, shopifyFetchKey, "failed")
-        log.error(`[Portal] Shopify error for store ${store.id}:`, error)
+      if (canFetch) {
+        // Fire-and-forget: sync runs in background, result saved to cache.
+        // Next portal request will pick up the cached data.
+        // NOTE (AC 54.5.3): Shopify is NOT included in the Klaviyo cron (sync-reports).
+        // Decision: Shopify data volume per-store is small and period-dependent,
+        // making on-demand background sync more appropriate than cron pre-population.
+        // This may be revisited in a future story if Shopify data freshness becomes critical.
+        syncShopifyForStore(store.id, period)
+          .then(async (result) => {
+            if (result.success && result.data) {
+              await saveShopifyToCache(store.id, result.data as unknown as Record<string, unknown>)
+              await releaseLiveFetch(adminClient, store.id, shopifyFetchKey, "completed")
+              log.info(`[Portal] Shopify background sync completed for store ${store.id}`)
+            } else {
+              await releaseLiveFetch(adminClient, store.id, shopifyFetchKey, "failed")
+              log.warn(`[Portal] Shopify background sync returned no data for store ${store.id}`)
+            }
+          })
+          .catch(async (error) => {
+            await releaseLiveFetch(adminClient, store.id, shopifyFetchKey, "failed").catch(() => {})
+            log.error(`[Portal] Shopify background sync failed for store ${store.id}:`, error)
+          })
       }
-      return null
+
+      return { data: null, isSyncing: true }
     }
 
     // ─── Helper: Map Shopify data to dashboard format ───────────────────────────
@@ -743,10 +765,14 @@ export async function GET(request: NextRequest) {
           platform: selectedStore.platform,
         }
 
-        // Shopify: keep HTTP call with dashboard_cache
-        const shopifyData = await fetchShopifyData(selectedStore)
-        if (shopifyData) {
-          response.shopify = mapShopifyData(shopifyData)
+        // Shopify: cache-only read, background sync if miss (Story 54.5)
+        const shopifyResult = await fetchShopifyData(selectedStore)
+        if (shopifyResult.data) {
+          response.shopify = mapShopifyData(shopifyResult.data)
+          response.shopifyStatus = "ready"
+        } else if (shopifyResult.isSyncing) {
+          response.shopify = null
+          response.shopifyStatus = "syncing"
         }
 
         // Klaviyo: pure cache read — no live API calls
@@ -785,10 +811,10 @@ export async function GET(request: NextRequest) {
           fetchKlaviyoFromCache(store.id, period, adminClient, (store as Record<string, unknown>).org_id as string | undefined).then(result => ({ store, result }))
         )
 
-        // Fetch Shopify data for all stores in parallel
+        // Fetch Shopify cache for all stores in parallel (background sync if miss — Story 54.5)
         const shopifyStores = stores.filter(s => s.shopify_access_token && s.shopify_store_domain)
         const shopifyPromises = shopifyStores.map(store =>
-          fetchShopifyData(store).then(data => ({ storeId: store.id, data }))
+          fetchShopifyData(store).then(result => ({ storeId: store.id, ...result }))
         )
 
         const [klaviyoCacheResults, shopifyResults] = await Promise.all([
@@ -1072,6 +1098,15 @@ export async function GET(request: NextRequest) {
               byCampaign: Array.from(utmCampaignMap.values()).sort((a, b) => b.revenue - a.revenue).slice(0, 10),
             },
           }
+        }
+
+        // Story 54.5: Set shopifyStatus for "all stores" mode
+        const anyShopifySyncing = shopifyResults.some(r => r.isSyncing)
+        if (shopifyDataList.length > 0) {
+          response.shopifyStatus = anyShopifySyncing ? "partial" : "ready"
+        } else if (anyShopifySyncing) {
+          response.shopify = null
+          response.shopifyStatus = "syncing"
         }
 
         response.selectedStore = {

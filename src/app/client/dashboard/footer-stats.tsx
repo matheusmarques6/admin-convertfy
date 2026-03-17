@@ -4,7 +4,7 @@ import type { KlaviyoData, ShopifyData } from "./types"
 
 interface FooterStatsProps {
   klaviyo?: KlaviyoData
-  shopify?: ShopifyData
+  shopify?: ShopifyData | null
   lastUpdated: string
 }
 

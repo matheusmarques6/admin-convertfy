@@ -152,7 +152,9 @@ export interface DashboardData {
     platform: string
   }
   klaviyo?: KlaviyoData
-  shopify?: ShopifyData
+  shopify?: ShopifyData | null
+  /** Story 54.5: Shopify data loading status — "syncing" means background fetch in progress */
+  shopifyStatus?: "ready" | "syncing" | "partial"
   invoices: {
     pending: number
     overdue: number

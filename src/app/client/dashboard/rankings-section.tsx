@@ -3,7 +3,7 @@ import { formatCurrency, formatCurrencyCompact } from "@/lib/utils/format"
 import type { ShopifyData } from "./types"
 
 interface RankingsSectionProps {
-  shopify?: ShopifyData
+  shopify?: ShopifyData | null
 }
 
 export function RankingsSection({ shopify }: RankingsSectionProps) {

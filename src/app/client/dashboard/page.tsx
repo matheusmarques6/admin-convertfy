@@ -96,10 +96,17 @@ export default function PortalDashboardPage() {
       }
       const result = await response.json()
       setData(prev => {
+        const merged = { ...result }
+        // Preserve previous Klaviyo data if new response has none (cache still loading)
         if (!result.klaviyo && prev?.klaviyo) {
-          return { ...result, klaviyo: prev.klaviyo }
+          merged.klaviyo = prev.klaviyo
         }
-        return result
+        // Story 54.5: Preserve previous Shopify data while background sync is in progress
+        if (result.shopifyStatus === "syncing" && prev?.shopify) {
+          merged.shopify = prev.shopify
+          merged.shopifyStatus = "syncing" // keep syncing indicator visible
+        }
+        return merged
       })
       setError(null)
     } catch (err) {
@@ -132,6 +139,14 @@ export default function PortalDashboardPage() {
       hasTriggeredAutoRefresh.current = false
     }
   }, [data, refreshing, realtimeRefreshing, triggerRefresh])
+
+  // Story 54.5: Auto-retry when Shopify background sync is in progress
+  useEffect(() => {
+    if (data?.shopifyStatus === "syncing" && !loading && !refreshing) {
+      const timer = setTimeout(() => fetchDashboard(), 5000)
+      return () => clearTimeout(timer)
+    }
+  }, [data?.shopifyStatus, loading, refreshing, fetchDashboard])
 
   useEffect(() => {
     fetchDashboard()
