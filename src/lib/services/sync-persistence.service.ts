@@ -67,10 +67,16 @@ export async function upsertSyncResults(
     }
   }
 
+  // Guard: org_id is NOT NULL in store_revenue_summary — skip if missing
+  if (!store.org_id) {
+    log.warn(`[SyncPersistence] Skipping revenue summary for store ${store.id}: missing org_id`)
+    return
+  }
+
   // Build upsert payload — only include revenue fields when data was actually fetched
   const summaryPayload: Record<string, unknown> = {
     store_id: store.id,
-    org_id: store.org_id || null,
+    org_id: store.org_id,
     period_label: period,
     period_start: data.startDateStr,
     period_end: data.endDateStr,
@@ -143,13 +149,19 @@ export async function upsertSyncResults(
 export async function savePerfDataToCache(
   supabase: SupabaseClient,
   storeId: string,
-  orgId: string | null,
+  orgId: string,
   period: string,
   data: KlaviyoPerformanceData,
   startDateStr: string,
   endDateStr: string,
 ): Promise<void> {
   if (!(CACHED_PERIODS as readonly string[]).includes(period)) return
+
+  // Guard: org_id is NOT NULL in store_revenue_summary — skip if missing
+  if (!orgId) {
+    log.warn(`[SyncPersistence] Skipping perf cache save: missing orgId for store ${storeId}`)
+    return
+  }
 
   const periodStartISO = new Date(`${startDateStr}T00:00:00Z`).toISOString()
   const periodEndISO = new Date(`${endDateStr}T23:59:59.999Z`).toISOString()

@@ -252,24 +252,36 @@ describe("upsertSyncResults", () => {
     expect(row.engagement_rate).toBeUndefined()
   })
 
-  it("should handle null org_id gracefully", async () => {
+  it("should skip revenue summary upsert when org_id is null", async () => {
     const { client, upsert } = createMockSupabase()
     const storeNoOrg = { id: "store-1", org_id: null }
 
     await upsertSyncResults(client, storeNoOrg, SYNC_DATA, "30d")
 
-    const row = findSummaryUpsert(upsert)
-    expect(row.org_id).toBeNull()
+    // Summary upsert should NOT have been called (guard returns early)
+    const summaryCall = upsert.mock.calls.find(
+      (call: unknown[]) => {
+        const arg = call[0] as Record<string, unknown>
+        return !Array.isArray(arg) && arg.store_id === "store-1" && "sync_status" in arg
+      },
+    )
+    expect(summaryCall).toBeUndefined()
   })
 
-  it("should coerce undefined org_id to null (store.org_id || null)", async () => {
+  it("should skip revenue summary upsert when org_id is undefined", async () => {
     const { client, upsert } = createMockSupabase()
     const storeUndefinedOrg = { id: "store-1" } // org_id is undefined
 
     await upsertSyncResults(client, storeUndefinedOrg, SYNC_DATA, "30d")
 
-    const row = findSummaryUpsert(upsert)
-    expect(row.org_id).toBeNull()
+    // Summary upsert should NOT have been called (guard returns early)
+    const summaryCall = upsert.mock.calls.find(
+      (call: unknown[]) => {
+        const arg = call[0] as Record<string, unknown>
+        return !Array.isArray(arg) && arg.store_id === "store-1" && "sync_status" in arg
+      },
+    )
+    expect(summaryCall).toBeUndefined()
   })
 
   it("should set sync_status to 'partial' when only flow data is available", async () => {
