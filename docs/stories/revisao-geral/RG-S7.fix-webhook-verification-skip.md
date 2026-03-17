@@ -3,7 +3,7 @@ Prioridade: High
 Sprint: 1 - Seguranca
 Assignee: "@dev"
 Revisao: "@qa"
-Status: Reviewed
+Status: Done
 Epic: "Revisao Geral — Auditoria Completa"
 Fase: "1 - Seguranca & Estabilidade"
 Esforco: LOW
@@ -100,3 +100,27 @@ Se resultado > 0, stores existentes terao webhooks rejeitados. Opcoes:
 ### Dev (Dex)
 - **Pronto.** ~20 linhas totais nos 3 arquivos.
 - **Side effect principal:** Stores sem webhook_secret terao tracking rejeitado. Precisa verificacao em prod.
+
+## Implementacao (2026-03-17)
+
+**Commit:** `7f438c9` — pushed to main
+**Arquivos modificados:**
+- `src/app/api/integrations/shopify/callback/route.ts` — rejeita quando `SHOPIFY_API_SECRET` ausente (redirect com erro) e quando `hmac` ausente (redirect com erro)
+- `src/app/api/tracking/webhooks/shopify/route.ts` — rejeita quando `webhook_secret` null (401 + log.warn) e quando `hmac` ausente (401)
+- `src/app/api/integrations/whatsapp/webhook/route.ts` — retorna `false` quando `WHATSAPP_APP_SECRET` ausente em producao; bypass de dev via `NODE_ENV === 'development'`
+- `.env.example` — `SHOPIFY_API_SECRET` e `WHATSAPP_APP_SECRET` documentados como OBRIGATORIOS
+
+**O que foi feito:**
+- 3 webhooks nao skipam mais verificacao quando secret ausente
+- Shopify OAuth: redirect com erro de misconfiguracao em vez de skip silencioso
+- Tracking: 401 com log warning contextualizado (inclui store info)
+- WhatsApp: retorna `false` (rejeita) em producao, permite em dev com log
+- `.env.example` atualizado com documentacao de ambas variaveis
+
+**Pre-deploy obrigatorio:**
+```sql
+SELECT COUNT(*) FROM tracking_stores WHERE webhook_secret IS NULL;
+```
+Se > 0, stores sem secret terao webhooks rejeitados (401).
+
+**QA Gate:** PASS — verificacao de webhook nao e mais skipavel por misconfiguracao.

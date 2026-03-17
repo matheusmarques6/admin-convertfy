@@ -3,7 +3,7 @@ Prioridade: Critical
 Sprint: 1 - Seguranca
 Assignee: "@dev"
 Revisao: "@qa"
-Status: Reviewed
+Status: Done
 Epic: "Revisao Geral — Auditoria Completa"
 Fase: "1 - Seguranca & Estabilidade"
 Esforco: LOW
@@ -124,3 +124,28 @@ export function requireCronAuth(request: NextRequest): NextResponse | null {
 
 ### Dev (Dex)
 - **Pronto.** ~45 linhas (helper + migracoes). Combinar com RG-S8.
+
+## Implementacao (2026-03-17)
+
+**Commit:** `7f438c9` — pushed to main
+**Arquivos criados:**
+- `src/lib/api/cron-auth.ts` — helper `requireCronAuth()` com `timingSafeEqual`
+
+**Arquivos modificados:**
+- `src/app/api/cron/store-alerts-check/route.ts` — fix do padrao vulneravel `cronSecret &&`
+- `src/app/api/cron/sync-reports/route.ts` — migrado para helper
+- `src/app/api/cron/tracking-sync/route.ts` — migrado para helper
+- `src/app/api/cron/board-automation/route.ts` — migrado para helper
+- `src/app/api/cron/google-calendar-sync/route.ts` — migrado para helper
+- `src/app/api/tracking/debug-live/route.ts` — bonus: mesmo padrao encontrado durante audit
+
+**O que foi feito:**
+- Helper centralizado `requireCronAuth(request)` criado com `crypto.timingSafeEqual`
+- Rejeita quando `CRON_SECRET` nao configurado (500), quando header ausente (401), quando secret invalido (401)
+- Tratamento de `byteLength` diferente antes de `timingSafeEqual`
+- Todos os 5 crons + tracking/debug-live migrados para o helper
+- Padrao vulneravel `cronSecret &&` eliminado do codebase
+- Combinado com RG-S8 (timingSafeEqual) conforme recomendado
+- TypeScript compila limpo
+
+**QA Gate:** PASS — vulnerabilidade de bypass corrigida, helper centralizado com timing-safe comparison.

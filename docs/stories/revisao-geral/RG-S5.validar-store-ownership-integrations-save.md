@@ -3,7 +3,7 @@ Prioridade: High
 Sprint: 1 - Seguranca
 Assignee: "@dev"
 Revisao: "@qa"
-Status: Reviewed
+Status: Done (Fase 1 — Fase 2 pendente: OAuth callbacks + crons)
 Epic: "Revisao Geral — Auditoria Completa"
 Fase: "1 - Seguranca & Estabilidade"
 Esforco: MEDIUM
@@ -108,3 +108,28 @@ A story original dizia: "`updateStoreCredentials` JA aceita `orgId` como paramet
 ### Dev (Dex)
 - **Pronto para Fase 1.** ~40 linhas para proteger integrations/save + alterar credentials.service.
 - **Fase 2 precisa planejamento** — Shopify callback e o caso mais complexo.
+
+## Implementacao — Fase 1 (2026-03-17)
+
+**Commit:** `7f438c9` — pushed to main
+**Arquivos modificados:**
+- `src/lib/services/credentials.service.ts` — `updateStoreCredentials` aceita `orgId` + `skipOrgCheck`; `getMultipleStoreCredentials` aceita `orgId`
+- `src/app/api/integrations/save/route.ts` — passa `{ orgId }` no update (fecha vetor de ataque principal)
+- `src/app/api/portal/integrations/route.ts` — passa `orgId: store.org_id` nos 2 calls
+- `src/app/api/portal/stores/route.ts` — passa `orgId: store.org_id` nos 2 calls + adicionou `org_id` ao SELECT de ownership
+- `src/app/api/portal/onboarding/wizard/route.ts` — passa `orgId` nos steps `create_shopify_app` e `klaviyo_keys`
+
+**O que foi feito:**
+- `updateStoreCredentials`: quando `orgId` presente e `skipOrgCheck` falso, adiciona `.eq("org_id", orgId)` na query + `count: "exact"` para detectar zero-row (403)
+- `getMultipleStoreCredentials`: filtra por `org_id` quando `orgId` fornecido
+- Endpoint vulneravel `integrations/save` agora valida ownership antes de gravar credenciais
+- 4 callers do portal migrados (todos que ja tinham orgId disponivel)
+- TypeScript compila limpo
+
+**Fase 2 pendente (story futura):**
+- `integrations/shopify/callback/route.ts` — NAO tem orgId no OAuth state
+- `integrations/meta/callback/route.ts` — NAO tem orgId no state
+- `integrations/google/callback/route.ts` — NAO tem orgId no state
+- Cron jobs — usar `skipOrgCheck: true`
+
+**QA Gate:** PASS WITH CONCERNS — vetor principal fechado. OAuth callbacks (Fase 2) mitigados por HMAC + state cookie + code exchange mas precisam de follow-up.

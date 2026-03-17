@@ -3,7 +3,7 @@ Prioridade: High
 Sprint: 3 - Refatoracao
 Assignee: "@dev"
 Revisao: "@architect, @qa"
-Status: Reviewed
+Status: Done (AC5/AC6 parcial pendente — verificacao pos-deploy)
 Epic: "Revisao Geral — Auditoria Completa"
 Fase: "3 - Refatoracao & Tech Debt"
 Esforco: MEDIUM-HIGH
@@ -167,3 +167,48 @@ export async function checkRateLimit(
 - **Precisa decisao de infra** antes de iniciar: Upstash vs Vercel KV.
 - **~100 linhas new code + 14 caller updates.** Maior story do batch.
 - **Fallback para dev local** e essencial — nao exigir Redis localmente.
+
+## Implementacao (2026-03-17)
+
+**Commit:** `7f438c9` — pushed to main
+**Arquivos criados/modificados:**
+- `src/lib/rate-limit.ts` — reescrito: in-memory Map → Upstash Redis com `@upstash/ratelimit`
+- `package.json` — adicionado `@upstash/ratelimit` e `@upstash/redis`
+- `.env.example` — adicionado `UPSTASH_REDIS_REST_URL` e `UPSTASH_REDIS_REST_TOKEN`
+
+**12 callers migrados para async (`await checkRateLimit(...)`):**
+- `src/app/api/portal/auth/route.ts` — `failClosed: true`
+- `src/app/api/auth/change-password/route.ts` — `failClosed: true`
+- `src/app/api/portal/settings/password/route.ts` — `failClosed: true`
+- `src/app/api/settings/password/route.ts` — `failClosed: true`
+- `src/app/api/tracking/lookup/route.ts`
+- `src/app/api/tracking/config/route.ts`
+- `src/app/api/cliente/onboarding-form/route.ts`
+- `src/app/api/cliente/upload/route.ts`
+- `src/app/api/integrations/whatsapp/webhook/route.ts`
+- `src/app/api/integrations/asaas/webhook/route.ts`
+- `src/app/api/onboarding/webhook/route.ts`
+- `src/app/api/admin/encrypt-credentials/route.ts`
+
+**O que foi feito:**
+- Implementacao completa com Upstash Redis (`fixedWindow` algorithm)
+- Fail-open para endpoints nao-criticos: se Redis indisponivel, permite request com log warning
+- **`failClosed: true`** para 4 endpoints de auth: se Redis indisponivel em producao, retorna 503 (protege contra brute-force)
+- Em dev (sem Redis configurado): fail-open sempre (nao exige Redis local)
+- Cache de instancias `Ratelimit` por config combo (sem memory leak)
+- Structured logging em 429: keyPrefix, IP, retry duration
+- `RATE_LIMITS` config preservado (auth 10/min, webhook 100/min, admin 30/min, etc.)
+- Dead code removido: `trackingByCode` e `trackingByEmail` presets (nao usados por nenhum caller)
+- Investigacao: `rate-limit.service.ts` e sistema separado (DB-based, client-side) — NAO duplicata
+- TypeScript compila limpo
+
+**QA/Data-Engineer Review (deep):**
+- PASS WITH CONCERNS
+- Concern principal (CRITICAL) resolvido: `failClosed` para auth endpoints
+- Concern residual (LOW): AC5 teste funcional e AC6 escalacao >5min pendentes pos-deploy
+- Concern (MEDIUM): IPs em Upstash — verificar compliance LGPD/DPA
+- Dois sistemas de rate-limit coexistem (Upstash + Supabase RPC) — complementares, nao duplicados
+
+**Pre-deploy obrigatorio:**
+- Configurar `UPSTASH_REDIS_REST_URL` e `UPSTASH_REDIS_REST_TOKEN` no Vercel
+- Sem essas vars, rate limiting funciona em fail-open (exceto auth que retorna 503)

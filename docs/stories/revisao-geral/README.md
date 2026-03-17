@@ -12,13 +12,13 @@ Auditoria completa do codebase por 7 agentes especializados.
 
 | Story | Titulo | Severidade | Esforco | Status | Batch |
 |-------|--------|-----------|---------|--------|-------|
-| RG-S1 | Fix mass assignment em portal-users PATCH | CRITICAL | LOW | Reviewed | 1 |
-| RG-S2 | Remover exec_sql RPC e debug endpoint | CRITICAL | LOW | Reviewed | 1 |
-| RG-S6 | Adicionar requireRole no DELETE clients/manage | HIGH | LOW | Reviewed | 1 |
-| RG-S3 | Fix cron auth bypass + requireCronAuth helper | CRITICAL | LOW | Reviewed | 2 |
-| RG-S8 | timingSafeEqual em todos HMAC (combinar com S3) | ~~MEDIUM~~ **LOW** | LOW | Reviewed | 2 |
-| RG-S7 | Nao skipar webhook verification quando secret ausente | HIGH | LOW | Reviewed | 3 |
-| RG-S5 | Validar store_id ownership em integrations/save | HIGH | ~~LOW~~ **MEDIUM** | Reviewed | 4 |
+| RG-S1 | Fix mass assignment em portal-users PATCH | CRITICAL | LOW | **Done** | 1 |
+| RG-S2 | Remover exec_sql RPC e debug endpoint | CRITICAL | LOW | **Done** (ops pendente) | 1 |
+| RG-S6 | Adicionar requireRole no DELETE clients/manage | HIGH | LOW | **Done** | 1 |
+| RG-S3 | Fix cron auth bypass + requireCronAuth helper | CRITICAL | LOW | **Done** | 2 |
+| RG-S8 | timingSafeEqual em todos HMAC (combinar com S3) | ~~MEDIUM~~ **LOW** | LOW | **Done** | 2 |
+| RG-S7 | Nao skipar webhook verification quando secret ausente | HIGH | LOW | **Done** | 3 |
+| RG-S5 | Validar store_id ownership em integrations/save | HIGH | ~~LOW~~ **MEDIUM** | **Done** (Fase 1) | 4 |
 | RG-D2 | Adicionar SET search_path em SECURITY DEFINER functions | CRITICAL | LOW | Ready for Dev | — |
 | RG-D1 | Fix USING(true) em 7 tabelas | CRITICAL | MEDIUM | Ready for Dev | — |
 | RG-D3 | Fix is_org_owner() deprecado em policies e helpers | HIGH | MEDIUM-HIGH | Ready for Dev | — |
@@ -45,7 +45,7 @@ Auditoria completa do codebase por 7 agentes especializados.
 | RG-A3 | Eliminar resolveOrgId duplicados + padronizar responses | MEDIUM | LOW | Ready for Dev |
 | RG-D4a | Adicionar indexes nas FKs faltando | MEDIUM | LOW | Ready for Dev |
 | RG-D4b | Adicionar paginacao em list endpoints | MEDIUM | MEDIUM | Ready for Dev |
-| RG-S9 | Migrar rate limiting para Redis/Upstash | HIGH | MEDIUM-HIGH | Reviewed (Batch 5) |
+| RG-S9 | Migrar rate limiting para Redis/Upstash | HIGH | MEDIUM-HIGH | **Done** (AC5/AC6 parcial) |
 
 **Nota:** RG-S8 movido para Sprint 1 Batch 2 (combinar com RG-S3). RG-S9 precisa decisao de infra antes de iniciar.
 
@@ -120,6 +120,39 @@ Revisao por 4 agentes: QA, DBM, Arquiteto, Dev. Todas as 8 vulnerabilidades CONF
 3. **Batch 3:** S7 — webhook verification (verificar dados prod antes)
 4. **Batch 4:** S5 — store ownership (Fase 1: integrations/save, Fase 2: demais callers)
 5. **Batch 5:** S9 — Redis migration (precisa decisao infra)
+
+## Execucao RG-S (2026-03-17)
+
+**Commit:** `7f438c9` — pushed to main
+**Escopo:** 8 stories de seguranca (S1, S2, S3, S5, S6, S7, S8, S9)
+**Resultado:** 45 arquivos, +953/-631 linhas
+
+### Resumo de execucao
+
+| Story | Status | Resumo |
+|-------|--------|--------|
+| S1 | DONE | Zod `.strict()` no PATCH portal-users — fecha mass assignment OWASP A01 |
+| S2 | DONE (ops) | Debug + setup endpoints deletados. Pendente: DROP `exec_sql` no banco |
+| S3 | DONE | Helper `requireCronAuth` com `timingSafeEqual`, 6 endpoints migrados |
+| S5 | Fase 1 DONE | `orgId` em `updateStoreCredentials` + 5 callers protegidos. Fase 2: OAuth callbacks |
+| S6 | DONE | `requireRole(["admin"])` no DELETE clients/manage |
+| S7 | DONE | 3 webhooks nao skipam verificacao. Verificar `tracking_stores` sem secret |
+| S8 | DONE | `timingSafeEqual` em Shopify HMAC + Asaas. Zero `!==` em secrets |
+| S9 | DONE | Rate limiting → Upstash Redis, 12 callers async, `failClosed` para auth |
+
+### Pre-deploy checklist
+
+- [ ] Configurar `UPSTASH_REDIS_REST_URL` e `UPSTASH_REDIS_REST_TOKEN` no Vercel
+- [ ] Verificar `exec_sql` no banco: `SELECT proname FROM pg_proc WHERE proname = 'exec_sql'`
+- [ ] Verificar tracking stores sem secret: `SELECT COUNT(*) FROM tracking_stores WHERE webhook_secret IS NULL`
+- [ ] Confirmar `SHOPIFY_API_SECRET` e `WHATSAPP_APP_SECRET` configurados no Vercel
+
+### Follow-ups identificados
+
+1. **RG-S5 Fase 2** — OAuth callbacks (Shopify/Meta/Google) sem `orgId` no state
+2. **Portal-users DELETE** — usa `adminClient` sem org scoping (achado na auditoria S6)
+3. **RG-S9 AC5/AC6** — teste funcional + escalacao de logging >5min Redis down
+4. **LGPD/DPA** — verificar compliance Upstash para IPs em rate limiting
 
 ## Notas de Seguranca
 

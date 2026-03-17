@@ -3,7 +3,7 @@ Prioridade: Critical
 Sprint: 1 - Seguranca
 Assignee: "@dev"
 Revisao: "@qa"
-Status: Ready for Review
+Status: Done
 Epic: "Revisao Geral — Auditoria Completa"
 Fase: "1 - Seguranca & Estabilidade"
 Esforco: LOW
@@ -94,3 +94,18 @@ A01 - Broken Access Control (Mass Assignment)
 ### Dev (Dex)
 - **Pronto para implementar.** ~20 linhas. Zero dependencias externas.
 - **Implementacao:** Schema Zod + `parseAndValidate` — drop-in, sem side effects.
+
+## Implementacao (2026-03-17)
+
+**Commit:** `7f438c9` — pushed to main
+**Arquivos modificados:**
+- `src/app/api/portal-users/route.ts` — PATCH handler reescrito com Zod schema `.strict()`
+
+**O que foi feito:**
+- Schema Zod com `.strict()` para campos permitidos: `id` (uuid), `name`, `phone`, `is_active`, `permissions`
+- `permissions` validado como `z.record(z.string(), z.boolean())` — rejeita nested objects e valores nao-boolean
+- `parseAndValidate(request, patchSchema)` substitui `request.json()` + spread direto
+- Campos como `auth_user_id`, `client_id`, `role`, `email`, `is_primary_contact` sao rejeitados com 400
+- TypeScript compila limpo
+
+**QA Gate:** PASS — vulnerabilidade OWASP A01 fechada. Todos os ACs verificados.

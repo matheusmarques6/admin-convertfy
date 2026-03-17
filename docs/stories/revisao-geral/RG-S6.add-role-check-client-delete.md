@@ -3,7 +3,7 @@ Prioridade: High
 Sprint: 1 - Seguranca
 Assignee: "@dev"
 Revisao: "@qa"
-Status: Ready for Review
+Status: Done
 Epic: "Revisao Geral — Auditoria Completa"
 Fase: "1 - Seguranca & Estabilidade"
 Esforco: LOW
@@ -96,3 +96,18 @@ A delecao de um client cascateia para **30+ tabelas**, incluindo:
 ### Dev (Dex)
 - **Pronto.** 3 linhas (import + replace). Zero risco de side effects.
 - **Breaking change intencional:** usuarios nao-admin que deletavam clients receberao 403.
+
+## Implementacao (2026-03-17)
+
+**Commit:** `7f438c9` — pushed to main
+**Arquivos modificados:**
+- `src/app/api/clients/manage/route.ts` — DELETE handler: `requireAuth` → `requireRole(["admin"])`
+
+**O que foi feito:**
+- Trocado `await requireAuth(supabase)` por `await requireRole(supabase, ["admin"])` no DELETE handler
+- Import atualizado para incluir `requireRole`
+- Usuarios nao-admin agora recebem 403 ao tentar deletar clientes
+- Auditoria AC2 completa: 11 endpoints com role checks insuficientes documentados (portal-users DELETE e o mais critico — recomendado follow-up story)
+- TypeScript compila limpo
+
+**QA Gate:** PASS — protecao contra delecao nao-autorizada com CASCADE em 30+ tabelas.

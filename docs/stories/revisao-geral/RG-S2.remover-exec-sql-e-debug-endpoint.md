@@ -3,7 +3,7 @@ Prioridade: Critical
 Sprint: 1 - Seguranca
 Assignee: "@dev"
 Revisao: "@qa"
-Status: Ready for Review
+Status: Done (pendencia operacional: DROP exec_sql no banco)
 Epic: "Revisao Geral — Auditoria Completa"
 Fase: "1 - Seguranca & Estabilidade"
 Esforco: LOW
@@ -80,3 +80,26 @@ Batch: 1 (paralelo com S1, S6)
 ### Dev (Dex)
 - **Pronto para implementar.** Deletar 2 arquivos + limpar 1 referencia + 1 migration condicional.
 - **Sem side effects** desde que a referencia em client-stores.tsx seja removida.
+
+## Implementacao (2026-03-17)
+
+**Commit:** `7f438c9` — pushed to main
+**Arquivos deletados:**
+- `src/app/api/debug/stores-diagnostic/route.ts` + diretorio `debug/`
+- `src/app/api/setup/database/route.ts` + diretorio `setup/`
+
+**Arquivos modificados:**
+- `src/components/clients/client-stores.tsx` — removido `checkDatabaseStatus()`, botao "Verificar BD", import `Database` do lucide-react
+
+**O que foi feito:**
+- Debug endpoint removido (expunha dados cross-tenant de TODAS as stores)
+- Setup/database endpoint removido (usava `exec_sql` RPC)
+- Referencia no frontend limpa (funcao + botao + import)
+- Grep confirmou zero referencias restantes no codebase
+- TypeScript compila limpo
+
+**Pendencia operacional (NAO codigo):**
+- Verificar se `exec_sql` existe no banco de producao: `SELECT proname, prosecdef FROM pg_proc WHERE proname = 'exec_sql' AND pronamespace = 'public'::regnamespace`
+- Se existir, dropar: `DROP FUNCTION IF EXISTS public.exec_sql(text);`
+
+**QA Gate:** PASS — endpoints perigosos eliminados.
