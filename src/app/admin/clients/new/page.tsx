@@ -78,6 +78,21 @@ export default function NewClientPage() {
 
       // Get current user
       const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error("Usuário não autenticado")
+
+      // Get org_id from org_members
+      // Mirror current_org_id() SQL: prefer org where user is owner
+      const { data: members } = await supabase
+        .from("org_members")
+        .select("org_id, role")
+        .eq("profile_id", user.id)
+        .eq("is_active", true)
+
+      const member = members?.sort((a, b) =>
+        a.role === "owner" ? -1 : b.role === "owner" ? 1 : 0
+      )[0] ?? null
+
+      if (!member?.org_id) throw new Error("Organização não encontrada")
 
       // Build address object if any address field is provided
       const hasAddress = data.address_street || data.address_city || data.address_postal_code
@@ -163,6 +178,7 @@ export default function NewClientPage() {
           },
           tags: [],
           health_score: 100,
+          org_id: member.org_id,
         })
         .select()
         .single()
