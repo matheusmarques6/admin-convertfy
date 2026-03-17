@@ -432,6 +432,11 @@ export async function GET(request: NextRequest) {
         log.info(`[Cron] Cleaned ${cooldownCleanResult} expired cooldown entries`)
       }
 
+      const { data: metricsCleanResult } = await supabase.rpc("clean_expired_metrics")
+      if (metricsCleanResult && metricsCleanResult > 0) {
+        log.info(`[Cron] Cleaned ${metricsCleanResult} expired flow/campaign metric rows`)
+      }
+
       // Get all stores with Klaviyo credentials (either field)
       const { data: stores, error: storesError } = await supabase
         .from("client_stores")

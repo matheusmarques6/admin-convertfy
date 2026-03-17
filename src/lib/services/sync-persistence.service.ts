@@ -35,12 +35,13 @@ export async function upsertSyncResults(
   // This eliminates the race condition where DELETE+UPSERT could show 0 rows
   // to the portal between the two operations. (Story 54.3)
   const syncTimestamp = new Date().toISOString()
+  const metricsExpiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString() // 48h TTL (Story 54.9)
 
   if (data.flowRows.length > 0) {
     const { error: flowErr } = await supabase
       .from("klaviyo_flow_metrics")
       .upsert(
-        data.flowRows.map(r => ({ ...r, period_label: period, fetched_at: syncTimestamp })),
+        data.flowRows.map(r => ({ ...r, period_label: period, fetched_at: syncTimestamp, expires_at: metricsExpiresAt })),
         { onConflict: "store_id,flow_id,period_start,period_end" },
       )
     if (flowErr) {
@@ -60,7 +61,7 @@ export async function upsertSyncResults(
     const { error: campErr } = await supabase
       .from("klaviyo_campaign_metrics")
       .upsert(
-        data.campRows.map(r => ({ ...r, period_label: period, fetched_at: syncTimestamp })),
+        data.campRows.map(r => ({ ...r, period_label: period, fetched_at: syncTimestamp, expires_at: metricsExpiresAt })),
         { onConflict: "store_id,campaign_id,period_start,period_end" },
       )
     if (campErr) {
@@ -176,6 +177,7 @@ export async function savePerfDataToCache(
   const periodEndISO = new Date(`${endDateStr}T23:59:59.999Z`).toISOString()
   const now = new Date().toISOString()
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+  const metricsExpiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString() // 48h TTL for flow/campaign metrics (Story 54.9)
 
   try {
     // Upsert revenue summary
@@ -227,6 +229,7 @@ export async function savePerfDataToCache(
         click_rate: c.clickRate,
         conversion_value: c.revenue,
         fetched_at: now,
+        expires_at: metricsExpiresAt,
       }))
       const { error: campErr } = await supabase
         .from("klaviyo_campaign_metrics")
@@ -252,6 +255,7 @@ export async function savePerfDataToCache(
         click_rate: f.clickRate,
         conversion_value: f.revenue,
         fetched_at: now,
+        expires_at: metricsExpiresAt,
       }))
       const { error: flowErr } = await supabase
         .from("klaviyo_flow_metrics")

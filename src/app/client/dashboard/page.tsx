@@ -97,12 +97,13 @@ export default function PortalDashboardPage() {
       const result = await response.json()
       setData(prev => {
         const merged = { ...result }
-        // Preserve previous Klaviyo data if new response has none (cache still loading)
-        if (!result.klaviyo && prev?.klaviyo) {
+        const samePeriod = prev?.period === result.period
+        // Preserve previous Klaviyo data only if same period and cache still loading
+        if (!result.klaviyo && prev?.klaviyo && samePeriod) {
           merged.klaviyo = prev.klaviyo
         }
-        // Story 54.5: Preserve previous Shopify data while background sync is in progress
-        if (result.shopifyStatus === "syncing" && prev?.shopify) {
+        // Story 54.5: Preserve previous Shopify data only if same period and background sync is in progress
+        if (result.shopifyStatus === "syncing" && prev?.shopify && samePeriod) {
           merged.shopify = prev.shopify
           merged.shopifyStatus = "syncing" // keep syncing indicator visible
         }
@@ -203,6 +204,8 @@ export default function PortalDashboardPage() {
   if (!data) return null
 
   const klaviyo = data.klaviyo
+  // Show skeleton when klaviyo data is absent (e.g. period changed, cache not ready)
+  const klaviyoLoading = !klaviyo
   const storeRevenue = klaviyo?.storeRevenue || 0
   const storeOrders = klaviyo?.storeOrders || 0
   const totalRevenue = klaviyo?.totalRevenue || 0
@@ -269,7 +272,11 @@ export default function PortalDashboardPage() {
       <AnimatedContainer className="space-y-6">
         {/* Hero: Financial Summary */}
         <AnimatedItem>
-          <HeroSection klaviyo={klaviyo} />
+          {klaviyoLoading ? (
+            <Skeleton className="h-48 bg-slate-100 dark:bg-slate-800 rounded-2xl" />
+          ) : (
+            <HeroSection klaviyo={klaviyo} />
+          )}
         </AnimatedItem>
 
         {/* Onboarding Card (conditional) */}
@@ -320,13 +327,21 @@ export default function PortalDashboardPage() {
 
         {/* KPI Cards */}
         <AnimatedItem>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-            <KpiCard label="Pedidos" value={formatNumber(storeOrders)} icon={ShoppingCart} iconColor="text-blue-600" iconBg="bg-blue-50 dark:bg-blue-500/10" />
-            <KpiCard label="Ticket Médio" value={formatCurrency(ticketMedio)} icon={Receipt} iconColor="text-emerald-600" iconBg="bg-emerald-50 dark:bg-emerald-500/10" />
-            <KpiCard label="Recuperação de Carrinho" value={formatPercent(recoveryRate)} icon={ShoppingBag} iconColor="text-amber-600" iconBg="bg-amber-50 dark:bg-amber-500/10" />
-            <KpiCard label="Receita por Lead" value={formatCurrency(receitaPorLead)} icon={Users} iconColor="text-violet-600" iconBg="bg-violet-50 dark:bg-violet-500/10" />
-            <KpiCard label="Flows Ativos" value={`${klaviyo?.activeFlows || 0} / ${klaviyo?.flowsCount || 0}`} icon={Zap} iconColor="text-cyan-600" iconBg="bg-cyan-50 dark:bg-cyan-500/10" />
-          </div>
+          {klaviyoLoading ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <Skeleton key={i} className="h-24 bg-white dark:bg-[#151922] rounded-xl border border-slate-100 dark:border-slate-700/30" />
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+              <KpiCard label="Pedidos" value={formatNumber(storeOrders)} icon={ShoppingCart} iconColor="text-blue-600" iconBg="bg-blue-50 dark:bg-blue-500/10" />
+              <KpiCard label="Ticket Médio" value={formatCurrency(ticketMedio)} icon={Receipt} iconColor="text-emerald-600" iconBg="bg-emerald-50 dark:bg-emerald-500/10" />
+              <KpiCard label="Recuperação de Carrinho" value={formatPercent(recoveryRate)} icon={ShoppingBag} iconColor="text-amber-600" iconBg="bg-amber-50 dark:bg-amber-500/10" />
+              <KpiCard label="Receita por Lead" value={formatCurrency(receitaPorLead)} icon={Users} iconColor="text-violet-600" iconBg="bg-violet-50 dark:bg-violet-500/10" />
+              <KpiCard label="Flows Ativos" value={`${klaviyo?.activeFlows || 0} / ${klaviyo?.flowsCount || 0}`} icon={Zap} iconColor="text-cyan-600" iconBg="bg-cyan-50 dark:bg-cyan-500/10" />
+            </div>
+          )}
         </AnimatedItem>
       </AnimatedContainer>
     </div>

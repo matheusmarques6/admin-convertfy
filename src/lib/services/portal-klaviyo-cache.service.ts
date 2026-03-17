@@ -9,13 +9,12 @@
  */
 
 import { SupabaseClient } from "@supabase/supabase-js"
-import { createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("PortalKlaviyoCache")
 
-/** Portal considers data stale after 5 minutes */
-const PORTAL_STALENESS_MS = 5 * 60 * 1000
+/** Portal considers data stale after 45 minutes (1.5x cron interval of ~30min) */
+const PORTAL_STALENESS_MS = 45 * 60 * 1000
 
 // ─── Cached Klaviyo data types ──────────────────────────────────────────────
 
@@ -118,17 +117,22 @@ export async function fetchKlaviyoFromCache(
   const dataAgeMs = summary.fetched_at ? Date.now() - new Date(summary.fetched_at).getTime() : Infinity
   const isStale = dataAgeMs > PORTAL_STALENESS_MS
 
-  // Touch pattern: renew expires_at for valid "ok" rows accessed while stale
+  // Touch pattern: renew fetched_at for valid "ok" rows accessed while stale
+  // so next read within PORTAL_STALENESS_MS won't trigger another touch
   if (isStale && summary.sync_status === "ok") {
-    const adminForTouch = createAdminClient()
-    Promise.resolve(
-      adminForTouch
-        .from("store_revenue_summary")
-        .update({ expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() })
-        .eq("store_id", storeId)
-        .eq("period_label", period)
-        .eq("sync_status", "ok")
-    ).catch(() => {})
+    void (async () => {
+      try {
+        const { error: touchErr } = await supabase
+          .from("store_revenue_summary")
+          .update({ fetched_at: new Date().toISOString() })
+          .eq("store_id", storeId)
+          .eq("period_label", period)
+          .eq("sync_status", "ok")
+        if (touchErr) log.warn(`[Touch] Failed to update fetched_at for ${storeId}/${period}: ${touchErr.message}`)
+      } catch (err) {
+        log.warn(`[Touch] Unexpected error for ${storeId}/${period}: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    })()
   }
 
   // 2. Get campaign + flow detail using period_label (not exact period dates)
