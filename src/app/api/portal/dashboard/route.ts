@@ -4,331 +4,18 @@ import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { SupabaseClient } from "@supabase/supabase-js"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { logger } from "@/lib/logger"
-// decryptStoreCredentials removed — boolean checks work on ciphertext (Story 51.3)
-import { CACHE_VERSION } from "@/lib/cache"
 import { parseDateRangeInTimezone } from "@/lib/integrations/klaviyo"
 import type { DataStatus } from "@/lib/shared/data-status"
-import { syncShopifyForStore } from "@/lib/services/shopify-sync.service"
-import { tryAcquireLiveFetch, releaseLiveFetch } from "@/lib/services/fetch-cooldown.service"
+
+// Decomposed services (Story 54.6)
+import { fetchKlaviyoFromCache, mapCacheToPortalKlaviyo } from "@/lib/services/portal-klaviyo-cache.service"
+import { fetchShopifyData, mapShopifyData } from "@/lib/services/portal-shopify-cache.service"
+import { aggregateKlaviyoData, aggregateShopifyData } from "@/lib/services/portal-aggregation.service"
 
 const log = logger.child("PortalDashboard")
 
-/** Portal considers data stale after 5 minutes */
-const PORTAL_STALENESS_MS = 5 * 60 * 1000
-
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
-}
-
-// Cache TTL in minutes based on period (used for Shopify dashboard_cache only)
-const CACHE_TTL: Record<string, number> = {
-  "1d": 60,
-  "7d": 120,
-  "15d": 180,
-  "30d": 240,
-  "90d": 360,
-  "12m": 360,
-}
-
-// ─── Cached Klaviyo data types ──────────────────────────────────────────────
-
-interface CachedCampaignRow {
-  campaign_id: string
-  campaign_name: string
-  campaign_status: string
-  send_time: string | null
-  recipients: number
-  delivered: number
-  opened: number
-  open_rate: number
-  clicked: number
-  click_rate: number
-  click_to_open_rate: number
-  conversions: number
-  conversion_rate: number
-  conversion_value: number
-  bounce_rate: number
-  bounced: number
-  unsubscribe_rate: number
-  unsubscribed: number
-}
-
-interface CachedFlowRow {
-  flow_id: string
-  flow_name: string
-  flow_status: string
-  recipients: number
-  delivered: number
-  opened: number
-  open_rate: number
-  clicked: number
-  click_rate: number
-  click_to_open_rate: number
-  conversions: number
-  conversion_rate: number
-  conversion_value: number
-  bounce_rate: number
-  bounced: number
-  unsubscribe_rate: number
-  unsubscribed: number
-}
-
-interface CachedRevenueSummary {
-  klaviyo_total_revenue: number
-  klaviyo_campaign_revenue: number
-  klaviyo_flow_revenue: number
-  store_total_revenue: number
-  store_orders: number
-  total_leads: number
-  engaged_leads: number
-  engagement_rate: number
-  period_start: string
-  period_end: string
-  fetched_at: string
-  sync_status: string
-}
-
-interface CachedKlaviyoData {
-  summary: CachedRevenueSummary
-  campaigns: CachedCampaignRow[]
-  flows: CachedFlowRow[]
-}
-
-// ─── fetchKlaviyoFromCache: reads from 3 cached tables (with stale detection) ─
-
-interface KlaviyoCacheResult {
-  data: CachedKlaviyoData | null
-  isStale: boolean
-  fetchedAt: string | null
-}
-
-async function fetchKlaviyoFromCache(
-  storeId: string,
-  period: string,
-  supabase: SupabaseClient,
-  orgId?: string,
-): Promise<KlaviyoCacheResult> {
-  // 1. Get revenue summary (no expires_at filter — we want stale data too)
-  let summaryQuery = supabase
-    .from("store_revenue_summary")
-    .select("*")
-    .eq("store_id", storeId)
-    .eq("period_label", period)
-  if (orgId) summaryQuery = summaryQuery.eq("org_id", orgId)
-  const { data: summary, error: summaryError } = await summaryQuery.single()
-
-  if (summaryError || !summary) {
-    log.debug(`[CacheRead] No revenue summary for store ${storeId} period ${period}`)
-    return { data: null, isStale: false, fetchedAt: null }
-  }
-
-  // CA4: If summary has sync_status="error", try to build synthetic summary from detail tables
-  if (summary.sync_status === "error") {
-    log.info(`[CacheRead] Summary has sync_status=error for store ${storeId}/${period}, attempting synthetic fallback`)
-
-    // CA5: Check if detail tables have real data from a previous successful sync
-    let fallbackCampaignQuery = supabase
-      .from("klaviyo_campaign_metrics")
-      .select("*")
-      .eq("store_id", storeId)
-      .eq("period_label", period)
-      .order("conversion_value", { ascending: false })
-    if (orgId) fallbackCampaignQuery = fallbackCampaignQuery.eq("org_id", orgId)
-
-    let fallbackFlowQuery = supabase
-      .from("klaviyo_flow_metrics")
-      .select("*")
-      .eq("store_id", storeId)
-      .eq("period_label", period)
-      .order("conversion_value", { ascending: false })
-    if (orgId) fallbackFlowQuery = fallbackFlowQuery.eq("org_id", orgId)
-
-    const [campaignsResult, flowsResult] = await Promise.all([
-      fallbackCampaignQuery,
-      fallbackFlowQuery,
-    ])
-
-    const campaigns = (campaignsResult.data || []) as CachedCampaignRow[]
-    const flows = (flowsResult.data || []) as CachedFlowRow[]
-
-    if (campaigns.length > 0 || flows.length > 0) {
-      // Build synthetic summary from detail data
-      const campaignRevenue = campaigns.reduce((s, c) => s + (c.conversion_value || 0), 0)
-      const flowRevenue = flows.reduce((s, f) => s + (f.conversion_value || 0), 0)
-      const syntheticSummary: CachedRevenueSummary = {
-        ...summary,
-        klaviyo_campaign_revenue: campaignRevenue,
-        klaviyo_flow_revenue: flowRevenue,
-        klaviyo_total_revenue: campaignRevenue + flowRevenue,
-        sync_status: "synthetic",
-      }
-      log.info(`[CacheRead] Built synthetic summary for ${storeId}/${period}: campaigns=${campaigns.length}, flows=${flows.length}, revenue=${campaignRevenue + flowRevenue}`)
-      return {
-        data: { summary: syntheticSummary, campaigns, flows },
-        isStale: true, // Mark as stale so cron will refresh
-        fetchedAt: summary.fetched_at || null,
-      }
-    }
-
-    // No detail data either — treat as cache miss
-    log.info(`[CacheRead] No detail data for ${storeId}/${period}, treating error summary as cache miss`)
-    return { data: null, isStale: false, fetchedAt: null }
-  }
-
-  const dataAgeMs = summary.fetched_at ? Date.now() - new Date(summary.fetched_at).getTime() : Infinity
-  const isStale = dataAgeMs > PORTAL_STALENESS_MS
-
-  // Touch pattern: renew expires_at for valid "ok" rows accessed while stale
-  if (isStale && summary.sync_status === "ok") {
-    const adminForTouch = createAdminClient()
-    Promise.resolve(
-      adminForTouch
-        .from("store_revenue_summary")
-        .update({ expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() })
-        .eq("store_id", storeId)
-        .eq("period_label", period)
-        .eq("sync_status", "ok")
-    ).catch(() => {})
-  }
-
-  // 2. Get campaign + flow detail using period_label (not exact period dates)
-  let campaignQuery = supabase
-    .from("klaviyo_campaign_metrics")
-    .select("*")
-    .eq("store_id", storeId)
-    .eq("period_label", period)
-    .order("conversion_value", { ascending: false })
-  if (orgId) campaignQuery = campaignQuery.eq("org_id", orgId)
-
-  let flowQuery = supabase
-    .from("klaviyo_flow_metrics")
-    .select("*")
-    .eq("store_id", storeId)
-    .eq("period_label", period)
-    .order("conversion_value", { ascending: false })
-  if (orgId) flowQuery = flowQuery.eq("org_id", orgId)
-
-  const [campaignsResult, flowsResult] = await Promise.all([
-    campaignQuery,
-    flowQuery,
-  ])
-
-  return {
-    data: {
-      summary: summary as CachedRevenueSummary,
-      campaigns: (campaignsResult.data || []) as CachedCampaignRow[],
-      flows: (flowsResult.data || []) as CachedFlowRow[],
-    },
-    isStale,
-    fetchedAt: summary.fetched_at || null,
-  }
-}
-
-// ─── mapCacheToPortalKlaviyo: converts cached data to portal response format ─
-
-function mapCacheToPortalKlaviyo(cached: CachedKlaviyoData) {
-  const campaigns = cached.campaigns
-  const flows = cached.flows
-
-  const totalCampDelivered = campaigns.reduce((s, c) => s + (c.delivered || 0), 0)
-  const totalFlowDelivered = flows.reduce((s, f) => s + (f.delivered || 0), 0)
-  const totalDelivered = totalCampDelivered + totalFlowDelivered
-
-  const totalCampOpened = campaigns.reduce((s, c) => s + (c.opened || 0), 0)
-  const totalFlowOpened = flows.reduce((s, f) => s + (f.opened || 0), 0)
-  const totalOpened = totalCampOpened + totalFlowOpened
-
-  const totalCampClicked = campaigns.reduce((s, c) => s + (c.clicked || 0), 0)
-  const totalFlowClicked = flows.reduce((s, f) => s + (f.clicked || 0), 0)
-  const totalClicked = totalCampClicked + totalFlowClicked
-
-  const totalConversions = campaigns.reduce((s, c) => s + (c.conversions || 0), 0)
-    + flows.reduce((s, f) => s + (f.conversions || 0), 0)
-
-  const totalCampBounced = campaigns.reduce((s, c) => s + (c.bounced || 0), 0)
-  const totalFlowBounced = flows.reduce((s, f) => s + (f.bounced || 0), 0)
-  const totalBounced = totalCampBounced + totalFlowBounced
-
-  const totalRevenue = cached.summary.klaviyo_total_revenue
-  const campaignRevenue = cached.summary.klaviyo_campaign_revenue
-  const flowRevenue = cached.summary.klaviyo_flow_revenue
-
-  // Weighted average for bounce/unsubscribe rates
-  const weightedBounceRate = totalDelivered > 0
-    ? (
-      campaigns.reduce((s, c) => s + (c.bounce_rate || 0) * (c.delivered || 0), 0) +
-      flows.reduce((s, f) => s + (f.bounce_rate || 0) * (f.delivered || 0), 0)
-    ) / totalDelivered
-    : 0
-
-  const weightedUnsubscribeRate = totalDelivered > 0
-    ? (
-      campaigns.reduce((s, c) => s + (c.unsubscribe_rate || 0) * (c.delivered || 0), 0) +
-      flows.reduce((s, f) => s + (f.unsubscribe_rate || 0) * (f.delivered || 0), 0)
-    ) / totalDelivered
-    : 0
-
-  // Sort campaigns by send_time desc for "recent" view
-  const sortedCampaigns = [...campaigns].sort((a, b) => {
-    const aTime = a.send_time ? new Date(a.send_time).getTime() : 0
-    const bTime = b.send_time ? new Date(b.send_time).getTime() : 0
-    return bTime - aTime
-  })
-
-  const storeRev = cached.summary.store_total_revenue || 0
-
-  return {
-    storeRevenue: storeRev,
-    storeOrders: cached.summary.store_orders || 0,
-    recoveryRate: storeRev > 0 ? (totalRevenue / storeRev) * 100 : 0,
-    totalLeads: cached.summary.total_leads || 0,
-    engagedLeads: cached.summary.engaged_leads || 0,
-    engagementRate: cached.summary.engagement_rate || 0,
-    totalRevenue,
-    campaignRevenue,
-    flowRevenue,
-    smsRevenue: 0,
-    emailsSent: totalDelivered,
-    delivered: totalDelivered,
-    opened: totalOpened,
-    clicked: totalClicked,
-    openRate: totalDelivered > 0 ? (totalOpened / totalDelivered) * 100 : 0,
-    clickRate: totalDelivered > 0 ? (totalClicked / totalDelivered) * 100 : 0,
-    clickToOpenRate: totalOpened > 0 ? (totalClicked / totalOpened) * 100 : 0,
-    conversions: totalConversions,
-    conversionRate: totalDelivered > 0 ? (totalConversions / totalDelivered) * 100 : 0,
-    unsubscribeRate: weightedUnsubscribeRate,
-    bounceRate: weightedBounceRate,
-    bounces: totalBounced,
-    campaignsCount: campaigns.length,
-    campaignDelivered: totalCampDelivered,
-    campaignRevenuePercent: totalRevenue > 0 ? (campaignRevenue / totalRevenue) * 100 : 0,
-    flowsCount: flows.length,
-    activeFlows: flows.filter(f => f.flow_status === "live").length,
-    flowDelivered: totalFlowDelivered,
-    flowRevenuePercent: totalRevenue > 0 ? (flowRevenue / totalRevenue) * 100 : 0,
-    recentCampaigns: sortedCampaigns.slice(0, 10).map(c => ({
-      id: c.campaign_id,
-      name: c.campaign_name,
-      status: "sent",
-      sentAt: c.send_time || new Date().toISOString(),
-      recipients: c.recipients || 0,
-      delivered: c.delivered || 0,
-      opened: c.opened || 0,
-      clicked: c.clicked || 0,
-      revenue: c.conversion_value || 0,
-      openRate: c.open_rate || 0,
-      clickRate: c.click_rate || 0,
-    })),
-    topFlows: flows.slice(0, 10).map(f => ({
-      id: f.flow_id,
-      name: f.flow_name,
-      revenue: f.conversion_value || 0,
-      delivered: f.delivered || 0,
-      openRate: f.open_rate || 0,
-      clickRate: f.click_rate || 0,
-    })),
-  }
 }
 
 // ─── resolvePortalMeetings: map meetings + participants with resolved names ──
@@ -452,7 +139,8 @@ async function resolvePortalMeetings(
   })
 }
 
-// GET - Get portal dashboard data (cache-first — no live API calls)
+// ─── GET - Portal dashboard (cache-first — no live API calls) ───────────────
+
 export async function GET(request: NextRequest) {
   const startTime = Date.now()
   try {
@@ -526,15 +214,12 @@ export async function GET(request: NextRequest) {
     ])
 
     const client = clientData.data
-    const rawStores = rawStoresData.data || []
-    // No decryption needed — boolean checks (!!field) work on ciphertext,
-    // and downstream functions use store.id to fetch credentials internally
-    const stores = rawStores
+    const stores = rawStoresData.data || []
     const allInvoices = unifiedInvoicesData.data || []
     const meetings = meetingsData.data || []
 
     // Upcoming campaigns: fetch by store_ids (client_id can be null for Klaviyo-synced campaigns)
-    const clientStoreIds = rawStores.map(s => s.id)
+    const clientStoreIds = stores.map(s => s.id)
     const { data: upcomingCampaignsRaw } = clientStoreIds.length > 0
       ? await adminClient
           .from("campaigns")
@@ -606,151 +291,8 @@ export async function GET(request: NextRequest) {
       lastUpdated: new Date().toISOString(),
     }
 
-    // ─── Helper: Shopify Cache (dashboard_cache) ──────────────────────────────
+    // ─── Fetch Klaviyo + Shopify for selected stores ──────────────────────────
 
-    const getCachedShopifyData = async (shopifyStoreId: string) => {
-      try {
-        const { data } = await adminClient
-          .from("dashboard_cache")
-          .select("data, expires_at")
-          .eq("store_id", shopifyStoreId)
-          .eq("cache_type", "shopify")
-          .eq("period", period)
-          .single()
-
-        if (data && new Date(data.expires_at) > new Date()) {
-          const cached = data.data as Record<string, unknown>
-          if ((cached._cacheVersion as number) !== CACHE_VERSION) {
-            return null
-          }
-          return cached
-        }
-        return null
-      } catch {
-        return null
-      }
-    }
-
-    const saveShopifyToCache = async (cacheStoreId: string, data: Record<string, unknown>) => {
-      try {
-        const ttlMinutes = CACHE_TTL[period] || 30
-        const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000).toISOString()
-
-        await adminClient
-          .from("dashboard_cache")
-          .upsert({
-            store_id: cacheStoreId,
-            cache_type: "shopify",
-            period,
-            data: { ...data, _cacheVersion: CACHE_VERSION },
-            expires_at: expiresAt,
-          }, {
-            onConflict: "store_id,cache_type,period"
-          })
-      } catch (error) {
-        log.error(`[Cache ERROR] Failed to save shopify for store ${cacheStoreId}:`, error)
-      }
-    }
-
-    // ─── Helper: Fetch Shopify data for a store (cache-only, async background sync) ─
-    // Story 54.5: Never block the portal response waiting for Shopify.
-    // If cache hit → return data. If cache miss → fire background sync and return null.
-
-    /** Result of reading Shopify cache: data + whether a background sync was triggered */
-    interface ShopifyCacheReadResult {
-      data: Record<string, unknown> | null
-      /** true when cache was empty/expired and a background sync was kicked off */
-      isSyncing: boolean
-    }
-
-    const fetchShopifyData = async (store: typeof stores[0]): Promise<ShopifyCacheReadResult> => {
-      if (!(store.shopify_access_token && store.shopify_store_domain)) {
-        return { data: null, isSyncing: false }
-      }
-
-      const cached = await getCachedShopifyData(store.id)
-      if (cached) return { data: cached, isSyncing: false }
-
-      // Cache miss — fire background sync (fire-and-forget, does NOT block response)
-      const shopifyFetchKey = `shopify_${period}`
-      const canFetch = await tryAcquireLiveFetch(adminClient, store.id, shopifyFetchKey, "portal-shopify")
-
-      if (canFetch) {
-        // Fire-and-forget: sync runs in background, result saved to cache.
-        // Next portal request will pick up the cached data.
-        // NOTE (AC 54.5.3): Shopify is NOT included in the Klaviyo cron (sync-reports).
-        // Decision: Shopify data volume per-store is small and period-dependent,
-        // making on-demand background sync more appropriate than cron pre-population.
-        // This may be revisited in a future story if Shopify data freshness becomes critical.
-        syncShopifyForStore(store.id, period)
-          .then(async (result) => {
-            if (result.success && result.data) {
-              await saveShopifyToCache(store.id, result.data as unknown as Record<string, unknown>)
-              await releaseLiveFetch(adminClient, store.id, shopifyFetchKey, "completed")
-              log.info(`[Portal] Shopify background sync completed for store ${store.id}`)
-            } else {
-              await releaseLiveFetch(adminClient, store.id, shopifyFetchKey, "failed")
-              log.warn(`[Portal] Shopify background sync returned no data for store ${store.id}`)
-            }
-          })
-          .catch(async (error) => {
-            await releaseLiveFetch(adminClient, store.id, shopifyFetchKey, "failed").catch(() => {})
-            log.error(`[Portal] Shopify background sync failed for store ${store.id}:`, error)
-          })
-      }
-
-      return { data: null, isSyncing: true }
-    }
-
-    // ─── Helper: Map Shopify data to dashboard format ───────────────────────────
-
-    const mapShopifyData = (shopifyData: Record<string, unknown>) => {
-      const orders = shopifyData.orders as Record<string, unknown> || {}
-      const customers = shopifyData.customers as Record<string, unknown> || {}
-      const coupons = orders.coupons as Record<string, unknown> || {}
-      const utmConversions = orders.utmConversions as Record<string, unknown> || {}
-      const topCustomers = (orders.topCustomers as Array<Record<string, unknown>>) || []
-
-      return {
-        totalRevenue: (orders.totalRevenue as number) || 0,
-        totalOrders: (orders.totalOrders as number) || 0,
-        paidOrders: (orders.paidOrders as number) || 0,
-        averageOrderValue: (orders.averageOrderValue as number) || 0,
-        totalCustomers: (customers.totalCustomers as number) || 0,
-        newCustomers: (customers.newCustomersLast30Days as number) || 0,
-        recurringCustomerRate: (orders.recurringCustomerRate as number) || 0,
-        topProducts: ((shopifyData.bestSellingProducts as Array<Record<string, unknown>>) || []).slice(0, 10).map((p) => ({
-          name: (p.title as string) || "Unknown Product",
-          quantity: (p.quantitySold as number) || 0,
-          revenue: (p.revenue as number) || 0,
-        })),
-        topCustomers: topCustomers.slice(0, 10).map((c) => ({
-          email: (c.email as string) || "",
-          name: (c.name as string) || "",
-          ordersCount: (c.ordersCount as number) || 0,
-          totalSpent: (c.totalSpent as number) || 0,
-          averageOrderValue: (c.averageOrderValue as number) || 0,
-          lastOrderDate: (c.lastOrderDate as string) || "",
-        })),
-        coupons: {
-          totalOrdersWithCoupon: (coupons.totalOrdersWithCoupon as number) || 0,
-          couponUsageRate: (coupons.couponUsageRate as number) || 0,
-          topCoupons: (coupons.topCoupons as Array<Record<string, unknown>>) || [],
-          totalDiscount: (coupons.totalDiscount as number) || 0,
-        },
-        utmConversions: {
-          totalOrdersWithUtm: (utmConversions.totalOrdersWithUtm as number) || 0,
-          utmTrackingRate: (utmConversions.utmTrackingRate as number) || 0,
-          bySource: (utmConversions.bySource as Array<Record<string, unknown>>) || [],
-          byMedium: (utmConversions.byMedium as Array<Record<string, unknown>>) || [],
-          byCampaign: (utmConversions.byCampaign as Array<Record<string, unknown>>) || [],
-        },
-      }
-    }
-
-    // ─── Fetch data for stores ──────────────────────────────────────────────────
-
-    // Determine which stores have Klaviyo credentials
     const storesWithKlaviyo = stores.filter(s => s.klaviyo_private_key || s.klaviyo_api_key)
     const hasKlaviyoStores = storesWithKlaviyo.length > 0
 
@@ -766,7 +308,7 @@ export async function GET(request: NextRequest) {
         }
 
         // Shopify: cache-only read, background sync if miss (Story 54.5)
-        const shopifyResult = await fetchShopifyData(selectedStore)
+        const shopifyResult = await fetchShopifyData(selectedStore, period, adminClient)
         if (shopifyResult.data) {
           response.shopify = mapShopifyData(shopifyResult.data)
           response.shopifyStatus = "ready"
@@ -814,7 +356,7 @@ export async function GET(request: NextRequest) {
         // Fetch Shopify cache for all stores in parallel (background sync if miss — Story 54.5)
         const shopifyStores = stores.filter(s => s.shopify_access_token && s.shopify_store_domain)
         const shopifyPromises = shopifyStores.map(store =>
-          fetchShopifyData(store).then(result => ({ storeId: store.id, ...result }))
+          fetchShopifyData(store, period, adminClient).then(result => ({ storeId: store.id, ...result }))
         )
 
         const [klaviyoCacheResults, shopifyResults] = await Promise.all([
@@ -834,75 +376,9 @@ export async function GET(request: NextRequest) {
         const hasStaleCache = withCache.some(r => r.result.isStale)
         const hasMissingStores = withoutCache.length > 0
 
-        if (klaviyoDataList.length > 0) {
-          // Aggregate flows from all stores
-          const allFlows: Array<Record<string, unknown>> = []
-          klaviyoDataList.forEach((k) => {
-            if (k.topFlows) allFlows.push(...(k.topFlows as Array<Record<string, unknown>>))
-          })
-          const topFlowsAggregated = allFlows
-            .sort((a, b) => ((b.revenue as number) || 0) - ((a.revenue as number) || 0))
-            .slice(0, 10)
-
-          // Aggregate campaigns from all stores
-          const allCampaigns: Array<Record<string, unknown>> = []
-          klaviyoDataList.forEach((k) => {
-            if (k.recentCampaigns) allCampaigns.push(...(k.recentCampaigns as Array<Record<string, unknown>>))
-          })
-          const recentCampaignsAggregated = allCampaigns
-            .sort((a, b) => new Date((b.sentAt as string) || 0).getTime() - new Date((a.sentAt as string) || 0).getTime())
-            .slice(0, 10)
-
-          const totalDelivered = klaviyoDataList.reduce((sum, k) => sum + (k.delivered || 0), 0)
-          const totalOpened = klaviyoDataList.reduce((sum, k) => sum + (k.opened || 0), 0)
-          const totalClicked = klaviyoDataList.reduce((sum, k) => sum + (k.clicked || 0), 0)
-          const aggTotalRevenue = klaviyoDataList.reduce((sum, k) => sum + (k.totalRevenue || 0), 0)
-          const aggCampaignRevenue = klaviyoDataList.reduce((sum, k) => sum + (k.campaignRevenue || 0), 0)
-          const aggFlowRevenue = klaviyoDataList.reduce((sum, k) => sum + (k.flowRevenue || 0), 0)
-          const aggStoreRevenue = klaviyoDataList.reduce((sum, k) => sum + (k.storeRevenue || 0), 0)
-          const aggStoreOrders = klaviyoDataList.reduce((sum, k) => sum + (k.storeOrders || 0), 0)
-          const aggConversions = klaviyoDataList.reduce((sum, k) => sum + (k.conversions || 0), 0)
-
-          response.klaviyo = {
-            storeRevenue: aggStoreRevenue,
-            storeOrders: aggStoreOrders,
-            recoveryRate: aggStoreRevenue > 0 ? (aggTotalRevenue / aggStoreRevenue) * 100 : 0,
-            totalLeads: klaviyoDataList.reduce((sum, k) => sum + (k.totalLeads || 0), 0),
-            engagedLeads: klaviyoDataList.reduce((sum, k) => sum + (k.engagedLeads || 0), 0),
-            engagementRate: (() => {
-              const aggTotalLeads = klaviyoDataList.reduce((sum, k) => sum + (k.totalLeads || 0), 0)
-              const aggEngagedLeads = klaviyoDataList.reduce((sum, k) => sum + (k.engagedLeads || 0), 0)
-              return Math.min(aggTotalLeads > 0 ? (aggEngagedLeads / aggTotalLeads) * 100 : 0, 100)
-            })(),
-            totalRevenue: aggTotalRevenue,
-            campaignRevenue: aggCampaignRevenue,
-            flowRevenue: aggFlowRevenue,
-            smsRevenue: 0,
-            emailsSent: totalDelivered,
-            delivered: totalDelivered,
-            opened: totalOpened,
-            clicked: totalClicked,
-            openRate: totalDelivered > 0 ? (totalOpened / totalDelivered) * 100 : 0,
-            clickRate: totalDelivered > 0 ? (totalClicked / totalDelivered) * 100 : 0,
-            clickToOpenRate: totalOpened > 0 ? (totalClicked / totalOpened) * 100 : 0,
-            conversionRate: totalDelivered > 0 ? (aggConversions / totalDelivered) * 100 : 0,
-            unsubscribeRate: klaviyoDataList.length > 0
-              ? klaviyoDataList.reduce((sum, k) => sum + (k.unsubscribeRate || 0), 0) / klaviyoDataList.length
-              : 0,
-            bounceRate: klaviyoDataList.length > 0
-              ? klaviyoDataList.reduce((sum, k) => sum + (k.bounceRate || 0), 0) / klaviyoDataList.length
-              : 0,
-            bounces: klaviyoDataList.reduce((sum, k) => sum + (k.bounces || 0), 0),
-            campaignsCount: klaviyoDataList.reduce((sum, k) => sum + (k.campaignsCount || 0), 0),
-            campaignDelivered: klaviyoDataList.reduce((sum, k) => sum + (k.campaignDelivered || 0), 0),
-            campaignRevenuePercent: aggTotalRevenue > 0 ? (aggCampaignRevenue / aggTotalRevenue) * 100 : 0,
-            flowsCount: klaviyoDataList.reduce((sum, k) => sum + (k.flowsCount || 0), 0),
-            activeFlows: klaviyoDataList.reduce((sum, k) => sum + (k.activeFlows || 0), 0),
-            flowDelivered: klaviyoDataList.reduce((sum, k) => sum + (k.flowDelivered || 0), 0),
-            flowRevenuePercent: aggTotalRevenue > 0 ? (aggFlowRevenue / aggTotalRevenue) * 100 : 0,
-            recentCampaigns: recentCampaignsAggregated,
-            topFlows: topFlowsAggregated,
-          }
+        const aggregatedKlaviyo = aggregateKlaviyoData(klaviyoDataList)
+        if (aggregatedKlaviyo) {
+          response.klaviyo = aggregatedKlaviyo
 
           if (hasStaleCache || hasMissingStores) {
             response.dataStatus = "stale" satisfies DataStatus
@@ -921,8 +397,6 @@ export async function GET(request: NextRequest) {
           }, null)
         } else if (hasKlaviyoStores) {
           // Stores exist but all caches empty and no live results
-          // fetchKlaviyoFromCache already reads without expires_at filter (stale allowed),
-          // so if we got here, there is truly no data at all
           response.dataStatus = "error" satisfies DataStatus
           response.isRefreshing = false
           response.source = "cache"
@@ -935,169 +409,9 @@ export async function GET(request: NextRequest) {
           .filter(r => r.data !== null)
           .map(r => mapShopifyData(r.data!))
 
-        if (shopifyDataList.length > 0) {
-          // Aggregate all products
-          const productMap = new Map<string, { name: string; quantity: number; revenue: number }>()
-          shopifyDataList.forEach((s) => {
-            (s.topProducts || []).forEach((p) => {
-              const existing = productMap.get(p.name)
-              if (existing) {
-                existing.quantity += p.quantity
-                existing.revenue += p.revenue
-              } else {
-                productMap.set(p.name, { ...p })
-              }
-            })
-          })
-          const topProductsAggregated = Array.from(productMap.values())
-            .sort((a, b) => b.revenue - a.revenue)
-            .slice(0, 10)
-
-          // Aggregate coupons
-          const couponMap = new Map<string, { code: string; orders: number; revenue: number; discount: number }>()
-          shopifyDataList.forEach((s) => {
-            ((s.coupons?.topCoupons || []) as Array<Record<string, unknown>>).forEach((c) => {
-              const code = (c.code as string) || ''
-              const existing = couponMap.get(code)
-              if (existing) {
-                existing.orders += (c.orders as number) || 0
-                existing.revenue += (c.revenue as number) || 0
-                existing.discount += (c.discount as number) || 0
-              } else {
-                couponMap.set(code, {
-                  code,
-                  orders: (c.orders as number) || 0,
-                  revenue: (c.revenue as number) || 0,
-                  discount: (c.discount as number) || 0,
-                })
-              }
-            })
-          })
-          const topCouponsAggregated = Array.from(couponMap.values())
-            .sort((a, b) => b.revenue - a.revenue)
-            .slice(0, 20)
-
-          // Aggregate UTM sources
-          const utmSourceMap = new Map<string, { source: string; orders: number; revenue: number }>()
-          shopifyDataList.forEach((s) => {
-            ((s.utmConversions?.bySource || []) as Array<Record<string, unknown>>).forEach((u) => {
-              const source = (u.source as string) || ''
-              const existing = utmSourceMap.get(source)
-              if (existing) {
-                existing.orders += (u.orders as number) || 0
-                existing.revenue += (u.revenue as number) || 0
-              } else {
-                utmSourceMap.set(source, {
-                  source,
-                  orders: (u.orders as number) || 0,
-                  revenue: (u.revenue as number) || 0,
-                })
-              }
-            })
-          })
-
-          // Aggregate UTM mediums
-          const utmMediumMap = new Map<string, { medium: string; orders: number; revenue: number }>()
-          shopifyDataList.forEach((s) => {
-            ((s.utmConversions?.byMedium || []) as Array<Record<string, unknown>>).forEach((u) => {
-              const medium = (u.medium as string) || ''
-              const existing = utmMediumMap.get(medium)
-              if (existing) {
-                existing.orders += (u.orders as number) || 0
-                existing.revenue += (u.revenue as number) || 0
-              } else {
-                utmMediumMap.set(medium, {
-                  medium,
-                  orders: (u.orders as number) || 0,
-                  revenue: (u.revenue as number) || 0,
-                })
-              }
-            })
-          })
-
-          // Aggregate UTM campaigns
-          const utmCampaignMap = new Map<string, { campaign: string; orders: number; revenue: number }>()
-          shopifyDataList.forEach((s) => {
-            ((s.utmConversions?.byCampaign || []) as Array<Record<string, unknown>>).forEach((u) => {
-              const campaign = (u.campaign as string) || ''
-              const existing = utmCampaignMap.get(campaign)
-              if (existing) {
-                existing.orders += (u.orders as number) || 0
-                existing.revenue += (u.revenue as number) || 0
-              } else {
-                utmCampaignMap.set(campaign, {
-                  campaign,
-                  orders: (u.orders as number) || 0,
-                  revenue: (u.revenue as number) || 0,
-                })
-              }
-            })
-          })
-
-          // Aggregate Top Customers
-          const customerMap = new Map<string, {
-            email: string
-            name: string
-            ordersCount: number
-            totalSpent: number
-            averageOrderValue: number
-            lastOrderDate: string
-          }>()
-          shopifyDataList.forEach((s) => {
-            (s.topCustomers || []).forEach((c) => {
-              if (!c.email) return
-              const email = c.email.toLowerCase()
-              const existing = customerMap.get(email)
-              if (existing) {
-                existing.ordersCount += c.ordersCount
-                existing.totalSpent += c.totalSpent
-                existing.averageOrderValue = existing.ordersCount > 0
-                  ? existing.totalSpent / existing.ordersCount
-                  : 0
-                if (c.lastOrderDate > existing.lastOrderDate) {
-                  existing.lastOrderDate = c.lastOrderDate
-                }
-              } else {
-                customerMap.set(email, { ...c, email })
-              }
-            })
-          })
-          const topCustomersAggregated = Array.from(customerMap.values())
-            .sort((a, b) => b.totalSpent - a.totalSpent)
-            .slice(0, 10)
-
-          const totalOrders = shopifyDataList.reduce((sum, s) => sum + (s.totalOrders || 0), 0)
-          const paidOrders = shopifyDataList.reduce((sum, s) => sum + (s.paidOrders || 0), 0)
-          const totalRevenue = shopifyDataList.reduce((sum, s) => sum + (s.totalRevenue || 0), 0)
-          const totalOrdersWithCoupon = shopifyDataList.reduce((sum, s) => sum + (s.coupons?.totalOrdersWithCoupon || 0), 0)
-          const totalOrdersWithUtm = shopifyDataList.reduce((sum, s) => sum + (s.utmConversions?.totalOrdersWithUtm || 0), 0)
-
-          response.shopify = {
-            totalRevenue,
-            totalOrders,
-            paidOrders,
-            averageOrderValue: totalOrders > 0 ? totalRevenue / totalOrders : 0,
-            totalCustomers: shopifyDataList.reduce((sum, s) => sum + (s.totalCustomers || 0), 0),
-            newCustomers: shopifyDataList.reduce((sum, s) => sum + (s.newCustomers || 0), 0),
-            recurringCustomerRate: shopifyDataList.length > 0
-              ? shopifyDataList.reduce((sum, s) => sum + (s.recurringCustomerRate || 0), 0) / shopifyDataList.length
-              : 0,
-            topProducts: topProductsAggregated,
-            topCustomers: topCustomersAggregated,
-            coupons: {
-              totalOrdersWithCoupon,
-              couponUsageRate: paidOrders > 0 ? (totalOrdersWithCoupon / paidOrders) * 100 : 0,
-              topCoupons: topCouponsAggregated,
-              totalDiscount: shopifyDataList.reduce((sum, s) => sum + (s.coupons?.totalDiscount || 0), 0),
-            },
-            utmConversions: {
-              totalOrdersWithUtm,
-              utmTrackingRate: paidOrders > 0 ? (totalOrdersWithUtm / paidOrders) * 100 : 0,
-              bySource: Array.from(utmSourceMap.values()).sort((a, b) => b.revenue - a.revenue).slice(0, 10),
-              byMedium: Array.from(utmMediumMap.values()).sort((a, b) => b.revenue - a.revenue).slice(0, 10),
-              byCampaign: Array.from(utmCampaignMap.values()).sort((a, b) => b.revenue - a.revenue).slice(0, 10),
-            },
-          }
+        const aggregatedShopify = aggregateShopifyData(shopifyDataList)
+        if (aggregatedShopify) {
+          response.shopify = aggregatedShopify
         }
 
         // Story 54.5: Set shopifyStatus for "all stores" mode
