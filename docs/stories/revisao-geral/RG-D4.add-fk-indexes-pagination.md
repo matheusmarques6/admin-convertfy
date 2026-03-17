@@ -6,7 +6,7 @@ Revisao: "@data-engineer"
 Status: Ready for Dev
 Epic: "Revisao Geral — Auditoria Completa"
 Fase: "3 - Refatoracao & Tech Debt"
-Esforco: LOW
+Esforco: LOW (D4a) + MEDIUM (D4b)
 ---
 
 # Story RG-D4 — Adicionar Indexes nas FKs Faltando + Paginacao
@@ -32,6 +32,7 @@ Tabelas do schema inicial nao tem indexes nas colunas FK:
 | `deals` | `pipeline_id`, `stage_id`, `client_id` | NAO |
 | `pipeline_stages` | `pipeline_id` | NAO |
 | `automation_rules` | `automation_id` | NAO |
+| `client_onboardings` | `client_id`, `store_id` | NAO |
 
 ### Problema 2: Endpoints sem paginacao
 
@@ -41,18 +42,26 @@ Tabelas do schema inicial nao tem indexes nas colunas FK:
 
 ## Acceptance Criteria
 
-### AC1: Migration para indexes
+### D4a: Migration para indexes (LOW effort, pode ser Sprint 2)
 - [ ] Criar migration com `CREATE INDEX IF NOT EXISTS` para todas as FKs listadas
-- [ ] Usar `CONCURRENTLY` se possivel (sem lock na tabela)
+- [ ] **NAO usar `CONCURRENTLY`** — Supabase migrations rodam em transaction implicita, CONCURRENTLY nao e compativel
+- [ ] Para tabelas pequenas (agency CRM), `CREATE INDEX` regular e seguro — lock sera de milissegundos
+- [ ] Incluir `client_onboardings.client_id` e `client_onboardings.store_id`
 
-### AC2: Paginacao em list endpoints
+### D4b: Paginacao em list endpoints (MEDIUM effort, requer coordenacao frontend)
 - [ ] Adicionar `page` e `limit` params nos endpoints listados
 - [ ] Default: `limit=50`, max: `200`
 - [ ] Retornar total count no response para frontend paginar
+- [ ] **BREAKING CHANGE**: frontend consumers que esperam lista completa precisam ser atualizados
+- [ ] Coordenar com frontend antes de deploy
 
 ## Arquivos Afetados
 
+**D4a (indexes)**:
 - `supabase/migrations/` — nova migration
+
+**D4b (paginacao)**:
 - `src/app/api/stores/route.ts`
 - `src/app/api/admin/organizations/route.ts`
 - `src/app/api/admin/portal-users/route.ts`
+- Frontend components que consomem esses endpoints

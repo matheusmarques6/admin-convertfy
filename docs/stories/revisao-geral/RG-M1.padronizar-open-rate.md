@@ -57,10 +57,16 @@ O label e "open rate" em todos os lugares, mas o numero pode ser 20% ou 50% depe
 - [ ] Dashboard, Report, Sync, Performance — todos devem usar a mesma formula
 - [ ] Adicionar campo separado `clickToOpenRate` onde necessario
 
+## Notas de Implementacao (pos-review)
+
+- **Escopo real**: o problema esta concentrado no **report route** e **performance service**. Dashboard (line 295) e sync service (line 596) JA calculam corretamente `opens/delivered`.
+- **Dados cached**: nao e necessario backfill. O proximo ciclo do cron corrigira automaticamente os valores em `store_revenue_summary` e `klaviyo_*_metrics`.
+- **Overlap com RG-M4**: ambas stories tocam `klaviyo-performance.service.ts`. Coordenar — idealmente fazer M1 primeiro, M4 em seguida.
+
 ## Arquivos Afetados
 
 - `src/lib/utils/` — novo utility
-- `src/app/api/integrations/klaviyo/report/route.ts`
-- `src/lib/services/klaviyo-performance.service.ts`
-- `src/app/api/portal/dashboard/route.ts` (verificar consistencia)
-- `src/lib/services/klaviyo-sync.service.ts` (verificar consistencia)
+- `src/app/api/integrations/klaviyo/report/route.ts` — **foco principal**
+- `src/lib/services/klaviyo-performance.service.ts` — **foco principal**
+- `src/app/api/portal/dashboard/route.ts` (verificar — provavelmente ja correto)
+- `src/lib/services/klaviyo-sync.service.ts` (verificar — provavelmente ja correto)

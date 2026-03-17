@@ -50,12 +50,16 @@ Em misconfiguracao (env var esquecida, secret nao populado), atacante pode forja
 - [ ] Se `WHATSAPP_APP_SECRET` nao esta configurado, retornar `false` (nao `true`)
 - [ ] Logar error level quando secret esta ausente
 
-### AC4: Usar timingSafeEqual em TODOS
-- [ ] Shopify OAuth callback: trocar `!==` por `crypto.timingSafeEqual`
-- [ ] Verificar que tracking webhook ja usa timingSafeEqual (confirmar)
+### AC4: Atualizar .env.example
+- [ ] Adicionar `SHOPIFY_API_SECRET` como OBRIGATORIO no `.env.example`
+- [ ] Adicionar `WHATSAPP_APP_SECRET` como OBRIGATORIO no `.env.example`
+- [ ] Documentar que webhook verification NAO funciona sem esses secrets
+
+**Nota:** `timingSafeEqual` para HMAC comparisons e coberto por **RG-S8** — nao duplicar aqui.
 
 ## Arquivos Afetados
 
 - `src/app/api/integrations/shopify/callback/route.ts`
 - `src/app/api/tracking/webhooks/shopify/route.ts`
 - `src/app/api/integrations/whatsapp/webhook/route.ts`
+- `.env.example` — atualizar com variaveis obrigatorias

@@ -57,10 +57,16 @@ Estas routes nao sao testaveis unitariamente, definem tipos inline que poderiam 
 
 ## Notas Tecnicas
 
-NAO refatorar tudo de uma vez. Priorizar:
-1. Portal dashboard (mais complexo, mais impacto no portal)
-2. Klaviyo report (mais longo, mais reutilizavel)
-3. Cron sync (ja bem estruturado, menor prioridade)
+NAO refatorar tudo de uma vez. **Dividir em sub-stories** (recomendacao Architect):
+1. **A2a**: Extrair `portal-dashboard.service.ts` (maior impacto, portal depende)
+2. **A2b**: Extrair `klaviyo-report.service.ts` (mais complexo, mais reutilizavel)
+3. **A2c**: Tipos compartilhados em `src/types/` (pode ser feito junto com A2a ou A2b)
+4. Cron sync — **excluir do escopo** (ja bem estruturado, menor prioridade)
+
+## Dependencias
+
+- Executar **APOS RG-M1, RG-M2, RG-M3** para evitar conflitos de merge (essas stories tocam os mesmos routes)
+- **RG-B4** (self-fetch) depende desta story — se A2 for feita, B4 fica trivial
 
 ## Arquivos Afetados
 

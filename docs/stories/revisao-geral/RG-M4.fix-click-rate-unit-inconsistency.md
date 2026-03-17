@@ -45,11 +45,14 @@ O campo `click_rate` contem unidades diferentes dependendo de qual service o pop
 - [ ] Garantir que click_rate acumulado e consistente antes da media
 - [ ] Flow rate aggregation: usar soma de counts em vez de `||` overwrite (line 473-483)
 
-### AC3: Fix naming ambiguo
-- [ ] Renomear `KlaviyoRevenueSummary.totalRevenue` para `attributedRevenue`
-- [ ] Fix `liveFlows`: filtrar por `status === "live"` (excluir draft/manual)
+## Out of Scope (criar stories separadas)
+
+Os seguintes problemas foram identificados mas estao FORA do escopo desta story para evitar scope creep:
+- Renomear `KlaviyoRevenueSummary.totalRevenue` para `attributedRevenue` — breaking change para frontend consumers
+- Fix `liveFlows` sempre == `totalFlows` (filtrar por `status === "live"`) — change no performance service
+
+**Nota:** Esta story tem overlap com **RG-M1** (ambas tocam mesmos arquivos no performance service). Coordenar execucao — idealmente fazer juntas ou M1 primeiro.
 
 ## Arquivos Afetados
 
 - `src/lib/services/klaviyo-performance.service.ts`
-- `src/lib/integrations/klaviyo/report-summary.ts`

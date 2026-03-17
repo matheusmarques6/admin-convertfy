@@ -35,16 +35,17 @@ Esforco: LOW
 - [ ] Deletar arquivo `src/app/api/debug/stores-diagnostic/route.ts`
 - [ ] Verificar se ha outros endpoints de debug em producao (grep por `/api/debug/`)
 
-### AC2: Auditar exec_sql
-- [ ] Verificar se a funcao `exec_sql` existe no banco Supabase
-- [ ] Se existir: verificar se tem `SECURITY DEFINER` com check de role admin
-- [ ] Se nao tiver protecao adequada: dropar a funcao via migration
-- [ ] Avaliar se `/api/setup/database` ainda e necessario — se nao, deletar
+### AC2: Deletar setup/database e dropar exec_sql
+- [ ] DELETAR `src/app/api/setup/database/route.ts` (endpoint de setup one-time, nao necessario em producao)
+- [ ] Se necessario em desenvolvimento local, proteger com `if (process.env.NODE_ENV === 'production') return 403`
+- [ ] Verificar se a funcao `exec_sql` existe no banco Supabase — se sim, dropar via migration
+- [ ] Atualizar `.env.example` removendo referencias a setup endpoints
 
 ### AC3: Cleanup
-- [ ] Verificar que nenhuma rota referencia os arquivos deletados
+- [ ] Verificar que nenhuma rota ou script referencia os arquivos deletados
+- [ ] Grep por `setup/database` e `stores-diagnostic` no frontend
 
 ## Arquivos Afetados
 
 - `src/app/api/debug/stores-diagnostic/route.ts` — DELETAR
-- `src/app/api/setup/database/route.ts` — avaliar/deletar
+- `src/app/api/setup/database/route.ts` — DELETAR (decisao firme pos-review)

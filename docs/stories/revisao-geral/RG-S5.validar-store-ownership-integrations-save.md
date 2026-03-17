@@ -41,7 +41,15 @@ Esforco: LOW
 ### AC3: Mesma protecao em getMultipleStoreCredentials
 - [ ] `getMultipleStoreCredentials` tambem nao filtra por org — adicionar parametro orgId
 
+## Notas de Implementacao (pos-review)
+
+- `updateStoreCredentials` JA aceita `orgId` como parametro opcional (linha 139: `if (orgId) { query = query.eq("org_id", orgId) }`). So precisa tornar obrigatorio.
+- **Shopify OAuth callback** chama `updateStoreCredentials` sem orgId — precisa resolver orgId do state/session
+- **Cron jobs** operam cross-org legitimamente — adicionar opcao `skipOrgCheck: true` para contextos de service-role
+- Assinatura sugerida: `updateStoreCredentials(storeId, credentials, integrationKey?, options?: { orgId?: string, skipOrgCheck?: boolean })`
+
 ## Arquivos Afetados
 
 - `src/app/api/integrations/save/route.ts` — adicionar check
-- `src/lib/services/credentials.service.ts` — adicionar orgId param
+- `src/lib/services/credentials.service.ts` — tornar orgId obrigatorio (com escape hatch)
+- `src/app/api/integrations/shopify/callback/route.ts` — ajustar para passar orgId
