@@ -31,39 +31,48 @@ export async function upsertSyncResults(
   period: string,
   audience?: { totalLeads: number; engagedLeads: number; engagementRate: number },
 ): Promise<void> {
-  // Delete stale flow metrics with old period dates, then upsert current ones
+  // Atomic write: UPSERT first, then CLEANUP stale rows by fetched_at.
+  // This eliminates the race condition where DELETE+UPSERT could show 0 rows
+  // to the portal between the two operations. (Story 54.3)
+  const syncTimestamp = new Date().toISOString()
+
   if (data.flowRows.length > 0) {
-    await supabase
-      .from("klaviyo_flow_metrics")
-      .delete()
-      .eq("store_id", store.id)
-      .eq("period_label", period)
     const { error: flowErr } = await supabase
       .from("klaviyo_flow_metrics")
       .upsert(
-        data.flowRows.map(r => ({ ...r, period_label: period })),
+        data.flowRows.map(r => ({ ...r, period_label: period, fetched_at: syncTimestamp })),
         { onConflict: "store_id,flow_id,period_start,period_end" },
       )
     if (flowErr) {
       log.warn(`[SyncPersistence] Failed to upsert flow metrics for ${store.id}/${period}:`, flowErr.message)
+    } else {
+      // Cleanup: remove rows not touched by this sync (stale/removed flows)
+      await supabase
+        .from("klaviyo_flow_metrics")
+        .delete()
+        .eq("store_id", store.id)
+        .eq("period_label", period)
+        .lt("fetched_at", syncTimestamp)
     }
   }
 
-  // Delete stale campaign metrics with old period dates, then upsert current ones
   if (data.campRows.length > 0) {
-    await supabase
-      .from("klaviyo_campaign_metrics")
-      .delete()
-      .eq("store_id", store.id)
-      .eq("period_label", period)
     const { error: campErr } = await supabase
       .from("klaviyo_campaign_metrics")
       .upsert(
-        data.campRows.map(r => ({ ...r, period_label: period })),
+        data.campRows.map(r => ({ ...r, period_label: period, fetched_at: syncTimestamp })),
         { onConflict: "store_id,campaign_id,period_start,period_end" },
       )
     if (campErr) {
       log.warn(`[SyncPersistence] Failed to upsert campaign metrics for ${store.id}/${period}:`, campErr.message)
+    } else {
+      // Cleanup: remove rows not touched by this sync (stale/removed campaigns)
+      await supabase
+        .from("klaviyo_campaign_metrics")
+        .delete()
+        .eq("store_id", store.id)
+        .eq("period_label", period)
+        .lt("fetched_at", syncTimestamp)
     }
   }
 
@@ -412,7 +421,11 @@ export async function upsertAudiences(
 
   const now = new Date().toISOString()
 
-  // Delete-then-insert: removes orphaned rows from Klaviyo-deleted audiences
+  // DELETE+INSERT pattern kept intentionally for audiences (Story 54.3):
+  // - Audiences have no unique conflict key suitable for UPSERT cleanup
+  // - This table is NOT read by the portal dashboard during sync, so the
+  //   brief zero-rows window does not cause a visible race condition
+  // - Contrast with flow/campaign metrics which use UPSERT+CLEANUP (atomic write)
   const { error: deleteErr } = await supabase
     .from("klaviyo_audiences")
     .delete()

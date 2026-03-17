@@ -8,13 +8,14 @@ import type { KlaviyoPerformanceData } from "./klaviyo-performance.service"
 function createMockSupabase() {
   const upsertFn = vi.fn().mockResolvedValue({ error: null })
   const deleteFn = vi.fn()
+  const deleteLtFn = vi.fn().mockResolvedValue({ error: null })
   const deleteEqFn = vi.fn()
   const singleFn = vi.fn().mockResolvedValue({ data: { client_id: "client-1" }, error: null })
   const eqFn = vi.fn().mockReturnValue({ single: singleFn })
   const selectFn = vi.fn().mockReturnValue({ eq: eqFn })
 
-  // delete().eq().eq() chain
-  deleteEqFn.mockReturnValue({ eq: deleteEqFn })
+  // delete().eq().eq().lt() chain — supports both cleanup (.lt) and audiences (.eq only)
+  deleteEqFn.mockReturnValue({ eq: deleteEqFn, lt: deleteLtFn })
   deleteFn.mockReturnValue({ eq: deleteEqFn })
 
   const fromFn = vi.fn().mockImplementation((table: string) => {
@@ -29,6 +30,7 @@ function createMockSupabase() {
     from: fromFn,
     upsert: upsertFn,
     delete: deleteFn,
+    deleteLt: deleteLtFn,
     select: selectFn,
     eq: eqFn,
     single: singleFn,
@@ -151,28 +153,48 @@ describe("upsertSyncResults", () => {
     vi.restoreAllMocks()
   })
 
-  it("should upsert flow metrics when flowRows exist", async () => {
-    const { client, from, upsert } = createMockSupabase()
+  it("should upsert flow metrics with fetched_at (atomic write, no pre-DELETE)", async () => {
+    const { client, from, upsert, deleteLt } = createMockSupabase()
 
     await upsertSyncResults(client, STORE, SYNC_DATA, "30d")
 
     expect(from).toHaveBeenCalledWith("klaviyo_flow_metrics")
-    expect(upsert).toHaveBeenCalledWith(
-      SYNC_DATA.flowRows.map(r => ({ ...r, period_label: "30d" })),
-      { onConflict: "store_id,flow_id,period_start,period_end" },
+
+    // UPSERT should include fetched_at and period_label
+    const flowUpsertCall = upsert.mock.calls.find(
+      (c: unknown[]) => {
+        const payload = c[0]
+        return Array.isArray(payload) && payload.length > 0 && payload[0].flow_id === "flow-1"
+      }
     )
+    expect(flowUpsertCall).toBeDefined()
+    expect(flowUpsertCall![0][0].fetched_at).toBeDefined()
+    expect(flowUpsertCall![0][0].period_label).toBe("30d")
+
+    // Post-UPSERT cleanup should be called (delete stale rows via .lt)
+    expect(deleteLt).toHaveBeenCalled()
   })
 
-  it("should upsert campaign metrics when campRows exist", async () => {
-    const { client, from, upsert } = createMockSupabase()
+  it("should upsert campaign metrics with fetched_at (atomic write, no pre-DELETE)", async () => {
+    const { client, from, upsert, deleteLt } = createMockSupabase()
 
     await upsertSyncResults(client, STORE, SYNC_DATA, "30d")
 
     expect(from).toHaveBeenCalledWith("klaviyo_campaign_metrics")
-    expect(upsert).toHaveBeenCalledWith(
-      SYNC_DATA.campRows.map(r => ({ ...r, period_label: "30d" })),
-      { onConflict: "store_id,campaign_id,period_start,period_end" },
+
+    // UPSERT should include fetched_at and period_label
+    const campUpsertCall = upsert.mock.calls.find(
+      (c: unknown[]) => {
+        const payload = c[0]
+        return Array.isArray(payload) && payload.length > 0 && payload[0].campaign_id === "camp-1"
+      }
     )
+    expect(campUpsertCall).toBeDefined()
+    expect(campUpsertCall![0][0].fetched_at).toBeDefined()
+    expect(campUpsertCall![0][0].period_label).toBe("30d")
+
+    // Post-UPSERT cleanup should be called
+    expect(deleteLt).toHaveBeenCalled()
   })
 
   it("should skip flow upsert when flowRows is empty", async () => {
@@ -287,7 +309,8 @@ describe("upsertSyncResults", () => {
   it("should set sync_status to 'partial' when only flow data is available", async () => {
     // Mock that supports store_revenue_summary SELECT + upsert + delete chains
     const upsertFn = vi.fn().mockResolvedValue({ error: null })
-    const deleteEqFn = vi.fn().mockReturnValue({ eq: vi.fn() })
+    const deleteLtFn = vi.fn().mockResolvedValue({ error: null })
+    const deleteEqFn = vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ lt: deleteLtFn }), lt: deleteLtFn })
     const deleteFn = vi.fn().mockReturnValue({ eq: deleteEqFn })
     const fromFn = vi.fn().mockImplementation((table: string) => {
       if (table === "client_stores") {
@@ -351,7 +374,8 @@ describe("upsertSyncResults", () => {
     const singleFn = vi.fn().mockResolvedValue({ data: { client_id: "client-1" }, error: null })
     const eqFn = vi.fn().mockReturnValue({ single: singleFn })
     const selectFn = vi.fn().mockReturnValue({ eq: eqFn })
-    const deleteEqFn = vi.fn().mockReturnValue({ eq: vi.fn() })
+    const deleteLtFn = vi.fn().mockResolvedValue({ error: null })
+    const deleteEqFn = vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ lt: deleteLtFn }), lt: deleteLtFn })
     const deleteFn = vi.fn().mockReturnValue({ eq: deleteEqFn })
     const fromFn = vi.fn().mockImplementation((table: string) => {
       if (table === "client_stores") return { select: selectFn }
@@ -618,6 +642,77 @@ describe("savePerfDataToCache", () => {
 
     // Empty orgId triggers the guard before any DB call
     expect(from).not.toHaveBeenCalled()
+  })
+})
+
+describe("upsertSyncResults - atomic write (Story 54.3)", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it("should NOT run cleanup when upsert fails (flow metrics)", async () => {
+    const upsertFn = vi.fn().mockResolvedValue({ error: { message: "upsert failed" } })
+    const deleteLtFn = vi.fn().mockResolvedValue({ error: null })
+    const deleteEqFn = vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ lt: deleteLtFn }), lt: deleteLtFn })
+    const deleteFn = vi.fn().mockReturnValue({ eq: deleteEqFn })
+    const singleFn = vi.fn().mockResolvedValue({ data: { client_id: "client-1" }, error: null })
+    const eqFn = vi.fn().mockReturnValue({ single: singleFn })
+    const selectFn = vi.fn().mockReturnValue({ eq: eqFn })
+    const revSummarySingleFn = vi.fn().mockResolvedValue({
+      data: { klaviyo_campaign_revenue: 0, klaviyo_flow_revenue: 0 },
+      error: null,
+    })
+    const revSummaryEq2 = vi.fn().mockReturnValue({ single: revSummarySingleFn })
+    const revSummaryEq1 = vi.fn().mockReturnValue({ eq: revSummaryEq2 })
+    const revSummarySelect = vi.fn().mockReturnValue({ eq: revSummaryEq1 })
+    const fromFn = vi.fn().mockImplementation((table: string) => {
+      if (table === "client_stores") return { select: selectFn }
+      if (table === "store_revenue_summary") return { upsert: upsertFn, select: revSummarySelect }
+      return { upsert: upsertFn, delete: deleteFn }
+    })
+    const client = { from: fromFn } as unknown as Parameters<typeof upsertSyncResults>[0]
+
+    const dataFlowsOnly: KlaviyoSyncData = {
+      ...SYNC_DATA,
+      campRows: [],
+      campaignDataAvailable: false,
+      campaignRevenue: 0,
+    }
+
+    await upsertSyncResults(client, STORE, dataFlowsOnly, "30d")
+
+    // Cleanup (.lt) should NOT be called since upsert returned an error
+    expect(deleteLtFn).not.toHaveBeenCalled()
+  })
+
+  it("should NOT run cleanup when upsert fails (campaign metrics)", async () => {
+    const callCount = { flowUpsertDone: false }
+    const upsertFn = vi.fn().mockImplementation((rows: unknown[]) => {
+      const arr = rows as Record<string, unknown>[]
+      if (arr.length > 0 && "campaign_id" in arr[0]) {
+        return Promise.resolve({ error: { message: "campaign upsert failed" } })
+      }
+      callCount.flowUpsertDone = true
+      return Promise.resolve({ error: null })
+    })
+    const deleteLtFn = vi.fn().mockResolvedValue({ error: null })
+    const deleteEqFn = vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ lt: deleteLtFn }), lt: deleteLtFn })
+    const deleteFn = vi.fn().mockReturnValue({ eq: deleteEqFn })
+    const singleFn = vi.fn().mockResolvedValue({ data: { client_id: "client-1" }, error: null })
+    const eqFn = vi.fn().mockReturnValue({ single: singleFn })
+    const selectFn = vi.fn().mockReturnValue({ eq: eqFn })
+    const fromFn = vi.fn().mockImplementation((table: string) => {
+      if (table === "client_stores") return { select: selectFn }
+      return { upsert: upsertFn, delete: deleteFn }
+    })
+    const client = { from: fromFn } as unknown as Parameters<typeof upsertSyncResults>[0]
+
+    await upsertSyncResults(client, STORE, SYNC_DATA, "30d")
+
+    // Flow cleanup should fire (flow upsert succeeds), but only 1 lt call for flows
+    // Campaign cleanup should NOT fire (campaign upsert fails)
+    // deleteLtFn is called once (for flow cleanup only)
+    expect(deleteLtFn).toHaveBeenCalledTimes(1)
   })
 })
 
