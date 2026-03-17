@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
         throw new AppError(`Unsupported integration type for store: ${type}`, 400)
       }
 
-      await updateStoreCredentials(store_id, storeFields, type as "shopify" | "klaviyo" | "meta" | "ga4" | "google_ads" | "google_calendar")
+      await updateStoreCredentials(store_id, storeFields, type as "shopify" | "klaviyo" | "meta" | "ga4" | "google_ads" | "google_calendar", { orgId })
 
       log.info("Integration saved to client_stores", { store_id, type })
       return successResponse(request, { success: true, saved_to: "client_stores" })

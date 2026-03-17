@@ -13,6 +13,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { SupabaseClient } from "@supabase/supabase-js"
 import { createAdminClient } from "@/lib/supabase/server"
+import { requireCronAuth } from "@/lib/api/cron-auth"
 import {
   syncRsvpFromGoogle,
   syncMeetingToGoogle,
@@ -85,12 +86,8 @@ interface RetrySyncResult {
 export async function GET(request: NextRequest) {
   try {
     // AC 42.12.1: Verify CRON_SECRET
-    const authHeader = request.headers.get("authorization")
-    const cronSecret = process.env.CRON_SECRET
-
-    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    const authError = requireCronAuth(request)
+    if (authError) return authError
 
     const supabase = createAdminClient()
     const startTime = Date.now()

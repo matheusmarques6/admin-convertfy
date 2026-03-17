@@ -192,15 +192,22 @@ export async function getStoreCredentials(storeId: string, orgId?: string): Prom
  * Returns a Map indexed by store ID.
  */
 export async function getMultipleStoreCredentials(
-  storeIds: string[]
+  storeIds: string[],
+  orgId?: string
 ): Promise<Map<string, StoreCredentials & { store_name: string; client_id: string | null }>> {
   if (storeIds.length === 0) return new Map()
 
   const adminClient = createAdminClient()
-  const { data: stores, error } = await adminClient
+  let query = adminClient
     .from("client_stores")
     .select("*")
     .in("id", storeIds)
+
+  if (orgId) {
+    query = query.eq("org_id", orgId)
+  }
+
+  const { data: stores, error } = await query
 
   if (error) {
     log.error("Failed to fetch multiple store credentials", { error })
@@ -250,7 +257,7 @@ export async function updateStoreCredentials(
   storeId: string,
   credentials: Partial<StoreCredentials>,
   integrationKey?: keyof IntegrationStatus,
-  options?: { resetValidation?: boolean }
+  options?: { resetValidation?: boolean; orgId?: string; skipOrgCheck?: boolean }
 ): Promise<void> {
   const adminClient = createAdminClient()
 
@@ -323,14 +330,29 @@ export async function updateStoreCredentials(
     }
   }
 
-  const { error } = await adminClient
+  const useOrgCheck = !!options?.orgId && !options?.skipOrgCheck
+
+  let query = adminClient
     .from("client_stores")
-    .update(updateData)
+    .update(updateData, useOrgCheck ? { count: "exact" } : undefined)
     .eq("id", storeId)
+
+  // Defense-in-depth: filter by org_id to prevent cross-tenant credential overwrites
+  if (useOrgCheck) {
+    query = query.eq("org_id", options!.orgId!)
+  }
+
+  const { error, count } = await query
 
   if (error) {
     log.error("Failed to update store credentials", { storeId, error })
     throw new AppError("Erro ao atualizar credenciais", 500)
+  }
+
+  // If orgId was provided and no rows were updated, store doesn't belong to this org
+  if (useOrgCheck && count === 0) {
+    log.warn("Store ownership check failed on credential update", { storeId, orgId: options!.orgId })
+    throw new AppError("Store not found or does not belong to this organization", 403)
   }
 
   log.info("Store credentials updated", { storeId, integrationKey })

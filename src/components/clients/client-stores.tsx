@@ -11,7 +11,6 @@ import {
   ExternalLink,
   Eye,
   Loader2,
-  Database,
   Info,
   Settings,
   AlertTriangle,
@@ -229,33 +228,6 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
   }
 
 
-  async function checkDatabaseStatus() {
-    try {
-      const response = await fetch("/api/setup/database")
-      const data = await response.json()
-
-      if (data.tables?.client_stores?.exists) {
-        toast({
-          title: "Tabelas OK",
-          description: "As tabelas do banco de dados estão configuradas corretamente.",
-        })
-        loadStores()
-      } else {
-        toast({
-          variant: "destructive",
-          title: "Tabela não encontrada",
-          description: "Execute o SQL de migração no Supabase SQL Editor. Arquivo: supabase/migrations/20241213_add_store_credentials.sql",
-        })
-      }
-    } catch (error) {
-      console.error("Error checking database:", error)
-      toast({
-        variant: "destructive",
-        title: "Erro ao verificar",
-        description: "Não foi possível verificar o status do banco de dados",
-      })
-    }
-  }
 
   /** Helper: check if any integration is missing credentials */
   function hasPendingIntegrations(store: ClientStore): boolean {
@@ -323,10 +295,6 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
               <Button onClick={() => openDialog()}>
                 <Plus className="mr-2 h-4 w-4" />
                 Adicionar Loja
-              </Button>
-              <Button variant="outline" onClick={checkDatabaseStatus}>
-                <Database className="mr-2 h-4 w-4" />
-                Verificar BD
               </Button>
             </div>
           </CardContent>

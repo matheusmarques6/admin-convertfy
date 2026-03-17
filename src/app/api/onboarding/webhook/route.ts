@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
 // POST - Webhook endpoint for n8n to send store analysis results
 export async function POST(request: NextRequest) {
   // Rate limiting
-  const limited = checkRateLimit(request, "webhook:onboarding", RATE_LIMITS.webhook)
+  const limited = await checkRateLimit(request, "webhook:onboarding", RATE_LIMITS.webhook)
   if (limited) return limited
 
   try {

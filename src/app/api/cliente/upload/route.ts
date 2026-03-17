@@ -26,7 +26,7 @@ let bucketEnsured = false
  * Rate limited to prevent abuse.
  */
 export async function POST(request: NextRequest) {
-  const limited = checkRateLimit(request, "cliente:upload", RATE_LIMITS.clienteUpload)
+  const limited = await checkRateLimit(request, "cliente:upload", RATE_LIMITS.clienteUpload)
   if (limited) return limited
 
   try {

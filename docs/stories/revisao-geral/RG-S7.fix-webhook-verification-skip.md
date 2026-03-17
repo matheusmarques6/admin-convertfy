@@ -3,10 +3,11 @@ Prioridade: High
 Sprint: 1 - Seguranca
 Assignee: "@dev"
 Revisao: "@qa"
-Status: Ready for Dev
+Status: Reviewed
 Epic: "Revisao Geral — Auditoria Completa"
 Fase: "1 - Seguranca & Estabilidade"
 Esforco: LOW
+Batch: 3 (apos S3, verificar dados de producao antes)
 ---
 
 # Story RG-S7 — Nao Skipar Webhook Verification Quando Secret Ausente
@@ -30,30 +31,36 @@ Esforco: LOW
    `if (trackingStore.webhook_secret && hmac)` — pula se secret nao esta no banco
 
 3. **WhatsApp webhook** (`integrations/whatsapp/webhook/route.ts:27-29`):
-   `if (!appSecret) { return true }` — pula em "dev mode"
+   `if (!appSecret) { return true }` — pula em "dev mode" (sem check de NODE_ENV!)
 
-### Impacto
+### Impacto por endpoint (descoberto na review)
 
-Em misconfiguracao (env var esquecida, secret nao populado), atacante pode forjar callbacks OAuth, injetar tracking data falso, ou enviar mensagens WhatsApp forjadas.
+| Endpoint | Dados em risco | Gravidade |
+|----------|----------------|-----------|
+| Shopify OAuth | `shopify_access_token` em `client_stores` | HIGH (credential injection, mas mitigado por state cookie + code exchange) |
+| Tracking webhook | PII em `tracking_orders`: nome, email, phone, precos | **MAIS GRAVE** (escreve via adminClient sem validacao) |
+| WhatsApp | `activities` table: metadata forjada | MEDIUM |
 
 ## Acceptance Criteria
 
 ### AC1: Shopify OAuth callback
-- [ ] Se `SHOPIFY_API_SECRET` nao esta configurado, rejeitar request com 500 + log error
-- [ ] Se `hmac` nao esta presente no query, rejeitar com 401
+- [x] Se `SHOPIFY_API_SECRET` nao esta configurado, rejeitar com 500 + log error (misconfiguracao de servidor)
+- [x] Se `hmac` nao esta presente no query, rejeitar com 401
 
 ### AC2: Tracking webhook
-- [ ] Se `trackingStore.webhook_secret` e null, logar warning e rejeitar com 401
-- [ ] Se `hmac` nao esta no header, rejeitar com 401
+- [x] Se `trackingStore.webhook_secret` e null, logar warning e rejeitar com 401
+- [x] Se `hmac` nao esta no header, rejeitar com 401
+- [x] **ATENCAO:** Verificar quantas stores em producao tem `webhook_secret` null — se muitas, considerar grace period com log warning
 
 ### AC3: WhatsApp webhook
-- [ ] Se `WHATSAPP_APP_SECRET` nao esta configurado, retornar `false` (nao `true`)
-- [ ] Logar error level quando secret esta ausente
+- [x] Se `WHATSAPP_APP_SECRET` nao esta configurado, retornar `false` (nao `true`)
+- [x] Logar error level quando secret esta ausente
+- [x] Se necessario para dev local, usar `if (process.env.NODE_ENV === 'development' && !appSecret) return true`
 
 ### AC4: Atualizar .env.example
-- [ ] Adicionar `SHOPIFY_API_SECRET` como OBRIGATORIO no `.env.example`
-- [ ] Adicionar `WHATSAPP_APP_SECRET` como OBRIGATORIO no `.env.example`
-- [ ] Documentar que webhook verification NAO funciona sem esses secrets
+- [x] Adicionar `SHOPIFY_API_SECRET` como OBRIGATORIO no `.env.example`
+- [x] Adicionar `WHATSAPP_APP_SECRET` como OBRIGATORIO no `.env.example`
+- [x] Documentar que webhook verification NAO funciona sem esses secrets
 
 **Nota:** `timingSafeEqual` para HMAC comparisons e coberto por **RG-S8** — nao duplicar aqui.
 
@@ -63,3 +70,33 @@ Em misconfiguracao (env var esquecida, secret nao populado), atacante pode forja
 - `src/app/api/tracking/webhooks/shopify/route.ts`
 - `src/app/api/integrations/whatsapp/webhook/route.ts`
 - `.env.example` — atualizar com variaveis obrigatorias
+
+## Pre-requisito de Deploy
+
+**ANTES de fazer deploy desta story, verificar em producao:**
+```sql
+SELECT COUNT(*) FROM tracking_stores WHERE webhook_secret IS NULL;
+```
+Se resultado > 0, stores existentes terao webhooks rejeitados. Opcoes:
+- **Opcao A (recomendada):** Rejeitar com 401 + log warning. Forca admin a configurar secret. Mais seguro.
+- **Opcao B:** Aceitar com WARNING level alto por N dias. Menos disruptivo mas mantem vulnerabilidade.
+
+## Review Consolidado (2026-03-17)
+
+### QA (Quinn)
+- **Vulnerabilidade:** CONFIRMADA nos 3 locais. WhatsApp e o mais explicito (retorna `true`).
+- **Severidade:** HIGH — concordo.
+- **Preocupacao principal:** Tracking stores sem `webhook_secret` vao quebrar. Verificar dados de prod antes do deploy.
+
+### DBM
+- **Impacto DB:** MEDIUM. Tracking webhook e o mais perigoso — escreve PII via adminClient.
+- **Recomendacao adicional:** Input validation/sanitization nos webhook payloads ANTES de escrever no DB (especialmente `handleOrder` que confia em `order.*` diretamente).
+
+### Arquiteto (Aria)
+- **Aprovar com ressalva.** Cada webhook tem mecanismo diferente (HMAC header vs Bearer vs query param) — NAO criar helper centralizado de webhook auth aqui.
+- **Coordenar com RG-S8** que tambem toca `shopify/callback/route.ts`.
+- **Tracking webhook:** Secret vem do banco (per-store), nao de env var. Stores criadas antes da feature podem nao ter secret.
+
+### Dev (Dex)
+- **Pronto.** ~20 linhas totais nos 3 arquivos.
+- **Side effect principal:** Stores sem webhook_secret terao tracking rejeitado. Precisa verificacao em prod.

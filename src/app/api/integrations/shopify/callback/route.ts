@@ -50,8 +50,22 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Verify HMAC if secret is available
-    if (process.env.SHOPIFY_API_SECRET && hmac) {
+    // Verify HMAC — secret MUST be configured, hmac MUST be present
+    if (!process.env.SHOPIFY_API_SECRET) {
+      log.error("SHOPIFY_API_SECRET is not configured — server misconfiguration")
+      return NextResponse.redirect(
+        new URL("/settings/integrations?error=server_misconfiguration", request.url)
+      )
+    }
+
+    if (!hmac) {
+      log.warn("Missing hmac parameter in Shopify OAuth callback")
+      return NextResponse.redirect(
+        new URL("/settings/integrations?error=missing_hmac", request.url)
+      )
+    }
+
+    {
       const queryParams = new URLSearchParams(request.nextUrl.search)
       queryParams.delete("hmac")
       queryParams.delete("signature")
@@ -67,7 +81,9 @@ export async function GET(request: NextRequest) {
         .update(sortedParams)
         .digest("hex")
 
-      if (calculatedHmac !== hmac) {
+      const a = Buffer.from(calculatedHmac, "hex")
+      const b = Buffer.from(hmac, "hex")
+      if (a.byteLength !== b.byteLength || !crypto.timingSafeEqual(a, b)) {
         log.warn("Invalid Shopify HMAC")
         return NextResponse.redirect(
           new URL("/settings/integrations?error=invalid_hmac", request.url)

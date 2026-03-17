@@ -41,7 +41,7 @@ interface AsaasWebhookPayload {
 }
 
 export async function POST(request: NextRequest) {
-  const limited = checkRateLimit(request, "webhook:asaas", RATE_LIMITS.webhook)
+  const limited = await checkRateLimit(request, "webhook:asaas", RATE_LIMITS.webhook)
   if (limited) return limited
 
   try {

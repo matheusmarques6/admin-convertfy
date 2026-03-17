@@ -195,7 +195,7 @@ export async function PUT(request: NextRequest) {
       if (shopify_access_token) {
         await updateStoreCredentials(store_id, {
           shopify_access_token,
-        }, "shopify", { resetValidation: true })
+        }, "shopify", { resetValidation: true, orgId: store.org_id })
       } else if (!shopify_store_domain) {
         throw new AppError("Nenhuma credencial informada", 400)
       }
@@ -218,7 +218,7 @@ export async function PUT(request: NextRequest) {
         throw new AppError("Nenhuma credencial informada", 400)
       }
 
-      await updateStoreCredentials(store_id, creds, "klaviyo", { resetValidation: true })
+      await updateStoreCredentials(store_id, creds, "klaviyo", { resetValidation: true, orgId: store.org_id })
 
       return successResponse(request, { success: true, message: "Credenciais Klaviyo atualizadas" })
     }

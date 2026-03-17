@@ -19,7 +19,7 @@ const changePasswordSchema = z.object({
 
 // POST - First-login password change only (must_change_password guard)
 export async function POST(request: NextRequest) {
-  const limited = checkRateLimit(request, "auth:change-password", RATE_LIMITS.auth)
+  const limited = await checkRateLimit(request, "auth:change-password", { ...RATE_LIMITS.auth, failClosed: true })
   if (limited) return limited
 
   try {

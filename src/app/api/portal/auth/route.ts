@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
 
 // POST - Login to portal
 export async function POST(request: NextRequest) {
-  const limited = checkRateLimit(request, "portal:auth", RATE_LIMITS.auth)
+  const limited = await checkRateLimit(request, "portal:auth", { ...RATE_LIMITS.auth, failClosed: true })
   if (limited) return limited
 
   try {

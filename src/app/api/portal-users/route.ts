@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
-import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
+import { errorResponse, requireAuth, AppError, parseAndValidate } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
+import { z } from "zod"
 
 const log = logger.child("PortalUsers")
 
@@ -274,12 +275,15 @@ export async function PATCH(request: NextRequest) {
       throw new AppError("Access denied", 403)
     }
 
-    const body = await request.json()
-    const { id, ...updateData } = body
+    const patchSchema = z.object({
+      id: z.string().uuid(),
+      name: z.string().optional(),
+      phone: z.string().optional(),
+      is_active: z.boolean().optional(),
+      permissions: z.record(z.string(), z.boolean()).optional(),
+    }).strict()
 
-    if (!id) {
-      throw new AppError("Portal user ID is required", 400)
-    }
+    const { id, ...updateData } = await parseAndValidate(request, patchSchema)
 
     const adminClient = createAdminClient()
 

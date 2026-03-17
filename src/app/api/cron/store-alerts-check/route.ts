@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { runAllChecks } from '@/lib/services/store-alert-checker';
+import { requireCronAuth } from '@/lib/api/cron-auth';
 import { logger } from '@/lib/logger';
 
 const log = logger.child('CronStoreAlerts');
@@ -9,14 +10,8 @@ const log = logger.child('CronStoreAlerts');
  * Configured in vercel.json with schedule: "0 8 * * 1" (Monday 8AM UTC)
  */
 export async function GET(request: NextRequest) {
-  // Verify cron secret (Vercel sets this automatically for cron jobs)
-  const authHeader = request.headers.get('authorization');
-  const cronSecret = process.env.CRON_SECRET;
-
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    log.warn('Unauthorized cron request');
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const authError = requireCronAuth(request);
+  if (authError) return authError;
 
   try {
     log.info('Weekly store alerts cron started');

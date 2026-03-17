@@ -3,10 +3,11 @@ Prioridade: Critical
 Sprint: 1 - Seguranca
 Assignee: "@dev"
 Revisao: "@qa"
-Status: Ready for Dev
+Status: Reviewed
 Epic: "Revisao Geral — Auditoria Completa"
 Fase: "1 - Seguranca & Estabilidade"
 Esforco: LOW
+Batch: 2 (apos Batch 1, combinar com RG-S8)
 ---
 
 # Story RG-S3 — Fix Cron Auth Bypass em store-alerts-check
@@ -27,31 +28,99 @@ Em `store-alerts-check/route.ts`, a verificacao do CRON_SECRET e condicional:
 if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
 ```
 
-Quando `cronSecret` e `undefined` (env var nao setada), a condicao inteira e `false` e o request passa direto. Outros cron endpoints (sync-reports, board-automation, tracking-sync) ja usam a logica correta.
+Quando `cronSecret` e `undefined` (env var nao setada), a condicao inteira e `false` e o request passa direto.
 
-### Padrao correto (ja usado em outros crons)
+### Status dos outros cron endpoints (verificado na review)
 
-```typescript
-if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
-```
+| Cron | Padrao | Status |
+|------|--------|--------|
+| `sync-reports` | `!cronSecret \|\|` | CORRETO |
+| `tracking-sync` | `!cronSecret \|\|` | CORRETO |
+| `board-automation` | `!cronSecret \|\|` | CORRETO |
+| `google-calendar-sync` | `!cronSecret \|\|` | CORRETO |
+| `store-alerts-check` | `cronSecret &&` | **VULNERAVEL** |
+
+**Apenas 1 de 5 crons e vulneravel** — os outros 4 ja usam o padrao correto.
+
+### Padrao de referencia no codebase
+
+`src/lib/api/n8n-auth.ts` ja tem `requireWebhookSecret()` que faz exatamente o padrao correto: rejeita quando secret ausente, usa `timingSafeEqual`, lanca `AppError`. Usar como modelo.
 
 ## Acceptance Criteria
 
 ### AC1: Fix store-alerts-check
-- [ ] Alterar logica para `if (!cronSecret || authHeader !== ...)` em `store-alerts-check`
-- [ ] Request sem CRON_SECRET configurado deve retornar 401
+- [x] Alterar logica para `if (!cronSecret || authHeader !== ...)` em `store-alerts-check`
+- [x] Request sem CRON_SECRET configurado deve retornar 401
 
-### AC2: Padronizar todos os cron endpoints
-- [ ] Auditar TODOS os cron endpoints para verificar mesma logica
-- [ ] Crons a verificar: `sync-reports`, `tracking-sync`, `board-automation`, `google-calendar-sync`, `store-alerts-check`
-- [ ] Todos devem usar `if (!cronSecret || authHeader !== ...)`
+### AC2: Criar helper centralizado requireCronAuth
+- [x] Criar `requireCronAuth(request)` em `src/lib/api/cron-auth.ts`
+- [x] Modelar a partir de `requireWebhookSecret` em `n8n-auth.ts`
+- [x] DEVE usar `crypto.timingSafeEqual` desde o inicio (resolve RG-S8 AC2 simultaneamente)
+- [x] Lancar `AppError` ou retornar `NextResponse` de erro
+- [x] Tratar caso de `byteLength` diferente (timingSafeEqual lanca se buffers tem tamanhos diferentes)
 
-### AC3: Considerar helper centralizado
-- [ ] Criar `requireCronAuth(request)` em `src/lib/api/` para reutilizar em todos os crons
-- [ ] Migrar todos os cron endpoints para usar o helper
+### AC3: Migrar todos os cron endpoints para o helper
+- [x] `store-alerts-check` — fix + migrar
+- [x] `sync-reports` — migrar para helper
+- [x] `tracking-sync` — migrar para helper
+- [x] `board-automation` — migrar para helper
+- [x] `google-calendar-sync` — migrar para helper
+
+### Referencia de implementacao
+
+```typescript
+// src/lib/api/cron-auth.ts
+import crypto from "crypto"
+import { NextRequest, NextResponse } from "next/server"
+
+export function requireCronAuth(request: NextRequest): NextResponse | null {
+  const authHeader = request.headers.get("authorization")
+  const cronSecret = process.env.CRON_SECRET
+
+  if (!cronSecret) {
+    console.error("CRON_SECRET not configured")
+    return NextResponse.json({ error: "Server misconfiguration" }, { status: 500 })
+  }
+
+  if (!authHeader) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  const expected = `Bearer ${cronSecret}`
+  const a = Buffer.from(authHeader)
+  const b = Buffer.from(expected)
+
+  if (a.byteLength !== b.byteLength || !crypto.timingSafeEqual(a, b)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  return null // authenticated OK
+}
+```
 
 ## Arquivos Afetados
 
 - `src/app/api/cron/store-alerts-check/route.ts` — fix principal
-- `src/app/api/cron/*/route.ts` — padronizar todos
-- `src/lib/api/` — novo helper `requireCronAuth`
+- `src/app/api/cron/sync-reports/route.ts` — migrar para helper
+- `src/app/api/cron/tracking-sync/route.ts` — migrar para helper
+- `src/app/api/cron/board-automation/route.ts` — migrar para helper
+- `src/app/api/cron/google-calendar-sync/route.ts` — migrar para helper
+- `src/lib/api/cron-auth.ts` — NOVO helper
+
+## Review Consolidado (2026-03-17)
+
+### QA (Quinn)
+- **Vulnerabilidade:** CONFIRMADA. Apenas store-alerts-check e vulneravel (1/5).
+- **Severidade:** CRITICAL — concordo. Em misconfiguracao, qualquer pessoa na internet pode triggerar alertas.
+- **Nota:** Combinar com RG-S8 para evitar tocar nos mesmos 5 arquivos duas vezes.
+
+### DBM
+- **Impacto DB:** MEDIUM. Acessa metadados de store e alertas, nao credenciais.
+- **Migration:** NAO necessaria.
+
+### Arquiteto (Aria)
+- **Aprovar.** Modelar de `n8n-auth.ts` (precedente no codebase). Incluir `timingSafeEqual` desde o inicio.
+- **Atencao:** Cron handlers NAO usam `errorResponse()` — o helper deve retornar `NextResponse | null` em vez de lancar, ou adaptar o catch dos handlers.
+
+### Dev (Dex)
+- **Pronto.** ~45 linhas (helper + migracoes). Combinar com RG-S8.

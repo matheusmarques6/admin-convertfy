@@ -23,7 +23,7 @@ const passwordChangeSchema = z
 
 // PUT - Change admin/agent password
 export async function PUT(request: NextRequest) {
-  const limited = checkRateLimit(request, "settings:password", RATE_LIMITS.auth)
+  const limited = await checkRateLimit(request, "settings:password", { ...RATE_LIMITS.auth, failClosed: true })
   if (limited) return limited
 
   try {

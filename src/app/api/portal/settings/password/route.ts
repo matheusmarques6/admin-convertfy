@@ -19,7 +19,7 @@ export async function OPTIONS(request: NextRequest) {
 
 // PUT - Change portal user password
 export async function PUT(request: NextRequest) {
-  const limited = checkRateLimit(request, "portal:password", RATE_LIMITS.auth)
+  const limited = await checkRateLimit(request, "portal:password", { ...RATE_LIMITS.auth, failClosed: true })
   if (limited) return limited
 
   try {

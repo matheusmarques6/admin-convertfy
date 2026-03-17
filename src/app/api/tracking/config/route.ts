@@ -38,7 +38,7 @@ export async function OPTIONS() {
  * Accepts client_store_id or tracking_store_id.
  */
 export async function GET(request: NextRequest) {
-  const limited = checkRateLimit(request, "tracking:config", CONFIG_RATE_LIMIT)
+  const limited = await checkRateLimit(request, "tracking:config", CONFIG_RATE_LIMIT)
   if (limited) return limited
 
   try {

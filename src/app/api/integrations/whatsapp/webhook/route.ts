@@ -25,8 +25,12 @@ function verifyWebhookSignature(
 ): boolean {
   const appSecret = process.env.WHATSAPP_APP_SECRET
   if (!appSecret) {
-    log.warn("WHATSAPP_APP_SECRET not configured - signature verification skipped")
-    return true // Allow in dev if not configured
+    if (process.env.NODE_ENV === "development") {
+      log.warn("WHATSAPP_APP_SECRET not configured — skipping verification in development mode")
+      return true
+    }
+    log.error("WHATSAPP_APP_SECRET is not configured — rejecting webhook payload (server misconfiguration)")
+    return false
   }
 
   if (!signatureHeader) {
@@ -77,7 +81,7 @@ export async function GET(request: NextRequest) {
 // POST - Receive messages and status updates
 export async function POST(request: NextRequest) {
   // Rate limiting
-  const limited = checkRateLimit(request, "webhook:whatsapp", RATE_LIMITS.webhook)
+  const limited = await checkRateLimit(request, "webhook:whatsapp", RATE_LIMITS.webhook)
   if (limited) return limited
 
   try {

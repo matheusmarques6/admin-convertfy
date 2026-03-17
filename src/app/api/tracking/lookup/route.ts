@@ -112,7 +112,7 @@ export async function OPTIONS() {
 }
 
 export async function GET(request: NextRequest) {
-  const limited = checkRateLimit(request, "tracking:lookup", LOOKUP_RATE_LIMIT)
+  const limited = await checkRateLimit(request, "tracking:lookup", LOOKUP_RATE_LIMIT)
   if (limited) return limited
 
   try {

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { requireCronAuth } from "@/lib/api/cron-auth"
 import { createAdminClient } from "@/lib/supabase/server"
 import { decrypt } from "@/lib/crypto"
 import { trackWithBestProvider, type CarrierKeys, detectCarrierProvider } from "@/lib/tracking/carriers"
@@ -9,11 +10,8 @@ import { trackVia17track } from "@/lib/services/tracking.service"
  * GET /api/tracking/debug-live?q=WNBAA0436613681YQ&store=5d543cd3-...
  */
 export async function GET(request: NextRequest) {
-  const cronSecret = process.env.CRON_SECRET
-  const auth = request.headers.get("authorization")
-  if (!cronSecret || auth !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
+  const authError = requireCronAuth(request)
+  if (authError) return authError
 
   const query = request.nextUrl.searchParams.get("q")?.trim()
   const storeId = request.nextUrl.searchParams.get("store")?.trim()

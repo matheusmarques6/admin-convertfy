@@ -44,8 +44,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true }, { status: 200 })
     }
 
-    // Verify webhook signature if secret is configured
-    if (trackingStore.webhook_secret && hmac) {
+    // Verify webhook signature — secret MUST be configured
+    if (!trackingStore.webhook_secret) {
+      log.warn("webhook_secret not configured for tracking store — rejecting payload. Store must configure webhook secret to receive events.", { shopDomain, storeId: trackingStore.id })
+      return NextResponse.json({ error: "Webhook secret not configured" }, { status: 401 })
+    }
+
+    if (!hmac) {
+      log.warn("Missing x-shopify-hmac-sha256 header", { shopDomain })
+      return NextResponse.json({ error: "Missing HMAC header" }, { status: 401 })
+    }
+
+    {
       const isValid = verifyShopifyWebhook(rawBody, hmac, trackingStore.webhook_secret)
       if (!isValid) {
         log.error("Invalid webhook signature", { shopDomain })

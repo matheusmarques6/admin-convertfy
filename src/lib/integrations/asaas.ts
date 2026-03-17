@@ -1,3 +1,4 @@
+import crypto from "crypto"
 import { AsaasCustomer, AsaasPayment, AsaasPaymentStatus } from "./types"
 import { fetchWithRetry } from "@/lib/utils/retry"
 
@@ -194,12 +195,15 @@ export class AsaasService {
 
   // Webhook validation
   static validateWebhook(
-    payload: string,
+    _payload: string,
     signature: string,
     secret: string
   ): boolean {
-    // Asaas uses a simple token comparison
-    return signature === secret
+    // Asaas uses a simple token comparison — timing-safe to prevent leakage
+    const a = Buffer.from(signature)
+    const b = Buffer.from(secret)
+    if (a.byteLength !== b.byteLength) return false
+    return crypto.timingSafeEqual(a, b)
   }
 
   // Account info

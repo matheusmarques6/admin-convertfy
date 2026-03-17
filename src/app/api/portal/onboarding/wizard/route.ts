@@ -251,7 +251,7 @@ export async function POST(request: NextRequest) {
         // Verify store belongs to this client
         const { data: ownedStoreApp } = await adminClient
           .from("client_stores")
-          .select("id")
+          .select("id, org_id")
           .eq("id", store_id)
           .eq("client_id", portalUser.client_id)
           .single()
@@ -311,7 +311,8 @@ export async function POST(request: NextRequest) {
           await updateStoreCredentials(
             store_id,
             { shopify_access_token: token, shopify_store_domain: domain },
-            "shopify"
+            "shopify",
+            { orgId: ownedStoreApp.org_id }
           )
 
           log.info("Shopify token validated and saved", { storeId: store_id })
@@ -356,7 +357,7 @@ export async function POST(request: NextRequest) {
         // Verify store belongs to this client
         const { data: ownedStore4 } = await adminClient
           .from("client_stores")
-          .select("id")
+          .select("id, org_id")
           .eq("id", store_id)
           .eq("client_id", portalUser.client_id)
           .single()
@@ -395,7 +396,7 @@ export async function POST(request: NextRequest) {
         await updateStoreCredentials(store_id, {
           klaviyo_private_key: private_key,
           klaviyo_api_key: private_key,
-        }, "klaviyo")
+        }, "klaviyo", { orgId: ownedStore4.org_id })
 
         // Set reporting access flag (confirmed by API test above)
         await adminClient

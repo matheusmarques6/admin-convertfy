@@ -12,7 +12,7 @@ const PREFIX = "enc:v1:"
 
 // POST - One-time migration to encrypt all existing plain-text credentials
 export async function POST(request: NextRequest) {
-  const limited = checkRateLimit(request, "admin:encrypt-credentials", RATE_LIMITS.migration)
+  const limited = await checkRateLimit(request, "admin:encrypt-credentials", RATE_LIMITS.migration)
   if (limited) return limited
 
   try {

@@ -10,17 +10,18 @@ Auditoria completa do codebase por 7 agentes especializados.
 
 ## Sprint 1 — Seguranca & Estabilidade (URGENTE)
 
-| Story | Titulo | Severidade | Esforco |
-|-------|--------|-----------|---------|
-| RG-S1 | Fix mass assignment em portal-users PATCH | CRITICAL | LOW |
-| RG-S2 | Remover exec_sql RPC e debug endpoint | CRITICAL | LOW |
-| RG-S3 | Fix cron auth bypass em store-alerts-check | CRITICAL | LOW |
-| RG-D1 | Fix USING(true) em 7 tabelas | CRITICAL | MEDIUM |
-| RG-D2 | Adicionar SET search_path em SECURITY DEFINER functions | CRITICAL | LOW |
-| RG-D3 | Fix is_org_owner() deprecado em policies e helpers | HIGH | MEDIUM-HIGH |
-| RG-S5 | Validar store_id ownership em integrations/save | HIGH | LOW |
-| RG-S6 | Adicionar requireRole no DELETE clients/manage | HIGH | LOW |
-| RG-S7 | Nao skipar webhook verification quando secret ausente | HIGH | LOW |
+| Story | Titulo | Severidade | Esforco | Status | Batch |
+|-------|--------|-----------|---------|--------|-------|
+| RG-S1 | Fix mass assignment em portal-users PATCH | CRITICAL | LOW | Reviewed | 1 |
+| RG-S2 | Remover exec_sql RPC e debug endpoint | CRITICAL | LOW | Reviewed | 1 |
+| RG-S6 | Adicionar requireRole no DELETE clients/manage | HIGH | LOW | Reviewed | 1 |
+| RG-S3 | Fix cron auth bypass + requireCronAuth helper | CRITICAL | LOW | Reviewed | 2 |
+| RG-S8 | timingSafeEqual em todos HMAC (combinar com S3) | ~~MEDIUM~~ **LOW** | LOW | Reviewed | 2 |
+| RG-S7 | Nao skipar webhook verification quando secret ausente | HIGH | LOW | Reviewed | 3 |
+| RG-S5 | Validar store_id ownership em integrations/save | HIGH | ~~LOW~~ **MEDIUM** | Reviewed | 4 |
+| RG-D2 | Adicionar SET search_path em SECURITY DEFINER functions | CRITICAL | LOW | Ready for Dev | — |
+| RG-D1 | Fix USING(true) em 7 tabelas | CRITICAL | MEDIUM | Ready for Dev | — |
+| RG-D3 | Fix is_org_owner() deprecado em policies e helpers | HIGH | MEDIUM-HIGH | Ready for Dev | — |
 
 ## Sprint 2 — Metricas & Bugs
 
@@ -37,15 +38,16 @@ Auditoria completa do codebase por 7 agentes especializados.
 
 ## Sprint 3 — Refatoracao & Tech Debt
 
-| Story | Titulo | Severidade | Esforco |
-|-------|--------|-----------|---------|
-| RG-A1 | AuthContext unificado (eliminar queries duplicadas) | HIGH | MEDIUM |
-| RG-A2 | Extrair services das API routes gigantes | HIGH | HIGH |
-| RG-A3 | Eliminar resolveOrgId duplicados + padronizar responses | MEDIUM | LOW |
-| RG-D4a | Adicionar indexes nas FKs faltando | MEDIUM | LOW |
-| RG-D4b | Adicionar paginacao em list endpoints | MEDIUM | MEDIUM |
-| RG-S8 | timingSafeEqual em todos HMAC/secret comparisons | MEDIUM | LOW |
-| RG-S9 | Migrar rate limiting para Redis/Upstash | HIGH | MEDIUM-HIGH |
+| Story | Titulo | Severidade | Esforco | Status |
+|-------|--------|-----------|---------|--------|
+| RG-A1 | AuthContext unificado (eliminar queries duplicadas) | HIGH | MEDIUM | Ready for Dev |
+| RG-A2 | Extrair services das API routes gigantes | HIGH | HIGH | Ready for Dev |
+| RG-A3 | Eliminar resolveOrgId duplicados + padronizar responses | MEDIUM | LOW | Ready for Dev |
+| RG-D4a | Adicionar indexes nas FKs faltando | MEDIUM | LOW | Ready for Dev |
+| RG-D4b | Adicionar paginacao em list endpoints | MEDIUM | MEDIUM | Ready for Dev |
+| RG-S9 | Migrar rate limiting para Redis/Upstash | HIGH | MEDIUM-HIGH | Reviewed (Batch 5) |
+
+**Nota:** RG-S8 movido para Sprint 1 Batch 2 (combinar com RG-S3). RG-S9 precisa decisao de infra antes de iniciar.
 
 ---
 
@@ -99,6 +101,25 @@ RG-M1, RG-M2, RG-M3 → ANTES de → RG-A2 (evitar conflitos de merge)
 3. **Observabilidade** — nenhuma story aborda structured logging, APM, ou error tracking (Sentry)
 4. **Testes automatizados** — nenhuma story cria testes para validar os fixes de seguranca (regressoes futuras podem reintroduzir os mesmos problemas)
 5. **`supabase/pipeline/*.sql`** — nao esta claro se esses arquivos sao aplicados em producao. Se sim, precisam do mesmo fix de `is_org_owner()` e `search_path`
+
+## Review Consolidado RG-S (2026-03-17)
+
+Revisao por 4 agentes: QA, DBM, Arquiteto, Dev. Todas as 8 vulnerabilidades CONFIRMADAS no codigo.
+
+### Mudancas pos-review:
+- **RG-S8 severidade:** MEDIUM → LOW (timing attacks impraticos em rede, best-practice only)
+- **RG-S5 esforco:** LOW → MEDIUM (8+ callers, errata corrigida: updateStoreCredentials NAO aceita orgId)
+- **RG-S8 sprint:** Movido de Sprint 3 para Sprint 1 Batch 2 (combinar com RG-S3)
+- **RG-S2:** Achado novo — `client-stores.tsx:234` referencia endpoint a ser deletado
+- **RG-S6:** Achado novo — CASCADE em 30+ tabelas torna delecao devastadora
+- **RG-S7:** Risco de breaking change — tracking stores sem webhook_secret serao rejeitadas
+
+### Ordem de execucao (batches):
+1. **Batch 1 (paralelo):** S1 + S2 + S6 — isolados, zero dependencias
+2. **Batch 2:** S3 + S8 — helper requireCronAuth com timingSafeEqual
+3. **Batch 3:** S7 — webhook verification (verificar dados prod antes)
+4. **Batch 4:** S5 — store ownership (Fase 1: integrations/save, Fase 2: demais callers)
+5. **Batch 5:** S9 — Redis migration (precisa decisao infra)
 
 ## Notas de Seguranca
 

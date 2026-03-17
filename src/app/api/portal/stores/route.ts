@@ -111,7 +111,7 @@ export async function PUT(request: NextRequest) {
     // Verify store belongs to this client
     const { data: store } = await adminClient
       .from("client_stores")
-      .select("id, client_id")
+      .select("id, client_id, org_id")
       .eq("id", store_id)
       .eq("client_id", portalUser.client_id)
       .single()
@@ -139,13 +139,13 @@ export async function PUT(request: NextRequest) {
       await updateStoreCredentials(store_id, {
         klaviyo_private_key,
         klaviyo_api_key: klaviyo_private_key, // backward compat
-      }, "klaviyo", { resetValidation: true })
+      }, "klaviyo", { resetValidation: true, orgId: store.org_id })
       hasCredentials = true
     }
     if (shopify_access_token) {
       await updateStoreCredentials(store_id, {
         shopify_access_token,
-      }, "shopify", { resetValidation: true })
+      }, "shopify", { resetValidation: true, orgId: store.org_id })
       hasCredentials = true
     }
 

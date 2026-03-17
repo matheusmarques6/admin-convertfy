@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireRole, AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("ClientsManage")
@@ -9,7 +9,7 @@ const log = logger.child("ClientsManage")
 export async function DELETE(request: NextRequest) {
   try {
     const supabase = await createClient()
-    await requireAuth(supabase)
+    await requireRole(supabase, ["admin"])
 
     const id = request.nextUrl.searchParams.get("id")
 
