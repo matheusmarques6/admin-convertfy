@@ -1,7 +1,8 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { useRouter } from "next/navigation"
+import { format } from "date-fns"
 import {
   Store,
   TrendingUp,
@@ -22,6 +23,7 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
+  FileText,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -61,10 +63,28 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { useToast } from "@/lib/hooks/use-toast"
 import { TimeAgo } from "@/components/ui/time-ago"
 import { SyncStatusBadge } from "@/components/ui/sync-status-badge"
+import { DateRangePicker } from "@/components/ui/date-range-picker"
+import { ReportGenerationBanner } from "@/components/reports/report-generation-banner"
+import { useStoresFanOut } from "@/hooks/use-stores-fan-out"
+import type { DateRange } from "@/types/report"
 import { cn } from "@/lib/utils"
+
+const PERIOD_OPTIONS = [
+  { value: "7d", label: "7 dias" },
+  { value: "15d", label: "15 dias" },
+  { value: "30d", label: "30 dias" },
+  { value: "90d", label: "90 dias" },
+  { value: "custom", label: "Personalizado" },
+] as const
 
 interface StoreData {
   id: string
@@ -196,6 +216,21 @@ export function StoreControlPanel() {
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
 
+  // Period & custom date range
+  const [period, setPeriod] = useState<string>("30d")
+  const [customDates, setCustomDates] = useState<DateRange | null>(null)
+  const [customStart, setCustomStart] = useState<Date | undefined>()
+  const [customEnd, setCustomEnd] = useState<Date | undefined>()
+
+  // Fan-out: only active when custom period is selected
+  const fanOutStoreIds = useMemo(() => {
+    if (period !== "custom" || !customDates) return []
+    return stores.filter((s) => s.has_klaviyo).map((s) => s.id)
+  }, [period, customDates, stores])
+
+  const fanOut = useStoresFanOut(fanOutStoreIds, customDates)
+  const isFanOutActive = period === "custom" && customDates !== null && fanOutStoreIds.length > 0
+
   // Dialog states
   const [selectedStore, setSelectedStore] = useState<StoreData | null>(null)
   const [isRegisterDialogOpen, setIsRegisterDialogOpen] = useState(false)
@@ -237,6 +272,30 @@ export function StoreControlPanel() {
     setFilterStatus(value)
     setPage(1)
   }, [])
+
+  const handlePeriodChange = useCallback((value: string) => {
+    setPeriod(value)
+    if (value !== "custom") {
+      setCustomDates(null)
+      setCustomStart(undefined)
+      setCustomEnd(undefined)
+    }
+  }, [])
+
+  const handleCustomDateApply = useCallback((start: Date, end: Date) => {
+    setCustomStart(start)
+    setCustomEnd(end)
+    setCustomDates({
+      startDate: format(start, "yyyy-MM-dd"),
+      endDate: format(end, "yyyy-MM-dd"),
+    })
+    setPeriod("custom")
+  }, [])
+
+  const customDateLabel = useMemo(() => {
+    if (!customDates) return ""
+    return `${customDates.startDate} — ${customDates.endDate}`
+  }, [customDates])
 
   // Fetch stores
   const fetchStores = useCallback(async () => {
@@ -470,9 +529,20 @@ export function StoreControlPanel() {
         </div>
       )}
 
+      {/* ─── Report Generation Banner ────────────────────────── */}
+      {isFanOutActive && customDates && (
+        <ReportGenerationBanner
+          startDate={customDates.startDate}
+          endDate={customDates.endDate}
+          completedCount={fanOut.completedCount}
+          totalCount={fanOut.totalCount}
+          failedCount={fanOut.failedCount}
+        />
+      )}
+
       {/* ─── Toolbar ───────────────────────────────────────────── */}
       <div className="flex flex-col gap-3">
-        {/* Search + Actions row */}
+        {/* Search + Period + Actions row */}
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -493,6 +563,27 @@ export function StoreControlPanel() {
           </div>
 
           <div className="flex items-center gap-2">
+            <Select value={period} onValueChange={handlePeriodChange}>
+              <SelectTrigger className="h-10 w-[140px] bg-card">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PERIOD_OPTIONS.map((p) => (
+                  <SelectItem key={p.value} value={p.value}>
+                    {p.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {period === "custom" && (
+              <DateRangePicker
+                startDate={customStart}
+                endDate={customEnd}
+                onApply={handleCustomDateApply}
+              />
+            )}
+
             <Button
               variant="outline"
               size="icon"
@@ -558,6 +649,8 @@ export function StoreControlPanel() {
                 <tbody>
                   {stores.map((store) => {
                     const statusCfg = getStatusConfig(store.feedback_status, store.days_until_feedback)
+                    const fanOutState = isFanOutActive ? fanOut.stores.get(store.id) : undefined
+                    const hasFanOutData = fanOutState?.status === "success" && fanOutState.data
                     return (
                       <tr
                         key={store.id}
@@ -592,34 +685,96 @@ export function StoreControlPanel() {
                           </div>
                         </td>
 
-                        {/* Revenue */}
+                        {/* Revenue — overlays fan-out data when custom period is active */}
                         <td className="px-4 py-3.5 text-right">
-                          {store.revenue_status === 'no_integration' ? (
-                            <span className="text-xs text-muted-foreground">-</span>
-                          ) : store.revenue_status === 'error' ? (
+                          {/* Fan-out states */}
+                          {fanOutState?.status === "queued" && (
                             <div className="flex items-center justify-end gap-1.5">
-                              <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
-                              <span className="text-xs text-amber-500">Erro</span>
+                              <Clock className="w-3.5 h-3.5 text-muted-foreground animate-pulse" />
+                              <span className="text-xs text-muted-foreground">na fila...</span>
                             </div>
-                          ) : (
+                          )}
+                          {fanOutState?.status === "loading" && (
+                            <div className="flex items-center justify-end gap-1.5">
+                              <Loader2 className="w-3.5 h-3.5 text-primary animate-spin" />
+                              <span className="text-xs text-muted-foreground">carregando...</span>
+                            </div>
+                          )}
+                          {fanOutState?.status === "error" && (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <div className="flex items-center justify-end gap-1.5 cursor-help">
+                                    <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                                    <span className="text-xs text-amber-500">Erro</span>
+                                  </div>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p className="text-xs max-w-[200px]">{fanOutState.error || "Erro ao carregar dados"}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
+                          {hasFanOutData && (
                             <div className="text-right">
                               <span className={cn(
                                 "text-sm font-semibold tabular-nums",
-                                store.klaviyo_revenue_30d > 0 ? 'text-foreground' : 'text-muted-foreground'
+                                fanOutState.data!.totalRevenue > 0 ? 'text-foreground' : 'text-muted-foreground'
                               )}>
-                                {fmtCurrency(store.klaviyo_revenue_30d, store.currency)}
+                                {fmtCurrency(fanOutState.data!.totalRevenue, fanOutState.data!.currency)}
                               </span>
-                              <div className="flex items-center justify-end gap-1.5 mt-0.5">
-                                <SyncStatusBadge status={store.sync_status} compact />
-                                <TimeAgo date={store.fetched_at} className="text-[10px] text-muted-foreground/50" />
+                              <div className="flex items-center justify-end gap-1 mt-0.5">
+                                <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 border-primary/30 text-primary/70">
+                                  {customDateLabel}
+                                </Badge>
                               </div>
                             </div>
                           )}
+                          {/* Default (no fan-out or store not in fan-out set) */}
+                          {!fanOutState && (
+                            <>
+                              {store.revenue_status === 'no_integration' ? (
+                                <span className="text-xs text-muted-foreground">-</span>
+                              ) : store.revenue_status === 'error' ? (
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                                  <span className="text-xs text-amber-500">Erro</span>
+                                </div>
+                              ) : (
+                                <div className="text-right">
+                                  <span className={cn(
+                                    "text-sm font-semibold tabular-nums",
+                                    store.klaviyo_revenue_30d > 0 ? 'text-foreground' : 'text-muted-foreground'
+                                  )}>
+                                    {fmtCurrency(store.klaviyo_revenue_30d, store.currency)}
+                                  </span>
+                                  <div className="flex items-center justify-end gap-1.5 mt-0.5">
+                                    <SyncStatusBadge status={store.sync_status} compact />
+                                    <TimeAgo date={store.fetched_at} className="text-[10px] text-muted-foreground/50" />
+                                  </div>
+                                </div>
+                              )}
+                            </>
+                          )}
                         </td>
 
-                        {/* Campaign / Flows */}
+                        {/* Campaign / Flows — overlays fan-out data when available */}
                         <td className="px-4 py-3.5 text-right">
-                          {store.revenue_status !== 'loaded' ? (
+                          {hasFanOutData ? (
+                            <div className="space-y-0.5">
+                              <div className="text-xs text-muted-foreground tabular-nums">
+                                Camp: {fmtCurrency(fanOutState.data!.campaignRevenue, fanOutState.data!.currency)}
+                              </div>
+                              <div className="text-xs text-muted-foreground tabular-nums">
+                                Flows: {fmtCurrency(fanOutState.data!.flowRevenue, fanOutState.data!.currency)}
+                              </div>
+                            </div>
+                          ) : (fanOutState?.status === "queued" || fanOutState?.status === "loading") ? (
+                            <div className="space-y-1">
+                              <Skeleton className="h-3 w-20 ml-auto" />
+                              <Skeleton className="h-3 w-16 ml-auto" />
+                            </div>
+                          ) : store.revenue_status !== 'loaded' ? (
                             <span className="text-xs text-muted-foreground">-</span>
                           ) : (
                             <div className="space-y-0.5">
@@ -896,6 +1051,52 @@ export function StoreControlPanel() {
               )
             })}
           </div>
+
+          {/* ─── Generate Full Report button ─────────────────────── */}
+          {isFanOutActive && totalItems > stores.length && customDates && (
+            <div className="flex items-center justify-center pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={async () => {
+                  try {
+                    const res = await fetch("/api/reports/generate", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        period: "custom",
+                        start_date: customDates.startDate,
+                        end_date: customDates.endDate,
+                      }),
+                    })
+                    const data = await res.json()
+                    if (data.success || data.job_id) {
+                      toast({
+                        title: "Relatorio iniciado",
+                        description: `Gerando relatorio para todas as ${totalItems} lojas. Acompanhe em Relatorios.`,
+                      })
+                    } else {
+                      toast({
+                        title: "Erro ao iniciar relatorio",
+                        description: data.error || "Tente novamente",
+                        variant: "destructive",
+                      })
+                    }
+                  } catch {
+                    toast({
+                      title: "Erro de conexao",
+                      description: "Nao foi possivel iniciar o relatorio",
+                      variant: "destructive",
+                    })
+                  }
+                }}
+              >
+                <FileText className="w-4 h-4" />
+                Gerar Relatorio Completo ({totalItems} lojas)
+              </Button>
+            </div>
+          )}
 
           {/* ─── Pagination ──────────────────────────────────────── */}
           {totalItems > 0 && (
