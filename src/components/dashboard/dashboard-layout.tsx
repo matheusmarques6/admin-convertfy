@@ -83,29 +83,29 @@ export function DashboardLayout({ data, userRole }: DashboardLayoutProps) {
   const canViewReports = isAdminOrOwner || hasFeature("view_reports")
 
   return (
-    <div className="space-y-6 lg:space-y-8 animate-fade-in">
-      {/* Quick Actions - adapts per role */}
+    <div className="space-y-6 animate-fade-in">
+      {/* Quick Actions */}
       <QuickActions />
 
-      {/* Revenue Banner - massive typography focus */}
-      <div className="animate-slide-in-from-bottom flex flex-col pt-4">
+      {/* Revenue Banner */}
+      <div className="animate-slide-in-from-bottom">
         <TotalRevenueBanner period={revenuePeriod} onPeriodChange={setRevenuePeriod} onDataChange={handleRevenueData} />
       </div>
 
-      {/* Main Asymmetric Grid: 12 columns */}
-      <div className="grid gap-6 lg:gap-8 grid-cols-1 lg:grid-cols-12">
-        {/* Board Preview - Dominant 8 columns */}
-        <div className="lg:col-span-8 animate-fade-in delay-100">
+      {/* Main Grid */}
+      <div className="grid gap-6 grid-cols-1 lg:grid-cols-12">
+        {/* Board Preview */}
+        <div className="lg:col-span-8">
           <BoardPreview tasks={data.activeTasks} />
         </div>
 
-        {/* Calendar - Subordinate 4 columns */}
-        <div className="lg:col-span-4 animate-fade-in delay-200">
+        {/* Calendar */}
+        <div className="lg:col-span-4">
           <WeekCalendarPreview meetings={data.weekMeetings} tasks={data.weekTasks} />
         </div>
 
-        {/* Top Stores - 7 cols */}
-        <div className="lg:col-span-7 animate-fade-in delay-300">
+        {/* Top Stores */}
+        <div className="lg:col-span-7">
           <TopStoresCard
             stores={revenueData?.topStores}
             allStores={revenueData?.storeBreakdown}
@@ -114,9 +114,9 @@ export function DashboardLayout({ data, userRole }: DashboardLayoutProps) {
           />
         </div>
 
-        {/* Worst Performers - 5 cols */}
+        {/* Worst Performers */}
         {(isAdminOrOwner || canViewReports) && (
-          <div className="lg:col-span-5 animate-fade-in delay-500">
+          <div className="lg:col-span-5">
             <WorstPerformersCard
               stores={revenueData?.bottomStores}
               allStores={revenueData?.storeBreakdown}
@@ -126,18 +126,18 @@ export function DashboardLayout({ data, userRole }: DashboardLayoutProps) {
           </div>
         )}
 
-        {/* Onboarding Preview - Full Width Interstitial */}
-        <div className="lg:col-span-12 animate-fade-in delay-700">
+        {/* Onboarding Preview */}
+        <div className="lg:col-span-12">
           <OnboardingPreview onboardings={data.activeOnboardings} userRole={userRole} />
         </div>
 
-        {/* Alerts - 5 cols */}
-        <div className="lg:col-span-5 animate-fade-in delay-700">
+        {/* Alerts */}
+        <div className="lg:col-span-5">
           <DashboardAlerts meetings={data.upcomingMeetings} alerts={data.alerts} />
         </div>
 
-        {/* Recent Activity - 7 cols */}
-        <div className="lg:col-span-7 animate-fade-in delay-1000">
+        {/* Recent Activity */}
+        <div className="lg:col-span-7">
           <RecentActivity activities={data.activities} />
         </div>
       </div>

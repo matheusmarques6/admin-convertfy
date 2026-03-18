@@ -12,7 +12,6 @@ import {
   Kanban,
   LucideIcon,
 } from "lucide-react"
-import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 

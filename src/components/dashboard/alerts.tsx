@@ -2,11 +2,9 @@
 
 import Link from "next/link"
 import { Calendar, AlertCircle, Clock, FileText, HeartPulse, TrendingDown, ShieldAlert, Mail, Zap } from "lucide-react"
-import { CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { formatDateTime, cn } from "@/lib/utils"
+import { cn } from "@/lib/utils"
 import { usePermissions } from "@/lib/hooks/use-permissions"
 import type { Meeting, DashboardAlert } from "@/types"
 import type { LucideIcon } from "lucide-react"
@@ -48,17 +46,6 @@ export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps)
     if (permissions?.isAdmin || permissions?.isOrgOwner) return true
     return hasFeature(requiredFeature)
   })
-
-  const getSeverityColor = (severity: "high" | "medium" | "low") => {
-    switch (severity) {
-      case "high":
-        return "destructive"
-      case "medium":
-        return "warning"
-      case "low":
-        return "secondary"
-    }
-  }
 
   const hasStoreAlerts = filteredAlerts.some((a) =>
     ["low_revenue", "klaviyo_account_error", "campaign_failure", "low_recovery_rate"].includes(a.type)

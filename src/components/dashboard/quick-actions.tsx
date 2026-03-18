@@ -48,17 +48,17 @@ export function QuickActions() {
   }).slice(0, 5) // Max 5 actions visible
 
   return (
-    <div className="flex items-center gap-2 flex-wrap">
+    <div className="flex items-center gap-3 flex-wrap">
       {visibleActions.map((action) => (
         <Button
           key={action.label}
           variant={action.primary ? "default" : "outline"}
           size="sm"
-          className="h-8 px-3 text-xs font-medium rounded-lg"
+          className="h-9 px-4 text-xs font-medium rounded-xl shadow-sm"
           asChild
         >
           <Link href={action.href}>
-            <action.icon className="h-3.5 w-3.5 mr-1.5" />
+            <action.icon className="h-3.5 w-3.5 mr-2" />
             {action.label}
           </Link>
         </Button>

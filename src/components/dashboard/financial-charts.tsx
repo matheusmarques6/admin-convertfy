@@ -172,7 +172,7 @@ export function FinancialCharts({
                         border: "1px solid hsl(var(--border))",
                         borderRadius: "8px",
                       }}
-                      formatter={(value: number) => [formatCurrency(value), "Receita"]}
+                      formatter={(value) => [formatCurrency(Number(value)), "Receita"]}
                     />
                     <Bar dataKey="receita" fill="hsl(var(--success))" radius={[4, 4, 0, 0]} name="Receita" isAnimationActive={true} animationDuration={800} />
                   </BarChart>
@@ -262,8 +262,8 @@ export function FinancialCharts({
                         border: "1px solid hsl(var(--border))",
                         borderRadius: "8px",
                       }}
-                      formatter={(value: number, _name, props) => [
-                        `${formatCurrency(value)} (${props.payload.deals} deals)`,
+                      formatter={(value, _name, props) => [
+                        `${formatCurrency(Number(value))} (${(props as { payload: { deals: number } }).payload.deals} deals)`,
                         "Valor",
                       ]}
                     />
@@ -303,7 +303,7 @@ export function FinancialCharts({
                         border: "1px solid hsl(var(--border))",
                         borderRadius: "8px",
                       }}
-                      formatter={(value: number) => [`${value} clientes`, ""]}
+                      formatter={(value) => [`${value} clientes`, ""]}
                     />
                   </PieChart>
                 </ResponsiveContainer>
