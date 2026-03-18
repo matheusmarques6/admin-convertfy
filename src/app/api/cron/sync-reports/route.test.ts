@@ -484,9 +484,7 @@ describe("AK-12 — XS Budget Cap per Cron Cycle", () => {
 
     // Simulate XS calls: after syncing store 1, the quota jumps past XS_BUDGET_PER_CYCLE.
     // syncKlaviyoForPeriod is mocked, so we manually increment quota inside the mock.
-    let callCount = 0
     mockSyncKlaviyoForPeriod.mockImplementation(() => {
-      callCount++
       // Each sync call simulates 30 XS reporting calls (2 periods x 30 = 60 = budget)
       for (let n = 0; n < 30; n++) incrementReportQuota(apiKey)
       return Promise.resolve(successSyncResult())
