@@ -1,5 +1,5 @@
-import { useState, useCallback } from "react"
-import useSWR from "swr"
+import { useState, useCallback, useEffect } from "react"
+import useSWR, { preload } from "swr"
 import type { PortalCampaignApiResponse } from "@/types/campaign"
 
 // ============================================
@@ -159,17 +159,19 @@ export function usePortalCampaignsCalendar(
   const year = currentDate.getFullYear()
   const month = currentDate.getMonth()
 
-  // Build date range for the current month
-  const lastDay = new Date(year, month + 1, 0).getDate()
-  const startDate = `${year}-${String(month + 1).padStart(2, "0")}-01`
-  const endDate = `${year}-${String(month + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`
-
-  // Build query params
-  const buildListUrl = useCallback(() => {
-    const params = new URLSearchParams({ start_date: startDate, end_date: endDate })
+  // Build query params for a given month/year
+  const buildListUrlForMonth = useCallback((m: number, y: number) => {
+    const ld = new Date(y, m + 1, 0).getDate()
+    const sd = `${y}-${String(m + 1).padStart(2, "0")}-01`
+    const ed = `${y}-${String(m + 1).padStart(2, "0")}-${String(ld).padStart(2, "0")}`
+    const params = new URLSearchParams({ start_date: sd, end_date: ed })
     if (selectedStore) params.set("store_id", selectedStore)
     return `/api/portal/campaigns?${params.toString()}`
-  }, [startDate, endDate, selectedStore])
+  }, [selectedStore])
+
+  const buildListUrl = useCallback(() => {
+    return buildListUrlForMonth(month, year)
+  }, [buildListUrlForMonth, month, year])
 
   // SWR: campaign list
   const {
@@ -187,6 +189,20 @@ export function usePortalCampaignsCalendar(
       keepPreviousData: true,
     }
   )
+
+  // Story 45.14: Prefetch adjacent months so navigation feels instant
+  useEffect(() => {
+    const prevMonth = month === 0 ? 11 : month - 1
+    const prevYear = month === 0 ? year - 1 : year
+    const nextMonth = month === 11 ? 0 : month + 1
+    const nextYear = month === 11 ? year + 1 : year
+
+    const prevKey = ["/api/portal/campaigns", prevMonth, prevYear, selectedStore]
+    const nextKey = ["/api/portal/campaigns", nextMonth, nextYear, selectedStore]
+
+    preload(prevKey, () => portalFetcher(buildListUrlForMonth(prevMonth, prevYear)))
+    preload(nextKey, () => portalFetcher(buildListUrlForMonth(nextMonth, nextYear)))
+  }, [month, year, selectedStore, buildListUrlForMonth])
 
   // SWR: lazy metrics for selected campaign
   const metricsKey = selectedCampaign?.id

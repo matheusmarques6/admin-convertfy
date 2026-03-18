@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useCallback, useMemo } from "react"
+import { useState, useCallback, useMemo, useEffect } from "react"
+import { useSearchParams, useRouter } from "next/navigation"
 import {
   AlertCircle,
   RefreshCw,
@@ -34,6 +35,19 @@ type Campaign = PortalCampaign
 // ============================================
 
 export default function PortalCampaignsPage() {
+  const searchParams = useSearchParams()
+  const router = useRouter()
+
+  // Read initial values from URL (Story 45.14)
+  const urlMonth = searchParams.get("month")
+  const urlYear = searchParams.get("year")
+  const urlStore = searchParams.get("store")
+  const urlChannel = searchParams.get("channel")
+  const urlStatus = searchParams.get("status")
+
+  const initialMonth = urlMonth ? parseInt(urlMonth, 10) - 1 : undefined // URL is 1-based, hook is 0-based
+  const initialYear = urlYear ? parseInt(urlYear, 10) : undefined
+
   const {
     campaigns: rawApiCampaigns,
     selectedCampaign,
@@ -50,11 +64,15 @@ export default function PortalCampaignsPage() {
     isLoadingMetrics,
     error: hookError,
     mutate: mutateCampaigns,
-  } = usePortalCampaignsCalendar()
+  } = usePortalCampaignsCalendar({
+    initialMonth: initialMonth != null && !isNaN(initialMonth) ? initialMonth : undefined,
+    initialYear: initialYear != null && !isNaN(initialYear) ? initialYear : undefined,
+    storeId: urlStore || undefined,
+  })
 
   // Additional filters -- applied client-side
-  const [selectedChannel, setSelectedChannel] = useState("all")
-  const [selectedStatus, setSelectedStatus] = useState("all")
+  const [selectedChannel, setSelectedChannel] = useState(urlChannel || "all")
+  const [selectedStatus, setSelectedStatus] = useState(urlStatus || "all")
 
   // Day-campaigns list modal state
   const [selectedDayCampaigns, setSelectedDayCampaigns] = useState<Campaign[] | null>(null)
@@ -66,6 +84,17 @@ export default function PortalCampaignsPage() {
     (value: string) => hookSetSelectedStore(value === "all" ? null : value),
     [hookSetSelectedStore],
   )
+
+  // Story 45.14: Sync filter state to URL params
+  useEffect(() => {
+    const params = new URLSearchParams()
+    params.set("month", String(month + 1))
+    params.set("year", String(year))
+    if (selectedStore !== "all") params.set("store", selectedStore)
+    if (selectedChannel !== "all") params.set("channel", selectedChannel)
+    if (selectedStatus !== "all") params.set("status", selectedStatus)
+    router.replace(`?${params.toString()}`, { scroll: false })
+  }, [month, year, selectedStore, selectedChannel, selectedStatus, router])
 
   const error = hookError?.message ?? null
 

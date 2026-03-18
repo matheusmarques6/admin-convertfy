@@ -1,8 +1,9 @@
 "use client"
 
-import React from "react"
+import React, { useCallback } from "react"
 import type { PortalCampaign } from "@/lib/hooks/use-portal-campaigns-calendar"
 import { CampaignCalendarCard } from "@/components/campaigns/campaign-calendar-card"
+import { MONTH_NAMES } from "@/lib/constants/calendar"
 
 // ============================================
 // TYPES
@@ -28,13 +29,29 @@ export const CalendarDayCell = React.memo(function CalendarDayCell({
   onCampaignClick,
 }: CalendarDayCellProps) {
   const day = date.getDate()
+  const monthName = MONTH_NAMES[date.getMonth()]
+  const campaignCount = campaigns.length
+  const ariaLabel = `${day} de ${monthName}, ${campaignCount} campanha${campaignCount !== 1 ? "s" : ""}`
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault()
+      onDayClick(campaigns)
+    }
+  }, [onDayClick, campaigns])
 
   return (
     <div
+      tabIndex={0}
+      role="button"
+      aria-label={ariaLabel}
+      aria-current={isToday ? "date" : undefined}
       onClick={() => onDayClick(campaigns)}
+      onKeyDown={handleKeyDown}
       className={`
         min-h-[120px] border border-slate-100 dark:border-slate-700/30 p-2 cursor-pointer transition-all
         hover:bg-slate-50 dark:hover:bg-white/[0.06]
+        focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none
         ${isToday ? "bg-primary/5 border-primary/30" : "bg-white dark:bg-[#151922]"}
       `}
     >

@@ -31,6 +31,7 @@ export function CalendarGrid({ year, month, renderDay }: CalendarGridProps) {
     cells.push(
       <div
         key={`empty-start-${i}`}
+        role="gridcell"
         className="min-h-[120px] bg-slate-50/50 dark:bg-slate-800/30 border border-slate-100 dark:border-slate-700/30"
       />
     )
@@ -41,7 +42,7 @@ export function CalendarGrid({ year, month, renderDay }: CalendarGridProps) {
     const date = new Date(year, month, day)
     const dateKey = formatDateKey(date)
     cells.push(
-      <div key={`day-${day}`}>
+      <div key={`day-${day}`} role="gridcell">
         {renderDay(date, dateKey)}
       </div>
     )
@@ -56,19 +57,31 @@ export function CalendarGrid({ year, month, renderDay }: CalendarGridProps) {
       cells.push(
         <div
           key={`empty-end-${i}`}
+          role="gridcell"
           className="min-h-[120px] bg-slate-50/50 dark:bg-slate-800/30 border border-slate-100 dark:border-slate-700/30"
         />
       )
     }
   }
 
+  // Group cells into rows of 7 for ARIA grid structure
+  const rows: ReactNode[][] = []
+  for (let i = 0; i < cells.length; i += 7) {
+    rows.push(cells.slice(i, i + 7))
+  }
+
   return (
-    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 overflow-hidden">
+    <div
+      role="grid"
+      aria-label="Calendário de campanhas"
+      className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 overflow-hidden"
+    >
       {/* Week days header */}
-      <div className="grid grid-cols-7 bg-slate-50 dark:bg-[#1A1F2E]">
+      <div role="row" className="grid grid-cols-7 bg-slate-50 dark:bg-[#1A1F2E]">
         {WEEK_DAYS.map((day, index) => (
           <div
             key={day}
+            role="columnheader"
             className={`
               py-3 text-center text-sm font-medium text-slate-500 dark:text-slate-400
               border-r border-slate-100 dark:border-slate-700/30 last:border-r-0
@@ -79,10 +92,12 @@ export function CalendarGrid({ year, month, renderDay }: CalendarGridProps) {
           </div>
         ))}
       </div>
-      {/* Calendar grid */}
-      <div className="grid grid-cols-7">
-        {cells}
-      </div>
+      {/* Calendar grid rows */}
+      {rows.map((row, rowIdx) => (
+        <div key={`row-${rowIdx}`} role="row" className="grid grid-cols-7">
+          {row}
+        </div>
+      ))}
     </div>
   )
 }

@@ -60,6 +60,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Single RPC call — campaigns + batches unified with pagination
+    // Story 45.12: pass org_id for defense-in-depth tenant isolation
     const { data: campaigns, error: campaignsError } = await adminClient.rpc(
       "get_portal_campaigns_with_metrics",
       {
@@ -70,6 +71,7 @@ export async function GET(request: NextRequest) {
         p_channel: channel || null,
         p_limit: limit,
         p_offset: offset,
+        p_org_id: ctx.orgId,
       }
     )
 
