@@ -83,26 +83,23 @@ export function RecentActivity({ activities = [] }: RecentActivityProps) {
   const hasActivities = activities.length > 0
 
   return (
-    <div className="rounded-[24px] border border-border/60 bg-card h-full flex flex-col overflow-hidden relative group">
-      <div className="absolute inset-0 bg-gradient-to-b from-primary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
-      
-      <CardHeader className="pb-4 sm:pb-6 relative z-10 px-6 sm:px-8 pt-6 sm:pt-8 bg-background/50 border-b border-border/40">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="rounded-xl bg-primary/10 p-2.5 border border-primary/20 group-hover:bg-primary group-hover:text-primary-foreground text-primary transition-colors">
-              <TrendingUp className="h-5 w-5" />
-            </div>
-            <div>
-              <CardTitle className="text-lg font-bold tracking-tight">Atividade Recente</CardTitle>
-              <CardDescription className="text-sm font-medium text-muted-foreground mt-0.5">Últimas ações no sistema</CardDescription>
-            </div>
+    <div className="rounded-2xl border border-border bg-card p-6 shadow-sm h-full flex flex-col relative group">
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <TrendingUp className="h-5 w-5" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold tracking-tight">Atividade Recente</h2>
+            <p className="text-sm text-muted-foreground mt-0.5">Últimas ações no sistema</p>
           </div>
         </div>
-      </CardHeader>
-      <CardContent className="px-6 sm:px-8 py-6 sm:py-8 relative z-10 flex-1">
-        <ScrollArea className="h-[300px] pr-4 flex-1">
+      </div>
+
+      <div className="flex-1 flex flex-col min-h-0">
+        <ScrollArea className="flex-1 pr-4 -mr-4">
           {hasActivities ? (
-            <div className="space-y-4 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-border before:via-border/50 before:to-transparent">
+            <div className="space-y-6 relative before:absolute before:inset-0 before:ml-[1.4rem] before:-translate-x-px before:h-full before:w-px before:bg-border/60">
               {activities.map((activity) => {
                 const { icon: Icon, color, bg } = getActivityIcon(activity.type)
                 const profileName = Array.isArray(activity.profile)
@@ -110,14 +107,14 @@ export function RecentActivity({ activities = [] }: RecentActivityProps) {
                   : activity.profile?.name
                 return (
                   <div key={activity.id} className="relative flex items-start gap-4 group/item">
-                    <div className={cn("relative z-10 flex shrink-0 items-center justify-center rounded-full p-2 ring-4 ring-card", bg)}>
+                    <div className={cn("relative z-10 flex h-[2.8rem] w-[2.8rem] shrink-0 items-center justify-center rounded-full ring-8 ring-card", bg)}>
                       <Icon className={cn("h-4 w-4", color)} />
                     </div>
-                    <div className="flex flex-col flex-1 pl-1 pt-0.5">
-                      <p className="text-sm font-semibold text-foreground leading-tight group-hover/item:text-primary transition-colors">{activity.description}</p>
-                      <div className="flex items-center gap-2 mt-1.5 text-xs font-medium text-muted-foreground">
-                        <span className="bg-background px-2 py-0.5 border border-border/50 rounded-md">{profileName || "Sistema"}</span>
-                        <span className="w-1 h-1 rounded-full bg-border" />
+                    <div className="flex flex-col flex-1 pt-1.5 pb-2">
+                      <p className="text-sm font-medium text-foreground leading-relaxed group-hover/item:text-primary transition-colors">{activity.description}</p>
+                      <div className="flex items-center gap-2 mt-1.5 text-xs text-muted-foreground">
+                        <span className="font-medium text-foreground">{profileName || "Sistema"}</span>
+                        <span className="w-1.5 h-1.5 rounded-full bg-border" />
                         <span>{timeAgo(activity.created_at)}</span>
                       </div>
                     </div>
@@ -126,13 +123,13 @@ export function RecentActivity({ activities = [] }: RecentActivityProps) {
               })}
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center h-full text-sm text-muted-foreground py-10 opacity-50 bg-background rounded-[16px] border border-border/40 border-dashed">
-              <Calendar className="h-8 w-8 mb-3 opacity-50" />
-              <p className="font-medium">Nenhuma atividade recente</p>
+            <div className="flex flex-col items-center justify-center h-[300px] text-muted-foreground">
+              <Calendar className="h-8 w-8 mb-3 opacity-20" />
+              <p className="text-sm font-medium">Nenhuma atividade recente</p>
             </div>
           )}
         </ScrollArea>
-      </CardContent>
+      </div>
     </div>
   )
 }

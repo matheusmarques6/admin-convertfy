@@ -4,31 +4,92 @@
 
 @layer base {
   :root {
-    --background: 220 14% 96%;
+    /* Pure white background with subtle grey scale */
+    --background: 210 20% 98%; /* Very light grey, almost white */
     --foreground: 222 47% 11%;
 
-    --card: 0 0% 100%;
+    --card: 0 0% 100%; /* Pure white cards */
     --card-foreground: 222 47% 11%;
 
     --popover: 0 0% 100%;
     --popover-foreground: 222 47% 11%;
 
-    --primary: 217 91% 53%;
+    /* Convertfy Cyan */
+    --primary: 200 100% 48%; /* #0099ff approx */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 214 20% 94%;
+    /* Soft grey for secondary elements */
+    --secondary: 210 20% 96%;
     --secondary-foreground: 222 47% 11%;
 
-    --muted: 214 20% 94%;
-    --muted-foreground: 215 16% 47%;
+    --muted: 210 20% 96%;
+    --muted-foreground: 215 16% 47%; /* Clean muted text */
 
-    --accent: 214 20% 94%;
+    --accent: 210 20% 96%;
     --accent-foreground: 222 47% 11%;
 
+    /* Soft but clear destructive */
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --success: 160 84% 39%;
+    /* Soft success green */
+    --success: 142 71% 45%; 
+    --success-foreground: 0 0% 100%;
+
+    /* Clean warning orange */
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+
+    --info: 196 97% 49%;
+    --info-foreground: 0 0% 100%;
+
+    --mrr: 237 87% 55%;
+    --mrr-foreground: 0 0% 100%;
+
+    /* Very subtle borders */
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 200 100% 48%;
+
+    /* Clean smooth radius */
+    --radius: 1rem; /* 16px - softer, less aggressive than 24px */
+
+    /* Semantic color HSL */
+    --success-h: 142; --success-s: 71%; --success-l: 45%;
+    --warning-h: 38;  --warning-s: 92%; --warning-l: 50%;
+    --destructive-h: 0; --destructive-s: 84%; --destructive-l: 60%;
+    --primary-h: 200; --primary-s: 100%; --primary-l: 48%;
+    --info-h: 196;    --info-s: 97%;  --info-l: 49%;
+    --mrr-h: 237;     --mrr-s: 87%;  --mrr-l: 55%;
+  }
+
+  /* Keep dark mode clean if users toggle, but focus on light */
+  .dark {
+    --background: 220 10% 10%;
+    --foreground: 210 20% 98%;
+
+    --card: 220 10% 14%;
+    --card-foreground: 210 20% 98%;
+
+    --popover: 220 10% 14%;
+    --popover-foreground: 210 20% 98%;
+
+    --primary: 200 100% 48%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 215 15% 20%;
+    --secondary-foreground: 210 20% 98%;
+
+    --muted: 215 15% 20%;
+    --muted-foreground: 217 10% 60%;
+
+    --accent: 215 15% 20%;
+    --accent-foreground: 210 20% 98%;
+
+    --destructive: 0 62% 30%;
+    --destructive-foreground: 210 40% 98%;
+
+    --success: 142 71% 45%;
     --success-foreground: 0 0% 100%;
 
     --warning: 38 92% 50%;
@@ -40,79 +101,18 @@
     --mrr: 237 87% 55%;
     --mrr-foreground: 0 0% 100%;
 
-    --border: 220 13% 86%;
-    --input: 220 13% 86%;
-    --ring: 197 96% 48%;
+    --border: 215 15% 20%;
+    --input: 215 15% 20%;
+    --ring: 200 100% 48%;
 
-    /* Organic Premium Radius */
-    --radius: 1.5rem;
+    --radius: 1rem;
 
-    /* Semantic color HSL for status indicators */
-    --success-h: 160; --success-s: 84%; --success-l: 39%;
-    --warning-h: 38;  --warning-s: 92%; --warning-l: 50%;
-    --destructive-h: 0; --destructive-s: 84%; --destructive-l: 60%;
-    --primary-h: 217; --primary-s: 91%; --primary-l: 53%;
-    --info-h: 196;    --info-s: 97%;  --info-l: 49%;
-    --mrr-h: 237;     --mrr-s: 87%;  --mrr-l: 55%;
-  }
-
-  .dark {
-    /* Pitch Black / Deep Charcoal background */
-    --background: 224 50% 3%;
-    --foreground: 210 20% 98%;
-
-    --card: 224 40% 6%;
-    --card-foreground: 210 20% 98%;
-
-    --popover: 224 40% 6%;
-    --popover-foreground: 210 20% 98%;
-
-    /* Convertfy Cyan */
-    --primary: 197 96% 48%;
-    --primary-foreground: 0 0% 100%;
-
-    --secondary: 215 28% 12%;
-    --secondary-foreground: 210 20% 98%;
-
-    --muted: 215 28% 12%;
-    --muted-foreground: 217 10% 60%;
-
-    --accent: 215 28% 12%;
-    --accent-foreground: 210 20% 98%;
-
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 100%;
-
-    /* Acid Green for success */
-    --success: 85 100% 50%;
-    --success-foreground: 224 50% 3%;
-
-    /* Electric Warning */
-    --warning: 38 100% 50%;
-    --warning-foreground: 224 50% 3%;
-
-    /* Neon Info */
-    --info: 196 100% 50%;
-    --info-foreground: 224 50% 3%;
-
-    /* Convertfy Deep Blue for MRR */
-    --mrr: 200 100% 36%;
-    --mrr-foreground: 0 0% 100%;
-
-    --border: 215 28% 12%;
-    --input: 215 28% 12%;
-    --ring: 197 96% 48%;
-
-    /* Organic Premium Radius */
-    --radius: 1.5rem;
-
-    /* Dark mode overrides (H, S, L format for glow-card usage) */
-    --destructive-h: 0; --destructive-s: 84%; --destructive-l: 60%;
-    --primary-h: 197; --primary-s: 96%; --primary-l: 48%;
-    --success-h: 85; --success-s: 100%; --success-l: 50%;
-    --warning-h: 38; --warning-s: 100%; --warning-l: 50%;
-    --info-h: 196; --info-s: 100%; --info-l: 50%;
-    --mrr-h: 200; --mrr-s: 100%; --mrr-l: 36%;
+    --destructive-h: 0; --destructive-s: 62%; --destructive-l: 30%;
+    --primary-h: 200; --primary-s: 100%; --primary-l: 48%;
+    --success-h: 142; --success-s: 71%; --success-l: 45%;
+    --warning-h: 38; --warning-s: 92%; --warning-l: 50%;
+    --info-h: 196; --info-s: 97%; --info-l: 49%;
+    --mrr-h: 237; --mrr-s: 87%; --mrr-l: 55%;
   }
 
   /* Portal override: keep brand cyan-blue for customer portal */

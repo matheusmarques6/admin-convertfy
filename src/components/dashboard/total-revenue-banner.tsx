@@ -188,7 +188,7 @@ export function TotalRevenueBanner({ storeIds, period: controlledPeriod, onPerio
   // Error state (only show when no stale data available)
   if (error && !data) {
     return (
-      <div className="rounded-xl border border-border bg-card p-6">
+      <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
         <div className="flex flex-col items-center justify-center py-8">
           <div className="rounded-xl bg-muted p-3 mb-4">
             <Store className="h-8 w-8 text-muted-foreground" />
@@ -209,7 +209,7 @@ export function TotalRevenueBanner({ storeIds, period: controlledPeriod, onPerio
   // Syncing state — cache is empty but stores with Klaviyo exist
   if (data && data.dataStatus === "syncing" && data.storesCount > 0) {
     return (
-      <div className="rounded-xl border border-border bg-card p-6">
+      <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
         <div className="flex flex-col items-center justify-center py-8">
           <div className="rounded-xl bg-muted p-3 mb-4">
             <RefreshCw className="h-8 w-8 text-muted-foreground animate-spin" />
@@ -229,7 +229,7 @@ export function TotalRevenueBanner({ storeIds, period: controlledPeriod, onPerio
   // Empty state
   if (data && data.storesCount === 0) {
     return (
-      <div className="rounded-xl border border-border bg-card p-6">
+      <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
         <div className="flex flex-col items-center justify-center py-8">
           <div className="rounded-xl bg-muted p-3 mb-4">
             <Store className="h-8 w-8 text-muted-foreground" />
@@ -244,101 +244,83 @@ export function TotalRevenueBanner({ storeIds, period: controlledPeriod, onPerio
   }
 
   return (
-    <div className="rounded-[24px] border-y border-border/50 bg-background py-8 lg:py-12 px-2 overflow-hidden relative">
-      <div className="absolute inset-0 bg-gradient-to-r from-primary/10 via-transparent to-transparent opacity-50 pointer-events-none" />
-      <div className="p-4 sm:p-6 space-y-8 relative z-10 max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between flex-wrap gap-4 border-b border-border/40 pb-6">
-          <div className="flex items-center gap-3">
-            <div className="rounded-xl bg-primary/20 p-2 border border-primary/30">
-              <TrendingUp className="h-5 w-5 text-primary" />
-            </div>
-            <h2 className="text-xl font-medium tracking-tight text-foreground uppercase">Resultado Total</h2>
-            <span className="text-sm font-medium text-muted-foreground hidden sm:inline px-3 py-1 rounded-full bg-muted/40">
-              Receita gerada via Klaviyo
-            </span>
+    <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+      <div className="flex items-center justify-between flex-wrap gap-4 mb-6">
+        <div className="flex items-center gap-2">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <TrendingUp className="h-5 w-5" />
           </div>
-          <div className="flex items-center gap-3">
-            <PeriodPicker
-              value={{ period, customStart, customEnd }}
-              onChange={({ period: p, customStart: s, customEnd: e }) => {
-                setPeriod(p)
-                setCustomStart(s)
-                setCustomEnd(e)
-              }}
-              className="border-border bg-card text-foreground hover:bg-muted font-medium"
-            />
-            <RefreshButton
-              onRefresh={() => {
-                triggerRefresh()
-              }}
-              isRefreshing={dataStatusMeta.isRefreshing || isValidating}
-              lastFetchedAt={dataStatusMeta.lastFetchedAt}
-              size="md"
-              className="rounded-xl border-border bg-card text-muted-foreground hover:text-foreground hover:bg-muted"
-            />
+          <div>
+            <h2 className="text-lg font-semibold tracking-tight">Resultado Total</h2>
+            <p className="text-sm text-muted-foreground">Receita via Klaviyo</p>
           </div>
         </div>
-
-        {/* Data status banner */}
-        <DataStatusBanner
-          status={data?.dataStatus}
-          lastFetchedAt={data?.lastFetchedAt}
-          isRefreshing={data?.isRefreshing ?? isValidating}
-          className="rounded-xl border border-warning/20 bg-warning/5"
-        />
-
-        {/* Main number - MASSIVE TYPOGRAPHY */}
-        <div className="flex flex-col gap-2">
-          <p className="text-5xl sm:text-7xl lg:text-[6rem] leading-[0.9] font-black tracking-tighter text-foreground bg-clip-text text-transparent bg-gradient-to-br from-primary via-primary to-info/80">
-            {formatCurrency(animatedTotal)}
-          </p>
-          <div className="mt-4 flex items-center gap-4 flex-wrap">
-            <p className="text-sm font-medium px-3 py-1.5 rounded-lg bg-card border border-border text-muted-foreground">
-              {data?.storesWithRevenue || 0} de {data?.storesCount || 0} lojas geraram receita
-            </p>
-            {data?.hasPartialData && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-warning/10 text-xs font-semibold text-warning border border-warning/20">
-                      <AlertTriangle className="h-3.5 w-3.5" />
-                      Dados parciais
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent>{PARTIAL_DATA_TOOLTIP}</TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
-            {data?.lastFetchedAt && (
-              <TimeAgo date={data.lastFetchedAt} className="text-xs font-medium text-muted-foreground" />
-            )}
-          </div>
+        <div className="flex items-center gap-2">
+          <PeriodPicker
+            value={{ period, customStart, customEnd }}
+            onChange={({ period: p, customStart: s, customEnd: e }) => {
+              setPeriod(p)
+              setCustomStart(s)
+              setCustomEnd(e)
+            }}
+          />
+          <RefreshButton
+            onRefresh={() => {
+              triggerRefresh()
+            }}
+            isRefreshing={dataStatusMeta.isRefreshing || isValidating}
+            lastFetchedAt={dataStatusMeta.lastFetchedAt}
+            size="md"
+          />
         </div>
+      </div>
 
-        {/* Breakdown: campaigns vs flows */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 lg:gap-8 pt-4">
-          <div className="flex flex-col gap-3 p-6 sm:p-8 rounded-[24px] border border-border/60 bg-card hover:border-primary/50 transition-colors group">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="rounded-xl p-2.5 bg-success/10 border border-success/20 group-hover:scale-110 transition-transform">
-                <Megaphone className="h-5 w-5 text-success" />
-              </div>
-              <p className="text-sm text-muted-foreground font-bold uppercase tracking-wider">Campanhas</p>
-            </div>
-            <p className="text-3xl sm:text-4xl font-black tracking-tight text-foreground">{formatCurrency(animatedCampaign)}</p>
-          </div>
-          
-          <div className="flex flex-col gap-3 p-6 sm:p-8 rounded-[24px] border border-border/60 bg-card hover:border-primary/50 transition-colors group">
-            <div className="flex items-center gap-3 mb-2">
-              <div className="rounded-xl p-2.5 bg-primary/10 border border-primary/20 group-hover:scale-110 transition-transform">
-                <Workflow className="h-5 w-5 text-primary" />
-              </div>
-              <p className="text-sm text-muted-foreground font-bold uppercase tracking-wider">Flows</p>
-            </div>
-            <p className="text-3xl sm:text-4xl font-black tracking-tight text-foreground">{formatCurrency(animatedFlow)}</p>
-          </div>
+      <DataStatusBanner
+        status={data?.dataStatus}
+        lastFetchedAt={data?.lastFetchedAt}
+        isRefreshing={data?.isRefreshing ?? isValidating}
+        className="mb-6 rounded-xl"
+      />
+
+      <div className="flex flex-col mb-8">
+        <p className="text-4xl sm:text-5xl font-bold tracking-tight text-foreground">
+          {formatCurrency(animatedTotal)}
+        </p>
+        <div className="mt-2 flex items-center gap-3 text-sm text-muted-foreground">
+          <span>{data?.storesWithRevenue || 0} de {data?.storesCount || 0} lojas c/ receita</span>
+          {data?.hasPartialData && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-warning/10 text-xs font-semibold text-warning">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    Parcial
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>{PARTIAL_DATA_TOOLTIP}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+          {data?.lastFetchedAt && <TimeAgo date={data.lastFetchedAt} className="text-xs" />}
         </div>
+      </div>
 
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="flex flex-col gap-1 p-5 rounded-xl border border-border bg-background">
+          <div className="flex items-center gap-2 text-muted-foreground mb-1">
+            <Megaphone className="h-4 w-4 text-success" />
+            <span className="text-sm font-medium">Campanhas</span>
+          </div>
+          <p className="text-2xl font-bold tracking-tight text-foreground">{formatCurrency(animatedCampaign)}</p>
+        </div>
+        
+        <div className="flex flex-col gap-1 p-5 rounded-xl border border-border bg-background">
+          <div className="flex items-center gap-2 text-muted-foreground mb-1">
+            <Workflow className="h-4 w-4 text-primary" />
+            <span className="text-sm font-medium">Flows</span>
+          </div>
+          <p className="text-2xl font-bold tracking-tight text-foreground">{formatCurrency(animatedFlow)}</p>
+        </div>
       </div>
     </div>
   )

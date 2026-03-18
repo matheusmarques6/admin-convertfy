@@ -58,29 +58,26 @@ export function OnboardingPreview({ onboardings, userRole }: OnboardingPreviewPr
     .slice(0, 3)
 
   return (
-    <div className="rounded-[24px] border border-border/60 bg-card h-full flex flex-col overflow-hidden relative group">
-      <div className="absolute inset-0 bg-gradient-to-t from-primary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
-      
-      <CardHeader className="pb-4 sm:pb-6 relative z-10 px-6 sm:px-8 pt-6 sm:pt-8 bg-background/50 border-b border-border/40">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="rounded-xl bg-primary/10 p-2.5 border border-primary/20 group-hover:bg-primary group-hover:text-primary-foreground text-primary transition-colors">
-              <Rocket className="h-5 w-5" />
-            </div>
-            <div>
-              <CardTitle className="text-lg font-bold tracking-tight">
-                {isOverviewRole ? "Onboardings" : `Seus ${PHASES.find((p) => p.id === allowedPhases?.[0])?.label || "Onboardings"}`}
-              </CardTitle>
-              <p className="text-sm text-muted-foreground mt-0.5">{filtered.length} ativos</p>
-            </div>
+    <div className="rounded-2xl border border-border bg-card p-6 shadow-sm h-full flex flex-col relative group">
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Rocket className="h-5 w-5" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold tracking-tight">
+              {isOverviewRole ? "Onboardings" : `Seus ${PHASES.find((p) => p.id === allowedPhases?.[0])?.label || "Onboardings"}`}
+            </h2>
+            <p className="text-sm text-muted-foreground mt-0.5">{filtered.length} ativos</p>
           </div>
         </div>
-      </CardHeader>
-      <CardContent className="space-y-6 px-6 sm:px-8 py-6 sm:py-8 relative z-10 flex-1 flex flex-col">
+      </div>
+
+      <div className="flex-1 flex flex-col gap-6">
         {filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full py-12 opacity-50">
-            <Rocket className="h-8 w-8 text-muted-foreground mb-3" />
-            <p className="text-sm font-medium text-muted-foreground">Nenhum onboarding ativo</p>
+          <div className="flex flex-col items-center justify-center h-full py-12 text-muted-foreground">
+            <Rocket className="h-8 w-8 mb-3 opacity-20" />
+            <p className="text-sm font-medium">Nenhum onboarding ativo</p>
           </div>
         ) : (
           <div className="space-y-6 flex-1">
@@ -95,11 +92,11 @@ export function OnboardingPreview({ onboardings, userRole }: OnboardingPreviewPr
                   }).length
                   if (count === 0) return null
                   return (
-                    <div key={phase.id} className="flex flex-col gap-1 p-3 rounded-[16px] bg-background border border-border/50">
+                    <div key={phase.id} className="flex flex-col gap-1 p-3 rounded-xl bg-background border border-border">
                       <span className="text-xs text-muted-foreground font-medium truncate flex items-center gap-1.5">
                         <span className="text-sm">{phase.icon}</span> {phase.label}
                       </span>
-                      <span className="text-2xl font-black">{count}</span>
+                      <span className="text-2xl font-bold">{count}</span>
                     </div>
                   )
                 })}
@@ -108,17 +105,20 @@ export function OnboardingPreview({ onboardings, userRole }: OnboardingPreviewPr
 
             {/* Scoped role: list items */}
             {!isOverviewRole && (
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {filtered.slice(0, 4).map((o) => {
                   const store = resolveRelation(o.store)
                   return (
-                    <div key={o.id} className="space-y-2 p-3 rounded-[16px] bg-background border border-border/40 hover:border-primary/30 transition-colors">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="truncate text-foreground font-semibold">{store?.store_name || "Loja"}</span>
-                        <span className="text-primary font-bold">{o.progress_percent || 0}%</span>
+                    <div key={o.id} className="flex flex-col gap-2 p-3 rounded-xl border border-border bg-background hover:bg-muted/30 transition-colors">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-foreground truncate pr-4">{store?.store_name || "Loja"}</span>
+                        <span className="text-sm font-bold text-primary shrink-0">{o.progress_percent || 0}%</span>
                       </div>
-                      <div className="h-1.5 rounded-full bg-muted/50 overflow-hidden">
-                        <div className="h-full rounded-full bg-primary transition-all duration-1000 ease-out" style={{ width: `${o.progress_percent || 0}%` }} />
+                      <div className="w-full bg-muted/50 rounded-full h-1.5 overflow-hidden flex">
+                        <div 
+                          className="h-full bg-primary rounded-full" 
+                          style={{ width: `${o.progress_percent || 0}%` }}
+                        />
                       </div>
                     </div>
                   )
@@ -127,20 +127,23 @@ export function OnboardingPreview({ onboardings, userRole }: OnboardingPreviewPr
             )}
 
             {/* Average progress */}
-            <div className="space-y-2 p-4 rounded-[16px] bg-primary/5 border border-primary/10">
+            <div className="space-y-2 p-4 rounded-xl bg-primary/5 border border-primary/10">
               <div className="flex items-center justify-between text-xs sm:text-sm">
-                <span className="font-semibold text-primary">Progresso Médio Geral</span>
-                <span className="font-black text-primary text-lg">{avgProgress}%</span>
+                <span className="font-medium text-primary">Progresso Médio Geral</span>
+                <span className="font-bold text-primary text-base">{avgProgress}%</span>
               </div>
-              <div className="h-2 rounded-full bg-primary/20 overflow-hidden">
-                <div className="h-full rounded-full bg-primary transition-all duration-1000 ease-out" style={{ width: `${avgProgress}%` }} />
+              <div className="w-full bg-primary/20 rounded-full h-1.5 overflow-hidden flex">
+                <div 
+                  className="h-full bg-primary rounded-full" 
+                  style={{ width: `${avgProgress}%` }}
+                />
               </div>
             </div>
 
             {/* Near deadline */}
             {nearDeadline.length > 0 && (
-              <div className="space-y-3 pt-4 border-t border-border/40">
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-warning">
+              <div className="space-y-3 pt-4 border-t border-border">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-warning">
                   <AlertTriangle className="h-4 w-4" />
                   <span>Próximos a vencer</span>
                 </div>
@@ -148,13 +151,11 @@ export function OnboardingPreview({ onboardings, userRole }: OnboardingPreviewPr
                   {nearDeadline.map((o) => {
                     const store = resolveRelation(o.store)
                     return (
-                      <div key={o.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-sm p-2 rounded-[12px] bg-warning/5 border border-warning/20">
-                        <span className="truncate font-semibold">{store?.store_name || "Loja"}</span>
-                        <div className="flex items-center gap-2 text-xs">
-                          <span className="flex items-center gap-1 text-muted-foreground bg-background px-2 py-0.5 rounded-md border border-border/50">
-                            <Clock className="h-3 w-3" />
-                            {new Date(o.target_completion_date!).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
-                          </span>
+                      <div key={o.id} className="flex items-center justify-between gap-2 p-2 rounded-lg bg-warning/5 border border-warning/20">
+                        <span className="text-sm font-medium truncate">{store?.store_name || "Loja"}</span>
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-background px-2 py-1 rounded-md border border-border shrink-0">
+                          <Clock className="h-3 w-3" />
+                          {new Date(o.target_completion_date!).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
                         </div>
                       </div>
                     )
@@ -165,10 +166,10 @@ export function OnboardingPreview({ onboardings, userRole }: OnboardingPreviewPr
           </div>
         )}
 
-        <Button variant="outline" size="sm" className="w-full text-xs rounded-xl border-border hover:bg-primary/10 hover:text-primary hover:border-primary/30 transition-all font-medium mt-auto" asChild>
+        <Button variant="outline" className="w-full mt-auto" asChild>
           <Link href="/onboarding">Ver Onboardings</Link>
         </Button>
-      </CardContent>
+      </div>
     </div>
   )
 }

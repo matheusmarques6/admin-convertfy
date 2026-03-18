@@ -66,117 +66,113 @@ export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps)
   const totalAlerts = filteredAlerts.length
 
   return (
-    <div className="rounded-[24px] border border-border/60 bg-card h-full flex flex-col overflow-hidden relative group">
-      <div className="absolute inset-0 bg-gradient-to-tr from-warning/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
-      
-      <CardHeader className="pb-4 sm:pb-6 relative z-10 px-6 sm:px-8 pt-6 sm:pt-8 bg-background/50 border-b border-border/40">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="rounded-xl bg-warning/10 p-2.5 border border-warning/20 group-hover:bg-warning group-hover:text-warning-foreground text-warning transition-colors">
-              <AlertCircle className="h-5 w-5" />
-            </div>
-            <CardTitle className="text-lg font-bold tracking-tight">Alertas e Lembretes</CardTitle>
+    <div className="rounded-2xl border border-border bg-card p-6 shadow-sm h-full flex flex-col relative group">
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-warning/10 text-warning">
+            <AlertCircle className="h-5 w-5" />
           </div>
-          {totalAlerts > 0 && (
-            <Badge variant="destructive" className="bg-destructive/10 text-destructive border-0 rounded-full px-3 py-1 font-bold">
-              {totalAlerts}
-            </Badge>
-          )}
+          <h2 className="text-lg font-semibold tracking-tight">Alertas e Lembretes</h2>
         </div>
-      </CardHeader>
-      <CardContent className="space-y-6 px-6 sm:px-8 py-6 sm:py-8 relative z-10 flex-1 flex flex-col">
+        {totalAlerts > 0 && (
+          <div className="flex items-center justify-center h-6 min-w-[24px] px-2 rounded-full bg-destructive/10 text-destructive text-xs font-bold">
+            {totalAlerts}
+          </div>
+        )}
+      </div>
+
+      <div className="flex-1 flex flex-col gap-6">
         {/* Alerts */}
         {filteredAlerts.length > 0 ? (
           <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {filteredAlerts.map((alert) => {
+            <div className="flex flex-col gap-3">
+              {filteredAlerts.slice(0, 3).map((alert) => {
                 const Icon = ALERT_ICONS[alert.type] || Clock
                 const isHigh = alert.severity === "high"
                 const isMed = alert.severity === "medium"
                 
                 const content = (
                   <div className={cn(
-                    "flex flex-col gap-3 p-4 rounded-[16px] border transition-all h-full",
-                    isHigh ? "bg-destructive/5 border-destructive/20 hover:border-destructive/40" : 
-                    isMed ? "bg-warning/5 border-warning/20 hover:border-warning/40" : 
-                    "bg-background border-border/40 hover:border-border"
+                    "flex flex-col gap-2 p-3 rounded-xl border transition-colors",
+                    isHigh ? "bg-destructive/5 border-destructive/20 hover:bg-destructive/10" : 
+                    isMed ? "bg-warning/5 border-warning/20 hover:bg-warning/10" : 
+                    "bg-background border-border hover:bg-muted/30"
                   )}>
                     <div className="flex items-start justify-between">
-                      <div className={cn("rounded-xl p-2 h-fit border", 
-                        isHigh ? "bg-destructive/10 text-destructive border-destructive/20" : 
-                        isMed ? "bg-warning/10 text-warning border-warning/20" : 
-                        "bg-muted text-muted-foreground border-border/50"
-                      )}>
-                        <Icon className="h-4 w-4" />
+                      <div className="flex items-center gap-2">
+                        <div className={cn("p-1.5 rounded-lg", 
+                          isHigh ? "bg-destructive/10 text-destructive" : 
+                          isMed ? "bg-warning/10 text-warning" : 
+                          "bg-muted text-muted-foreground"
+                        )}>
+                          <Icon className="h-4 w-4" />
+                        </div>
+                        <span className={cn("text-sm font-semibold", 
+                          isHigh ? "text-destructive" : isMed ? "text-warning" : "text-foreground"
+                        )}>
+                          {alert.title}
+                        </span>
                       </div>
-                      <Badge variant={getSeverityColor(alert.severity)} className="shrink-0 text-[10px] uppercase font-bold tracking-wider">
-                        {isHigh ? "Urgente" : isMed ? "Atenção" : "Baixo"}
-                      </Badge>
                     </div>
-                    <div className="flex-1 mt-1">
-                      <p className={cn("text-sm font-bold mb-1", isHigh ? "text-destructive" : isMed ? "text-warning" : "text-foreground")}>{alert.title}</p>
-                      <p className="text-xs text-muted-foreground py-0.5 line-clamp-2 leading-relaxed">
-                        {alert.description}
-                      </p>
-                    </div>
+                    <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed pl-9">
+                      {alert.description}
+                    </p>
                   </div>
                 )
+
                 return alert.action_url ? (
-                  <Link key={alert.id} href={alert.action_url} className="block group/alert h-full hover:-translate-y-0.5 transition-transform">
+                  <Link key={alert.id} href={alert.action_url} className="block outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-xl">
                     {content}
                   </Link>
                 ) : (
-                  <div key={alert.id} className="h-full">{content}</div>
+                  <div key={alert.id}>{content}</div>
                 )
               })}
             </div>
             
             {hasStoreAlerts && (
-              <Button variant="outline" size="sm" className="w-full text-xs rounded-xl border-border" asChild>
+              <Button variant="outline" className="w-full mt-2" asChild>
                 <Link href="/stores?tab=alerts">Ver todos os alertas de lojas</Link>
               </Button>
             )}
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center py-10 opacity-50 bg-background rounded-[16px] border border-border/40 border-dashed">
-            <ShieldAlert className="h-8 w-8 text-muted-foreground mb-3" />
-            <p className="text-sm font-medium text-muted-foreground">Tudo tranquilo! Nenhum alerta no momento.</p>
+          <div className="flex flex-col items-center justify-center h-full py-12 text-muted-foreground">
+            <ShieldAlert className="h-8 w-8 mb-3 opacity-20" />
+            <p className="text-sm font-medium">Tudo tranquilo! Nenhum alerta no momento.</p>
           </div>
         )}
 
         {/* Upcoming Meetings */}
         {meetings.length > 0 && (
-          <div className="pt-6 mt-auto border-t border-border/40">
-            <div className="flex items-center gap-2 mb-4">
-              <Calendar className="h-4 w-4 text-primary" />
-              <span className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Próximas Reuniões</span>
-            </div>
-            <ScrollArea className="h-[140px] pr-4 flex-1">
+          <div className="pt-6 border-t border-border mt-auto">
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4 flex items-center gap-2">
+              <Calendar className="h-4 w-4" /> Próximas Reuniões
+            </h3>
+            <ScrollArea className="h-[140px] pr-4">
               <div className="space-y-3">
                 {meetings.map((meeting) => (
                   <Link
                     key={meeting.id}
                     href="/meetings"
-                    className="flex items-center justify-between p-3 rounded-[12px] bg-background border border-border/40 hover:border-primary/40 transition-colors group/mtg"
+                    className="flex flex-col gap-1.5 p-3 rounded-xl border border-border bg-background hover:bg-muted/30 transition-colors group/mtg"
                   >
-                    <div className="flex items-start gap-3">
-                      <div className="bg-primary/10 text-primary px-2.5 py-1 rounded-md text-xs font-bold font-mono border border-primary/20">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-foreground group-hover/mtg:underline truncate pr-4">{meeting.title}</span>
+                      <span className="text-xs font-mono font-bold text-primary shrink-0 bg-primary/10 px-2 py-0.5 rounded-md">
                         {new Date(meeting.scheduled_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-foreground group-hover/mtg:text-primary transition-colors">{meeting.title}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {new Date(meeting.scheduled_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "long" })}
-                        </p>
-                      </div>
+                      </span>
                     </div>
+                    <span className="text-xs text-muted-foreground">
+                      {new Date(meeting.scheduled_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "long" })}
+                    </span>
                   </Link>
                 ))}
               </div>
             </ScrollArea>
           </div>
         )}
-      </CardContent>
+      </div>
     </div>
   )
 }

@@ -33,67 +33,55 @@ export function BoardPreview({ tasks }: BoardPreviewProps) {
   const maxCount = Math.max(...counts.map((c) => c.count), 1)
 
   return (
-    <div className="rounded-[24px] border border-border/60 bg-card h-full flex flex-col group relative overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
-      
-      <CardHeader className="pb-4 sm:pb-6 relative z-10 px-6 sm:px-8 pt-6 sm:pt-8">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="rounded-xl bg-primary/10 p-2.5 border border-primary/20 group-hover:bg-primary group-hover:text-primary-foreground text-primary transition-colors">
-              <LayoutGrid className="h-5 w-5" />
-            </div>
-            <div>
-              <CardTitle className="text-lg font-bold tracking-tight">Board de Tarefas</CardTitle>
-              <p className="text-sm text-muted-foreground mt-0.5">{totalActive} tarefas ativas</p>
-            </div>
+    <div className="rounded-2xl border border-border bg-card p-6 shadow-sm h-full flex flex-col">
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <LayoutGrid className="h-5 w-5" />
           </div>
-          <Button variant="outline" size="sm" className="hidden sm:flex text-xs rounded-xl border-border hover:bg-primary/10 hover:text-primary hover:border-primary/30 transition-all font-medium" asChild>
-            <Link href="/board">Gerenciar</Link>
-          </Button>
+          <div>
+            <h2 className="text-lg font-semibold tracking-tight">Board de Tarefas</h2>
+            <p className="text-sm text-muted-foreground">{totalActive} tarefas ativas</p>
+          </div>
         </div>
-      </CardHeader>
-      <CardContent className="space-y-6 sm:space-y-8 flex-1 px-6 sm:px-8 pb-6 sm:pb-8 flex flex-col relative z-10">
-        {/* Column counters - 8 column dominance */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-6">
-          {counts.map((col, idx) => (
-            <div key={col.status} className="flex flex-col gap-2 p-4 rounded-[16px] bg-background border border-border/40 hover:border-border transition-colors">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground truncate">{col.label}</p>
-                <div className={`w-2 h-2 rounded-full ${col.color}`} />
-              </div>
-              <p className="text-4xl sm:text-5xl font-black tracking-tighter text-foreground mt-1">{col.count}</p>
-            </div>
-          ))}
-        </div>
-
-        {/* Badges / Alerts */}
-        <div className="flex items-center gap-3 mt-auto flex-wrap">
-          {overdue > 0 && (
-            <div className="flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-lg bg-warning/10 text-warning border border-warning/20">
-              <AlertTriangle className="h-3.5 w-3.5" />
-              <span>{overdue} {overdue === 1 ? "tarefa vencida" : "tarefas vencidas"}</span>
-            </div>
-          )}
-          {blocked > 0 && (
-            <div className="flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-lg bg-destructive/10 text-destructive border border-destructive/20">
-              <Ban className="h-3.5 w-3.5" />
-              <span>{blocked} {blocked === 1 ? "tarefa bloqueada" : "tarefas bloqueadas"}</span>
-            </div>
-          )}
-          
-          {overdue === 0 && blocked === 0 && (
-            <div className="flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-lg bg-success/10 text-success border border-success/20">
-              <div className="h-2 w-2 rounded-full bg-success animate-pulse" />
-              <span>Sem bloqueios graves</span>
-            </div>
-          )}
-        </div>
-
-        {/* Link for mobile */}
-        <Button variant="outline" size="sm" className="w-full sm:hidden text-xs rounded-xl" asChild>
-          <Link href="/board">Gerenciar Board</Link>
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/board">Gerenciar</Link>
         </Button>
-      </CardContent>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 flex-1">
+        {counts.map((col) => (
+          <div key={col.status} className="flex flex-col gap-1 p-4 rounded-xl border border-border bg-background">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{col.label}</span>
+              <div className={`w-2 h-2 rounded-full ${col.color}`} />
+            </div>
+            <p className="text-3xl font-bold tracking-tight text-foreground">{col.count}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex items-center gap-3 mt-6 pt-4 border-t border-border/50 flex-wrap">
+        {overdue > 0 && (
+          <div className="flex items-center gap-1.5 text-xs font-semibold px-2 py-1 rounded-full bg-warning/10 text-warning">
+            <AlertTriangle className="h-3.5 w-3.5" />
+            <span>{overdue} {overdue === 1 ? "tarefa vencida" : "tarefas vencidas"}</span>
+          </div>
+        )}
+        {blocked > 0 && (
+          <div className="flex items-center gap-1.5 text-xs font-semibold px-2 py-1 rounded-full bg-destructive/10 text-destructive">
+            <Ban className="h-3.5 w-3.5" />
+            <span>{blocked} {blocked === 1 ? "tarefa bloqueada" : "tarefas bloqueadas"}</span>
+          </div>
+        )}
+        
+        {overdue === 0 && blocked === 0 && (
+          <div className="flex items-center gap-1.5 text-xs font-semibold px-2 py-1 rounded-full bg-success/10 text-success">
+            <div className="h-1.5 w-1.5 rounded-full bg-success" />
+            <span>Tudo sob controle</span>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
