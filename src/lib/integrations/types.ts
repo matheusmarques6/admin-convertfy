@@ -172,7 +172,7 @@ export interface KlaviyoList {
   name: string
   created: string
   updated: string
-  profile_count: number
+  profile_count?: number
 }
 
 export interface KlaviyoMetrics {

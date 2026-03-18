@@ -233,7 +233,7 @@ export async function fetchAudienceForStore(apiKey: string): Promise<SyncResult<
       const resp: AudienceListResp | null = await klaviyoRequest<AudienceListResp>(apiKey, listPage)
       if (!resp?.data) break
       for (const l of resp.data) {
-        allLists.push({ id: l.id, name: l.attributes.name, profileCount: l.attributes.profile_count || 0, created: l.attributes.created })
+        allLists.push({ id: l.id, name: l.attributes.name, profileCount: l.attributes.profile_count ?? 0, created: l.attributes.created })
       }
       listPage = resp.links?.next ? resp.links.next.replace(KLAVIYO_API_URL, "") : null
       if (listPage) await sleep(500)
@@ -266,7 +266,7 @@ export async function fetchAudienceForStore(apiKey: string): Promise<SyncResult<
       if (!resp?.data) break
       for (const s of resp.data) {
         allSegments.push({
-          id: s.id, name: s.attributes.name, profileCount: s.attributes.profile_count || 0,
+          id: s.id, name: s.attributes.name, profileCount: s.attributes.profile_count ?? 0,
           isActive: s.attributes.is_active, isStarred: s.attributes.is_starred, created: s.attributes.created,
         })
       }

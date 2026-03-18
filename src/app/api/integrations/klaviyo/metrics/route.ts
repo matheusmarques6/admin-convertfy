@@ -113,7 +113,7 @@ export async function GET(request: NextRequest) {
 
     // AK-5: Fetch profile_count via individual endpoints if collection didn't include it.
     // additional-fields works on individual endpoints (/lists/{id}/) without tier penalty.
-    const needsProfileCount = lists.data.length > 0 && lists.data.every(l => !l.attributes.profile_count)
+    const needsProfileCount = lists.data.length > 0 && lists.data.every(l => l.attributes.profile_count == null)
     if (needsProfileCount) {
       await withConcurrencyLimit(lists.data, 3, async (list) => {
         const detail = await klaviyoRequest<KlaviyoListDetailResponse>(
