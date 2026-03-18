@@ -243,6 +243,8 @@ export function Sidebar({ user }: SidebarProps) {
         <div key={item.name}>
           <button
             onClick={() => toggleExpanded(item.name)}
+            aria-expanded={isExpanded}
+            aria-controls={`nav-children-${item.name}`}
             className={cn(
               "relative flex items-center gap-3 h-9 px-3 w-full rounded-lg text-[13px] transition-colors duration-150",
               active
@@ -267,7 +269,12 @@ export function Sidebar({ user }: SidebarProps) {
             />
           </button>
           {isExpanded && (
-            <div className="ml-3 pl-3 border-l border-white/[0.06] space-y-0.5 mt-0.5">
+            <div
+              id={`nav-children-${item.name}`}
+              role="group"
+              aria-label={`Sub-itens de ${item.name}`}
+              className="ml-3 pl-3 border-l border-white/[0.06] space-y-0.5 mt-0.5"
+            >
               {item.children!.map(child => {
                 const childActive = pathname.startsWith(child.href)
                 const ChildIcon = child.icon
