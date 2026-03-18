@@ -32,11 +32,15 @@ export async function getCachedAccountInfo(
     const supabase = createAdminClient()
     try {
       const cached = await getCache<KlaviyoAccountInfo>(supabase, storeId, "klaviyo_metadata", "account_info")
-      if (cached) return cached.data
+      if (cached) {
+        log.debug(`[AccountInfo] DB cache HIT for store ${storeId}`)
+        return cached.data
+      }
     } catch {
       // DB cache unavailable — fall through to API
     }
 
+    log.info(`[AccountInfo] DB cache MISS for store ${storeId}, fetching from API`)
     const accountInfo = await getAccountInfo(apiKey)
     setCache(supabase, storeId, "klaviyo_metadata", "account_info", accountInfo as unknown as Record<string, unknown>).catch(() => {})
     return accountInfo
@@ -61,10 +65,14 @@ export async function getCachedPlacedOrderMetric(
   if (storeId && supabase) {
     try {
       const cached = await getCache<{ metricId: string | null }>(supabase, storeId, "klaviyo_metadata", "placed_order_metric")
-      if (cached) return cached.data.metricId
+      if (cached) {
+        log.debug(`[PlacedOrderMetric] DB cache HIT for store ${storeId}`)
+        return cached.data.metricId
+      }
     } catch {
       // DB cache unavailable — fall through to API
     }
+    log.info(`[PlacedOrderMetric] DB cache MISS for store ${storeId}, fetching from API`)
   }
 
   let metricId: string | null = null

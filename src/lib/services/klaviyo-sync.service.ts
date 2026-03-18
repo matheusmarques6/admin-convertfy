@@ -12,7 +12,6 @@ import {
   parseDateRangeInTimezone,
   KLAVIYO_API_URL,
   sleep,
-  MIN_REQUEST_INTERVAL,
   KlaviyoPermissionError,
   KlaviyoRateLimitError,
 } from "@/lib/integrations/klaviyo"
@@ -472,10 +471,11 @@ export async function syncKlaviyoForPeriod(
 
     // Serialize API calls to avoid Klaviyo reporting API rate limits (~1 req/s burst).
     // Previously Promise.all caused campaign-values-reports to consistently return null.
-    const REPORT_API_DELAY_MS = 1500
+    // NOTE: The global rate limiter (rate-limiter.ts, 1200ms/req) handles inter-request
+    // spacing. We add a small safety margin for the reporting API which is more restrictive.
+    const REPORT_API_DELAY_MS = 300
 
     // 1. Flow report
-    await sleep(MIN_REQUEST_INTERVAL)
     const startFlow = Date.now()
     const flowResponse = await klaviyoRequest<{
       data: { attributes: { results: Array<{ groupings: { flow_id: string; send_channel: string; flow_message_id: string }; statistics: Record<string, number | undefined> }> } }

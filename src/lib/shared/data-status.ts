@@ -49,6 +49,17 @@ export interface SyncResult<T> {
   fetchedAt: string
 }
 
+// ─── Freshness Thresholds (Cron Skip) ───────────────────────────────────────
+
+/** How long each period's cache is considered "fresh enough" to skip re-sync.
+ *  0 = always sync. Used by cron to avoid re-fetching data that barely changed. */
+export const PERIOD_FRESHNESS_THRESHOLDS: Record<CachedPeriod, number> = {
+  "7d":  0,                  // always sync — recent orders change fast
+  "15d": 2 * 60 * 60_000,   // 2 hours
+  "30d": 4 * 60 * 60_000,   // 4 hours
+  "90d": 8 * 60 * 60_000,   // 8 hours
+}
+
 // ─── Cooldown Constants ──────────────────────────────────────────────────────
 
 /** Cooldown in ms between live fetches for the same store+period */

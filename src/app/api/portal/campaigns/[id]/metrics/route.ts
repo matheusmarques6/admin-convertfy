@@ -1,7 +1,9 @@
 import { NextRequest } from "next/server"
-import { errorResponse, successResponse, requireAuth } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { resolvePortalClient } from "@/lib/api/portal-auth"
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 // GET - Fetch full cached metrics for a specific campaign
 export async function GET(
@@ -10,6 +12,12 @@ export async function GET(
 ) {
   try {
     const { id: campaignId } = await params
+
+    // Validate UUID format before hitting DB
+    if (!UUID_RE.test(campaignId)) {
+      throw new AppError("ID de campanha inválido", 400)
+    }
+
     const supabase = await createClient()
     const adminClient = createAdminClient()
 

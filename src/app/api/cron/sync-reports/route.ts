@@ -13,13 +13,16 @@ import {
   KlaviyoPermissionError,
   KlaviyoRateLimitError,
   KlaviyoInvalidKeyError,
+  type KlaviyoAccountInfo,
 } from "@/lib/integrations/klaviyo"
-import { CACHED_PERIODS } from "@/lib/shared/data-status"
+import { CACHED_PERIODS, PERIOD_FRESHNESS_THRESHOLDS, type CachedPeriod } from "@/lib/shared/data-status"
 import {
   syncKlaviyoForPeriod,
   fetchFlowNames,
   fetchCampaignNames,
   fetchAudienceForStore,
+  type FlowNameInfo,
+  type CampaignNameInfo,
 } from "@/lib/services/klaviyo-sync.service"
 import { upsertSyncResults, upsertAudiences } from "@/lib/services/sync-persistence.service"
 
@@ -28,8 +31,9 @@ const log = logger.child("CronSyncReports")
 export const maxDuration = 300
 export const dynamic = "force-dynamic"
 
-const MAX_PARALLEL_GROUPS = 2
-const INTRA_GROUP_DELAY_MS = 2500
+// 3 groups = ~3 concurrent API key streams; safe because rate limiter is per-call
+const MAX_PARALLEL_GROUPS = 3
+const INTRA_GROUP_DELAY_MS = 1000 // reduced from 2500ms — global rate limiter (1200ms/req) handles spacing
 const MAX_DURATION_MS = 240_000 // 80% of 300s — stop before Vercel kills us
 const STALE_LOCK_MS = 10 * 60 * 1000 // 10 minutes
 const PERMISSION_RETRY_MS = 24 * 60 * 60 * 1000 // 24 hours — retry stores with permission failures after this
@@ -51,6 +55,98 @@ interface StoreRow {
   klaviyo_has_reporting_access?: boolean
   klaviyo_validated_at?: string
   klaviyo_missing_scopes?: string[]
+}
+
+/** Pre-fetched data shared across stores in the same API key group */
+interface PreFetchedGroupData {
+  accountInfo: KlaviyoAccountInfo
+  timezoneOffset: string
+  metricId: string
+  flowNames: Map<string, FlowNameInfo>
+  campNames: Map<string, CampaignNameInfo>
+}
+
+/** Map of period_label → fetched_at Date (or null if no fresh entry) */
+type FreshnessMap = Map<string, Date | null>
+
+// ==============================
+// Freshness helpers (Story 55.1)
+// ==============================
+
+/** Batch-fetch freshness for ALL stores in a group in a single query.
+ *  Returns Map<storeId, FreshnessMap>. */
+async function getGroupFreshness(
+  supabase: SupabaseClient,
+  storeIds: string[],
+): Promise<Map<string, FreshnessMap>> {
+  const result = new Map<string, FreshnessMap>()
+  // Initialize empty maps so callers don't need to null-check
+  for (const id of storeIds) result.set(id, new Map())
+
+  const { data, error } = await supabase
+    .from("store_revenue_summary")
+    .select("store_id, period_label, fetched_at")
+    .in("store_id", storeIds)
+    .in("sync_status", ["ok", "partial"])
+
+  if (error) {
+    log.warn("[Cron] Failed to fetch freshness data, will sync all periods:", error.message)
+    return result
+  }
+
+  for (const row of data ?? []) {
+    const map = result.get(row.store_id)
+    if (map) {
+      map.set(row.period_label, row.fetched_at ? new Date(row.fetched_at) : null)
+    }
+  }
+  return result
+}
+
+/** Filter periods based on freshness thresholds. Returns periods that NEED syncing. */
+function filterFreshPeriods(
+  periods: readonly string[],
+  freshness: FreshnessMap,
+  now: number,
+): { toSync: string[]; skipped: string[] } {
+  const toSync: string[] = []
+  const skipped: string[] = []
+
+  for (const period of periods) {
+    const threshold = PERIOD_FRESHNESS_THRESHOLDS[period as CachedPeriod] ?? 0
+    if (threshold === 0) {
+      toSync.push(period)
+      continue
+    }
+
+    const fetchedAt = freshness.get(period)
+    if (!fetchedAt) {
+      // No cached data — must sync
+      toSync.push(period)
+      continue
+    }
+
+    const ageMs = now - fetchedAt.getTime()
+    if (ageMs < threshold) {
+      const agoMin = Math.round(ageMs / 60_000)
+      skipped.push(`${period}=${agoMin}min ago`)
+    } else {
+      toSync.push(period)
+    }
+  }
+
+  return { toSync, skipped }
+}
+
+/** Get oldest fetched_at for a store (MIN across all periods). null = no data (highest priority). */
+function getOldestFetchedAt(freshness: FreshnessMap): number | null {
+  let oldest: number | null = null
+  for (const date of freshness.values()) {
+    if (!date) return null // any missing period = treat as brand new
+    const ts = date.getTime()
+    if (oldest === null || ts < oldest) oldest = ts
+  }
+  return oldest
 }
 
 // ==============================
@@ -160,99 +256,130 @@ async function syncStore(
   periods: readonly string[],
   supabase: SupabaseClient,
   startTime: number,
+  preFetched?: PreFetchedGroupData,
+  apiKeyOverride?: string,
+  freshness?: FreshnessMap,
 ): Promise<CronSyncResult[]> {
   const results: CronSyncResult[] = []
 
-  const credentials = await getStoreCredentials(store.id)
-  const apiKey = credentials.klaviyo_private_key || credentials.klaviyo_api_key
-  if (!apiKey) {
-    return periods.map(p => ({ storeId: store.id, storeName: store.store_name, period: p, status: "skipped" as const, error: "No valid API key" }))
+  // Story 55.1: filter out fresh periods
+  const { toSync, skipped } = filterFreshPeriods(periods, freshness ?? new Map(), Date.now())
+  if (skipped.length > 0) {
+    log.info(`[Cron] ${store.store_name}: syncing ${toSync.length}/${periods.length} periods (skipped ${skipped.join(", ")})`)
+    // Add skipped results
+    for (const skipInfo of skipped) {
+      const period = skipInfo.split("=")[0]
+      results.push({ storeId: store.id, storeName: store.store_name, period, status: "skipped", error: `fresh (fetched ${skipInfo.split("=")[1]})` })
+    }
   }
 
-  // Pre-fetch shared data (cached, minimal API calls)
-  // Wrapped in try-catch to handle KlaviyoPermissionError gracefully
-  let accountInfo: Awaited<ReturnType<typeof getCachedAccountInfo>>
+  if (toSync.length === 0) {
+    log.info(`[Cron] ${store.store_name}: all periods fresh, nothing to sync`)
+    return results
+  }
+
+  let apiKey: string
+  if (apiKeyOverride) {
+    apiKey = apiKeyOverride
+  } else {
+    const credentials = await getStoreCredentials(store.id)
+    const key = credentials.klaviyo_private_key || credentials.klaviyo_api_key
+    if (!key) {
+      return periods.map(p => ({ storeId: store.id, storeName: store.store_name, period: p, status: "skipped" as const, error: "No valid API key" }))
+    }
+    apiKey = key
+  }
+
+  // Use pre-fetched group data if available, otherwise fetch per-store (backward compat)
+  let accountInfo: KlaviyoAccountInfo
   let timezoneOffset: string
-  let metricId: string | null
-  let flowNames: Awaited<ReturnType<typeof fetchFlowNames>>
-  let campNames: Awaited<ReturnType<typeof fetchCampaignNames>>
+  let metricId: string
+  let flowNames: Map<string, FlowNameInfo>
+  let campNames: Map<string, CampaignNameInfo>
 
-  try {
-    accountInfo = await getCachedAccountInfo(apiKey, store.org_id ?? undefined, store.id)
-    timezoneOffset = getTimezoneOffset(accountInfo.timezone)
-    metricId = await getCachedPlacedOrderMetric(apiKey, store.org_id ?? undefined, store.id)
+  if (preFetched) {
+    accountInfo = preFetched.accountInfo
+    timezoneOffset = preFetched.timezoneOffset
+    metricId = preFetched.metricId
+    flowNames = preFetched.flowNames
+    campNames = preFetched.campNames
+    log.info(`[Cron] ${store.store_name}: using shared group data (${flowNames.size} flows, ${campNames.size} campaigns)`)
+  } else {
+    // Fallback: pre-fetch per store (original behavior)
+    try {
+      accountInfo = await getCachedAccountInfo(apiKey, store.org_id ?? undefined, store.id)
+      timezoneOffset = getTimezoneOffset(accountInfo.timezone)
+      const mid = await getCachedPlacedOrderMetric(apiKey, store.org_id ?? undefined, store.id)
 
-    if (!metricId) {
-      return periods.map(p => ({ storeId: store.id, storeName: store.store_name, period: p, status: "skipped" as const, error: "No Placed Order metric" }))
+      if (!mid) {
+        return periods.map(p => ({ storeId: store.id, storeName: store.store_name, period: p, status: "skipped" as const, error: "No Placed Order metric" }))
+      }
+      metricId = mid
+
+      ;[flowNames, campNames] = await Promise.all([
+        fetchFlowNames(apiKey),
+        fetchCampaignNames(apiKey),
+      ])
+    } catch (err) {
+      if (err instanceof KlaviyoPermissionError) {
+        const scopes = err.missingScopes.join(", ")
+        const errorMsg = `[PERMISSION] Klaviyo API key missing scopes: ${scopes}`
+        log.warn(`[Cron] ${store.store_name}: ${errorMsg}`)
+
+        const defaultTz = "UTC"
+        await Promise.all(
+          periods.map(p => upsertSyncError(supabase, store, p, defaultTz, errorMsg))
+        )
+
+        try {
+          await supabase
+            .from("client_stores")
+            .update({
+              klaviyo_validation_error: errorMsg,
+              klaviyo_missing_scopes: err.missingScopes,
+              klaviyo_validated_at: new Date().toISOString(),
+              klaviyo_has_reporting_access: false,
+            })
+            .eq("id", store.id)
+        } catch { /* Don't fail on client_stores update error */ }
+
+        return periods.map(p => ({ storeId: store.id, storeName: store.store_name, period: p, status: "error" as const, error: errorMsg }))
+      }
+      if (err instanceof KlaviyoInvalidKeyError) {
+        const errorMsg = `[INVALID_KEY] ${err.message}`
+        log.warn(`[Cron] ${store.store_name}: ${errorMsg}`)
+
+        const defaultTz = "UTC"
+        await Promise.all(
+          periods.map(p => upsertSyncError(supabase, store, p, defaultTz, errorMsg))
+        )
+
+        try {
+          await supabase
+            .from("client_stores")
+            .update({
+              klaviyo_validation_error: errorMsg,
+              klaviyo_validated_at: new Date().toISOString(),
+              klaviyo_has_reporting_access: false,
+            })
+            .eq("id", store.id)
+        } catch { /* Don't fail on client_stores update error */ }
+
+        return periods.map(p => ({ storeId: store.id, storeName: store.store_name, period: p, status: "error" as const, error: errorMsg }))
+      }
+      if (err instanceof KlaviyoRateLimitError) {
+        const errorMsg = `[RATE_LIMIT] Klaviyo rate limited during pre-fetch (Retry-After: ${err.retryAfterMs}ms)`
+        log.warn(`[Cron] ${store.store_name}: ${errorMsg}`)
+
+        const defaultTz = "UTC"
+        await Promise.all(
+          periods.map(p => upsertSyncError(supabase, store, p, defaultTz, errorMsg))
+        )
+
+        return periods.map(p => ({ storeId: store.id, storeName: store.store_name, period: p, status: "error" as const, error: errorMsg }))
+      }
+      throw err
     }
-
-    // Fetch names ONCE per store (reused across all periods)
-    ;[flowNames, campNames] = await Promise.all([
-      fetchFlowNames(apiKey),
-      fetchCampaignNames(apiKey),
-    ])
-  } catch (err) {
-    if (err instanceof KlaviyoPermissionError) {
-      const scopes = err.missingScopes.join(", ")
-      const errorMsg = `[PERMISSION] Klaviyo API key missing scopes: ${scopes}`
-      log.warn(`[Cron] ${store.store_name}: ${errorMsg}`)
-
-      // Record error for ALL periods
-      const defaultTz = "UTC"
-      await Promise.all(
-        periods.map(p => upsertSyncError(supabase, store, p, defaultTz, errorMsg))
-      )
-
-      // Update client_stores validation fields
-      try {
-        await supabase
-          .from("client_stores")
-          .update({
-            klaviyo_validation_error: errorMsg,
-            klaviyo_missing_scopes: err.missingScopes,
-            klaviyo_validated_at: new Date().toISOString(),
-            klaviyo_has_reporting_access: false,
-          })
-          .eq("id", store.id)
-      } catch { /* Don't fail on client_stores update error */ }
-
-      return periods.map(p => ({ storeId: store.id, storeName: store.store_name, period: p, status: "error" as const, error: errorMsg }))
-    }
-    if (err instanceof KlaviyoInvalidKeyError) {
-      const errorMsg = `[INVALID_KEY] ${err.message}`
-      log.warn(`[Cron] ${store.store_name}: ${errorMsg}`)
-
-      const defaultTz = "UTC"
-      await Promise.all(
-        periods.map(p => upsertSyncError(supabase, store, p, defaultTz, errorMsg))
-      )
-
-      // Update client_stores validation fields
-      try {
-        await supabase
-          .from("client_stores")
-          .update({
-            klaviyo_validation_error: errorMsg,
-            klaviyo_validated_at: new Date().toISOString(),
-            klaviyo_has_reporting_access: false,
-          })
-          .eq("id", store.id)
-      } catch { /* Don't fail on client_stores update error */ }
-
-      return periods.map(p => ({ storeId: store.id, storeName: store.store_name, period: p, status: "error" as const, error: errorMsg }))
-    }
-    if (err instanceof KlaviyoRateLimitError) {
-      const errorMsg = `[RATE_LIMIT] Klaviyo rate limited during pre-fetch (Retry-After: ${err.retryAfterMs}ms)`
-      log.warn(`[Cron] ${store.store_name}: ${errorMsg}`)
-
-      const defaultTz = "UTC"
-      await Promise.all(
-        periods.map(p => upsertSyncError(supabase, store, p, defaultTz, errorMsg))
-      )
-
-      return periods.map(p => ({ storeId: store.id, storeName: store.store_name, period: p, status: "error" as const, error: errorMsg }))
-    }
-    throw err // re-throw other errors
   }
 
   // Fetch audience metrics ONCE per store (not per period — audience is a snapshot)
@@ -280,9 +407,9 @@ async function syncStore(
     log.warn(`[Cron] Unexpected error fetching audience for ${store.store_name}:`, err)
   }
 
-  // Sync each period
+  // Sync each period (only non-fresh ones)
   let consecutiveRateLimits = 0
-  for (const period of periods) {
+  for (const period of toSync) {
     if (Date.now() - startTime > MAX_DURATION_MS) {
       results.push({ storeId: store.id, storeName: store.store_name, period, status: "skipped", error: "timeout" })
       continue
@@ -485,6 +612,10 @@ export async function GET(request: NextRequest) {
       const allResults: CronSyncResult[] = []
       let timedOut = false
 
+      // Story 55.5: Fetch freshness for ALL eligible stores upfront (one query)
+      const allStoreIds = eligibleStores.map(s => s.id)
+      const allFreshness = await getGroupFreshness(supabase, allStoreIds)
+
       // Step 1: Fetch API keys and group stores by Klaviyo API key
       const apiKeyGroups = new Map<string, StoreRow[]>()
       const skippedNoKey: string[] = []
@@ -512,17 +643,40 @@ export async function GET(request: NextRequest) {
         log.warn(`[Cron] Skipped ${skippedNoKey.length} stores with no valid API key: ${skippedNoKey.join(", ")}`)
       }
 
-      const groups = Array.from(apiKeyGroups.entries())
+      // Story 55.5: Sort stores WITHIN each group by oldest_fetched_at ASC (stalest first, NULL = highest priority)
+      for (const [, groupStores] of apiKeyGroups) {
+        groupStores.sort((a, b) => {
+          const aOldest = getOldestFetchedAt(allFreshness.get(a.id) ?? new Map())
+          const bOldest = getOldestFetchedAt(allFreshness.get(b.id) ?? new Map())
+          if (aOldest === null && bOldest === null) return 0
+          if (aOldest === null) return -1
+          if (bOldest === null) return 1
+          return aOldest - bOldest
+        })
+      }
+
+      // Story 55.5: Sort groups by MIN(oldest_fetched_at) — groups with stalest stores first
+      // ?? 0 ensures NULL (no data / new stores) sorts first (epoch 0 < any real timestamp)
+      const groups = Array.from(apiKeyGroups.entries()).sort((a, b) => {
+        const aMin = Math.min(...a[1].map(s => getOldestFetchedAt(allFreshness.get(s.id) ?? new Map()) ?? 0))
+        const bMin = Math.min(...b[1].map(s => getOldestFetchedAt(allFreshness.get(s.id) ?? new Map()) ?? 0))
+        return aMin - bMin
+      })
+
       const groupSizes = groups.map(g => g[1].length)
       log.info(`[Cron] ${eligibleStores.length} stores grouped into ${groups.length} API key groups: [${groupSizes.join(", ")}]`)
 
-      // Log which group each store belongs to (masked key, not plaintext)
-      groups.forEach(([apiKey, groupStores], groupIdx) => {
-        const maskedKey = `...${apiKey.slice(-4)}`
-        for (const s of groupStores) {
-          log.info(`[Cron] Store "${s.store_name}" → API key group #${groupIdx + 1} (${groupStores.length} stores in group, key ${maskedKey})`)
-        }
-      })
+      // Story 55.5: Log processing order with staleness
+      const orderLog = groups.flatMap(([, groupStores]) =>
+        groupStores.map(s => {
+          const oldest = getOldestFetchedAt(allFreshness.get(s.id) ?? new Map())
+          if (oldest === null) return `${s.store_name} (NEW)`
+          const agoMin = Math.round((Date.now() - oldest) / 60_000)
+          const agoStr = agoMin < 60 ? `${agoMin}min` : `${Math.round(agoMin / 60)}h`
+          return `${s.store_name} (stale ${agoStr})`
+        })
+      )
+      log.info(`[Cron] Processing order: ${orderLog.join(", ")}`)
 
       // Step 2: Process groups in batches of MAX_PARALLEL_GROUPS
       for (let i = 0; i < groups.length; i += MAX_PARALLEL_GROUPS) {
@@ -535,8 +689,108 @@ export async function GET(request: NextRequest) {
         const groupBatch = groups.slice(i, i + MAX_PARALLEL_GROUPS)
 
         const groupResults = await Promise.allSettled(
-          groupBatch.map(async ([, groupStores]) => {
+          groupBatch.map(async ([groupApiKey, groupStores]) => {
             const results: CronSyncResult[] = []
+            const maskedKey = `...${groupApiKey.slice(-4)}`
+            const firstStore = groupStores[0]
+
+            // Pre-fetch shared data ONCE per API key group
+            let groupData: PreFetchedGroupData | undefined
+            try {
+              const accountInfo = await getCachedAccountInfo(groupApiKey, firstStore.org_id ?? undefined, firstStore.id)
+              const timezoneOffset = getTimezoneOffset(accountInfo.timezone)
+              const metricId = await getCachedPlacedOrderMetric(groupApiKey, firstStore.org_id ?? undefined, firstStore.id)
+
+              if (!metricId) {
+                log.warn(`[Cron] Group ${maskedKey}: No Placed Order metric — skipping all ${groupStores.length} stores`)
+                for (const s of groupStores) {
+                  for (const period of CACHED_PERIODS) {
+                    results.push({ storeId: s.id, storeName: s.store_name, period, status: "skipped", error: "No Placed Order metric" })
+                  }
+                }
+                return results
+              }
+
+              const [flowNames, campNames] = await Promise.all([
+                fetchFlowNames(groupApiKey),
+                fetchCampaignNames(groupApiKey),
+              ])
+
+              groupData = { accountInfo, timezoneOffset, metricId, flowNames, campNames }
+              log.info(`[Cron] Group ${maskedKey}: pre-fetched ${flowNames.size} flows, ${campNames.size} campaigns — sharing across ${groupStores.length} stores`)
+            } catch (err) {
+              if (err instanceof KlaviyoPermissionError) {
+                const scopes = err.missingScopes.join(", ")
+                const errorMsg = `[PERMISSION] Klaviyo API key missing scopes: ${scopes}`
+                log.warn(`[Cron] Group ${maskedKey}: ${errorMsg} — failing all ${groupStores.length} stores`)
+                for (const s of groupStores) {
+                  const defaultTz = "UTC"
+                  await Promise.all(
+                    CACHED_PERIODS.map(p => upsertSyncError(supabase, s as StoreRow, p, defaultTz, errorMsg))
+                  )
+                  try {
+                    await supabase
+                      .from("client_stores")
+                      .update({
+                        klaviyo_validation_error: errorMsg,
+                        klaviyo_missing_scopes: err.missingScopes,
+                        klaviyo_validated_at: new Date().toISOString(),
+                        klaviyo_has_reporting_access: false,
+                      })
+                      .eq("id", s.id)
+                  } catch { /* Don't fail on client_stores update */ }
+                  for (const period of CACHED_PERIODS) {
+                    results.push({ storeId: s.id, storeName: s.store_name, period, status: "error", error: errorMsg })
+                  }
+                }
+                return results
+              }
+              if (err instanceof KlaviyoInvalidKeyError) {
+                const errorMsg = `[INVALID_KEY] ${err.message}`
+                log.warn(`[Cron] Group ${maskedKey}: ${errorMsg} — failing all ${groupStores.length} stores`)
+                for (const s of groupStores) {
+                  const defaultTz = "UTC"
+                  await Promise.all(
+                    CACHED_PERIODS.map(p => upsertSyncError(supabase, s as StoreRow, p, defaultTz, errorMsg))
+                  )
+                  try {
+                    await supabase
+                      .from("client_stores")
+                      .update({
+                        klaviyo_validation_error: errorMsg,
+                        klaviyo_validated_at: new Date().toISOString(),
+                        klaviyo_has_reporting_access: false,
+                      })
+                      .eq("id", s.id)
+                  } catch { /* Don't fail on client_stores update */ }
+                  for (const period of CACHED_PERIODS) {
+                    results.push({ storeId: s.id, storeName: s.store_name, period, status: "error", error: errorMsg })
+                  }
+                }
+                return results
+              }
+              if (err instanceof KlaviyoRateLimitError) {
+                const errorMsg = `[RATE_LIMIT] Klaviyo rate limited during group pre-fetch (Retry-After: ${err.retryAfterMs}ms)`
+                log.warn(`[Cron] Group ${maskedKey}: ${errorMsg} — marking all ${groupStores.length} stores as error (preserving existing data)`)
+                // Don't fall back to per-store pre-fetch — it would hit the same rate limit,
+                // wasting time budget and API calls. Instead, use upsertSyncError which
+                // preserves existing OK/partial data.
+                for (const s of groupStores) {
+                  const defaultTz = "UTC"
+                  await Promise.all(
+                    CACHED_PERIODS.map(p => upsertSyncError(supabase, s as StoreRow, p, defaultTz, errorMsg))
+                  )
+                  for (const period of CACHED_PERIODS) {
+                    results.push({ storeId: s.id, storeName: s.store_name, period, status: "error", error: errorMsg })
+                  }
+                }
+                return results
+              } else {
+                log.warn(`[Cron] Group ${maskedKey}: unexpected error during pre-fetch, falling back to per-store`, err)
+                // Fall through: groupData stays undefined
+              }
+            }
+
             for (let j = 0; j < groupStores.length; j++) {
               if (Date.now() - startTime > MAX_DURATION_MS) {
                 // Mark remaining stores as skipped due to timeout
@@ -554,7 +808,8 @@ export async function GET(request: NextRequest) {
                 break
               }
 
-              const storeResults = await syncStore(groupStores[j], CACHED_PERIODS, supabase, startTime)
+              const storeFreshness = allFreshness.get(groupStores[j].id)
+              const storeResults = await syncStore(groupStores[j], CACHED_PERIODS, supabase, startTime, groupData, groupApiKey, storeFreshness)
               results.push(...storeResults)
 
               // Delay between stores in the same API key group
@@ -588,9 +843,9 @@ export async function GET(request: NextRequest) {
           }
         }
 
-        // Delay between batches of groups
+        // Delay between batches of groups (rate limiter handles per-call spacing)
         if (i + MAX_PARALLEL_GROUPS < groups.length) {
-          await new Promise(resolve => setTimeout(resolve, 3000))
+          await new Promise(resolve => setTimeout(resolve, 1500))
         }
       }
 
@@ -599,11 +854,29 @@ export async function GET(request: NextRequest) {
       const errorCount = allResults.filter(r => r.status === "error").length
       const skippedCount = allResults.filter(r => r.status === "skipped").length
 
+      // Story 55.1: Log freshness skip summary
+      const freshSkipped = allResults.filter(r => r.status === "skipped" && r.error?.startsWith("fresh"))
+      if (freshSkipped.length > 0) {
+        const totalPeriods = allResults.length
+        const syncedCount = allResults.filter(r => r.status === "ok" || r.status === "error").length
+        log.info(`[Cron] Freshness: ${syncedCount}/${totalPeriods} periods synced, ${freshSkipped.length} skipped (fresh)`)
+      }
+
       // CA7: Log rate limit summary for observability
       const rateLimitResults = allResults.filter(r => r.error?.includes("RATE_LIMIT"))
       if (rateLimitResults.length > 0) {
         const affectedStores = new Set(rateLimitResults.map(r => r.storeName))
         log.warn(`[Cron] Rate limit summary: ${rateLimitResults.length} periods affected across ${affectedStores.size} stores: ${[...affectedStores].join(", ")}`)
+      }
+
+      // Story 55.5: Log store coverage
+      const processedStores = new Set(allResults.filter(r => r.status === "ok" || r.status === "error").map(r => r.storeId))
+      const timeoutStores = new Set(allResults.filter(r => r.error === "timeout").map(r => r.storeId))
+      const totalStores = new Set(allResults.map(r => r.storeId)).size
+      if (timeoutStores.size > 0) {
+        log.warn(`[Cron] Processed ${processedStores.size}/${totalStores} stores (${timeoutStores.size} skipped by timeout — will be prioritized next run)`)
+      } else {
+        log.info(`[Cron] Processed ${processedStores.size}/${totalStores} stores (0 skipped by timeout)`)
       }
 
       log.info(`[Cron] Sync completed in ${elapsed}ms. ok=${okCount} error=${errorCount} skipped=${skippedCount}${timedOut ? " (timed out)" : ""}`)

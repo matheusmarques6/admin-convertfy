@@ -14,7 +14,9 @@ const CACHE_TTL: Record<string, Record<string, number>> = {
   asaas_payments: { "7d": 10, "15d": 15, "30d": 30, "90d": 60, all: 60 },
   asaas_billing: { "7d": 10, "15d": 15, "30d": 30, "90d": 60, all: 60 },
   client_performance: { today: 30, yesterday: 60, "7d": 120, "15d": 180, "30d": 240 },
-  klaviyo_metadata: { account_info: 30, placed_order_metric: 30 },
+  // 1440min = 24h — these values almost never change (timezone, currency, metric UUID)
+  // Manual invalidation: DELETE FROM dashboard_cache WHERE cache_type = 'klaviyo_metadata' AND store_id = 'xxx';
+  klaviyo_metadata: { account_info: 1440, placed_order_metric: 1440 },
 }
 
 // How long (in minutes) expired cache entries are still usable as fallback
