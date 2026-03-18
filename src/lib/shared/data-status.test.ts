@@ -4,6 +4,7 @@ import {
   LIVE_ONLY_PERIODS,
   ALL_PERIODS,
   isCachedPeriod,
+  PERIOD_FRESHNESS_THRESHOLDS,
   LIVE_FETCH_COOLDOWN_MS,
   CUSTOM_RANGE_COOLDOWN_MS,
   LIVE_FETCH_CACHE_TTL_MS,
@@ -55,5 +56,31 @@ describe("isCachedPeriod", () => {
     expect(isCachedPeriod("")).toBe(false)
     expect(isCachedPeriod("365d")).toBe(false)
     expect(isCachedPeriod("invalid")).toBe(false)
+  })
+})
+
+describe("PERIOD_FRESHNESS_THRESHOLDS (AK-6)", () => {
+  it("7d threshold is 1 hour", () => {
+    expect(PERIOD_FRESHNESS_THRESHOLDS["7d"]).toBe(1 * 60 * 60_000)
+  })
+
+  it("7d is fresh when fetched less than 1h ago", () => {
+    const threshold = PERIOD_FRESHNESS_THRESHOLDS["7d"]
+    const fetchedAt = new Date(Date.now() - 30 * 60_000) // 30 min ago
+    const ageMs = Date.now() - fetchedAt.getTime()
+    expect(ageMs < threshold).toBe(true)
+  })
+
+  it("7d is stale when fetched more than 1h ago", () => {
+    const threshold = PERIOD_FRESHNESS_THRESHOLDS["7d"]
+    const fetchedAt = new Date(Date.now() - 2 * 60 * 60_000) // 2h ago
+    const ageMs = Date.now() - fetchedAt.getTime()
+    expect(ageMs < threshold).toBe(false)
+  })
+
+  it("other periods are not affected", () => {
+    expect(PERIOD_FRESHNESS_THRESHOLDS["15d"]).toBe(2 * 60 * 60_000)
+    expect(PERIOD_FRESHNESS_THRESHOLDS["30d"]).toBe(4 * 60 * 60_000)
+    expect(PERIOD_FRESHNESS_THRESHOLDS["90d"]).toBe(8 * 60 * 60_000)
   })
 })

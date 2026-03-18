@@ -3,7 +3,7 @@ Prioridade: Critical
 Sprint: Current
 Assignee: "@dev"
 Revisao: "@qa"
-Status: Ready for Dev
+Status: Done
 Epic: "API Klaviyo — Rate Limit & Compliance"
 Fase: "1 - Critical Fixes"
 Esforco: TRIVIAL
@@ -52,16 +52,16 @@ O `7d: 0` (sempre sync) foi definido conservadoramente na epoca do Epic 10. Com 
 
 ### AK-6.1 — Alterar threshold
 
-- [ ] Em `src/lib/shared/data-status.ts:57`, alterar:
+- [x] Em `src/lib/shared/data-status.ts:57`, alterar:
   - De: `"7d": 0`
   - Para: `"7d": 1 * 60 * 60_000  // 1 hour`
-- [ ] Atualizar comentario para refletir a mudanca
+- [x] Atualizar comentario para refletir a mudanca
 
 ### AK-6.2 — Teste
 
-- [ ] Verificar que `isFresh("7d", fetchedAt)` retorna `true` quando fetchedAt < 1h atras
-- [ ] Verificar que `isFresh("7d", fetchedAt)` retorna `false` quando fetchedAt > 1h atras
-- [ ] Outros periodos nao afetados
+- [x] Verificar que `isFresh("7d", fetchedAt)` retorna `true` quando fetchedAt < 1h atras
+- [x] Verificar que `isFresh("7d", fetchedAt)` retorna `false` quando fetchedAt > 1h atras
+- [x] Outros periodos nao afetados
 
 ## Impacto Esperado
 
