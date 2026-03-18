@@ -34,6 +34,7 @@ vi.mock("@/lib/supabase/server", () => ({
 vi.mock("@/lib/logger", () => ({
   logger: {
     child: () => ({
+      debug: vi.fn(),
       info: vi.fn(),
       warn: vi.fn(),
       error: vi.fn(),

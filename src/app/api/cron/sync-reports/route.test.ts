@@ -15,11 +15,21 @@ let mockStoreList = [{ id: "store-1", store_name: "Test Store", org_id: "org-1" 
 const ok = { data: null, error: null }
 
 function chainable(table: string) {
+  let inCallCount = 0
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const self: Record<string, (...args: any[]) => any> = {}
   self.select = () => self
   self.eq = () => self
   self.not = () => self
+  self.in = () => {
+    inCallCount++
+    // store_revenue_summary freshness query: .in("store_id",...).in("sync_status",...)
+    // Return empty data on the terminal (2nd) .in() call
+    if (table === "store_revenue_summary" && inCallCount >= 2) {
+      return { data: [], error: null }
+    }
+    return self
+  }
   self.single = () => {
     if (table === "cron_locks") return { data: { is_running: false }, error: null }
     return { data: null, error: null }
@@ -57,6 +67,7 @@ vi.mock("@/lib/cache", () => ({
 vi.mock("@/lib/logger", () => ({
   logger: {
     child: () => ({
+      debug: vi.fn(),
       info: vi.fn(),
       warn: vi.fn(),
       error: vi.fn(),
@@ -107,6 +118,7 @@ vi.mock("@/lib/services/credentials.service", () => ({
 let mockPeriods = ["7d", "30d"]
 vi.mock("@/lib/shared/data-status", () => ({
   get CACHED_PERIODS() { return mockPeriods },
+  PERIOD_FRESHNESS_THRESHOLDS: { "7d": 0, "15d": 2 * 60 * 60_000, "30d": 4 * 60 * 60_000, "90d": 8 * 60 * 60_000 },
 }))
 
 import { GET } from "./route"
