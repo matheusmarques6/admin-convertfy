@@ -42,9 +42,10 @@
 
     --border: 220 13% 86%;
     --input: 220 13% 86%;
-    --ring: 217 91% 53%;
+    --ring: 197 96% 48%;
 
-    --radius: 0.5rem;
+    /* Organic Premium Radius */
+    --radius: 1.5rem;
 
     /* Semantic color HSL for status indicators */
     --success-h: 160; --success-s: 84%; --success-l: 39%;
@@ -56,63 +57,76 @@
   }
 
   .dark {
-    --background: 224 71% 4%;
+    /* Pitch Black / Deep Charcoal background */
+    --background: 224 50% 3%;
     --foreground: 210 20% 98%;
 
-    --card: 224 50% 8%;
+    --card: 224 40% 6%;
     --card-foreground: 210 20% 98%;
 
-    --popover: 224 50% 8%;
+    --popover: 224 40% 6%;
     --popover-foreground: 210 20% 98%;
 
-    --primary: 217 91% 60%;
+    /* Convertfy Cyan */
+    --primary: 197 96% 48%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 215 28% 17%;
+    --secondary: 215 28% 12%;
     --secondary-foreground: 210 20% 98%;
 
-    --muted: 215 28% 17%;
-    --muted-foreground: 217 10% 64%;
+    --muted: 215 28% 12%;
+    --muted-foreground: 217 10% 60%;
 
-    --accent: 215 28% 17%;
+    --accent: 215 28% 12%;
     --accent-foreground: 210 20% 98%;
 
-    --destructive: 0 62% 50%;
+    --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --success: 160 84% 39%;
-    --success-foreground: 0 0% 100%;
+    /* Acid Green for success */
+    --success: 85 100% 50%;
+    --success-foreground: 224 50% 3%;
 
-    --warning: 38 92% 50%;
-    --warning-foreground: 213 30% 11%;
+    /* Electric Warning */
+    --warning: 38 100% 50%;
+    --warning-foreground: 224 50% 3%;
 
-    --info: 196 97% 49%;
-    --info-foreground: 0 0% 100%;
+    /* Neon Info */
+    --info: 196 100% 50%;
+    --info-foreground: 224 50% 3%;
 
-    --mrr: 237 87% 55%;
+    /* Convertfy Deep Blue for MRR */
+    --mrr: 200 100% 36%;
     --mrr-foreground: 0 0% 100%;
 
-    --border: 215 28% 17%;
-    --input: 215 28% 17%;
-    --ring: 217 91% 60%;
+    --border: 215 28% 12%;
+    --input: 215 28% 12%;
+    --ring: 197 96% 48%;
 
-    /* Dark mode overrides */
-    --destructive-h: 0; --destructive-s: 62%; --destructive-l: 50%;
-    --primary-h: 217; --primary-s: 91%; --primary-l: 60%;
+    /* Organic Premium Radius */
+    --radius: 1.5rem;
+
+    /* Dark mode overrides (H, S, L format for glow-card usage) */
+    --destructive-h: 0; --destructive-s: 84%; --destructive-l: 60%;
+    --primary-h: 197; --primary-s: 96%; --primary-l: 48%;
+    --success-h: 85; --success-s: 100%; --success-l: 50%;
+    --warning-h: 38; --warning-s: 100%; --warning-l: 50%;
+    --info-h: 196; --info-s: 100%; --info-l: 50%;
+    --mrr-h: 200; --mrr-s: 100%; --mrr-l: 36%;
   }
 
   /* Portal override: keep brand cyan-blue for customer portal */
   .portal-layout {
-    --primary: 197 96% 48%;
-    --primary-foreground: 0 0% 100%;
-    --ring: 197 96% 48%;
-    --primary-h: 197; --primary-s: 96%; --primary-l: 48%;
+    --primary: 197 100% 50%;
+    --primary-foreground: 224 50% 3%;
+    --ring: 197 100% 50%;
+    --primary-h: 197; --primary-s: 100%; --primary-l: 50%;
   }
   .dark .portal-layout {
-    --primary: 197 96% 55%;
-    --primary-foreground: 0 0% 100%;
-    --ring: 197 96% 55%;
-    --primary-h: 197; --primary-s: 96%; --primary-l: 55%;
+    --primary: 197 100% 50%;
+    --primary-foreground: 224 50% 3%;
+    --ring: 197 100% 50%;
+    --primary-h: 197; --primary-s: 100%; --primary-l: 50%;
   }
 }
 
@@ -204,25 +218,26 @@
   .glow-surface {
     position: relative;
     z-index: 1;
-    border-radius: 0.75rem;
+    border-radius: 1.5rem;
     overflow: hidden;
     background: hsl(var(--card));
     border: 1px solid hsl(var(--border));
-    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.3s ease;
   }
 
   .glow-card:hover .glow-surface {
-    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.06);
+    transform: translateY(-4px) scale(1.01);
+    box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
   }
 
-  /* Top accent line (thin 2px colored bar at top) */
+  /* Top accent line (thick robust colorful stroke for impact) */
   .glow-line-top {
     position: absolute;
     top: 0;
     left: 0;
-    right: 0;
-    height: 2px;
-    border-radius: 0.75rem 0.75rem 0 0;
+    width: 6px;
+    bottom: 0;
+    border-radius: 1.5rem 0 0 1.5rem;
     z-index: 2;
   }
 

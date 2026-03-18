@@ -33,60 +33,76 @@ export function WorstPerformersCard({ stores: storesProp, allStores, isLoading, 
   const maxRevenue = stores[0]?.totalRevenueBRL ?? stores[0]?.totalRevenue ?? 1
 
   return (
-    <div className="rounded-xl border border-border bg-card h-full">
-      <CardHeader className="pb-3">
+    <div className="rounded-[24px] border border-border/60 bg-card h-full flex flex-col overflow-hidden relative group">
+      <div className="absolute inset-0 bg-gradient-to-br from-destructive/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
+      
+      <CardHeader className="pb-4 sm:pb-6 relative z-10 px-6 sm:px-8 pt-6 sm:pt-8 bg-background/50 border-b border-border/40">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <TrendingDown className="h-4 w-4 text-destructive" />
-            <CardTitle className="text-sm font-semibold">Atenção Necessária</CardTitle>
+          <div className="flex items-center gap-3">
+            <div className="rounded-xl bg-destructive/10 p-2.5 border border-destructive/20 group-hover:bg-destructive group-hover:text-destructive-foreground text-destructive transition-colors">
+              <TrendingDown className="h-5 w-5" />
+            </div>
+            <CardTitle className="text-lg font-bold tracking-tight">Atenção Necessária</CardTitle>
           </div>
           {showViewAll && (
-            <Button variant="ghost" size="sm" className="text-xs h-7 px-2" onClick={() => setModalOpen(true)}>
+            <Button variant="outline" size="sm" className="hidden sm:flex text-xs rounded-xl border-border hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30 transition-all font-medium" onClick={() => setModalOpen(true)}>
               Ver todas ({allStoresSorted.length})
             </Button>
           )}
         </div>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-4 px-6 sm:px-8 py-6 sm:py-8 relative z-10 flex-1 flex flex-col">
         {isLoading && stores.length === 0 ? (
-          <div className="space-y-3">
-            {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-10 w-full rounded-lg" />)}
+          <div className="space-y-4">
+            {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12 w-full rounded-[16px]" />)}
           </div>
         ) : dataStatus === "syncing" ? (
-          <div className="space-y-3">
-            <p className="text-xs text-muted-foreground text-center py-2">Sincronizando...</p>
-            {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-10 w-full rounded-lg" />)}
+          <div className="space-y-4">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-widest text-center py-2">Sincronizando dados...</p>
+            {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-12 w-full rounded-[16px]" />)}
           </div>
         ) : stores.length === 0 ? (
-          <p className="text-xs text-muted-foreground text-center py-4">Todas as lojas com boa performance</p>
+          <div className="flex flex-col items-center justify-center h-full py-12 opacity-50">
+            <TrendingDown className="h-8 w-8 text-muted-foreground mb-3" />
+            <p className="text-sm font-medium text-muted-foreground">Todas as lojas com boa performance</p>
+          </div>
         ) : (
-          stores.map((store, i) => {
-            const storeRevBRL = store.totalRevenueBRL ?? store.totalRevenue
-            const widthPercent = Math.max((storeRevBRL / maxRevenue) * 100, 4)
-            const curr = store.currency || "BRL"
-            return (
-              <Link key={store.storeId} href={`/stores/${store.storeId}`} className="block group">
-                <div className="flex items-center justify-between text-xs mb-1">
-                  <span className="truncate max-w-[55%] text-foreground group-hover:text-primary transition-colors">
-                    <span className="text-muted-foreground mr-1.5">{i + 1}.</span>
-                    {store.storeName}
-                  </span>
-                  <span className="font-medium tabular-nums text-destructive">{formatCurrency(store.totalRevenue, curr)}</span>
-                </div>
-                <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-red-500 to-orange-400 transition-all duration-500"
-                    style={{ width: `${widthPercent}%` }}
-                  />
-                </div>
-                {i < 2 && (
-                  <p className="text-[10px] text-muted-foreground mt-0.5">
-                    Campaign: {formatCurrency(store.campaignRevenue, curr)} &middot; Flow: {formatCurrency(store.flowRevenue, curr)}
-                  </p>
-                )}
-              </Link>
-            )
-          })
+          <div className="flex flex-col gap-3">
+            {stores.map((store, i) => {
+              const storeRevBRL = store.totalRevenueBRL ?? store.totalRevenue
+              const widthPercent = Math.max((storeRevBRL / maxRevenue) * 100, 4)
+              const curr = store.currency || "BRL"
+              return (
+                <Link key={store.storeId} href={`/stores/${store.storeId}`} className="block group/item bg-background border border-border/40 hover:border-destructive/40 rounded-[16px] p-3 sm:p-4 transition-all hover:shadow-lg hover:shadow-destructive/5 hover:-translate-y-0.5">
+                  <div className="flex items-center justify-between text-sm sm:text-base mb-2">
+                    <span className="truncate pr-4 font-semibold text-foreground group-hover/item:text-destructive transition-colors">
+                      <span className="text-muted-foreground/60 mr-2 text-xs font-mono">{i + 1}.</span>
+                      {store.storeName}
+                    </span>
+                    <span className="font-black tabular-nums tracking-tight text-destructive">{formatCurrency(store.totalRevenue, curr)}</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-muted/50 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-destructive/80 to-red-400 transition-all duration-1000 ease-out"
+                      style={{ width: `${widthPercent}%` }}
+                    />
+                  </div>
+                  {i < 2 && (
+                    <div className="flex items-center gap-3 mt-3 text-[10px] sm:text-xs font-medium text-muted-foreground pt-3 border-t border-border/40">
+                      <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-destructive/80" /> {formatCurrency(store.campaignRevenue, curr)}</span>
+                      <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-orange-500/60" /> {formatCurrency(store.flowRevenue, curr)}</span>
+                    </div>
+                  )}
+                </Link>
+              )
+            })}
+          </div>
+        )}
+        
+        {showViewAll && (
+          <Button variant="ghost" size="sm" className="w-full sm:hidden text-xs rounded-xl mt-4" onClick={() => setModalOpen(true)}>
+            Ver todas ({allStoresSorted.length})
+          </Button>
         )}
       </CardContent>
 

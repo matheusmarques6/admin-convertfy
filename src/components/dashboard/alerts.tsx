@@ -66,102 +66,115 @@ export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps)
   const totalAlerts = filteredAlerts.length
 
   return (
-    <div className="rounded-xl border border-border bg-card">
-      <CardHeader className="p-5 pb-3">
+    <div className="rounded-[24px] border border-border/60 bg-card h-full flex flex-col overflow-hidden relative group">
+      <div className="absolute inset-0 bg-gradient-to-tr from-warning/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
+      
+      <CardHeader className="pb-4 sm:pb-6 relative z-10 px-6 sm:px-8 pt-6 sm:pt-8 bg-background/50 border-b border-border/40">
         <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="text-sm font-medium text-foreground">Alertas e Lembretes</CardTitle>
+          <div className="flex items-center gap-3">
+            <div className="rounded-xl bg-warning/10 p-2.5 border border-warning/20 group-hover:bg-warning group-hover:text-warning-foreground text-warning transition-colors">
+              <AlertCircle className="h-5 w-5" />
+            </div>
+            <CardTitle className="text-lg font-bold tracking-tight">Alertas e Lembretes</CardTitle>
           </div>
           {totalAlerts > 0 && (
-            <Badge variant="destructive" className="bg-destructive/10 text-destructive border-0 rounded-full text-xs px-2 h-5">
+            <Badge variant="destructive" className="bg-destructive/10 text-destructive border-0 rounded-full px-3 py-1 font-bold">
               {totalAlerts}
             </Badge>
           )}
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-6 px-6 sm:px-8 py-6 sm:py-8 relative z-10 flex-1 flex flex-col">
         {/* Alerts */}
         {filteredAlerts.length > 0 ? (
-          <div className="space-y-3">
-            {filteredAlerts.map((alert) => {
-              const Icon = ALERT_ICONS[alert.type] || Clock
-              const content = (
-                <div
-                  className="flex items-start gap-3 p-2.5 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors"
-                >
-                  <div className={`rounded-md p-1.5 ${
-                    alert.severity === "high" ? "bg-destructive/10" :
-                    alert.severity === "medium" ? "bg-warning/10" : "bg-muted"
-                  }`}>
-                    <Icon className={`h-4 w-4 ${
-                      alert.severity === "high" ? "text-destructive" :
-                      alert.severity === "medium" ? "text-warning" : "text-muted-foreground"
-                    }`} />
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {filteredAlerts.map((alert) => {
+                const Icon = ALERT_ICONS[alert.type] || Clock
+                const isHigh = alert.severity === "high"
+                const isMed = alert.severity === "medium"
+                
+                const content = (
+                  <div className={cn(
+                    "flex flex-col gap-3 p-4 rounded-[16px] border transition-all h-full",
+                    isHigh ? "bg-destructive/5 border-destructive/20 hover:border-destructive/40" : 
+                    isMed ? "bg-warning/5 border-warning/20 hover:border-warning/40" : 
+                    "bg-background border-border/40 hover:border-border"
+                  )}>
+                    <div className="flex items-start justify-between">
+                      <div className={cn("rounded-xl p-2 h-fit border", 
+                        isHigh ? "bg-destructive/10 text-destructive border-destructive/20" : 
+                        isMed ? "bg-warning/10 text-warning border-warning/20" : 
+                        "bg-muted text-muted-foreground border-border/50"
+                      )}>
+                        <Icon className="h-4 w-4" />
+                      </div>
+                      <Badge variant={getSeverityColor(alert.severity)} className="shrink-0 text-[10px] uppercase font-bold tracking-wider">
+                        {isHigh ? "Urgente" : isMed ? "Atenção" : "Baixo"}
+                      </Badge>
+                    </div>
+                    <div className="flex-1 mt-1">
+                      <p className={cn("text-sm font-bold mb-1", isHigh ? "text-destructive" : isMed ? "text-warning" : "text-foreground")}>{alert.title}</p>
+                      <p className="text-xs text-muted-foreground py-0.5 line-clamp-2 leading-relaxed">
+                        {alert.description}
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground">{alert.title}</p>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {alert.description}
-                    </p>
-                  </div>
-                  <Badge variant={getSeverityColor(alert.severity)} className="shrink-0 text-[10px] h-5 px-2">
-                    {alert.severity === "high" ? "Urgente" :
-                     alert.severity === "medium" ? "Atenção" : "Baixo"}
-                  </Badge>
-                </div>
-              )
-              return alert.action_url ? (
-                <Link key={alert.id} href={alert.action_url} className="block">
-                  {content}
-                </Link>
-              ) : (
-                <div key={alert.id}>{content}</div>
-              )
-            })}
+                )
+                return alert.action_url ? (
+                  <Link key={alert.id} href={alert.action_url} className="block group/alert h-full hover:-translate-y-0.5 transition-transform">
+                    {content}
+                  </Link>
+                ) : (
+                  <div key={alert.id} className="h-full">{content}</div>
+                )
+              })}
+            </div>
+            
             {hasStoreAlerts && (
-              <div className="pt-1">
-                <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground" asChild>
-                  <Link href="/stores?tab=alerts">Ver todos os alertas de lojas</Link>
-                </Button>
-              </div>
+              <Button variant="outline" size="sm" className="w-full text-xs rounded-xl border-border" asChild>
+                <Link href="/stores?tab=alerts">Ver todos os alertas de lojas</Link>
+              </Button>
             )}
           </div>
         ) : (
-          <div className="text-sm text-muted-foreground text-center py-4">
-            Nenhum alerta no momento
+          <div className="flex flex-col items-center justify-center py-10 opacity-50 bg-background rounded-[16px] border border-border/40 border-dashed">
+            <ShieldAlert className="h-8 w-8 text-muted-foreground mb-3" />
+            <p className="text-sm font-medium text-muted-foreground">Tudo tranquilo! Nenhum alerta no momento.</p>
           </div>
         )}
 
         {/* Upcoming Meetings */}
         {meetings.length > 0 && (
-          <>
-            <div className="flex items-center gap-2 pt-3 mt-3 border-t border-border">
-              <Calendar className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium text-foreground">Próximas Reuniões</span>
+          <div className="pt-6 mt-auto border-t border-border/40">
+            <div className="flex items-center gap-2 mb-4">
+              <Calendar className="h-4 w-4 text-primary" />
+              <span className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Próximas Reuniões</span>
             </div>
-            <ScrollArea className="h-[150px]">
-              <div className="space-y-2">
+            <ScrollArea className="h-[140px] pr-4 flex-1">
+              <div className="space-y-3">
                 {meetings.map((meeting) => (
-                  <div
+                  <Link
                     key={meeting.id}
-                    className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/50 transition-colors"
+                    href="/meetings"
+                    className="flex items-center justify-between p-3 rounded-[12px] bg-background border border-border/40 hover:border-primary/40 transition-colors group/mtg"
                   >
-                    <div>
-                      <p className="text-sm font-medium text-foreground">{meeting.title}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {formatDateTime(meeting.scheduled_at)}
-                      </p>
+                    <div className="flex items-start gap-3">
+                      <div className="bg-primary/10 text-primary px-2.5 py-1 rounded-md text-xs font-bold font-mono border border-primary/20">
+                        {new Date(meeting.scheduled_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-foreground group-hover/mtg:text-primary transition-colors">{meeting.title}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {new Date(meeting.scheduled_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "long" })}
+                        </p>
+                      </div>
                     </div>
-                    <Button variant="ghost" size="sm" asChild>
-                      <Link href="/meetings">
-                        Ver
-                      </Link>
-                    </Button>
-                  </div>
+                  </Link>
                 ))}
               </div>
             </ScrollArea>
-          </>
+          </div>
         )}
       </CardContent>
     </div>

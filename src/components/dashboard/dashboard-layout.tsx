@@ -83,48 +83,64 @@ export function DashboardLayout({ data, userRole }: DashboardLayoutProps) {
   const canViewReports = isAdminOrOwner || hasFeature("view_reports")
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 lg:space-y-8 animate-fade-in">
       {/* Quick Actions - adapts per role */}
       <QuickActions />
 
-      {/* Revenue Banner - visible to all (shows store performance metrics) */}
-      <TotalRevenueBanner period={revenuePeriod} onPeriodChange={setRevenuePeriod} onDataChange={handleRevenueData} />
+      {/* Revenue Banner - massive typography focus */}
+      <div className="animate-slide-in-from-bottom flex flex-col pt-4">
+        <TotalRevenueBanner period={revenuePeriod} onPeriodChange={setRevenuePeriod} onDataChange={handleRevenueData} />
+      </div>
 
-      {/* Main Grid: 2 columns */}
-      <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
-        {/* Board Preview - visible to all */}
-        <BoardPreview tasks={data.activeTasks} />
+      {/* Main Asymmetric Grid: 12 columns */}
+      <div className="grid gap-6 lg:gap-8 grid-cols-1 lg:grid-cols-12">
+        {/* Board Preview - Dominant 8 columns */}
+        <div className="lg:col-span-8 animate-fade-in delay-100">
+          <BoardPreview tasks={data.activeTasks} />
+        </div>
 
-        {/* Calendar - visible to all */}
-        <WeekCalendarPreview meetings={data.weekMeetings} tasks={data.weekTasks} />
+        {/* Calendar - Subordinate 4 columns */}
+        <div className="lg:col-span-4 animate-fade-in delay-200">
+          <WeekCalendarPreview meetings={data.weekMeetings} tasks={data.weekTasks} />
+        </div>
 
-        {/* Top Stores - visible to all */}
-        <TopStoresCard
-          stores={revenueData?.topStores}
-          allStores={revenueData?.storeBreakdown}
-          isLoading={!revenueResolved.current}
-          dataStatus={revenueData?.dataStatus}
-        />
-
-        {/* Worst Performers - admin, COO and those with reports access */}
-        {(isAdminOrOwner || canViewReports) && (
-          <WorstPerformersCard
-            stores={revenueData?.bottomStores}
+        {/* Top Stores - 7 cols */}
+        <div className="lg:col-span-7 animate-fade-in delay-300">
+          <TopStoresCard
+            stores={revenueData?.topStores}
             allStores={revenueData?.storeBreakdown}
             isLoading={!revenueResolved.current}
             dataStatus={revenueData?.dataStatus}
           />
+        </div>
+
+        {/* Worst Performers - 5 cols */}
+        {(isAdminOrOwner || canViewReports) && (
+          <div className="lg:col-span-5 animate-fade-in delay-500">
+            <WorstPerformersCard
+              stores={revenueData?.bottomStores}
+              allStores={revenueData?.storeBreakdown}
+              isLoading={!revenueResolved.current}
+              dataStatus={revenueData?.dataStatus}
+            />
+          </div>
         )}
 
-        {/* Onboarding Preview - visible to all, filters by role internally */}
-        <OnboardingPreview onboardings={data.activeOnboardings} userRole={userRole} />
+        {/* Onboarding Preview - Full Width Interstitial */}
+        <div className="lg:col-span-12 animate-fade-in delay-700">
+          <OnboardingPreview onboardings={data.activeOnboardings} userRole={userRole} />
+        </div>
 
-        {/* Alerts - filters internally by feature */}
-        <DashboardAlerts meetings={data.upcomingMeetings} alerts={data.alerts} />
+        {/* Alerts - 5 cols */}
+        <div className="lg:col-span-5 animate-fade-in delay-700">
+          <DashboardAlerts meetings={data.upcomingMeetings} alerts={data.alerts} />
+        </div>
+
+        {/* Recent Activity - 7 cols */}
+        <div className="lg:col-span-7 animate-fade-in delay-1000">
+          <RecentActivity activities={data.activities} />
+        </div>
       </div>
-
-      {/* Recent Activity - visible to all */}
-      <RecentActivity activities={data.activities} />
     </div>
   )
 }

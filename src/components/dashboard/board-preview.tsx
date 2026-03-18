@@ -33,52 +33,65 @@ export function BoardPreview({ tasks }: BoardPreviewProps) {
   const maxCount = Math.max(...counts.map((c) => c.count), 1)
 
   return (
-    <div className="rounded-xl border border-border bg-card h-full">
-      <CardHeader className="pb-3">
+    <div className="rounded-[24px] border border-border/60 bg-card h-full flex flex-col group relative overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
+      
+      <CardHeader className="pb-4 sm:pb-6 relative z-10 px-6 sm:px-8 pt-6 sm:pt-8">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <LayoutGrid className="h-4 w-4 text-muted-foreground" />
-            <CardTitle className="text-sm font-semibold">Board</CardTitle>
+          <div className="flex items-center gap-3">
+            <div className="rounded-xl bg-primary/10 p-2.5 border border-primary/20 group-hover:bg-primary group-hover:text-primary-foreground text-primary transition-colors">
+              <LayoutGrid className="h-5 w-5" />
+            </div>
+            <div>
+              <CardTitle className="text-lg font-bold tracking-tight">Board de Tarefas</CardTitle>
+              <p className="text-sm text-muted-foreground mt-0.5">{totalActive} tarefas ativas</p>
+            </div>
           </div>
-          <span className="text-xs text-muted-foreground">{totalActive} tarefas ativas</span>
+          <Button variant="outline" size="sm" className="hidden sm:flex text-xs rounded-xl border-border hover:bg-primary/10 hover:text-primary hover:border-primary/30 transition-all font-medium" asChild>
+            <Link href="/board">Gerenciar</Link>
+          </Button>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Column counters */}
-        <div className="grid grid-cols-4 gap-3">
-          {counts.map((col) => (
-            <div key={col.status} className="text-center space-y-1.5">
-              <p className="text-xs text-muted-foreground truncate">{col.label}</p>
-              <p className="text-xl font-bold text-foreground">{col.count}</p>
-              <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-                <div
-                  className={`h-full rounded-full ${col.color} transition-all duration-500`}
-                  style={{ width: `${(col.count / maxCount) * 100}%` }}
-                />
+      <CardContent className="space-y-6 sm:space-y-8 flex-1 px-6 sm:px-8 pb-6 sm:pb-8 flex flex-col relative z-10">
+        {/* Column counters - 8 column dominance */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-6">
+          {counts.map((col, idx) => (
+            <div key={col.status} className="flex flex-col gap-2 p-4 rounded-[16px] bg-background border border-border/40 hover:border-border transition-colors">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground truncate">{col.label}</p>
+                <div className={`w-2 h-2 rounded-full ${col.color}`} />
               </div>
+              <p className="text-4xl sm:text-5xl font-black tracking-tighter text-foreground mt-1">{col.count}</p>
             </div>
           ))}
         </div>
 
-        {/* Badges */}
-        <div className="space-y-1.5">
+        {/* Badges / Alerts */}
+        <div className="flex items-center gap-3 mt-auto flex-wrap">
           {overdue > 0 && (
-            <div className="flex items-center gap-2 text-xs text-warning">
+            <div className="flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-lg bg-warning/10 text-warning border border-warning/20">
               <AlertTriangle className="h-3.5 w-3.5" />
               <span>{overdue} {overdue === 1 ? "tarefa vencida" : "tarefas vencidas"}</span>
             </div>
           )}
           {blocked > 0 && (
-            <div className="flex items-center gap-2 text-xs text-destructive">
+            <div className="flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-lg bg-destructive/10 text-destructive border border-destructive/20">
               <Ban className="h-3.5 w-3.5" />
               <span>{blocked} {blocked === 1 ? "tarefa bloqueada" : "tarefas bloqueadas"}</span>
             </div>
           )}
+          
+          {overdue === 0 && blocked === 0 && (
+            <div className="flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-lg bg-success/10 text-success border border-success/20">
+              <div className="h-2 w-2 rounded-full bg-success animate-pulse" />
+              <span>Sem bloqueios graves</span>
+            </div>
+          )}
         </div>
 
-        {/* Link */}
-        <Button variant="ghost" size="sm" className="w-full text-xs text-primary" asChild>
-          <Link href="/board">Ver Board</Link>
+        {/* Link for mobile */}
+        <Button variant="outline" size="sm" className="w-full sm:hidden text-xs rounded-xl" asChild>
+          <Link href="/board">Gerenciar Board</Link>
         </Button>
       </CardContent>
     </div>

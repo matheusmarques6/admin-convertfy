@@ -244,20 +244,21 @@ export function TotalRevenueBanner({ storeIds, period: controlledPeriod, onPerio
   }
 
   return (
-    <div className="rounded-xl border border-white/10 bg-gradient-to-br from-[#0a1628] via-[#0f2035] to-[#0a2540] shadow-lg shadow-black/20">
-      <div className="p-6 space-y-6">
+    <div className="rounded-[24px] border-y border-border/50 bg-background py-8 lg:py-12 px-2 overflow-hidden relative">
+      <div className="absolute inset-0 bg-gradient-to-r from-primary/10 via-transparent to-transparent opacity-50 pointer-events-none" />
+      <div className="p-4 sm:p-6 space-y-8 relative z-10 max-w-6xl mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-2.5">
-            <div className="rounded-lg bg-white/10 p-1.5">
-              <TrendingUp className="h-4 w-4 text-[#05AFF2]" />
+        <div className="flex items-center justify-between flex-wrap gap-4 border-b border-border/40 pb-6">
+          <div className="flex items-center gap-3">
+            <div className="rounded-xl bg-primary/20 p-2 border border-primary/30">
+              <TrendingUp className="h-5 w-5 text-primary" />
             </div>
-            <h2 className="text-base font-semibold text-white">Resultado Total</h2>
-            <span className="text-xs text-white/50 hidden sm:inline">
+            <h2 className="text-xl font-medium tracking-tight text-foreground uppercase">Resultado Total</h2>
+            <span className="text-sm font-medium text-muted-foreground hidden sm:inline px-3 py-1 rounded-full bg-muted/40">
               Receita gerada via Klaviyo
             </span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <PeriodPicker
               value={{ period, customStart, customEnd }}
               onChange={({ period: p, customStart: s, customEnd: e }) => {
@@ -265,7 +266,7 @@ export function TotalRevenueBanner({ storeIds, period: controlledPeriod, onPerio
                 setCustomStart(s)
                 setCustomEnd(e)
               }}
-              className="border-white/15 bg-white/10 text-white hover:bg-white/15 [&>svg]:text-white/70"
+              className="border-border bg-card text-foreground hover:bg-muted font-medium"
             />
             <RefreshButton
               onRefresh={() => {
@@ -274,34 +275,34 @@ export function TotalRevenueBanner({ storeIds, period: controlledPeriod, onPerio
               isRefreshing={dataStatusMeta.isRefreshing || isValidating}
               lastFetchedAt={dataStatusMeta.lastFetchedAt}
               size="md"
-              className="rounded-lg border-white/15 bg-white/10 text-white/70 hover:text-white hover:bg-white/15"
+              className="rounded-xl border-border bg-card text-muted-foreground hover:text-foreground hover:bg-muted"
             />
           </div>
         </div>
 
-        {/* Data status banner — force dark-friendly colors inside the always-dark container */}
+        {/* Data status banner */}
         <DataStatusBanner
           status={data?.dataStatus}
           lastFetchedAt={data?.lastFetchedAt}
           isRefreshing={data?.isRefreshing ?? isValidating}
-          className="rounded-lg !bg-white/10 !text-white/80"
+          className="rounded-xl border border-warning/20 bg-warning/5"
         />
 
-        {/* Main number */}
-        <div>
-          <p className="text-3xl md:text-4xl font-bold tracking-tight text-[#05AFF2]">
+        {/* Main number - MASSIVE TYPOGRAPHY */}
+        <div className="flex flex-col gap-2">
+          <p className="text-5xl sm:text-7xl lg:text-[6rem] leading-[0.9] font-black tracking-tighter text-foreground bg-clip-text text-transparent bg-gradient-to-br from-primary via-primary to-info/80">
             {formatCurrency(animatedTotal)}
           </p>
-          <div className="mt-1.5 flex items-center gap-3 flex-wrap">
-            <p className="text-sm text-white/50">
+          <div className="mt-4 flex items-center gap-4 flex-wrap">
+            <p className="text-sm font-medium px-3 py-1.5 rounded-lg bg-card border border-border text-muted-foreground">
               {data?.storesWithRevenue || 0} de {data?.storesCount || 0} lojas geraram receita
             </p>
             {data?.hasPartialData && (
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <span className="inline-flex items-center gap-1 text-xs text-yellow-400">
-                      <AlertTriangle className="h-3 w-3" />
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-warning/10 text-xs font-semibold text-warning border border-warning/20">
+                      <AlertTriangle className="h-3.5 w-3.5" />
                       Dados parciais
                     </span>
                   </TooltipTrigger>
@@ -310,30 +311,31 @@ export function TotalRevenueBanner({ storeIds, period: controlledPeriod, onPerio
               </TooltipProvider>
             )}
             {data?.lastFetchedAt && (
-              <TimeAgo date={data.lastFetchedAt} className="text-xs text-white/40" />
+              <TimeAgo date={data.lastFetchedAt} className="text-xs font-medium text-muted-foreground" />
             )}
           </div>
         </div>
 
         {/* Breakdown: campaigns vs flows */}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="flex items-center gap-3 p-4 rounded-xl border border-white/10 bg-white/5">
-            <div className="rounded-xl p-2.5 bg-[#05AFF2]/15">
-              <Megaphone className="h-4 w-4 text-[#05AFF2]" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 lg:gap-8 pt-4">
+          <div className="flex flex-col gap-3 p-6 sm:p-8 rounded-[24px] border border-border/60 bg-card hover:border-primary/50 transition-colors group">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="rounded-xl p-2.5 bg-success/10 border border-success/20 group-hover:scale-110 transition-transform">
+                <Megaphone className="h-5 w-5 text-success" />
+              </div>
+              <p className="text-sm text-muted-foreground font-bold uppercase tracking-wider">Campanhas</p>
             </div>
-            <div>
-              <p className="text-xs text-white/50 font-medium">Campanhas</p>
-              <p className="text-lg font-semibold tracking-tight text-white">{formatCurrency(animatedCampaign)}</p>
-            </div>
+            <p className="text-3xl sm:text-4xl font-black tracking-tight text-foreground">{formatCurrency(animatedCampaign)}</p>
           </div>
-          <div className="flex items-center gap-3 p-4 rounded-xl border border-white/10 bg-white/5">
-            <div className="rounded-xl p-2.5 bg-[#05AFF2]/15">
-              <Workflow className="h-4 w-4 text-[#05AFF2]" />
+          
+          <div className="flex flex-col gap-3 p-6 sm:p-8 rounded-[24px] border border-border/60 bg-card hover:border-primary/50 transition-colors group">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="rounded-xl p-2.5 bg-primary/10 border border-primary/20 group-hover:scale-110 transition-transform">
+                <Workflow className="h-5 w-5 text-primary" />
+              </div>
+              <p className="text-sm text-muted-foreground font-bold uppercase tracking-wider">Flows</p>
             </div>
-            <div>
-              <p className="text-xs text-white/50 font-medium">Flows</p>
-              <p className="text-lg font-semibold tracking-tight text-white">{formatCurrency(animatedFlow)}</p>
-            </div>
+            <p className="text-3xl sm:text-4xl font-black tracking-tight text-foreground">{formatCurrency(animatedFlow)}</p>
           </div>
         </div>
 
