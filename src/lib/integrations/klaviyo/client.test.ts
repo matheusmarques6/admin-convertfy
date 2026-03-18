@@ -26,7 +26,7 @@ function mockResponse(
 // Mock the rate-limiter so it just calls the inner function directly,
 // removing queue/concurrency complexity from unit tests.
 vi.mock("./rate-limiter", () => ({
-  enqueueKlaviyoRequest: (_apiKey: string, fn: () => unknown) => fn(),
+  enqueueKlaviyoRequest: (_apiKey: string, fn: () => unknown, _endpoint: string) => fn(),
 }))
 
 // Logger mock — expose fns for assertions (vi.hoisted to avoid TDZ)

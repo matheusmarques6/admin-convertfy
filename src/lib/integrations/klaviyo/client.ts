@@ -53,11 +53,10 @@ export class KlaviyoPermissionError extends Error {
 export const KLAVIYO_API_URL = "https://a.klaviyo.com/api"
 export const KLAVIYO_REVISION = "2024-10-15"
 
-// Rate limits per Klaviyo docs:
-// - Burst: 3/s for most endpoints, 1/s for reporting
-// - Steady: 75/m for most endpoints
-// https://developers.klaviyo.com/en/docs/rate_limits_and_error_handling
-export const MIN_REQUEST_INTERVAL = 1000 // 1 second between reporting requests
+// Rate limits are now enforced by the tiered rate limiter in rate-limiter.ts.
+// This constant is kept for backward compatibility with external imports.
+// @deprecated Use TIER_INTERVALS from rate-limiter.ts instead.
+export const MIN_REQUEST_INTERVAL = 1000
 
 // Maximum time to wait on a 429 Retry-After header (10 seconds).
 // If Klaviyo says "wait 3723s" (62 minutes!), we fail fast and let
@@ -97,11 +96,15 @@ export async function klaviyoRequest<T>(
     body?: Record<string, unknown>
     /** Tag for log messages (e.g. "Report", "Flows"). Defaults to "Klaviyo". */
     logTag?: string
+    /** Bypass daily report quota soft halt (e.g. user-triggered refresh). */
+    force?: boolean
   }
 ): Promise<T | null> {
-  // Route all requests through the global rate limiter queue
+  // Route all requests through the global tiered rate limiter queue
   return enqueueKlaviyoRequest(apiKey, () =>
-    _klaviyoRequestInner<T>(apiKey, endpoint, options)
+    _klaviyoRequestInner<T>(apiKey, endpoint, options),
+    endpoint,
+    { force: options?.force }
   )
 }
 

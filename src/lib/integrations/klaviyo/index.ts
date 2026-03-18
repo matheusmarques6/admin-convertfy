@@ -39,6 +39,15 @@ export {
 export {
   enqueueKlaviyoRequest,
   withConcurrencyLimit,
+  classifyEndpoint,
+  TIER_INTERVALS,
+  DAILY_REPORT_QUOTA_LIMIT,
+  incrementReportQuota,
+  isReportQuotaExhausted,
+  getReportQuotaUsage,
+  getAllReportQuotaUsage,
+  type RateTier,
+  type ReportQuotaInfo,
 } from "./rate-limiter"
 
 export {

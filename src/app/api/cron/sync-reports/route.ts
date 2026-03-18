@@ -13,6 +13,8 @@ import {
   KlaviyoPermissionError,
   KlaviyoRateLimitError,
   KlaviyoInvalidKeyError,
+  getAllReportQuotaUsage,
+  DAILY_REPORT_QUOTA_LIMIT,
   type KlaviyoAccountInfo,
 } from "@/lib/integrations/klaviyo"
 import { CACHED_PERIODS, PERIOD_FRESHNESS_THRESHOLDS, type CachedPeriod } from "@/lib/shared/data-status"
@@ -879,6 +881,24 @@ export async function GET(request: NextRequest) {
         log.info(`[Cron] Processed ${processedStores.size}/${totalStores} stores (0 skipped by timeout)`)
       }
 
+      // AK-2: Log report quota usage per API key group
+      const quotaUsage = getAllReportQuotaUsage()
+      const quotaSummary: Record<string, { used: number; limit: number }> = {}
+      const quotaWarnings: string[] = []
+      for (const [qApiKey, quota] of quotaUsage) {
+        const kid = `...${qApiKey.slice(-4)}`
+        quotaSummary[kid] = { used: quota.used, limit: quota.limit }
+        if (quota.used >= DAILY_REPORT_QUOTA_LIMIT * 0.8) {
+          quotaWarnings.push(`${kid}: ${quota.used}/${quota.limit}`)
+        }
+      }
+      if (Object.keys(quotaSummary).length > 0) {
+        log.info(`[Cron] Report quota usage: ${JSON.stringify(quotaSummary)}`)
+      }
+      if (quotaWarnings.length > 0) {
+        log.warn(`[Cron] Report quota warning — keys near limit: ${quotaWarnings.join(", ")}`)
+      }
+
       log.info(`[Cron] Sync completed in ${elapsed}ms. ok=${okCount} error=${errorCount} skipped=${skippedCount}${timedOut ? " (timed out)" : ""}`)
 
       return NextResponse.json({
@@ -886,6 +906,7 @@ export async function GET(request: NextRequest) {
         elapsed: `${elapsed}ms`,
         cleanedCacheEntries: cleanedCount,
         summary: { ok: okCount, error: errorCount, skipped: skippedCount },
+        reportQuota: quotaSummary,
         stores: allResults,
       })
     } finally {
