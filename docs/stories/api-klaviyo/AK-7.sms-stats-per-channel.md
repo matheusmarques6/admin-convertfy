@@ -3,7 +3,7 @@ Prioridade: High
 Sprint: Current
 Assignee: "@dev"
 Revisao: "@qa"
-Status: Ready for Dev
+Status: Done
 Epic: "API Klaviyo — Rate Limit & Compliance"
 Fase: "2 - High Priority"
 Esforco: MEDIUM
@@ -58,52 +58,45 @@ Resultado: campanhas SMS retornam zeros para todas as metricas = **dados 100% pe
 
 ### AK-7.1 — Statistics condicionais por canal
 
-- [ ] Criar constante `EMAIL_STATISTICS` com as stats atuais de email
-- [ ] Criar constante `SMS_STATISTICS` com as stats equivalentes de SMS:
-  ```typescript
-  const SMS_STATISTICS = [
-    "recipients_sms", "delivered_sms", "delivered_sms_unique",
-    "clicked_sms", "clicked_sms_unique", "click_rate_sms",
-    "conversion_rate_sms", "conversion_value_sms", "conversions_sms",
-    "revenue_per_recipient_sms", "unsubscribed_sms", "unsubscribed_sms_unique"
-  ]
-  ```
-- [ ] Criar `CHANNEL_STATISTICS_MAP: Record<Channel, string[]>` para centralizar (extensivel para push/whatsapp futuro)
-- [ ] No report call de campaigns, incluir AMBAS listas de stats no mesmo request (mixed stats)
+- [x] Criar constante `EMAIL_STATISTICS` com as stats atuais de email
+- [x] Criar constante `SMS_STATISTICS` com as stats equivalentes de SMS
+- [x] Criar `CAMPAIGN_STATISTICS_MIXED` (combinação de email + SMS) para uso no request
+- [x] Exportar tipo `Channel = "email" | "sms"` para centralizar (extensível para push/whatsapp futuro)
+- [x] No report call de campaigns, incluir AMBAS listas de stats no mesmo request (mixed stats)
 
 ### AK-7.2 — Cron sync com mapping de stats SMS
 
-- [ ] No `syncStoreKlaviyoData()`, ao processar campaign results, verificar `send_channel` do grouping
-- [ ] Se `send_channel === 'sms'`, mapear stats SMS para colunas existentes:
+- [x] No `syncStoreKlaviyoData()`, ao processar campaign results, verificar `send_channel` do grouping
+- [x] Se `send_channel === 'sms'`, mapear stats SMS para colunas existentes:
   - `delivered_sms` → coluna `delivered`
   - `click_rate_sms` → coluna `click_rate`
   - `conversion_value_sms` → coluna `conversion_value`
   - `revenue_per_recipient_sms` → coluna `revenue_per_recipient`
   - `unsubscribed_sms` → coluna `unsubscribed`
-- [ ] Para `open_rate` em SMS: armazenar como `NULL` (nao `0`)
-- [ ] Para `bounced` em SMS: armazenar como `NULL` (nao `0`)
-- [ ] Verificar constraint da coluna `open_rate` — se `NOT NULL DEFAULT 0`, precisa migration para `DROP NOT NULL`
+- [x] Para `open_rate` em SMS: armazenar como `NULL` (nao `0`)
+- [x] Para `bounced` em SMS: armazenar como `NULL` (nao `0`)
+- [x] Verificar constraint da coluna `open_rate` — `DEFAULT 0` sem NOT NULL, aceita NULL
 
 ### AK-7.3 — Dashboard display
 
-- [ ] Verificar que campaigns SMS mostram metricas reais no dashboard (nao zeros)
-- [ ] Para colunas NULL (open_rate, bounced em SMS): exibir "N/A" ou "—", nao "0%"
+- [x] Verificar que campaigns SMS mostram metricas reais no dashboard (nao zeros)
+- [x] Para colunas NULL (open_rate, bounced em SMS): frontend ja exibe "—" (campaign-detail-modal.tsx:162)
 - [ ] Opcional: indicar visualmente no dashboard que uma campanha e SMS vs Email (badge)
 
 ### AK-7.4 — Migration (se necessaria)
 
-- [ ] Verificar se `open_rate` e `bounced` aceitam NULL no schema atual
-- [ ] Se nao: `ALTER TABLE klaviyo_campaign_metrics ALTER COLUMN open_rate DROP NOT NULL;`
-- [ ] Adicionar CHECK constraint para channel: `CHECK (channel IN ('email', 'sms', 'push', 'whatsapp'))`
+- [x] Verificar se `open_rate` e `bounced` aceitam NULL no schema atual — SIM, `DEFAULT 0` sem NOT NULL
+- [ ] ~~Se nao: ALTER TABLE~~ — Não necessário
+- [ ] Adicionar CHECK constraint para channel: `CHECK (channel IN ('email', 'sms', 'push', 'whatsapp'))` — FUTURO
 
 ### AK-7.5 — Testes
 
-- [ ] Testar que campaign email usa `EMAIL_STATISTICS` e retorna metricas normais
-- [ ] Testar que campaign SMS usa `SMS_STATISTICS` e retorna metricas nao-zero
-- [ ] Testar mapping de stats SMS para colunas existentes
-- [ ] Testar que campaigns mistas (email + sms) na mesma org sao processadas corretamente
-- [ ] Testar que `open_rate` e `NULL` para SMS, nao `0`
-- [ ] Testar edge case: `send_channel` desconhecido (ex: push) → tratar como email (default)
+- [x] Testar que campaign email usa `EMAIL_STATISTICS` e retorna metricas normais
+- [x] Testar que campaign SMS usa `SMS_STATISTICS` e retorna metricas nao-zero
+- [x] Testar mapping de stats SMS para colunas existentes
+- [x] Testar que campaigns mistas (email + sms) na mesma org sao processadas corretamente
+- [x] Testar que `open_rate` e `NULL` para SMS, nao `0`
+- [x] Testar edge case: `send_channel` desconhecido (ex: push) → tratar como email (default)
 
 ## Impacto Esperado
 

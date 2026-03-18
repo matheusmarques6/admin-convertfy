@@ -65,6 +65,8 @@ export interface FlowMetricRow {
   fetched_at: string
 }
 
+export type Channel = "email" | "sms"
+
 export interface CampaignMetricRow {
   store_id: string
   org_id: string | null
@@ -79,23 +81,50 @@ export interface CampaignMetricRow {
   recipients: number
   delivered: number
   delivery_rate: number
-  opened: number
-  open_rate: number
+  opened: number | null
+  open_rate: number | null
   clicked: number
   click_rate: number
-  click_to_open_rate: number
+  click_to_open_rate: number | null
   conversions: number
   conversion_rate: number
   conversion_value: number
   revenue_per_recipient: number
   average_order_value: number
-  bounced: number
-  bounce_rate: number
+  bounced: number | null
+  bounce_rate: number | null
   unsubscribed: number
   unsubscribe_rate: number
-  spam_complaints: number
+  spam_complaints: number | null
   fetched_at: string
 }
+
+// ---------------------------------------------------------------------------
+// Channel-specific Klaviyo reporting statistics (AK-7)
+// ---------------------------------------------------------------------------
+
+/** Email statistics for campaign-values-reports / flow-values-reports */
+export const EMAIL_STATISTICS = [
+  "average_order_value", "bounce_rate", "bounced", "click_rate",
+  "click_to_open_rate", "clicks", "clicks_unique", "conversion_rate",
+  "conversion_uniques", "conversion_value", "conversions", "delivered",
+  "delivery_rate", "opens", "opens_unique", "recipients",
+  "revenue_per_recipient", "spam_complaints", "unsubscribe_rate", "unsubscribes",
+] as const
+
+/** SMS statistics for campaign-values-reports */
+export const SMS_STATISTICS = [
+  "recipients_sms", "delivered_sms", "delivered_sms_unique",
+  "clicked_sms", "clicked_sms_unique", "click_rate_sms",
+  "conversion_rate_sms", "conversion_value_sms", "conversions_sms",
+  "revenue_per_recipient_sms", "unsubscribed_sms", "unsubscribed_sms_unique",
+] as const
+
+/** Combined statistics for mixed-channel campaign reports (email + SMS in one request) */
+export const CAMPAIGN_STATISTICS_MIXED = [
+  ...EMAIL_STATISTICS,
+  ...SMS_STATISTICS,
+] as const
 
 export interface AudienceItem {
   klaviyoId: string
@@ -509,7 +538,9 @@ export async function syncKlaviyoForPeriod(
       log.warn(`[CronSync] flow-values-report FAILED for store ${storeId}: null response (likely rate-limited)`)
     }
 
-    // 2. Campaign report
+    // 2. Campaign report — uses mixed email+SMS statistics (AK-7).
+    // Klaviyo returns each campaign with send_channel in groupings; we map
+    // SMS-specific stat names to our canonical column names during aggregation.
     const startCamp = Date.now()
     const campaignResponse = await klaviyoRequest<{
       data: { attributes: { results: Array<{ groupings: { campaign_id: string; send_channel: string }; statistics: Record<string, number | undefined> }> } }
@@ -521,13 +552,7 @@ export async function syncKlaviyoForPeriod(
           attributes: {
             timeframe,
             conversion_metric_id: metricId,
-            statistics: [
-              "average_order_value", "bounce_rate", "bounced", "click_rate",
-              "click_to_open_rate", "clicks", "clicks_unique", "conversion_rate",
-              "conversion_uniques", "conversion_value", "conversions", "delivered",
-              "delivery_rate", "opens", "opens_unique", "recipients",
-              "revenue_per_recipient", "spam_complaints", "unsubscribe_rate", "unsubscribes",
-            ],
+            statistics: [...CAMPAIGN_STATISTICS_MIXED],
           },
         },
       },
@@ -640,56 +665,75 @@ export async function syncKlaviyoForPeriod(
     }
 
     // Aggregate campaign metrics (guard against empty results array — [] is truthy in JS)
+    // AK-7: SMS campaigns use *_sms stat names. We map them to canonical column names
+    // based on send_channel from the groupings, so email and SMS data land in the same columns.
     if (campaignResponse?.data?.attributes?.results?.length) {
       campaignDataAvailable = true
-      const campAgg = new Map<string, Record<string, number>>()
+      const campAgg = new Map<string, { channel: Channel; counts: Record<string, number> }>()
       for (const r of campaignResponse.data.attributes.results) {
         const cid = r.groupings.campaign_id
+        const ch = (r.groupings.send_channel === "sms" ? "sms" : "email") as Channel
         const s = r.statistics
-        const ex = campAgg.get(cid) || {}
-        campAgg.set(cid, {
-          recipients: (ex.recipients || 0) + (s.recipients || 0),
-          delivered: (ex.delivered || 0) + (s.delivered || 0),
-          opened: (ex.opened || 0) + (s.opens_unique || 0),
-          clicked: (ex.clicked || 0) + (s.clicks_unique || 0),
-          conversions: (ex.conversions || 0) + (s.conversions || 0),
-          conversion_value: (ex.conversion_value || 0) + (s.conversion_value || 0),
-          bounced: (ex.bounced || 0) + (s.bounced || 0),
-          unsubscribed: (ex.unsubscribed || 0) + (s.unsubscribes || 0),
-          spam_complaints: (ex.spam_complaints || 0) + (s.spam_complaints || 0),
-          // Rates recalculated after aggregation loop
-          delivery_rate: 0,
-          open_rate: 0,
-          click_rate: 0,
-          click_to_open_rate: 0,
-          bounce_rate: 0,
-          unsubscribe_rate: 0,
-          conversion_rate: 0,
-          revenue_per_recipient: 0,
-          average_order_value: 0,
-        })
+        const entry = campAgg.get(cid) || { channel: ch, counts: {} }
+        const ex = entry.counts
+
+        // Guard: Klaviyo campaigns are single-channel. If we see mixed channels
+        // for the same campaign_id, log a warning and keep the first channel seen.
+        if (ex.recipients !== undefined && entry.channel !== ch) {
+          log.warn(`[CronSync] Campaign ${cid} has mixed channels (${entry.channel} + ${ch}) — keeping ${entry.channel}`)
+          continue
+        }
+
+        if (ch === "sms") {
+          // Map SMS stat names → canonical column names
+          entry.counts = {
+            recipients: (ex.recipients || 0) + (s.recipients_sms || 0),
+            delivered: (ex.delivered || 0) + (s.delivered_sms || 0),
+            clicked: (ex.clicked || 0) + (s.clicked_sms_unique || 0),
+            conversions: (ex.conversions || 0) + (s.conversions_sms || 0),
+            conversion_value: (ex.conversion_value || 0) + (s.conversion_value_sms || 0),
+            unsubscribed: (ex.unsubscribed || 0) + (s.unsubscribed_sms || 0),
+            // SMS has no opens, bounces, or spam complaints
+          }
+        } else {
+          // Email stats — same as before
+          entry.counts = {
+            recipients: (ex.recipients || 0) + (s.recipients || 0),
+            delivered: (ex.delivered || 0) + (s.delivered || 0),
+            opened: (ex.opened || 0) + (s.opens_unique || 0),
+            clicked: (ex.clicked || 0) + (s.clicks_unique || 0),
+            conversions: (ex.conversions || 0) + (s.conversions || 0),
+            conversion_value: (ex.conversion_value || 0) + (s.conversion_value || 0),
+            bounced: (ex.bounced || 0) + (s.bounced || 0),
+            unsubscribed: (ex.unsubscribed || 0) + (s.unsubscribes || 0),
+            spam_complaints: (ex.spam_complaints || 0) + (s.spam_complaints || 0),
+          }
+        }
+
+        campAgg.set(cid, entry)
       }
 
-      // Recalculate rates from aggregated counts (using unique opens/clicks)
-      for (const [, m] of campAgg) {
-        m.delivery_rate = m.recipients > 0 ? (m.delivered / m.recipients) * 100 : 0
-        m.open_rate = m.delivered > 0 ? (m.opened / m.delivered) * 100 : 0
-        m.click_rate = m.delivered > 0 ? (m.clicked / m.delivered) * 100 : 0
-        m.click_to_open_rate = m.opened > 0 ? (m.clicked / m.opened) * 100 : 0
-        m.bounce_rate = m.recipients > 0 ? (m.bounced / m.recipients) * 100 : 0
-        m.unsubscribe_rate = m.delivered > 0 ? (m.unsubscribed / m.delivered) * 100 : 0
-        m.conversion_rate = m.delivered > 0 ? (m.conversions / m.delivered) * 100 : 0
-        m.revenue_per_recipient = m.recipients > 0 ? m.conversion_value / m.recipients : 0
-        m.average_order_value = m.conversions > 0 ? m.conversion_value / m.conversions : 0
-        // spam_complaints is a count, kept as aggregated sum
-      }
-
+      // Recalculate rates from aggregated counts
       const fetchedAt = new Date().toISOString()
-      for (const [campaignId, m] of campAgg) {
+      for (const [campaignId, { channel: ch, counts: m }] of campAgg) {
         const info = campNames.get(campaignId)
         const normalizedStatus = info?.status?.toLowerCase() || "sent"
         // Filter: only include sent campaigns (or unknown)
         if (info && normalizedStatus !== "sent") continue
+
+        const isSms = ch === "sms"
+
+        const deliveryRate = m.recipients > 0 ? (m.delivered / m.recipients) * 100 : 0
+        const clickRate = m.delivered > 0 ? (m.clicked / m.delivered) * 100 : 0
+        const conversionRate = m.delivered > 0 ? (m.conversions / m.delivered) * 100 : 0
+        const unsubscribeRate = m.delivered > 0 ? (m.unsubscribed / m.delivered) * 100 : 0
+        const revenuePerRecipient = m.recipients > 0 ? m.conversion_value / m.recipients : 0
+        const avgOrderValue = m.conversions > 0 ? m.conversion_value / m.conversions : 0
+
+        // Email-only rates: open_rate, click_to_open_rate, bounce_rate — NULL for SMS
+        const openRate = isSms ? null : (m.delivered > 0 ? ((m.opened || 0) / m.delivered) * 100 : 0)
+        const clickToOpenRate = isSms ? null : ((m.opened || 0) > 0 ? (m.clicked / (m.opened || 1)) * 100 : 0)
+        const bounceRate = isSms ? null : (m.recipients > 0 ? ((m.bounced || 0) / m.recipients) * 100 : 0)
 
         campRows.push({
           store_id: storeId,
@@ -699,27 +743,27 @@ export async function syncKlaviyoForPeriod(
           campaign_status: normalizedStatus,
           send_time: info?.send_time || null,
           subject: info?.subject || null,
-          channel: info?.channel || "email",
+          channel: info?.channel || ch,
           period_start: periodStartISO,
           period_end: periodEndISO,
-          recipients: m.recipients,
-          delivered: m.delivered,
-          delivery_rate: m.delivery_rate,
-          opened: m.opened,
-          open_rate: m.open_rate,
-          clicked: m.clicked,
-          click_rate: m.click_rate,
-          click_to_open_rate: m.click_to_open_rate,
-          conversions: m.conversions,
-          conversion_rate: m.conversion_rate,
-          conversion_value: m.conversion_value,
-          revenue_per_recipient: m.revenue_per_recipient,
-          average_order_value: m.average_order_value,
-          bounced: m.bounced,
-          bounce_rate: m.bounce_rate,
-          unsubscribed: m.unsubscribed,
-          unsubscribe_rate: m.unsubscribe_rate,
-          spam_complaints: m.spam_complaints,
+          recipients: m.recipients || 0,
+          delivered: m.delivered || 0,
+          delivery_rate: deliveryRate,
+          opened: isSms ? null : (m.opened || 0),
+          open_rate: openRate,
+          clicked: m.clicked || 0,
+          click_rate: clickRate,
+          click_to_open_rate: clickToOpenRate,
+          conversions: m.conversions || 0,
+          conversion_rate: conversionRate,
+          conversion_value: m.conversion_value || 0,
+          revenue_per_recipient: revenuePerRecipient,
+          average_order_value: avgOrderValue,
+          bounced: isSms ? null : (m.bounced || 0),
+          bounce_rate: bounceRate,
+          unsubscribed: m.unsubscribed || 0,
+          unsubscribe_rate: unsubscribeRate,
+          spam_complaints: isSms ? null : (m.spam_complaints || 0),
           fetched_at: fetchedAt,
         })
       }

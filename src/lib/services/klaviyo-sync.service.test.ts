@@ -793,6 +793,215 @@ describe("syncKlaviyoForPeriod", () => {
     await expect(syncKlaviyoForPeriod(BASE_PARAMS)).rejects.toThrow(KlaviyoRateLimitError)
   })
 
+  // ── Story AK-7 — SMS Stats por Canal ──
+
+  it("should map SMS statistics to canonical column names", async () => {
+    const smsParams = {
+      ...BASE_PARAMS,
+      campNames: new Map([["c1", { name: "SMS Promo", status: "sent", send_time: "2026-02-15T10:00:00Z", channel: "sms", subject: null }]]),
+    }
+
+    mockKlaviyoRequest
+      .mockResolvedValueOnce({ data: { attributes: { results: [] } } }) // flow report
+      .mockResolvedValueOnce({
+        data: {
+          attributes: {
+            results: [{
+              groupings: { campaign_id: "c1", send_channel: "sms" },
+              statistics: {
+                recipients_sms: 2000, delivered_sms: 1900, delivered_sms_unique: 1900,
+                clicked_sms: 300, clicked_sms_unique: 250,
+                conversions_sms: 40, conversion_value_sms: 4000,
+                unsubscribed_sms: 15, unsubscribed_sms_unique: 15,
+                click_rate_sms: 13.16, conversion_rate_sms: 2.11,
+                revenue_per_recipient_sms: 2.0,
+              },
+            }],
+          },
+        },
+      })
+      .mockResolvedValueOnce({ data: { attributes: { dates: [], data: [] } } }) // metric agg
+
+    const result = await syncKlaviyoForPeriod(smsParams)
+    const camp = result.data!.campRows[0]
+
+    expect(camp.channel).toBe("sms")
+    expect(camp.recipients).toBe(2000)
+    expect(camp.delivered).toBe(1900)
+    expect(camp.clicked).toBe(250)
+    expect(camp.conversions).toBe(40)
+    expect(camp.conversion_value).toBe(4000)
+    expect(camp.unsubscribed).toBe(15)
+    expect(result.data!.campaignRevenue).toBe(4000)
+  })
+
+  it("should set open_rate, bounced, spam_complaints to null for SMS campaigns", async () => {
+    const smsParams = {
+      ...BASE_PARAMS,
+      campNames: new Map([["c1", { name: "SMS Promo", status: "sent", send_time: null, channel: "sms", subject: null }]]),
+    }
+
+    mockKlaviyoRequest
+      .mockResolvedValueOnce({ data: { attributes: { results: [] } } })
+      .mockResolvedValueOnce({
+        data: {
+          attributes: {
+            results: [{
+              groupings: { campaign_id: "c1", send_channel: "sms" },
+              statistics: {
+                recipients_sms: 500, delivered_sms: 480,
+                clicked_sms: 50, clicked_sms_unique: 40,
+                conversions_sms: 5, conversion_value_sms: 500,
+                unsubscribed_sms: 2,
+              },
+            }],
+          },
+        },
+      })
+      .mockResolvedValueOnce({ data: { attributes: { dates: [], data: [] } } })
+
+    const result = await syncKlaviyoForPeriod(smsParams)
+    const camp = result.data!.campRows[0]
+
+    expect(camp.open_rate).toBeNull()
+    expect(camp.opened).toBeNull()
+    expect(camp.bounced).toBeNull()
+    expect(camp.bounce_rate).toBeNull()
+    expect(camp.spam_complaints).toBeNull()
+    expect(camp.click_to_open_rate).toBeNull()
+    // These should NOT be null
+    expect(camp.click_rate).toBeGreaterThanOrEqual(0)
+    expect(camp.conversion_rate).toBeGreaterThanOrEqual(0)
+  })
+
+  it("should handle mixed email+SMS campaigns in same sync", async () => {
+    const mixedParams = {
+      ...BASE_PARAMS,
+      campNames: new Map([
+        ["c1", { name: "Newsletter", status: "sent", send_time: "2026-02-15T10:00:00Z", channel: "email", subject: "Welcome!" }],
+        ["c2", { name: "SMS Flash", status: "sent", send_time: "2026-02-16T10:00:00Z", channel: "sms", subject: null }],
+      ]),
+    }
+
+    mockKlaviyoRequest
+      .mockResolvedValueOnce({ data: { attributes: { results: [] } } })
+      .mockResolvedValueOnce({
+        data: {
+          attributes: {
+            results: [
+              {
+                groupings: { campaign_id: "c1", send_channel: "email" },
+                statistics: {
+                  recipients: 5000, delivered: 4800, opens: 2500, opens_unique: 2000,
+                  clicks: 650, clicks_unique: 500, conversions: 100, conversion_value: 5000,
+                  bounced: 200, unsubscribes: 50, spam_complaints: 5,
+                },
+              },
+              {
+                groupings: { campaign_id: "c2", send_channel: "sms" },
+                statistics: {
+                  recipients_sms: 1000, delivered_sms: 950,
+                  clicked_sms: 100, clicked_sms_unique: 80,
+                  conversions_sms: 20, conversion_value_sms: 2000,
+                  unsubscribed_sms: 5,
+                },
+              },
+            ],
+          },
+        },
+      })
+      .mockResolvedValueOnce({ data: { attributes: { dates: [], data: [] } } })
+
+    const result = await syncKlaviyoForPeriod(mixedParams)
+
+    expect(result.data!.campRows).toHaveLength(2)
+
+    const emailCamp = result.data!.campRows.find(c => c.channel === "email")!
+    const smsCamp = result.data!.campRows.find(c => c.channel === "sms")!
+
+    // Email campaign has all fields
+    expect(emailCamp.open_rate).not.toBeNull()
+    expect(emailCamp.bounced).not.toBeNull()
+
+    // SMS campaign has null for email-only fields
+    expect(smsCamp.open_rate).toBeNull()
+    expect(smsCamp.bounced).toBeNull()
+
+    expect(result.data!.campaignRevenue).toBe(7000) // 5000 + 2000
+  })
+
+  it("should skip second channel when same campaign_id has mixed channels", async () => {
+    mockKlaviyoRequest
+      .mockResolvedValueOnce({ data: { attributes: { results: [] } } })
+      .mockResolvedValueOnce({
+        data: {
+          attributes: {
+            results: [
+              {
+                groupings: { campaign_id: "c1", send_channel: "email" },
+                statistics: {
+                  recipients: 5000, delivered: 4800, opens: 2500, opens_unique: 2000,
+                  clicks: 650, clicks_unique: 500, conversions: 100, conversion_value: 5000,
+                  bounced: 200, unsubscribes: 50, spam_complaints: 5,
+                },
+              },
+              {
+                // Same campaign_id but different channel — should be skipped
+                groupings: { campaign_id: "c1", send_channel: "sms" },
+                statistics: {
+                  recipients_sms: 1000, delivered_sms: 950,
+                  clicked_sms: 100, clicked_sms_unique: 80,
+                  conversions_sms: 20, conversion_value_sms: 2000,
+                  unsubscribed_sms: 5,
+                },
+              },
+            ],
+          },
+        },
+      })
+      .mockResolvedValueOnce({ data: { attributes: { dates: [], data: [] } } })
+
+    const result = await syncKlaviyoForPeriod(BASE_PARAMS)
+
+    // Only one row — the SMS entry for the same campaign_id should be skipped
+    expect(result.data!.campRows).toHaveLength(1)
+    const camp = result.data!.campRows[0]
+    expect(camp.channel).toBe("email")
+    // Revenue should only include email (5000), not SMS (2000)
+    expect(camp.conversion_value).toBe(5000)
+    expect(result.data!.campaignRevenue).toBe(5000)
+    // Email fields should be present (not null)
+    expect(camp.open_rate).not.toBeNull()
+    expect(camp.bounced).not.toBeNull()
+  })
+
+  it("should default unknown send_channel to email", async () => {
+    mockKlaviyoRequest
+      .mockResolvedValueOnce({ data: { attributes: { results: [] } } })
+      .mockResolvedValueOnce({
+        data: {
+          attributes: {
+            results: [{
+              groupings: { campaign_id: "c1", send_channel: "push" },
+              statistics: {
+                recipients: 100, delivered: 90, opens: 40, opens_unique: 30,
+                clicks: 15, clicks_unique: 10, conversions: 5, conversion_value: 500,
+                bounced: 10, unsubscribes: 2, spam_complaints: 0,
+              },
+            }],
+          },
+        },
+      })
+      .mockResolvedValueOnce({ data: { attributes: { dates: [], data: [] } } })
+
+    const result = await syncKlaviyoForPeriod(BASE_PARAMS)
+    const camp = result.data!.campRows[0]
+
+    // Unknown channel defaults to email behavior
+    expect(camp.open_rate).not.toBeNull()
+    expect(camp.bounced).not.toBeNull()
+  })
+
   it("should handle zero denominators in rate calculations (no division by zero)", async () => {
     mockKlaviyoRequest
       .mockResolvedValueOnce({
