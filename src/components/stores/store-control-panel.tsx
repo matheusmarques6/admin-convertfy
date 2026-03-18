@@ -1,8 +1,9 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { format } from "date-fns"
+import useSWR from "swr"
 import {
   Store,
   TrendingUp,
@@ -24,6 +25,8 @@ import {
   ChevronRight,
   X,
   FileText,
+  BarChart3,
+  Download,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -63,19 +66,14 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
+import { Card, CardContent } from "@/components/ui/card"
+import { Progress } from "@/components/ui/progress"
 import { useToast } from "@/lib/hooks/use-toast"
 import { TimeAgo } from "@/components/ui/time-ago"
 import { SyncStatusBadge } from "@/components/ui/sync-status-badge"
 import { DateRangePicker } from "@/components/ui/date-range-picker"
-import { ReportGenerationBanner } from "@/components/reports/report-generation-banner"
-import { useStoresFanOut } from "@/hooks/use-stores-fan-out"
-import type { DateRange } from "@/types/report"
+import { apiFetcher } from "@/lib/hooks/use-api-data"
+import type { ReportJob } from "@/types/report"
 import { cn } from "@/lib/utils"
 
 const PERIOD_OPTIONS = [
@@ -146,6 +144,18 @@ const formatDate = (dateStr: string | null): string => {
   return date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
 }
 
+const formatDateRange = (start: string | null, end: string | null): string => {
+  if (!start || !end) return ''
+  const s = new Date(start + 'T00:00:00')
+  const e = new Date(end + 'T00:00:00')
+  const fmtDay = (d: Date) => d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
+  const fmtFull = (d: Date) => d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })
+  if (s.getFullYear() === e.getFullYear()) {
+    return `${fmtDay(s)} — ${fmtFull(e)}`
+  }
+  return `${fmtFull(s)} — ${fmtFull(e)}`
+}
+
 const getStatusConfig = (status: StoreData['feedback_status'], daysUntil: number | null) => {
   switch (status) {
     case 'overdue':
@@ -193,6 +203,206 @@ const getSummaryValue = (summary: Summary, key: string): number => {
   return summary[key as keyof Omit<Summary, 'total'>] ?? 0
 }
 
+// ─── Report Job Status Card ────────────────────────────────────────────────
+
+type ReportJobWithExpiry = ReportJob & { is_expired?: boolean }
+
+function ReportJobCard({
+  job,
+  onClose,
+  onRetry,
+}: {
+  job: ReportJobWithExpiry
+  onClose: () => void
+  onRetry: () => void
+}) {
+  const router = useRouter()
+  const isActive = job.status === 'queued' || job.status === 'processing'
+  const isDone = job.status === 'completed'
+  const isPartial = job.status === 'partial'
+  const isFailed = job.status === 'failed'
+
+  // Calculate progress from job.progress
+  const storeEntries = Object.entries(job.progress).filter(
+    ([k]) => !['invocation_count', 'paused_reason', 'paused_at', 'failure_reason'].includes(k)
+  )
+  const completedCount = storeEntries.filter(
+    ([, v]) => {
+      const entry = v as { status?: string } | null
+      return entry?.status === 'completed' || entry?.status === 'failed'
+    }
+  ).length
+  const totalCount = job.store_ids.length
+  const progress = totalCount > 0 ? (completedCount / totalCount) * 100 : 0
+
+  const dateLabel = formatDateRange(job.start_date, job.end_date)
+
+  // Estimate remaining time based on progress
+  const estimateRemaining = () => {
+    if (completedCount === 0) return 'calculando...'
+    const createdAt = new Date(job.created_at).getTime()
+    const elapsed = Date.now() - createdAt
+    const avgPerStore = elapsed / completedCount
+    const remaining = (totalCount - completedCount) * avgPerStore
+    const mins = Math.ceil(remaining / 60000)
+    if (mins < 1) return '<1 min'
+    return `~${mins} min`
+  }
+
+  if (isActive) {
+    return (
+      <Card className="mb-4 border-primary/20 bg-primary/5">
+        <CardContent className="p-4">
+          <div className="flex items-start justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <BarChart3 className="w-4 h-4 text-primary" />
+              <span className="text-sm font-medium">
+                Relatorio: {dateLabel}
+              </span>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 -mt-1 -mr-1"
+              onClick={onClose}
+            >
+              <X className="w-3.5 h-3.5" />
+            </Button>
+          </div>
+          <Progress value={progress} className="h-2 mb-2" />
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>{completedCount} de {totalCount} lojas | {estimateRemaining()}</span>
+            <span>Processando em segundo plano...</span>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (isDone) {
+    return (
+      <Card className="mb-4 border-emerald-500/20 bg-emerald-500/5">
+        <CardContent className="p-4">
+          <div className="flex items-start justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <CheckCircle className="w-4 h-4 text-emerald-500" />
+              <span className="text-sm font-medium">
+                Relatorio pronto: {dateLabel}
+              </span>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground mb-3">
+            {totalCount}/{totalCount} lojas | <TimeAgo date={job.updated_at} className="text-xs" />
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="default"
+              className="h-7 text-xs"
+              onClick={() => router.push(`/admin/report-jobs/${job.id}`)}
+            >
+              <FileText className="w-3 h-3 mr-1" />
+              Abrir Relatorio
+            </Button>
+            {job.result && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                onClick={() => router.push(`/api/reports/export?job_id=${job.id}`)}
+              >
+                <Download className="w-3 h-3 mr-1" />
+                Baixar CSV
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-xs ml-auto"
+              onClick={onClose}
+            >
+              <X className="w-3 h-3" />
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (isPartial || isFailed) {
+    const failedStores = storeEntries.filter(
+      ([, v]) => (v as { status?: string } | null)?.status === 'failed'
+    ).length
+
+    return (
+      <Card className="mb-4 border-amber-500/20 bg-amber-500/5">
+        <CardContent className="p-4">
+          <div className="flex items-start justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-500" />
+              <span className="text-sm font-medium">
+                {isFailed ? 'Relatorio falhou' : 'Relatorio parcial'}: {dateLabel}
+              </span>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground mb-3">
+            {completedCount - failedStores}/{totalCount} lojas | {failedStores} {failedStores === 1 ? 'loja falhou' : 'lojas falharam'}
+          </p>
+          <div className="flex items-center gap-2">
+            {isPartial && (
+              <Button
+                size="sm"
+                variant="default"
+                className="h-7 text-xs"
+                onClick={() => router.push(`/admin/report-jobs/${job.id}`)}
+              >
+                <FileText className="w-3 h-3 mr-1" />
+                Ver Relatorio Parcial
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs"
+              onClick={onRetry}
+            >
+              <RefreshCw className="w-3 h-3 mr-1" />
+              Tentar Novamente
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-xs ml-auto"
+              onClick={onClose}
+            >
+              <X className="w-3 h-3" />
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  // Cancelled / expired / paused — just show dismiss
+  return (
+    <Card className="mb-4 border-muted">
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <BarChart3 className="w-4 h-4" />
+            <span>Relatorio {job.status === 'cancelled' ? 'cancelado' : job.status === 'paused' ? 'pausado' : 'expirado'}: {dateLabel}</span>
+          </div>
+          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onClose}>
+            <X className="w-3.5 h-3.5" />
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ─── Main Component ──────────────────────────────────────────────────────────
+
 export function StoreControlPanel() {
   const router = useRouter()
   const { toast } = useToast()
@@ -218,18 +428,13 @@ export function StoreControlPanel() {
 
   // Period & custom date range
   const [period, setPeriod] = useState<string>("30d")
-  const [customDates, setCustomDates] = useState<DateRange | null>(null)
   const [customStart, setCustomStart] = useState<Date | undefined>()
   const [customEnd, setCustomEnd] = useState<Date | undefined>()
 
-  // Fan-out: only active when custom period is selected
-  const fanOutStoreIds = useMemo(() => {
-    if (period !== "custom" || !customDates) return []
-    return stores.filter((s) => s.has_klaviyo).map((s) => s.id)
-  }, [period, customDates, stores])
-
-  const fanOut = useStoresFanOut(fanOutStoreIds, customDates)
-  const isFanOutActive = period === "custom" && customDates !== null && fanOutStoreIds.length > 0
+  // Report job state
+  const [activeJobId, setActiveJobId] = useState<string | null>(null)
+  const [jobDismissed, setJobDismissed] = useState(false)
+  const [isGenerating, setIsGenerating] = useState(false)
 
   // Dialog states
   const [selectedStore, setSelectedStore] = useState<StoreData | null>(null)
@@ -247,10 +452,43 @@ export function StoreControlPanel() {
     notes: '',
     action_items: '',
   })
+
   const [editForm, setEditForm] = useState({
     feedback_frequency: 'monthly' as 'monthly' | '30_days',
     next_feedback_date: '',
   })
+
+  // ─── Poll active report job via SWR ──────────────────────────────────────
+  const jobIsActive = activeJobId && !jobDismissed
+  const { data: jobData } = useSWR<ReportJobWithExpiry>(
+    jobIsActive ? `/api/reports/${activeJobId}` : null,
+    apiFetcher,
+    {
+      refreshInterval: activeJobId && !jobDismissed ? 5000 : 0,
+      revalidateOnFocus: false,
+      errorRetryCount: 2,
+    }
+  )
+
+  // Stop polling once job reaches a terminal state
+  const activeJob = jobData ?? null
+  // ─── Check for existing active job on mount ──────────────────────────────
+  useEffect(() => {
+    async function checkActiveJob() {
+      try {
+        const res = await fetch('/api/reports?status=active&limit=1')
+        const data = await res.json()
+        const jobs = data?.jobs ?? data?.data ?? (Array.isArray(data) ? data : [])
+        if (jobs.length > 0) {
+          setActiveJobId(jobs[0].id)
+          setJobDismissed(false)
+        }
+      } catch {
+        // Silent — not critical
+      }
+    }
+    checkActiveJob()
+  }, [])
 
   // Debounce search
   const handleSearchChange = useCallback((value: string) => {
@@ -276,26 +514,101 @@ export function StoreControlPanel() {
   const handlePeriodChange = useCallback((value: string) => {
     setPeriod(value)
     if (value !== "custom") {
-      setCustomDates(null)
       setCustomStart(undefined)
       setCustomEnd(undefined)
     }
   }, [])
 
-  const handleCustomDateApply = useCallback((start: Date, end: Date) => {
+  // ─── Generate report when custom dates are applied ───────────────────────
+  const handleCustomDateApply = useCallback(async (start: Date, end: Date) => {
     setCustomStart(start)
     setCustomEnd(end)
-    setCustomDates({
-      startDate: format(start, "yyyy-MM-dd"),
-      endDate: format(end, "yyyy-MM-dd"),
-    })
     setPeriod("custom")
-  }, [])
 
-  const customDateLabel = useMemo(() => {
-    if (!customDates) return ""
-    return `${customDates.startDate} — ${customDates.endDate}`
-  }, [customDates])
+    // Collect store IDs from current page that have Klaviyo
+    const storeIds = stores.filter((s) => s.has_klaviyo).map((s) => s.id)
+    if (storeIds.length === 0) {
+      toast({
+        title: 'Nenhuma loja com Klaviyo',
+        description: 'Nao ha lojas com integracao Klaviyo na pagina atual',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setIsGenerating(true)
+    try {
+      const res = await fetch('/api/reports/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          store_ids: storeIds,
+          period: 'custom',
+          start_date: format(start, 'yyyy-MM-dd'),
+          end_date: format(end, 'yyyy-MM-dd'),
+        }),
+      })
+      const data = await res.json()
+      if (data.id) {
+        setActiveJobId(data.id)
+        setJobDismissed(false)
+        toast({
+          title: 'Relatorio iniciado',
+          description: `Gerando relatorio para ${storeIds.length} lojas. Acompanhe o progresso acima da tabela.`,
+        })
+      } else {
+        toast({
+          title: 'Erro ao iniciar relatorio',
+          description: data.error || 'Tente novamente',
+          variant: 'destructive',
+        })
+      }
+    } catch {
+      toast({
+        title: 'Erro de conexao',
+        description: 'Nao foi possivel iniciar o relatorio',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsGenerating(false)
+    }
+  }, [stores, toast])
+
+  // ─── Retry report generation ─────────────────────────────────────────────
+  const handleRetryReport = useCallback(async () => {
+    if (!activeJob) return
+    const storeIds = activeJob.store_ids
+    const startDate = activeJob.start_date
+    const endDate = activeJob.end_date
+    if (!startDate || !endDate) return
+
+    setIsGenerating(true)
+    try {
+      const res = await fetch('/api/reports/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          store_ids: storeIds,
+          period: 'custom',
+          start_date: startDate,
+          end_date: endDate,
+        }),
+      })
+      const data = await res.json()
+      if (data.id) {
+        setActiveJobId(data.id)
+        setJobDismissed(false)
+      }
+    } catch {
+      toast({
+        title: 'Erro de conexao',
+        description: 'Nao foi possivel reiniciar o relatorio',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsGenerating(false)
+    }
+  }, [activeJob, toast])
 
   // Fetch stores
   const fetchStores = useCallback(async () => {
@@ -529,14 +842,12 @@ export function StoreControlPanel() {
         </div>
       )}
 
-      {/* ─── Report Generation Banner ────────────────────────── */}
-      {isFanOutActive && customDates && (
-        <ReportGenerationBanner
-          startDate={customDates.startDate}
-          endDate={customDates.endDate}
-          completedCount={fanOut.completedCount}
-          totalCount={fanOut.totalCount}
-          failedCount={fanOut.failedCount}
+      {/* ─── Report Job Status Card ────────────────────────────── */}
+      {activeJob && !jobDismissed && (
+        <ReportJobCard
+          job={activeJob}
+          onClose={() => setJobDismissed(true)}
+          onRetry={handleRetryReport}
         />
       )}
 
@@ -582,6 +893,10 @@ export function StoreControlPanel() {
                 endDate={customEnd}
                 onApply={handleCustomDateApply}
               />
+            )}
+
+            {isGenerating && (
+              <Loader2 className="w-4 h-4 text-primary animate-spin" />
             )}
 
             <Button
@@ -649,8 +964,6 @@ export function StoreControlPanel() {
                 <tbody>
                   {stores.map((store) => {
                     const statusCfg = getStatusConfig(store.feedback_status, store.days_until_feedback)
-                    const fanOutState = isFanOutActive ? fanOut.stores.get(store.id) : undefined
-                    const hasFanOutData = fanOutState?.status === "success" && fanOutState.data
                     return (
                       <tr
                         key={store.id}
@@ -685,96 +998,34 @@ export function StoreControlPanel() {
                           </div>
                         </td>
 
-                        {/* Revenue — overlays fan-out data when custom period is active */}
+                        {/* Revenue — always shows 30d data */}
                         <td className="px-4 py-3.5 text-right">
-                          {/* Fan-out states */}
-                          {fanOutState?.status === "queued" && (
+                          {store.revenue_status === 'no_integration' ? (
+                            <span className="text-xs text-muted-foreground">-</span>
+                          ) : store.revenue_status === 'error' ? (
                             <div className="flex items-center justify-end gap-1.5">
-                              <Clock className="w-3.5 h-3.5 text-muted-foreground animate-pulse" />
-                              <span className="text-xs text-muted-foreground">na fila...</span>
+                              <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                              <span className="text-xs text-amber-500">Erro</span>
                             </div>
-                          )}
-                          {fanOutState?.status === "loading" && (
-                            <div className="flex items-center justify-end gap-1.5">
-                              <Loader2 className="w-3.5 h-3.5 text-primary animate-spin" />
-                              <span className="text-xs text-muted-foreground">carregando...</span>
-                            </div>
-                          )}
-                          {fanOutState?.status === "error" && (
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <div className="flex items-center justify-end gap-1.5 cursor-help">
-                                    <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
-                                    <span className="text-xs text-amber-500">Erro</span>
-                                  </div>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p className="text-xs max-w-[200px]">{fanOutState.error || "Erro ao carregar dados"}</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          )}
-                          {hasFanOutData && (
+                          ) : (
                             <div className="text-right">
                               <span className={cn(
                                 "text-sm font-semibold tabular-nums",
-                                fanOutState.data!.totalRevenue > 0 ? 'text-foreground' : 'text-muted-foreground'
+                                store.klaviyo_revenue_30d > 0 ? 'text-foreground' : 'text-muted-foreground'
                               )}>
-                                {fmtCurrency(fanOutState.data!.totalRevenue, fanOutState.data!.currency)}
+                                {fmtCurrency(store.klaviyo_revenue_30d, store.currency)}
                               </span>
-                              <div className="flex items-center justify-end gap-1 mt-0.5">
-                                <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 border-primary/30 text-primary/70">
-                                  {customDateLabel}
-                                </Badge>
+                              <div className="flex items-center justify-end gap-1.5 mt-0.5">
+                                <SyncStatusBadge status={store.sync_status} compact />
+                                <TimeAgo date={store.fetched_at} className="text-[10px] text-muted-foreground/50" />
                               </div>
                             </div>
-                          )}
-                          {/* Default (no fan-out or store not in fan-out set) */}
-                          {!fanOutState && (
-                            <>
-                              {store.revenue_status === 'no_integration' ? (
-                                <span className="text-xs text-muted-foreground">-</span>
-                              ) : store.revenue_status === 'error' ? (
-                                <div className="flex items-center justify-end gap-1.5">
-                                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
-                                  <span className="text-xs text-amber-500">Erro</span>
-                                </div>
-                              ) : (
-                                <div className="text-right">
-                                  <span className={cn(
-                                    "text-sm font-semibold tabular-nums",
-                                    store.klaviyo_revenue_30d > 0 ? 'text-foreground' : 'text-muted-foreground'
-                                  )}>
-                                    {fmtCurrency(store.klaviyo_revenue_30d, store.currency)}
-                                  </span>
-                                  <div className="flex items-center justify-end gap-1.5 mt-0.5">
-                                    <SyncStatusBadge status={store.sync_status} compact />
-                                    <TimeAgo date={store.fetched_at} className="text-[10px] text-muted-foreground/50" />
-                                  </div>
-                                </div>
-                              )}
-                            </>
                           )}
                         </td>
 
-                        {/* Campaign / Flows — overlays fan-out data when available */}
+                        {/* Campaign / Flows — always shows 30d data */}
                         <td className="px-4 py-3.5 text-right">
-                          {hasFanOutData ? (
-                            <div className="space-y-0.5">
-                              <div className="text-xs text-muted-foreground tabular-nums">
-                                Camp: {fmtCurrency(fanOutState.data!.campaignRevenue, fanOutState.data!.currency)}
-                              </div>
-                              <div className="text-xs text-muted-foreground tabular-nums">
-                                Flows: {fmtCurrency(fanOutState.data!.flowRevenue, fanOutState.data!.currency)}
-                              </div>
-                            </div>
-                          ) : (fanOutState?.status === "queued" || fanOutState?.status === "loading") ? (
-                            <div className="space-y-1">
-                              <Skeleton className="h-3 w-20 ml-auto" />
-                              <Skeleton className="h-3 w-16 ml-auto" />
-                            </div>
-                          ) : store.revenue_status !== 'loaded' ? (
+                          {store.revenue_status !== 'loaded' ? (
                             <span className="text-xs text-muted-foreground">-</span>
                           ) : (
                             <div className="space-y-0.5">
@@ -1051,52 +1302,6 @@ export function StoreControlPanel() {
               )
             })}
           </div>
-
-          {/* ─── Generate Full Report button ─────────────────────── */}
-          {isFanOutActive && totalItems > stores.length && customDates && (
-            <div className="flex items-center justify-center pt-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-2"
-                onClick={async () => {
-                  try {
-                    const res = await fetch("/api/reports/generate", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        period: "custom",
-                        start_date: customDates.startDate,
-                        end_date: customDates.endDate,
-                      }),
-                    })
-                    const data = await res.json()
-                    if (data.success || data.job_id) {
-                      toast({
-                        title: "Relatorio iniciado",
-                        description: `Gerando relatorio para todas as ${totalItems} lojas. Acompanhe em Relatorios.`,
-                      })
-                    } else {
-                      toast({
-                        title: "Erro ao iniciar relatorio",
-                        description: data.error || "Tente novamente",
-                        variant: "destructive",
-                      })
-                    }
-                  } catch {
-                    toast({
-                      title: "Erro de conexao",
-                      description: "Nao foi possivel iniciar o relatorio",
-                      variant: "destructive",
-                    })
-                  }
-                }}
-              >
-                <FileText className="w-4 h-4" />
-                Gerar Relatorio Completo ({totalItems} lojas)
-              </Button>
-            </div>
-          )}
 
           {/* ─── Pagination ──────────────────────────────────────── */}
           {totalItems > 0 && (
