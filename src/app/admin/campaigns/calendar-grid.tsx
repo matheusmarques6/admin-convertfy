@@ -1,3 +1,7 @@
+// Admin uses a different CalendarGrid than portal (src/components/calendar/calendar-grid.tsx)
+// because admin Campaign type differs from PortalCampaign and uses different prop patterns.
+// Unification would require refactoring admin page.tsx rendering logic — tracked as backlog.
+
 import { Mail } from "lucide-react"
 import { Campaign } from "@/types"
 import { CHANNEL_CONFIG, WEEK_DAYS } from "@/lib/constants/calendar"

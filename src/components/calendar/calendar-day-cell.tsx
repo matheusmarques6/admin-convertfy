@@ -33,16 +33,44 @@ export const CalendarDayCell = React.memo(function CalendarDayCell({
   const campaignCount = campaigns.length
   const ariaLabel = `${day} de ${monthName}, ${campaignCount} campanha${campaignCount !== 1 ? "s" : ""}`
 
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault()
       onDayClick(campaigns)
+      return
+    }
+
+    // Arrow key grid navigation (roving tabindex)
+    const arrowKeys = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"]
+    if (!arrowKeys.includes(e.key)) return
+    e.preventDefault()
+
+    const grid = (e.currentTarget as HTMLElement).closest('[role="grid"]')
+    if (!grid) return
+    const cells = Array.from(grid.querySelectorAll<HTMLElement>('[role="button"][tabindex]'))
+    const currentIdx = cells.indexOf(e.currentTarget as HTMLElement)
+    if (currentIdx === -1) return
+
+    let nextIdx = currentIdx
+    switch (e.key) {
+      case "ArrowRight": nextIdx = Math.min(currentIdx + 1, cells.length - 1); break
+      case "ArrowLeft": nextIdx = Math.max(currentIdx - 1, 0); break
+      case "ArrowDown": nextIdx = Math.min(currentIdx + 7, cells.length - 1); break
+      case "ArrowUp": nextIdx = Math.max(currentIdx - 7, 0); break
+      case "Home": nextIdx = 0; break
+      case "End": nextIdx = cells.length - 1; break
+    }
+
+    if (nextIdx !== currentIdx) {
+      e.currentTarget.setAttribute("tabindex", "-1")
+      cells[nextIdx].setAttribute("tabindex", "0")
+      cells[nextIdx].focus()
     }
   }, [onDayClick, campaigns])
 
   return (
     <div
-      tabIndex={0}
+      tabIndex={isToday ? 0 : -1}
       role="button"
       aria-label={ariaLabel}
       aria-current={isToday ? "date" : undefined}

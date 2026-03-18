@@ -85,7 +85,7 @@ export default function PortalCampaignsPage() {
     [hookSetSelectedStore],
   )
 
-  // Story 45.14: Sync filter state to URL params
+  // Story 45.14: Sync state -> URL on every change (including mount — ensures URL always reflects current view)
   useEffect(() => {
     const params = new URLSearchParams()
     params.set("month", String(month + 1))
