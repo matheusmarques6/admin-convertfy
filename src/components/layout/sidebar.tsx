@@ -55,6 +55,12 @@ import { usePermissions } from "@/lib/hooks/use-permissions"
 import { ROUTES } from "@/lib/routes"
 import { NotificationBell } from "@/components/layout/notification-bell"
 
+interface NavChild {
+  name: string
+  href: string
+  icon: LucideIcon
+}
+
 interface NavItem {
   name: string
   href: string
@@ -63,6 +69,7 @@ interface NavItem {
   requiredFeatures?: string[]
   requiresStoreAccess?: boolean
   badge?: string
+  children?: NavChild[]
 }
 
 const NAV_GROUPS = [
@@ -83,8 +90,10 @@ const navigation: NavItem[] = [
   { name: "Board", href: ROUTES.ADMIN.BOARD, icon: LayoutList, group: "operacional", requiredFeatures: ["request_control", "request_execute", "calendar_control"] },
   { name: "Reunioes", href: ROUTES.ADMIN.MEETINGS.LIST, icon: CalendarDays, group: "operacional", requiredFeatures: ["calendar_control"] },
   { name: "Financeiro", href: ROUTES.ADMIN.FINANCIAL, icon: Wallet, group: "operacional", requiredFeatures: ["view_financial"] },
-  { name: "Relatorios", href: ROUTES.ADMIN.REPORTS.LIST, icon: PieChart, group: "operacional", requiredFeatures: ["view_reports"] },
-  { name: "Relatorios Gerados", href: ROUTES.ADMIN.REPORT_JOBS.LIST, icon: FileBarChart, group: "operacional", requiredFeatures: ["view_reports"] },
+  { name: "Relatorios", href: ROUTES.ADMIN.REPORTS.LIST, icon: PieChart, group: "operacional", requiredFeatures: ["view_reports"], children: [
+    { name: "Por Cliente", href: ROUTES.ADMIN.REPORTS.LIST, icon: PieChart },
+    { name: "Gerados", href: ROUTES.ADMIN.REPORT_JOBS.LIST, icon: FileBarChart },
+  ] },
   { name: "Ferramentas", href: ROUTES.ADMIN.TOOLS, icon: Puzzle, group: "operacional" },
 ]
 
@@ -106,6 +115,7 @@ export function Sidebar({ user }: SidebarProps) {
   const { theme, setTheme } = useTheme()
   const { sidebarCollapsed, setSidebarCollapsed } = useUIStore()
   const [isLoggingOut, setIsLoggingOut] = useState(false)
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set())
   const { permissions, hasAnyFeature, isLoading } = usePermissions()
 
   useEffect(() => {
@@ -117,6 +127,20 @@ export function Sidebar({ user }: SidebarProps) {
     mq.addEventListener("change", handler)
     return () => mq.removeEventListener("change", handler)
   }, [setSidebarCollapsed])
+
+  // Auto-expand parent items when a child route is active
+  useEffect(() => {
+    for (const item of navigation) {
+      if (item.children?.some(child => pathname.startsWith(child.href))) {
+        setExpandedItems(prev => {
+          if (prev.has(item.name)) return prev
+          const next = new Set(prev)
+          next.add(item.name)
+          return next
+        })
+      }
+    }
+  }, [pathname])
 
   const filteredNavigation = useMemo(() => {
     if (isLoading || !permissions) return []
@@ -156,8 +180,9 @@ export function Sidebar({ user }: SidebarProps) {
     }
   }
 
-  function checkActive(href: string) {
+  function checkActive(href: string, children?: NavChild[]) {
     if (href === ROUTES.ADMIN.DASHBOARD) return pathname === ROUTES.ADMIN.DASHBOARD || pathname === ROUTES.ADMIN.DASHBOARD_OPERATIONAL
+    if (children) return children.some(child => pathname.startsWith(child.href))
     return pathname.startsWith(href)
   }
 
@@ -165,16 +190,29 @@ export function Sidebar({ user }: SidebarProps) {
     return name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
   }
 
+  function toggleExpanded(name: string) {
+    setExpandedItems(prev => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }
+
   function renderNavItem(item: NavItem) {
-    const active = checkActive(item.href)
+    const hasChildren = item.children && item.children.length > 0
+    const active = checkActive(item.href, item.children)
+    const isExpanded = expandedItems.has(item.name)
     const Icon = item.icon
 
     if (sidebarCollapsed) {
+      // When collapsed, items with children link to the first child
+      const targetHref = hasChildren ? item.children![0].href : item.href
       return (
         <Tooltip key={item.name}>
           <TooltipTrigger asChild>
             <Link
-              href={item.href}
+              href={targetHref}
               className={cn(
                 "relative flex items-center justify-center h-9 w-9 mx-auto rounded-lg transition-colors duration-150",
                 active
@@ -196,6 +234,62 @@ export function Sidebar({ user }: SidebarProps) {
             {item.name}
           </TooltipContent>
         </Tooltip>
+      )
+    }
+
+    // Expanded sidebar — item with children renders as expandable group
+    if (hasChildren) {
+      return (
+        <div key={item.name}>
+          <button
+            onClick={() => toggleExpanded(item.name)}
+            className={cn(
+              "relative flex items-center gap-3 h-9 px-3 w-full rounded-lg text-[13px] transition-colors duration-150",
+              active
+                ? "text-white font-medium"
+                : "text-[#b0b8c1] hover:text-white hover:bg-white/[0.07]"
+            )}
+          >
+            {active && (
+              <motion.div
+                layoutId="nav-active"
+                className="absolute inset-0 rounded-lg bg-white/[0.08] ring-1 ring-white/[0.06]"
+                transition={{ type: "spring", stiffness: 400, damping: 28 }}
+              />
+            )}
+            <Icon className="h-[18px] w-[18px] shrink-0 relative z-10" strokeWidth={1.7} />
+            <span className="relative z-10 truncate">{item.name}</span>
+            <ChevronDown
+              className={cn(
+                "h-3 w-3 ml-auto relative z-10 text-[#6e7681] transition-transform duration-200",
+                isExpanded && "rotate-180"
+              )}
+            />
+          </button>
+          {isExpanded && (
+            <div className="ml-3 pl-3 border-l border-white/[0.06] space-y-0.5 mt-0.5">
+              {item.children!.map(child => {
+                const childActive = pathname.startsWith(child.href)
+                const ChildIcon = child.icon
+                return (
+                  <Link
+                    key={child.name}
+                    href={child.href}
+                    className={cn(
+                      "flex items-center gap-2.5 h-8 px-2.5 rounded-md text-[12px] transition-colors duration-150",
+                      childActive
+                        ? "text-white font-medium bg-white/[0.06]"
+                        : "text-[#8b949e] hover:text-white hover:bg-white/[0.05]"
+                    )}
+                  >
+                    <ChildIcon className="h-[15px] w-[15px] shrink-0" strokeWidth={1.7} />
+                    <span className="truncate">{child.name}</span>
+                  </Link>
+                )
+              })}
+            </div>
+          )}
+        </div>
       )
     }
 

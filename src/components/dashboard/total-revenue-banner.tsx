@@ -3,7 +3,10 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import useSWR from "swr"
 import { format } from "date-fns"
-import { TrendingUp, RefreshCw, Megaphone, Workflow, Store, AlertTriangle } from "lucide-react"
+import { ptBR } from "date-fns/locale"
+import { TrendingUp, RefreshCw, Megaphone, Workflow, Store, AlertTriangle, BarChart3, ArrowRight } from "lucide-react"
+import Link from "next/link"
+import { ROUTES } from "@/lib/routes"
 import { useRealtimeRevenue } from "@/hooks/use-realtime-revenue"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -99,14 +102,19 @@ export function TotalRevenueBanner({ storeIds, period: controlledPeriod, onPerio
   const [customStart, setCustomStart] = useState<Date | undefined>()
   const [customEnd, setCustomEnd] = useState<Date | undefined>()
 
-  // Build SWR key from current state
+  // Track the last standard (non-custom) period so we keep showing its data
+  const lastStandardPeriodRef = useRef(period !== "custom" ? period : "30d")
+  useEffect(() => {
+    if (period !== "custom") lastStandardPeriodRef.current = period
+  }, [period])
+
+  const isCustomPeriod = period === "custom"
+  const hasCustomDates = isCustomPeriod && !!customStart && !!customEnd
+
+  // Build SWR key — when custom, keep fetching the LAST standard period's data
   const swrKey = (() => {
-    let url = `/api/dashboard/total-revenue?period=${period}`
-    if (period === "custom" && customStart && customEnd) {
-      url += `&start_date=${format(customStart, "yyyy-MM-dd")}&end_date=${format(customEnd, "yyyy-MM-dd")}`
-    } else if (period === "custom") {
-      return null // Don't fetch until dates are selected
-    }
+    const effectivePeriod = isCustomPeriod ? lastStandardPeriodRef.current : period
+    let url = `/api/dashboard/total-revenue?period=${effectivePeriod}`
     if (storeIds && storeIds.length > 0) {
       url += `&store_ids=${storeIds.join(",")}`
     }
@@ -336,6 +344,30 @@ export function TotalRevenueBanner({ storeIds, period: controlledPeriod, onPerio
             </div>
           </div>
         </div>
+
+        {/* Custom period prompt — show info card directing to stores panel */}
+        {hasCustomDates && (
+          <div className="rounded-xl border border-[#05AFF2]/20 bg-[#05AFF2]/5 p-4 flex items-center gap-4">
+            <div className="rounded-lg bg-[#05AFF2]/15 p-2.5 shrink-0">
+              <BarChart3 className="h-5 w-5 text-[#05AFF2]" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-white">
+                Relatorio personalizado
+              </p>
+              <p className="text-xs text-white/60 mt-0.5">
+                {format(customStart, "dd MMM", { locale: ptBR })} — {format(customEnd, "dd MMM yyyy", { locale: ptBR })}. Para gerar um relatorio com datas especificas, acesse o painel de lojas.
+              </p>
+            </div>
+            <Link
+              href={ROUTES.ADMIN.STORES.LIST}
+              className="inline-flex items-center gap-1.5 shrink-0 rounded-lg bg-[#05AFF2]/20 hover:bg-[#05AFF2]/30 text-[#05AFF2] px-3.5 py-2 text-sm font-medium transition-colors"
+            >
+              Ir ao Painel
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
+        )}
 
       </div>
     </div>
