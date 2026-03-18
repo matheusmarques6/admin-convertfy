@@ -54,10 +54,10 @@ export interface SyncResult<T> {
 /** How long each period's cache is considered "fresh enough" to skip re-sync.
  *  0 = always sync. Used by cron to avoid re-fetching data that barely changed. */
 export const PERIOD_FRESHNESS_THRESHOLDS: Record<CachedPeriod, number> = {
-  "7d":  1 * 60 * 60_000,   // 1 hour — balances freshness vs API quota (AK-6)
-  "15d": 2 * 60 * 60_000,   // 2 hours
-  "30d": 4 * 60 * 60_000,   // 4 hours
-  "90d": 8 * 60 * 60_000,   // 8 hours
+  "7d":  3 * 60 * 60_000,   // 3 hours  (AK-10 — relaxed from 1h, ~55% fewer report calls)
+  "15d": 4 * 60 * 60_000,   // 4 hours  (AK-10 — relaxed from 2h)
+  "30d": 6 * 60 * 60_000,   // 6 hours  (AK-10 — relaxed from 4h)
+  "90d": 12 * 60 * 60_000,  // 12 hours (AK-10 — relaxed from 8h)
 }
 
 // ─── Cooldown Constants ──────────────────────────────────────────────────────

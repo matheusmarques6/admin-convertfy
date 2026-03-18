@@ -118,7 +118,7 @@ vi.mock("@/lib/services/credentials.service", () => ({
 let mockPeriods = ["7d", "30d"]
 vi.mock("@/lib/shared/data-status", () => ({
   get CACHED_PERIODS() { return mockPeriods },
-  PERIOD_FRESHNESS_THRESHOLDS: { "7d": 0, "15d": 2 * 60 * 60_000, "30d": 4 * 60 * 60_000, "90d": 8 * 60 * 60_000 },
+  PERIOD_FRESHNESS_THRESHOLDS: { "7d": 0, "15d": 4 * 60 * 60_000, "30d": 6 * 60 * 60_000, "90d": 12 * 60 * 60_000 },
 }))
 
 import { GET } from "./route"

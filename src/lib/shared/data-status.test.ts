@@ -59,28 +59,76 @@ describe("isCachedPeriod", () => {
   })
 })
 
-describe("PERIOD_FRESHNESS_THRESHOLDS (AK-6)", () => {
-  it("7d threshold is 1 hour", () => {
-    expect(PERIOD_FRESHNESS_THRESHOLDS["7d"]).toBe(1 * 60 * 60_000)
+describe("PERIOD_FRESHNESS_THRESHOLDS (AK-10)", () => {
+  it("7d threshold is 3 hours", () => {
+    expect(PERIOD_FRESHNESS_THRESHOLDS["7d"]).toBe(3 * 60 * 60_000)
   })
 
-  it("7d is fresh when fetched less than 1h ago", () => {
+  it("7d is fresh when fetched less than 3h ago", () => {
     const threshold = PERIOD_FRESHNESS_THRESHOLDS["7d"]
-    const fetchedAt = new Date(Date.now() - 30 * 60_000) // 30 min ago
+    const fetchedAt = new Date(Date.now() - 2 * 60 * 60_000) // 2h ago
     const ageMs = Date.now() - fetchedAt.getTime()
     expect(ageMs < threshold).toBe(true)
   })
 
-  it("7d is stale when fetched more than 1h ago", () => {
+  it("7d is stale when fetched more than 3h ago", () => {
     const threshold = PERIOD_FRESHNESS_THRESHOLDS["7d"]
-    const fetchedAt = new Date(Date.now() - 2 * 60 * 60_000) // 2h ago
+    const fetchedAt = new Date(Date.now() - 4 * 60 * 60_000) // 4h ago
     const ageMs = Date.now() - fetchedAt.getTime()
     expect(ageMs < threshold).toBe(false)
   })
 
-  it("other periods are not affected", () => {
-    expect(PERIOD_FRESHNESS_THRESHOLDS["15d"]).toBe(2 * 60 * 60_000)
-    expect(PERIOD_FRESHNESS_THRESHOLDS["30d"]).toBe(4 * 60 * 60_000)
-    expect(PERIOD_FRESHNESS_THRESHOLDS["90d"]).toBe(8 * 60 * 60_000)
+  it("15d threshold is 4 hours", () => {
+    expect(PERIOD_FRESHNESS_THRESHOLDS["15d"]).toBe(4 * 60 * 60_000)
+  })
+
+  it("15d is fresh when fetched less than 4h ago", () => {
+    const threshold = PERIOD_FRESHNESS_THRESHOLDS["15d"]
+    const fetchedAt = new Date(Date.now() - 3 * 60 * 60_000) // 3h ago
+    const ageMs = Date.now() - fetchedAt.getTime()
+    expect(ageMs < threshold).toBe(true)
+  })
+
+  it("15d is stale when fetched more than 4h ago", () => {
+    const threshold = PERIOD_FRESHNESS_THRESHOLDS["15d"]
+    const fetchedAt = new Date(Date.now() - 5 * 60 * 60_000) // 5h ago
+    const ageMs = Date.now() - fetchedAt.getTime()
+    expect(ageMs < threshold).toBe(false)
+  })
+
+  it("30d threshold is 6 hours", () => {
+    expect(PERIOD_FRESHNESS_THRESHOLDS["30d"]).toBe(6 * 60 * 60_000)
+  })
+
+  it("30d is fresh when fetched less than 6h ago", () => {
+    const threshold = PERIOD_FRESHNESS_THRESHOLDS["30d"]
+    const fetchedAt = new Date(Date.now() - 5 * 60 * 60_000) // 5h ago
+    const ageMs = Date.now() - fetchedAt.getTime()
+    expect(ageMs < threshold).toBe(true)
+  })
+
+  it("30d is stale when fetched more than 6h ago", () => {
+    const threshold = PERIOD_FRESHNESS_THRESHOLDS["30d"]
+    const fetchedAt = new Date(Date.now() - 7 * 60 * 60_000) // 7h ago
+    const ageMs = Date.now() - fetchedAt.getTime()
+    expect(ageMs < threshold).toBe(false)
+  })
+
+  it("90d threshold is 12 hours", () => {
+    expect(PERIOD_FRESHNESS_THRESHOLDS["90d"]).toBe(12 * 60 * 60_000)
+  })
+
+  it("90d is fresh when fetched less than 12h ago", () => {
+    const threshold = PERIOD_FRESHNESS_THRESHOLDS["90d"]
+    const fetchedAt = new Date(Date.now() - 10 * 60 * 60_000) // 10h ago
+    const ageMs = Date.now() - fetchedAt.getTime()
+    expect(ageMs < threshold).toBe(true)
+  })
+
+  it("90d is stale when fetched more than 12h ago", () => {
+    const threshold = PERIOD_FRESHNESS_THRESHOLDS["90d"]
+    const fetchedAt = new Date(Date.now() - 13 * 60 * 60_000) // 13h ago
+    const ageMs = Date.now() - fetchedAt.getTime()
+    expect(ageMs < threshold).toBe(false)
   })
 })
