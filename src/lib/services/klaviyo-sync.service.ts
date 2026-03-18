@@ -5,6 +5,54 @@
  * NO database access — callers (cron, live endpoints) handle persistence.
  *
  * Extracted from src/app/api/cron/sync-reports/route.ts (Story 10.2)
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * REVENUE DATA SOURCES — Reporting API vs Metric Aggregates (ADR: AK-9)
+ * ─────────────────────────────────────────────────────────────────────────────
+ *
+ * This service uses TWO different Klaviyo APIs to fetch revenue data.
+ * They have different semantics and will return different numbers for the
+ * same time period. This is EXPECTED and documented below.
+ *
+ * 1. REPORTING API (flow-values-reports, campaign-values-reports)
+ *    - Used for: flow/campaign breakdown (per-flow and per-campaign metrics)
+ *    - Attribution: revenue attributed by message SEND date
+ *    - Matches: Klaviyo dashboard UI exactly
+ *    - Endpoint tier: XS (very restrictive rate limits)
+ *
+ * 2. METRIC AGGREGATES (/metric-aggregates/)
+ *    - Used for: total store revenue and order count (no breakdown)
+ *    - Attribution: revenue attributed by EVENT date (Placed Order timestamp)
+ *    - Does NOT match Klaviyo dashboard (uses event time, not send time)
+ *    - Advantage: cheaper API tier, no daily report cap, faster response
+ *
+ * WHY THE DIFFERENCE:
+ *   Reporting API attributes revenue to the date the message was SENT.
+ *   Metric Aggregates attributes revenue to the date the order was PLACED.
+ *   Example: email sent on Jan 1, customer orders on Jan 3.
+ *     - Reporting API: revenue counted on Jan 1
+ *     - Metric Aggregates: revenue counted on Jan 3
+ *
+ * EXPECTED DIVERGENCE:
+ *   For periods >= 7 days, the difference is typically <5%.
+ *   For shorter periods (1-3 days), divergence can reach ~20% due to
+ *   attribution window effects (5-day email window, 1-day SMS window).
+ *
+ * WHY WE USE BOTH:
+ *   - Reporting API for flow/campaign breakdown: business requirement to match
+ *     Klaviyo UI numbers exactly (clients compare our admin with Klaviyo dashboard).
+ *   - Metric Aggregates for total store revenue: no daily report cap, lower API
+ *     cost, and we only need the aggregate total (no per-flow/campaign split).
+ *
+ * IMPORTANT: Do NOT replace Reporting API with Metric Aggregates for
+ * flow/campaign data. This was evaluated in Epic AK (March 2026) and rejected
+ * due to unacceptable divergence from Klaviyo UI for short periods.
+ *
+ * References:
+ *   - Klaviyo Attribution Model: https://developers.klaviyo.com/en/docs/changelog_
+ *   - ADR: docs/architecture/adr-klaviyo-revenue-source.md
+ *   - Decision: Epic AK, March 2026
+ * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import {

@@ -3,6 +3,15 @@
  *
  * Used by the stores control panel to get Klaviyo revenue data
  * without HTTP self-fetch. Calls Klaviyo reporting API directly.
+ *
+ * NOTE: This module uses the Reporting API (campaign-values-reports,
+ * flow-values-reports) which attributes revenue by message SEND date.
+ * This matches the Klaviyo dashboard UI exactly.
+ *
+ * The total store revenue (storeRevenue) used elsewhere comes from
+ * Metric Aggregates (event-date attribution) in klaviyo-sync.service.ts.
+ * A <5% divergence between these sources is expected for periods >= 7d.
+ * See docs/architecture/adr-klaviyo-revenue-source.md for full rationale.
  */
 
 import { getStoreCredentials } from "@/lib/services/credentials.service"

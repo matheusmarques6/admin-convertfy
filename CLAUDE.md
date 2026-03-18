@@ -973,5 +973,43 @@ function calculateRecurringCustomerRate(orders: ShopifyOrder[]) {
 
 ---
 
-*Última atualização: Dezembro 2024*
+## Decisao: Receita Total via Klaviyo (Epic AK, Marco 2026)
+
+### Fontes de Dados
+
+| | Reporting API | Metric Aggregates |
+|---|---|---|
+| **Endpoints** | `*-values-reports`, `*-series-reports` | `/metric-aggregates/` |
+| **Atribuicao** | Data de **envio** da mensagem | Data do **evento** (Placed Order) |
+| **Match Klaviyo UI** | Sim (identico ao dashboard) | Nao |
+| **Usado para** | Flow/campaign breakdown | Receita total da loja |
+| **Rate limit tier** | XS (muito restritivo) | Mais flexivel |
+
+### Decisao
+
+- **Receita total da loja** (`storeRevenue`) = Metric Aggregates (`Placed Order` metric, sem `by`)
+- **Receita atribuida** (per-flow, per-campaign) = Reporting API (`flow-values-reports`, `campaign-values-reports`)
+- **% atribuicao** = `receita_atribuida / receita_total * 100`
+
+### Diferenca Semantica Esperada
+
+Para o mesmo periodo, `sum(flow_revenue + campaign_revenue)` via Reporting API **nao sera igual** a `storeRevenue` via Metric Aggregates. Isso e **esperado** porque:
+
+1. Reporting API atribui revenue na data de ENVIO da mensagem
+2. Metric Aggregates atribui revenue na data do EVENTO (pedido)
+3. A janela de atribuicao (5d email, 1d SMS) causa deslocamento temporal
+
+**Threshold aceitavel:** <5% de divergencia para periodos >= 7 dias. Para periodos curtos (1-3 dias), divergencia pode chegar a ~20%.
+
+### Razao da Decisao
+
+- Clientes comparam nosso admin com o dashboard do Klaviyo — Reporting API garante numeros identicos
+- Metric Aggregates nao tem cap diario e e mais barato em rate limits para receita total
+- Substituir Reporting API por Metric Aggregates foi avaliado e REJEITADO (divergencia inaceitavel)
+
+**Referencia:** `docs/architecture/adr-klaviyo-revenue-source.md`
+
+---
+
+*Última atualização: Marco 2026*
 *Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*

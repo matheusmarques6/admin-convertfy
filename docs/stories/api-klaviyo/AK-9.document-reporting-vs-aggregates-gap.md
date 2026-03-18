@@ -3,7 +3,7 @@ Prioridade: Low
 Sprint: Backlog
 Assignee: "@dev"
 Revisao: "@qa"
-Status: Ready for Dev
+Status: Done
 Epic: "API Klaviyo — Rate Limit & Compliance"
 Fase: "3 - Medium/Low"
 Dependencias: "Epic AK validado em producao"
@@ -43,23 +43,23 @@ Decidimos MANTER a Reporting API (`flow-values-reports`, `campaign-values-report
 
 ### AK-9.1 — Documentacao inline no codigo
 
-- [ ] Adicionar bloco de comentario em `klaviyo-sync.service.ts` explicando:
+- [x] Adicionar bloco de comentario em `klaviyo-sync.service.ts` explicando:
   - A diferenca entre Reporting API e Metric Aggregates
   - Por que escolhemos Metric Aggregates (performance, cap diario)
   - A diferenca semantica esperada (<5% para periodos >= 7d)
   - Referencia ao changelog da Klaviyo para atribuicao
-- [ ] Adicionar comentario em `report-summary.ts` se aplicavel
+- [x] Adicionar comentario em `report-summary.ts` se aplicavel
 
 ### AK-9.2 — Documentacao no CLAUDE.md
 
-- [ ] Atualizar secao "Decisao: Receita Total via Klaviyo" com:
+- [x] Atualizar secao "Decisao: Receita Total via Klaviyo" com:
   - Explicacao da diferenca semantica
   - Threshold aceitavel (<5%)
   - Data da decisao e razao (Epic AK, Marco 2026)
 
 ### AK-9.3 — ADR (Architecture Decision Record)
 
-- [ ] Criar `docs/architecture/adr-klaviyo-revenue-source.md` com:
+- [x] Criar `docs/architecture/adr-klaviyo-revenue-source.md` com:
   - Contexto: 2 fontes de dados com semantica diferente
   - Decisao: Reporting API mantida para flow/campaign (consistencia com Klaviyo UI). Metric Aggregates usado APENAS para receita total.
   - Razoes: dados identicos ao dashboard Klaviyo (requisito de negocio), divergencia de ate 20% em periodos curtos inaceitavel
