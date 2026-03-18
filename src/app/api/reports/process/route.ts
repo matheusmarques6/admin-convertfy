@@ -128,7 +128,8 @@ export async function POST(request: NextRequest) {
           storeId,
           job.period,
           job.start_date,
-          job.end_date
+          job.end_date,
+          job.org_id
         )
 
         if (result.success && result.data) {
@@ -211,7 +212,7 @@ export async function POST(request: NextRequest) {
 
     // All stores processed (or failed) — build result snapshot
     // CR3: Pass revenueMap so snapshot uses captured data, not cache re-reads
-    const finalResult = await buildResultSnapshot(supabase, jobId, storeIds, revenueMap)
+    const finalResult = await buildResultSnapshot(supabase, jobId, storeIds, revenueMap, job.org_id)
 
     // Determine final status
     let finalStatus: "completed" | "partial" | "failed"
@@ -316,6 +317,7 @@ async function buildResultSnapshot(
   jobId: string,
   storeIds: string[],
   revenueMap: Map<string, KlaviyoRevenueSummary>,
+  orgId: string,
 ): Promise<ReportJobResult> {
   // Re-fetch latest progress to know each store's final status
   const { data: job } = await supabase
@@ -326,11 +328,12 @@ async function buildResultSnapshot(
 
   const progress = (job?.progress as Record<string, unknown>) || {}
 
-  // H4: Resolve store names for result snapshot
+  // H4: Resolve store names for result snapshot (scoped to org for defense-in-depth)
   const { data: storeRows } = await supabase
     .from("client_stores")
     .select("id, store_name")
     .in("id", storeIds)
+    .eq("org_id", orgId)
 
   const storeNameMap = new Map<string, string>()
   if (storeRows) {

@@ -35,6 +35,29 @@ export async function POST(request: NextRequest) {
     const startDate = validated.start_date ?? null
     const endDate = validated.end_date ?? null
 
+    // P0: Validate all store_ids belong to this org (IDOR prevention)
+    // Uses RLS-scoped client — only returns stores the user can access
+    const { data: validStores, error: storeError } = await supabase
+      .from("client_stores")
+      .select("id")
+      .in("id", validated.store_ids)
+      .eq("org_id", orgId)
+
+    if (storeError) {
+      return errorResponse(request, storeError, "ReportsGenerate")
+    }
+
+    const validStoreIds = new Set(validStores?.map(s => s.id) ?? [])
+    const invalidStoreIds = validated.store_ids.filter(id => !validStoreIds.has(id))
+
+    if (invalidStoreIds.length > 0) {
+      log.warn(`IDOR attempt: user ${user.id} tried to access stores outside org ${orgId}: ${invalidStoreIds.join(", ")}`)
+      return NextResponse.json(
+        { error: "One or more store_ids do not belong to your organization" },
+        { status: 403 }
+      )
+    }
+
     // Initialize progress with all stores as pending
     const progress: Record<string, { status: string }> = {}
     for (const storeId of validated.store_ids) {

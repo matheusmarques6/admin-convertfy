@@ -65,10 +65,11 @@ export async function getKlaviyoRevenueForStore(
   storeId: string,
   period: string,
   customStartDate?: string | null,
-  customEndDate?: string | null
+  customEndDate?: string | null,
+  orgId?: string | null
 ): Promise<SyncResult<KlaviyoRevenueSummary>> {
   try {
-    const storeData = await getStoreCredentials(storeId)
+    const storeData = await getStoreCredentials(storeId, orgId ?? undefined)
     const apiKey = storeData.klaviyo_private_key || storeData.klaviyo_api_key
 
     if (!apiKey) {
