@@ -6,6 +6,7 @@
  */
 
 import { logger } from "@/lib/logger"
+import { KLAVIYO_REVISION } from "@/lib/integrations/klaviyo/client"
 
 const log = logger.child("CredentialValidator")
 
@@ -135,7 +136,7 @@ async function checkKlaviyoScopes(apiKey: string): Promise<string[]> {
           method: "GET",
           headers: {
             Authorization: `Klaviyo-API-Key ${apiKey}`,
-            revision: "2024-10-15",
+            revision: KLAVIYO_REVISION,
             Accept: "application/json",
           },
           signal: controller.signal,
@@ -184,7 +185,7 @@ export async function validateKlaviyoCredentials(
       method: "GET",
       headers: {
         Authorization: `Klaviyo-API-Key ${apiKey}`,
-        revision: "2024-10-15",
+        revision: KLAVIYO_REVISION,
         Accept: "application/json",
       },
       signal: controller.signal,

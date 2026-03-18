@@ -3,6 +3,7 @@ import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { requireAuth, errorResponse, AppError } from "@/lib/api/errors"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
 import { getAccountInfo } from "@/lib/integrations/klaviyo/account"
+import { KLAVIYO_REVISION } from "@/lib/integrations/klaviyo/client"
 import { findPlacedOrderMetric } from "@/lib/integrations/klaviyo/metrics"
 import { logger } from "@/lib/logger"
 
@@ -37,7 +38,7 @@ export async function POST(request: NextRequest) {
       const metricsRes = await fetch("https://a.klaviyo.com/api/metrics/?page[size]=1", {
         headers: {
           Authorization: `Klaviyo-API-Key ${apiKey}`,
-          revision: "2024-10-15",
+          revision: KLAVIYO_REVISION,
           Accept: "application/json",
         },
       })

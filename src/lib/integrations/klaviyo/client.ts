@@ -50,8 +50,12 @@ export class KlaviyoPermissionError extends Error {
 
 // Latest stable API revision per Klaviyo documentation
 // https://developers.klaviyo.com/en/docs/api_versioning_and_deprecation_policy
+// Updated 2026-03-18 (AK-8): 2024-10-15 → 2025-10-15
+// Breaking changes reviewed: none affect our endpoints (subscription bulk, push campaigns, pagination changes)
+// New: text_message_roi stats in reporting (benefits AK-7 SMS tracking)
+// Retirement: 2024-10-15 retires Oct 2026; 2025-10-15 retires Oct 2027
 export const KLAVIYO_API_URL = "https://a.klaviyo.com/api"
-export const KLAVIYO_REVISION = "2024-10-15"
+export const KLAVIYO_REVISION = "2025-10-15"
 
 // Rate limits are now enforced by the tiered rate limiter in rate-limiter.ts.
 // This constant is kept for backward compatibility with external imports.

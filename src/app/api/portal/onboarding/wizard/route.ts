@@ -3,6 +3,7 @@ import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { updateStoreCredentials } from "@/lib/services/credentials.service"
 import { logger } from "@/lib/logger"
+import { KLAVIYO_REVISION } from "@/lib/integrations/klaviyo/client"
 
 const log = logger.child("PortalOnboardingWizard")
 
@@ -370,7 +371,7 @@ export async function POST(request: NextRequest) {
           testRes = await fetch("https://a.klaviyo.com/api/metrics/?page[size]=1", {
             headers: {
               Authorization: `Klaviyo-API-Key ${private_key}`,
-              revision: "2024-10-15",
+              revision: KLAVIYO_REVISION,
               Accept: "application/json",
             },
           })

@@ -323,8 +323,8 @@ function verifyShopifyWebhook(
 ## Klaviyo API
 
 ### Versionamento
-- Formato: ISO 8601 date (ex: `2024-10-15`)
-- Header: `revision: 2024-10-15`
+- Formato: ISO 8601 date (ex: `2025-10-15`)
+- Header: `revision: 2025-10-15`
 - Suporte: 2 anos após release
 - Recomendação: Atualizar a cada 12-18 meses
 
@@ -337,7 +337,7 @@ https://a.klaviyo.com/api/
 ```typescript
 headers: {
   'Authorization': `Klaviyo-API-Key ${privateApiKey}`,
-  'revision': '2024-10-15',
+  'revision': '2025-10-15',
   'Content-Type': 'application/json',
   'Accept': 'application/json'
 }
@@ -833,7 +833,7 @@ async function getFlowMetrics(
       method: 'POST',
       headers: {
         'Authorization': `Klaviyo-API-Key ${apiKey}`,
-        'revision': '2024-10-15',
+        'revision': '2025-10-15',
         'Content-Type': 'application/json',
         'Accept': 'application/json'
       },
@@ -974,4 +974,4 @@ function calculateRecurringCustomerRate(orders: ShopifyOrder[]) {
 ---
 
 *Última atualização: Dezembro 2024*
-*Versões: Shopify 2024-10, Klaviyo revision 2024-10-15*
+*Versões: Shopify 2024-10, Klaviyo revision 2025-10-15*
