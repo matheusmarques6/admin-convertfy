@@ -23,11 +23,11 @@ O cron `sync-reports` roda a cada 30 minutos com limite de 240s (Vercel Pro max 
 
 | # | Titulo | Prioridade | Esforco | Status | Dependencia |
 |---|--------|------------|---------|--------|-------------|
-| 55.1 | Period Rotation: Skip Fresh Periods | Critical | Low | Ready for Dev | - |
-| 55.2 | Cache flowNames/campNames por API Key Group | High | Low | Ready for Dev | - |
-| 55.3 | Eliminar Double-Throttling nos Sleeps | High | Low | Ready for Dev | - |
-| 55.4 | Aumentar Metadata Cache TTL | High | Low | Ready for Dev | - |
-| 55.5 | Round-Robin por Freshness (Lojas Mais Velhas Primeiro) | Critical | Low-Medium | Ready for Dev | 55.1 |
+| 55.1 | Period Rotation: Skip Fresh Periods | Critical | Low | Done | - |
+| 55.2 | Cache flowNames/campNames por API Key Group | High | Low | Done | - |
+| 55.3 | Eliminar Double-Throttling nos Sleeps | High | Low | Done | - |
+| 55.4 | Aumentar Metadata Cache TTL | High | Low | Done | - |
+| 55.5 | Round-Robin por Freshness (Lojas Mais Velhas Primeiro) | Critical | Low-Medium | Done | 55.1 |
 
 ## Ordem de Implementacao Recomendada
 

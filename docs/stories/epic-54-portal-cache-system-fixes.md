@@ -11,26 +11,26 @@ Problemas identificados por 4 agentes (Dev, QA, Arquiteto, Data Engineer) em 202
 ## Fases
 
 ### Phase 1 — Critical Data Integrity (MUST FIX)
-| Story | Titulo | Prioridade | Esforco |
-|-------|--------|------------|---------|
-| 54.1 | Add missing `period_label` column migration | CRITICAL | LOW |
-| 54.2 | Fix `org_id: null` violating NOT NULL in sync-persistence | CRITICAL | LOW |
+| Story | Titulo | Prioridade | Esforco | Status |
+|-------|--------|------------|---------|--------|
+| 54.1 | Add missing `period_label` column migration | CRITICAL | LOW | Done |
+| 54.2 | Fix `org_id: null` violating NOT NULL in sync-persistence | CRITICAL | LOW | Done |
 
 ### Phase 2 — High Reliability & Performance
-| Story | Titulo | Prioridade | Esforco |
-|-------|--------|------------|---------|
-| 54.3 | Atomic write for flow/campaign metrics (eliminate race condition) | HIGH | MEDIUM |
-| 54.4 | Add missing index on `period_label` for metrics tables | HIGH | LOW |
-| 54.5 | Async Shopify fetch (stop blocking portal response) | HIGH | MEDIUM |
-| 54.6 | Decompose portal dashboard god route (1100+ lines) | HIGH | HIGH |
+| Story | Titulo | Prioridade | Esforco | Status |
+|-------|--------|------------|---------|--------|
+| 54.3 | Atomic write for flow/campaign metrics (eliminate race condition) | HIGH | MEDIUM | Done |
+| 54.4 | Add missing index on `period_label` for metrics tables | HIGH | LOW | Done |
+| 54.5 | Async Shopify fetch (stop blocking portal response) | HIGH | MEDIUM | Done |
+| 54.6 | Decompose portal dashboard god route (1100+ lines) | HIGH | HIGH | Done |
 
 ### Phase 3 — Medium Improvements
-| Story | Titulo | Prioridade | Esforco |
-|-------|--------|------------|---------|
-| 54.7 | Fix useless touch pattern (`expires_at` vs `fetched_at`) | MEDIUM | LOW |
-| 54.8 | Standardize RLS policies across cache tables | MEDIUM | MEDIUM |
-| 54.9 | Add TTL/cleanup for flow/campaign metrics tables | MEDIUM | LOW |
-| 54.10 | Fix frontend preserving stale period data | MEDIUM | LOW |
+| Story | Titulo | Prioridade | Esforco | Status |
+|-------|--------|------------|---------|--------|
+| 54.7 | Fix useless touch pattern (`expires_at` vs `fetched_at`) | MEDIUM | LOW | Done |
+| 54.8 | Standardize RLS policies across cache tables | MEDIUM | MEDIUM | Done |
+| 54.9 | Add TTL/cleanup for flow/campaign metrics tables | MEDIUM | LOW | Done |
+| 54.10 | Fix frontend preserving stale period data | MEDIUM | LOW | Done |
 
 ### Phase 4 — Low Priority Cleanup
 | Story | Titulo | Prioridade | Esforco |

@@ -6,13 +6,14 @@ Conjunto de melhorias no cron `sync-reports` identificadas durante triage de log
 
 ## Escopo
 
-| Story | Titulo | Prioridade | Esforco | Dependencia |
-|-------|--------|------------|---------|-------------|
-| 33.1 | Fix Engagement Rate >100% | Critica | Baixo | - |
-| 33.2 | Add DB CHECK Constraint for Engagement Rate | Alta | Baixo | 33.1 deployed |
-| 33.3 | Group Cron Batching by API Key | Alta | Medio | - |
-| 33.4 | Auto-Skip Stores Without Reporting Access | Alta | Baixo | - |
-| 33.5 | Fix Cron Lock Race Condition | Media | Baixo | - |
+| Story | Titulo | Prioridade | Esforco | Status | Dependencia |
+|-------|--------|------------|---------|--------|-------------|
+| 33.1 | Fix Engagement Rate >100% | Critica | Baixo | Done | - |
+| 33.2 | Add DB CHECK Constraint for Engagement Rate | Alta | Baixo | Done | 33.1 deployed |
+| 33.3 | Group Cron Batching by API Key | Alta | Medio | Done | - |
+| 33.4 | Auto-Skip Stores Without Reporting Access | Alta | Baixo | Done | - |
+| 33.5 | Fix Cron Lock Race Condition | Media | Baixo | Done | - |
+| 33.6 | Rate Limit Fallback to Cache | Alta | Alto | Done | - |
 
 ## Dependencias
 
