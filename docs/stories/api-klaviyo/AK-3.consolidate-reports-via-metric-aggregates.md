@@ -3,7 +3,7 @@ Prioridade: High
 Sprint: Current
 Assignee: "@dev"
 Revisao: "@qa"
-Status: Ready for Dev
+Status: Done
 Epic: "API Klaviyo — Rate Limit & Compliance"
 Fase: "2 - High Priority"
 Esforco: LOW
@@ -66,16 +66,16 @@ Dependencias: "AK-1 (tiered limiter), AK-4 (serializar report-summary)"
 
 ### AK-3.3 — Documentar decisao de fonte de dados
 
-- [ ] Adicionar comentario em `klaviyo-sync.service.ts` explicando:
+- [x] Adicionar comentario em `klaviyo-sync.service.ts` explicando:
   - `flow-values-reports` e `campaign-values-reports` sao mantidos porque usam a mesma atribuicao do Klaviyo UI
   - `metric-aggregates` e usado APENAS para receita total e orders (nao para breakdown)
   - NAO substituir por metric-aggregates — causa divergencia de ate 20% para periodos curtos
 
 ### AK-3.4 — Testes
 
-- [ ] Verificar que remocao de `REPORT_API_DELAY_MS` nao causa mais null responses (rate limiter cuida)
-- [ ] Verificar que cache-first em report-summary retorna dados identicos
-- [ ] Verificar que dados de flow/campaign continuam identicos ao Klaviyo UI
+- [x] Verificar que remocao de `REPORT_API_DELAY_MS` nao causa mais null responses (rate limiter cuida)
+- [x] Verificar que cache-first em report-summary retorna dados identicos
+- [x] Verificar que dados de flow/campaign continuam identicos ao Klaviyo UI
 
 ## Impacto Esperado
 
