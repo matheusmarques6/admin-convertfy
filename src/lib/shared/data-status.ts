@@ -61,6 +61,23 @@ export const PERIOD_FRESHNESS_THRESHOLDS: Record<CachedPeriod, number> = {
   "12m": 24 * 60 * 60_000,  // 24 hours — annual data barely changes intra-day (AK-11)
 }
 
+// ─── Attribution Settling (AK-14) ────────────────────────────────────────────
+
+/** Periods where Klaviyo attribution data is still settling (< attribution window) */
+export const SETTLING_PERIODS = ["1d", "7d"] as const
+export type SettlingPeriod = (typeof SETTLING_PERIODS)[number]
+
+/** Days for Klaviyo last-touch attribution to stabilize (default email window) */
+export const ATTRIBUTION_SETTLING_DAYS = 5
+
+/** Type guard: is this period still within the attribution settling window? */
+export function isSettlingPeriod(period: string): period is SettlingPeriod {
+  return (SETTLING_PERIODS as readonly string[]).includes(period)
+}
+
+/** Multiplier for freshness threshold to consider data "stale" in the UI */
+export const STALE_THRESHOLD_MULTIPLIER = 2
+
 // ─── Cooldown Constants ──────────────────────────────────────────────────────
 
 /** Cooldown in ms between live fetches for the same store+period */

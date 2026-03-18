@@ -31,6 +31,8 @@ import { LastSendCard } from "./last-send-card"
 import { TopFlowCard } from "./top-flow-card"
 import { AnimatedContainer, AnimatedItem } from "@/components/ui/animated-container"
 import { DataStatusBanner } from "@/components/ui/data-status-banner"
+import { SettlingIndicator } from "@/components/portal/settling-indicator"
+import { StaleBadge } from "@/components/portal/stale-badge"
 import { useRealtimeRevenue } from "@/hooks/use-realtime-revenue"
 import { OnboardingDashboard } from "./onboarding-dashboard"
 import type { DashboardData } from "./types"
@@ -233,6 +235,8 @@ export default function PortalDashboardPage() {
         </div>
 
         <div className="flex items-center gap-3">
+          <StaleBadge period={period} lastFetchedAt={data?.lastFetchedAt} />
+
           <Select value={period} onValueChange={setPeriod}>
             <SelectTrigger className="w-[140px] h-10 bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40 text-slate-700 dark:text-slate-200 rounded-lg shadow-sm dark:shadow-slate-900/20">
               <CalendarDays className="h-4 w-4 mr-2 text-slate-400 dark:text-slate-500" />
@@ -275,7 +279,10 @@ export default function PortalDashboardPage() {
           {klaviyoLoading ? (
             <Skeleton className="h-48 bg-slate-100 dark:bg-slate-800 rounded-2xl" />
           ) : (
-            <HeroSection klaviyo={klaviyo} />
+            <>
+              <HeroSection klaviyo={klaviyo} />
+              <SettlingIndicator period={period} />
+            </>
           )}
         </AnimatedItem>
 
