@@ -16,6 +16,7 @@ import {
   CalendarDays,
   Wallet,
   PieChart,
+  FileBarChart,
   Puzzle,
   Settings,
   ChevronLeft,
@@ -52,6 +53,7 @@ import { useUIStore } from "@/lib/store"
 import { toast } from "@/lib/hooks/use-toast"
 import { usePermissions } from "@/lib/hooks/use-permissions"
 import { ROUTES } from "@/lib/routes"
+import { NotificationBell } from "@/components/layout/notification-bell"
 
 interface NavItem {
   name: string
@@ -82,6 +84,7 @@ const navigation: NavItem[] = [
   { name: "Reunioes", href: ROUTES.ADMIN.MEETINGS.LIST, icon: CalendarDays, group: "operacional", requiredFeatures: ["calendar_control"] },
   { name: "Financeiro", href: ROUTES.ADMIN.FINANCIAL, icon: Wallet, group: "operacional", requiredFeatures: ["view_financial"] },
   { name: "Relatorios", href: ROUTES.ADMIN.REPORTS.LIST, icon: PieChart, group: "operacional", requiredFeatures: ["view_reports"] },
+  { name: "Relatorios Gerados", href: ROUTES.ADMIN.REPORT_JOBS.LIST, icon: FileBarChart, group: "operacional", requiredFeatures: ["view_reports"] },
   { name: "Ferramentas", href: ROUTES.ADMIN.TOOLS, icon: Puzzle, group: "operacional" },
 ]
 
@@ -275,6 +278,13 @@ export function Sidebar({ user }: SidebarProps) {
               {filteredBottomNavigation.map(renderNavItem)}
             </nav>
           </LayoutGroup>
+
+          {/* Notification Bell */}
+          {user && (
+            <div className={cn("mb-2", sidebarCollapsed ? "flex justify-center" : "px-0.5")}>
+              <NotificationBell collapsed={sidebarCollapsed} />
+            </div>
+          )}
 
           {/* User */}
           <DropdownMenu>

@@ -92,6 +92,35 @@ export interface ReportData {
   [key: string]: unknown
 }
 
+// ─── Report Generation Types (Epic RG) ─────────────────────────────────────
+
+export type StoreLoadStatus = "queued" | "loading" | "success" | "error"
+
+export interface StoreLoadState {
+  status: StoreLoadStatus
+  data?: {
+    totalRevenue: number
+    campaignRevenue: number
+    flowRevenue: number
+    currency: string
+  }
+  error?: string
+}
+
+export interface FanOutResult {
+  stores: Map<string, StoreLoadState>
+  completedCount: number
+  totalCount: number
+  isAllDone: boolean
+  hasErrors: boolean
+  failedCount: number
+}
+
+export interface DateRange {
+  startDate: string // YYYY-MM-DD
+  endDate: string   // YYYY-MM-DD
+}
+
 // Legacy interface for backwards compatibility
 export interface ReportMetrics {
   revenue?: number
@@ -101,4 +130,58 @@ export interface ReportMetrics {
   roas?: number
   email_revenue?: number
   custom_metrics?: Record<string, number>
+}
+
+// ─── Report Job Types (RG-4/RG-5) ──────────────────────────────────────────
+
+export type ReportJobStatus = 'queued' | 'processing' | 'completed' | 'partial' | 'paused' | 'failed' | 'cancelled' | 'expired'
+
+export interface ReportJob {
+  id: string
+  org_id: string
+  user_id: string
+  store_ids: string[]
+  period: string
+  start_date: string | null
+  end_date: string | null
+  status: ReportJobStatus
+  progress: ReportJobProgress
+  result: ReportJobResult | null
+  viewed_at: string | null
+  created_at: string
+  updated_at: string
+  expires_at: string
+}
+
+export interface ReportJobProgress {
+  [key: string]: unknown
+  invocation_count?: number
+  paused_reason?: string
+  paused_at?: string
+  failure_reason?: string
+}
+
+export interface ReportJobStoreProgress {
+  status: 'pending' | 'processing' | 'completed' | 'failed'
+  completed_at?: string
+  error?: string
+}
+
+export interface ReportJobResult {
+  total_revenue: number
+  klaviyo_attributed_revenue: number
+  stores_processed: number
+  stores_failed: number
+  currencies?: string[]
+  per_store: {
+    [storeId: string]: {
+      store_name?: string
+      revenue: number
+      campaign_revenue: number
+      flow_revenue: number
+      currency: string
+      error?: string
+    }
+  }
+  generated_at: string
 }

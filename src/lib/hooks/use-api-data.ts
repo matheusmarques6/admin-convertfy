@@ -15,7 +15,7 @@ function buildPeriodParams(period: string, customDates?: CustomDateRange): strin
 // ---------------------------------------------------------------------------
 // Generic fetcher – throws on non-ok responses so SWR treats them as errors.
 // ---------------------------------------------------------------------------
-async function apiFetcher<T = unknown>(url: string): Promise<T> {
+export async function apiFetcher<T = unknown>(url: string): Promise<T> {
   const res = await fetch(url)
   if (!res.ok) {
     const text = await res.text()

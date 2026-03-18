@@ -12,7 +12,8 @@ ALTER TABLE store_revenue_summary
 
 ALTER TABLE store_revenue_summary
   ADD CONSTRAINT valid_period_label CHECK (
-    period_label IN ('7d', '15d', '30d', '90d', '1d', '12m', 'custom')
+    period_label IN ('7d', '15d', '30d', '90d', '1d', '12m')
+    OR period_label LIKE 'custom:%'
   );
 
 -- 2. klaviyo_flow_metrics — add '1d' (allows NULL)
@@ -21,7 +22,7 @@ ALTER TABLE klaviyo_flow_metrics
 
 ALTER TABLE klaviyo_flow_metrics
   ADD CONSTRAINT chk_flow_metrics_period_label
-  CHECK (period_label IS NULL OR period_label IN ('7d', '15d', '30d', '90d', '1d', '12m'));
+  CHECK (period_label IS NULL OR period_label IN ('7d', '15d', '30d', '90d', '1d', '12m') OR period_label LIKE 'custom:%');
 
 -- 3. klaviyo_campaign_metrics — add '1d' (allows NULL)
 ALTER TABLE klaviyo_campaign_metrics
@@ -29,6 +30,6 @@ ALTER TABLE klaviyo_campaign_metrics
 
 ALTER TABLE klaviyo_campaign_metrics
   ADD CONSTRAINT chk_campaign_metrics_period_label
-  CHECK (period_label IS NULL OR period_label IN ('7d', '15d', '30d', '90d', '1d', '12m'));
+  CHECK (period_label IS NULL OR period_label IN ('7d', '15d', '30d', '90d', '1d', '12m') OR period_label LIKE 'custom:%');
 
 COMMIT;

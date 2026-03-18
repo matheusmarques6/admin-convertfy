@@ -38,6 +38,37 @@ export function isCachedPeriod(period: string): period is CachedPeriod {
   return (CACHED_PERIODS as readonly string[]).includes(period)
 }
 
+// ─── Custom Period Helpers (RG-1 / CR1) ─────────────────────────────────────
+
+/**
+ * Check if a period string represents a custom date range.
+ * Handles both legacy `'custom'` (from frontend params) and composite
+ * `'custom:YYYY-MM-DD:YYYY-MM-DD'` (from DB period_label).
+ */
+export function isCustomPeriod(period: string): boolean {
+  return period === "custom" || period.startsWith("custom:")
+}
+
+/**
+ * Build composite period_label for a custom date range.
+ * Format: 'custom:2026-01-01:2026-03-18'
+ * This is what gets stored in store_revenue_summary.period_label.
+ */
+export function buildCustomPeriodLabel(startDate: string, endDate: string): string {
+  return `custom:${startDate}:${endDate}`
+}
+
+/**
+ * Parse a composite custom period_label back into start/end dates.
+ * Returns null if the label is not a valid composite custom period.
+ */
+export function parseCustomPeriodLabel(label: string): { startDate: string; endDate: string } | null {
+  if (!label.startsWith("custom:")) return null
+  const parts = label.split(":")
+  if (parts.length !== 3) return null
+  return { startDate: parts[1], endDate: parts[2] }
+}
+
 // ─── Sync Result ─────────────────────────────────────────────────────────────
 
 /** Generic result type for sync service operations (replaces silent null returns) */
@@ -88,3 +119,40 @@ export const CUSTOM_RANGE_COOLDOWN_MS = 30 * 60_000
 
 /** TTL for live fetch results cached in store_revenue_summary */
 export const LIVE_FETCH_CACHE_TTL_MS = 5 * 60_000
+
+// ─── Custom Range Cache TTL (RG-1) ─────────────────────────────────────────
+
+/**
+ * TTL in ms for custom range cache, tiered by how "historical" the range is.
+ *
+ * | Condition                              | TTL        |
+ * |----------------------------------------|------------|
+ * | end_date < today - 7d (historical)     | 30 days    |
+ * | end_date < today (recent)              | 6 hours    |
+ * | end_date >= today, range > 30d (long)  | 2 hours    |
+ * | end_date >= today, range <= 30d (short)| 30 minutes |
+ */
+export function getCustomRangeTTL(rangeStart: Date, rangeEnd: Date): number {
+  const now = new Date()
+  const msPerDay = 24 * 60 * 60_000
+  const daysSinceEnd = (now.getTime() - rangeEnd.getTime()) / msPerDay
+  const rangeDays = (rangeEnd.getTime() - rangeStart.getTime()) / msPerDay
+
+  if (daysSinceEnd > 7) return 30 * 24 * 60 * 60_000    // historical: 30 days
+  if (daysSinceEnd >= 1) return 6 * 60 * 60_000           // recent: 6 hours
+  if (rangeDays > 30) return 2 * 60 * 60_000              // ongoing long: 2 hours
+  return 30 * 60_000                                       // ongoing short: 30 minutes
+}
+
+/**
+ * Check if a custom range cache row is still fresh based on tiered TTL.
+ */
+export function isCustomRangeCacheFresh(
+  fetchedAt: string | Date,
+  rangeStart: Date,
+  rangeEnd: Date
+): boolean {
+  const fetchedDate = typeof fetchedAt === "string" ? new Date(fetchedAt) : fetchedAt
+  const ttl = getCustomRangeTTL(rangeStart, rangeEnd)
+  return Date.now() - fetchedDate.getTime() < ttl
+}

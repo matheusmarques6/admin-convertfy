@@ -9,7 +9,7 @@
 
 import { SupabaseClient } from "@supabase/supabase-js"
 import { createHash } from "crypto"
-import { LIVE_FETCH_COOLDOWN_MS, CUSTOM_RANGE_COOLDOWN_MS } from "@/lib/shared/data-status"
+import { LIVE_FETCH_COOLDOWN_MS, CUSTOM_RANGE_COOLDOWN_MS, isCustomPeriod } from "@/lib/shared/data-status"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("FetchCooldown")
@@ -20,7 +20,7 @@ const log = logger.child("FetchCooldown")
  * - Custom ranges: returns "custom_" + md5 hash of date range (e.g., "custom_a1b2c3d4")
  */
 export function getFetchKey(period: string, startDate?: string, endDate?: string): string {
-  if (period === "custom" && startDate && endDate) {
+  if (isCustomPeriod(period) && startDate && endDate) {
     const hash = createHash("md5").update(`${startDate}_${endDate}`).digest("hex").slice(0, 8)
     return `custom_${hash}`
   }

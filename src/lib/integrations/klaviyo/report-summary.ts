@@ -21,7 +21,7 @@ import { KlaviyoRateLimitError } from "./client"
 import { getTimezoneOffset } from "./account"
 import { getCachedAccountInfo } from "./cached-metadata"
 import { getCachedPlacedOrderMetric } from "./cached-metadata"
-import { type SyncResult, isCachedPeriod, LIVE_FETCH_CACHE_TTL_MS, isCustomRangeCacheFresh, getCustomRangeTTL } from "@/lib/shared/data-status"
+import { type SyncResult, isCachedPeriod, isCustomPeriod, buildCustomPeriodLabel, LIVE_FETCH_CACHE_TTL_MS, isCustomRangeCacheFresh, getCustomRangeTTL } from "@/lib/shared/data-status"
 import { createAdminClient } from "@/lib/supabase/server"
 
 const log = logger.child("KlaviyoReportSummary")
@@ -183,16 +183,15 @@ export async function getKlaviyoRevenueForStore(
 
     // CR2: Cache-first for custom ranges — check write-through cache before live fetch.
     // Custom ranges use the upsert_custom_range_cache RPC with (store_id, range_start, range_end) uniqueness.
-    if (period === "custom" && customStartDate && customEndDate) {
+    if (isCustomPeriod(period) && customStartDate && customEndDate) {
       try {
         const adminClient = createAdminClient()
+        const customLabel = buildCustomPeriodLabel(customStartDate, customEndDate)
         const { data: row } = await adminClient
           .from("store_revenue_summary")
           .select("klaviyo_campaign_revenue, klaviyo_flow_revenue, currency, fetched_at, sync_status")
           .eq("store_id", storeId)
-          .eq("period_label", "custom")
-          .eq("range_start", customStartDate)
-          .eq("range_end", customEndDate)
+          .eq("period_label", customLabel)
           .single()
 
         if (row && row.sync_status !== "error") {
@@ -315,7 +314,7 @@ export async function getKlaviyoRevenueForStore(
     }
 
     // CR2: Write-through for custom ranges — persist via upsert_custom_range_cache RPC
-    if (period === "custom" && customStartDate && customEndDate) {
+    if (isCustomPeriod(period) && customStartDate && customEndDate) {
       try {
         const adminClient = createAdminClient()
 
@@ -370,15 +369,15 @@ export async function getKlaviyoRevenueForStore(
     if (error instanceof KlaviyoRateLimitError) {
       log.warn(`Store ${storeId}: rate limited, attempting stale cache fallback...`)
       try {
-        if (isCachedPeriod(period) || period === "1d" || period === "custom") {
+        if (isCachedPeriod(period) || period === "1d" || isCustomPeriod(period)) {
           const adminClient = createAdminClient()
           let query = adminClient
             .from("store_revenue_summary")
             .select("klaviyo_campaign_revenue, klaviyo_flow_revenue, currency, fetched_at, sync_status")
             .eq("store_id", storeId)
 
-          if (period === "custom" && customStartDate && customEndDate) {
-            query = query.eq("period_label", "custom").eq("range_start", customStartDate).eq("range_end", customEndDate)
+          if (isCustomPeriod(period) && customStartDate && customEndDate) {
+            query = query.eq("period_label", buildCustomPeriodLabel(customStartDate, customEndDate))
           } else {
             query = query.eq("period_label", period)
           }

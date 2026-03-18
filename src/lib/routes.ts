@@ -58,6 +58,11 @@ export const ROUTES = {
       EDIT: (id: string) => `/admin/reports/${id}/edit` as const,
     },
 
+    REPORT_JOBS: {
+      LIST: "/admin/report-jobs",
+      DETAIL: (id: string) => `/admin/report-jobs/${id}` as const,
+    },
+
     PIPELINE: "/admin/pipeline",
     TEAM: "/admin/team",
     NOTIFICATIONS: "/admin/notifications",

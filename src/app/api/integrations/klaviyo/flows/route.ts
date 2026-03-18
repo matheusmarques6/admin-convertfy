@@ -20,7 +20,7 @@ import {
   KlaviyoInvalidKeyError,
 } from "@/lib/integrations/klaviyo"
 import { corsHeaders, handleCorsPreFlight } from "@/lib/cors"
-import { isCachedPeriod } from "@/lib/shared/data-status"
+import { isCachedPeriod, buildCustomPeriodLabel } from "@/lib/shared/data-status"
 import { RATE_LIMIT_MAX_CACHE_AGE_MS } from "@/lib/integrations/klaviyo"
 import type { SupabaseClient } from "@supabase/supabase-js"
 
@@ -533,7 +533,7 @@ export async function GET(request: NextRequest) {
             trigger_type: flow.triggerType,
             period_start: periodStartISO,
             period_end: periodEndISO,
-            period_label: isCachedPeriod(period) ? period : "custom",
+            period_label: isCachedPeriod(period) ? period : buildCustomPeriodLabel(startDateStr, endDateStr),
             recipients: flow.recipients,
             delivered: flow.delivered,
             delivery_rate: flow.deliveryRate,
