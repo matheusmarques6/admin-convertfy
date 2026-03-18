@@ -469,11 +469,15 @@ export async function syncKlaviyoForPeriod(
     const periodStartISO = new Date(`${startDateStr}T00:00:00Z`).toISOString()
     const periodEndISO = new Date(`${endDateStr}T23:59:59.999Z`).toISOString()
 
-    // Serialize API calls to avoid Klaviyo reporting API rate limits (~1 req/s burst).
-    // Previously Promise.all caused campaign-values-reports to consistently return null.
-    // NOTE: The global rate limiter (rate-limiter.ts, 1200ms/req) handles inter-request
-    // spacing. We add a small safety margin for the reporting API which is more restrictive.
-    const REPORT_API_DELAY_MS = 300
+    // Report API calls are serialized by the tiered rate limiter (AK-1: 4s interval for XS tier).
+    // No manual delay needed — the rate limiter enforces correct spacing per Klaviyo's tier system.
+    //
+    // DATA SOURCE DECISION (AK-3):
+    // - flow-values-reports + campaign-values-reports: Reporting API — matches Klaviyo UI exactly
+    //   (revenue attributed by message SEND date, same attribution model as Klaviyo dashboard).
+    // - metric-aggregates: Used ONLY for total store revenue and order count (not breakdown).
+    //   DO NOT replace Reporting API with metric-aggregates — causes up to ~20% divergence
+    //   for short periods due to event-date vs send-date attribution difference.
 
     // 1. Flow report
     const startFlow = Date.now()
@@ -505,8 +509,6 @@ export async function syncKlaviyoForPeriod(
       log.warn(`[CronSync] flow-values-report FAILED for store ${storeId}: null response (likely rate-limited)`)
     }
 
-    await sleep(REPORT_API_DELAY_MS)
-
     // 2. Campaign report
     const startCamp = Date.now()
     const campaignResponse = await klaviyoRequest<{
@@ -536,8 +538,6 @@ export async function syncKlaviyoForPeriod(
     } else {
       log.warn(`[CronSync] campaign-values-report FAILED for store ${storeId}: null response (likely rate-limited)`)
     }
-
-    await sleep(REPORT_API_DELAY_MS)
 
     // 3. Metric aggregates (store revenue)
     const startMetric = Date.now()

@@ -92,35 +92,73 @@ export async function getKlaviyoRevenueForStore(
       }
     }
 
+    // AK-3: Cache-first — return fresh cached data without calling API.
+    // When operators open multiple stores in the admin panel, this avoids redundant
+    // XS-tier API calls (4s each) for data the cron already synced.
+    if (isCachedPeriod(period)) {
+      try {
+        const adminClient = createAdminClient()
+        const { data: row } = await adminClient
+          .from("store_revenue_summary")
+          .select("campaign_revenue, flow_revenue, currency, fetched_at, sync_status")
+          .eq("store_id", storeId)
+          .eq("period_label", period)
+          .order("fetched_at", { ascending: false })
+          .limit(1)
+          .single()
+
+        if (row && row.sync_status !== "error") {
+          const fetchedAt = new Date(row.fetched_at as string)
+          const ageMs = Date.now() - fetchedAt.getTime()
+          // Serve cache if under 1 hour old (cron runs every ~4 min)
+          const CACHE_FRESH_MS = 60 * 60 * 1000
+          if (ageMs < CACHE_FRESH_MS) {
+            const cached: KlaviyoRevenueSummary = {
+              totalRevenue: ((row.campaign_revenue as number) || 0) + ((row.flow_revenue as number) || 0),
+              campaignRevenue: (row.campaign_revenue as number) || 0,
+              flowRevenue: (row.flow_revenue as number) || 0,
+              currency: (row.currency as string) || currency,
+            }
+            log.info(`Store ${storeId}: serving fresh cache (age=${Math.round(ageMs / 1000)}s) for period ${period}`)
+            return {
+              success: true, data: cached,
+              source: "cache", fetchedAt: row.fetched_at as string,
+            }
+          }
+        }
+      } catch {
+        // Cache lookup failed — fall through to live API call
+      }
+    }
+
     const reportAttributes = {
       statistics: ["conversion_value"],
       timeframe: { start: startISO, end: endISO },
       conversion_metric_id: placedOrderMetric,
     }
 
-    // Fetch campaign and flow reports in parallel
-    const [campaignReport, flowReport] = await Promise.all([
-      klaviyoRequest<KlaviyoValuesReport>(apiKey, "/campaign-values-reports/", {
-        method: "POST",
-        body: {
-          data: {
-            type: "campaign-values-report",
-            attributes: reportAttributes,
-          },
+    // Fetch campaign and flow reports sequentially (AK-4)
+    // Reporting API is tier XS (1 req/s burst). Promise.all would violate burst limit.
+    const campaignReport = await klaviyoRequest<KlaviyoValuesReport>(apiKey, "/campaign-values-reports/", {
+      method: "POST",
+      body: {
+        data: {
+          type: "campaign-values-report",
+          attributes: reportAttributes,
         },
-        logTag: "KlaviyoReportSummary",
-      }),
-      klaviyoRequest<KlaviyoValuesReport>(apiKey, "/flow-values-reports/", {
-        method: "POST",
-        body: {
-          data: {
-            type: "flow-values-report",
-            attributes: reportAttributes,
-          },
+      },
+      logTag: "KlaviyoReportSummary",
+    })
+    const flowReport = await klaviyoRequest<KlaviyoValuesReport>(apiKey, "/flow-values-reports/", {
+      method: "POST",
+      body: {
+        data: {
+          type: "flow-values-report",
+          attributes: reportAttributes,
         },
-        logTag: "KlaviyoReportSummary",
-      }),
-    ])
+      },
+      logTag: "KlaviyoReportSummary",
+    })
 
     if (!campaignReport && !flowReport) {
       log.warn(`Store ${storeId}: both Klaviyo report requests returned null (API error or rate limit)`)

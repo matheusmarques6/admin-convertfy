@@ -3,7 +3,7 @@ Prioridade: Critical
 Sprint: Current
 Assignee: "@dev"
 Revisao: "@qa"
-Status: Ready for Dev
+Status: Done
 Epic: "API Klaviyo — Rate Limit & Compliance"
 Fase: "1 - Critical Fixes"
 Dependencias: "Nenhuma"
@@ -42,19 +42,19 @@ Null responses frequentes no log: `"both Klaviyo report requests returned null"`
 
 ### AK-4.1 — Serializar chamadas de report
 
-- [ ] Substituir `Promise.all` por chamadas sequenciais:
+- [x] Substituir `Promise.all` por chamadas sequenciais:
   ```typescript
   const campaignReport = await klaviyoRequest(apiKey, "/campaign-values-reports/", ...)
   const flowReport = await klaviyoRequest(apiKey, "/flow-values-reports/", ...)
   ```
-- [ ] Nao adicionar delay manual — o rate limiter (pos AK-1) cuida do intervalo
-- [ ] Manter toda a logica de null handling e fallback inalterada
+- [x] Nao adicionar delay manual — o rate limiter (pos AK-1) cuida do intervalo
+- [x] Manter toda a logica de null handling e fallback inalterada
 
 ### AK-4.2 — Teste
 
-- [ ] Verificar que ambos reports sao chamados sequencialmente (mock que confirma ordem)
-- [ ] Verificar que se o primeiro falha (null), o segundo ainda e tentado
-- [ ] Verificar que o retorno `KlaviyoRevenueSummary` e identico ao comportamento anterior
+- [x] Verificar que ambos reports sao chamados sequencialmente (mock que confirma ordem)
+- [x] Verificar que se o primeiro falha (null), o segundo ainda e tentado
+- [x] Verificar que o retorno `KlaviyoRevenueSummary` e identico ao comportamento anterior
 
 ## Impacto Esperado
 

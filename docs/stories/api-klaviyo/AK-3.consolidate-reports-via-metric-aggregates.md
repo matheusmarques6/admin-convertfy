@@ -52,17 +52,17 @@ Dependencias: "AK-1 (tiered limiter), AK-4 (serializar report-summary)"
 
 ### AK-3.1 — Remover REPORT_API_DELAY_MS
 
-- [ ] Em `klaviyo-sync.service.ts`, remover a constante `REPORT_API_DELAY_MS = 300`
-- [ ] Remover os 3 `await sleep(REPORT_API_DELAY_MS)` entre report calls (linhas ~508, 540, e apos metric-aggregates)
-- [ ] Atualizar comentario: o tiered rate limiter (AK-1) agora cuida do spacing entre calls XS
-- [ ] O rate limiter garante 4s entre calls XS — nenhum delay manual necessario
+- [x] Em `klaviyo-sync.service.ts`, remover a constante `REPORT_API_DELAY_MS = 300`
+- [x] Remover os 3 `await sleep(REPORT_API_DELAY_MS)` entre report calls (linhas ~508, 540, e apos metric-aggregates)
+- [x] Atualizar comentario: o tiered rate limiter (AK-1) agora cuida do spacing entre calls XS
+- [x] O rate limiter garante 4s entre calls XS — nenhum delay manual necessario
 
 ### AK-3.2 — Cache-first para report-summary.ts (opcional)
 
-- [ ] Antes de chamar a Klaviyo API, verificar se `store_revenue_summary` tem dados frescos para o periodo
-- [ ] Se cache fresco (< freshness threshold): retornar dados do cache sem chamar API
-- [ ] Se cache stale: chamar API normalmente (pos AK-4, ja serializado)
-- [ ] Isso elimina chamadas desnecessarias quando o operador abre varias lojas no admin panel
+- [x] Antes de chamar a Klaviyo API, verificar se `store_revenue_summary` tem dados frescos para o periodo
+- [x] Se cache fresco (< freshness threshold): retornar dados do cache sem chamar API
+- [x] Se cache stale: chamar API normalmente (pos AK-4, ja serializado)
+- [x] Isso elimina chamadas desnecessarias quando o operador abre varias lojas no admin panel
 
 ### AK-3.3 — Documentar decisao de fonte de dados
 
