@@ -22,11 +22,11 @@ export interface DataStatusMeta {
 // ─── Periods ─────────────────────────────────────────────────────────────────
 
 /** Periods that the cron pre-populates — cache always available after first sync */
-export const CACHED_PERIODS = ["30d", "7d", "15d", "90d"] as const
+export const CACHED_PERIODS = ["30d", "7d", "15d", "90d", "12m"] as const
 export type CachedPeriod = (typeof CACHED_PERIODS)[number]
 
 /** Periods that require live fetch (not cached by cron) */
-export const LIVE_ONLY_PERIODS = ["1d", "12m", "custom"] as const
+export const LIVE_ONLY_PERIODS = ["1d", "custom"] as const
 export type LiveOnlyPeriod = (typeof LIVE_ONLY_PERIODS)[number]
 
 /** All valid periods */
@@ -58,6 +58,7 @@ export const PERIOD_FRESHNESS_THRESHOLDS: Record<CachedPeriod, number> = {
   "15d": 4 * 60 * 60_000,   // 4 hours  (AK-10 — relaxed from 2h)
   "30d": 6 * 60 * 60_000,   // 6 hours  (AK-10 — relaxed from 4h)
   "90d": 12 * 60 * 60_000,  // 12 hours (AK-10 — relaxed from 8h)
+  "12m": 24 * 60 * 60_000,  // 24 hours — annual data barely changes intra-day (AK-11)
 }
 
 // ─── Cooldown Constants ──────────────────────────────────────────────────────

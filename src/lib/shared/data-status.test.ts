@@ -11,14 +11,15 @@ import {
 } from "./data-status"
 
 describe("data-status constants", () => {
-  it("CACHED_PERIODS should contain 4 standard periods", () => {
-    expect(CACHED_PERIODS).toEqual(["30d", "7d", "15d", "90d"])
-    expect(CACHED_PERIODS).toHaveLength(4)
+  it("CACHED_PERIODS should contain 5 standard periods including 12m", () => {
+    expect(CACHED_PERIODS).toEqual(["30d", "7d", "15d", "90d", "12m"])
+    expect(CACHED_PERIODS).toHaveLength(5)
   })
 
-  it("LIVE_ONLY_PERIODS should contain non-cached periods", () => {
-    expect(LIVE_ONLY_PERIODS).toEqual(["1d", "12m", "custom"])
-    expect(LIVE_ONLY_PERIODS).toHaveLength(3)
+  it("LIVE_ONLY_PERIODS should contain non-cached periods (without 12m)", () => {
+    expect(LIVE_ONLY_PERIODS).toEqual(["1d", "custom"])
+    expect(LIVE_ONLY_PERIODS).toHaveLength(2)
+    expect(LIVE_ONLY_PERIODS).not.toContain("12m")
   })
 
   it("ALL_PERIODS should be the union of CACHED + LIVE_ONLY", () => {
@@ -46,9 +47,12 @@ describe("isCachedPeriod", () => {
     expect(isCachedPeriod("90d")).toBe(true)
   })
 
+  it("should return true for 12m (AK-11)", () => {
+    expect(isCachedPeriod("12m")).toBe(true)
+  })
+
   it("should return false for live-only periods", () => {
     expect(isCachedPeriod("1d")).toBe(false)
-    expect(isCachedPeriod("12m")).toBe(false)
     expect(isCachedPeriod("custom")).toBe(false)
   })
 
@@ -128,6 +132,24 @@ describe("PERIOD_FRESHNESS_THRESHOLDS (AK-10)", () => {
   it("90d is stale when fetched more than 12h ago", () => {
     const threshold = PERIOD_FRESHNESS_THRESHOLDS["90d"]
     const fetchedAt = new Date(Date.now() - 13 * 60 * 60_000) // 13h ago
+    const ageMs = Date.now() - fetchedAt.getTime()
+    expect(ageMs < threshold).toBe(false)
+  })
+
+  it("12m threshold is 24 hours (AK-11)", () => {
+    expect(PERIOD_FRESHNESS_THRESHOLDS["12m"]).toBe(24 * 60 * 60_000)
+  })
+
+  it("12m is fresh when fetched less than 24h ago", () => {
+    const threshold = PERIOD_FRESHNESS_THRESHOLDS["12m"]
+    const fetchedAt = new Date(Date.now() - 20 * 60 * 60_000) // 20h ago
+    const ageMs = Date.now() - fetchedAt.getTime()
+    expect(ageMs < threshold).toBe(true)
+  })
+
+  it("12m is stale when fetched more than 24h ago", () => {
+    const threshold = PERIOD_FRESHNESS_THRESHOLDS["12m"]
+    const fetchedAt = new Date(Date.now() - 25 * 60 * 60_000) // 25h ago
     const ageMs = Date.now() - fetchedAt.getTime()
     expect(ageMs < threshold).toBe(false)
   })
