@@ -17,6 +17,14 @@ import { createAdminClient } from "@/lib/supabase/server"
 
 const log = logger.child("KlaviyoReportSummary")
 
+/**
+ * Maximum age (ms) for cache to be considered "fresh" in admin panel lookups.
+ * Set to 1 hour — the cron syncs every ~4 min, so cached data is almost always
+ * fresher than this. This threshold only guards against serving very stale data
+ * if the cron has been down.
+ */
+export const CACHE_FRESH_MS = 60 * 60 * 1000
+
 export interface KlaviyoRevenueSummary {
   totalRevenue: number
   campaignRevenue: number
@@ -110,8 +118,6 @@ export async function getKlaviyoRevenueForStore(
         if (row && row.sync_status !== "error") {
           const fetchedAt = new Date(row.fetched_at as string)
           const ageMs = Date.now() - fetchedAt.getTime()
-          // Serve cache if under 1 hour old (cron runs every ~4 min)
-          const CACHE_FRESH_MS = 60 * 60 * 1000
           if (ageMs < CACHE_FRESH_MS) {
             const cached: KlaviyoRevenueSummary = {
               totalRevenue: ((row.campaign_revenue as number) || 0) + ((row.flow_revenue as number) || 0),

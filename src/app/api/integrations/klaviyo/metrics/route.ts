@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server"
 import { errorResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { requireStoreAccess } from "@/lib/api/require-store-access"
 import { getStoreCredentials } from "@/lib/services/credentials.service"
-import { klaviyoRequest } from "@/lib/integrations/klaviyo"
+import { klaviyoRequest, withConcurrencyLimit } from "@/lib/integrations/klaviyo"
 import { handleCorsPreFlight } from "@/lib/cors"
 
 // Handle OPTIONS preflight requests
@@ -32,9 +32,19 @@ interface KlaviyoListResponse {
       name: string
       created: string
       updated: string
-      profile_count: number
+      profile_count?: number
     }
   }>
+}
+
+interface KlaviyoListDetailResponse {
+  data: {
+    id: string
+    attributes: {
+      name: string
+      profile_count?: number
+    }
+  }
 }
 
 interface KlaviyoFlowResponse {
@@ -86,24 +96,42 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch data in parallel
-    // Note: campaigns requires channel filter, lists needs additional-fields for profile_count
+    // AK-5: removed additional-fields[list]=profile_count from /lists/ collection.
+    // additional-fields on collections degrades rate limit tier from S to XS.
+    // profile_count is fetched via individual /lists/{id}/ endpoints below.
     const emptyList: KlaviyoListResponse = { data: [] }
     const emptyFlow: KlaviyoFlowResponse = { data: [] }
     const emptyCampaign: KlaviyoCampaignResponse = { data: [] }
     const emptyMetric: KlaviyoMetricResponse = { data: [] }
     const [lists, flows, emailCampaigns, smsCampaigns, metrics] = await Promise.all([
-      klaviyoRequest<KlaviyoListResponse>(apiKey, "/lists/?additional-fields[list]=profile_count", { logTag: "Klaviyo Metrics" }).then(r => r ?? emptyList),
+      klaviyoRequest<KlaviyoListResponse>(apiKey, "/lists/", { logTag: "Klaviyo Metrics" }).then(r => r ?? emptyList),
       klaviyoRequest<KlaviyoFlowResponse>(apiKey, "/flows/", { logTag: "Klaviyo Metrics" }).then(r => r ?? emptyFlow),
       klaviyoRequest<KlaviyoCampaignResponse>(apiKey, "/campaigns/?filter=equals(messages.channel,'email')", { logTag: "Klaviyo Metrics" }).then(r => r ?? emptyCampaign),
       klaviyoRequest<KlaviyoCampaignResponse>(apiKey, "/campaigns/?filter=equals(messages.channel,'sms')", { logTag: "Klaviyo Metrics" }).then(r => r ?? emptyCampaign),
       klaviyoRequest<KlaviyoMetricResponse>(apiKey, "/metrics/", { logTag: "Klaviyo Metrics" }).then(r => r ?? emptyMetric),
     ])
 
+    // AK-5: Fetch profile_count via individual endpoints if collection didn't include it.
+    // additional-fields works on individual endpoints (/lists/{id}/) without tier penalty.
+    const needsProfileCount = lists.data.length > 0 && lists.data.every(l => !l.attributes.profile_count)
+    if (needsProfileCount) {
+      await withConcurrencyLimit(lists.data, 3, async (list) => {
+        const detail = await klaviyoRequest<KlaviyoListDetailResponse>(
+          apiKey,
+          `/lists/${list.id}/?additional-fields[list]=profile_count`,
+          { logTag: "Klaviyo Metrics" }
+        )
+        if (detail?.data?.attributes?.profile_count != null) {
+          list.attributes.profile_count = detail.data.attributes.profile_count
+        }
+      })
+    }
+
     // Combine email + SMS campaigns
     const campaigns = { data: [...emailCampaigns.data, ...smsCampaigns.data] }
 
     // Calculate totals
-    const totalProfiles = lists.data.reduce((sum, list) => sum + (list.attributes.profile_count || 0), 0)
+    const totalProfiles = lists.data.reduce((sum, list) => sum + (list.attributes.profile_count ?? 0), 0)
     const activeFlows = flows.data.filter(f => f.attributes.status === "live").length
     const sentCampaigns = campaigns.data.filter(c => c.attributes.status === "sent").length
     const scheduledCampaigns = campaigns.data.filter(c => c.attributes.status === "scheduled").length

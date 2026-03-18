@@ -3,7 +3,7 @@ Prioridade: High
 Sprint: Current
 Assignee: "@dev"
 Revisao: "@qa"
-Status: Ready for Dev
+Status: Done
 Epic: "API Klaviyo — Rate Limit & Compliance"
 Fase: "2 - High Priority"
 Esforco: LOW
@@ -66,30 +66,30 @@ Se nao vier: implementar fallback individual.
 
 ### AK-5.1 — Remover additional-fields da collection
 
-- [ ] Em `src/app/api/integrations/klaviyo/metrics/route.ts:95`, alterar:
+- [x] Em `src/app/api/integrations/klaviyo/metrics/route.ts:95`, alterar:
   - De: `"/lists/?additional-fields[list]=profile_count"`
   - Para: `"/lists/"`
 
 ### AK-5.2 — Implementar fallback para profile_count (se necessario)
 
-- [ ] Se a verificacao pre-dev confirmar que `profile_count` desaparece sem `additional-fields`:
-  - [ ] Apos obter a collection de lists, buscar `profile_count` via endpoints individuais
-  - [ ] Usar `withConcurrencyLimit()` do `rate-limiter.ts` para limitar chamadas paralelas
-  - [ ] Para cada list: `GET /lists/{id}/?additional-fields[list]=profile_count`
-  - [ ] Mesclar `profile_count` no response antes do processing downstream
+- [x] Se a verificacao pre-dev confirmar que `profile_count` desaparece sem `additional-fields`:
+  - [x] Apos obter a collection de lists, buscar `profile_count` via endpoints individuais
+  - [x] Usar `withConcurrencyLimit()` do `rate-limiter.ts` para limitar chamadas paralelas
+  - [x] Para cada list: `GET /lists/{id}/?additional-fields[list]=profile_count`
+  - [x] Mesclar `profile_count` no response antes do processing downstream
 - [ ] Se a verificacao confirmar que `profile_count` ja vem sem `additional-fields`: skip este AC
 
 ### AK-5.3 — Ajustar tipo TypeScript
 
-- [ ] Alterar `KlaviyoListResponse` para `profile_count?: number` (opcional) se nao vier na collection
-- [ ] Garantir que `totalProfiles` calculo usa `?? 0` em vez de `|| 0` (para nao conflitar com 0 real)
+- [x] Alterar `KlaviyoListResponse` para `profile_count?: number` (opcional) se nao vier na collection
+- [x] Garantir que `totalProfiles` calculo usa `?? 0` em vez de `|| 0` (para nao conflitar com 0 real)
 
 ### AK-5.4 — Testes
 
-- [ ] Verificar que a rota metrics retorna `totalProfiles` correto (nao zero)
-- [ ] Verificar que `profileCount` por lista esta preenchido no response
-- [ ] Verificar que nao ha regressao nos dados exibidos no admin dashboard
-- [ ] Se fallback implementado: testar que chamadas individuais respeitam rate limiter
+- [x] Verificar que a rota metrics retorna `totalProfiles` correto (nao zero)
+- [x] Verificar que `profileCount` por lista esta preenchido no response
+- [x] Verificar que nao ha regressao nos dados exibidos no admin dashboard
+- [x] Se fallback implementado: testar que chamadas individuais respeitam rate limiter
 
 ## Impacto Esperado
 
