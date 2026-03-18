@@ -21,7 +21,7 @@ import { KlaviyoRateLimitError } from "./client"
 import { getTimezoneOffset } from "./account"
 import { getCachedAccountInfo } from "./cached-metadata"
 import { getCachedPlacedOrderMetric } from "./cached-metadata"
-import { type SyncResult, isCachedPeriod } from "@/lib/shared/data-status"
+import { type SyncResult, isCachedPeriod, LIVE_FETCH_CACHE_TTL_MS, isCustomRangeCacheFresh, getCustomRangeTTL } from "@/lib/shared/data-status"
 import { createAdminClient } from "@/lib/supabase/server"
 
 const log = logger.child("KlaviyoReportSummary")
@@ -117,7 +117,7 @@ export async function getKlaviyoRevenueForStore(
         const adminClient = createAdminClient()
         const { data: row } = await adminClient
           .from("store_revenue_summary")
-          .select("campaign_revenue, flow_revenue, currency, fetched_at, sync_status")
+          .select("klaviyo_campaign_revenue, klaviyo_flow_revenue, currency, fetched_at, sync_status")
           .eq("store_id", storeId)
           .eq("period_label", period)
           .order("fetched_at", { ascending: false })
@@ -129,12 +129,84 @@ export async function getKlaviyoRevenueForStore(
           const ageMs = Date.now() - fetchedAt.getTime()
           if (ageMs < CACHE_FRESH_MS) {
             const cached: KlaviyoRevenueSummary = {
-              totalRevenue: ((row.campaign_revenue as number) || 0) + ((row.flow_revenue as number) || 0),
-              campaignRevenue: (row.campaign_revenue as number) || 0,
-              flowRevenue: (row.flow_revenue as number) || 0,
+              totalRevenue: ((row.klaviyo_campaign_revenue as number) ?? 0) + ((row.klaviyo_flow_revenue as number) ?? 0),
+              campaignRevenue: (row.klaviyo_campaign_revenue as number) ?? 0,
+              flowRevenue: (row.klaviyo_flow_revenue as number) ?? 0,
               currency: (row.currency as string) || currency,
             }
             log.info(`Store ${storeId}: serving fresh cache (age=${Math.round(ageMs / 1000)}s) for period ${period}`)
+            return {
+              success: true, data: cached,
+              source: "cache", fetchedAt: row.fetched_at as string,
+            }
+          }
+        }
+      } catch {
+        // Cache lookup failed — fall through to live API call
+      }
+    }
+
+    // AK-13: Cache-first for 1d — check write-through cache before live fetch.
+    // 1d is LIVE_ONLY (not pre-populated by cron), but previous live fetches are persisted
+    // with a 5-minute TTL to deduplicate requests across operators.
+    if (period === "1d") {
+      try {
+        const adminClient = createAdminClient()
+        const { data: row } = await adminClient
+          .from("store_revenue_summary")
+          .select("klaviyo_campaign_revenue, klaviyo_flow_revenue, currency, fetched_at, sync_status")
+          .eq("store_id", storeId)
+          .eq("period_label", "1d")
+          .single()
+
+        if (row && row.sync_status !== "error") {
+          const fetchedAt = new Date(row.fetched_at as string)
+          const ageMs = Date.now() - fetchedAt.getTime()
+          if (ageMs < LIVE_FETCH_CACHE_TTL_MS) {
+            const cached: KlaviyoRevenueSummary = {
+              totalRevenue: ((row.klaviyo_campaign_revenue as number) ?? 0) + ((row.klaviyo_flow_revenue as number) ?? 0),
+              campaignRevenue: (row.klaviyo_campaign_revenue as number) ?? 0,
+              flowRevenue: (row.klaviyo_flow_revenue as number) ?? 0,
+              currency: (row.currency as string) || currency,
+            }
+            log.info(`Store ${storeId}: 1d cache hit (age=${Math.round(ageMs / 1000)}s)`)
+            return {
+              success: true, data: cached,
+              source: "cache", fetchedAt: row.fetched_at as string,
+            }
+          }
+        }
+      } catch {
+        // Cache lookup failed — fall through to live API call
+      }
+    }
+
+    // CR2: Cache-first for custom ranges — check write-through cache before live fetch.
+    // Custom ranges use the upsert_custom_range_cache RPC with (store_id, range_start, range_end) uniqueness.
+    if (period === "custom" && customStartDate && customEndDate) {
+      try {
+        const adminClient = createAdminClient()
+        const { data: row } = await adminClient
+          .from("store_revenue_summary")
+          .select("klaviyo_campaign_revenue, klaviyo_flow_revenue, currency, fetched_at, sync_status")
+          .eq("store_id", storeId)
+          .eq("period_label", "custom")
+          .eq("range_start", customStartDate)
+          .eq("range_end", customEndDate)
+          .single()
+
+        if (row && row.sync_status !== "error") {
+          const rangeStart = new Date(customStartDate)
+          const rangeEnd = new Date(customEndDate)
+          if (isCustomRangeCacheFresh(row.fetched_at as string, rangeStart, rangeEnd)) {
+            const cached: KlaviyoRevenueSummary = {
+              totalRevenue: ((row.klaviyo_campaign_revenue as number) ?? 0) + ((row.klaviyo_flow_revenue as number) ?? 0),
+              campaignRevenue: (row.klaviyo_campaign_revenue as number) ?? 0,
+              flowRevenue: (row.klaviyo_flow_revenue as number) ?? 0,
+              currency: (row.currency as string) || currency,
+            }
+            const ageMs = Date.now() - new Date(row.fetched_at as string).getTime()
+            log.info(`Store ${storeId}: custom range cache hit (age=${Math.round(ageMs / 1000)}s, ${customStartDate}..${customEndDate})`)
             return {
               success: true, data: cached,
               source: "cache", fetchedAt: row.fetched_at as string,
@@ -200,6 +272,87 @@ export async function getKlaviyoRevenueForStore(
 
     log.info(`Store ${storeId}: campaign=${currency} ${campaignRevenue}, flow=${currency} ${flowRevenue}`)
 
+    // AK-13: Write-through — persist 1d live fetch results for 5-minute deduplication
+    if (period === "1d") {
+      try {
+        const adminClient = createAdminClient()
+
+        const { data: storeRow } = await adminClient
+          .from("client_stores")
+          .select("org_id")
+          .eq("id", storeId)
+          .single()
+
+        if (storeRow?.org_id) {
+          const expiresAt = new Date(Date.now() + LIVE_FETCH_CACHE_TTL_MS).toISOString()
+
+          await adminClient
+            .from("store_revenue_summary")
+            .upsert({
+              store_id: storeId,
+              org_id: storeRow.org_id,
+              period_label: "1d",
+              period_start: startISO,
+              period_end: endISO,
+              klaviyo_total_revenue: campaignRevenue + flowRevenue,
+              klaviyo_campaign_revenue: campaignRevenue,
+              klaviyo_flow_revenue: flowRevenue,
+              store_total_revenue: 0,
+              currency,
+              sync_status: "ok",
+              sync_source: "live",
+              sync_error: null,
+              expires_at: expiresAt,
+              fetched_at: new Date().toISOString(),
+            }, { onConflict: "store_id,period_label" })
+
+          log.info(`Store ${storeId}: 1d write-through cache saved (TTL=5min)`)
+        }
+      } catch (cacheErr) {
+        // Write-through is best-effort — do not fail the request
+        log.warn(`Store ${storeId}: failed to write-through 1d cache:`, cacheErr)
+      }
+    }
+
+    // CR2: Write-through for custom ranges — persist via upsert_custom_range_cache RPC
+    if (period === "custom" && customStartDate && customEndDate) {
+      try {
+        const adminClient = createAdminClient()
+
+        const { data: storeRow } = await adminClient
+          .from("client_stores")
+          .select("org_id")
+          .eq("id", storeId)
+          .single()
+
+        if (storeRow?.org_id) {
+          const rangeStart = new Date(customStartDate)
+          const rangeEnd = new Date(customEndDate)
+          const ttlMs = getCustomRangeTTL(rangeStart, rangeEnd)
+          const expiresAt = new Date(Date.now() + ttlMs).toISOString()
+
+          await adminClient.rpc("upsert_custom_range_cache", {
+            p_store_id: storeId,
+            p_org_id: storeRow.org_id,
+            p_range_start: customStartDate,
+            p_range_end: customEndDate,
+            p_period_start: startISO,
+            p_period_end: endISO,
+            p_klaviyo_total_revenue: campaignRevenue + flowRevenue,
+            p_klaviyo_campaign_revenue: campaignRevenue,
+            p_klaviyo_flow_revenue: flowRevenue,
+            p_currency: currency,
+            p_expires_at: expiresAt,
+          })
+
+          log.info(`Store ${storeId}: custom range write-through saved (${customStartDate}..${customEndDate}, TTL=${Math.round(ttlMs / 60_000)}min)`)
+        }
+      } catch (cacheErr) {
+        // Write-through is best-effort — do not fail the request
+        log.warn(`Store ${storeId}: failed to write-through custom range cache:`, cacheErr)
+      }
+    }
+
     return {
       success: true,
       data: {
@@ -217,27 +370,33 @@ export async function getKlaviyoRevenueForStore(
     if (error instanceof KlaviyoRateLimitError) {
       log.warn(`Store ${storeId}: rate limited, attempting stale cache fallback...`)
       try {
-        if (isCachedPeriod(period)) {
+        if (isCachedPeriod(period) || period === "1d" || period === "custom") {
           const adminClient = createAdminClient()
-          const { data: row } = await adminClient
+          let query = adminClient
             .from("store_revenue_summary")
-            .select("*")
+            .select("klaviyo_campaign_revenue, klaviyo_flow_revenue, currency, fetched_at, sync_status")
             .eq("store_id", storeId)
-            .eq("period_label", period)
-            .order("fetched_at", { ascending: false })
-            .limit(1)
-            .single()
+
+          if (period === "custom" && customStartDate && customEndDate) {
+            query = query.eq("period_label", "custom").eq("range_start", customStartDate).eq("range_end", customEndDate)
+          } else {
+            query = query.eq("period_label", period)
+          }
+
+          const { data: row } = await query.single()
 
           if (row) {
             const fetchedAt = new Date(row.fetched_at as string)
             const isStale = Date.now() - fetchedAt.getTime() > RATE_LIMIT_MAX_CACHE_AGE_MS
-            const isError = row.sync_status === "error" && row.campaign_revenue === 0 && row.flow_revenue === 0
+            const isError = row.sync_status === "error"
+              && (row.klaviyo_campaign_revenue as number) === 0
+              && (row.klaviyo_flow_revenue as number) === 0
 
             if (!isStale && !isError) {
               const cached: KlaviyoRevenueSummary = {
-                totalRevenue: ((row.campaign_revenue as number) || 0) + ((row.flow_revenue as number) || 0),
-                campaignRevenue: (row.campaign_revenue as number) || 0,
-                flowRevenue: (row.flow_revenue as number) || 0,
+                totalRevenue: ((row.klaviyo_campaign_revenue as number) ?? 0) + ((row.klaviyo_flow_revenue as number) ?? 0),
+                campaignRevenue: (row.klaviyo_campaign_revenue as number) ?? 0,
+                flowRevenue: (row.klaviyo_flow_revenue as number) ?? 0,
                 currency: (row.currency as string) || "BRL",
               }
               log.info(`Store ${storeId}: rate limit fallback serving stale cache from ${row.fetched_at}`)
