@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useMemo, useEffect } from "react"
+import { useState, useCallback, useMemo, useEffect, Suspense } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import {
   AlertCircle,
@@ -35,6 +35,24 @@ type Campaign = PortalCampaign
 // ============================================
 
 export default function PortalCampaignsPage() {
+  return (
+    <Suspense fallback={<CampaignsPageSkeleton />}>
+      <PortalCampaignsContent />
+    </Suspense>
+  )
+}
+
+function CampaignsPageSkeleton() {
+  return (
+    <div className="p-6 space-y-4">
+      <Skeleton className="h-10 w-64" />
+      <Skeleton className="h-8 w-full" />
+      <Skeleton className="h-[500px] w-full" />
+    </div>
+  )
+}
+
+function PortalCampaignsContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
 
