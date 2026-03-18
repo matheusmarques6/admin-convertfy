@@ -27,6 +27,10 @@ vi.mock("./account", () => ({
 
 vi.mock("@/lib/shared/data-status", () => ({
   isCachedPeriod: vi.fn().mockReturnValue(true),
+  isCustomPeriod: vi.fn().mockReturnValue(false),
+  buildCustomPeriodLabel: vi.fn().mockImplementation((s: string, e: string) => `custom:${s}:${e}`),
+  isCustomRangeCacheFresh: vi.fn().mockReturnValue(false),
+  getCustomRangeTTL: vi.fn().mockReturnValue(30 * 60_000),
   LIVE_FETCH_CACHE_TTL_MS: 5 * 60_000,
 }))
 
