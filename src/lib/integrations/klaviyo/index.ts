@@ -42,10 +42,12 @@ export {
   classifyEndpoint,
   TIER_INTERVALS,
   DAILY_REPORT_QUOTA_LIMIT,
+  XS_BUDGET_PER_CYCLE,
   incrementReportQuota,
   isReportQuotaExhausted,
   getReportQuotaUsage,
   getAllReportQuotaUsage,
+  _resetReportQuota,
   type RateTier,
   type ReportQuotaInfo,
 } from "./rate-limiter"

@@ -122,7 +122,13 @@ vi.mock("@/lib/shared/data-status", () => ({
 }))
 
 import { GET } from "./route"
-import { KlaviyoPermissionError, KlaviyoRateLimitError } from "@/lib/integrations/klaviyo"
+import {
+  KlaviyoPermissionError,
+  KlaviyoRateLimitError,
+  incrementReportQuota,
+  _resetReportQuota,
+  XS_BUDGET_PER_CYCLE,
+} from "@/lib/integrations/klaviyo"
 
 function makeRequest() {
   return new Request("http://localhost/api/cron/sync-reports", {
@@ -439,5 +445,207 @@ describe("Story 16.8 — KlaviyoRateLimitError handling in cron sync", () => {
       c => c.table === "store_revenue_summary" && typeof c.data.sync_error === "string" && (c.data.sync_error as string).includes("[PERMISSION]")
     )
     expect(summaryUpserts.length).toBeGreaterThanOrEqual(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// AK-12: Per-cycle XS budget cap
+// ---------------------------------------------------------------------------
+
+describe("AK-12 — XS Budget Cap per Cron Cycle", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    upsertCalls.length = 0
+    updateCalls.length = 0
+    _resetReportQuota()
+    mockPeriods = ["7d", "30d"]
+    process.env.CRON_SECRET = "test-secret"
+    mockFetchAudienceForStore.mockResolvedValue({ success: false, error: "skip" })
+  })
+
+  it("AK-12.1: XS_BUDGET_PER_CYCLE constant defaults to 60", () => {
+    expect(XS_BUDGET_PER_CYCLE).toBe(60)
+  })
+
+  it("AK-12.2: skips stores with reason 'skipped:budget' when XS budget is exhausted for a key group", async () => {
+    // 3 stores sharing same API key
+    mockStoreList = [
+      { id: "s1", store_name: "Store 1", org_id: "org-1" },
+      { id: "s2", store_name: "Store 2", org_id: "org-1" },
+      { id: "s3", store_name: "Store 3", org_id: "org-1" },
+    ]
+
+    const apiKey = "pk_budget_test_key1"
+    mockGetStoreCredentials.mockResolvedValue({ klaviyo_private_key: apiKey })
+    mockGetCachedAccountInfo.mockResolvedValue({ timezone: "America/Sao_Paulo", currency: "BRL" })
+    mockGetCachedPlacedOrderMetric.mockResolvedValue("metric-123")
+    mockFetchFlowNames.mockResolvedValue(new Map())
+    mockFetchCampaignNames.mockResolvedValue(new Map())
+
+    // Simulate XS calls: after syncing store 1, the quota jumps past XS_BUDGET_PER_CYCLE.
+    // syncKlaviyoForPeriod is mocked, so we manually increment quota inside the mock.
+    let callCount = 0
+    mockSyncKlaviyoForPeriod.mockImplementation(() => {
+      callCount++
+      // Each sync call simulates 30 XS reporting calls (2 periods x 30 = 60 = budget)
+      for (let n = 0; n < 30; n++) incrementReportQuota(apiKey)
+      return Promise.resolve(successSyncResult())
+    })
+
+    const response = await GET(makeRequest())
+    const body = await response.json()
+
+    // Store 1 should have synced both periods (2 syncKlaviyoForPeriod calls = 60 XS calls)
+    // Store 2 and 3 should be skipped:budget
+    const budgetSkipped = body.stores.filter(
+      (s: { error?: string }) => s.error === "skipped:budget"
+    )
+    expect(budgetSkipped.length).toBeGreaterThanOrEqual(2) // at least 2 stores x 2 periods = 4
+
+    // All budget-skipped entries have correct reason
+    for (const entry of budgetSkipped) {
+      expect(entry.status).toBe("skipped")
+      expect(entry.error).toBe("skipped:budget")
+    }
+
+    // Store 1 should have synced OK
+    const okResults = body.stores.filter(
+      (s: { storeId: string; status: string }) => s.storeId === "s1" && s.status === "ok"
+    )
+    expect(okResults.length).toBe(2) // 2 periods
+
+    // xsBudget should be in the response
+    expect(body.xsBudget).toBeDefined()
+  })
+
+  it("AK-12.2: budget is per API key group — other groups continue syncing", async () => {
+    // 2 stores with DIFFERENT API keys
+    mockStoreList = [
+      { id: "s-a", store_name: "Store A", org_id: "org-1" },
+      { id: "s-b", store_name: "Store B", org_id: "org-1" },
+    ]
+
+    const keyA = "pk_budget_keyA_xxxx"
+    const keyB = "pk_budget_keyB_xxxx"
+
+    mockGetStoreCredentials.mockImplementation((storeId: string) => {
+      if (storeId === "s-a") return Promise.resolve({ klaviyo_private_key: keyA })
+      return Promise.resolve({ klaviyo_private_key: keyB })
+    })
+
+    mockGetCachedAccountInfo.mockResolvedValue({ timezone: "America/Sao_Paulo", currency: "BRL" })
+    mockGetCachedPlacedOrderMetric.mockResolvedValue("metric-123")
+    mockFetchFlowNames.mockResolvedValue(new Map())
+    mockFetchCampaignNames.mockResolvedValue(new Map())
+
+    // Pre-exhaust keyA's budget BEFORE cron runs (simulate previous calls in same daily window)
+    // The snapshot will see this initial usage, but then more calls during sync will push it over.
+    // Actually, we need to exhaust it DURING the cycle. Let me use the sync mock to increment.
+    mockSyncKlaviyoForPeriod.mockImplementation(({ apiKey }: { apiKey: string }) => {
+      // Simulate 35 XS calls per sync call
+      for (let n = 0; n < 35; n++) incrementReportQuota(apiKey)
+      return Promise.resolve(successSyncResult())
+    })
+
+    const response = await GET(makeRequest())
+    const body = await response.json()
+
+    // Both stores should sync OK since each key group only uses 70 XS calls (2 periods x 35)
+    // which exceeds the budget of 60, BUT:
+    // - Store A (keyA): period 1 = 35, period 2 = 70 total. After period 1, budget not hit (35 < 60).
+    //   After period 2, budget hit (70 >= 60). But since both periods are within the same syncStore call,
+    //   the budget check happens BEFORE syncStore, not between periods.
+    // - Store B (keyB): different key, independent budget. Should sync fine.
+
+    // Store B should always sync OK (independent budget)
+    const storeBResults = body.stores.filter(
+      (s: { storeId: string; status: string }) => s.storeId === "s-b" && s.status === "ok"
+    )
+    expect(storeBResults.length).toBe(2) // both periods OK
+
+    // Store A should also sync OK (budget checked before syncStore, 0 < 60 at start)
+    const storeAResults = body.stores.filter(
+      (s: { storeId: string; status: string }) => s.storeId === "s-a" && s.status === "ok"
+    )
+    expect(storeAResults.length).toBe(2) // both periods OK (budget check is before store, not between periods)
+  })
+
+  it("AK-12.4: xsBudget summary is included in response JSON", async () => {
+    mockStoreList = [{ id: "s1", store_name: "Store 1", org_id: "org-1" }]
+
+    const apiKey = "pk_budget_summary_key"
+    mockGetStoreCredentials.mockResolvedValue({ klaviyo_private_key: apiKey })
+    mockGetCachedAccountInfo.mockResolvedValue({ timezone: "America/Sao_Paulo", currency: "BRL" })
+    mockGetCachedPlacedOrderMetric.mockResolvedValue("metric-123")
+    mockFetchFlowNames.mockResolvedValue(new Map())
+    mockFetchCampaignNames.mockResolvedValue(new Map())
+
+    mockSyncKlaviyoForPeriod.mockImplementation(() => {
+      // Simulate 5 XS calls per sync
+      for (let n = 0; n < 5; n++) incrementReportQuota(apiKey)
+      return Promise.resolve(successSyncResult())
+    })
+
+    const response = await GET(makeRequest())
+    const body = await response.json()
+
+    // xsBudget should be in the response with the key group's usage
+    expect(body.xsBudget).toBeDefined()
+    const keyMask = `...${apiKey.slice(-4)}`
+    expect(body.xsBudget[keyMask]).toBeDefined()
+    expect(body.xsBudget[keyMask].used).toBe(10) // 2 periods x 5 calls each
+    expect(body.xsBudget[keyMask].limit).toBe(60)
+    expect(body.xsBudget[keyMask].skipped).toBe(0)
+  })
+
+  it("AK-12.5: skipped stores show 'skipped:budget' in summary and other key groups are unaffected", async () => {
+    // Key A has 3 stores, Key B has 1 store
+    mockStoreList = [
+      { id: "s1", store_name: "GroupA Store1", org_id: "org-1" },
+      { id: "s2", store_name: "GroupA Store2", org_id: "org-1" },
+      { id: "s3", store_name: "GroupA Store3", org_id: "org-1" },
+      { id: "s4", store_name: "GroupB Store1", org_id: "org-1" },
+    ]
+
+    const keyA = "pk_budget_isolAAAA"
+    const keyB = "pk_budget_isolBBBB"
+
+    mockGetStoreCredentials.mockImplementation((storeId: string) => {
+      if (storeId === "s4") return Promise.resolve({ klaviyo_private_key: keyB })
+      return Promise.resolve({ klaviyo_private_key: keyA })
+    })
+
+    mockGetCachedAccountInfo.mockResolvedValue({ timezone: "America/Sao_Paulo", currency: "BRL" })
+    mockGetCachedPlacedOrderMetric.mockResolvedValue("metric-123")
+    mockFetchFlowNames.mockResolvedValue(new Map())
+    mockFetchCampaignNames.mockResolvedValue(new Map())
+
+    // Each sync call for keyA uses 35 XS calls (2 periods x 35 = 70 > 60 budget)
+    // So after store1 (70 calls), store2 + store3 should be skipped:budget
+    mockSyncKlaviyoForPeriod.mockImplementation(({ apiKey }: { apiKey: string }) => {
+      for (let n = 0; n < 35; n++) incrementReportQuota(apiKey)
+      return Promise.resolve(successSyncResult())
+    })
+
+    const response = await GET(makeRequest())
+    const body = await response.json()
+
+    // Key A: store1 synced (2 ok), store2+store3 budget-skipped (4 skipped)
+    const keyASkipped = body.stores.filter(
+      (s: { error?: string; storeId: string }) =>
+        s.error === "skipped:budget" && (s.storeId === "s2" || s.storeId === "s3")
+    )
+    expect(keyASkipped.length).toBe(4) // 2 stores x 2 periods
+
+    // Key B: store4 synced normally (independent budget)
+    const keyBOk = body.stores.filter(
+      (s: { storeId: string; status: string }) => s.storeId === "s4" && s.status === "ok"
+    )
+    expect(keyBOk.length).toBe(2) // 2 periods
+
+    // xsBudget summary should reflect the skips
+    const keyAMask = `...${keyA.slice(-4)}`
+    expect(body.xsBudget[keyAMask].skipped).toBe(2) // 2 stores skipped
+    expect(body.xsBudget[keyAMask].used).toBeGreaterThanOrEqual(60)
   })
 })

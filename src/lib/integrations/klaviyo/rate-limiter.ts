@@ -115,6 +115,13 @@ export function classifyEndpoint(path: string): RateTier {
 /** Configurable daily report quota limit per API key (empirically observed ~225). */
 export const DAILY_REPORT_QUOTA_LIMIT = 225
 
+/** Max XS (reporting) calls per cron cycle per API key group.
+ *  Prevents single invocation from exhausting daily cap (~225/key).
+ *  With ~288 invocations/day and freshness skip, most cycles use 0 XS calls.
+ *  Peak cycles (after deploy / cold cache) may need 6-12 calls per key.
+ *  Budget of 60 allows ~3.75 peak cycles/day before exhausting daily cap. */
+export const XS_BUDGET_PER_CYCLE = Number(process.env.XS_BUDGET_PER_CYCLE) || 60
+
 /** Threshold at 80% for warning log. */
 const QUOTA_WARNING_THRESHOLD = 180
 

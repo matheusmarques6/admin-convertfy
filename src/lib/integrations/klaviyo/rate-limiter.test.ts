@@ -9,6 +9,7 @@ import {
   enqueueKlaviyoRequest,
   TIER_INTERVALS,
   DAILY_REPORT_QUOTA_LIMIT,
+  XS_BUDGET_PER_CYCLE,
   incrementReportQuota,
   isReportQuotaExhausted,
   getReportQuotaUsage,
@@ -492,6 +493,18 @@ describe("AK-2: Daily Report Quota Tracking", () => {
       expect(all.size).toBe(0)
 
       vi.useRealTimers()
+    })
+  })
+
+  // AK-12: XS Budget Per Cycle constant
+  describe("XS_BUDGET_PER_CYCLE", () => {
+    it("defaults to 60", () => {
+      expect(XS_BUDGET_PER_CYCLE).toBe(60)
+    })
+
+    it("is exported and usable as a number", () => {
+      expect(typeof XS_BUDGET_PER_CYCLE).toBe("number")
+      expect(XS_BUDGET_PER_CYCLE).toBeGreaterThan(0)
     })
   })
 })

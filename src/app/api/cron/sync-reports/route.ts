@@ -14,7 +14,9 @@ import {
   KlaviyoRateLimitError,
   KlaviyoInvalidKeyError,
   getAllReportQuotaUsage,
+  getReportQuotaUsage,
   DAILY_REPORT_QUOTA_LIMIT,
+  XS_BUDGET_PER_CYCLE,
   type KlaviyoAccountInfo,
 } from "@/lib/integrations/klaviyo"
 import { CACHED_PERIODS, PERIOD_FRESHNESS_THRESHOLDS, type CachedPeriod } from "@/lib/shared/data-status"
@@ -48,6 +50,62 @@ interface CronSyncResult {
   error?: string
   campaignRevenue?: number
   flowRevenue?: number
+}
+
+// ==============================
+// AK-12: Per-cycle XS budget tracking per API key group
+// ==============================
+
+/** Tracks XS (reporting) calls used during THIS cron cycle, per API key.
+ *  Uses the daily quota counter from AK-2 as the source of truth —
+ *  snapshots the counter at cycle start and computes delta. */
+class CycleBudgetTracker {
+  /** Snapshot of daily quota counter at the start of this cycle, per API key */
+  private readonly snapshots = new Map<string, number>()
+  /** Number of stores skipped due to budget cap, per API key */
+  private readonly skippedCounts = new Map<string, number>()
+  private readonly budget: number
+
+  constructor(budget = XS_BUDGET_PER_CYCLE) {
+    this.budget = budget
+  }
+
+  /** Take a snapshot of the current daily quota for this API key (call once before processing a group). */
+  snapshot(apiKey: string): void {
+    if (!this.snapshots.has(apiKey)) {
+      this.snapshots.set(apiKey, getReportQuotaUsage(apiKey).used)
+    }
+  }
+
+  /** How many XS calls this key group has used in the current cycle. */
+  used(apiKey: string): number {
+    const snap = this.snapshots.get(apiKey) ?? 0
+    return getReportQuotaUsage(apiKey).used - snap
+  }
+
+  /** True if the key group has hit or exceeded the per-cycle budget. */
+  isExhausted(apiKey: string): boolean {
+    return this.used(apiKey) >= this.budget
+  }
+
+  /** Record a store as skipped due to budget cap. */
+  recordSkipped(apiKey: string): void {
+    this.skippedCounts.set(apiKey, (this.skippedCounts.get(apiKey) ?? 0) + 1)
+  }
+
+  /** Get budget summary for a key (for logging). */
+  getSummary(apiKey: string): { used: number; limit: number; skipped: number } {
+    return {
+      used: this.used(apiKey),
+      limit: this.budget,
+      skipped: this.skippedCounts.get(apiKey) ?? 0,
+    }
+  }
+
+  /** Get all tracked API keys. */
+  getTrackedKeys(): string[] {
+    return Array.from(this.snapshots.keys())
+  }
 }
 
 interface StoreRow {
@@ -680,6 +738,9 @@ export async function GET(request: NextRequest) {
       )
       log.info(`[Cron] Processing order: ${orderLog.join(", ")}`)
 
+      // AK-12: Initialize per-cycle XS budget tracker
+      const budgetTracker = new CycleBudgetTracker()
+
       // Step 2: Process groups in batches of MAX_PARALLEL_GROUPS
       for (let i = 0; i < groups.length; i += MAX_PARALLEL_GROUPS) {
         if (Date.now() - startTime > MAX_DURATION_MS) {
@@ -695,6 +756,9 @@ export async function GET(request: NextRequest) {
             const results: CronSyncResult[] = []
             const maskedKey = `...${groupApiKey.slice(-4)}`
             const firstStore = groupStores[0]
+
+            // AK-12: Snapshot daily quota counter before processing this group
+            budgetTracker.snapshot(groupApiKey)
 
             // Pre-fetch shared data ONCE per API key group
             let groupData: PreFetchedGroupData | undefined
@@ -810,6 +874,28 @@ export async function GET(request: NextRequest) {
                 break
               }
 
+              // AK-12: Check per-cycle XS budget before syncing this store.
+              // If budget is exhausted, skip remaining stores in this key group.
+              // Story 55.5 freshness-based ordering ensures skipped stores (less fresh)
+              // are naturally prioritized in the next cron cycle.
+              if (budgetTracker.isExhausted(groupApiKey)) {
+                for (let k = j; k < groupStores.length; k++) {
+                  budgetTracker.recordSkipped(groupApiKey)
+                  for (const period of CACHED_PERIODS) {
+                    results.push({
+                      storeId: groupStores[k].id,
+                      storeName: groupStores[k].store_name,
+                      period,
+                      status: "skipped",
+                      error: "skipped:budget",
+                    })
+                  }
+                }
+                const summary = budgetTracker.getSummary(groupApiKey)
+                log.warn(`[Cron] API key ${maskedKey} hit XS budget cap (${summary.limit}) — ${summary.skipped} stores skipped, will retry next cycle`)
+                break
+              }
+
               const storeFreshness = allFreshness.get(groupStores[j].id)
               const storeResults = await syncStore(groupStores[j], CACHED_PERIODS, supabase, startTime, groupData, groupApiKey, storeFreshness)
               results.push(...storeResults)
@@ -899,6 +985,22 @@ export async function GET(request: NextRequest) {
         log.warn(`[Cron] Report quota warning — keys near limit: ${quotaWarnings.join(", ")}`)
       }
 
+      // AK-12: Log per-cycle XS budget usage per API key group
+      const xsBudgetSummary: Record<string, { used: number; limit: number; skipped: number }> = {}
+      for (const apiKey of budgetTracker.getTrackedKeys()) {
+        const kid = `...${apiKey.slice(-4)}`
+        xsBudgetSummary[kid] = budgetTracker.getSummary(apiKey)
+      }
+      if (Object.keys(xsBudgetSummary).length > 0) {
+        log.info(`[Cron] XS budget usage (this cycle): ${JSON.stringify(xsBudgetSummary)}`)
+      }
+      // Budget skip summary
+      const budgetSkipped = allResults.filter(r => r.error === "skipped:budget")
+      if (budgetSkipped.length > 0) {
+        const budgetSkippedStores = new Set(budgetSkipped.map(r => r.storeName))
+        log.warn(`[Cron] Budget skip summary: ${budgetSkipped.length} period-slots skipped across ${budgetSkippedStores.size} stores due to XS budget cap`)
+      }
+
       log.info(`[Cron] Sync completed in ${elapsed}ms. ok=${okCount} error=${errorCount} skipped=${skippedCount}${timedOut ? " (timed out)" : ""}`)
 
       return NextResponse.json({
@@ -907,6 +1009,7 @@ export async function GET(request: NextRequest) {
         cleanedCacheEntries: cleanedCount,
         summary: { ok: okCount, error: errorCount, skipped: skippedCount },
         reportQuota: quotaSummary,
+        xsBudget: xsBudgetSummary,
         stores: allResults,
       })
     } finally {
