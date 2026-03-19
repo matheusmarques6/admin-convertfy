@@ -513,7 +513,7 @@ export default function PublicOnboardingPage() {
               </div>
               <div className="space-y-2">
                 <Label>Seu publico alvo e mais sensivel a ofertas de preco ou qualidade?</Label>
-                <RadioGroup value={formData.price_sensitivity} onValueChange={(v) => updateField("price_sensitivity", v)} className="flex gap-4">
+                <RadioGroup value={formData.price_sensitivity} onValueChange={(v) => updateField("price_sensitivity", v)} className="flex flex-col gap-2 sm:flex-row sm:gap-4">
                   {PRICE_SENSITIVITIES.map((ps) => (
                     <div key={ps.value} className="flex items-center space-x-2">
                       <RadioGroupItem value={ps.value} id={ps.value} />
@@ -595,7 +595,7 @@ export default function PublicOnboardingPage() {
                   <div className="bg-background rounded-lg border p-3">
                     <p className="text-xs text-muted-foreground mb-1">Texto pronto para colar:</p>
                     <div className="flex items-start gap-2">
-                      <code ref={scopesTextRef} className="text-sm flex-1 break-all">{selectedScopes.join(", ")}</code>
+                      <code ref={scopesTextRef} className="text-xs sm:text-sm flex-1 break-words">{selectedScopes.join(", ")}</code>
                       <Button
                         variant="ghost"
                         size="sm"
@@ -693,9 +693,9 @@ export default function PublicOnboardingPage() {
                 </div>
               ) : null}
               {/* Asymmetric grid: logo (60%) | optional files (40%) */}
-              <div className="grid grid-cols-1 sm:grid-cols-5 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                 {/* Left column: Logo */}
-                <div className="sm:col-span-3">
+                <div className="md:col-span-3">
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Logo</p>
                   {uploadedFiles.logo ? (
                     <div className="flex items-center gap-3 rounded-lg border p-3 bg-green-50 dark:bg-green-900/20">
@@ -736,7 +736,7 @@ export default function PublicOnboardingPage() {
                 </div>
 
                 {/* Right column: Optional files */}
-                <div className="sm:col-span-2 flex flex-col gap-4">
+                <div className="md:col-span-2 flex flex-col gap-4">
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-0">Arquivos opcionais</p>
 
                   {/* Design Reference Upload - compact horizontal */}
@@ -867,7 +867,7 @@ export default function PublicOnboardingPage() {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div><p className="text-xs text-muted-foreground">Loja</p><p className="text-sm">{formData.store_name}</p></div>
-                  <div><p className="text-xs text-muted-foreground">URL</p><p className="text-sm break-all">{formData.store_url}</p></div>
+                  <div><p className="text-xs text-muted-foreground">URL</p><p className="text-sm break-words">{formData.store_url}</p></div>
                   <div><p className="text-xs text-muted-foreground">Plataforma</p><p className="text-sm">{PLATFORMS.find(p => p.value === formData.platform)?.label}</p></div>
                 </div>
               </div>
