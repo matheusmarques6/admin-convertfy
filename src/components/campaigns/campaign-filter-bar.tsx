@@ -1,6 +1,6 @@
 "use client"
 
-import { Store, Mail, MessageSquare, Filter } from "lucide-react"
+import { Mail, MessageSquare, Filter } from "lucide-react"
 import {
   Select,
   SelectContent,
@@ -13,17 +13,9 @@ import {
 // TYPES
 // ============================================
 
-export interface StoreOption {
-  id: string
-  store_name: string
-}
-
 export interface CampaignFilterBarProps {
-  selectedStore: string
   selectedChannel: string
   selectedStatus: string
-  stores: StoreOption[]
-  onStoreChange: (value: string) => void
   onChannelChange: (value: string) => void
   onStatusChange: (value: string) => void
 }
@@ -33,38 +25,13 @@ export interface CampaignFilterBarProps {
 // ============================================
 
 export function CampaignFilterBar({
-  selectedStore,
   selectedChannel,
   selectedStatus,
-  stores,
-  onStoreChange,
   onChannelChange,
   onStatusChange,
 }: CampaignFilterBarProps) {
   return (
     <div className="flex flex-wrap items-center gap-3">
-      {/* Store Filter */}
-      <Select value={selectedStore} onValueChange={onStoreChange}>
-        <SelectTrigger className="w-[160px] h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100">
-          <Store className="h-4 w-4 mr-2 text-slate-400 dark:text-slate-500" />
-          <SelectValue placeholder="Loja" />
-        </SelectTrigger>
-        <SelectContent className="bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40">
-          <SelectItem value="all" className="text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
-            Todas as lojas
-          </SelectItem>
-          {stores.map((store) => (
-            <SelectItem
-              key={store.id}
-              value={store.id}
-              className="text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-white/[0.06]"
-            >
-              {store.store_name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-
       {/* Channel Filter */}
       <Select value={selectedChannel} onValueChange={onChannelChange}>
         <SelectTrigger className="w-[140px] h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100">

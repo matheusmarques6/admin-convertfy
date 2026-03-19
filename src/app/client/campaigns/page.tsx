@@ -20,7 +20,6 @@ import { CalendarDayCell } from "@/components/calendar/calendar-day-cell"
 import { CampaignStatsBar } from "@/components/campaigns/campaign-stats-bar"
 import type { CampaignStats } from "@/components/campaigns/campaign-stats-bar"
 import { CampaignFilterBar } from "@/components/campaigns/campaign-filter-bar"
-import type { StoreOption } from "@/components/campaigns/campaign-filter-bar"
 import { CampaignDetailModal } from "@/components/campaigns/campaign-detail-modal"
 import { CampaignDayListModal } from "@/components/campaigns/campaign-day-list-modal"
 
@@ -59,7 +58,6 @@ function PortalCampaignsContent() {
   // Read initial values from URL (Story 45.14)
   const urlMonth = searchParams.get("month")
   const urlYear = searchParams.get("year")
-  const urlStore = searchParams.get("store")
   const urlChannel = searchParams.get("channel")
   const urlStatus = searchParams.get("status")
 
@@ -75,8 +73,6 @@ function PortalCampaignsContent() {
     goToPreviousMonth,
     goToNextMonth,
     goToToday,
-    selectedStore: hookSelectedStore,
-    setSelectedStore: hookSetSelectedStore,
     selectCampaign,
     isLoading: loading,
     isLoadingMetrics,
@@ -85,7 +81,6 @@ function PortalCampaignsContent() {
   } = usePortalCampaignsCalendar({
     initialMonth: initialMonth != null && !isNaN(initialMonth) ? initialMonth : undefined,
     initialYear: initialYear != null && !isNaN(initialYear) ? initialYear : undefined,
-    storeId: urlStore || undefined,
   })
 
   // Additional filters -- applied client-side
@@ -96,23 +91,15 @@ function PortalCampaignsContent() {
   const [selectedDayCampaigns, setSelectedDayCampaigns] = useState<Campaign[] | null>(null)
   const [selectedDayDate, setSelectedDayDate] = useState<string | null>(null)
 
-  // Adapt hook store filter to "all" pattern used by Select component
-  const selectedStore = hookSelectedStore ?? "all"
-  const setSelectedStore = useCallback(
-    (value: string) => hookSetSelectedStore(value === "all" ? null : value),
-    [hookSetSelectedStore],
-  )
-
   // Story 45.14: Sync state -> URL on every change (including mount — ensures URL always reflects current view)
   useEffect(() => {
     const params = new URLSearchParams()
     params.set("month", String(month + 1))
     params.set("year", String(year))
-    if (selectedStore !== "all") params.set("store", selectedStore)
     if (selectedChannel !== "all") params.set("channel", selectedChannel)
     if (selectedStatus !== "all") params.set("status", selectedStatus)
     router.replace(`?${params.toString()}`, { scroll: false })
-  }, [month, year, selectedStore, selectedChannel, selectedStatus, router])
+  }, [month, year, selectedChannel, selectedStatus, router])
 
   const error = hookError?.message ?? null
 
@@ -121,19 +108,6 @@ function PortalCampaignsContent() {
     () => rawApiCampaigns.map((c) => transformCampaignData(c)),
     [rawApiCampaigns],
   )
-
-  // Extract unique stores for filter dropdown
-  const stores = useMemo<StoreOption[]>(() => {
-    const unique = new Map<string, StoreOption>()
-    rawApiCampaigns.forEach((c) => {
-      const ids: string[] = c.store_ids || []
-      const names: string[] = c.store_names || []
-      ids.forEach((id, index) => {
-        if (!unique.has(id)) unique.set(id, { id, store_name: names[index] || "Loja" })
-      })
-    })
-    return Array.from(unique.values())
-  }, [rawApiCampaigns])
 
   // Apply client-side channel and status filters
   const campaigns = useMemo(() => {
@@ -270,16 +244,6 @@ function PortalCampaignsContent() {
     <div className="min-h-screen bg-slate-50/50 dark:bg-[#0B0E14] text-slate-800 dark:text-slate-100">
       <div className="max-w-[1600px] mx-auto p-6 space-y-6">
 
-        {/* Header */}
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Campanhas</h1>
-            <p className="text-slate-500 dark:text-slate-400">
-              Acompanhe campanhas de marketing e gere copies
-            </p>
-          </div>
-        </div>
-
         <div className="space-y-6">
           {/* Refresh button */}
           <div className="flex justify-end">
@@ -308,11 +272,8 @@ function PortalCampaignsContent() {
                 onToday={goToToday}
               />
               <CampaignFilterBar
-                selectedStore={selectedStore}
                 selectedChannel={selectedChannel}
                 selectedStatus={selectedStatus}
-                stores={stores}
-                onStoreChange={setSelectedStore}
                 onChannelChange={setSelectedChannel}
                 onStatusChange={setSelectedStatus}
               />

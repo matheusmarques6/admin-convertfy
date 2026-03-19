@@ -109,7 +109,6 @@ async function portalFetcher<T = unknown>(url: string): Promise<T> {
 export interface UsePortalCampaignsCalendarOptions {
   initialMonth?: number // 0-11
   initialYear?: number
-  storeId?: string
 }
 
 // Re-export for consumers that imported PortalCampaignApiResponse from here
@@ -129,8 +128,6 @@ export interface UsePortalCampaignsCalendarReturn {
   goToToday: () => void
 
   // Selection
-  selectedStore: string | null
-  setSelectedStore: (storeId: string | null) => void
   selectCampaign: (campaign: PortalCampaign | null) => void
 
   // Loading states
@@ -154,7 +151,6 @@ export function usePortalCampaignsCalendar(
     () => new Date(options.initialYear ?? now.getFullYear(), options.initialMonth ?? now.getMonth(), 1)
   )
   const [selectedCampaign, setSelectedCampaign] = useState<PortalCampaign | null>(null)
-  const [selectedStore, setSelectedStoreRaw] = useState<string | null>(options.storeId ?? null)
 
   const year = currentDate.getFullYear()
   const month = currentDate.getMonth()
@@ -165,9 +161,8 @@ export function usePortalCampaignsCalendar(
     const sd = `${y}-${String(m + 1).padStart(2, "0")}-01`
     const ed = `${y}-${String(m + 1).padStart(2, "0")}-${String(ld).padStart(2, "0")}`
     const params = new URLSearchParams({ start_date: sd, end_date: ed })
-    if (selectedStore) params.set("store_id", selectedStore)
     return `/api/portal/campaigns?${params.toString()}`
-  }, [selectedStore])
+  }, [])
 
   const buildListUrl = useCallback(() => {
     return buildListUrlForMonth(month, year)
@@ -180,7 +175,7 @@ export function usePortalCampaignsCalendar(
     isLoading: isLoadingList,
     mutate,
   } = useSWR<{ success: boolean; campaigns: PortalCampaignApiResponse[]; totalCount: number }>(
-    ["/api/portal/campaigns", month, year, selectedStore],
+    ["/api/portal/campaigns", month, year],
     () => portalFetcher(buildListUrl()),
     {
       revalidateOnFocus: false,
@@ -197,12 +192,12 @@ export function usePortalCampaignsCalendar(
     const nextMonth = month === 11 ? 0 : month + 1
     const nextYear = month === 11 ? year + 1 : year
 
-    const prevKey = ["/api/portal/campaigns", prevMonth, prevYear, selectedStore]
-    const nextKey = ["/api/portal/campaigns", nextMonth, nextYear, selectedStore]
+    const prevKey = ["/api/portal/campaigns", prevMonth, prevYear]
+    const nextKey = ["/api/portal/campaigns", nextMonth, nextYear]
 
     preload(prevKey, () => portalFetcher(buildListUrlForMonth(prevMonth, prevYear)))
     preload(nextKey, () => portalFetcher(buildListUrlForMonth(nextMonth, nextYear)))
-  }, [month, year, selectedStore, buildListUrlForMonth])
+  }, [month, year, buildListUrlForMonth])
 
   // SWR: lazy metrics for selected campaign
   const metricsKey = selectedCampaign?.id
@@ -239,12 +234,6 @@ export function usePortalCampaignsCalendar(
     setSelectedCampaign(null)
   }, [])
 
-  // Store selection — reset selected campaign on change
-  const setSelectedStore = useCallback((storeId: string | null) => {
-    setSelectedStoreRaw(storeId)
-    setSelectedCampaign(null)
-  }, [])
-
   // Campaign selection
   const selectCampaign = useCallback((campaign: PortalCampaign | null) => {
     setSelectedCampaign(campaign)
@@ -261,8 +250,6 @@ export function usePortalCampaignsCalendar(
     goToNextMonth,
     goToToday,
 
-    selectedStore,
-    setSelectedStore,
     selectCampaign,
 
     isLoading: isLoadingList,
