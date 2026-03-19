@@ -202,7 +202,7 @@ export function TotalRevenueBanner({ storeIds, period: controlledPeriod, onPerio
             </div>
           </div>
           <Skeleton className="h-14 w-72" />
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <Skeleton className="h-20 w-full rounded-xl" />
             <Skeleton className="h-20 w-full rounded-xl" />
           </div>
@@ -276,7 +276,7 @@ export function TotalRevenueBanner({ storeIds, period: controlledPeriod, onPerio
 
   return (
     <div className="rounded-xl border border-white/10 bg-gradient-to-br from-[#0a1628] via-[#0f2035] to-[#0a2540] shadow-lg shadow-black/20">
-      <div className="p-6 space-y-6">
+      <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-2.5">
@@ -320,7 +320,7 @@ export function TotalRevenueBanner({ storeIds, period: controlledPeriod, onPerio
 
         {/* Main number */}
         <div>
-          <p className="text-3xl md:text-4xl font-bold tracking-tight text-[#05AFF2]">
+          <p className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight text-[#05AFF2]">
             {formatCurrency(animatedTotal)}
           </p>
           <div className="mt-1.5 flex items-center gap-3 flex-wrap">
@@ -347,23 +347,23 @@ export function TotalRevenueBanner({ storeIds, period: controlledPeriod, onPerio
         </div>
 
         {/* Breakdown: campaigns vs flows */}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="flex items-center gap-3 p-4 rounded-xl border border-white/10 bg-white/5">
-            <div className="rounded-xl p-2.5 bg-[#05AFF2]/15">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+          <div className="flex items-center gap-3 p-3 sm:p-4 rounded-xl border border-white/10 bg-white/5">
+            <div className="rounded-xl p-2 sm:p-2.5 bg-[#05AFF2]/15 shrink-0">
               <Megaphone className="h-4 w-4 text-[#05AFF2]" />
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="text-xs text-white/50 font-medium">Campanhas</p>
-              <p className="text-lg font-semibold tracking-tight text-white">{formatCurrency(animatedCampaign)}</p>
+              <p className="text-base sm:text-lg font-semibold tracking-tight text-white truncate">{formatCurrency(animatedCampaign)}</p>
             </div>
           </div>
-          <div className="flex items-center gap-3 p-4 rounded-xl border border-white/10 bg-white/5">
-            <div className="rounded-xl p-2.5 bg-[#05AFF2]/15">
+          <div className="flex items-center gap-3 p-3 sm:p-4 rounded-xl border border-white/10 bg-white/5">
+            <div className="rounded-xl p-2 sm:p-2.5 bg-[#05AFF2]/15 shrink-0">
               <Workflow className="h-4 w-4 text-[#05AFF2]" />
             </div>
-            <div>
+            <div className="min-w-0">
               <p className="text-xs text-white/50 font-medium">Flows</p>
-              <p className="text-lg font-semibold tracking-tight text-white">{formatCurrency(animatedFlow)}</p>
+              <p className="text-base sm:text-lg font-semibold tracking-tight text-white truncate">{formatCurrency(animatedFlow)}</p>
             </div>
           </div>
         </div>

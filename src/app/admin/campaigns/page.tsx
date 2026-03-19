@@ -73,36 +73,36 @@ export default function CampaignsCalendarPage() {
             <div className="flex rounded-lg border bg-muted p-1">
               <button
                 onClick={() => setViewMode("calendar")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
                   viewMode === "calendar"
                     ? "bg-background text-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >
                 <Calendar className="h-3.5 w-3.5" />
-                Calendário
+                <span className="hidden sm:inline">Calendário</span>
               </button>
               <button
                 onClick={() => setViewMode("performance")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
                   viewMode === "performance"
                     ? "bg-background text-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >
                 <BarChart3 className="h-3.5 w-3.5" />
-                Desempenho
+                <span className="hidden sm:inline">Desempenho</span>
               </button>
               <button
                 onClick={() => setViewMode("copy")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
                   viewMode === "copy"
                     ? "bg-background text-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >
                 <PenLine className="h-3.5 w-3.5" />
-                Copy
+                <span className="hidden sm:inline">Copy</span>
               </button>
             </div>
 
@@ -164,9 +164,9 @@ export default function CampaignsCalendarPage() {
               </Button>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
               <div className="flex items-center gap-2">
-                <Store className="h-4 w-4 text-muted-foreground" />
+                <Store className="h-4 w-4 text-muted-foreground shrink-0" />
                 <Select value={cal.selectedStore} onValueChange={cal.setSelectedStore}>
                   <SelectTrigger className="w-full sm:w-[200px]">
                     <SelectValue placeholder="Todas as lojas" />
@@ -232,21 +232,23 @@ export default function CampaignsCalendarPage() {
 
       {/* Calendar */}
       <Card>
-        <CardContent className="p-0">
-          {cal.loading ? (
-            <div className="p-6">
-              <Skeleton className="h-[600px] w-full" />
-            </div>
-          ) : (
-            <CalendarGrid
-              daysInMonth={cal.daysInMonth}
-              startingDayOfWeek={cal.startingDayOfWeek}
-              getCampaignsForDay={cal.getCampaignsForDay}
-              isDayToday={cal.isDayToday}
-              onDayClick={cal.handleDayClick}
-              onCampaignClick={cal.handleCampaignClick}
-            />
-          )}
+        <CardContent className="p-0 overflow-x-auto">
+          <div className="min-w-[480px]">
+            {cal.loading ? (
+              <div className="p-6">
+                <Skeleton className="h-[600px] w-full" />
+              </div>
+            ) : (
+              <CalendarGrid
+                daysInMonth={cal.daysInMonth}
+                startingDayOfWeek={cal.startingDayOfWeek}
+                getCampaignsForDay={cal.getCampaignsForDay}
+                isDayToday={cal.isDayToday}
+                onDayClick={cal.handleDayClick}
+                onCampaignClick={cal.handleCampaignClick}
+              />
+            )}
+          </div>
         </CardContent>
       </Card>
 

@@ -109,16 +109,18 @@ interface SidebarProps {
   }
 }
 
-export function Sidebar({ user }: SidebarProps) {
+export function Sidebar({ user, forceExpanded }: SidebarProps & { forceExpanded?: boolean }) {
   const pathname = usePathname()
   const router = useRouter()
   const { theme, setTheme } = useTheme()
-  const { sidebarCollapsed, setSidebarCollapsed } = useUIStore()
+  const { sidebarCollapsed: globalCollapsed, setSidebarCollapsed } = useUIStore()
+  const sidebarCollapsed = forceExpanded ? false : globalCollapsed
   const [isLoggingOut, setIsLoggingOut] = useState(false)
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set())
   const { permissions, hasAnyFeature, isLoading } = usePermissions()
 
   useEffect(() => {
+    if (forceExpanded) return
     const mq = window.matchMedia("(max-width: 1279px)")
     const handler = (e: MediaQueryListEvent | MediaQueryList) => {
       if (e.matches) setSidebarCollapsed(true)
@@ -126,7 +128,7 @@ export function Sidebar({ user }: SidebarProps) {
     handler(mq)
     mq.addEventListener("change", handler)
     return () => mq.removeEventListener("change", handler)
-  }, [setSidebarCollapsed])
+  }, [setSidebarCollapsed, forceExpanded])
 
   // Auto-expand parent items when a child route is active
   useEffect(() => {

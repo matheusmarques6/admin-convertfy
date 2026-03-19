@@ -231,8 +231,8 @@ export function Header({ user: userProp }: HeaderProps) {
             <Menu className="h-4 w-4" />
           </Button>
         </SheetTrigger>
-        <SheetContent side="left" className="p-0 w-[250px]">
-          <Sidebar user={userProp} />
+        <SheetContent side="left" className="p-0 w-[260px]">
+          <Sidebar user={userProp} forceExpanded />
         </SheetContent>
       </Sheet>
 

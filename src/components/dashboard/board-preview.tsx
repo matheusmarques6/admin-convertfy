@@ -50,11 +50,11 @@ export function BoardPreview({ tasks }: BoardPreviewProps) {
       </CardHeader>
       <CardContent className="space-y-4 flex-1 flex flex-col">
         {/* Column counters */}
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
           {counts.map((col) => (
-            <div key={col.status} className="text-center space-y-2 p-2.5 rounded-xl bg-muted/30">
-              <p className="text-[11px] text-muted-foreground truncate font-medium">{col.label}</p>
-              <p className="text-2xl font-bold text-foreground tabular-nums">{col.count}</p>
+            <div key={col.status} className="text-center space-y-1.5 sm:space-y-2 p-2 sm:p-2.5 rounded-xl bg-muted/30">
+              <p className="text-[11px] text-muted-foreground font-medium">{col.label}</p>
+              <p className="text-xl sm:text-2xl font-bold text-foreground tabular-nums">{col.count}</p>
               <div className="h-1.5 rounded-full bg-muted overflow-hidden">
                 <div
                   className={`h-full rounded-full ${col.color} transition-all duration-500`}
