@@ -833,19 +833,19 @@ async function readReportFromCache(
   if (Date.now() - fetchedAt.getTime() > RATE_LIMIT_MAX_CACHE_AGE_MS) return null
 
   // Verify it's not an error row with zero revenue
-  if (row.sync_status === "error" && (row.campaign_revenue === 0 && row.flow_revenue === 0)) return null
+  if (row.sync_status === "error" && (row.klaviyo_campaign_revenue === 0 && row.klaviyo_flow_revenue === 0)) return null
 
   return {
     fetchedAt: row.fetched_at as string,
     revenue: {
-      storeRevenue: (row.store_revenue as number) || 0,
+      storeRevenue: (row.store_total_revenue as number) || 0,
       storeOrders: (row.store_orders as number) || 0,
-      totalRevenue: ((row.campaign_revenue as number) || 0) + ((row.flow_revenue as number) || 0),
-      klaviyoAttributedRevenue: ((row.campaign_revenue as number) || 0) + ((row.flow_revenue as number) || 0),
-      campaignRevenue: (row.campaign_revenue as number) || 0,
-      flowRevenue: (row.flow_revenue as number) || 0,
-      recoveryRate: (row.store_revenue as number) > 0
-        ? (((row.campaign_revenue as number) || 0) + ((row.flow_revenue as number) || 0)) / (row.store_revenue as number) * 100
+      totalRevenue: ((row.klaviyo_campaign_revenue as number) || 0) + ((row.klaviyo_flow_revenue as number) || 0),
+      klaviyoAttributedRevenue: ((row.klaviyo_campaign_revenue as number) || 0) + ((row.klaviyo_flow_revenue as number) || 0),
+      campaignRevenue: (row.klaviyo_campaign_revenue as number) || 0,
+      flowRevenue: (row.klaviyo_flow_revenue as number) || 0,
+      recoveryRate: (row.store_total_revenue as number) > 0
+        ? (((row.klaviyo_campaign_revenue as number) || 0) + ((row.klaviyo_flow_revenue as number) || 0)) / (row.store_total_revenue as number) * 100
         : 0,
     },
     audience: {

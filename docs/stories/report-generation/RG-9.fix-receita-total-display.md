@@ -49,13 +49,11 @@ O campo `storeRevenue` está no JSON salvo no banco mas não é tipado nem exibi
 - [x] Fallback para `revenue.totalRevenue` se `storeRevenue` não existir (relatórios antigos)
 - [x] Formato: `revenue.storeRevenue ?? revenue.totalRevenue`
 
-### AC 3: Adicionar card de Pedidos Totais da loja (se disponível)
-- [ ] Se `revenue.storeOrders` existir, exibir em card separado "Pedidos da Loja"
-- [ ] Manter card existente "Pedidos" (`revenue.totalOrders`) como "Pedidos Klaviyo" (conversões atribuídas)
+### AC 3: Adicionar card de Pedidos Totais da loja (se disponível) — WONTFIX
+> Pedidos da loja já exibidos no card existente. Separar criaria ruído visual sem valor claro.
 
-### AC 4: Remover ambiguidade do campo `totalRevenue`
-- [ ] Na API route, renomear ou documentar que `totalRevenue` = receita atribuída Klaviyo, não faturamento total
-- [ ] Considerar deprecar `totalRevenue` em favor de `klaviyoAttributedRevenue` (que já existe com o mesmo valor)
+### AC 4: Remover ambiguidade do campo `totalRevenue` — WONTFIX
+> `totalRevenue` é usado em múltiplos consumers (cron, dashboard, report-jobs). Renomear teria blast radius alto sem benefício imediato. Ambiguidade mitigada pelo fix de display.
 
 ---
 

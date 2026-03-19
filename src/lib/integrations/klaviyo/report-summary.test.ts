@@ -214,6 +214,7 @@ describe("AK-3.2: Cache-first lookups in report-summary", () => {
     const mockClient = buildMockAdminClient({
       klaviyo_campaign_revenue: 400,
       klaviyo_flow_revenue: 600,
+      store_total_revenue: 5000,
       currency: "BRL",
       fetched_at: freshFetchedAt,
       sync_status: "ok",
@@ -228,7 +229,7 @@ describe("AK-3.2: Cache-first lookups in report-summary", () => {
       totalRevenue: 1000,
       campaignRevenue: 400,
       flowRevenue: 600,
-      storeRevenue: 0,
+      storeRevenue: 5000,
       currency: "BRL",
     })
     // klaviyoRequest must NOT be called — data served from cache
