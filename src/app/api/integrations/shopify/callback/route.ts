@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { updateStoreCredentials } from "@/lib/services/credentials.service"
+import { AppError } from "@/lib/api/errors"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("ShopifyCallback")
@@ -28,7 +29,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Decode state
-    let stateData: { user_id: string; shop: string; store_id: string; nonce: string; timestamp: number }
+    let stateData: { user_id: string; shop: string; store_id: string; nonce: string; timestamp: number; org_id?: string }
     try {
       stateData = JSON.parse(Buffer.from(state, "base64").toString())
     } catch {
@@ -112,15 +113,35 @@ export async function GET(request: NextRequest) {
 
     const tokenData = await tokenResponse.json()
 
+    // Extract org_id from state (added in 56.2; may be absent in legacy flows)
+    const orgId = stateData.org_id
+    if (!orgId) {
+      log.warn("[Shopify Callback] state missing org_id — skipping org check (legacy flow)")
+    }
+
     // Save credentials to client_stores (unified credential storage)
-    await updateStoreCredentials(
-      stateData.store_id,
-      {
-        shopify_store_domain: shop,
-        shopify_access_token: tokenData.access_token,
-      },
-      "shopify"
-    )
+    try {
+      await updateStoreCredentials(
+        stateData.store_id,
+        {
+          shopify_store_domain: shop,
+          shopify_access_token: tokenData.access_token,
+        },
+        "shopify",
+        orgId ? { orgId } : undefined
+      )
+    } catch (err) {
+      if (err instanceof AppError && err.statusCode === 403) {
+        log.error("[Shopify Callback] Org mismatch on credential save", {
+          storeId: stateData.store_id,
+          orgId,
+        })
+        return NextResponse.redirect(
+          new URL("/stores?error=org_mismatch", request.nextUrl.origin)
+        )
+      }
+      throw err
+    }
 
     log.info("Shopify credentials saved to client_stores", {
       storeId: stateData.store_id,

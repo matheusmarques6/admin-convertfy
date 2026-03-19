@@ -2,6 +2,7 @@ import { NextRequest } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
 import { resolveOrgId } from "@/lib/api/resolve-org"
+import { requireStoreAccess } from "@/lib/api/require-store-access"
 import { encryptCredentialsJson } from "@/lib/crypto"
 import { updateStoreCredentials } from "@/lib/services/credentials.service"
 import { logger } from "@/lib/logger"
@@ -65,13 +66,15 @@ export async function POST(request: NextRequest) {
 
     // If store_id is provided, save to client_stores (per-client)
     if (store_id) {
+      const storeAccess = await requireStoreAccess(store_id, user.id, "can_edit")
+
       const storeFields = mapCredentialsToStoreFields(type, credentials)
 
       if (Object.keys(storeFields).length === 0) {
         throw new AppError(`Unsupported integration type for store: ${type}`, 400)
       }
 
-      await updateStoreCredentials(store_id, storeFields, type as "shopify" | "klaviyo" | "meta" | "ga4" | "google_ads" | "google_calendar", { orgId })
+      await updateStoreCredentials(store_id, storeFields, type as "shopify" | "klaviyo" | "meta" | "ga4" | "google_ads" | "google_calendar", { orgId: storeAccess.orgId })
 
       log.info("Integration saved to client_stores", { store_id, type })
       return successResponse(request, { success: true, saved_to: "client_stores" })

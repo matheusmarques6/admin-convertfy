@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
-import { errorResponse, successResponse, requireAuth, AppError } from "@/lib/api/errors"
+import { errorResponse, successResponse, requireAuth, AppError, ForbiddenError } from "@/lib/api/errors"
+import { requireStoreAccess } from "@/lib/api/require-store-access"
+import { resolveOrgId } from "@/lib/api/resolve-org"
 import { logger } from "@/lib/logger"
 import { n8nTriggerService } from "@/lib/services/n8n-trigger.service"
 
@@ -14,7 +16,7 @@ const log = logger.child("OnboardingStoreData")
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
-    await requireAuth(supabase)
+    const user = await requireAuth(supabase)
 
     const storeId = request.nextUrl.searchParams.get("store_id")
     const clientId = request.nextUrl.searchParams.get("client_id")
@@ -24,6 +26,22 @@ export async function GET(request: NextRequest) {
     }
 
     const adminClient = createAdminClient()
+
+    // Ownership check: validate access before any data fetching
+    if (storeId) {
+      await requireStoreAccess(storeId, user.id)
+    } else if (clientId) {
+      const userOrgId = await resolveOrgId(user.id)
+      const { data: client } = await adminClient
+        .from("clients")
+        .select("id, org_id")
+        .eq("id", clientId)
+        .single()
+
+      if (!client || client.org_id !== userOrgId) {
+        throw new ForbiddenError("Sem acesso a este cliente")
+      }
+    }
 
     let store = null
     let onboardingData = null
@@ -106,6 +124,22 @@ export async function POST(request: NextRequest) {
 
     if (!body.store_id && !body.client_id) {
       throw new AppError("store_id ou client_id é obrigatório", 400)
+    }
+
+    // Ownership check: validate access before any data modification
+    if (body.store_id) {
+      await requireStoreAccess(body.store_id, user.id, "can_edit")
+    } else if (body.client_id) {
+      const userOrgId = await resolveOrgId(user.id)
+      const { data: clientCheck } = await adminClient
+        .from("clients")
+        .select("id, org_id")
+        .eq("id", body.client_id)
+        .single()
+
+      if (!clientCheck || clientCheck.org_id !== userOrgId) {
+        throw new ForbiddenError("Sem acesso a este cliente")
+      }
     }
 
     let storeId = body.store_id as string | null

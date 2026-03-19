@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { requireStoreAccess } from "@/lib/api/require-store-access"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("ShopifyAuthorize")
@@ -39,6 +40,16 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    // Validate store ownership before initiating OAuth
+    let storeAccess
+    try {
+      storeAccess = await requireStoreAccess(storeId, user.id, "can_edit")
+    } catch {
+      const redirectUrl = new URL("/stores", request.nextUrl.origin)
+      redirectUrl.searchParams.set("error", "store_access_denied")
+      return NextResponse.redirect(redirectUrl)
+    }
+
     // Generate nonce for CSRF protection
     const nonce = crypto.randomBytes(16).toString("hex")
 
@@ -51,12 +62,13 @@ export async function GET(request: NextRequest) {
       "read_analytics",
     ].join(",")
 
-    // Store state (includes store_id for credential routing)
+    // Store state (includes store_id + org_id for credential routing)
     const state = Buffer.from(
       JSON.stringify({
         user_id: user.id,
         shop: shopDomain,
         store_id: storeId,
+        org_id: storeAccess.orgId,
         nonce,
         timestamp: Date.now(),
       })
