@@ -27,8 +27,8 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 export const maxDuration = 300
 export const dynamic = 'force-dynamic'
 
-// Cache-first configuration
-const CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1000 // 6 hours (aligned with cron interval)
+// Cache-first configuration — aligned with cron sync interval (every 30min)
+const CACHE_MAX_AGE_MS = 35 * 60 * 1000 // 35 minutes (cron runs every 30min)
 
 export async function OPTIONS(request: NextRequest) {
   return handleCorsPreFlight(request)
