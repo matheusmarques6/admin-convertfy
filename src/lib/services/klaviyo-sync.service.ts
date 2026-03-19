@@ -583,16 +583,19 @@ export async function syncKlaviyoForPeriod(
     if (flowOk) {
       log.info(`[CronSync] flow-values-report completed for store ${storeId} in ${Date.now() - startFlow}ms`)
     } else {
-      log.warn(`[CronSync] flow-values-report FAILED for store ${storeId}: null response (likely rate-limited)`)
+      log.warn(`[CronSync] flow-values-report FAILED for store ${storeId}: null response (API error or timeout)`)
     }
 
-    // 2. Campaign report — uses mixed email+SMS statistics (AK-7).
-    // Klaviyo returns each campaign with send_channel in groupings; we map
-    // SMS-specific stat names to our canonical column names during aggregation.
+    // 2. Campaign report — split email/SMS requests (AK-7 fix).
+    // Klaviyo rejects SMS stat names in a single mixed request, so we send
+    // email stats first, then SMS stats only if the store has SMS campaigns.
     const startCamp = Date.now()
-    const campaignResponse = await klaviyoRequest<{
+    type CampReportResp = {
       data: { attributes: { results: Array<{ groupings: { campaign_id: string; send_channel: string }; statistics: Record<string, number | undefined> }> } }
-    }>(apiKey, "/campaign-values-reports/", {
+    }
+
+    // 2a. Email campaign report (always)
+    const emailCampaignResponse = await klaviyoRequest<CampReportResp>(apiKey, "/campaign-values-reports/", {
       method: "POST",
       body: {
         data: {
@@ -600,16 +603,46 @@ export async function syncKlaviyoForPeriod(
           attributes: {
             timeframe,
             conversion_metric_id: metricId,
-            statistics: [...CAMPAIGN_STATISTICS_MIXED],
+            statistics: [...EMAIL_STATISTICS],
           },
         },
       },
     })
+
+    // 2b. SMS campaign report (only if store has SMS campaigns)
+    const hasSms = Array.from(campNames.values()).some(c => c.channel === "sms")
+    let smsCampaignResponse: CampReportResp | null = null
+    if (hasSms) {
+      // Throttle between email and SMS requests — XS-tier endpoint has strict burst limits
+      await sleep(1000)
+      smsCampaignResponse = await klaviyoRequest<CampReportResp>(apiKey, "/campaign-values-reports/", {
+        method: "POST",
+        body: {
+          data: {
+            type: "campaign-values-report",
+            attributes: {
+              timeframe,
+              conversion_metric_id: metricId,
+              statistics: [...SMS_STATISTICS],
+            },
+          },
+        },
+      })
+    }
+
+    // Merge email + SMS results into a single response shape
+    const emailResults = emailCampaignResponse?.data?.attributes?.results || []
+    const smsResults = smsCampaignResponse?.data?.attributes?.results || []
+    const mergedResults = [...emailResults, ...smsResults]
+    const campaignResponse = emailCampaignResponse != null
+      ? { data: { attributes: { results: mergedResults } } }
+      : null
+
     const campOk = campaignResponse != null
     if (campOk) {
-      log.info(`[CronSync] campaign-values-report completed for store ${storeId} in ${Date.now() - startCamp}ms`)
+      log.info(`[CronSync] campaign-values-report completed for store ${storeId} in ${Date.now() - startCamp}ms${hasSms ? " (email+sms)" : ""}`)
     } else {
-      log.warn(`[CronSync] campaign-values-report FAILED for store ${storeId}: null response (likely rate-limited)`)
+      log.warn(`[CronSync] campaign-values-report FAILED for store ${storeId}: null response (API error or timeout)`)
     }
 
     // 3. Metric aggregates (store revenue)
