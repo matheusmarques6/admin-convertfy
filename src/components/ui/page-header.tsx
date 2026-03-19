@@ -64,7 +64,7 @@ export function PageHeader({
               </div>
             )}
             <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+              <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-foreground">
                 {title}
               </h1>
               {badge !== undefined && badge !== null && (
@@ -83,7 +83,7 @@ export function PageHeader({
         </div>
 
         {actions && (
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
             {actions}
           </div>
         )}

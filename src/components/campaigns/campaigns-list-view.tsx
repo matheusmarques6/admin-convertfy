@@ -254,9 +254,9 @@ export function CampaignsListView() {
     <div className="space-y-6">
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2">
-        <Filter className="h-4 w-4 text-muted-foreground" />
+        <Filter className="h-4 w-4 text-muted-foreground hidden sm:block" />
         <Select value={filterStore} onValueChange={setFilterStore}>
-          <SelectTrigger className="w-[180px] h-9">
+          <SelectTrigger className="w-full sm:w-[180px] h-9">
             <SelectValue placeholder="Loja" />
           </SelectTrigger>
           <SelectContent>
@@ -268,7 +268,7 @@ export function CampaignsListView() {
         </Select>
 
         <Select value={filterChannel} onValueChange={setFilterChannel}>
-          <SelectTrigger className="w-[140px] h-9">
+          <SelectTrigger className="w-[calc(50%-4px)] sm:w-[140px] h-9">
             <SelectValue placeholder="Canal" />
           </SelectTrigger>
           <SelectContent>
@@ -281,7 +281,7 @@ export function CampaignsListView() {
         </Select>
 
         <Select value={filterStatus} onValueChange={setFilterStatus}>
-          <SelectTrigger className="w-[140px] h-9">
+          <SelectTrigger className="w-[calc(50%-4px)] sm:w-[140px] h-9">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
@@ -298,7 +298,7 @@ export function CampaignsListView() {
           setCustomStart(undefined)
           setCustomEnd(undefined)
         }}>
-          <SelectTrigger className="w-[120px] h-9">
+          <SelectTrigger className="w-full sm:w-[120px] h-9">
             <SelectValue placeholder="Período" />
           </SelectTrigger>
           <SelectContent>

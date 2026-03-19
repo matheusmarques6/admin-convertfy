@@ -47,7 +47,7 @@ export function CalendarGrid({
       <div className="grid grid-cols-7">
         {/* Empty cells */}
         {Array.from({ length: startingDayOfWeek }).map((_, i) => (
-          <div key={`empty-${i}`} className="h-32 border border-border/50 bg-muted/20" />
+          <div key={`empty-${i}`} className="h-20 sm:h-32 border border-border/50 bg-muted/20" />
         ))}
 
         {/* Days */}
@@ -60,7 +60,7 @@ export function CalendarGrid({
               key={day}
               onClick={() => onDayClick(day)}
               className={`
-                h-32 border border-border/50 p-1 cursor-pointer transition-colors
+                h-20 sm:h-32 border border-border/50 p-0.5 sm:p-1 cursor-pointer transition-colors
                 hover:bg-muted/50
                 ${dayIsToday ? "bg-primary/5 border-primary/30" : ""}
               `}

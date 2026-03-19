@@ -141,16 +141,16 @@ export default async function StoreDetailPage({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div className="flex items-start gap-4">
-          <Button variant="ghost" size="icon" asChild>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-start gap-3 sm:gap-4 min-w-0">
+          <Button variant="ghost" size="icon" className="shrink-0" asChild>
             <Link href="/admin/stores">
               <ArrowLeft className="h-4 w-4" />
             </Link>
           </Button>
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold">{store.store_name}</h1>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+              <h1 className="text-xl sm:text-2xl font-bold truncate">{store.store_name}</h1>
               <Badge variant={store.is_active ? "success" : "secondary"}>
                 {store.is_active ? "Ativa" : "Inativa"}
               </Badge>
@@ -158,8 +158,8 @@ export default async function StoreDetailPage({
                 <Badge variant="outline">{store.platform}</Badge>
               )}
             </div>
-            <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
-              {store.store_url && <span>{store.store_url}</span>}
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-4 mt-1 text-sm text-muted-foreground">
+              {store.store_url && <span className="truncate">{store.store_url}</span>}
               {store.client_id && clientName && (
                 <Link
                   href={`/admin/clients/${store.client_id}`}
@@ -172,7 +172,7 @@ export default async function StoreDetailPage({
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
           <StoreDeleteAction
             storeId={store.id}
             storeName={store.store_name}

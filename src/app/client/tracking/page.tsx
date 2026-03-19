@@ -315,7 +315,7 @@ export default function PortalTrackingPage() {
       <div className="max-w-[1200px] mx-auto space-y-6">
         <Skeleton className="h-8 w-48 bg-slate-200 dark:bg-slate-700" />
         <Skeleton className="h-10 w-96 bg-slate-100 dark:bg-slate-800 rounded-lg" />
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           {[1, 2, 3].map((i) => (
             <Skeleton key={i} className="h-24 bg-white dark:bg-[#151922] rounded-xl border border-slate-100 dark:border-slate-700/30" />
           ))}
@@ -475,7 +475,7 @@ export default function PortalTrackingPage() {
           </div>
 
           {/* KPIs */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-4 shadow-sm dark:shadow-slate-900/20 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200">
               <div className="flex items-center gap-2 mb-3">
                 <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center">

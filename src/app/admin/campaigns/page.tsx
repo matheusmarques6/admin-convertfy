@@ -151,8 +151,8 @@ export default function CampaignsCalendarPage() {
               <Button variant="outline" size="icon" onClick={cal.prevMonth}>
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              <div className="w-48 text-center">
-                <h2 className="text-lg font-semibold">
+              <div className="w-32 sm:w-48 text-center">
+                <h2 className="text-base sm:text-lg font-semibold">
                   {monthNames[cal.month]} {cal.year}
                 </h2>
               </div>
@@ -168,7 +168,7 @@ export default function CampaignsCalendarPage() {
               <div className="flex items-center gap-2">
                 <Store className="h-4 w-4 text-muted-foreground" />
                 <Select value={cal.selectedStore} onValueChange={cal.setSelectedStore}>
-                  <SelectTrigger className="w-[200px]">
+                  <SelectTrigger className="w-full sm:w-[200px]">
                     <SelectValue placeholder="Todas as lojas" />
                   </SelectTrigger>
                   <SelectContent>

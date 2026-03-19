@@ -223,7 +223,7 @@ export function Header({ user: userProp }: HeaderProps) {
   }, [pathname])
 
   return (
-    <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b border-border bg-background/95 backdrop-blur-sm px-6">
+    <header className="sticky top-0 z-40 flex h-14 items-center gap-2 sm:gap-4 border-b border-border bg-background/95 backdrop-blur-sm px-3 sm:px-6">
       {/* Mobile Menu */}
       <Sheet>
         <SheetTrigger asChild>
@@ -237,7 +237,7 @@ export function Header({ user: userProp }: HeaderProps) {
       </Sheet>
 
       {/* Page Title with Breadcrumbs */}
-      <div className="flex items-center gap-1.5 min-w-0 flex-1">
+      <div className="flex items-center gap-1 sm:gap-1.5 min-w-0 flex-1">
         {pageInfo.breadcrumbs.length > 0 ? (
           <nav className="flex items-center gap-1 text-sm min-w-0">
             {pageInfo.breadcrumbs.map((crumb, idx) => (
@@ -262,7 +262,7 @@ export function Header({ user: userProp }: HeaderProps) {
       </div>
 
       {/* Actions */}
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-1 sm:gap-1.5">
         {/* Theme Toggle */}
         <Button
           variant="ghost"
@@ -287,7 +287,7 @@ export function Header({ user: userProp }: HeaderProps) {
               )}
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-80">
+          <DropdownMenuContent align="end" className="w-[calc(100vw-2rem)] max-w-[320px] sm:w-80">
             <DropdownMenuLabel className="flex items-center justify-between">
               <span className="text-sm font-semibold">Notificacoes</span>
               <Button

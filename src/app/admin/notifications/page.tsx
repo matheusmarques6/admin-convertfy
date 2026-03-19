@@ -102,20 +102,20 @@ export default function NotificationsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/10">
+          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/10 shrink-0">
             <Bell className="w-5 h-5 text-primary" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Notificações</h1>
-            <p className="text-sm text-muted-foreground">
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Notificações</h1>
+            <p className="text-xs sm:text-sm text-muted-foreground">
               {unreadCount > 0 ? `${unreadCount} não lida${unreadCount > 1 ? "s" : ""}` : "Nenhuma notificação pendente"}
             </p>
           </div>
         </div>
         {unreadCount > 0 && (
-          <Button variant="outline" onClick={handleMarkAllAsRead}>
+          <Button variant="outline" size="sm" onClick={handleMarkAllAsRead} className="self-end sm:self-auto">
             <CheckCheck className="mr-2 h-4 w-4" />
             Marcar todas como lidas
           </Button>

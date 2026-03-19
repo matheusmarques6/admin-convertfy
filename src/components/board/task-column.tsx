@@ -85,7 +85,7 @@ export function TaskColumn({
   return (
     <div
       className={cn(
-        "flex flex-col min-w-[300px] max-w-[300px] bg-muted/30 rounded-lg transition-colors",
+        "flex flex-col min-w-[280px] max-w-[300px] w-[80vw] sm:w-auto sm:min-w-[300px] bg-muted/30 rounded-lg transition-colors",
         isOver && isDragging && "bg-muted/60 ring-2 ring-primary/50"
       )}
       onDragOver={handleDragOver}
