@@ -26,13 +26,17 @@ export interface Report {
 export interface ReportData {
   // Revenue metrics
   revenue?: {
+    storeRevenue?: number
+    storeOrders?: number
     totalRevenue?: number
     klaviyoAttributedRevenue?: number
     campaignRevenue?: number
     flowRevenue?: number
     smsRevenue?: number
     totalOrders?: number
+    klaviyoAttributedOrders?: number
     averageOrderValue?: number
+    recoveryRate?: number
   }
   // Overview metrics
   overview?: {

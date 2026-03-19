@@ -386,7 +386,7 @@ export default function ReportPage() {
             Métricas de Receita
           </h2>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            {revenue.totalRevenue !== undefined && (
+            {(revenue.storeRevenue ?? revenue.totalRevenue) !== undefined && (
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Faturamento Total</CardTitle>
@@ -394,7 +394,7 @@ export default function ReportPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-foreground">
-                    {formatReportCurrency(revenue.totalRevenue)}
+                    {formatReportCurrency((revenue.storeRevenue ?? revenue.totalRevenue)!)}
                   </div>
                 </CardContent>
               </Card>
