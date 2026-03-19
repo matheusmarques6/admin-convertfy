@@ -191,6 +191,7 @@ describe("AK-4: Serialize report calls in report-summary", () => {
       totalRevenue: 1000,
       campaignRevenue: 300,
       flowRevenue: 700,
+      storeRevenue: 0,
       currency: "BRL",
       campaignReportAvailable: true,
       flowReportAvailable: true,
@@ -227,6 +228,7 @@ describe("AK-3.2: Cache-first lookups in report-summary", () => {
       totalRevenue: 1000,
       campaignRevenue: 400,
       flowRevenue: 600,
+      storeRevenue: 0,
       currency: "BRL",
     })
     // klaviyoRequest must NOT be called — data served from cache
@@ -350,6 +352,7 @@ describe("AK-13: Write-through cache for 1d period", () => {
       totalRevenue: 400,
       campaignRevenue: 150,
       flowRevenue: 250,
+      storeRevenue: 0,
       currency: "BRL",
     })
     // Must NOT call Klaviyo API

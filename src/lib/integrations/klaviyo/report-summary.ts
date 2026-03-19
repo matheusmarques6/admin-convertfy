@@ -38,6 +38,8 @@ export interface KlaviyoRevenueSummary {
   totalRevenue: number
   campaignRevenue: number
   flowRevenue: number
+  /** Store-wide revenue from Klaviyo metric-aggregates (Placed Order, no grouping) */
+  storeRevenue: number
   /** ISO 4217 currency code from Klaviyo account (e.g. "USD", "BRL") */
   currency: string
   campaignReportAvailable?: boolean
@@ -105,7 +107,7 @@ export async function getKlaviyoRevenueForStore(
       log.warn(`Store ${storeId}: Placed Order metric not found (missing metrics:read scope or no e-commerce integration). Returning zero revenue.`)
       return {
         success: true,
-        data: { totalRevenue: 0, campaignRevenue: 0, flowRevenue: 0, currency },
+        data: { totalRevenue: 0, campaignRevenue: 0, flowRevenue: 0, storeRevenue: 0, currency },
         source: "live", fetchedAt: new Date().toISOString(),
       }
     }
@@ -118,7 +120,7 @@ export async function getKlaviyoRevenueForStore(
         const adminClient = createAdminClient()
         const { data: row } = await adminClient
           .from("store_revenue_summary")
-          .select("klaviyo_campaign_revenue, klaviyo_flow_revenue, currency, fetched_at, sync_status")
+          .select("klaviyo_campaign_revenue, klaviyo_flow_revenue, store_total_revenue, currency, fetched_at, sync_status")
           .eq("store_id", storeId)
           .eq("period_label", period)
           .order("fetched_at", { ascending: false })
@@ -133,6 +135,7 @@ export async function getKlaviyoRevenueForStore(
               totalRevenue: ((row.klaviyo_campaign_revenue as number) ?? 0) + ((row.klaviyo_flow_revenue as number) ?? 0),
               campaignRevenue: (row.klaviyo_campaign_revenue as number) ?? 0,
               flowRevenue: (row.klaviyo_flow_revenue as number) ?? 0,
+              storeRevenue: (row.store_total_revenue as number) ?? 0,
               currency: (row.currency as string) || currency,
             }
             log.info(`Store ${storeId}: serving fresh cache (age=${Math.round(ageMs / 1000)}s) for period ${period}`)
@@ -155,7 +158,7 @@ export async function getKlaviyoRevenueForStore(
         const adminClient = createAdminClient()
         const { data: row } = await adminClient
           .from("store_revenue_summary")
-          .select("klaviyo_campaign_revenue, klaviyo_flow_revenue, currency, fetched_at, sync_status")
+          .select("klaviyo_campaign_revenue, klaviyo_flow_revenue, store_total_revenue, currency, fetched_at, sync_status")
           .eq("store_id", storeId)
           .eq("period_label", "1d")
           .single()
@@ -168,6 +171,7 @@ export async function getKlaviyoRevenueForStore(
               totalRevenue: ((row.klaviyo_campaign_revenue as number) ?? 0) + ((row.klaviyo_flow_revenue as number) ?? 0),
               campaignRevenue: (row.klaviyo_campaign_revenue as number) ?? 0,
               flowRevenue: (row.klaviyo_flow_revenue as number) ?? 0,
+              storeRevenue: (row.store_total_revenue as number) ?? 0,
               currency: (row.currency as string) || currency,
             }
             log.info(`Store ${storeId}: 1d cache hit (age=${Math.round(ageMs / 1000)}s)`)
@@ -190,7 +194,7 @@ export async function getKlaviyoRevenueForStore(
         const customLabel = buildCustomPeriodLabel(customStartDate, customEndDate)
         const { data: row } = await adminClient
           .from("store_revenue_summary")
-          .select("klaviyo_campaign_revenue, klaviyo_flow_revenue, currency, fetched_at, sync_status")
+          .select("klaviyo_campaign_revenue, klaviyo_flow_revenue, store_total_revenue, currency, fetched_at, sync_status")
           .eq("store_id", storeId)
           .eq("period_label", customLabel)
           .single()
@@ -203,6 +207,7 @@ export async function getKlaviyoRevenueForStore(
               totalRevenue: ((row.klaviyo_campaign_revenue as number) ?? 0) + ((row.klaviyo_flow_revenue as number) ?? 0),
               campaignRevenue: (row.klaviyo_campaign_revenue as number) ?? 0,
               flowRevenue: (row.klaviyo_flow_revenue as number) ?? 0,
+              storeRevenue: (row.store_total_revenue as number) ?? 0,
               currency: (row.currency as string) || currency,
             }
             const ageMs = Date.now() - new Date(row.fetched_at as string).getTime()
@@ -359,6 +364,7 @@ export async function getKlaviyoRevenueForStore(
         totalRevenue: campaignRevenue + flowRevenue,
         campaignRevenue,
         flowRevenue,
+        storeRevenue: 0, // Not available from Reporting API — only from cron sync via metric-aggregates
         currency,
         campaignReportAvailable: campaignReport !== null,
         flowReportAvailable: flowReport !== null,
@@ -374,7 +380,7 @@ export async function getKlaviyoRevenueForStore(
           const adminClient = createAdminClient()
           let query = adminClient
             .from("store_revenue_summary")
-            .select("klaviyo_campaign_revenue, klaviyo_flow_revenue, currency, fetched_at, sync_status")
+            .select("klaviyo_campaign_revenue, klaviyo_flow_revenue, store_total_revenue, currency, fetched_at, sync_status")
             .eq("store_id", storeId)
 
           if (isCustomPeriod(period) && customStartDate && customEndDate) {
@@ -397,6 +403,7 @@ export async function getKlaviyoRevenueForStore(
                 totalRevenue: ((row.klaviyo_campaign_revenue as number) ?? 0) + ((row.klaviyo_flow_revenue as number) ?? 0),
                 campaignRevenue: (row.klaviyo_campaign_revenue as number) ?? 0,
                 flowRevenue: (row.klaviyo_flow_revenue as number) ?? 0,
+                storeRevenue: (row.store_total_revenue as number) ?? 0,
                 currency: (row.currency as string) || "BRL",
               }
               log.info(`Store ${storeId}: rate limit fallback serving stale cache from ${row.fetched_at}`)

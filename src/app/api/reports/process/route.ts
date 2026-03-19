@@ -342,8 +342,8 @@ async function buildResultSnapshot(
     }
   }
 
-  // Note: klaviyo_attributed_revenue = campaign + flow revenue from Reporting API.
-  // Total store revenue (from Metric Aggregates) is NOT fetched in this flow.
+  // total_revenue = store-wide revenue from metric-aggregates (Placed Order, no grouping)
+  // klaviyo_attributed_revenue = campaign + flow revenue from Reporting API
   // See docs/architecture/adr-klaviyo-revenue-source.md
   let totalRevenue = 0
   let klaviyoAttributedRevenue = 0
@@ -359,11 +359,11 @@ async function buildResultSnapshot(
       const data = revenueMap.get(storeId)
       storesProcessed++
       if (data) {
-        totalRevenue += data.totalRevenue
+        totalRevenue += data.storeRevenue > 0 ? data.storeRevenue : data.totalRevenue
         klaviyoAttributedRevenue += data.totalRevenue
         perStore[storeId] = {
           store_name: storeNameMap.get(storeId),
-          revenue: data.totalRevenue,
+          revenue: data.storeRevenue > 0 ? data.storeRevenue : data.totalRevenue,
           campaign_revenue: data.campaignRevenue,
           flow_revenue: data.flowRevenue,
           currency: data.currency,
