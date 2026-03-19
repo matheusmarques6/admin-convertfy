@@ -4,9 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react"
 import useSWR from "swr"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { TrendingUp, RefreshCw, Megaphone, Workflow, Store, AlertTriangle, BarChart3, ArrowRight } from "lucide-react"
-import Link from "next/link"
-import { ROUTES } from "@/lib/routes"
+import { TrendingUp, RefreshCw, Megaphone, Workflow, Store, AlertTriangle, BarChart3, Loader2 } from "lucide-react"
 import { useRealtimeRevenue } from "@/hooks/use-realtime-revenue"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -18,7 +16,11 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { DataStatusBanner } from "@/components/ui/data-status-banner"
 import { RefreshButton } from "@/components/ui/refresh-button"
 import { useDataStatus } from "@/hooks/use-data-status"
+import { useReportJob } from "@/hooks/use-report-job"
+import { ReportJobCard } from "@/components/shared/report-job-card"
+import { useToast } from "@/lib/hooks/use-toast"
 import type { DataStatus } from "@/lib/shared/data-status"
+import type { ReportJobWithExpiry } from "@/components/shared/report-job-card"
 
 export interface RevenueStoreItem {
   storeId: string
@@ -93,6 +95,7 @@ const fetcher = (url: string) => fetch(url).then(res => {
 })
 
 export function TotalRevenueBanner({ storeIds, period: controlledPeriod, onPeriodChange, onDataChange }: TotalRevenueBannerProps = {}) {
+  const { toast } = useToast()
   const [internalPeriod, setInternalPeriod] = useState("30d")
   const period = controlledPeriod ?? internalPeriod
   const setPeriod = (v: string) => {
@@ -101,6 +104,26 @@ export function TotalRevenueBanner({ storeIds, period: controlledPeriod, onPerio
   }
   const [customStart, setCustomStart] = useState<Date | undefined>()
   const [customEnd, setCustomEnd] = useState<Date | undefined>()
+
+  // Report job hook — generates report for custom date ranges
+  const handleReportComplete = useCallback((job: ReportJobWithExpiry) => {
+    if (job.status === "completed") {
+      toast({ title: "Relatorio pronto!", description: "Voce pode baixar o CSV." })
+    } else if (job.status === "partial") {
+      toast({ title: "Relatorio parcial concluido", description: "Algumas lojas falharam." })
+    } else if (job.status === "failed") {
+      toast({ title: "Relatorio falhou", description: "Tente novamente.", variant: "destructive" })
+    }
+  }, [toast])
+
+  const {
+    activeJob,
+    isGenerating,
+    jobDismissed,
+    generateReport,
+    retryReport,
+    dismissJob,
+  } = useReportJob({ onComplete: handleReportComplete })
 
   // Track the last standard (non-custom) period so we keep showing its data
   const lastStandardPeriodRef = useRef(period !== "custom" ? period : "30d")
@@ -345,8 +368,8 @@ export function TotalRevenueBanner({ storeIds, period: controlledPeriod, onPerio
           </div>
         </div>
 
-        {/* Custom period prompt — show info card directing to stores panel */}
-        {hasCustomDates && (
+        {/* Custom period — report generation */}
+        {hasCustomDates && !activeJob && !isGenerating && (
           <div className="rounded-xl border border-[#05AFF2]/20 bg-[#05AFF2]/5 p-4 flex items-center gap-4">
             <div className="rounded-lg bg-[#05AFF2]/15 p-2.5 shrink-0">
               <BarChart3 className="h-5 w-5 text-[#05AFF2]" />
@@ -356,17 +379,51 @@ export function TotalRevenueBanner({ storeIds, period: controlledPeriod, onPerio
                 Relatorio personalizado
               </p>
               <p className="text-xs text-white/60 mt-0.5">
-                {format(customStart, "dd MMM", { locale: ptBR })} — {format(customEnd, "dd MMM yyyy", { locale: ptBR })}. Para gerar um relatorio com datas especificas, acesse o painel de lojas.
+                {format(customStart, "dd MMM", { locale: ptBR })} — {format(customEnd, "dd MMM yyyy", { locale: ptBR })}
               </p>
             </div>
-            <Link
-              href={ROUTES.ADMIN.STORES.LIST}
-              className="inline-flex items-center gap-1.5 shrink-0 rounded-lg bg-[#05AFF2]/20 hover:bg-[#05AFF2]/30 text-[#05AFF2] px-3.5 py-2 text-sm font-medium transition-colors"
+            <Button
+              size="sm"
+              disabled={!data?.storeBreakdown?.length || isGenerating}
+              className="shrink-0 rounded-lg bg-[#05AFF2]/20 hover:bg-[#05AFF2]/30 text-[#05AFF2] border-0 text-sm font-medium"
+              onClick={() => {
+                const ids = data?.storeBreakdown?.map(s => s.storeId) ?? []
+                generateReport(
+                  ids,
+                  format(customStart, "yyyy-MM-dd"),
+                  format(customEnd, "yyyy-MM-dd"),
+                )
+              }}
             >
-              Ir ao Painel
-              <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
+              <BarChart3 className="h-3.5 w-3.5 mr-1.5" />
+              Gerar Relatorio
+            </Button>
           </div>
+        )}
+
+        {/* Generating spinner */}
+        {hasCustomDates && isGenerating && !activeJob && (
+          <div className="rounded-xl border border-[#05AFF2]/20 bg-[#05AFF2]/5 p-4 flex items-center gap-4">
+            <div className="rounded-lg bg-[#05AFF2]/15 p-2.5 shrink-0">
+              <Loader2 className="h-5 w-5 text-[#05AFF2] animate-spin" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-white">Iniciando relatorio...</p>
+              <p className="text-xs text-white/60 mt-0.5">
+                {format(customStart, "dd MMM", { locale: ptBR })} — {format(customEnd, "dd MMM yyyy", { locale: ptBR })}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Active report job card */}
+        {activeJob && !jobDismissed && (
+          <ReportJobCard
+            job={activeJob}
+            onClose={dismissJob}
+            onRetry={retryReport}
+            variant="dark"
+          />
         )}
 
       </div>

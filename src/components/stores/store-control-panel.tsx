@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { format } from "date-fns"
-import useSWR from "swr"
 import {
   Store,
   TrendingUp,
@@ -24,9 +23,6 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
-  FileText,
-  BarChart3,
-  Download,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -66,14 +62,12 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Card, CardContent } from "@/components/ui/card"
-import { Progress } from "@/components/ui/progress"
 import { useToast } from "@/lib/hooks/use-toast"
 import { TimeAgo } from "@/components/ui/time-ago"
 import { SyncStatusBadge } from "@/components/ui/sync-status-badge"
 import { DateRangePicker } from "@/components/ui/date-range-picker"
-import { apiFetcher } from "@/lib/hooks/use-api-data"
-import type { ReportJob } from "@/types/report"
+import { ReportJobCard } from "@/components/shared/report-job-card"
+import { useReportJob } from "@/hooks/use-report-job"
 import { cn } from "@/lib/utils"
 
 const PERIOD_OPTIONS = [
@@ -144,17 +138,6 @@ const formatDate = (dateStr: string | null): string => {
   return date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
 }
 
-const formatDateRange = (start: string | null, end: string | null): string => {
-  if (!start || !end) return ''
-  const s = new Date(start + 'T00:00:00')
-  const e = new Date(end + 'T00:00:00')
-  const fmtDay = (d: Date) => d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
-  const fmtFull = (d: Date) => d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })
-  if (s.getFullYear() === e.getFullYear()) {
-    return `${fmtDay(s)} — ${fmtFull(e)}`
-  }
-  return `${fmtFull(s)} — ${fmtFull(e)}`
-}
 
 const getStatusConfig = (status: StoreData['feedback_status'], daysUntil: number | null) => {
   switch (status) {
@@ -203,204 +186,6 @@ const getSummaryValue = (summary: Summary, key: string): number => {
   return summary[key as keyof Omit<Summary, 'total'>] ?? 0
 }
 
-// ─── Report Job Status Card ────────────────────────────────────────────────
-
-type ReportJobWithExpiry = ReportJob & { is_expired?: boolean }
-
-function ReportJobCard({
-  job,
-  onClose,
-  onRetry,
-}: {
-  job: ReportJobWithExpiry
-  onClose: () => void
-  onRetry: () => void
-}) {
-  const router = useRouter()
-  const isActive = job.status === 'queued' || job.status === 'processing'
-  const isDone = job.status === 'completed'
-  const isPartial = job.status === 'partial'
-  const isFailed = job.status === 'failed'
-
-  // Calculate progress from job.progress
-  const storeEntries = Object.entries(job.progress).filter(
-    ([k]) => !['invocation_count', 'paused_reason', 'paused_at', 'failure_reason'].includes(k)
-  )
-  const completedCount = storeEntries.filter(
-    ([, v]) => {
-      const entry = v as { status?: string } | null
-      return entry?.status === 'completed' || entry?.status === 'failed'
-    }
-  ).length
-  const totalCount = job.store_ids.length
-  const progress = totalCount > 0 ? (completedCount / totalCount) * 100 : 0
-
-  const dateLabel = formatDateRange(job.start_date, job.end_date)
-
-  // Estimate remaining time based on progress
-  const estimateRemaining = () => {
-    if (completedCount === 0) return 'calculando...'
-    const createdAt = new Date(job.created_at).getTime()
-    const elapsed = Date.now() - createdAt
-    const avgPerStore = elapsed / completedCount
-    const remaining = (totalCount - completedCount) * avgPerStore
-    const mins = Math.ceil(remaining / 60000)
-    if (mins < 1) return '<1 min'
-    return `~${mins} min`
-  }
-
-  if (isActive) {
-    return (
-      <Card className="mb-4 border-primary/20 bg-primary/5">
-        <CardContent className="p-4">
-          <div className="flex items-start justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <BarChart3 className="w-4 h-4 text-primary" />
-              <span className="text-sm font-medium">
-                Relatorio: {dateLabel}
-              </span>
-            </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 -mt-1 -mr-1"
-              onClick={onClose}
-            >
-              <X className="w-3.5 h-3.5" />
-            </Button>
-          </div>
-          <Progress value={progress} className="h-2 mb-2" />
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>{completedCount} de {totalCount} lojas | {estimateRemaining()}</span>
-            <span>Processando em segundo plano...</span>
-          </div>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  if (isDone) {
-    return (
-      <Card className="mb-4 border-emerald-500/20 bg-emerald-500/5">
-        <CardContent className="p-4">
-          <div className="flex items-start justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <CheckCircle className="w-4 h-4 text-emerald-500" />
-              <span className="text-sm font-medium">
-                Relatorio pronto: {dateLabel}
-              </span>
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground mb-3">
-            {totalCount}/{totalCount} lojas | <TimeAgo date={job.updated_at} className="text-xs" />
-          </p>
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="default"
-              className="h-7 text-xs"
-              onClick={() => router.push(`/admin/report-jobs/${job.id}`)}
-            >
-              <FileText className="w-3 h-3 mr-1" />
-              Abrir Relatorio
-            </Button>
-            {job.result && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 text-xs"
-                onClick={() => router.push(`/api/reports/export?job_id=${job.id}`)}
-              >
-                <Download className="w-3 h-3 mr-1" />
-                Baixar CSV
-              </Button>
-            )}
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 text-xs ml-auto"
-              onClick={onClose}
-            >
-              <X className="w-3 h-3" />
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  if (isPartial || isFailed) {
-    const failedStores = storeEntries.filter(
-      ([, v]) => (v as { status?: string } | null)?.status === 'failed'
-    ).length
-
-    return (
-      <Card className="mb-4 border-amber-500/20 bg-amber-500/5">
-        <CardContent className="p-4">
-          <div className="flex items-start justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-amber-500" />
-              <span className="text-sm font-medium">
-                {isFailed ? 'Relatorio falhou' : 'Relatorio parcial'}: {dateLabel}
-              </span>
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground mb-3">
-            {completedCount - failedStores}/{totalCount} lojas | {failedStores} {failedStores === 1 ? 'loja falhou' : 'lojas falharam'}
-          </p>
-          <div className="flex items-center gap-2">
-            {isPartial && (
-              <Button
-                size="sm"
-                variant="default"
-                className="h-7 text-xs"
-                onClick={() => router.push(`/admin/report-jobs/${job.id}`)}
-              >
-                <FileText className="w-3 h-3 mr-1" />
-                Ver Relatorio Parcial
-              </Button>
-            )}
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 text-xs"
-              onClick={onRetry}
-            >
-              <RefreshCw className="w-3 h-3 mr-1" />
-              Tentar Novamente
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 text-xs ml-auto"
-              onClick={onClose}
-            >
-              <X className="w-3 h-3" />
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  // Cancelled / expired / paused — just show dismiss
-  return (
-    <Card className="mb-4 border-muted">
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <BarChart3 className="w-4 h-4" />
-            <span>Relatorio {job.status === 'cancelled' ? 'cancelado' : job.status === 'paused' ? 'pausado' : 'expirado'}: {dateLabel}</span>
-          </div>
-          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onClose}>
-            <X className="w-3.5 h-3.5" />
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export function StoreControlPanel() {
@@ -431,10 +216,15 @@ export function StoreControlPanel() {
   const [customStart, setCustomStart] = useState<Date | undefined>()
   const [customEnd, setCustomEnd] = useState<Date | undefined>()
 
-  // Report job state
-  const [activeJobId, setActiveJobId] = useState<string | null>(null)
-  const [jobDismissed, setJobDismissed] = useState(false)
-  const [isGenerating, setIsGenerating] = useState(false)
+  // Report job (shared hook)
+  const {
+    activeJob,
+    isGenerating,
+    jobDismissed,
+    generateReport,
+    retryReport: handleRetryReport,
+    dismissJob,
+  } = useReportJob()
 
   // Dialog states
   const [selectedStore, setSelectedStore] = useState<StoreData | null>(null)
@@ -457,38 +247,6 @@ export function StoreControlPanel() {
     feedback_frequency: 'monthly' as 'monthly' | '30_days',
     next_feedback_date: '',
   })
-
-  // ─── Poll active report job via SWR ──────────────────────────────────────
-  const jobIsActive = activeJobId && !jobDismissed
-  const { data: jobData } = useSWR<ReportJobWithExpiry>(
-    jobIsActive ? `/api/reports/${activeJobId}` : null,
-    apiFetcher,
-    {
-      refreshInterval: activeJobId && !jobDismissed ? 5000 : 0,
-      revalidateOnFocus: false,
-      errorRetryCount: 2,
-    }
-  )
-
-  // Stop polling once job reaches a terminal state
-  const activeJob = jobData ?? null
-  // ─── Check for existing active job on mount ──────────────────────────────
-  useEffect(() => {
-    async function checkActiveJob() {
-      try {
-        const res = await fetch('/api/reports?status=active&limit=1')
-        const data = await res.json()
-        const jobs = data?.jobs ?? data?.data ?? (Array.isArray(data) ? data : [])
-        if (jobs.length > 0) {
-          setActiveJobId(jobs[0].id)
-          setJobDismissed(false)
-        }
-      } catch {
-        // Silent — not critical
-      }
-    }
-    checkActiveJob()
-  }, [])
 
   // Debounce search
   const handleSearchChange = useCallback((value: string) => {
@@ -527,88 +285,12 @@ export function StoreControlPanel() {
 
     // Collect store IDs from current page that have Klaviyo
     const storeIds = stores.filter((s) => s.has_klaviyo).map((s) => s.id)
-    if (storeIds.length === 0) {
-      toast({
-        title: 'Nenhuma loja com Klaviyo',
-        description: 'Nao ha lojas com integracao Klaviyo na pagina atual',
-        variant: 'destructive',
-      })
-      return
-    }
-
-    setIsGenerating(true)
-    try {
-      const res = await fetch('/api/reports/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          store_ids: storeIds,
-          period: 'custom',
-          start_date: format(start, 'yyyy-MM-dd'),
-          end_date: format(end, 'yyyy-MM-dd'),
-        }),
-      })
-      const data = await res.json()
-      if (data.id) {
-        setActiveJobId(data.id)
-        setJobDismissed(false)
-        toast({
-          title: 'Relatorio iniciado',
-          description: `Gerando relatorio para ${storeIds.length} lojas. Acompanhe o progresso acima da tabela.`,
-        })
-      } else {
-        toast({
-          title: 'Erro ao iniciar relatorio',
-          description: data.error || 'Tente novamente',
-          variant: 'destructive',
-        })
-      }
-    } catch {
-      toast({
-        title: 'Erro de conexao',
-        description: 'Nao foi possivel iniciar o relatorio',
-        variant: 'destructive',
-      })
-    } finally {
-      setIsGenerating(false)
-    }
-  }, [stores, toast])
-
-  // ─── Retry report generation ─────────────────────────────────────────────
-  const handleRetryReport = useCallback(async () => {
-    if (!activeJob) return
-    const storeIds = activeJob.store_ids
-    const startDate = activeJob.start_date
-    const endDate = activeJob.end_date
-    if (!startDate || !endDate) return
-
-    setIsGenerating(true)
-    try {
-      const res = await fetch('/api/reports/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          store_ids: storeIds,
-          period: 'custom',
-          start_date: startDate,
-          end_date: endDate,
-        }),
-      })
-      const data = await res.json()
-      if (data.id) {
-        setActiveJobId(data.id)
-        setJobDismissed(false)
-      }
-    } catch {
-      toast({
-        title: 'Erro de conexao',
-        description: 'Nao foi possivel reiniciar o relatorio',
-        variant: 'destructive',
-      })
-    } finally {
-      setIsGenerating(false)
-    }
-  }, [activeJob, toast])
+    await generateReport(
+      storeIds,
+      format(start, 'yyyy-MM-dd'),
+      format(end, 'yyyy-MM-dd'),
+    )
+  }, [stores, generateReport])
 
   // Fetch stores
   const fetchStores = useCallback(async () => {
@@ -846,8 +528,9 @@ export function StoreControlPanel() {
       {activeJob && !jobDismissed && (
         <ReportJobCard
           job={activeJob}
-          onClose={() => setJobDismissed(true)}
+          onClose={dismissJob}
           onRetry={handleRetryReport}
+          className="mb-4"
         />
       )}
 
