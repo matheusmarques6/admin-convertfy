@@ -38,6 +38,15 @@ vi.mock("@/lib/supabase/server", () => ({
   createAdminClient: vi.fn(),
 }))
 
+vi.mock("@/lib/services/klaviyo-sync.service", () => ({
+  fetchStoreRevenueFromMetricAggregates: vi.fn().mockResolvedValue({
+    success: true,
+    data: { storeRevenue: 0, storeOrders: 0 },
+    source: "live",
+    fetchedAt: new Date().toISOString(),
+  }),
+}))
+
 // Track call order for klaviyoRequest
 const callOrder: string[] = []
 

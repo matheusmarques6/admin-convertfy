@@ -23,6 +23,7 @@ import { getCachedAccountInfo } from "./cached-metadata"
 import { getCachedPlacedOrderMetric } from "./cached-metadata"
 import { type SyncResult, isCachedPeriod, isCustomPeriod, buildCustomPeriodLabel, LIVE_FETCH_CACHE_TTL_MS, isCustomRangeCacheFresh, getCustomRangeTTL } from "@/lib/shared/data-status"
 import { createAdminClient } from "@/lib/supabase/server"
+import { fetchStoreRevenueFromMetricAggregates } from "@/lib/services/klaviyo-sync.service"
 
 const log = logger.child("KlaviyoReportSummary")
 
@@ -277,6 +278,21 @@ export async function getKlaviyoRevenueForStore(
 
     log.info(`Store ${storeId}: campaign=${currency} ${campaignRevenue}, flow=${currency} ${flowRevenue}`)
 
+    // Fetch store-wide revenue via metric-aggregates (Placed Order, no grouping)
+    let storeRevenue = 0
+    try {
+      const aggResult = await fetchStoreRevenueFromMetricAggregates(
+        apiKey, placedOrderMetric, startDateStr, endDateStr, timezone
+      )
+      if (aggResult.success && aggResult.data) {
+        storeRevenue = aggResult.data.storeRevenue
+        log.info(`Store ${storeId}: storeRevenue=${currency} ${storeRevenue.toFixed(2)} (metric-aggregates)`)
+      }
+    } catch (aggErr) {
+      // Best-effort: if metric-aggregates fails, storeRevenue stays 0 and fallback kicks in
+      log.warn(`Store ${storeId}: metric-aggregates failed, storeRevenue=0:`, aggErr)
+    }
+
     // AK-13: Write-through — persist 1d live fetch results for 5-minute deduplication
     if (period === "1d") {
       try {
@@ -302,7 +318,7 @@ export async function getKlaviyoRevenueForStore(
               klaviyo_total_revenue: campaignRevenue + flowRevenue,
               klaviyo_campaign_revenue: campaignRevenue,
               klaviyo_flow_revenue: flowRevenue,
-              store_total_revenue: 0,
+              store_total_revenue: storeRevenue,
               currency,
               sync_status: "ok",
               sync_source: "live",
@@ -364,7 +380,7 @@ export async function getKlaviyoRevenueForStore(
         totalRevenue: campaignRevenue + flowRevenue,
         campaignRevenue,
         flowRevenue,
-        storeRevenue: 0, // Not available from Reporting API — only from cron sync via metric-aggregates
+        storeRevenue,
         currency,
         campaignReportAvailable: campaignReport !== null,
         flowReportAvailable: flowReport !== null,
