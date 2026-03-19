@@ -463,8 +463,8 @@ describe("AK-12 — XS Budget Cap per Cron Cycle", () => {
     mockFetchAudienceForStore.mockResolvedValue({ success: false, error: "skip" })
   })
 
-  it("AK-12.1: XS_BUDGET_PER_CYCLE constant defaults to 60", () => {
-    expect(XS_BUDGET_PER_CYCLE).toBe(60)
+  it("AK-12.1: XS_BUDGET_PER_CYCLE constant defaults to 90", () => {
+    expect(XS_BUDGET_PER_CYCLE).toBe(90)
   })
 
   it("AK-12.2: skips stores with reason 'skipped:budget' when XS budget is exhausted for a key group", async () => {
@@ -485,15 +485,15 @@ describe("AK-12 — XS Budget Cap per Cron Cycle", () => {
     // Simulate XS calls: after syncing store 1, the quota jumps past XS_BUDGET_PER_CYCLE.
     // syncKlaviyoForPeriod is mocked, so we manually increment quota inside the mock.
     mockSyncKlaviyoForPeriod.mockImplementation(() => {
-      // Each sync call simulates 30 XS reporting calls (2 periods x 30 = 60 = budget)
-      for (let n = 0; n < 30; n++) incrementReportQuota(apiKey)
+      // Each sync call simulates 45 XS reporting calls (2 periods x 45 = 90 = budget)
+      for (let n = 0; n < 45; n++) incrementReportQuota(apiKey)
       return Promise.resolve(successSyncResult())
     })
 
     const response = await GET(makeRequest())
     const body = await response.json()
 
-    // Store 1 should have synced both periods (2 syncKlaviyoForPeriod calls = 60 XS calls)
+    // Store 1 should have synced both periods (2 syncKlaviyoForPeriod calls = 90 XS calls)
     // Store 2 and 3 should be skipped:budget
     const budgetSkipped = body.stores.filter(
       (s: { error?: string }) => s.error === "skipped:budget"
@@ -549,10 +549,8 @@ describe("AK-12 — XS Budget Cap per Cron Cycle", () => {
     const body = await response.json()
 
     // Both stores should sync OK since each key group only uses 70 XS calls (2 periods x 35)
-    // which exceeds the budget of 60, BUT:
-    // - Store A (keyA): period 1 = 35, period 2 = 70 total. After period 1, budget not hit (35 < 60).
-    //   After period 2, budget hit (70 >= 60). But since both periods are within the same syncStore call,
-    //   the budget check happens BEFORE syncStore, not between periods.
+    // which is below the budget of 90:
+    // - Store A (keyA): period 1 = 35, period 2 = 70 total. Budget not hit (70 < 90).
     // - Store B (keyB): different key, independent budget. Should sync fine.
 
     // Store B should always sync OK (independent budget)
@@ -561,7 +559,7 @@ describe("AK-12 — XS Budget Cap per Cron Cycle", () => {
     )
     expect(storeBResults.length).toBe(2) // both periods OK
 
-    // Store A should also sync OK (budget checked before syncStore, 0 < 60 at start)
+    // Store A should also sync OK (budget checked before syncStore, 0 < 90 at start)
     const storeAResults = body.stores.filter(
       (s: { storeId: string; status: string }) => s.storeId === "s-a" && s.status === "ok"
     )
@@ -592,7 +590,7 @@ describe("AK-12 — XS Budget Cap per Cron Cycle", () => {
     const keyMask = `...${apiKey.slice(-4)}`
     expect(body.xsBudget[keyMask]).toBeDefined()
     expect(body.xsBudget[keyMask].used).toBe(10) // 2 periods x 5 calls each
-    expect(body.xsBudget[keyMask].limit).toBe(60)
+    expect(body.xsBudget[keyMask].limit).toBe(90)
     expect(body.xsBudget[keyMask].skipped).toBe(0)
   })
 
@@ -618,17 +616,17 @@ describe("AK-12 — XS Budget Cap per Cron Cycle", () => {
     mockFetchFlowNames.mockResolvedValue(new Map())
     mockFetchCampaignNames.mockResolvedValue(new Map())
 
-    // Each sync call for keyA uses 35 XS calls (2 periods x 35 = 70 > 60 budget)
-    // So after store1 (70 calls), store2 + store3 should be skipped:budget
+    // Each sync call for keyA uses 45 XS calls (2 periods x 45 = 90 = budget)
+    // So after store1 (90 calls), store2 + store3 should be skipped:budget
     mockSyncKlaviyoForPeriod.mockImplementation(({ apiKey }: { apiKey: string }) => {
-      for (let n = 0; n < 35; n++) incrementReportQuota(apiKey)
+      for (let n = 0; n < 45; n++) incrementReportQuota(apiKey)
       return Promise.resolve(successSyncResult())
     })
 
     const response = await GET(makeRequest())
     const body = await response.json()
 
-    // Key A: store1 synced (2 ok), store2+store3 budget-skipped (4 skipped)
+    // Key A: store1 synced (2 ok, using 90 XS calls = budget), store2+store3 budget-skipped (4 skipped)
     const keyASkipped = body.stores.filter(
       (s: { error?: string; storeId: string }) =>
         s.error === "skipped:budget" && (s.storeId === "s2" || s.storeId === "s3")
@@ -644,6 +642,6 @@ describe("AK-12 — XS Budget Cap per Cron Cycle", () => {
     // xsBudget summary should reflect the skips
     const keyAMask = `...${keyA.slice(-4)}`
     expect(body.xsBudget[keyAMask].skipped).toBe(2) // 2 stores skipped
-    expect(body.xsBudget[keyAMask].used).toBeGreaterThanOrEqual(60)
+    expect(body.xsBudget[keyAMask].used).toBeGreaterThanOrEqual(90)
   })
 })

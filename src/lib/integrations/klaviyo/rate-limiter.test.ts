@@ -167,9 +167,9 @@ describe("TIER_INTERVALS", () => {
     expect(TIER_INTERVALS.L).toBeGreaterThan(TIER_INTERVALS.XL)
   })
 
-  it("XS interval yields ~15 req/min", () => {
+  it("XS interval yields ~30 req/min", () => {
     const reqPerMin = 60_000 / TIER_INTERVALS.XS
-    expect(reqPerMin).toBeLessThanOrEqual(15)
+    expect(reqPerMin).toBeLessThanOrEqual(30)
   })
 })
 
@@ -182,7 +182,7 @@ describe("enqueueKlaviyoRequest", () => {
     vi.useFakeTimers()
   })
 
-  it("two XS requests on same key have interval >= 4000ms", async () => {
+  it("two XS requests on same key have interval >= XS tier interval", async () => {
     const timestamps: number[] = []
     const apiKey = "pk_test_key_12345678"
 
@@ -498,8 +498,8 @@ describe("AK-2: Daily Report Quota Tracking", () => {
 
   // AK-12: XS Budget Per Cycle constant
   describe("XS_BUDGET_PER_CYCLE", () => {
-    it("defaults to 60", () => {
-      expect(XS_BUDGET_PER_CYCLE).toBe(60)
+    it("defaults to 90", () => {
+      expect(XS_BUDGET_PER_CYCLE).toBe(90)
     })
 
     it("is exported and usable as a number", () => {

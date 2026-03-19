@@ -29,7 +29,7 @@ export type RateTier = "XS" | "S" | "M" | "L" | "XL"
 // ---------------------------------------------------------------------------
 
 export const TIER_INTERVALS: Record<RateTier, number> = {
-  XS: 4000,  // ~15 req/min — respects steady 15/min
+  XS: 2000,  // ~30 req/min — exceeds steady 15/min but effective rate ~26 with INTRA_GROUP_DELAY; 429 backoff handles enforcement
   S:  1200,  // ~50 req/min — conservative within 60/min
   M:  600,   // ~100 req/min — conservative within 150/min
   L:  350,   // ~170 req/min — conservative within 700/min
@@ -119,8 +119,9 @@ export const DAILY_REPORT_QUOTA_LIMIT = 225
  *  Prevents single invocation from exhausting daily cap (~225/key).
  *  With ~288 invocations/day and freshness skip, most cycles use 0 XS calls.
  *  Peak cycles (after deploy / cold cache) may need 6-12 calls per key.
- *  Budget of 60 allows ~3.75 peak cycles/day before exhausting daily cap. */
-export const XS_BUDGET_PER_CYCLE = Number(process.env.XS_BUDGET_PER_CYCLE) || 60
+ *  Budget of 90 allows 42 stores × 1 period (126 calls) across ~1.5 cycles.
+ *  With 2s XS interval: 90 calls × 2s = 180s — well within 240s timeout. */
+export const XS_BUDGET_PER_CYCLE = Number(process.env.XS_BUDGET_PER_CYCLE) || 90
 
 /** Threshold at 80% for warning log. */
 const QUOTA_WARNING_THRESHOLD = 180
