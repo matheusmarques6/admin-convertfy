@@ -334,9 +334,9 @@ function aggregateTotals(stores: StorePerformance[]) {
   let shopifyRevenue = 0
   let shopifyOrders = 0
   let shopifyCustomers = 0
-  let openRateSum = 0
-  let clickRateSum = 0
-  let rateCount = 0
+  let totalDelivered = 0
+  let totalOpens = 0
+  let totalClicks = 0
 
   for (const store of stores) {
     if (store.klaviyo) {
@@ -347,11 +347,9 @@ function aggregateTotals(stores: StorePerformance[]) {
       flowRevenue += store.klaviyo.flowRevenue
       totalCampaigns += store.klaviyo.sentCampaigns
       totalFlows += store.klaviyo.liveFlows
-      if (store.klaviyo.avgOpenRate > 0) {
-        openRateSum += store.klaviyo.avgOpenRate
-        clickRateSum += store.klaviyo.avgClickRate
-        rateCount++
-      }
+      totalDelivered += store.klaviyo.totalDelivered
+      totalOpens += store.klaviyo.totalOpens
+      totalClicks += store.klaviyo.totalClicks
     }
     if (store.shopify) {
       shopifyRevenue += store.shopify.totalRevenue
@@ -375,8 +373,8 @@ function aggregateTotals(stores: StorePerformance[]) {
     shopifyCustomers,
     totalCampaigns,
     totalFlows,
-    avgOpenRate: rateCount > 0 ? openRateSum / rateCount : 0,
-    avgClickRate: rateCount > 0 ? clickRateSum / rateCount : 0,
+    avgOpenRate: totalDelivered > 0 ? (totalOpens / totalDelivered) * 100 : 0,
+    avgClickRate: totalDelivered > 0 ? (totalClicks / totalDelivered) * 100 : 0,
   }
 }
 

@@ -68,6 +68,9 @@ interface StorePerformance {
     sentCampaigns: number
     totalFlows: number
     liveFlows: number
+    totalDelivered: number
+    totalOpens: number
+    totalClicks: number
     avgOpenRate: number
     avgClickRate: number
     recentCampaigns: CampaignData[]
@@ -92,6 +95,22 @@ export interface PerformanceResponse {
   storeErrors?: Array<{ storeName: string; errors: StoreError[] }>
 }
 
+export interface StoreBreakdown {
+  storeId: string
+  storeName: string
+  storeRevenue: number
+  storeOrders: number
+  attributedRevenue: number
+  recoveryRate: number
+  campaignRevenue: number
+  flowRevenue: number
+  sentCampaigns: number
+  liveFlows: number
+  totalDelivered: number
+  avgOpenRate: number
+  avgClickRate: number
+}
+
 export interface ClientPerformanceState {
   data: PerformanceResponse | null
   loading: boolean
@@ -104,6 +123,7 @@ export interface ClientPerformanceState {
   refresh: () => void
   allCampaigns: (CampaignData & { storeName: string })[]
   allFlows: (FlowData & { storeName: string })[]
+  storeBreakdown: StoreBreakdown[]
   hasIntegrations: boolean
   onNavigateToStores?: () => void
 }
@@ -172,6 +192,28 @@ export function useClientPerformance(clientId: string): ClientPerformanceState {
     return flows.sort((a, b) => b.revenue - a.revenue)
   }, [data])
 
+  const storeBreakdown = useMemo<StoreBreakdown[]>(() => {
+    if (!data?.stores) return []
+    return data.stores
+      .filter((s) => s.klaviyo !== null)
+      .map((s) => ({
+        storeId: s.storeId,
+        storeName: s.storeName,
+        storeRevenue: s.klaviyo!.storeRevenue,
+        storeOrders: s.klaviyo!.storeOrders,
+        attributedRevenue: s.klaviyo!.attributedRevenue,
+        recoveryRate: s.klaviyo!.recoveryRate,
+        campaignRevenue: s.klaviyo!.campaignRevenue,
+        flowRevenue: s.klaviyo!.flowRevenue,
+        sentCampaigns: s.klaviyo!.sentCampaigns,
+        liveFlows: s.klaviyo!.liveFlows,
+        totalDelivered: s.klaviyo!.totalDelivered,
+        avgOpenRate: s.klaviyo!.avgOpenRate,
+        avgClickRate: s.klaviyo!.avgClickRate,
+      }))
+      .sort((a, b) => b.storeRevenue - a.storeRevenue)
+  }, [data])
+
   const refresh = useCallback(() => {
     mutate()
   }, [mutate])
@@ -188,6 +230,7 @@ export function useClientPerformance(clientId: string): ClientPerformanceState {
     refresh,
     allCampaigns,
     allFlows,
+    storeBreakdown,
     hasIntegrations,
   }
 }
