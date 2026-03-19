@@ -233,5 +233,9 @@ END;
 $$;
 
 -- 3. PERMISSIONS
+-- Supabase auto-grants EXECUTE to anon/authenticated on public functions,
+-- so explicit REVOKE is needed beyond just REVOKE FROM PUBLIC.
 REVOKE ALL ON FUNCTION get_portal_campaigns_with_metrics(UUID[], DATE, DATE, TEXT, TEXT, INT, INT, UUID) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION get_portal_campaigns_with_metrics(UUID[], DATE, DATE, TEXT, TEXT, INT, INT, UUID) FROM anon;
+REVOKE EXECUTE ON FUNCTION get_portal_campaigns_with_metrics(UUID[], DATE, DATE, TEXT, TEXT, INT, INT, UUID) FROM authenticated;
 GRANT EXECUTE ON FUNCTION get_portal_campaigns_with_metrics(UUID[], DATE, DATE, TEXT, TEXT, INT, INT, UUID) TO service_role;
