@@ -7,7 +7,6 @@ import {
   AlertTriangle,
   X,
   FileText,
-  Download,
   RefreshCw,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -210,17 +209,6 @@ export function ReportJobCard({
               <FileText className="w-3 h-3 mr-1" />
               Abrir Relatorio
             </Button>
-            {job.result && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 text-xs"
-                onClick={() => router.push(`/api/reports/export?job_id=${job.id}`)}
-              >
-                <Download className="w-3 h-3 mr-1" />
-                Baixar CSV
-              </Button>
-            )}
             <Button
               size="sm"
               variant="ghost"

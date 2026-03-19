@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useCallback, useState } from "react"
+import { use, useCallback, useRef, useState } from "react"
 import useSWR from "swr"
 import { useRouter } from "next/navigation"
 import {
@@ -12,7 +12,6 @@ import {
   Loader2,
   FileWarning,
   Check,
-  LayoutDashboard,
 } from "lucide-react"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
@@ -54,6 +53,8 @@ export default function ReportJobDetailPage({
   const router = useRouter()
   const [retryingStores, setRetryingStores] = useState<Set<string>>(new Set())
   const [copiedLink, setCopiedLink] = useState(false)
+  const [isExportingPdf, setIsExportingPdf] = useState(false)
+  const reportContentRef = useRef<HTMLDivElement>(null)
 
   const { data: job, error, isLoading } = useSWR<ReportJobWithExpiry>(
     `/api/reports/${id}`,
@@ -71,9 +72,29 @@ export default function ReportJobDetailPage({
     setTimeout(() => setCopiedLink(false), 2000)
   }, [])
 
-  const handleDownloadCsv = useCallback(() => {
-    window.open(`/api/reports/export?jobId=${id}`, "_blank")
-  }, [id])
+  const handleDownloadPdf = useCallback(async () => {
+    if (!reportContentRef.current || isExportingPdf) return
+    setIsExportingPdf(true)
+    try {
+      const html2pdf = (await import("html2pdf.js")).default
+      const startDate = job?.start_date || "relatorio"
+      const endDate = job?.end_date || ""
+      await html2pdf().set({
+        margin: [10, 10, 10, 10],
+        filename: `relatorio-${startDate}-${endDate}.pdf`,
+        image: { type: "jpeg", quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, backgroundColor: "#ffffff" },
+        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+      }).from(reportContentRef.current).save()
+      toast({ title: "PDF gerado com sucesso" })
+    } catch (err) {
+      console.error("Error exporting PDF:", err)
+      toast({ variant: "destructive", title: "Erro ao exportar PDF" })
+    } finally {
+      setIsExportingPdf(false)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job?.start_date, job?.end_date])
 
   const handleRetryStore = useCallback(
     async (storeId: string) => {
@@ -200,8 +221,8 @@ export default function ReportJobDetailPage({
   const successStores = storeEntries.filter(([, s]) => !s.error)
   const failedStores = storeEntries.filter(([, s]) => !!s.error)
 
-  // Determine primary currency from first successful store
-  const primaryCurrency = successStores.length > 0 ? successStores[0][1].currency : "BRL"
+  // Always display in BRL for summary KPI cards
+  const primaryCurrency = "BRL"
 
   // Calculate attributed percentage
   const attributedPercent =
@@ -232,21 +253,24 @@ export default function ReportJobDetailPage({
               )}
               {copiedLink ? "Copiado" : "Copiar link"}
             </Button>
-            <Button variant="outline" size="sm" onClick={handleDownloadCsv}>
-              <Download className="h-4 w-4 mr-1" />
-              Baixar CSV
+            <Button variant="outline" size="sm" onClick={handleDownloadPdf} disabled={isExportingPdf}>
+              {isExportingPdf ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4 mr-1" />
+              )}
+              {isExportingPdf ? "Gerando PDF..." : "Baixar PDF"}
             </Button>
             <Button variant="outline" size="sm" onClick={() => router.push(ROUTES.ADMIN.REPORT_JOBS.LIST)}>
               <ArrowLeft className="h-4 w-4 mr-1" />
               Voltar
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => router.push(ROUTES.ADMIN.STORES.LIST)}>
-              <LayoutDashboard className="h-4 w-4 mr-1" />
-              Voltar ao painel
-            </Button>
           </div>
         }
       />
+
+      {/* PDF-exportable content */}
+      <div ref={reportContentRef} className="space-y-6">
 
       {/* Banner */}
       <Card>
@@ -408,6 +432,8 @@ export default function ReportJobDetailPage({
           </div>
         </CardContent>
       </Card>
+
+      </div>{/* end reportContentRef */}
     </div>
   )
 }
