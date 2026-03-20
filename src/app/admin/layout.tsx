@@ -7,6 +7,7 @@ import { ErrorBoundary } from "@/components/error-boundary"
 import { Permissions, StoreAccess } from "@/lib/hooks/use-permissions"
 import { ROUTES } from "@/lib/routes"
 import { CommandPalette } from "@/components/ui/command-palette"
+import { WelcomeTour } from "@/components/ui/welcome-tour"
 
 async function getPermissions(userId: string): Promise<Permissions | null> {
   try {
@@ -228,6 +229,7 @@ export default async function DashboardLayout({
           </div>
         </div>
       </CommandPalette>
+      <WelcomeTour />
     </DashboardClientWrapper>
   )
 }

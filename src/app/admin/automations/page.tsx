@@ -1,6 +1,6 @@
 import { Suspense } from "react"
 import Link from "next/link"
-import { Plus, Zap, Play, Pause, MoreHorizontal, Trash2, Edit } from "lucide-react"
+import { Plus, Zap, Play, Pause, MoreHorizontal, Trash2, Edit, TrendingUp, TrendingDown, Activity } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -15,6 +15,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import type { Automation } from "@/types"
 import { PagePermissionWrapper } from "@/components/page-permission-wrapper"
+import { cn } from "@/lib/utils"
 
 export const dynamic = "force-dynamic"
 
@@ -45,6 +46,46 @@ async function getAutomations() {
   return automations || []
 }
 
+async function getAutomationStats() {
+  const supabase = await createClient()
+
+  const now = new Date()
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString()
+
+  const [
+    { count: totalExecutionsLast30 },
+    { count: successExecutionsLast30 },
+    { count: failedExecutionsLast30 },
+  ] = await Promise.all([
+    supabase.from("automation_logs").select("*", { count: "exact", head: true }).gte("executed_at", thirtyDaysAgo),
+    supabase.from("automation_logs").select("*", { count: "exact", head: true }).gte("executed_at", thirtyDaysAgo).eq("status", "success"),
+    supabase.from("automation_logs").select("*", { count: "exact", head: true }).gte("executed_at", thirtyDaysAgo).eq("status", "error"),
+  ])
+
+  return {
+    executionsLast30: totalExecutionsLast30 || 0,
+    successLast30: successExecutionsLast30 || 0,
+    failedLast30: failedExecutionsLast30 || 0,
+  }
+}
+
+function TrendBadge({ value, label, positive }: { value: number; label: string; positive?: boolean }) {
+  if (value === 0) return null
+  const colorClass = positive === undefined
+    ? "text-muted-foreground"
+    : positive
+    ? "text-emerald-600 dark:text-emerald-400"
+    : "text-rose-600 dark:text-rose-400"
+
+  return (
+    <span className={cn("inline-flex items-center gap-0.5 text-[10px] font-medium", colorClass)}>
+      {positive !== undefined && (positive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />)}
+      {value}
+      <span className="text-muted-foreground/50 ml-0.5">{label}</span>
+    </span>
+  )
+}
+
 const triggerLabels: Record<string, string> = {
   new_client: "Novo cliente cadastrado",
   client_status_changed: "Status do cliente alterado",
@@ -73,7 +114,7 @@ function AutomationsSkeleton() {
 }
 
 export default async function AutomationsPage() {
-  const automations = await getAutomations()
+  const [automations, stats] = await Promise.all([getAutomations(), getAutomationStats()])
 
   return (
     <PagePermissionWrapper requiredFeatures={["campaign_control"]}>
@@ -98,7 +139,7 @@ export default async function AutomationsPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-4">
         <Card className="rounded-xl border bg-card pt-6">
           <CardContent className="flex items-center gap-4">
             <div className="rounded-lg p-3 bg-primary/10">
@@ -133,6 +174,25 @@ export default async function AutomationsPage() {
               <p className="text-2xl font-bold">
                 {automations.filter((a: Automation) => !a.is_active).length}
               </p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="rounded-xl border bg-card pt-6">
+          <CardContent className="flex items-center gap-4">
+            <div className="rounded-lg p-3 bg-info/10">
+              <Activity className="h-5 w-5 text-info" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <p className="text-sm text-muted-foreground">Execuções 30d</p>
+              </div>
+              <p className="text-2xl font-bold">{stats.executionsLast30}</p>
+              {stats.failedLast30 > 0 && (
+                <TrendBadge value={stats.failedLast30} label="erros" positive={false} />
+              )}
+              {stats.failedLast30 === 0 && stats.successLast30 > 0 && (
+                <TrendBadge value={stats.successLast30} label="sucesso" positive={true} />
+              )}
             </div>
           </CardContent>
         </Card>
