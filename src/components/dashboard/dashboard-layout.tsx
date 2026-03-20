@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useRef, useMemo } from "react"
+import { useMemo } from "react"
 import Link from "next/link"
 import {
   AlertTriangle,
@@ -16,17 +16,11 @@ import {
   Eye,
   UserPlus,
   CalendarPlus,
-  PenLine,
   FileText,
 } from "lucide-react"
 import { usePermissions } from "@/lib/hooks/use-permissions"
-import { TotalRevenueBanner, type TotalRevenueData } from "./total-revenue-banner"
-import { BillingMetrics } from "./billing-metrics"
-import { FinancialCharts } from "./financial-charts"
 import { BoardPreview } from "./board-preview"
 import { WeekCalendarPreview } from "./week-calendar-preview"
-import { TopStoresCard } from "./top-stores-card"
-import { WorstPerformersCard } from "./worst-performers-card"
 import { OnboardingPreview } from "./onboarding-preview"
 import { RecentActivity } from "./recent-activity"
 import { Button } from "@/components/ui/button"
@@ -285,7 +279,6 @@ function QuickActions() {
     { label: "Novo Cliente", href: "/admin/clients/new", icon: UserPlus, color: "bg-primary/10 text-primary" },
     { label: "Nova Reuniao", href: "/admin/meetings", icon: CalendarPlus, color: "bg-success/10 text-success" },
     { label: "Nova Campanha", href: "/admin/campaigns", icon: Send, color: "bg-info/10 text-info" },
-    { label: "Gerar Copy", href: "/admin/tools/copy", icon: PenLine, color: "bg-violet-500/10 text-violet-600" },
     { label: "Novo Relatorio", href: "/admin/reports/new", icon: FileText, color: "bg-amber-500/10 text-amber-600" },
   ]
 
@@ -308,13 +301,6 @@ function QuickActions() {
 
 export function DashboardLayout({ data, userRole }: DashboardLayoutProps) {
   const { permissions, hasFeature } = usePermissions()
-  const [revenuePeriod, setRevenuePeriod] = useState("30d")
-  const [revenueData, setRevenueData] = useState<TotalRevenueData | null>(null)
-  const revenueResolved = useRef(false)
-  const handleRevenueData = useCallback((d: TotalRevenueData | null) => {
-    revenueResolved.current = true
-    setRevenueData(d)
-  }, [])
 
   const isAdminOrOwner = permissions?.isAdmin || permissions?.isOrgOwner
   const canViewReports = isAdminOrOwner || hasFeature("view_reports")
@@ -373,54 +359,21 @@ export function DashboardLayout({ data, userRole }: DashboardLayoutProps) {
       {/* Quick Actions */}
       <QuickActions />
 
-      {/* Revenue Banner - Compact with period selector */}
-      <TotalRevenueBanner period={revenuePeriod} onPeriodChange={setRevenuePeriod} onDataChange={handleRevenueData} />
-
-      {/* Financial Section: Billing Metrics + Charts (admin/owner only) */}
-      {isAdminOrOwner && (
-        <div className="space-y-4">
-          <BillingMetrics />
-          <FinancialCharts />
-        </div>
-      )}
-
       {/* Primary Grid: Board + Calendar side by side */}
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
         <BoardPreview tasks={data.activeTasks} />
         <WeekCalendarPreview meetings={data.weekMeetings} tasks={data.weekTasks} />
       </div>
 
-      {/* Secondary Grid: Store Performance + Health + Pending - 4 columns */}
-      <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
-        <TopStoresCard
-          stores={revenueData?.topStores}
-          allStores={revenueData?.storeBreakdown}
-          isLoading={!revenueResolved.current}
-          dataStatus={revenueData?.dataStatus}
-        />
-
-        {(isAdminOrOwner || canViewReports) ? (
-          <WorstPerformersCard
-            stores={revenueData?.bottomStores}
-            allStores={revenueData?.storeBreakdown}
-            isLoading={!revenueResolved.current}
-            dataStatus={revenueData?.dataStatus}
-          />
-        ) : (
-          <OnboardingPreview onboardings={data.activeOnboardings} userRole={userRole} />
-        )}
-
+      {/* Secondary Grid: Health + Pending + Onboarding */}
+      <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
         <ClientHealthSummary alerts={data.alerts} />
         <PendingItemsCard pendingItems={data.pendingItems} />
+        <OnboardingPreview onboardings={data.activeOnboardings} userRole={userRole} />
       </div>
 
-      {/* Tertiary Row: Onboarding + Activity */}
-      <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
-        {(isAdminOrOwner || canViewReports) && (
-          <OnboardingPreview onboardings={data.activeOnboardings} userRole={userRole} />
-        )}
-        <RecentActivity activities={data.activities} />
-      </div>
+      {/* Activity */}
+      <RecentActivity activities={data.activities} />
     </div>
   )
 }

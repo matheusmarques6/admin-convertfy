@@ -54,7 +54,6 @@ const pageTitles: Record<string, string> = {
   [ROUTES.ADMIN.STORES.LIST]: "Lojas",
   [ROUTES.ADMIN.ONBOARDING]: "Onboarding",
   [ROUTES.ADMIN.TOOLS]: "Ferramentas",
-  [ROUTES.ADMIN.TOOLS + "/copy"]: "Gerador de Copy",
   [ROUTES.ADMIN.NOTIFICATIONS]: "Notificacoes",
   [ROUTES.ADMIN.TEAM]: "Equipe",
   [ROUTES.ADMIN.SETTINGS.APPEARANCE]: "Aparencia",
