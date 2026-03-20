@@ -2,6 +2,11 @@
 -- Backward compatible: DEFAULT 0 preserves existing callers (old code omits the param).
 -- Deploy this migration BEFORE the code that passes the new parameter.
 
+-- Drop the old 11-param signature to prevent PostgreSQL function overload ambiguity.
+-- Without this, both the old (11-param) and new (12-param) functions would coexist,
+-- causing PostgREST "function is not unique" errors when called with 11 params.
+DROP FUNCTION IF EXISTS upsert_custom_range_cache(UUID, UUID, DATE, DATE, TIMESTAMPTZ, TIMESTAMPTZ, NUMERIC, NUMERIC, NUMERIC, VARCHAR, TIMESTAMPTZ);
+
 CREATE OR REPLACE FUNCTION upsert_custom_range_cache(
   p_store_id UUID,
   p_org_id UUID,
