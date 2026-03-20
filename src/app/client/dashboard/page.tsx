@@ -16,6 +16,7 @@ import {
   TrendingDown,
   ChevronDown as ChevronDownIcon,
   PieChart,
+  ChevronRight,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -176,21 +177,26 @@ export default function PortalDashboardPage() {
 
   if (loading) {
     return (
-      <div className="space-y-6">
+      <div className="max-w-[1400px] mx-auto space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <Skeleton className="h-7 w-36 mb-2" />
-            <Skeleton className="h-4 w-48" />
+            <Skeleton className="h-8 w-48 mb-2 rounded-lg" />
+            <Skeleton className="h-4 w-32 rounded-lg" />
           </div>
           <div className="flex gap-3">
-            <Skeleton className="h-10 w-32 rounded-lg" />
-            <Skeleton className="h-10 w-10 rounded-lg" />
+            <Skeleton className="h-10 w-32 rounded-xl" />
+            <Skeleton className="h-10 w-10 rounded-xl" />
           </div>
         </div>
-        <Skeleton className="h-48 rounded-2xl" />
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-          {[1, 2, 3, 4, 5, 6].map((i) => (
-            <Skeleton key={i} className="h-36 rounded-xl border border-border" />
+        <Skeleton className="h-52 rounded-2xl" />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} className="h-24 rounded-xl" />
+          ))}
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <Skeleton key={i} className="h-24 rounded-xl" />
           ))}
         </div>
       </div>
@@ -200,15 +206,15 @@ export default function PortalDashboardPage() {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh]">
-        <div className="bg-white dark:bg-[#151922] rounded-2xl border border-slate-200 dark:border-slate-700/40 p-10 text-center max-w-md shadow-sm dark:shadow-slate-900/20">
-          <div className="w-14 h-14 rounded-full bg-red-50 dark:bg-red-500/10 flex items-center justify-center mx-auto mb-4">
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-700/40 bg-white dark:bg-slate-900/50 p-10 text-center max-w-md shadow-sm">
+          <div className="w-14 h-14 rounded-2xl bg-red-50 dark:bg-red-500/10 flex items-center justify-center mx-auto mb-4">
             <AlertCircle className="h-7 w-7 text-red-500" />
           </div>
           <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100 mb-2">Erro ao carregar</h2>
           <p className="text-slate-500 dark:text-slate-400 text-sm mb-6">{error}</p>
           <Button
             onClick={() => fetchDashboard()}
-            className="bg-primary hover:bg-primary/85 text-white shadow-sm"
+            className="rounded-xl"
           >
             Tentar novamente
           </Button>
@@ -242,11 +248,11 @@ export default function PortalDashboardPage() {
   const recoveryVariation = prevRecovery ? calcVariation(recoveryRate, prevRecovery) : undefined
 
   return (
-    <div className="max-w-[1600px] mx-auto space-y-6">
+    <div className="max-w-[1400px] mx-auto space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Dashboard</h1>
+          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100 tracking-tight">Dashboard</h1>
           <div className="flex items-center gap-2 mt-1">
             {data.dateRange && (
               <p className="text-sm text-slate-500 dark:text-slate-400">{formatDateRange(data.dateRange.start, data.dateRange.end)}</p>
@@ -260,15 +266,15 @@ export default function PortalDashboardPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           <StaleBadge period={period} lastFetchedAt={data?.lastFetchedAt} />
 
           <Select value={period} onValueChange={setPeriod}>
-            <SelectTrigger className="w-[140px] h-10 bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40 text-slate-700 dark:text-slate-200 rounded-lg shadow-sm dark:shadow-slate-900/20">
+            <SelectTrigger className="w-[130px] h-10 rounded-xl border-slate-200 dark:border-slate-700/40 bg-white dark:bg-slate-800/50 text-slate-700 dark:text-slate-200 shadow-sm">
               <CalendarDays className="h-4 w-4 mr-2 text-slate-400 dark:text-slate-500" />
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40 shadow-lg">
+            <SelectContent className="rounded-xl">
               <SelectItem value="7d">7 dias</SelectItem>
               <SelectItem value="15d">15 dias</SelectItem>
               <SelectItem value="30d">30 dias</SelectItem>
@@ -284,7 +290,7 @@ export default function PortalDashboardPage() {
               fetchDashboard(true)
             }}
             disabled={refreshing || realtimeRefreshing}
-            className="h-10 w-10 bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06] rounded-lg shadow-sm dark:shadow-slate-900/20"
+            className="h-10 w-10 rounded-xl border-slate-200 dark:border-slate-700/40 bg-white dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 shadow-sm"
             title="Atualizar dados"
           >
             <RefreshCw className={`h-4 w-4 ${refreshing || realtimeRefreshing ? "animate-spin" : ""}`} />
@@ -300,10 +306,15 @@ export default function PortalDashboardPage() {
       />
 
       <AnimatedContainer className="space-y-6">
-        {/* Hero: Financial Summary */}
+        {/* === SECTION 1: Revenue (Hero) === */}
         <AnimatedItem>
           {klaviyoLoading ? (
-            <Skeleton className="h-48 rounded-2xl" />
+            <div className="space-y-4">
+              <Skeleton className="h-48 rounded-2xl" />
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {[1,2,3,4].map(i => <Skeleton key={i} className="h-24 rounded-xl" />)}
+              </div>
+            </div>
           ) : (
             <>
               <HeroSection klaviyo={klaviyo} previousPeriod={data.previousPeriod} />
@@ -317,80 +328,95 @@ export default function PortalDashboardPage() {
           <OnboardingCard />
         </AnimatedItem>
 
-        {/* Operational Cards - 2x3 grid */}
+        {/* === SECTION 2: Key Performance Indicators === */}
         <AnimatedItem>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <NextCampaignsCard
-              campaigns={klaviyo?.recentCampaigns}
-              upcomingCampaigns={data.upcomingCampaigns}
-            />
-            <NextMeetingCard meetings={data.meetings} />
-            <ListHealthCard
-              bounceRate={klaviyo?.bounceRate || 0}
-              unsubscribeRate={klaviyo?.unsubscribeRate || 0}
-            />
-            <LastSendCard campaigns={klaviyo?.recentCampaigns} />
-            <TopFlowCard flows={klaviyo?.topFlows} />
-
-            {/* Invoices quick card */}
-            {(data.invoices.pending > 0 || data.invoices.overdue > 0) && (
-              <Link href="/client/invoices" className="block">
-                <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200">
-                  <div className="flex items-center gap-2 mb-4">
-                    <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center">
-                      <DollarSign className="h-4 w-4 text-amber-600" />
-                    </div>
-                    <span className="text-[13px] font-semibold text-slate-800 dark:text-slate-100">Faturas</span>
-                  </div>
-                  {data.invoices.overdue > 0 && (
-                    <div className="mb-3">
-                      <p className="text-lg font-bold text-red-600">{formatCurrency(data.invoices.totalOverdue)}</p>
-                      <p className="text-xs text-red-500">{data.invoices.overdue} fatura(s) em atraso</p>
-                    </div>
-                  )}
-                  {data.invoices.pending > 0 && (
-                    <div>
-                      <p className="text-lg font-bold text-slate-800 dark:text-slate-100">{formatCurrency(data.invoices.totalPending)}</p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">{data.invoices.pending} fatura(s) pendente(s)</p>
-                    </div>
-                  )}
-                </div>
-              </Link>
+          <div className="space-y-3">
+            <h3 className="text-[13px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider px-0.5">
+              Indicadores-chave
+            </h3>
+            {klaviyoLoading ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <Skeleton key={i} className="h-[88px] rounded-xl" />
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                <KpiCard label="Pedidos" value={formatNumber(storeOrders)} icon={ShoppingCart} accentClass="text-blue-600 dark:text-blue-400" bgClass="bg-blue-50 dark:bg-blue-500/10" variation={ordersVariation} />
+                <KpiCard label="Ticket Médio" value={formatCurrency(ticketMedio)} icon={Receipt} accentClass="text-emerald-600 dark:text-emerald-400" bgClass="bg-emerald-50 dark:bg-emerald-500/10" variation={ticketVariation} />
+                <KpiCard label="Recuperação" value={formatPercent(recoveryRate)} icon={ShoppingBag} accentClass="text-amber-600 dark:text-amber-400" bgClass="bg-amber-50 dark:bg-amber-500/10" variation={recoveryVariation} />
+                <KpiCard label="Receita/Lead" value={formatCurrency(receitaPorLead)} icon={Users} accentClass="text-violet-600 dark:text-violet-400" bgClass="bg-violet-50 dark:bg-violet-500/10" />
+                <KpiCard label="Flows Ativos" value={`${klaviyo?.activeFlows || 0} / ${klaviyo?.flowsCount || 0}`} icon={Zap} accentClass="text-cyan-600 dark:text-cyan-400" bgClass="bg-cyan-50 dark:bg-cyan-500/10" href="/client/flows" />
+              </div>
             )}
           </div>
         </AnimatedItem>
 
-        {/* KPI Cards */}
+        {/* === SECTION 3: Operational Overview === */}
         <AnimatedItem>
-          {klaviyoLoading ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-              {[1, 2, 3, 4, 5].map((i) => (
-                <Skeleton key={i} className="h-24 rounded-xl border border-border" />
-              ))}
+          <div className="space-y-3">
+            <h3 className="text-[13px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider px-0.5">
+              Visão operacional
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <NextCampaignsCard
+                campaigns={klaviyo?.recentCampaigns}
+                upcomingCampaigns={data.upcomingCampaigns}
+              />
+              <NextMeetingCard meetings={data.meetings} />
+              <ListHealthCard
+                bounceRate={klaviyo?.bounceRate || 0}
+                unsubscribeRate={klaviyo?.unsubscribeRate || 0}
+              />
+              <LastSendCard campaigns={klaviyo?.recentCampaigns} />
+              <TopFlowCard flows={klaviyo?.topFlows} />
+
+              {/* Invoices quick card */}
+              {(data.invoices.pending > 0 || data.invoices.overdue > 0) && (
+                <Link href="/client/invoices" className="block group">
+                  <div className="h-full rounded-xl border border-slate-200/80 dark:border-slate-700/40 bg-white dark:bg-slate-800/40 p-5 transition-all duration-200 hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600">
+                    <div className="flex items-center gap-2.5 mb-4">
+                      <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center">
+                        <DollarSign className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                      </div>
+                      <span className="text-[13px] font-semibold text-slate-800 dark:text-slate-100">Faturas</span>
+                      <ChevronRight className="h-4 w-4 text-slate-300 dark:text-slate-600 ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                    {data.invoices.overdue > 0 && (
+                      <div className="mb-3">
+                        <p className="text-lg font-bold text-red-600 dark:text-red-400 tabular-nums">{formatCurrency(data.invoices.totalOverdue)}</p>
+                        <p className="text-xs text-red-500 dark:text-red-400/70">{data.invoices.overdue} fatura(s) em atraso</p>
+                      </div>
+                    )}
+                    {data.invoices.pending > 0 && (
+                      <div>
+                        <p className="text-lg font-bold text-slate-800 dark:text-slate-100 tabular-nums">{formatCurrency(data.invoices.totalPending)}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">{data.invoices.pending} fatura(s) pendente(s)</p>
+                      </div>
+                    )}
+                  </div>
+                </Link>
+              )}
             </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-              <KpiCard label="Pedidos" value={formatNumber(storeOrders)} icon={ShoppingCart} iconColor="text-blue-600" iconBg="bg-blue-50 dark:bg-blue-500/10" variation={ordersVariation} />
-              <KpiCard label="Ticket Médio" value={formatCurrency(ticketMedio)} icon={Receipt} iconColor="text-emerald-600" iconBg="bg-emerald-50 dark:bg-emerald-500/10" variation={ticketVariation} />
-              <KpiCard label="Recuperação de Carrinho" value={formatPercent(recoveryRate)} icon={ShoppingBag} iconColor="text-amber-600" iconBg="bg-amber-50 dark:bg-amber-500/10" variation={recoveryVariation} />
-              <KpiCard label="Receita por Lead" value={formatCurrency(receitaPorLead)} icon={Users} iconColor="text-violet-600" iconBg="bg-violet-50 dark:bg-violet-500/10" />
-              <KpiCard label="Flows Ativos" value={`${klaviyo?.activeFlows || 0} / ${klaviyo?.flowsCount || 0}`} icon={Zap} iconColor="text-cyan-600" iconBg="bg-cyan-50 dark:bg-cyan-500/10" href="/client/flows" />
-            </div>
-          )}
+          </div>
         </AnimatedItem>
 
-        {/* Análise Detalhada - Collapsible */}
+        {/* === SECTION 4: Detailed Analytics (Collapsible) === */}
         <AnimatedItem>
           <button
             onClick={() => setShowAnalytics(!showAnalytics)}
-            className="w-full flex items-center justify-between p-4 bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors"
+            className="w-full flex items-center justify-between p-4 rounded-xl border border-slate-200/80 dark:border-slate-700/40 bg-white dark:bg-slate-800/40 transition-all duration-200 hover:shadow-sm hover:border-slate-300 dark:hover:border-slate-600 group"
           >
-            <div className="flex items-center gap-2">
-              <PieChart className="h-4 w-4 text-primary" />
-              <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">Análise Detalhada</span>
-              <span className="text-xs text-slate-400 dark:text-slate-500">Audiência, E-mail, Receita e mais</span>
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                <PieChart className="h-4 w-4 text-primary" />
+              </div>
+              <div className="text-left">
+                <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">Análise Detalhada</span>
+                <p className="text-[11px] text-slate-400 dark:text-slate-500">Audiência, E-mail, Receita e mais</p>
+              </div>
             </div>
-            <ChevronDownIcon className={`h-4 w-4 text-slate-400 transition-transform duration-200 ${showAnalytics ? "rotate-180" : ""}`} />
+            <ChevronDownIcon className={`h-4 w-4 text-slate-400 transition-transform duration-300 ${showAnalytics ? "rotate-180" : ""}`} />
           </button>
         </AnimatedItem>
 
@@ -398,7 +424,7 @@ export default function PortalDashboardPage() {
           <>
             {/* Audience & List Health */}
             <AnimatedItem>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <AudienceMetrics klaviyo={klaviyo} shopify={data.shopify} />
                 <ListHealthMetrics klaviyo={klaviyo} />
               </div>
@@ -444,34 +470,34 @@ function KpiCard({
   label,
   value,
   icon: Icon,
-  iconColor,
-  iconBg,
+  accentClass,
+  bgClass,
   variation,
   href,
 }: {
   label: string
   value: string | number
   icon: React.ElementType
-  iconColor: string
-  iconBg: string
+  accentClass: string
+  bgClass: string
   variation?: number
   href?: string
 }) {
   const content = (
-    <div className={`bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-4 shadow-sm dark:shadow-slate-900/20 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200 ${href ? "cursor-pointer hover:border-primary/30 dark:hover:border-primary/30" : ""}`}>
+    <div className={`group rounded-xl border border-slate-200/80 dark:border-slate-700/40 bg-white dark:bg-slate-800/40 p-4 transition-all duration-200 hover:shadow-sm hover:border-slate-300 dark:hover:border-slate-600 ${href ? "cursor-pointer" : ""}`}>
       <div className="flex items-center gap-2 mb-3">
-        <div className={`w-7 h-7 rounded-lg ${iconBg} flex items-center justify-center`}>
-          <Icon className={`h-3.5 w-3.5 ${iconColor}`} />
+        <div className={`w-7 h-7 rounded-lg ${bgClass} flex items-center justify-center`}>
+          <Icon className={`h-3.5 w-3.5 ${accentClass}`} />
         </div>
-        <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">{label}</span>
+        <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wide">{label}</span>
       </div>
       <div className="flex items-center gap-2">
-        <p className="text-xl font-bold text-slate-800 dark:text-slate-100">{value}</p>
+        <p className="text-xl font-bold text-slate-800 dark:text-slate-100 tabular-nums">{value}</p>
         {variation !== undefined && Math.abs(variation) >= 0.1 && (
-          <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+          <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-semibold ${
             variation >= 0
-              ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-              : "bg-red-500/10 text-red-600 dark:text-red-400"
+              ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+              : "bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400"
           }`}>
             {variation >= 0 ? (
               <TrendingUp className="h-2.5 w-2.5" />

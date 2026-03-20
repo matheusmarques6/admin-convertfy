@@ -1,3 +1,4 @@
+import { TrendingUp, Zap, Send, MessageSquare, Wallet } from "lucide-react"
 import { formatCurrency } from "@/lib/utils/format"
 import { VariationBadge } from "./components"
 import type { KlaviyoData, PreviousPeriodData } from "./types"
@@ -21,18 +22,20 @@ export function HeroSection({ klaviyo, previousPeriod }: HeroSectionProps) {
   const smsPercent = storeRevenue > 0 ? (smsRevenue / storeRevenue) * 100 : 0
 
   return (
-    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#0B0E14] via-[#12152B] to-[#1A1040] p-6 lg:p-8 shadow-xl">
-      {/* Decorative orbs */}
-      <div className="absolute -top-20 -right-20 w-60 h-60 bg-primary/20 rounded-full blur-[80px]" />
-      <div className="absolute -bottom-16 -left-16 w-48 h-48 bg-[#05AFF2]/15 rounded-full blur-[60px]" />
+    <div className="space-y-4">
+      {/* Main Revenue Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-4 items-stretch">
+        {/* Store Revenue - Primary metric */}
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 dark:from-[#0f1419] dark:via-[#151d28] dark:to-[#0f1419] p-6 lg:p-8">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-primary/8 rounded-full blur-[80px] -translate-y-1/2 translate-x-1/3" />
+          <div className="absolute bottom-0 left-0 w-48 h-48 bg-cyan-500/6 rounded-full blur-[60px] translate-y-1/2 -translate-x-1/4" />
 
-      <div className="relative">
-        {/* Top row */}
-        <div className="flex flex-col lg:flex-row lg:items-start justify-between mb-8 gap-4">
-          <div>
-            <p className="text-sm text-slate-400 mb-1">Receita Total da Loja</p>
-            <div className="flex items-center gap-3 mb-2">
-              <h2 className="text-3xl lg:text-4xl font-bold text-white tracking-tight">{formatCurrency(storeRevenue)}</h2>
+          <div className="relative">
+            <p className="text-[13px] font-medium text-slate-400 mb-1.5 tracking-wide">Receita Total da Loja</p>
+            <div className="flex items-baseline gap-3 mb-3">
+              <h2 className="text-3xl lg:text-4xl font-bold text-white tracking-tight tabular-nums">
+                {formatCurrency(storeRevenue)}
+              </h2>
               {previousPeriod && previousPeriod.storeRevenue > 0 && (
                 <VariationBadge
                   value={((storeRevenue - previousPeriod.storeRevenue) / previousPeriod.storeRevenue) * 100}
@@ -40,54 +43,99 @@ export function HeroSection({ klaviyo, previousPeriod }: HeroSectionProps) {
                 />
               )}
             </div>
-            <p className="text-sm text-slate-400">
-              Atribuição Klaviyo: <span className="text-white font-medium">{formatCurrency(totalRevenue)}</span>{" "}
-              <span className="text-slate-500">{`(${attributionPercent.toFixed(1)}% do total)`}</span>
-            </p>
-          </div>
 
-          <div className="lg:text-right">
-            <p className="text-xs text-slate-500 mb-1">Atribuição Klaviyo</p>
-            <p className="text-3xl font-bold text-[#05AFF2]">{attributionPercent.toFixed(1)}%</p>
-            <p className="text-xs text-slate-500">do faturamento</p>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-primary/15 border border-primary/20">
+                <TrendingUp className="h-3.5 w-3.5 text-primary" />
+                <span className="text-sm font-bold text-primary tabular-nums">{attributionPercent.toFixed(1)}%</span>
+              </div>
+              <span className="text-[13px] text-slate-400">
+                atribuído via Klaviyo
+                <span className="text-slate-500 ml-1.5">({formatCurrency(totalRevenue)})</span>
+              </span>
+            </div>
           </div>
         </div>
 
-        {/* Revenue breakdown cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <RevenueCard label="Flows" value={flowRevenue} percent={flowPercent} dotColor="bg-violet-400" accentColor="text-violet-300" />
-          <RevenueCard label="Campanhas" value={campaignRevenue} percent={campaignPercent} dotColor="bg-cyan-400" accentColor="text-cyan-300" />
-          <RevenueCard label="SMS" value={smsRevenue} percent={smsPercent} dotColor="bg-amber-400" accentColor="text-amber-300" />
-          <RevenueCard label="Lucro Estimado" value={estimatedProfit} percent={30} dotColor="bg-emerald-400" accentColor="text-emerald-300" isProfit />
+        {/* Attribution highlight card */}
+        <div className="hidden lg:flex flex-col items-center justify-center rounded-2xl bg-gradient-to-b from-primary/10 to-primary/5 dark:from-primary/15 dark:to-primary/5 border border-primary/15 dark:border-primary/20 px-8 min-w-[180px]">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-primary/70 mb-1">Atribuição</p>
+          <p className="text-4xl font-bold text-primary tabular-nums">{attributionPercent.toFixed(1)}%</p>
+          <p className="text-[11px] text-primary/60 mt-1">do faturamento</p>
         </div>
+      </div>
+
+      {/* Revenue breakdown cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <BreakdownCard
+          label="Flows"
+          value={flowRevenue}
+          percent={flowPercent}
+          icon={Zap}
+          accentClass="text-violet-500 dark:text-violet-400"
+          bgClass="bg-violet-50 dark:bg-violet-500/10"
+          borderClass="border-violet-100 dark:border-violet-500/15"
+        />
+        <BreakdownCard
+          label="Campanhas"
+          value={campaignRevenue}
+          percent={campaignPercent}
+          icon={Send}
+          accentClass="text-cyan-600 dark:text-cyan-400"
+          bgClass="bg-cyan-50 dark:bg-cyan-500/10"
+          borderClass="border-cyan-100 dark:border-cyan-500/15"
+        />
+        <BreakdownCard
+          label="SMS"
+          value={smsRevenue}
+          percent={smsPercent}
+          icon={MessageSquare}
+          accentClass="text-amber-600 dark:text-amber-400"
+          bgClass="bg-amber-50 dark:bg-amber-500/10"
+          borderClass="border-amber-100 dark:border-amber-500/15"
+        />
+        <BreakdownCard
+          label="Lucro Estimado"
+          value={estimatedProfit}
+          percent={30}
+          icon={Wallet}
+          accentClass="text-emerald-600 dark:text-emerald-400"
+          bgClass="bg-emerald-50 dark:bg-emerald-500/10"
+          borderClass="border-emerald-100 dark:border-emerald-500/15"
+          isProfit
+        />
       </div>
     </div>
   )
 }
 
-function RevenueCard({
+function BreakdownCard({
   label,
   value,
   percent,
-  dotColor,
-  accentColor,
+  icon: Icon,
+  accentClass,
+  bgClass,
+  borderClass,
   isProfit = false,
 }: {
   label: string
   value: number
   percent: number
-  dotColor: string
-  accentColor: string
+  icon: React.ElementType
+  accentClass: string
+  bgClass: string
+  borderClass: string
   isProfit?: boolean
 }) {
   return (
-    <div className="rounded-xl bg-white/[0.06] border border-white/[0.08] backdrop-blur-sm p-4">
-      <div className="flex items-center gap-2 mb-2">
-        <div className={`w-2 h-2 rounded-full ${dotColor}`} />
-        <span className="text-xs text-slate-400">{label}</span>
+    <div className={`rounded-xl border ${borderClass} ${bgClass} p-4 transition-all duration-200 hover:shadow-sm`}>
+      <div className="flex items-center gap-2 mb-2.5">
+        <Icon className={`h-4 w-4 ${accentClass}`} strokeWidth={1.8} />
+        <span className="text-xs font-medium text-slate-600 dark:text-slate-400">{label}</span>
       </div>
-      <p className="text-lg font-bold text-white">{formatCurrency(value)}</p>
-      <p className={`text-xs ${accentColor} mt-0.5`}>
+      <p className="text-lg font-bold text-slate-800 dark:text-white tabular-nums">{formatCurrency(value)}</p>
+      <p className={`text-[11px] mt-1 ${accentClass} font-medium`}>
         {isProfit ? "30% margem" : `${percent.toFixed(1)}% da receita`}
       </p>
     </div>
