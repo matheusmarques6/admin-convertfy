@@ -28,6 +28,7 @@ import {
   LucideIcon,
   UserCircle,
   ChevronDown,
+  PenLine,
 } from "lucide-react"
 import { motion, LayoutGroup } from "framer-motion"
 import { cn } from "@/lib/utils"
@@ -76,6 +77,7 @@ const NAV_GROUPS = [
   { key: "principal", label: "" },
   { key: "crm", label: "Gestao" },
   { key: "marketing", label: "Marketing" },
+  { key: "ferramentas", label: "Ferramentas" },
   { key: "operacional", label: "Operacional" },
 ] as const
 
@@ -87,6 +89,8 @@ const navigation: NavItem[] = [
   { name: "Pipeline", href: ROUTES.ADMIN.PIPELINE, icon: Columns3, group: "crm", requiredFeatures: ["request_control", "request_execute"] },
   { name: "Campanhas", href: ROUTES.ADMIN.CAMPAIGNS.LIST, icon: Send, group: "marketing", requiredFeatures: ["campaign_control", "campaign_view", "campaign_copy"] },
   { name: "Automacoes", href: ROUTES.ADMIN.AUTOMATIONS.LIST, icon: Workflow, group: "marketing", requiredFeatures: ["campaign_control"] },
+  { name: "Gerador de Copy", href: ROUTES.ADMIN.TOOLS + "/copy", icon: PenLine, group: "ferramentas", requiredFeatures: ["campaign_copy"] },
+  { name: "IA e Calculadoras", href: ROUTES.ADMIN.TOOLS, icon: Puzzle, group: "ferramentas" },
   { name: "Board", href: ROUTES.ADMIN.BOARD, icon: LayoutList, group: "operacional", requiredFeatures: ["request_control", "request_execute", "calendar_control"] },
   { name: "Reunioes", href: ROUTES.ADMIN.MEETINGS.LIST, icon: CalendarDays, group: "operacional", requiredFeatures: ["calendar_control"] },
   { name: "Financeiro", href: ROUTES.ADMIN.FINANCIAL, icon: Wallet, group: "operacional", requiredFeatures: ["view_financial"] },
@@ -94,7 +98,6 @@ const navigation: NavItem[] = [
     { name: "Por Cliente", href: ROUTES.ADMIN.REPORTS.LIST, icon: PieChart },
     { name: "Gerados", href: ROUTES.ADMIN.REPORT_JOBS.LIST, icon: FileBarChart },
   ] },
-  { name: "Ferramentas", href: ROUTES.ADMIN.TOOLS, icon: Puzzle, group: "operacional" },
 ]
 
 const bottomNavigation: NavItem[] = [

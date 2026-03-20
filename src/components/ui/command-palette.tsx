@@ -24,6 +24,7 @@ import {
   UserPlus,
   Plus,
   FileText,
+  PenLine,
   type LucideIcon,
 } from "lucide-react"
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden"
@@ -57,12 +58,14 @@ const navigationItems: CommandItem[] = [
   { name: "Financeiro", href: "/admin/financial", icon: DollarSign, group: "Navegação" },
   { name: "Relatórios", href: "/admin/reports", icon: BarChart3, group: "Navegação" },
   { name: "Ferramentas", href: "/admin/tools", icon: Wrench, group: "Navegação" },
+  { name: "Gerador de Copy", href: "/admin/tools/copy", icon: PenLine, group: "Navegação" },
   { name: "Configurações", href: "/admin/settings", icon: Settings, group: "Navegação" },
 ]
 
 const actionItems: CommandItem[] = [
   { name: "Novo Cliente", href: "/admin/clients/new", icon: UserPlus, group: "Ações Rápidas" },
   { name: "Nova Campanha", href: "/admin/campaigns", icon: Plus, group: "Ações Rápidas" },
+  { name: "Gerar Copy com IA", href: "/admin/tools/copy", icon: PenLine, group: "Ações Rápidas" },
   { name: "Nova Automação", href: "/admin/automations/new", icon: Zap, group: "Ações Rápidas" },
   { name: "Novo Relatório", href: "/admin/reports/new", icon: FileText, group: "Ações Rápidas" },
   { name: "Agendar Reunião", href: "/admin/meetings", icon: Calendar, group: "Ações Rápidas" },
@@ -87,6 +90,11 @@ export function useCommandPalette(): CommandPaletteContextValue {
     throw new Error("useCommandPalette must be used within a <CommandPalette /> provider")
   }
   return ctx
+}
+
+/** Safe version that returns null when used outside the provider */
+export function useCommandPaletteSafe(): CommandPaletteContextValue | null {
+  return useContext(CommandPaletteContext)
 }
 
 // ---------------------------------------------------------------------------

@@ -7,6 +7,8 @@ import {
   UserX,
   Activity,
   AlertTriangle,
+  TrendingUp,
+  TrendingDown,
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { Button } from "@/components/ui/button"
@@ -105,6 +107,10 @@ async function getClients(filters: ClientFilters) {
 async function getClientStats() {
   const supabase = await createClient()
 
+  const now = new Date()
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString()
+  const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000).toISOString()
+
   const [
     { count: totalCount },
     { count: activeCount },
@@ -112,6 +118,10 @@ async function getClientStats() {
     { count: onboardingCount },
     { count: churnedCount },
     { count: criticalCount },
+    { count: newLast30 },
+    { count: newPrev30 },
+    { count: churnedLast30 },
+    { count: churnedPrev30 },
   ] = await Promise.all([
     supabase.from("clients").select("*", { count: "exact", head: true }),
     supabase.from("clients").select("*", { count: "exact", head: true }).eq("status", "active"),
@@ -119,6 +129,14 @@ async function getClientStats() {
     supabase.from("clients").select("*", { count: "exact", head: true }).eq("status", "onboarding"),
     supabase.from("clients").select("*", { count: "exact", head: true }).eq("status", "churned"),
     supabase.from("clients").select("*", { count: "exact", head: true }).lt("health_score", 40),
+    // Trend: new clients in last 30 days
+    supabase.from("clients").select("*", { count: "exact", head: true }).gte("created_at", thirtyDaysAgo),
+    // Trend: new clients in previous 30 days (30-60 days ago)
+    supabase.from("clients").select("*", { count: "exact", head: true }).gte("created_at", sixtyDaysAgo).lt("created_at", thirtyDaysAgo),
+    // Trend: churned in last 30 days
+    supabase.from("clients").select("*", { count: "exact", head: true }).eq("status", "churned").gte("updated_at", thirtyDaysAgo),
+    // Trend: churned in previous 30 days
+    supabase.from("clients").select("*", { count: "exact", head: true }).eq("status", "churned").gte("updated_at", sixtyDaysAgo).lt("updated_at", thirtyDaysAgo),
   ])
 
   return {
@@ -128,6 +146,12 @@ async function getClientStats() {
     onboarding: onboardingCount || 0,
     churned: churnedCount || 0,
     critical: criticalCount || 0,
+    trends: {
+      newLast30: newLast30 || 0,
+      newPrev30: newPrev30 || 0,
+      churnedLast30: churnedLast30 || 0,
+      churnedPrev30: churnedPrev30 || 0,
+    },
   }
 }
 
@@ -158,7 +182,33 @@ interface StatsRowProps {
     onboarding: number
     churned: number
     critical: number
+    trends: {
+      newLast30: number
+      newPrev30: number
+      churnedLast30: number
+      churnedPrev30: number
+    }
   }
+}
+
+function TrendBadge({ current, previous, invertColor }: { current: number; previous: number; invertColor?: boolean }) {
+  if (current === 0 && previous === 0) return null
+  const diff = current - previous
+  if (diff === 0) return null
+  const isUp = diff > 0
+  const pct = previous > 0 ? Math.round(Math.abs(diff / previous) * 100) : null
+  const isPositive = invertColor ? !isUp : isUp
+
+  return (
+    <span className={cn(
+      "inline-flex items-center gap-0.5 text-[10px] font-medium",
+      isPositive ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
+    )}>
+      {isUp ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+      {pct !== null ? `${pct}%` : `${Math.abs(diff)}`}
+      <span className="text-muted-foreground/50 ml-0.5">30d</span>
+    </span>
+  )
 }
 
 function StatsRow({ stats }: StatsRowProps) {
@@ -175,6 +225,7 @@ function StatsRow({ stats }: StatsRowProps) {
       bg: "bg-blue-100/80 dark:bg-blue-950/60",
       borderColor: "border-blue-200 dark:border-blue-900/50",
       subtitle: null,
+      trend: { current: stats.trends.newLast30, previous: stats.trends.newPrev30 },
     },
     {
       label: "Ativos",
@@ -184,6 +235,7 @@ function StatsRow({ stats }: StatsRowProps) {
       bg: "bg-emerald-100/80 dark:bg-emerald-950/60",
       borderColor: "border-emerald-200 dark:border-emerald-900/50",
       subtitle: `${activeRate}% do total`,
+      trend: null,
     },
     {
       label: "Em Onboarding",
@@ -193,6 +245,7 @@ function StatsRow({ stats }: StatsRowProps) {
       bg: "bg-amber-100/80 dark:bg-amber-950/60",
       borderColor: "border-amber-200 dark:border-amber-900/50",
       subtitle: null,
+      trend: null,
     },
     {
       label: "Churned",
@@ -202,15 +255,17 @@ function StatsRow({ stats }: StatsRowProps) {
       bg: "bg-rose-100/80 dark:bg-rose-950/60",
       borderColor: "border-rose-200 dark:border-rose-900/50",
       subtitle: stats.total > 0 ? `${Math.round((stats.churned / stats.total) * 100)}% do total` : null,
+      trend: { current: stats.trends.churnedLast30, previous: stats.trends.churnedPrev30, invertColor: true },
     },
     {
-      label: "Saúde Crítica",
+      label: "Saude Critica",
       value: stats.critical,
       icon: AlertTriangle,
       color: "text-orange-600 dark:text-orange-400",
       bg: "bg-orange-100/80 dark:bg-orange-950/60",
       borderColor: "border-orange-200 dark:border-orange-900/50",
-      subtitle: stats.critical > 0 ? "Requer atenção" : null,
+      subtitle: stats.critical > 0 ? "Requer atencao" : null,
+      trend: null,
     },
   ]
 
@@ -224,7 +279,16 @@ function StatsRow({ stats }: StatsRowProps) {
                 <item.icon className={`h-4.5 w-4.5 ${item.color}`} />
               </div>
               <div className="min-w-0 space-y-0.5">
-                <p className="text-2xl font-bold leading-none tracking-tight">{item.value}</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-2xl font-bold leading-none tracking-tight">{item.value}</p>
+                  {item.trend && (
+                    <TrendBadge
+                      current={item.trend.current}
+                      previous={item.trend.previous}
+                      invertColor={"invertColor" in item.trend ? item.trend.invertColor : false}
+                    />
+                  )}
+                </div>
                 <p className="truncate text-xs font-medium text-muted-foreground">{item.label}</p>
                 {item.subtitle && (
                   <p className="truncate text-[11px] text-muted-foreground/70">{item.subtitle}</p>

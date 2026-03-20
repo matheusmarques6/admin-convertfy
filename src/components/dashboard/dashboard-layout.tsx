@@ -14,6 +14,10 @@ import {
   Send,
   CheckCircle,
   Eye,
+  UserPlus,
+  CalendarPlus,
+  PenLine,
+  FileText,
 } from "lucide-react"
 import { usePermissions } from "@/lib/hooks/use-permissions"
 import { TotalRevenueBanner, type TotalRevenueData } from "./total-revenue-banner"
@@ -276,6 +280,32 @@ function PendingItemsCard({ pendingItems }: { pendingItems: PendingItems }) {
   )
 }
 
+function QuickActions() {
+  const actions = [
+    { label: "Novo Cliente", href: "/admin/clients/new", icon: UserPlus, color: "bg-primary/10 text-primary" },
+    { label: "Nova Reuniao", href: "/admin/meetings", icon: CalendarPlus, color: "bg-success/10 text-success" },
+    { label: "Nova Campanha", href: "/admin/campaigns", icon: Send, color: "bg-info/10 text-info" },
+    { label: "Gerar Copy", href: "/admin/tools/copy", icon: PenLine, color: "bg-violet-500/10 text-violet-600" },
+    { label: "Novo Relatorio", href: "/admin/reports/new", icon: FileText, color: "bg-amber-500/10 text-amber-600" },
+  ]
+
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <span className="text-xs font-medium text-muted-foreground mr-1">Acoes rapidas</span>
+      {actions.map((action) => (
+        <Link
+          key={action.href}
+          href={action.href}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-border bg-card hover:bg-accent transition-colors"
+        >
+          <action.icon className={cn("h-3.5 w-3.5", action.color.split(" ")[1])} />
+          <span className="hidden sm:inline">{action.label}</span>
+        </Link>
+      ))}
+    </div>
+  )
+}
+
 export function DashboardLayout({ data, userRole }: DashboardLayoutProps) {
   const { permissions, hasFeature } = usePermissions()
   const [revenuePeriod, setRevenuePeriod] = useState("30d")
@@ -339,6 +369,9 @@ export function DashboardLayout({ data, userRole }: DashboardLayoutProps) {
           ))}
         </div>
       )}
+
+      {/* Quick Actions */}
+      <QuickActions />
 
       {/* Revenue Banner - Compact with period selector */}
       <TotalRevenueBanner period={revenuePeriod} onPeriodChange={setRevenuePeriod} onDataChange={handleRevenueData} />

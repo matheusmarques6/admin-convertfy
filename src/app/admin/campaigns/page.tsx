@@ -13,7 +13,6 @@ import {
   CalendarDays,
   BarChart3,
   Zap,
-  PenLine,
   CheckCircle,
   Clock,
 } from "lucide-react"
@@ -33,8 +32,6 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { CampaignModal } from "@/components/campaigns/campaign-modal"
 import { CampaignFormModal } from "@/components/campaigns/campaign-form-modal"
 import { CampaignsListView } from "@/components/campaigns/campaigns-list-view"
-import { CopyGenerationBoard } from "@/components/campaigns/copy-generation-board"
-import { CopyTab } from "@/components/campaigns/copy-tab"
 import { QuickCampaignModal } from "@/components/campaigns/quick-campaign-modal"
 import { useCampaignsCalendar } from "./use-campaigns-calendar"
 import { CalendarGrid, channelConfig } from "./calendar-grid"
@@ -54,7 +51,7 @@ const monthNames = [
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
 ]
 
-type ViewMode = "calendar" | "performance" | "copy"
+type ViewMode = "calendar" | "performance"
 
 export default function CampaignsCalendarPage() {
   const cal = useCampaignsCalendar()
@@ -94,17 +91,6 @@ export default function CampaignsCalendarPage() {
               >
                 <BarChart3 className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">Desempenho</span>
-              </button>
-              <button
-                onClick={() => setViewMode("copy")}
-                className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                  viewMode === "copy"
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                <PenLine className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Copy</span>
               </button>
             </div>
 
@@ -173,14 +159,6 @@ export default function CampaignsCalendarPage() {
 
       {/* Performance View */}
       {viewMode === "performance" && <CampaignsListView />}
-
-      {/* Copy Generation: Form + Tasks Board */}
-      {viewMode === "copy" && (
-        <div className="space-y-8">
-          <CopyTab />
-          <CopyGenerationBoard />
-        </div>
-      )}
 
       {/* Calendar View */}
       {viewMode === "calendar" && (<>

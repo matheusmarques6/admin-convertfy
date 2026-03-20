@@ -13,7 +13,7 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222 47% 11%;
 
-    --primary: 217 91% 53%;
+    --primary: 197 96% 48%;
     --primary-foreground: 0 0% 100%;
 
     --secondary: 214 20% 94%;
@@ -34,7 +34,7 @@
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
 
-    --info: 196 97% 49%;
+    --info: 197 96% 48%;
     --info-foreground: 0 0% 100%;
 
     --mrr: 237 87% 55%;
@@ -42,7 +42,7 @@
 
     --border: 220 13% 86%;
     --input: 220 13% 86%;
-    --ring: 217 91% 53%;
+    --ring: 197 96% 48%;
 
     --radius: 0.5rem;
 
@@ -50,8 +50,8 @@
     --success-h: 160; --success-s: 84%; --success-l: 39%;
     --warning-h: 38;  --warning-s: 92%; --warning-l: 50%;
     --destructive-h: 0; --destructive-s: 84%; --destructive-l: 60%;
-    --primary-h: 217; --primary-s: 91%; --primary-l: 53%;
-    --info-h: 196;    --info-s: 97%;  --info-l: 49%;
+    --primary-h: 197; --primary-s: 96%; --primary-l: 48%;
+    --info-h: 197;    --info-s: 96%;  --info-l: 48%;
     --mrr-h: 237;     --mrr-s: 87%;  --mrr-l: 55%;
   }
 
@@ -65,7 +65,7 @@
     --popover: 224 50% 8%;
     --popover-foreground: 210 20% 98%;
 
-    --primary: 217 91% 60%;
+    --primary: 197 96% 55%;
     --primary-foreground: 0 0% 100%;
 
     --secondary: 215 28% 17%;
@@ -86,7 +86,7 @@
     --warning: 38 92% 50%;
     --warning-foreground: 213 30% 11%;
 
-    --info: 196 97% 49%;
+    --info: 197 96% 55%;
     --info-foreground: 0 0% 100%;
 
     --mrr: 237 87% 55%;
@@ -94,26 +94,14 @@
 
     --border: 215 28% 17%;
     --input: 215 28% 17%;
-    --ring: 217 91% 60%;
+    --ring: 197 96% 55%;
 
     /* Dark mode overrides */
     --destructive-h: 0; --destructive-s: 62%; --destructive-l: 50%;
-    --primary-h: 217; --primary-s: 91%; --primary-l: 60%;
-  }
-
-  /* Portal override: keep brand cyan-blue for customer portal */
-  .portal-layout {
-    --primary: 197 96% 48%;
-    --primary-foreground: 0 0% 100%;
-    --ring: 197 96% 48%;
-    --primary-h: 197; --primary-s: 96%; --primary-l: 48%;
-  }
-  .dark .portal-layout {
-    --primary: 197 96% 55%;
-    --primary-foreground: 0 0% 100%;
-    --ring: 197 96% 55%;
     --primary-h: 197; --primary-s: 96%; --primary-l: 55%;
   }
+
+  /* Portal layout — primary already matches brand cyan, no override needed */
 }
 
 @layer base {

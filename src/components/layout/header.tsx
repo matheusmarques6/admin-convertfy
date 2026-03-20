@@ -15,9 +15,11 @@ import {
   XCircle,
   Megaphone,
   ChevronRight,
+  Search,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { Button } from "@/components/ui/button"
+import { useCommandPaletteSafe } from "@/components/ui/command-palette"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -52,6 +54,7 @@ const pageTitles: Record<string, string> = {
   [ROUTES.ADMIN.STORES.LIST]: "Lojas",
   [ROUTES.ADMIN.ONBOARDING]: "Onboarding",
   [ROUTES.ADMIN.TOOLS]: "Ferramentas",
+  [ROUTES.ADMIN.TOOLS + "/copy"]: "Gerador de Copy",
   [ROUTES.ADMIN.NOTIFICATIONS]: "Notificacoes",
   [ROUTES.ADMIN.TEAM]: "Equipe",
   [ROUTES.ADMIN.SETTINGS.APPEARANCE]: "Aparencia",
@@ -83,6 +86,7 @@ const parentRoutes: Record<string, { label: string; href: string }> = {
   [ROUTES.ADMIN.SETTINGS.NOTIFICATIONS]: { label: "Configuracoes", href: ROUTES.ADMIN.SETTINGS.ROOT },
   [ROUTES.ADMIN.SETTINGS.EMAIL_TEMPLATES]: { label: "Configuracoes", href: ROUTES.ADMIN.SETTINGS.ROOT },
   [ROUTES.ADMIN.DASHBOARD_OPERATIONAL]: { label: "Dashboard", href: ROUTES.ADMIN.DASHBOARD },
+  [ROUTES.ADMIN.TOOLS + "/copy"]: { label: "Ferramentas", href: ROUTES.ADMIN.TOOLS },
 }
 
 interface HeaderProps {
@@ -97,6 +101,7 @@ export function Header({ user: userProp }: HeaderProps) {
   const pathname = usePathname()
   const { theme, setTheme } = useTheme()
   const { user } = useAuthStore()
+  const commandPalette = useCommandPaletteSafe()
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [unreadCount, setUnreadCount] = useState(0)
@@ -263,6 +268,32 @@ export function Header({ user: userProp }: HeaderProps) {
 
       {/* Actions */}
       <div className="flex items-center gap-1 sm:gap-1.5">
+        {/* Search / Command Palette */}
+        {commandPalette && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="hidden sm:flex items-center gap-2 h-9 px-3 text-muted-foreground hover:text-foreground rounded-xl border border-border bg-muted/50"
+            onClick={commandPalette.open}
+          >
+            <Search className="h-3.5 w-3.5" />
+            <span className="text-xs">Buscar...</span>
+            <kbd className="ml-1 text-[10px] font-medium text-muted-foreground/70 border border-border rounded px-1 py-0.5 bg-background">
+              Ctrl K
+            </kbd>
+          </Button>
+        )}
+        {commandPalette && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="sm:hidden h-9 w-9 text-muted-foreground hover:text-foreground rounded-xl"
+            onClick={commandPalette.open}
+          >
+            <Search className="h-4 w-4" />
+          </Button>
+        )}
+
         {/* Theme Toggle */}
         <Button
           variant="ghost"

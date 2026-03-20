@@ -210,23 +210,24 @@ export default async function DashboardLayout({
 
   return (
     <DashboardClientWrapper initialPermissions={permissions}>
-      <div className="flex h-screen bg-background relative">
-        <CommandPalette />
-        {/* Sidebar - Hidden on mobile */}
-        <div className="hidden md:block shrink-0">
-          <Sidebar user={userData} />
-        </div>
+      <CommandPalette>
+        <div className="flex h-screen bg-background relative">
+          {/* Sidebar - Hidden on mobile */}
+          <div className="hidden md:block shrink-0">
+            <Sidebar user={userData} />
+          </div>
 
-        {/* Main Content */}
-        <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-          <Header user={userData} />
-          <main className="flex-1 overflow-auto px-4 py-5 md:px-8 md:py-6">
-            <ErrorBoundary>
-              {children}
-            </ErrorBoundary>
-          </main>
+          {/* Main Content */}
+          <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+            <Header user={userData} />
+            <main className="flex-1 overflow-auto px-4 py-5 md:px-8 md:py-6">
+              <ErrorBoundary>
+                {children}
+              </ErrorBoundary>
+            </main>
+          </div>
         </div>
-      </div>
+      </CommandPalette>
     </DashboardClientWrapper>
   )
 }
