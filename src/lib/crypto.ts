@@ -14,6 +14,9 @@ function getKey(): Buffer {
   if (!key) {
     throw new Error("ENCRYPTION_KEY environment variable is not set")
   }
+  if (key.length !== 64) {
+    throw new Error("ENCRYPTION_KEY must be exactly 64 hex characters (32 bytes for AES-256)")
+  }
   return Buffer.from(key, "hex")
 }
 
@@ -44,7 +47,10 @@ export function decrypt(ciphertext: string): string {
     decipher.setAuthTag(tag)
     return decipher.update(encrypted).toString("utf8") + decipher.final("utf8")
   } catch (error) {
-    log.error("Failed to decrypt value", { error })
+    log.error("Failed to decrypt value", {
+      errorType: (error as Error).name,
+      message: (error as Error).message,
+    })
     throw new Error("Failed to decrypt credential")
   }
 }

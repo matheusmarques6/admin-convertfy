@@ -29,10 +29,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate user has access to this store (multi-tenant isolation)
-    await requireStoreAccess(store_id, user.id)
+    const storeAccess = await requireStoreAccess(store_id, user.id)
 
-    // Read credentials server-side (decrypted)
-    const credentials = await getStoreCredentials(store_id)
+    // Read credentials server-side (decrypted) — pass orgId for defense-in-depth
+    const credentials = await getStoreCredentials(store_id, storeAccess.orgId)
 
     const results: { shopify?: ValidationResult; klaviyo?: ValidationResult } = {}
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

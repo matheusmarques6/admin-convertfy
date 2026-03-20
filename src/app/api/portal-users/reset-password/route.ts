@@ -6,11 +6,11 @@ import {
   successResponse,
   requireRole,
   parseAndValidate,
-  NotFoundError,
   ValidationError,
   AppError,
 } from "@/lib/api/errors"
 import { z } from "zod"
+import { checkRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { logger } from "@/lib/logger"
 import { uuidSchema } from "@/lib/schemas/common"
 import { emailService } from "@/lib/email"
@@ -24,6 +24,9 @@ const resetPasswordSchema = z.object({
 
 // POST - Reset password for a portal user (admin action)
 export async function POST(request: NextRequest) {
+  const limited = await checkRateLimit(request, "portal:reset-password", { ...RATE_LIMITS.auth, failClosed: true })
+  if (limited) return limited
+
   try {
     const supabase = await createClient()
     await requireRole(supabase, ["admin", "manager", "cs"])
@@ -40,7 +43,10 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (portalError || !portalUser) {
-      throw new NotFoundError("Usuário do portal")
+      log.warn("Reset password attempted for non-existent portal user", { portal_user_id: body.portal_user_id })
+      return successResponse(request, {
+        success: true,
+      }, { message: "Senha resetada com sucesso" })
     }
 
     if (!portalUser.auth_user_id) {
@@ -92,7 +98,6 @@ export async function POST(request: NextRequest) {
 
     return successResponse(request, {
       success: true,
-      new_password: passwordToSet,
     }, { message: "Senha resetada com sucesso" })
   } catch (error) {
     return errorResponse(request, error, "PortalResetPassword POST")

@@ -16,9 +16,11 @@ export async function GET(request: NextRequest) {
     const error = searchParams.get("error")
 
     if (error) {
-      log.error("Meta OAuth error:", error)
+      const ALLOWED_OAUTH_ERRORS = ["access_denied", "server_error", "invalid_scope"]
+      const sanitizedError = ALLOWED_OAUTH_ERRORS.includes(error) ? error : "unknown_error"
+      log.error("Meta OAuth error:", { error: sanitizedError })
       return NextResponse.redirect(
-        new URL(`/settings/integrations?error=${error}`, request.url)
+        new URL(`/settings/integrations?error=${sanitizedError}`, request.url)
       )
     }
 
@@ -66,7 +68,10 @@ export async function GET(request: NextRequest) {
 
     if (!tokenResponse.ok) {
       const errorData = await tokenResponse.json()
-      log.error("Meta token exchange error:", errorData)
+      log.error("Meta token exchange error:", {
+        status: tokenResponse.status,
+        error: errorData?.error?.message || errorData?.error || "unknown",
+      })
       return NextResponse.redirect(
         new URL("/settings/integrations?error=token_exchange_failed", request.url)
       )
@@ -90,7 +95,8 @@ export async function GET(request: NextRequest) {
 
     // Get user info
     const userInfoResponse = await fetch(
-      `${META_GRAPH_URL}/me?fields=id,name,email&access_token=${accessToken}`
+      `${META_GRAPH_URL}/me?fields=id,name,email`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
     )
     const userInfo = await userInfoResponse.json()
 
@@ -98,7 +104,8 @@ export async function GET(request: NextRequest) {
     let adAccountId: string | undefined
     if (stateData.scope === "ads" || stateData.scope === "all") {
       const adAccountsResponse = await fetch(
-        `${META_GRAPH_URL}/me/adaccounts?fields=id,account_id,name&access_token=${accessToken}`
+        `${META_GRAPH_URL}/me/adaccounts?fields=id,account_id,name`,
+        { headers: { Authorization: `Bearer ${accessToken}` } }
       )
       const adAccountsData = await adAccountsResponse.json()
 
@@ -111,7 +118,8 @@ export async function GET(request: NextRequest) {
     let instagramAccountId: string | undefined
     if (stateData.scope === "instagram" || stateData.scope === "all") {
       const pagesResponse = await fetch(
-        `${META_GRAPH_URL}/me/accounts?fields=id,instagram_business_account&access_token=${accessToken}`
+        `${META_GRAPH_URL}/me/accounts?fields=id,instagram_business_account`,
+        { headers: { Authorization: `Bearer ${accessToken}` } }
       )
       const pagesData = await pagesResponse.json()
 
@@ -173,7 +181,9 @@ export async function GET(request: NextRequest) {
 
     return response
   } catch (error) {
-    log.error("Error in Meta OAuth callback:", error)
+    log.error("Error in Meta OAuth callback:", {
+      message: error instanceof Error ? error.message : "unknown",
+    })
     return NextResponse.redirect(
       new URL("/settings/integrations?error=callback_failed", request.url)
     )

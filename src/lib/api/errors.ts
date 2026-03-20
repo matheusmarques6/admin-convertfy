@@ -122,8 +122,6 @@ export function errorResponse(
     const pgError = error as { message: string; code: string; details?: string; hint?: string }
     logger.error(`[${context || "API"}] Database error: ${pgError.message}`, {
       code: pgError.code,
-      details: pgError.details,
-      hint: pgError.hint,
     })
 
     // Map common Postgres error codes to user-friendly messages and HTTP status

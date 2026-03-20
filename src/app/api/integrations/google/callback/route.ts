@@ -26,9 +26,11 @@ export async function GET(request: NextRequest) {
     const error = searchParams.get("error")
 
     if (error) {
-      log.error("Google OAuth error:", error)
+      const ALLOWED_OAUTH_ERRORS = ["access_denied", "server_error", "invalid_scope"]
+      const sanitizedError = ALLOWED_OAUTH_ERRORS.includes(error) ? error : "unknown_error"
+      log.error("Google OAuth error:", { error: sanitizedError })
       return NextResponse.redirect(
-        new URL(`/settings/integrations?error=${error}`, request.url)
+        new URL(`/settings/integrations?error=${sanitizedError}`, request.url)
       )
     }
 
@@ -91,7 +93,10 @@ export async function GET(request: NextRequest) {
 
     if (!tokenResponse.ok) {
       const errorData = await tokenResponse.json()
-      log.error("Google token exchange error:", errorData)
+      log.error("Google token exchange error:", {
+        status: tokenResponse.status,
+        error: errorData?.error || "unknown",
+      })
       return NextResponse.redirect(
         new URL(buildRedirectUrl(stateData, "token_exchange_failed"), request.url)
       )
@@ -176,7 +181,9 @@ export async function GET(request: NextRequest) {
 
     return response
   } catch (error) {
-    log.error("Error in Google OAuth callback:", error)
+    log.error("Error in Google OAuth callback:", {
+      message: error instanceof Error ? error.message : "unknown",
+    })
     return NextResponse.redirect(
       new URL("/settings/integrations?error=callback_failed", request.url)
     )
