@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
+import Link from "next/link"
 import {
   CalendarDays,
   RefreshCw,
@@ -13,6 +14,8 @@ import {
   ShoppingBag,
   TrendingUp,
   TrendingDown,
+  ChevronDown as ChevronDownIcon,
+  PieChart,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -37,6 +40,14 @@ import { SettlingIndicator } from "@/components/portal/settling-indicator"
 import { StaleBadge } from "@/components/portal/stale-badge"
 import { useRealtimeRevenue } from "@/hooks/use-realtime-revenue"
 import { OnboardingDashboard } from "./onboarding-dashboard"
+import { AudienceMetrics } from "../analytics/audience-metrics"
+import { ListHealthMetrics } from "../analytics/list-health-metrics"
+import { EmailPerformance } from "./email-performance"
+import { ThreeColumns } from "./three-columns"
+import { RevenueChannels } from "./revenue-channels"
+import { ConversionsSection } from "./conversions-section"
+import { RankingsSection } from "./rankings-section"
+import { FooterStats } from "./footer-stats"
 import type { DashboardData } from "./types"
 
 export default function PortalDashboardPage() {
@@ -46,6 +57,7 @@ export default function PortalDashboardPage() {
   const [error, setError] = useState<string | null>(null)
   const [period, setPeriod] = useState("30d")
   const abortRef = useRef<AbortController | null>(null)
+  const [showAnalytics, setShowAnalytics] = useState(false)
   const [onboardingStatus, setOnboardingStatus] = useState<string | null>(null)
   const [onboardingChecked, setOnboardingChecked] = useState(false)
   const [portalUserName, setPortalUserName] = useState("")
@@ -322,26 +334,28 @@ export default function PortalDashboardPage() {
 
             {/* Invoices quick card */}
             {(data.invoices.pending > 0 || data.invoices.overdue > 0) && (
-              <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20">
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center">
-                    <DollarSign className="h-4 w-4 text-amber-600" />
+              <Link href="/client/invoices" className="block">
+                <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200">
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center">
+                      <DollarSign className="h-4 w-4 text-amber-600" />
+                    </div>
+                    <span className="text-[13px] font-semibold text-slate-800 dark:text-slate-100">Faturas</span>
                   </div>
-                  <span className="text-[13px] font-semibold text-slate-800 dark:text-slate-100">Faturas</span>
+                  {data.invoices.overdue > 0 && (
+                    <div className="mb-3">
+                      <p className="text-lg font-bold text-red-600">{formatCurrency(data.invoices.totalOverdue)}</p>
+                      <p className="text-xs text-red-500">{data.invoices.overdue} fatura(s) em atraso</p>
+                    </div>
+                  )}
+                  {data.invoices.pending > 0 && (
+                    <div>
+                      <p className="text-lg font-bold text-slate-800 dark:text-slate-100">{formatCurrency(data.invoices.totalPending)}</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">{data.invoices.pending} fatura(s) pendente(s)</p>
+                    </div>
+                  )}
                 </div>
-                {data.invoices.overdue > 0 && (
-                  <div className="mb-3">
-                    <p className="text-lg font-bold text-red-600">{formatCurrency(data.invoices.totalOverdue)}</p>
-                    <p className="text-xs text-red-500">{data.invoices.overdue} fatura(s) em atraso</p>
-                  </div>
-                )}
-                {data.invoices.pending > 0 && (
-                  <div>
-                    <p className="text-lg font-bold text-slate-800 dark:text-slate-100">{formatCurrency(data.invoices.totalPending)}</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">{data.invoices.pending} fatura(s) pendente(s)</p>
-                  </div>
-                )}
-              </div>
+              </Link>
             )}
           </div>
         </AnimatedItem>
@@ -364,6 +378,63 @@ export default function PortalDashboardPage() {
             </div>
           )}
         </AnimatedItem>
+
+        {/* Análise Detalhada - Collapsible */}
+        <AnimatedItem>
+          <button
+            onClick={() => setShowAnalytics(!showAnalytics)}
+            className="w-full flex items-center justify-between p-4 bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <PieChart className="h-4 w-4 text-primary" />
+              <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">Análise Detalhada</span>
+              <span className="text-xs text-slate-400 dark:text-slate-500">Audiência, E-mail, Receita e mais</span>
+            </div>
+            <ChevronDownIcon className={`h-4 w-4 text-slate-400 transition-transform duration-200 ${showAnalytics ? "rotate-180" : ""}`} />
+          </button>
+        </AnimatedItem>
+
+        {showAnalytics && (
+          <>
+            {/* Audience & List Health */}
+            <AnimatedItem>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <AudienceMetrics klaviyo={klaviyo} shopify={data.shopify} />
+                <ListHealthMetrics klaviyo={klaviyo} />
+              </div>
+            </AnimatedItem>
+
+            {/* Email Performance */}
+            <AnimatedItem>
+              <EmailPerformance klaviyo={klaviyo} />
+            </AnimatedItem>
+
+            {/* Top Flows & Campaigns */}
+            <AnimatedItem>
+              <ThreeColumns klaviyo={klaviyo} />
+            </AnimatedItem>
+
+            {/* Revenue Channels */}
+            <AnimatedItem>
+              <RevenueChannels klaviyo={klaviyo} />
+            </AnimatedItem>
+
+            {/* Conversions */}
+            <AnimatedItem>
+              <ConversionsSection shopify={data.shopify} />
+            </AnimatedItem>
+
+            {/* Rankings */}
+            <AnimatedItem>
+              <RankingsSection shopify={data.shopify} />
+            </AnimatedItem>
+
+            {/* Footer */}
+            <AnimatedItem>
+              <FooterStats klaviyo={klaviyo} shopify={data.shopify} lastUpdated={data.lastUpdated} />
+            </AnimatedItem>
+          </>
+        )}
       </AnimatedContainer>
     </div>
   )

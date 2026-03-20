@@ -9,6 +9,11 @@ import {
   ShieldAlert,
   CalendarClock,
   MessageSquareWarning,
+  ClipboardList,
+  FileBarChart,
+  Send,
+  CheckCircle,
+  Eye,
 } from "lucide-react"
 import { usePermissions } from "@/lib/hooks/use-permissions"
 import { TotalRevenueBanner, type TotalRevenueData } from "./total-revenue-banner"
@@ -68,6 +73,13 @@ interface OnboardingItem {
   store?: { id: string; store_name: string } | { id: string; store_name: string }[] | null
 }
 
+interface PendingItems {
+  draftReports: number
+  draftCampaigns: number
+  pendingReviewCampaigns: number
+  overdueTasksCount: number
+}
+
 interface DashboardLayoutProps {
   data: {
     upcomingMeetings: Meeting[]
@@ -77,6 +89,7 @@ interface DashboardLayoutProps {
     weekMeetings: WeekMeeting[]
     weekTasks: WeekTask[]
     activeOnboardings: OnboardingItem[]
+    pendingItems: PendingItems
   }
   userRole: string
 }
@@ -169,6 +182,100 @@ function ClientHealthSummary({ alerts }: { alerts: DashboardAlert[] }) {
   )
 }
 
+function PendingItemsCard({ pendingItems }: { pendingItems: PendingItems }) {
+  const total = pendingItems.draftReports + pendingItems.draftCampaigns + pendingItems.pendingReviewCampaigns + pendingItems.overdueTasksCount
+
+  return (
+    <div className="rounded-xl border border-border bg-card h-full flex flex-col">
+      <div className="p-5 pb-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="h-8 w-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
+              <ClipboardList className="h-4 w-4 text-amber-600" />
+            </div>
+            <h3 className="text-sm font-semibold text-foreground">Pendências</h3>
+          </div>
+          {total > 0 && (
+            <Badge variant="secondary" className="text-xs">{total}</Badge>
+          )}
+        </div>
+      </div>
+      <div className="px-5 pb-5 flex-1 space-y-2">
+        <div className="space-y-1.5">
+          {pendingItems.overdueTasksCount > 0 && (
+            <Link href="/admin/board" className="flex items-center justify-between p-2.5 rounded-lg bg-destructive/5 hover:bg-destructive/10 transition-colors group">
+              <div className="flex items-center gap-2.5">
+                <div className="h-7 w-7 rounded-md bg-destructive/10 flex items-center justify-center">
+                  <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-foreground">Tarefas vencidas</p>
+                  <p className="text-[11px] text-muted-foreground">{pendingItems.overdueTasksCount} {pendingItems.overdueTasksCount === 1 ? "tarefa" : "tarefas"} atrasada(s)</p>
+                </div>
+              </div>
+              <ArrowRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+            </Link>
+          )}
+
+          {pendingItems.draftReports > 0 && (
+            <Link href="/admin/reports" className="flex items-center justify-between p-2.5 rounded-lg bg-primary/5 hover:bg-primary/10 transition-colors group">
+              <div className="flex items-center gap-2.5">
+                <div className="h-7 w-7 rounded-md bg-primary/10 flex items-center justify-center">
+                  <FileBarChart className="h-3.5 w-3.5 text-primary" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-foreground">Relatórios rascunho</p>
+                  <p className="text-[11px] text-muted-foreground">{pendingItems.draftReports} aguardando publicação</p>
+                </div>
+              </div>
+              <ArrowRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+            </Link>
+          )}
+
+          {pendingItems.draftCampaigns > 0 && (
+            <Link href="/admin/campaigns" className="flex items-center justify-between p-2.5 rounded-lg bg-blue-500/5 hover:bg-blue-500/10 transition-colors group">
+              <div className="flex items-center gap-2.5">
+                <div className="h-7 w-7 rounded-md bg-blue-500/10 flex items-center justify-center">
+                  <Send className="h-3.5 w-3.5 text-blue-600" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-foreground">Campanhas rascunho</p>
+                  <p className="text-[11px] text-muted-foreground">{pendingItems.draftCampaigns} aguardando envio</p>
+                </div>
+              </div>
+              <ArrowRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+            </Link>
+          )}
+
+          {pendingItems.pendingReviewCampaigns > 0 && (
+            <Link href="/admin/campaigns?status=pending_review" className="flex items-center justify-between p-2.5 rounded-lg bg-amber-500/5 hover:bg-amber-500/10 transition-colors group">
+              <div className="flex items-center gap-2.5">
+                <div className="h-7 w-7 rounded-md bg-amber-500/10 flex items-center justify-center">
+                  <Eye className="h-3.5 w-3.5 text-amber-600" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-foreground">Campanhas em revisão</p>
+                  <p className="text-[11px] text-muted-foreground">{pendingItems.pendingReviewCampaigns} aguardando aprovação</p>
+                </div>
+              </div>
+              <ArrowRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+            </Link>
+          )}
+
+          {total === 0 && (
+            <div className="flex flex-col items-center justify-center py-6 text-center">
+              <div className="h-10 w-10 rounded-full bg-success/10 flex items-center justify-center mb-2">
+                <CheckCircle className="h-5 w-5 text-success" />
+              </div>
+              <p className="text-xs text-muted-foreground">Nenhuma pendência</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function DashboardLayout({ data, userRole }: DashboardLayoutProps) {
   const { permissions, hasFeature } = usePermissions()
   const [revenuePeriod, setRevenuePeriod] = useState("30d")
@@ -250,8 +357,8 @@ export function DashboardLayout({ data, userRole }: DashboardLayoutProps) {
         <WeekCalendarPreview meetings={data.weekMeetings} tasks={data.weekTasks} />
       </div>
 
-      {/* Secondary Grid: Store Performance + Health + Alerts - 3 columns */}
-      <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+      {/* Secondary Grid: Store Performance + Health + Pending - 4 columns */}
+      <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
         <TopStoresCard
           stores={revenueData?.topStores}
           allStores={revenueData?.storeBreakdown}
@@ -271,6 +378,7 @@ export function DashboardLayout({ data, userRole }: DashboardLayoutProps) {
         )}
 
         <ClientHealthSummary alerts={data.alerts} />
+        <PendingItemsCard pendingItems={data.pendingItems} />
       </div>
 
       {/* Tertiary Row: Onboarding + Activity */}

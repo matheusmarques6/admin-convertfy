@@ -110,9 +110,6 @@ export const ROUTES = {
     TRACKING: {
       ROOT: "/client/tracking",
       PAGE: "/client/tracking/page",
-      SCRIPT: "/client/tracking/script",
-      ORDERS: "/client/tracking/orders",
-      STORES: "/client/tracking/stores",
     },
 
     INVOICES: "/client/invoices",

@@ -5,7 +5,6 @@ import { useRouter, usePathname } from "next/navigation"
 import Link from "next/link"
 import {
   Home,
-  PieChart,
   Send,
   Workflow,
   Store,
@@ -76,7 +75,6 @@ const NAV_GROUPS = [
 
 const storeNavigation: NavItem[] = [
   { name: "Dashboard", href: "/client/dashboard", icon: Home, group: "principal" },
-  { name: "Análise", href: "/client/analytics", icon: PieChart, group: "principal" },
   { name: "Campanhas", href: "/client/campaigns", icon: Send, group: "principal" },
   { name: "Flows", href: "/client/flows", icon: Workflow, group: "principal" },
   { name: "Integrações", href: "/client/integrations", icon: Plug, group: "principal" },
