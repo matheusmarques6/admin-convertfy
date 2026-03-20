@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Video, Clock, Calendar } from "lucide-react"
+import { EmptyState } from "@/components/ui/empty-state"
 import { MeetingJoinButton } from "@/components/meetings/google-sync-badge"
 import type { PortalMeeting } from "./types"
 import type { MeetingUrlSource } from "@/types"
@@ -34,7 +35,7 @@ export function NextMeetingCard({ meetings }: NextMeetingCardProps) {
           </div>
           <span className="text-[13px] text-slate-500 dark:text-slate-400 uppercase tracking-wide">Proxima Reuniao</span>
         </div>
-        <p className="text-sm text-slate-500 dark:text-slate-400">Nenhuma reuniao agendada</p>
+        <EmptyState compact title="Nenhuma reuniao agendada" />
       </div>
     )
   }

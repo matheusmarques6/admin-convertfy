@@ -1,5 +1,6 @@
 import { Zap, Send, Mail } from "lucide-react"
 import { formatCurrency, formatNumber } from "@/lib/utils/format"
+import { EmptyState } from "@/components/ui/empty-state"
 import type { KlaviyoData } from "./types"
 
 interface ThreeColumnsProps {
@@ -20,7 +21,7 @@ export function ThreeColumns({ klaviyo }: ThreeColumnsProps) {
 
         <div className="overflow-x-auto">
           {klaviyo?.topFlows && klaviyo.topFlows.length > 0 ? (
-            <table className="w-full text-sm min-w-[500px]">
+            <table className="w-full text-sm min-w-[460px]">
               <thead>
                 <tr className="text-xs text-slate-500 dark:text-slate-400 border-b border-slate-200/50 dark:border-slate-700/30">
                   <th className="text-left pb-2 font-medium bg-slate-50/50 dark:bg-slate-800/30">Fluxo</th>
@@ -57,10 +58,7 @@ export function ThreeColumns({ klaviyo }: ThreeColumnsProps) {
               </tbody>
             </table>
           ) : (
-            <div className="text-center py-8">
-              <Zap className="h-8 w-8 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
-              <p className="text-sm text-slate-500 dark:text-slate-400">Nenhum flow com receita</p>
-            </div>
+            <EmptyState compact icon={Zap} title="Nenhum flow com receita" className="py-8" />
           )}
         </div>
       </div>
@@ -76,7 +74,7 @@ export function ThreeColumns({ klaviyo }: ThreeColumnsProps) {
 
         <div className="overflow-x-auto">
           {klaviyo?.recentCampaigns && klaviyo.recentCampaigns.length > 0 ? (
-            <table className="w-full text-sm min-w-[500px]">
+            <table className="w-full text-sm min-w-[460px]">
               <thead>
                 <tr className="text-xs text-slate-500 dark:text-slate-400 border-b border-slate-200/50 dark:border-slate-700/30">
                   <th className="text-left pb-2 font-medium bg-slate-50/50 dark:bg-slate-800/30">Campanha</th>
@@ -118,10 +116,7 @@ export function ThreeColumns({ klaviyo }: ThreeColumnsProps) {
               </tbody>
             </table>
           ) : (
-            <div className="text-center py-8">
-              <Send className="h-8 w-8 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
-              <p className="text-sm text-slate-500 dark:text-slate-400">Nenhuma campanha com receita</p>
-            </div>
+            <EmptyState compact icon={Send} title="Nenhuma campanha com receita" className="py-8" />
           )}
         </div>
       </div>

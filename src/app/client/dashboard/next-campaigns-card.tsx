@@ -1,5 +1,6 @@
 import { Send, Calendar, ArrowRight } from "lucide-react"
 import Link from "next/link"
+import { EmptyState } from "@/components/ui/empty-state"
 import type { UpcomingCampaign } from "./types"
 
 interface RecentCampaign {
@@ -29,14 +30,7 @@ export function NextCampaignsCard({ campaigns, upcomingCampaigns }: NextCampaign
           </div>
           <span className="text-[13px] text-slate-500 dark:text-slate-400 uppercase tracking-wide">Próximas Campanhas</span>
         </div>
-        <p className="text-sm text-slate-500 dark:text-slate-400">Nenhuma campanha agendada</p>
-        <Link
-          href="/client/campaigns"
-          className="inline-flex items-center gap-1 text-xs text-[#05AFF2] hover:text-[#05AFF2]/80 mt-2 transition-colors"
-        >
-          Ver campanhas
-          <ArrowRight className="h-3 w-3" />
-        </Link>
+        <EmptyState compact title="Nenhuma campanha agendada" link={{ label: "Ver campanhas", href: "/client/campaigns" }} />
       </div>
     )
   }

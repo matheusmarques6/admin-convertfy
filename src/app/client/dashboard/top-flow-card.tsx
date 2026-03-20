@@ -1,6 +1,6 @@
-import { Zap, ArrowRight } from "lucide-react"
-import Link from "next/link"
+import { Zap } from "lucide-react"
 import { formatCurrency, formatNumber } from "@/lib/utils/format"
+import { EmptyState } from "@/components/ui/empty-state"
 
 interface Flow {
   id: string
@@ -25,14 +25,7 @@ export function TopFlowCard({ flows }: TopFlowCardProps) {
           </div>
           <span className="text-[13px] text-slate-500 dark:text-slate-400 uppercase tracking-wide">Top Flow</span>
         </div>
-        <p className="text-sm text-slate-500 dark:text-slate-400">Nenhum flow ativo no período</p>
-        <Link
-          href="/client/flows"
-          className="inline-flex items-center gap-1 text-xs text-[#05AFF2] hover:text-[#05AFF2]/80 mt-2 transition-colors"
-        >
-          Ver flows
-          <ArrowRight className="h-3 w-3" />
-        </Link>
+        <EmptyState compact title="Nenhum flow ativo no período" link={{ label: "Ver flows", href: "/client/flows" }} />
       </div>
     )
   }

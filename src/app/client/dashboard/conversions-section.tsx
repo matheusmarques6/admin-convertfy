@@ -1,6 +1,7 @@
 import { Ticket, Tag, Link2, Globe, Megaphone, Monitor } from "lucide-react"
 import { formatPercent, formatCurrencyCompact } from "@/lib/utils/format"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { EmptyState } from "@/components/ui/empty-state"
 import type { ShopifyData } from "./types"
 
 interface ConversionsSectionProps {
@@ -18,12 +19,7 @@ function UtmRankingList({
   icon: React.ComponentType<{ className?: string }>
 }) {
   if (!items || items.length === 0) {
-    return (
-      <div className="text-center py-6">
-        <Link2 className="h-8 w-8 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
-        <p className="text-sm text-slate-500 dark:text-slate-400">Nenhum dado disponivel</p>
-      </div>
-    )
+    return <EmptyState compact icon={Link2} title="Nenhum dado disponivel" />
   }
 
   return (
@@ -99,10 +95,7 @@ export function ConversionsSection({ shopify }: ConversionsSectionProps) {
               </div>
             ))
           ) : (
-            <div className="text-center py-6">
-              <Ticket className="h-8 w-8 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
-              <p className="text-sm text-slate-500 dark:text-slate-400">Nenhum cupom utilizado</p>
-            </div>
+            <EmptyState compact icon={Ticket} title="Nenhum cupom utilizado" />
           )}
         </div>
       </div>

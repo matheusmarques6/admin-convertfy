@@ -1,5 +1,6 @@
 import { Crown, ShoppingCart } from "lucide-react"
 import { formatCurrency, formatCurrencyCompact } from "@/lib/utils/format"
+import { EmptyState } from "@/components/ui/empty-state"
 import type { ShopifyData } from "./types"
 
 interface RankingsSectionProps {
@@ -47,10 +48,7 @@ export function RankingsSection({ shopify }: RankingsSectionProps) {
               </div>
             ))
           ) : (
-            <div className="text-center py-8">
-              <Crown className="h-10 w-10 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
-              <p className="text-sm text-slate-500 dark:text-slate-400">Nenhum cliente no período</p>
-            </div>
+            <EmptyState compact icon={Crown} title="Nenhum cliente no período" className="py-8" />
           )}
         </div>
       </div>
@@ -87,10 +85,7 @@ export function RankingsSection({ shopify }: RankingsSectionProps) {
               </div>
             ))
           ) : (
-            <div className="text-center py-8">
-              <ShoppingCart className="h-10 w-10 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
-              <p className="text-sm text-slate-500 dark:text-slate-400">Nenhum produto no período</p>
-            </div>
+            <EmptyState compact icon={ShoppingCart} title="Nenhum produto no período" className="py-8" />
           )}
         </div>
       </div>

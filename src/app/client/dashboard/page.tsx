@@ -167,18 +167,18 @@ export default function PortalDashboardPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <Skeleton className="h-7 w-36 bg-slate-200 dark:bg-slate-700 mb-2" />
-            <Skeleton className="h-4 w-48 bg-slate-100 dark:bg-slate-800" />
+            <Skeleton className="h-7 w-36 mb-2" />
+            <Skeleton className="h-4 w-48" />
           </div>
           <div className="flex gap-3">
-            <Skeleton className="h-10 w-32 bg-slate-200 dark:bg-slate-700 rounded-lg" />
-            <Skeleton className="h-10 w-10 bg-slate-200 dark:bg-slate-700 rounded-lg" />
+            <Skeleton className="h-10 w-32 rounded-lg" />
+            <Skeleton className="h-10 w-10 rounded-lg" />
           </div>
         </div>
-        <Skeleton className="h-48 bg-slate-100 dark:bg-slate-800 rounded-2xl" />
+        <Skeleton className="h-48 rounded-2xl" />
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
           {[1, 2, 3, 4, 5, 6].map((i) => (
-            <Skeleton key={i} className="h-36 bg-white dark:bg-[#151922] rounded-xl border border-slate-100 dark:border-slate-700/30" />
+            <Skeleton key={i} className="h-36 rounded-xl border border-border" />
           ))}
         </div>
       </div>
@@ -291,7 +291,7 @@ export default function PortalDashboardPage() {
         {/* Hero: Financial Summary */}
         <AnimatedItem>
           {klaviyoLoading ? (
-            <Skeleton className="h-48 bg-slate-100 dark:bg-slate-800 rounded-2xl" />
+            <Skeleton className="h-48 rounded-2xl" />
           ) : (
             <>
               <HeroSection klaviyo={klaviyo} previousPeriod={data.previousPeriod} />
@@ -351,7 +351,7 @@ export default function PortalDashboardPage() {
           {klaviyoLoading ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
               {[1, 2, 3, 4, 5].map((i) => (
-                <Skeleton key={i} className="h-24 bg-white dark:bg-[#151922] rounded-xl border border-slate-100 dark:border-slate-700/30" />
+                <Skeleton key={i} className="h-24 rounded-xl border border-border" />
               ))}
             </div>
           ) : (

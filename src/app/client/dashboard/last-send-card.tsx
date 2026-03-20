@@ -1,6 +1,6 @@
-import { Mail, ArrowRight } from "lucide-react"
-import Link from "next/link"
+import { Mail } from "lucide-react"
 import { formatCurrency } from "@/lib/utils/format"
+import { EmptyState } from "@/components/ui/empty-state"
 
 interface Campaign {
   id: string
@@ -33,14 +33,7 @@ export function LastSendCard({ campaigns }: LastSendCardProps) {
           </div>
           <span className="text-[13px] text-slate-500 dark:text-slate-400 uppercase tracking-wide">Último Envio</span>
         </div>
-        <p className="text-sm text-slate-500 dark:text-slate-400">Nenhum envio recente</p>
-        <Link
-          href="/client/campaigns"
-          className="inline-flex items-center gap-1 text-xs text-[#05AFF2] hover:text-[#05AFF2]/80 mt-2 transition-colors"
-        >
-          Ver campanhas
-          <ArrowRight className="h-3 w-3" />
-        </Link>
+        <EmptyState compact title="Nenhum envio recente" link={{ label: "Ver campanhas", href: "/client/campaigns" }} />
       </div>
     )
   }
