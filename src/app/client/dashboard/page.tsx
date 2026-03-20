@@ -11,6 +11,8 @@ import {
   DollarSign,
   Users,
   ShoppingBag,
+  TrendingUp,
+  TrendingDown,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -206,6 +208,7 @@ export default function PortalDashboardPage() {
   if (!data) return null
 
   const klaviyo = data.klaviyo
+  const prev = data.previousPeriod
   // Show skeleton when klaviyo data is absent (e.g. period changed, cache not ready)
   const klaviyoLoading = !klaviyo
   const storeRevenue = klaviyo?.storeRevenue || 0
@@ -214,6 +217,17 @@ export default function PortalDashboardPage() {
   const ticketMedio = storeOrders > 0 ? storeRevenue / storeOrders : 0
   const receitaPorLead = klaviyo?.engagedLeads ? totalRevenue / klaviyo.engagedLeads : 0
   const recoveryRate = klaviyo?.recoveryRate || 0
+
+  // Compute variation percentages vs previous period
+  const calcVariation = (current: number, previous: number | undefined) => {
+    if (!previous || previous === 0) return undefined
+    return ((current - previous) / previous) * 100
+  }
+  const ordersVariation = prev ? calcVariation(storeOrders, prev.storeOrders) : undefined
+  const prevTicket = prev && prev.storeOrders > 0 ? prev.storeRevenue / prev.storeOrders : undefined
+  const ticketVariation = prevTicket ? calcVariation(ticketMedio, prevTicket) : undefined
+  const prevRecovery = prev && prev.storeRevenue > 0 ? (prev.totalRevenue / prev.storeRevenue) * 100 : undefined
+  const recoveryVariation = prevRecovery ? calcVariation(recoveryRate, prevRecovery) : undefined
 
   return (
     <div className="max-w-[1600px] mx-auto space-y-6">
@@ -280,7 +294,7 @@ export default function PortalDashboardPage() {
             <Skeleton className="h-48 bg-slate-100 dark:bg-slate-800 rounded-2xl" />
           ) : (
             <>
-              <HeroSection klaviyo={klaviyo} />
+              <HeroSection klaviyo={klaviyo} previousPeriod={data.previousPeriod} />
               <SettlingIndicator period={period} />
             </>
           )}
@@ -342,9 +356,9 @@ export default function PortalDashboardPage() {
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-              <KpiCard label="Pedidos" value={formatNumber(storeOrders)} icon={ShoppingCart} iconColor="text-blue-600" iconBg="bg-blue-50 dark:bg-blue-500/10" />
-              <KpiCard label="Ticket Médio" value={formatCurrency(ticketMedio)} icon={Receipt} iconColor="text-emerald-600" iconBg="bg-emerald-50 dark:bg-emerald-500/10" />
-              <KpiCard label="Recuperação de Carrinho" value={formatPercent(recoveryRate)} icon={ShoppingBag} iconColor="text-amber-600" iconBg="bg-amber-50 dark:bg-amber-500/10" />
+              <KpiCard label="Pedidos" value={formatNumber(storeOrders)} icon={ShoppingCart} iconColor="text-blue-600" iconBg="bg-blue-50 dark:bg-blue-500/10" variation={ordersVariation} />
+              <KpiCard label="Ticket Médio" value={formatCurrency(ticketMedio)} icon={Receipt} iconColor="text-emerald-600" iconBg="bg-emerald-50 dark:bg-emerald-500/10" variation={ticketVariation} />
+              <KpiCard label="Recuperação de Carrinho" value={formatPercent(recoveryRate)} icon={ShoppingBag} iconColor="text-amber-600" iconBg="bg-amber-50 dark:bg-amber-500/10" variation={recoveryVariation} />
               <KpiCard label="Receita por Lead" value={formatCurrency(receitaPorLead)} icon={Users} iconColor="text-violet-600" iconBg="bg-violet-50 dark:bg-violet-500/10" />
               <KpiCard label="Flows Ativos" value={`${klaviyo?.activeFlows || 0} / ${klaviyo?.flowsCount || 0}`} icon={Zap} iconColor="text-cyan-600" iconBg="bg-cyan-50 dark:bg-cyan-500/10" />
             </div>
@@ -361,12 +375,14 @@ function KpiCard({
   icon: Icon,
   iconColor,
   iconBg,
+  variation,
 }: {
   label: string
   value: string | number
   icon: React.ElementType
   iconColor: string
   iconBg: string
+  variation?: number
 }) {
   return (
     <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-4 shadow-sm dark:shadow-slate-900/20 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200">
@@ -376,7 +392,23 @@ function KpiCard({
         </div>
         <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">{label}</span>
       </div>
-      <p className="text-xl font-bold text-slate-800 dark:text-slate-100">{value}</p>
+      <div className="flex items-center gap-2">
+        <p className="text-xl font-bold text-slate-800 dark:text-slate-100">{value}</p>
+        {variation !== undefined && Math.abs(variation) >= 0.1 && (
+          <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+            variation >= 0
+              ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+              : "bg-red-500/10 text-red-600 dark:text-red-400"
+          }`}>
+            {variation >= 0 ? (
+              <TrendingUp className="h-2.5 w-2.5" />
+            ) : (
+              <TrendingDown className="h-2.5 w-2.5" />
+            )}
+            {variation >= 0 ? "+" : ""}{variation.toFixed(1)}%
+          </span>
+        )}
+      </div>
     </div>
   )
 }

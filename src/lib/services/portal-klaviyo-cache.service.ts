@@ -23,6 +23,7 @@ export interface CachedCampaignRow {
   campaign_name: string
   campaign_status: string
   send_time: string | null
+  channel?: string
   recipients: number
   delivered: number
   opened: number
@@ -57,6 +58,7 @@ export interface CachedFlowRow {
   bounced: number
   unsubscribe_rate: number
   unsubscribed: number
+  sms_conversion_value?: number
 }
 
 export interface CachedRevenueSummary {
@@ -255,6 +257,13 @@ export function mapCacheToPortalKlaviyo(cached: CachedKlaviyoData) {
   const campaignRevenue = cached.summary.klaviyo_campaign_revenue
   const flowRevenue = cached.summary.klaviyo_flow_revenue
 
+  // Calculate SMS revenue from campaign channel='sms' + flow sms_conversion_value
+  const smsCampaignRevenue = campaigns
+    .filter(c => c.channel === "sms")
+    .reduce((s, c) => s + (c.conversion_value || 0), 0)
+  const smsFlowRevenue = flows.reduce((s, f) => s + (f.sms_conversion_value || 0), 0)
+  const smsRevenue = smsCampaignRevenue + smsFlowRevenue
+
   // Weighted average for bounce/unsubscribe rates
   const weightedBounceRate = totalDelivered > 0
     ? (
@@ -289,7 +298,7 @@ export function mapCacheToPortalKlaviyo(cached: CachedKlaviyoData) {
     totalRevenue,
     campaignRevenue,
     flowRevenue,
-    smsRevenue: 0,
+    smsRevenue,
     emailsSent: totalDelivered,
     delivered: totalDelivered,
     opened: totalOpened,
@@ -335,3 +344,77 @@ export function mapCacheToPortalKlaviyo(cached: CachedKlaviyoData) {
 
 /** Return type of mapCacheToPortalKlaviyo for use in aggregation */
 export type PortalKlaviyoData = ReturnType<typeof mapCacheToPortalKlaviyo>
+
+// ─── Period comparison helpers ───────────────────────────────────────────────
+
+/** Maps a period to a larger period for comparison calculations */
+function getComparisonPeriod(period: string): string | null {
+  switch (period) {
+    case "7d": return "30d"
+    case "15d": return "90d"
+    case "30d": return "90d"
+    default: return null
+  }
+}
+
+/** Number of days in a period label */
+function periodDays(period: string): number {
+  switch (period) {
+    case "7d": return 7
+    case "15d": return 15
+    case "30d": return 30
+    case "90d": return 90
+    default: return 30
+  }
+}
+
+export interface PeriodComparison {
+  storeRevenue: number
+  storeOrders: number
+  totalRevenue: number
+  openRate: number
+  clickRate: number
+}
+
+/**
+ * Fetch comparison data by looking at a larger cached period and
+ * estimating the "previous equivalent" period baseline.
+ *
+ * E.g., for "30d" we fetch the "90d" cache and compute:
+ *   previous_30d_avg = (90d_total - 30d_total) / 2
+ */
+export async function fetchPeriodComparison(
+  storeId: string,
+  currentPeriod: string,
+  supabase: SupabaseClient,
+  orgId?: string,
+): Promise<PeriodComparison | null> {
+  const outerPeriod = getComparisonPeriod(currentPeriod)
+  if (!outerPeriod) return null
+
+  const outerResult = await fetchKlaviyoFromCache(storeId, outerPeriod, supabase, orgId)
+  if (!outerResult.data) return null
+
+  const currentResult = await fetchKlaviyoFromCache(storeId, currentPeriod, supabase, orgId)
+  if (!currentResult.data) return null
+
+  const outerData = mapCacheToPortalKlaviyo(outerResult.data)
+  const currentData = mapCacheToPortalKlaviyo(currentResult.data)
+
+  // Calculate how many "previous periods" fit in the remainder
+  const currentDays = periodDays(currentPeriod)
+  const outerDays = periodDays(outerPeriod)
+  const remainderDays = outerDays - currentDays
+  const factor = remainderDays / currentDays
+
+  if (factor <= 0) return null
+
+  // Previous period baseline = (outer total - current total) / factor
+  return {
+    storeRevenue: (outerData.storeRevenue - currentData.storeRevenue) / factor,
+    storeOrders: (outerData.storeOrders - currentData.storeOrders) / factor,
+    totalRevenue: (outerData.totalRevenue - currentData.totalRevenue) / factor,
+    openRate: outerData.openRate, // Use outer period average as baseline for rates
+    clickRate: outerData.clickRate,
+  }
+}

@@ -12,6 +12,8 @@ import {
 } from "lucide-react"
 import { usePermissions } from "@/lib/hooks/use-permissions"
 import { TotalRevenueBanner, type TotalRevenueData } from "./total-revenue-banner"
+import { BillingMetrics } from "./billing-metrics"
+import { FinancialCharts } from "./financial-charts"
 import { BoardPreview } from "./board-preview"
 import { WeekCalendarPreview } from "./week-calendar-preview"
 import { TopStoresCard } from "./top-stores-card"
@@ -233,6 +235,14 @@ export function DashboardLayout({ data, userRole }: DashboardLayoutProps) {
 
       {/* Revenue Banner - Compact with period selector */}
       <TotalRevenueBanner period={revenuePeriod} onPeriodChange={setRevenuePeriod} onDataChange={handleRevenueData} />
+
+      {/* Financial Section: Billing Metrics + Charts (admin/owner only) */}
+      {isAdminOrOwner && (
+        <div className="space-y-4">
+          <BillingMetrics />
+          <FinancialCharts />
+        </div>
+      )}
 
       {/* Primary Grid: Board + Calendar side by side */}
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">

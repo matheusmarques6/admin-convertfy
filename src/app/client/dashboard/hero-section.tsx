@@ -1,12 +1,13 @@
 import { formatCurrency } from "@/lib/utils/format"
 import { VariationBadge } from "./components"
-import type { KlaviyoData } from "./types"
+import type { KlaviyoData, PreviousPeriodData } from "./types"
 
 interface HeroSectionProps {
   klaviyo?: KlaviyoData
+  previousPeriod?: PreviousPeriodData
 }
 
-export function HeroSection({ klaviyo }: HeroSectionProps) {
+export function HeroSection({ klaviyo, previousPeriod }: HeroSectionProps) {
   const storeRevenue = klaviyo?.storeRevenue || 0
   const totalRevenue = klaviyo?.totalRevenue || 0
   const flowRevenue = klaviyo?.flowRevenue || 0
@@ -32,7 +33,12 @@ export function HeroSection({ klaviyo }: HeroSectionProps) {
             <p className="text-sm text-slate-400 mb-1">Receita Total da Loja</p>
             <div className="flex items-center gap-3 mb-2">
               <h2 className="text-3xl lg:text-4xl font-bold text-white tracking-tight">{formatCurrency(storeRevenue)}</h2>
-              {storeRevenue > 0 && <VariationBadge value={storeRevenue * 0.08} type="currency" />}
+              {previousPeriod && previousPeriod.storeRevenue > 0 && (
+                <VariationBadge
+                  value={((storeRevenue - previousPeriod.storeRevenue) / previousPeriod.storeRevenue) * 100}
+                  type="percent"
+                />
+              )}
             </div>
             <p className="text-sm text-slate-400">
               Atribuição Klaviyo: <span className="text-white font-medium">{formatCurrency(totalRevenue)}</span>{" "}
