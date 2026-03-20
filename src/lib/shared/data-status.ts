@@ -87,7 +87,7 @@ export interface SyncResult<T> {
 export const PERIOD_FRESHNESS_THRESHOLDS: Record<CachedPeriod, number> = {
   "7d":  3 * 60 * 60_000,   // 3 hours  (AK-10 — relaxed from 1h, ~55% fewer report calls)
   "15d": 4 * 60 * 60_000,   // 4 hours  (AK-10 — relaxed from 2h)
-  "30d": 6 * 60 * 60_000,   // 6 hours  (AK-10 — relaxed from 4h)
+  "30d": 3 * 60 * 60_000,   // 3 hours  (aligned with 7d for fresher campaign data)
   "90d": 12 * 60 * 60_000,  // 12 hours (AK-10 — relaxed from 8h)
   "12m": 24 * 60 * 60_000,  // 24 hours — annual data barely changes intra-day (AK-11)
 }
