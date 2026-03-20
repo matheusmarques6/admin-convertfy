@@ -1,11 +1,11 @@
 import { notFound } from "next/navigation"
 import Link from "next/link"
-import { ArrowLeft } from "lucide-react"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { getStoreIntegrationStatus } from "@/lib/services/credentials.service"
-import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { PageHeader } from "@/components/ui/page-header"
+import { ROUTES } from "@/lib/routes"
 import { StoreDetailTabs } from "@/components/stores/store-detail-tabs"
 import { StoreDeleteAction } from "@/components/stores/store-delete-action"
 
@@ -141,43 +141,39 @@ export default async function StoreDetailPage({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex items-start gap-3 sm:gap-4 min-w-0">
-          <Button variant="ghost" size="icon" className="shrink-0" asChild>
-            <Link href="/admin/stores">
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
-          </Button>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-              <h1 className="text-xl sm:text-2xl font-bold truncate">{store.store_name}</h1>
-              <Badge variant={store.is_active ? "success" : "secondary"}>
-                {store.is_active ? "Ativa" : "Inativa"}
-              </Badge>
-              {store.platform && (
-                <Badge variant="outline">{store.platform}</Badge>
-              )}
-            </div>
-            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-4 mt-1 text-sm text-muted-foreground">
-              {store.store_url && <span className="truncate">{store.store_url}</span>}
-              {store.client_id && clientName && (
-                <Link
-                  href={`/admin/clients/${store.client_id}`}
-                  className="text-primary hover:underline"
-                >
-                  Cliente: {clientName}
-                </Link>
-              )}
-              <span>{connectedCount} integração(ões) conectada(s)</span>
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+      <PageHeader
+        title={store.store_name}
+        breadcrumb={[
+          { label: "Lojas", href: ROUTES.ADMIN.STORES.LIST },
+          { label: store.store_name },
+        ]}
+        actions={
           <StoreDeleteAction
             storeId={store.id}
             storeName={store.store_name}
           />
-        </div>
+        }
+      />
+
+      <div className="flex items-center gap-2 flex-wrap">
+        <Badge variant={store.is_active ? "success" : "secondary"}>
+          {store.is_active ? "Ativa" : "Inativa"}
+        </Badge>
+        {store.platform && (
+          <Badge variant="outline">{store.platform}</Badge>
+        )}
+        <span className="text-sm text-muted-foreground">{connectedCount} integração(ões) conectada(s)</span>
+      </div>
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-4 text-sm text-muted-foreground">
+        {store.store_url && <span className="truncate">{store.store_url}</span>}
+        {store.client_id && clientName && (
+          <Link
+            href={`/admin/clients/${store.client_id}`}
+            className="text-primary hover:underline"
+          >
+            Cliente: {clientName}
+          </Link>
+        )}
       </div>
 
       {/* Tabs */}

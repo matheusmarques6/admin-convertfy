@@ -1,13 +1,15 @@
 import { notFound } from "next/navigation"
 import Link from "next/link"
-import { ArrowLeft, Edit } from "lucide-react"
+import { Edit } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { PageHeader } from "@/components/ui/page-header"
 import { ClientActions } from "@/components/clients/client-actions"
 import { ClientDetailTabs } from "@/components/clients/client-detail-tabs"
 import { getInitials, getHealthScoreColor, getHealthScoreEmoji } from "@/lib/utils"
+import { ROUTES } from "@/lib/routes"
 
 export const dynamic = "force-dynamic"
 
@@ -60,57 +62,60 @@ export default async function ClientPage({
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex items-start gap-3 sm:gap-4 min-w-0">
-          <Button variant="ghost" size="icon" className="shrink-0" asChild>
-            <Link href="/admin/clients">
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
-          </Button>
-          <Avatar className="h-12 w-12 sm:h-16 sm:w-16 shrink-0">
-            <AvatarFallback className="bg-primary/10 text-primary text-lg sm:text-xl">
-              {getInitials(client.name)}
-            </AvatarFallback>
-          </Avatar>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-              <h1 className="text-xl sm:text-2xl font-bold truncate">{client.name}</h1>
-              <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>
-              <div className="flex items-center gap-1 text-sm">
-                <span>{getHealthScoreEmoji(client.health_score)}</span>
-                <span className={`font-medium ${
-                  healthColor === "green" ? "text-success" :
-                  healthColor === "yellow" ? "text-warning" : "text-destructive"
-                }`}>
-                  {client.health_score}%
-                </span>
-              </div>
-            </div>
-            <div className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-4 mt-1 text-sm text-muted-foreground">
-              {client.company && <span className="truncate">{client.company}</span>}
-              {client.email && <span className="truncate">{client.email}</span>}
-              {client.phone && <span>{client.phone}</span>}
-            </div>
-            {client.tags && client.tags.length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-2">
-                {client.tags.map((tag: string) => (
-                  <Badge key={tag} variant="outline" className="text-xs">
-                    {tag}
-                  </Badge>
-                ))}
-              </div>
-            )}
+      {/* Breadcrumb + Header */}
+      <PageHeader
+        title={client.name}
+        breadcrumb={[
+          { label: "Clientes", href: ROUTES.ADMIN.CLIENTS.LIST },
+          { label: client.name },
+        ]}
+        actions={
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" asChild>
+              <Link href={`/admin/clients/${client.id}/edit`}>
+                <Edit className="mr-2 h-4 w-4" />
+                Editar
+              </Link>
+            </Button>
+            <ClientActions clientId={client.id} clientName={client.name} />
           </div>
-        </div>
-        <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
-          <Button variant="outline" size="sm" asChild>
-            <Link href={`/admin/clients/${client.id}/edit`}>
-              <Edit className="mr-2 h-4 w-4" />
-              Editar
-            </Link>
-          </Button>
-          <ClientActions clientId={client.id} clientName={client.name} />
+        }
+      />
+
+      {/* Client Info */}
+      <div className="flex items-start gap-3 sm:gap-4 min-w-0">
+        <Avatar className="h-12 w-12 sm:h-16 sm:w-16 shrink-0">
+          <AvatarFallback className="bg-primary/10 text-primary text-lg sm:text-xl">
+            {getInitials(client.name)}
+          </AvatarFallback>
+        </Avatar>
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>
+            <div className="flex items-center gap-1 text-sm">
+              <span>{getHealthScoreEmoji(client.health_score)}</span>
+              <span className={`font-medium ${
+                healthColor === "green" ? "text-success" :
+                healthColor === "yellow" ? "text-warning" : "text-destructive"
+              }`}>
+                {client.health_score}%
+              </span>
+            </div>
+          </div>
+          <div className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-4 mt-1 text-sm text-muted-foreground">
+            {client.company && <span className="truncate">{client.company}</span>}
+            {client.email && <span className="truncate">{client.email}</span>}
+            {client.phone && <span>{client.phone}</span>}
+          </div>
+          {client.tags && client.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-2">
+              {client.tags.map((tag: string) => (
+                <Badge key={tag} variant="outline" className="text-xs">
+                  {tag}
+                </Badge>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

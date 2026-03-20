@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import {
-  ArrowLeft,
   FileText,
   Loader2,
   Calendar,
@@ -28,7 +27,9 @@ import {
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { createClient } from "@/lib/supabase/client"
+import { PageHeader } from "@/components/ui/page-header"
 import { toast } from "@/lib/hooks/use-toast"
+import { ROUTES } from "@/lib/routes"
 import type { ReportType } from "@/types"
 
 interface ClientOption {
@@ -448,17 +449,14 @@ export default function NewReportPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" asChild>
-          <Link href="/admin/reports">
-            <ArrowLeft className="h-5 w-5" />
-          </Link>
-        </Button>
-        <div>
-          <h1 className="text-2xl font-bold">Novo Relatório</h1>
-          <p className="text-muted-foreground">Crie um novo relatório para um cliente</p>
-        </div>
-      </div>
+      <PageHeader
+        title="Novo Relatório"
+        description="Crie um novo relatório para um cliente"
+        breadcrumb={[
+          { label: "Relatórios", href: ROUTES.ADMIN.REPORTS.LIST },
+          { label: "Novo Relatório" },
+        ]}
+      />
 
       {isLoading ? (
         <Card>

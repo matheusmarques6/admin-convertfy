@@ -4,7 +4,6 @@ import { useState, useEffect } from "react"
 import { useRouter, useParams } from "next/navigation"
 import Link from "next/link"
 import {
-  ArrowLeft,
   Loader2,
   Calendar,
   Store,
@@ -30,7 +29,9 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { createClient } from "@/lib/supabase/client"
+import { PageHeader } from "@/components/ui/page-header"
 import { toast } from "@/lib/hooks/use-toast"
+import { ROUTES } from "@/lib/routes"
 import type { Report, ReportData, ReportStatus } from "@/types"
 
 interface ReportWithRelations extends Report {
@@ -280,50 +281,44 @@ export default function EditReportPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" asChild>
-            <Link href={`/admin/reports/${reportId}`}>
-              <ArrowLeft className="h-5 w-5" />
-            </Link>
-          </Button>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold">Editar Relatório</h1>
-              <Badge variant="outline">
-                {{ klaviyo: "Klaviyo", shopify: "Shopify", combined: "Combinado", manual: "Manual" }[report.report_type] || report.report_type}
-              </Badge>
-            </div>
-            <p className="text-muted-foreground">
-              {report.store_name || report.client?.name}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {!isManual && (
-            <Button
-              variant="outline"
-              onClick={handleRegenerate}
-              disabled={isRegenerating}
-            >
-              {isRegenerating ? (
+      <PageHeader
+        title="Editar Relatório"
+        description={report.store_name || report.client?.name}
+        breadcrumb={[
+          { label: "Relatórios", href: ROUTES.ADMIN.REPORTS.LIST },
+          { label: report.store_name || report.client?.name || "Relatório", href: `/admin/reports/${reportId}` },
+          { label: "Editar" },
+        ]}
+        actions={
+          <div className="flex items-center gap-2">
+            <Badge variant="outline">
+              {{ klaviyo: "Klaviyo", shopify: "Shopify", combined: "Combinado", manual: "Manual" }[report.report_type] || report.report_type}
+            </Badge>
+            {!isManual && (
+              <Button
+                variant="outline"
+                onClick={handleRegenerate}
+                disabled={isRegenerating}
+              >
+                {isRegenerating ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                )}
+                Regenerar Dados
+              </Button>
+            )}
+            <Button onClick={handleSave} disabled={isSaving}>
+              {isSaving ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
-                <RefreshCw className="mr-2 h-4 w-4" />
+                <Save className="mr-2 h-4 w-4" />
               )}
-              Regenerar Dados
+              Salvar
             </Button>
-          )}
-          <Button onClick={handleSave} disabled={isSaving}>
-            {isSaving ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Save className="mr-2 h-4 w-4" />
-            )}
-            Salvar
-          </Button>
-        </div>
-      </div>
+          </div>
+        }
+      />
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Main Content */}

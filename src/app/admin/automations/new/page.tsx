@@ -6,7 +6,6 @@ import Link from "next/link"
 import dynamic from "next/dynamic"
 import type { Node, Edge } from "reactflow"
 import {
-  ArrowLeft,
   Save,
   Zap,
   Loader2,
@@ -17,6 +16,8 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
 import { Skeleton } from "@/components/ui/skeleton"
+import { PageHeader } from "@/components/ui/page-header"
+import { ROUTES } from "@/lib/routes"
 
 const WorkflowBuilder = dynamic(
   () => import("@/components/automations/workflow-builder").then(mod => ({ default: mod.WorkflowBuilder })),
@@ -120,35 +121,30 @@ export default function NewAutomationPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" asChild>
-            <Link href="/admin/automations">
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
-          </Button>
-          <div>
-            <h1 className="text-2xl font-bold">Nova Automação</h1>
-            <p className="text-muted-foreground">
-              Crie um fluxo visual de automação
-            </p>
+      <PageHeader
+        title="Nova Automação"
+        description="Crie um fluxo visual de automação"
+        breadcrumb={[
+          { label: "Automações", href: ROUTES.ADMIN.AUTOMATIONS.LIST },
+          { label: "Nova Automação" },
+        ]}
+        actions={
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Switch checked={isActive} onCheckedChange={setIsActive} />
+              <Label>{isActive ? "Ativa" : "Inativa"}</Label>
+            </div>
+            <Button onClick={handleSave} disabled={isLoading}>
+              {isLoading ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="mr-2 h-4 w-4" />
+              )}
+              Salvar
+            </Button>
           </div>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <Switch checked={isActive} onCheckedChange={setIsActive} />
-            <Label>{isActive ? "Ativa" : "Inativa"}</Label>
-          </div>
-          <Button onClick={handleSave} disabled={isLoading}>
-            {isLoading ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Save className="mr-2 h-4 w-4" />
-            )}
-            Salvar
-          </Button>
-        </div>
-      </div>
+        }
+      />
 
       {/* Basic Info */}
       <Card className="rounded-xl border bg-card">

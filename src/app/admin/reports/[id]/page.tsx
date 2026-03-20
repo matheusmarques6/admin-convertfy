@@ -4,7 +4,6 @@ import { useState, useEffect } from "react"
 import { useRouter, useParams } from "next/navigation"
 import Link from "next/link"
 import {
-  ArrowLeft,
   Download,
   FileText,
   TrendingUp,
@@ -47,7 +46,9 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { createClient } from "@/lib/supabase/client"
+import { PageHeader } from "@/components/ui/page-header"
 import { toast } from "@/lib/hooks/use-toast"
+import { ROUTES } from "@/lib/routes"
 import { formatDate } from "@/lib/utils"
 import type { Report, ReportData, ReportStatus } from "@/types"
 
@@ -285,98 +286,86 @@ export default function ReportPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" asChild>
-            <Link href="/admin/reports">
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
-          </Button>
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-2xl font-bold">
-                Relatório - {report.store_name || clientData?.name}
-              </h1>
-              <Badge variant="outline">
-                <FileText className="h-3 w-3 mr-1" />
-                {getReportTypeLabel(report.report_type)}
-              </Badge>
-              {getStatusBadge(report.status)}
-            </div>
-            <p className="text-muted-foreground">
-              {clientData?.name}
-              {clientData?.company && ` (${clientData.company})`}
-              {' • '}
-              {formatPeriod(report)}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={copyReportLink}>
-            <Copy className="mr-2 h-4 w-4" />
-            Copiar Link
-          </Button>
-          <Button variant="outline" asChild>
-            <Link href={`/admin/reports/${reportId}/edit`}>
-              <Pencil className="mr-2 h-4 w-4" />
-              Editar
-            </Link>
-          </Button>
-          {report.document_url && (
-            <Button variant="outline" asChild>
-              <a href={report.document_url} target="_blank" rel="noopener noreferrer">
-                <Download className="mr-2 h-4 w-4" />
-                Download PDF
-              </a>
+      <PageHeader
+        title={`Relatório - ${report.store_name || clientData?.name}`}
+        description={`${clientData?.name}${clientData?.company ? ` (${clientData.company})` : ''} • ${formatPeriod(report)}`}
+        breadcrumb={[
+          { label: "Relatórios", href: ROUTES.ADMIN.REPORTS.LIST },
+          { label: report.store_name || clientData?.name || "Relatório" },
+        ]}
+        actions={
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge variant="outline">
+              <FileText className="h-3 w-3 mr-1" />
+              {getReportTypeLabel(report.report_type)}
+            </Badge>
+            {getStatusBadge(report.status)}
+            <Button variant="outline" size="sm" onClick={copyReportLink}>
+              <Copy className="mr-2 h-4 w-4" />
+              Copiar Link
             </Button>
-          )}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="icon">
-                <MoreHorizontal className="h-4 w-4" />
+            <Button variant="outline" size="sm" asChild>
+              <Link href={`/admin/reports/${reportId}/edit`}>
+                <Pencil className="mr-2 h-4 w-4" />
+                Editar
+              </Link>
+            </Button>
+            {report.document_url && (
+              <Button variant="outline" size="sm" asChild>
+                <a href={report.document_url} target="_blank" rel="noopener noreferrer">
+                  <Download className="mr-2 h-4 w-4" />
+                  Download PDF
+                </a>
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                onClick={() => updateStatus("draft")}
-                disabled={report.status === "draft"}
-              >
-                <Clock className="mr-2 h-4 w-4" />
-                Marcar como Rascunho
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => updateStatus("published")}
-                disabled={report.status === "published"}
-              >
-                <CheckCircle className="mr-2 h-4 w-4" />
-                Marcar como Publicado
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => updateStatus("sent")}
-                disabled={report.status === "sent"}
-              >
-                <Send className="mr-2 h-4 w-4" />
-                Marcar como Enviado
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => updateStatus("archived")}
-                disabled={report.status === "archived"}
-              >
-                <Archive className="mr-2 h-4 w-4" />
-                Arquivar
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={() => setDeleteDialogOpen(true)}
-                className="text-destructive focus:text-destructive"
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                Excluir
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
+            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon">
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onClick={() => updateStatus("draft")}
+                  disabled={report.status === "draft"}
+                >
+                  <Clock className="mr-2 h-4 w-4" />
+                  Marcar como Rascunho
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => updateStatus("published")}
+                  disabled={report.status === "published"}
+                >
+                  <CheckCircle className="mr-2 h-4 w-4" />
+                  Marcar como Publicado
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => updateStatus("sent")}
+                  disabled={report.status === "sent"}
+                >
+                  <Send className="mr-2 h-4 w-4" />
+                  Marcar como Enviado
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => updateStatus("archived")}
+                  disabled={report.status === "archived"}
+                >
+                  <Archive className="mr-2 h-4 w-4" />
+                  Arquivar
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => setDeleteDialogOpen(true)}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Excluir
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        }
+      />
 
       {/* Revenue Metrics */}
       {revenue && (

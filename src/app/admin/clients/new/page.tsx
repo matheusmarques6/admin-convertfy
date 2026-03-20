@@ -6,7 +6,7 @@ import Link from "next/link"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
-import { ArrowLeft, Loader2, AlertCircle, CheckCircle2 } from "lucide-react"
+import { Loader2, AlertCircle, CheckCircle2 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -20,7 +20,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { PageHeader } from "@/components/ui/page-header"
 import { toast } from "@/lib/hooks/use-toast"
+import { ROUTES } from "@/lib/routes"
 
 const clientSchema = z.object({
   name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres"),
@@ -217,19 +219,14 @@ export default function NewClientPage() {
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" asChild>
-          <Link href="/admin/clients">
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
-        </Button>
-        <div>
-          <h1 className="text-2xl font-bold">Novo Cliente</h1>
-          <p className="text-muted-foreground">
-            Cadastre um novo cliente na sua carteira
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        title="Novo Cliente"
+        description="Cadastre um novo cliente na sua carteira"
+        breadcrumb={[
+          { label: "Clientes", href: ROUTES.ADMIN.CLIENTS.LIST },
+          { label: "Novo Cliente" },
+        ]}
+      />
 
       {/* Asaas Fields Warning */}
       {!hasRequiredAsaasFields() && (

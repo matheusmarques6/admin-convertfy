@@ -6,7 +6,7 @@ import Link from "next/link"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
-import { ArrowLeft, Loader2, Zap, Plus, Trash2 } from "lucide-react"
+import { Loader2, Zap, Plus, Trash2 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -24,6 +24,8 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { toast } from "@/lib/hooks/use-toast"
 import { Skeleton } from "@/components/ui/skeleton"
+import { PageHeader } from "@/components/ui/page-header"
+import { ROUTES } from "@/lib/routes"
 import type { Automation, AutomationTriggerType, AutomationActionType, AutomationAction } from "@/types"
 
 const triggerOptions: { value: AutomationTriggerType; label: string }[] = [
@@ -245,22 +247,19 @@ export default function EditAutomationPage() {
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" asChild>
-          <Link href="/admin/automations">
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
-        </Button>
-        <div className="flex-1">
-          <h1 className="text-2xl font-bold">Editar Automação</h1>
-          <p className="text-muted-foreground">
-            Configure os detalhes da automação
-          </p>
-        </div>
-        <Badge variant={isActive ? "default" : "secondary"}>
-          {isActive ? "Ativa" : "Pausada"}
-        </Badge>
-      </div>
+      <PageHeader
+        title="Editar Automação"
+        description="Configure os detalhes da automação"
+        breadcrumb={[
+          { label: "Automações", href: ROUTES.ADMIN.AUTOMATIONS.LIST },
+          { label: automation?.name || "Automação" },
+        ]}
+        actions={
+          <Badge variant={isActive ? "default" : "secondary"}>
+            {isActive ? "Ativa" : "Pausada"}
+          </Badge>
+        }
+      />
 
       {/* Form */}
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
