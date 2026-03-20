@@ -24,6 +24,7 @@ import { getCachedPlacedOrderMetric } from "./cached-metadata"
 import { type SyncResult, isCachedPeriod, isCustomPeriod, buildCustomPeriodLabel, LIVE_FETCH_CACHE_TTL_MS, isCustomRangeCacheFresh, getCustomRangeTTL } from "@/lib/shared/data-status"
 import { createAdminClient } from "@/lib/supabase/server"
 import { fetchStoreRevenueFromMetricAggregates } from "@/lib/services/klaviyo-sync.service"
+import { reserveReportQuota } from "./rate-limiter"
 
 const log = logger.child("KlaviyoReportSummary")
 
@@ -45,6 +46,11 @@ export interface KlaviyoRevenueSummary {
   currency: string
   campaignReportAvailable?: boolean
   flowReportAvailable?: boolean
+  metricAggAvailable?: boolean
+  /** True when at least one data source failed (Story 58.3) */
+  partial?: boolean
+  /** Which data sources failed, if any (Story 58.3) */
+  missing?: string[]
 }
 
 interface KlaviyoValuesReport {
@@ -230,6 +236,21 @@ export async function getKlaviyoRevenueForStore(
       conversion_metric_id: placedOrderMetric,
     }
 
+    // Story 58.1: Custom periods bypass daily quota to prevent the race condition
+    // where campaign consumes the last slot and flow is silently rejected.
+    // Non-custom periods reserve quota upfront (3 XS calls: campaign + flow + metric-agg).
+    const forceQuota = isCustomPeriod(period)
+    if (forceQuota) {
+      log.info(`Store ${storeId}: custom period — bypassing daily quota`)
+    } else if (!reserveReportQuota(apiKey, 3)) {
+      log.warn(`Store ${storeId}: quota insufficient for 3 XS calls, skipping live fetch`)
+      return {
+        success: false, data: null,
+        error: "Daily report quota insufficient",
+        source: "live", fetchedAt: new Date().toISOString(),
+      }
+    }
+
     // Fetch campaign and flow reports sequentially (AK-4)
     // Reporting API is tier XS (1 req/s burst). Promise.all would violate burst limit.
     const campaignReport = await klaviyoRequest<KlaviyoValuesReport>(apiKey, "/campaign-values-reports/", {
@@ -241,6 +262,7 @@ export async function getKlaviyoRevenueForStore(
         },
       },
       logTag: "KlaviyoReportSummary",
+      force: forceQuota,
     })
     const flowReport = await klaviyoRequest<KlaviyoValuesReport>(apiKey, "/flow-values-reports/", {
       method: "POST",
@@ -251,6 +273,7 @@ export async function getKlaviyoRevenueForStore(
         },
       },
       logTag: "KlaviyoReportSummary",
+      force: forceQuota,
     })
 
     if (!campaignReport && !flowReport) {
@@ -280,12 +303,15 @@ export async function getKlaviyoRevenueForStore(
 
     // Fetch store-wide revenue via metric-aggregates (Placed Order, no grouping)
     let storeRevenue = 0
+    let metricAggSuccess = false
     try {
       const aggResult = await fetchStoreRevenueFromMetricAggregates(
-        apiKey, placedOrderMetric, startDateStr, endDateStr, timezone
+        apiKey, placedOrderMetric, startDateStr, endDateStr, timezone,
+        { force: forceQuota }
       )
       if (aggResult.success && aggResult.data) {
         storeRevenue = aggResult.data.storeRevenue
+        metricAggSuccess = true
         log.info(`Store ${storeId}: storeRevenue=${currency} ${storeRevenue.toFixed(2)} (metric-aggregates)`)
       }
     } catch (aggErr) {
@@ -293,8 +319,17 @@ export async function getKlaviyoRevenueForStore(
       log.warn(`Store ${storeId}: metric-aggregates failed, storeRevenue=0:`, aggErr)
     }
 
+    // Story 58.2: Only write to cache when ALL data sources succeeded.
+    // Partial data (e.g. flow=null but campaign=ok) would poison the cache,
+    // causing subsequent requests to serve flowRevenue=0 as if it were real.
+    const allDataComplete = campaignReport !== null && flowReport !== null && metricAggSuccess
+    if (!allDataComplete) {
+      log.warn(`Store ${storeId}: skipping cache write (partial data: campaign=${campaignReport !== null}, flow=${flowReport !== null}, metricAgg=${metricAggSuccess})`)
+    }
+
     // AK-13: Write-through — persist 1d live fetch results for 5-minute deduplication
-    if (period === "1d") {
+    // Story 58.2: Skip write-through when data is partial to avoid cache poisoning
+    if (period === "1d" && allDataComplete) {
       try {
         const adminClient = createAdminClient()
 
@@ -336,7 +371,8 @@ export async function getKlaviyoRevenueForStore(
     }
 
     // CR2: Write-through for custom ranges — persist via upsert_custom_range_cache RPC
-    if (isCustomPeriod(period) && customStartDate && customEndDate) {
+    // Story 58.2: Skip write-through when data is partial to avoid cache poisoning
+    if (isCustomPeriod(period) && customStartDate && customEndDate && allDataComplete) {
       try {
         const adminClient = createAdminClient()
 
@@ -364,6 +400,7 @@ export async function getKlaviyoRevenueForStore(
             p_klaviyo_flow_revenue: flowRevenue,
             p_currency: currency,
             p_expires_at: expiresAt,
+            p_store_total_revenue: storeRevenue,
           })
 
           log.info(`Store ${storeId}: custom range write-through saved (${customStartDate}..${customEndDate}, TTL=${Math.round(ttlMs / 60_000)}min)`)
@@ -384,6 +421,15 @@ export async function getKlaviyoRevenueForStore(
         currency,
         campaignReportAvailable: campaignReport !== null,
         flowReportAvailable: flowReport !== null,
+        metricAggAvailable: metricAggSuccess,
+        partial: !allDataComplete,
+        ...(!allDataComplete ? {
+          missing: [
+            ...(campaignReport === null ? ["campaign"] : []),
+            ...(flowReport === null ? ["flow"] : []),
+            ...(!metricAggSuccess ? ["metric-aggregates"] : []),
+          ],
+        } : {}),
       },
       source: "live", fetchedAt: new Date().toISOString(),
     }

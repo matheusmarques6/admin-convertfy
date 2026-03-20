@@ -49,8 +49,10 @@ export function DateRangePicker({
   const isOpen = open !== undefined ? open : internalOpen
   const setIsOpen = onOpenChange || setInternalOpen
 
+  const isSameDay = range?.from && range?.to && range.from.getTime() === range.to.getTime()
+
   const handleApply = () => {
-    if (range?.from && range?.to) {
+    if (range?.from && range?.to && !isSameDay) {
       onApply(range.from, range.to)
       setIsOpen(false)
     }
@@ -86,7 +88,9 @@ export function DateRangePicker({
           <div className="flex items-center justify-between border-t pt-3 px-1">
             <p className="text-xs text-muted-foreground">
               {range?.from && range?.to
-                ? `${format(range.from, "dd MMM", { locale: ptBR })} → ${format(range.to, "dd MMM", { locale: ptBR })}`
+                ? isSameDay
+                  ? "Selecione dias diferentes"
+                  : `${format(range.from, "dd MMM", { locale: ptBR })} → ${format(range.to, "dd MMM", { locale: ptBR })}`
                 : "Selecione início e fim"}
             </p>
             <div className="flex gap-2">
@@ -103,7 +107,7 @@ export function DateRangePicker({
               <Button
                 size="sm"
                 className="h-7 text-xs"
-                disabled={!range?.from || !range?.to}
+                disabled={!range?.from || !range?.to || !!isSameDay}
                 onClick={handleApply}
               >
                 Aplicar

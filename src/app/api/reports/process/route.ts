@@ -135,16 +135,22 @@ export async function POST(request: NextRequest) {
         if (result.success && result.data) {
           // CR3: Capture revenue data from return value for snapshot building
           revenueMap.set(storeId, result.data)
+
+          // Story 58.3: Detect partial data (some API sources failed)
+          const isPartial = result.data.partial === true
+          const storeStatus = isPartial ? "partial" : "completed"
+
           await supabase.rpc("update_job_progress", {
             p_job_id: jobId,
             p_progress: {
               [storeId]: {
-                status: "completed",
+                status: storeStatus,
                 completed_at: new Date().toISOString(),
+                ...(isPartial && result.data.missing ? { missing: result.data.missing } : {}),
               } satisfies ReportJobStoreProgress,
             },
           })
-          log.info(`Job ${jobId}: store ${storeId} completed (revenue=${result.data.totalRevenue})`)
+          log.info(`Job ${jobId}: store ${storeId} ${storeStatus} (revenue=${result.data.totalRevenue}${isPartial ? `, missing=[${result.data.missing?.join(",")}]` : ""})`)
         } else {
           await supabase.rpc("update_job_progress", {
             p_job_id: jobId,
@@ -215,8 +221,9 @@ export async function POST(request: NextRequest) {
     const finalResult = await buildResultSnapshot(supabase, jobId, storeIds, revenueMap, job.org_id)
 
     // Determine final status
+    // Story 58.3: "partial" also when stores have incomplete data (not just failed stores)
     let finalStatus: "completed" | "partial" | "failed"
-    if (finalResult.stores_failed === 0) {
+    if (finalResult.stores_failed === 0 && finalResult.stores_partial === 0) {
       finalStatus = "completed"
     } else if (finalResult.stores_processed > 0) {
       finalStatus = "partial"
@@ -348,13 +355,15 @@ async function buildResultSnapshot(
   let totalRevenue = 0
   let klaviyoAttributedRevenue = 0
   let storesProcessed = 0
+  let storesPartial = 0
   let storesFailed = 0
   const perStore: ReportJobResult["per_store"] = {}
 
   for (const storeId of storeIds) {
-    const storeProgress = progress[storeId] as { status?: string; error?: string } | undefined
+    const storeProgress = progress[storeId] as { status?: string; error?: string; missing?: string[] } | undefined
 
-    if (storeProgress?.status === "completed") {
+    if (storeProgress?.status === "completed" || storeProgress?.status === "partial") {
+      if (storeProgress.status === "partial") storesPartial++
       // CR3: Use captured revenue data from the Map — no DB re-read needed
       const data = revenueMap.get(storeId)
       storesProcessed++
@@ -407,6 +416,7 @@ async function buildResultSnapshot(
     total_revenue: totalRevenue,
     klaviyo_attributed_revenue: klaviyoAttributedRevenue,
     stores_processed: storesProcessed,
+    stores_partial: storesPartial,
     stores_failed: storesFailed,
     currencies: [...new Set(Object.values(perStore).map(s => s.currency).filter(Boolean))],
     per_store: perStore,

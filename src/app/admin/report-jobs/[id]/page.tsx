@@ -218,7 +218,15 @@ export default function ReportJobDetailPage({
   }
 
   const storeEntries = Object.entries(result.per_store)
-  const successStores = storeEntries.filter(([, s]) => !s.error)
+  // Story 58.3: Partition stores into success, partial, and failed
+  const storeProgress = job.progress as Record<string, { status?: string; missing?: string[] } | undefined>
+  const partialStoreIds = new Set(
+    Object.entries(storeProgress)
+      .filter(([, v]) => v?.status === "partial")
+      .map(([k]) => k)
+  )
+  const successStores = storeEntries.filter(([id, s]) => !s.error && !partialStoreIds.has(id))
+  const partialStores = storeEntries.filter(([id]) => partialStoreIds.has(id))
   const failedStores = storeEntries.filter(([, s]) => !!s.error)
 
   // Always display in BRL for summary KPI cards
@@ -318,12 +326,17 @@ export default function ReportJobDetailPage({
 
         <Card>
           <CardHeader className="pb-1 pt-4 px-4">
-            <CardTitle className="text-xs font-medium text-muted-foreground">Receita Flows</CardTitle>
+            <CardTitle className="text-xs font-medium text-muted-foreground">
+              Receita Flows
+              {partialStores.some(([id]) => storeProgress[id]?.missing?.includes("flow")) && (
+                <span className="ml-1.5 text-amber-500" title="Dados incompletos em algumas lojas">*</span>
+              )}
+            </CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-4">
             <p className="text-xl font-bold">
               {formatCurrency(
-                successStores.reduce((sum, [, s]) => sum + s.flow_revenue, 0),
+                [...successStores, ...partialStores].reduce((sum, [, s]) => sum + s.flow_revenue, 0),
                 primaryCurrency
               )}
             </p>
@@ -332,12 +345,17 @@ export default function ReportJobDetailPage({
 
         <Card>
           <CardHeader className="pb-1 pt-4 px-4">
-            <CardTitle className="text-xs font-medium text-muted-foreground">Receita Campanhas</CardTitle>
+            <CardTitle className="text-xs font-medium text-muted-foreground">
+              Receita Campanhas
+              {partialStores.some(([id]) => storeProgress[id]?.missing?.includes("campaign")) && (
+                <span className="ml-1.5 text-amber-500" title="Dados incompletos em algumas lojas">*</span>
+              )}
+            </CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-4">
             <p className="text-xl font-bold">
               {formatCurrency(
-                successStores.reduce((sum, [, s]) => sum + s.campaign_revenue, 0),
+                [...successStores, ...partialStores].reduce((sum, [, s]) => sum + s.campaign_revenue, 0),
                 primaryCurrency
               )}
             </p>
@@ -388,6 +406,59 @@ export default function ReportJobDetailPage({
                       <Badge variant="default" className="text-[10px]">
                         OK
                       </Badge>
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+
+              {/* Partial stores (Story 58.3) */}
+              {partialStores.map(([storeId, store]) => {
+                const pctOfTotal =
+                  result.total_revenue > 0
+                    ? (store.revenue / result.total_revenue) * 100
+                    : 0
+                const missingItems = storeProgress[storeId]?.missing ?? []
+                return (
+                  <TableRow key={storeId} className="bg-amber-500/5">
+                    <TableCell className="font-medium">{store.store_name || storeId}</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {formatCurrency(store.revenue, store.currency || "BRL")}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {missingItems.includes("campaign")
+                        ? <span className="text-amber-500" title="Dado indisponivel">—</span>
+                        : formatCurrency(store.campaign_revenue, store.currency || "BRL")}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {missingItems.includes("flow")
+                        ? <span className="text-amber-500" title="Dado indisponivel">—</span>
+                        : formatCurrency(store.flow_revenue, store.currency || "BRL")}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {formatPercent(pctOfTotal)}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-[10px] border-amber-500/50 text-amber-600">
+                          Parcial
+                        </Badge>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-[10px]"
+                          disabled={retryingStores.has(storeId)}
+                          onClick={() => handleRetryStore(storeId)}
+                        >
+                          {retryingStores.has(storeId) ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <>
+                              <RefreshCw className="h-3 w-3 mr-1" />
+                              Tentar novamente
+                            </>
+                          )}
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 )

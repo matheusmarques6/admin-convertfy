@@ -68,8 +68,10 @@ export function PeriodPicker({
     setOpen(false)
   }
 
+  const isSameDay = range?.from && range?.to && range.from.getTime() === range.to.getTime()
+
   const handleApplyCustom = () => {
-    if (range?.from && range?.to) {
+    if (range?.from && range?.to && !isSameDay) {
       onChange({ period: "custom", customStart: range.from, customEnd: range.to })
       setShowCalendar(false)
       setOpen(false)
@@ -147,7 +149,9 @@ export function PeriodPicker({
               <div className="flex items-center justify-between border-t pt-3 px-1">
                 <p className="text-xs text-muted-foreground">
                   {range?.from && range?.to
-                    ? `${format(range.from, "dd MMM", { locale: ptBR })} → ${format(range.to, "dd MMM", { locale: ptBR })}`
+                    ? isSameDay
+                      ? "Selecione dias diferentes"
+                      : `${format(range.from, "dd MMM", { locale: ptBR })} → ${format(range.to, "dd MMM", { locale: ptBR })}`
                     : "Selecione início e fim"}
                 </p>
                 <div className="flex gap-2">
@@ -162,7 +166,7 @@ export function PeriodPicker({
                   <Button
                     size="sm"
                     className="h-7 text-xs"
-                    disabled={!range?.from || !range?.to}
+                    disabled={!range?.from || !range?.to || !!isSameDay}
                     onClick={handleApplyCustom}
                   >
                     Aplicar

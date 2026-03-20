@@ -14,6 +14,7 @@ import {
   isReportQuotaExhausted,
   getReportQuotaUsage,
   getAllReportQuotaUsage,
+  reserveReportQuota,
   _resetReportQuota,
   type RateTier,
 } from "./rate-limiter"
@@ -497,6 +498,42 @@ describe("AK-2: Daily Report Quota Tracking", () => {
   })
 
   // AK-12: XS Budget Per Cycle constant
+  describe("reserveReportQuota (Story 58.1)", () => {
+    beforeEach(() => {
+      _resetReportQuota()
+    })
+
+    it("returns true when quota has enough headroom", () => {
+      expect(reserveReportQuota("key-reserve-1", 3)).toBe(true)
+    })
+
+    it("returns true when usage + count equals threshold exactly", () => {
+      // Fill to 217, then request 3 → 217+3=220 which is > 220? No, 220 > 220 is false → allows
+      for (let i = 0; i < 217; i++) incrementReportQuota("key-reserve-2")
+      expect(reserveReportQuota("key-reserve-2", 3)).toBe(true)
+    })
+
+    it("returns false when usage + count exceeds threshold", () => {
+      for (let i = 0; i < 218; i++) incrementReportQuota("key-reserve-3")
+      expect(reserveReportQuota("key-reserve-3", 3)).toBe(false)
+    })
+
+    it("returns false when quota is already exhausted", () => {
+      for (let i = 0; i < 220; i++) incrementReportQuota("key-reserve-4")
+      expect(reserveReportQuota("key-reserve-4", 1)).toBe(false)
+    })
+
+    it("does NOT increment the counter (check-only)", () => {
+      reserveReportQuota("key-reserve-5", 3)
+      const usage = getReportQuotaUsage("key-reserve-5")
+      expect(usage.used).toBe(0)
+    })
+
+    it("treats unknown keys as zero usage", () => {
+      expect(reserveReportQuota("key-never-seen", 3)).toBe(true)
+    })
+  })
+
   describe("XS_BUDGET_PER_CYCLE", () => {
     it("defaults to 90", () => {
       expect(XS_BUDGET_PER_CYCLE).toBe(90)

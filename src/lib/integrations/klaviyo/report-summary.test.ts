@@ -204,6 +204,8 @@ describe("AK-4: Serialize report calls in report-summary", () => {
       currency: "BRL",
       campaignReportAvailable: true,
       flowReportAvailable: true,
+      metricAggAvailable: true,
+      partial: false,
     })
   })
 })

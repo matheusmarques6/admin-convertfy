@@ -180,6 +180,31 @@ export function isReportQuotaExhausted(apiKey: string): boolean {
 }
 
 /**
+ * Check if `count` XS report quota slots are available for an API key.
+ * Returns true if there is enough headroom, false otherwise.
+ * Does NOT increment the counter — the actual increment happens in
+ * `enqueueKlaviyoRequest` when each request is enqueued.
+ *
+ * Story 58.1: Pre-flight check to prevent the race condition where
+ * campaign consumes the last quota slot and flow is silently rejected.
+ * By checking upfront, either ALL calls will proceed or NONE are attempted.
+ */
+export function reserveReportQuota(apiKey: string, count: number): boolean {
+  const today = utcDateString()
+  const kid = keyId(apiKey)
+  const entry = reportQuota.get(apiKey)
+
+  const used = (entry && entry.date === today) ? entry.count : 0
+
+  if (used + count > QUOTA_SOFT_HALT_THRESHOLD) {
+    log.warn(`[RateLimit] Quota pre-check failed for key ...${kid}: need ${count}, used ${used}/${QUOTA_SOFT_HALT_THRESHOLD}`)
+    return false
+  }
+
+  return true
+}
+
+/**
  * Get current report quota usage for an API key.
  * Returns an immutable snapshot.
  */

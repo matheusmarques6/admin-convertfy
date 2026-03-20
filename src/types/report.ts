@@ -166,15 +166,18 @@ export interface ReportJobProgress {
 }
 
 export interface ReportJobStoreProgress {
-  status: 'pending' | 'processing' | 'completed' | 'failed'
+  status: 'pending' | 'processing' | 'completed' | 'partial' | 'failed'
   completed_at?: string
   error?: string
+  /** Data sources that failed (Story 58.3) */
+  missing?: string[]
 }
 
 export interface ReportJobResult {
   total_revenue: number
   klaviyo_attributed_revenue: number
   stores_processed: number
+  stores_partial: number
   stores_failed: number
   currencies?: string[]
   per_store: {

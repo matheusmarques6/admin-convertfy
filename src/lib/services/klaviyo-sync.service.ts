@@ -436,6 +436,7 @@ export async function fetchStoreRevenueFromMetricAggregates(
   startDateStr: string,
   endDateStr: string,
   timezone: string,
+  options?: { force?: boolean },
 ): Promise<SyncResult<StoreRevenueData>> {
   try {
     const pad2 = (n: number) => String(n).padStart(2, "0")
@@ -470,6 +471,7 @@ export async function fetchStoreRevenueFromMetricAggregates(
           },
         },
       },
+      force: options?.force,
     })
 
     if (!metricAgg) {
