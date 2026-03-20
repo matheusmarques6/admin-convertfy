@@ -48,9 +48,9 @@ describe("StaleBadge logic (AK-14.3)", () => {
     })
 
     it("30d period: data is NOT stale when within 2x threshold", () => {
-      const threshold = PERIOD_FRESHNESS_THRESHOLDS["30d"] // 6h
-      // Data fetched 10 hours ago (< 12h threshold)
-      const fetchedAt = new Date(NOW - 10 * 3_600_000).toISOString()
+      const threshold = PERIOD_FRESHNESS_THRESHOLDS["30d"] // 3h
+      // Data fetched 5 hours ago (< 6h stale threshold)
+      const fetchedAt = new Date(NOW - 5 * 3_600_000).toISOString()
       const elapsed = NOW - new Date(fetchedAt).getTime()
       expect(elapsed).toBeLessThan(threshold * STALE_THRESHOLD_MULTIPLIER)
     })

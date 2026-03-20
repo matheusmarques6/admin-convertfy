@@ -100,20 +100,20 @@ describe("PERIOD_FRESHNESS_THRESHOLDS (AK-10)", () => {
     expect(ageMs < threshold).toBe(false)
   })
 
-  it("30d threshold is 6 hours", () => {
-    expect(PERIOD_FRESHNESS_THRESHOLDS["30d"]).toBe(6 * 60 * 60_000)
+  it("30d threshold is 3 hours", () => {
+    expect(PERIOD_FRESHNESS_THRESHOLDS["30d"]).toBe(3 * 60 * 60_000)
   })
 
-  it("30d is fresh when fetched less than 6h ago", () => {
+  it("30d is fresh when fetched less than 3h ago", () => {
     const threshold = PERIOD_FRESHNESS_THRESHOLDS["30d"]
-    const fetchedAt = new Date(Date.now() - 5 * 60 * 60_000) // 5h ago
+    const fetchedAt = new Date(Date.now() - 2 * 60 * 60_000) // 2h ago
     const ageMs = Date.now() - fetchedAt.getTime()
     expect(ageMs < threshold).toBe(true)
   })
 
-  it("30d is stale when fetched more than 6h ago", () => {
+  it("30d is stale when fetched more than 3h ago", () => {
     const threshold = PERIOD_FRESHNESS_THRESHOLDS["30d"]
-    const fetchedAt = new Date(Date.now() - 7 * 60 * 60_000) // 7h ago
+    const fetchedAt = new Date(Date.now() - 4 * 60 * 60_000) // 4h ago
     const ageMs = Date.now() - fetchedAt.getTime()
     expect(ageMs < threshold).toBe(false)
   })
