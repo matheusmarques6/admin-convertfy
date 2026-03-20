@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest } from "next/server"
 import { errorResponse, successResponse } from "@/lib/api/errors"
 import { createAdminClient } from "@/lib/supabase/server"
 import { requireCronAuth } from "@/lib/api/cron-auth"

@@ -28,7 +28,7 @@ export function OnboardingStepper({ steps, currentIndex, onNavigate }: Onboardin
           <div className="absolute top-[15px] sm:top-[21px] left-[16px] sm:left-[28px] right-[16px] sm:right-[28px] h-[2px] bg-border" />
           {/* Progress line (filled, primary) */}
           <div
-            className="absolute top-[15px] sm:top-[21px] left-[16px] sm:left-[28px] h-[2px] bg-primary transition-all duration-[400ms]"
+            className="absolute top-[15px] sm:top-[21px] left-[16px] sm:left-[28px] h-[2px] bg-primary transition-all duration-400"
             style={{ width: `calc(${progressFraction} * (100% - 32px))` }}
           />
 

@@ -156,7 +156,7 @@ function ProgressRing({ percent }: { percent: number }) {
           strokeLinecap="round"
           strokeDasharray={circumference}
           strokeDashoffset={offset}
-          className="transition-all duration-[1200ms] ease-out"
+          className="transition-all duration-1200 ease-out"
           style={{ filter: "drop-shadow(0 0 8px rgba(5,175,242,0.4))" }}
         />
       </svg>
