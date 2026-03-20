@@ -18,7 +18,7 @@ export default function OnboardingPage() {
         title="Onboarding"
         description="Gerencie o processo de implementação dos clientes"
         actions={
-          <div className="flex items-center gap-4 text-sm">
+          <div className="hidden sm:flex items-center gap-4 text-sm">
             <div className="flex items-center gap-2">
               <Clock className="w-4 h-4 text-amber-400" />
               <span className="text-muted-foreground">Arraste para mover entre etapas</span>

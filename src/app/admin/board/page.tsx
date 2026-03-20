@@ -339,7 +339,7 @@ export default async function BoardPage() {
 
   return (
     <PagePermissionWrapper requiredFeatures={["request_control", "request_execute"]}>
-      <div className="h-[calc(100vh-8rem)] flex flex-col">
+      <div className="h-[calc(100vh-10rem)] sm:h-[calc(100vh-8rem)] flex flex-col">
         {/* Header */}
         <div className="flex items-center gap-3 mb-4">
           <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/10">

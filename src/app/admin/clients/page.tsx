@@ -307,7 +307,7 @@ export default async function ClientsPage({ searchParams }: PageProps) {
       </Suspense>
 
       {/* Status Tabs */}
-      <div className="inline-flex h-10 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground">
+      <div className="inline-flex h-10 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground overflow-x-auto max-w-full">
         {statusTabs.map((tab) => (
           <Link
             key={tab.value}

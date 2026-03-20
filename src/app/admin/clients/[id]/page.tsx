@@ -61,21 +61,21 @@ export default async function ClientPage({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div className="flex items-start gap-4">
-          <Button variant="ghost" size="icon" asChild>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-start gap-3 sm:gap-4 min-w-0">
+          <Button variant="ghost" size="icon" className="shrink-0" asChild>
             <Link href="/admin/clients">
               <ArrowLeft className="h-4 w-4" />
             </Link>
           </Button>
-          <Avatar className="h-16 w-16">
-            <AvatarFallback className="bg-primary/10 text-primary text-xl">
+          <Avatar className="h-12 w-12 sm:h-16 sm:w-16 shrink-0">
+            <AvatarFallback className="bg-primary/10 text-primary text-lg sm:text-xl">
               {getInitials(client.name)}
             </AvatarFallback>
           </Avatar>
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold">{client.name}</h1>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+              <h1 className="text-xl sm:text-2xl font-bold truncate">{client.name}</h1>
               <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>
               <div className="flex items-center gap-1 text-sm">
                 <span>{getHealthScoreEmoji(client.health_score)}</span>
@@ -87,13 +87,13 @@ export default async function ClientPage({
                 </span>
               </div>
             </div>
-            <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
-              {client.company && <span>{client.company}</span>}
-              {client.email && <span>{client.email}</span>}
+            <div className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-4 mt-1 text-sm text-muted-foreground">
+              {client.company && <span className="truncate">{client.company}</span>}
+              {client.email && <span className="truncate">{client.email}</span>}
               {client.phone && <span>{client.phone}</span>}
             </div>
             {client.tags && client.tags.length > 0 && (
-              <div className="flex gap-1 mt-2">
+              <div className="flex flex-wrap gap-1 mt-2">
                 {client.tags.map((tag: string) => (
                   <Badge key={tag} variant="outline" className="text-xs">
                     {tag}
@@ -103,8 +103,8 @@ export default async function ClientPage({
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" asChild>
+        <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+          <Button variant="outline" size="sm" asChild>
             <Link href={`/admin/clients/${client.id}/edit`}>
               <Edit className="mr-2 h-4 w-4" />
               Editar
