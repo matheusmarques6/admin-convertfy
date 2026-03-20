@@ -29,19 +29,19 @@ export default function FinancialPage() {
         <TabsList>
           <TabsTrigger value="analysis" className="gap-1.5 sm:gap-2">
             <BarChart3 className="h-4 w-4" />
-            <span className="hidden sm:inline">Análise</span>
+            <span className="text-xs sm:text-sm">Análise</span>
           </TabsTrigger>
           <TabsTrigger value="charges" className="gap-1.5 sm:gap-2">
             <DollarSign className="h-4 w-4" />
-            <span className="hidden sm:inline">Faturas</span>
+            <span className="text-xs sm:text-sm">Faturas</span>
           </TabsTrigger>
           <TabsTrigger value="subscriptions" className="gap-1.5 sm:gap-2">
             <Repeat className="h-4 w-4" />
-            <span className="hidden sm:inline">Assinaturas</span>
+            <span className="text-xs sm:text-sm">Assinaturas</span>
           </TabsTrigger>
           <TabsTrigger value="wise" className="gap-1.5 sm:gap-2">
             <Wallet className="h-4 w-4" />
-            <span className="hidden sm:inline">Wise</span>
+            <span className="text-xs sm:text-sm">Wise</span>
           </TabsTrigger>
         </TabsList>
 

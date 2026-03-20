@@ -374,7 +374,7 @@ export default function PortalDashboardPage() {
               <KpiCard label="Ticket Médio" value={formatCurrency(ticketMedio)} icon={Receipt} iconColor="text-emerald-600" iconBg="bg-emerald-50 dark:bg-emerald-500/10" variation={ticketVariation} />
               <KpiCard label="Recuperação de Carrinho" value={formatPercent(recoveryRate)} icon={ShoppingBag} iconColor="text-amber-600" iconBg="bg-amber-50 dark:bg-amber-500/10" variation={recoveryVariation} />
               <KpiCard label="Receita por Lead" value={formatCurrency(receitaPorLead)} icon={Users} iconColor="text-violet-600" iconBg="bg-violet-50 dark:bg-violet-500/10" />
-              <KpiCard label="Flows Ativos" value={`${klaviyo?.activeFlows || 0} / ${klaviyo?.flowsCount || 0}`} icon={Zap} iconColor="text-cyan-600" iconBg="bg-cyan-50 dark:bg-cyan-500/10" />
+              <KpiCard label="Flows Ativos" value={`${klaviyo?.activeFlows || 0} / ${klaviyo?.flowsCount || 0}`} icon={Zap} iconColor="text-cyan-600" iconBg="bg-cyan-50 dark:bg-cyan-500/10" href="/client/flows" />
             </div>
           )}
         </AnimatedItem>
@@ -447,6 +447,7 @@ function KpiCard({
   iconColor,
   iconBg,
   variation,
+  href,
 }: {
   label: string
   value: string | number
@@ -454,9 +455,10 @@ function KpiCard({
   iconColor: string
   iconBg: string
   variation?: number
+  href?: string
 }) {
-  return (
-    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-4 shadow-sm dark:shadow-slate-900/20 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200">
+  const content = (
+    <div className={`bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-4 shadow-sm dark:shadow-slate-900/20 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200 ${href ? "cursor-pointer hover:border-primary/30 dark:hover:border-primary/30" : ""}`}>
       <div className="flex items-center gap-2 mb-3">
         <div className={`w-7 h-7 rounded-lg ${iconBg} flex items-center justify-center`}>
           <Icon className={`h-3.5 w-3.5 ${iconColor}`} />
@@ -482,4 +484,9 @@ function KpiCard({
       </div>
     </div>
   )
+
+  if (href) {
+    return <Link href={href}>{content}</Link>
+  }
+  return content
 }

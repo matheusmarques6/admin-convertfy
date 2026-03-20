@@ -14,6 +14,8 @@ import {
   BarChart3,
   Zap,
   PenLine,
+  CheckCircle,
+  Clock,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PageHeader } from "@/components/ui/page-header"
@@ -128,6 +130,46 @@ export default function CampaignsCalendarPage() {
           </>
         }
       />
+
+      {/* KPI Summary Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card className="p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-7 h-7 rounded-lg bg-blue-500/10 flex items-center justify-center">
+              <Mail className="h-3.5 w-3.5 text-blue-600" />
+            </div>
+            <span className="text-xs text-muted-foreground font-medium">Total Campanhas</span>
+          </div>
+          <p className="text-xl font-bold">{cal.campaigns.length}</p>
+        </Card>
+        <Card className="p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-7 h-7 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+              <CheckCircle className="h-3.5 w-3.5 text-emerald-600" />
+            </div>
+            <span className="text-xs text-muted-foreground font-medium">Enviadas</span>
+          </div>
+          <p className="text-xl font-bold">{cal.campaigns.filter(c => c.status === "sent").length}</p>
+        </Card>
+        <Card className="p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-7 h-7 rounded-lg bg-amber-500/10 flex items-center justify-center">
+              <Clock className="h-3.5 w-3.5 text-amber-600" />
+            </div>
+            <span className="text-xs text-muted-foreground font-medium">Rascunho</span>
+          </div>
+          <p className="text-xl font-bold">{cal.campaigns.filter(c => c.status === "draft").length}</p>
+        </Card>
+        <Card className="p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-7 h-7 rounded-lg bg-purple-500/10 flex items-center justify-center">
+              <Calendar className="h-3.5 w-3.5 text-purple-600" />
+            </div>
+            <span className="text-xs text-muted-foreground font-medium">Agendadas</span>
+          </div>
+          <p className="text-xl font-bold">{cal.campaigns.filter(c => c.status === "scheduled").length}</p>
+        </Card>
+      </div>
 
       {/* Performance View */}
       {viewMode === "performance" && <CampaignsListView />}

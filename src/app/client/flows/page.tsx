@@ -9,6 +9,7 @@ import {
   TrendingUp,
   Mail,
   DollarSign,
+  X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -29,6 +30,7 @@ export default function PortalFlowsPage() {
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [period, setPeriod] = useState("30d")
+  const [selectedFlow, setSelectedFlow] = useState<{ id: string; name: string; revenue: number; delivered: number; openRate: number; clickRate: number } | null>(null)
 
   const fetchData = useCallback(async (showRefresh = false) => {
     if (showRefresh) setRefreshing(true)
@@ -184,7 +186,7 @@ export default function PortalFlowsPage() {
                     {flows.map((flow, index) => {
                       const revenuePerRecipient = flow.delivered > 0 ? flow.revenue / flow.delivered : 0
                       return (
-                        <tr key={flow.id} className={`border-b border-slate-50 dark:border-slate-700/20 last:border-0 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors ${index === 0 ? "bg-emerald-50/30 dark:bg-emerald-500/5" : ""}`}>
+                        <tr key={flow.id} onClick={() => setSelectedFlow(flow)} className={`border-b border-slate-50 dark:border-slate-700/20 last:border-0 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors cursor-pointer ${index === 0 ? "bg-emerald-50/30 dark:bg-emerald-500/5" : ""}`}>
                           <td className="py-3.5 px-6">
                             <div className="flex items-center gap-2.5">
                               {index < 3 && (
@@ -212,6 +214,55 @@ export default function PortalFlowsPage() {
           </div>
         </AnimatedItem>
       </AnimatedContainer>
+
+      {selectedFlow && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setSelectedFlow(null)}>
+          <div className="bg-white dark:bg-[#151922] rounded-2xl border border-slate-200 dark:border-slate-700/40 shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
+            <div className="p-6 border-b border-slate-100 dark:border-slate-700/30">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-purple-50 dark:bg-purple-500/10 flex items-center justify-center">
+                    <Zap className="h-5 w-5 text-purple-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">{selectedFlow.name}</h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Detalhes do flow no período</p>
+                  </div>
+                </div>
+                <button onClick={() => setSelectedFlow(null)} className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                  <X className="h-4 w-4 text-slate-400" />
+                </button>
+              </div>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-4">
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Entregas</p>
+                  <p className="text-xl font-bold text-slate-800 dark:text-slate-100">{formatNumber(selectedFlow.delivered)}</p>
+                </div>
+                <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-4">
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Receita</p>
+                  <p className="text-xl font-bold text-emerald-600">{formatCurrency(selectedFlow.revenue)}</p>
+                </div>
+                <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-4">
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Taxa de Abertura</p>
+                  <p className="text-xl font-bold text-slate-800 dark:text-slate-100">{selectedFlow.openRate.toFixed(1)}%</p>
+                </div>
+                <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-4">
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Taxa de Clique</p>
+                  <p className="text-xl font-bold text-slate-800 dark:text-slate-100">{selectedFlow.clickRate.toFixed(1)}%</p>
+                </div>
+              </div>
+              <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-4">
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Receita por Destinatário</p>
+                <p className="text-xl font-bold text-slate-800 dark:text-slate-100">
+                  {formatCurrency(selectedFlow.delivered > 0 ? selectedFlow.revenue / selectedFlow.delivered : 0)}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
