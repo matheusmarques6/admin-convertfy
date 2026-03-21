@@ -82,7 +82,7 @@ export default function NotificationsPage() {
   }
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
+    return <div className="flex items-center justify-center h-64"><Icon icon={Loader2} customSize={32} className="animate-spin text-muted-foreground" /></div>
   }
 
   const categories = Object.keys(prefLabels)
@@ -91,14 +91,14 @@ export default function NotificationsPage() {
     <div className="space-y-6">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" asChild>
-          <Link href="/admin/settings"><ArrowLeft className="h-5 w-5" /></Link>
+          <Link href="/admin/settings"><Icon icon={ArrowLeft} size={20} /></Link>
         </Button>
         <p className="text-muted-foreground">Configure suas preferências de notificação</p>
       </div>
 
       <Card className="rounded-xl border bg-card">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Mail className="h-5 w-5" /> Notificações por Email</CardTitle>
+          <CardTitle className="flex items-center gap-2"><Icon icon={Mail} size={20} /> Notificações por Email</CardTitle>
           <CardDescription>Escolha quais eventos geram notificação por email</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -116,7 +116,7 @@ export default function NotificationsPage() {
 
       <Card className="rounded-xl border bg-card">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Smartphone className="h-5 w-5" /> Notificações Push</CardTitle>
+          <CardTitle className="flex items-center gap-2"><Icon icon={Smartphone} size={20} /> Notificações Push</CardTitle>
           <CardDescription>Escolha quais eventos geram notificação push</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

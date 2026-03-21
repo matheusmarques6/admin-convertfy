@@ -6,6 +6,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { ArrowLeft, Loader2, Mail, CheckCircle, AlertTriangle } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -232,9 +233,7 @@ export default function ForgotPasswordPage() {
           <Card className="rounded-xl border-border">
             <CardHeader className="space-y-1 text-center">
               <div className="flex justify-center mb-4">
-                <div className="rounded-full bg-warning/10 p-4">
-                  <AlertTriangle className="h-8 w-8 text-warning" />
-                </div>
+                <Icon icon={AlertTriangle} customSize={32} className="text-warning bg-warning/10 rounded-full" />
               </div>
               <CardTitle className="text-2xl">Limite Diário Atingido</CardTitle>
               <CardDescription className="text-base">
@@ -252,7 +251,7 @@ export default function ForgotPasswordPage() {
             <CardFooter>
               <Button asChild variant="ghost" className="w-full">
                 <Link href="/login">
-                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  <Icon icon={ArrowLeft} size={16} className="mr-2" />
                   Voltar ao login
                 </Link>
               </Button>
@@ -262,9 +261,7 @@ export default function ForgotPasswordPage() {
           <Card className="rounded-xl border-border">
             <CardHeader className="space-y-1 text-center">
               <div className="flex justify-center mb-4">
-                <div className="rounded-full bg-warning/10 p-4">
-                  <AlertTriangle className="h-8 w-8 text-warning" />
-                </div>
+                <Icon icon={AlertTriangle} customSize={32} className="text-warning bg-warning/10 rounded-full" />
               </div>
               <CardTitle className="text-2xl">Muitas Tentativas</CardTitle>
               <CardDescription className="text-base">
@@ -286,7 +283,7 @@ export default function ForgotPasswordPage() {
             <CardFooter>
               <Button asChild variant="ghost" className="w-full">
                 <Link href="/login">
-                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  <Icon icon={ArrowLeft} size={16} className="mr-2" />
                   Voltar ao login
                 </Link>
               </Button>
@@ -296,9 +293,7 @@ export default function ForgotPasswordPage() {
           <Card className="rounded-xl border-border">
             <CardHeader className="space-y-1 text-center">
               <div className="flex justify-center mb-4">
-                <div className="rounded-full bg-success/10 p-4">
-                  <CheckCircle className="h-8 w-8 text-success" />
-                </div>
+                <Icon icon={CheckCircle} customSize={32} className="text-success bg-success/10 rounded-full" />
               </div>
               <CardTitle className="text-2xl">Verifique seu Email</CardTitle>
               <CardDescription className="text-base">
@@ -320,12 +315,12 @@ export default function ForgotPasswordPage() {
                 className="w-full"
                 onClick={handleResend}
               >
-                <Mail className="mr-2 h-4 w-4" />
+                <Icon icon={Mail} size={16} className="mr-2" />
                 Tentar novamente
               </Button>
               <Button asChild variant="ghost" className="w-full">
                 <Link href="/login">
-                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  <Icon icon={ArrowLeft} size={16} className="mr-2" />
                   Voltar ao login
                 </Link>
               </Button>
@@ -363,13 +358,13 @@ export default function ForgotPasswordPage() {
                   variant="gradient"
                   disabled={isLoading}
                 >
-                  {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {isLoading && <Icon icon={Loader2} size={16} className="mr-2 animate-spin" />}
                   Enviar Link de Recuperação
                 </Button>
 
                 <Button asChild variant="ghost" className="w-full">
                   <Link href="/login">
-                    <ArrowLeft className="mr-2 h-4 w-4" />
+                    <Icon icon={ArrowLeft} size={16} className="mr-2" />
                     Voltar ao login
                   </Link>
                 </Button>

@@ -1,6 +1,6 @@
 "use client"
 
-import { Clock, Check, AlertTriangle, FileText } from "lucide-react"
+import { Clock, Check, AlertTriangle, FileText, type LucideIcon } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
 import { ReportHistoryCard } from "./report-history-card"
 import type { ReportJob } from "@/types/report"
@@ -14,7 +14,7 @@ interface ReportHistoryListProps {
 interface Section {
   key: string
   title: string
-  icon: import("lucide-react").LucideIcon
+  icon: LucideIcon
   jobs: ReportJob[]
 }
 

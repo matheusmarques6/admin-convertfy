@@ -3,6 +3,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft, Palette, Moon, Check, Info } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import Link from "next/link"
 import { Logo } from "@/components/ui/logo"
 
@@ -12,7 +13,7 @@ export default function AppearancePage() {
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" asChild>
           <Link href="/admin/settings">
-            <ArrowLeft className="h-5 w-5" />
+            <Icon icon={ArrowLeft} size={20} />
           </Link>
         </Button>
         <p className="text-muted-foreground">Configurações visuais do sistema</p>
@@ -21,7 +22,7 @@ export default function AppearancePage() {
       <Card className="rounded-xl border bg-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Palette className="h-5 w-5" />
+            <Icon icon={Palette} size={20} />
             Tema
           </CardTitle>
           <CardDescription>O sistema utiliza tema escuro por padrão</CardDescription>
@@ -30,12 +31,10 @@ export default function AppearancePage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="relative rounded-lg border-2 border-primary p-4 bg-card">
               <div className="absolute top-2 right-2">
-                <div className="rounded-full bg-primary p-1">
-                  <Check className="h-3 w-3 text-primary-foreground" />
-                </div>
+                <Icon icon={Check} customSize={12} className="text-primary" />
               </div>
               <div className="flex flex-col items-center gap-3">
-                <Moon className="h-8 w-8 text-primary" />
+                <Icon icon={Moon} customSize={32} className="text-primary" />
                 <span className="font-medium">Modo Escuro</span>
                 <span className="text-xs text-muted-foreground text-center">
                   Tema padrão do sistema
@@ -44,7 +43,7 @@ export default function AppearancePage() {
             </div>
           </div>
           <div className="mt-4 flex items-start gap-2 p-3 rounded-lg bg-muted/50">
-            <Info className="h-4 w-4 text-muted-foreground mt-0.5" />
+            <Icon icon={Info} size={16} className="text-muted-foreground mt-0.5" />
             <p className="text-sm text-muted-foreground">
               O Convertfy utiliza exclusivamente o tema escuro para proporcionar
               melhor experiência visual e reduzir a fadiga ocular durante uso prolongado.

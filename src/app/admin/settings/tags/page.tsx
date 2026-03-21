@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ArrowLeft, Tag, Plus, Trash2, Loader2 } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/lib/hooks/use-toast"
@@ -74,14 +75,14 @@ export default function TagsPage() {
   }
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
+    return <div className="flex items-center justify-center h-64"><Icon icon={Loader2} customSize={32} className="animate-spin text-muted-foreground" /></div>
   }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" asChild>
-          <Link href="/admin/settings"><ArrowLeft className="h-5 w-5" /></Link>
+          <Link href="/admin/settings"><Icon icon={ArrowLeft} size={20} /></Link>
         </Button>
         <p className="text-muted-foreground">Gerencie as tags do sistema</p>
       </div>
@@ -89,7 +90,7 @@ export default function TagsPage() {
       <Card className="rounded-xl border bg-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Tag className="h-5 w-5" />
+            <Icon icon={Tag} size={20} />
             Nova Tag
           </CardTitle>
           <CardDescription>Crie tags para organizar clientes e deals</CardDescription>
@@ -122,7 +123,7 @@ export default function TagsPage() {
               </div>
             </div>
             <Button onClick={handleCreate} disabled={!newName.trim()}>
-              <Plus className="mr-2 h-4 w-4" /> Criar
+              <Icon icon={Plus} size={16} className="mr-2" /> Criar
             </Button>
           </div>
         </CardContent>
@@ -146,7 +147,7 @@ export default function TagsPage() {
                     <Badge variant="outline">{tag.category}</Badge>
                   </div>
                   <Button variant="ghost" size="icon" onClick={() => handleDelete(tag.id)}>
-                    <Trash2 className="h-4 w-4 text-destructive" />
+                    <Icon icon={Trash2} size={16} className="text-destructive" />
                   </Button>
                 </div>
               ))}

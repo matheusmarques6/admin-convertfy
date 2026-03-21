@@ -1,7 +1,6 @@
 import { TrendingUp, TrendingDown } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
 import { formatCurrency, formatNumber } from "@/lib/utils/format"
-import type { GlowColor } from "@/components/ui/glow-card"
 
 // Badge de variação (up/down)
 export function VariationBadge({ value, type = "percent" }: { value: number; type?: "percent" | "currency" }) {
@@ -33,7 +32,6 @@ export function MetricCard({
   subtitle?: string
   icon: React.ElementType
   highlight?: boolean
-  glowColor?: GlowColor
 }) {
   return (
     <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-4 shadow-sm dark:shadow-slate-900/20 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200">
@@ -86,7 +84,7 @@ export function ChannelCard({
   title,
   percent,
   value,
-  icon: Icon,
+  icon: IconComponent,
   active = false,
 }: {
   title: string
@@ -103,7 +101,7 @@ export function ChannelCard({
         : "bg-white dark:bg-[#151922] border-slate-200/80 dark:border-slate-700/40 hover:border-slate-300 dark:hover:border-slate-600"
     }`}>
       <div className="flex items-center gap-2 mb-2">
-        <Icon className={`h-4 w-4 ${active ? "text-primary" : "text-slate-400 dark:text-slate-500"}`} />
+        <Icon icon={IconComponent} size={16} className={active ? "text-primary" : "text-slate-400 dark:text-slate-500"} />
         <span className="text-xs text-slate-500 dark:text-slate-400">{title}</span>
       </div>
       <p className="text-2xl font-bold text-slate-800 dark:text-slate-100">

@@ -7,6 +7,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { Eye, EyeOff, Loader2, CheckCircle, AlertTriangle, Check, X } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -108,9 +109,9 @@ function PasswordStrengthIndicator({ password }: { password: string }) {
             }`}
           >
             {rule.met ? (
-              <Check className="h-3 w-3" />
+              <Icon icon={Check} customSize={12} />
             ) : (
-              <X className="h-3 w-3" />
+              <Icon icon={X} customSize={12} />
             )}
             {rule.label}
           </li>
@@ -257,9 +258,7 @@ function ResetPasswordContent() {
           <Card className="rounded-xl border-border">
             <CardHeader className="space-y-1 text-center">
               <div className="flex justify-center mb-4">
-                <div className="rounded-full bg-warning/10 p-4">
-                  <AlertTriangle className="h-8 w-8 text-warning" />
-                </div>
+                <Icon icon={AlertTriangle} customSize={32} className="text-warning bg-warning/10 rounded-full" />
               </div>
               <CardTitle className="text-2xl">Link Expirado</CardTitle>
               <CardDescription className="text-base">
@@ -281,9 +280,7 @@ function ResetPasswordContent() {
           <Card className="rounded-xl border-border">
             <CardHeader className="space-y-1 text-center">
               <div className="flex justify-center mb-4">
-                <div className="rounded-full bg-success/10 p-4">
-                  <CheckCircle className="h-8 w-8 text-success" />
-                </div>
+                <Icon icon={CheckCircle} customSize={32} className="text-success bg-success/10 rounded-full" />
               </div>
               <CardTitle className="text-2xl">Senha Redefinida!</CardTitle>
               <CardDescription className="text-base">
@@ -330,9 +327,9 @@ function ResetPasswordContent() {
                       disabled={isLoading}
                     >
                       {showPassword ? (
-                        <EyeOff className="h-4 w-4 text-muted-foreground" />
+                        <Icon icon={EyeOff} size={16} className="text-muted-foreground" />
                       ) : (
-                        <Eye className="h-4 w-4 text-muted-foreground" />
+                        <Icon icon={Eye} size={16} className="text-muted-foreground" />
                       )}
                     </Button>
                   </div>
@@ -365,9 +362,9 @@ function ResetPasswordContent() {
                       disabled={isLoading}
                     >
                       {showConfirmPassword ? (
-                        <EyeOff className="h-4 w-4 text-muted-foreground" />
+                        <Icon icon={EyeOff} size={16} className="text-muted-foreground" />
                       ) : (
-                        <Eye className="h-4 w-4 text-muted-foreground" />
+                        <Icon icon={Eye} size={16} className="text-muted-foreground" />
                       )}
                     </Button>
                   </div>
@@ -384,7 +381,7 @@ function ResetPasswordContent() {
                   variant="gradient"
                   disabled={isLoading}
                 >
-                  {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {isLoading && <Icon icon={Loader2} size={16} className="mr-2 animate-spin" />}
                   Redefinir Senha
                 </Button>
 
@@ -418,7 +415,7 @@ function ResetPasswordLoading() {
         </div>
         <Card className="border-border/50">
           <CardContent className="flex items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            <Icon icon={Loader2} customSize={32} className="animate-spin text-muted-foreground" />
           </CardContent>
         </Card>
       </div>

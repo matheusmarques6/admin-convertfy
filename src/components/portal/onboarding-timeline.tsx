@@ -77,7 +77,7 @@ export function OnboardingTimeline({ currentPhase, phases }: OnboardingTimelineP
                     ${isFuture ? "bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-400 dark:text-slate-500" : ""}
                   `}
                 >
-                  {isCompleted ? <Check className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
+                  {isCompleted ? <IconWrapper icon={Check} size={20} /> : <IconWrapper icon={PhaseIcon} size={20} />}
                 </div>
                 <span
                   className={`mt-2 text-xs font-medium text-center
@@ -124,7 +124,7 @@ export function OnboardingTimeline({ currentPhase, phases }: OnboardingTimelineP
                   ${isFuture ? "bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-400 dark:text-slate-500" : ""}
                 `}
               >
-                {isCompleted ? <Check className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
+                {isCompleted ? <IconWrapper icon={Check} size={16} /> : <IconWrapper icon={PhaseIcon} size={16} />}
               </div>
               <div className="flex-1">
                 <span className={`text-sm font-medium ${isActive ? "text-blue-700 dark:text-blue-400" : isCompleted ? "text-green-700 dark:text-green-400" : "text-slate-400 dark:text-slate-500"}`}>

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import Image from "next/image"
 import { Eye, EyeOff, Loader2 } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -177,7 +178,7 @@ export default function PortalLoginPage() {
                     onClick={() => setShowPassword(!showPassword)}
                     disabled={loading}
                   >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    {showPassword ? <Icon icon={EyeOff} size={16} /> : <Icon icon={Eye} size={16} />}
                   </Button>
                 </div>
               </div>
@@ -189,7 +190,7 @@ export default function PortalLoginPage() {
               >
                 {loading ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <Icon icon={Loader2} size={16} className="mr-2 animate-spin" />
                     Entrando...
                   </>
                 ) : (

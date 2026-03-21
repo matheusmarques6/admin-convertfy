@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ArrowLeft, Building, Loader2, Save } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/lib/hooks/use-toast"
@@ -67,7 +68,7 @@ export default function CompanyPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <Icon icon={Loader2} customSize={32} className="animate-spin text-muted-foreground" />
       </div>
     )
   }
@@ -76,7 +77,7 @@ export default function CompanyPage() {
     <div className="space-y-6">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" asChild>
-          <Link href="/admin/settings"><ArrowLeft className="h-5 w-5" /></Link>
+          <Link href="/admin/settings"><Icon icon={ArrowLeft} size={20} /></Link>
         </Button>
         <p className="text-muted-foreground">Configure as informações da sua empresa</p>
       </div>
@@ -84,7 +85,7 @@ export default function CompanyPage() {
       <Card className="rounded-xl border bg-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Building className="h-5 w-5" />
+            <Icon icon={Building} size={20} />
             Dados da Empresa
           </CardTitle>
           <CardDescription>Informações que aparecem em relatórios e documentos</CardDescription>
@@ -126,7 +127,7 @@ export default function CompanyPage() {
           </div>
           <div className="flex justify-end pt-4">
             <Button onClick={handleSave} disabled={saving}>
-              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+              {saving ? <Icon icon={Loader2} size={16} className="mr-2 animate-spin" /> : <Icon icon={Save} size={16} className="mr-2" />}
               Salvar
             </Button>
           </div>

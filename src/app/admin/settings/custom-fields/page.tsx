@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { ArrowLeft, Layers, Plus, Trash2, Loader2 } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/lib/hooks/use-toast"
@@ -91,21 +92,21 @@ export default function CustomFieldsPage() {
   }
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
+    return <div className="flex items-center justify-center h-64"><Icon icon={Loader2} customSize={32} className="animate-spin text-muted-foreground" /></div>
   }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" asChild>
-          <Link href="/admin/settings"><ArrowLeft className="h-5 w-5" /></Link>
+          <Link href="/admin/settings"><Icon icon={ArrowLeft} size={20} /></Link>
         </Button>
         <p className="text-muted-foreground">Crie campos extras para clientes e deals</p>
       </div>
 
       <Card className="rounded-xl border bg-card">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Layers className="h-5 w-5" /> Novo Campo</CardTitle>
+          <CardTitle className="flex items-center gap-2"><Icon icon={Layers} size={20} /> Novo Campo</CardTitle>
           <CardDescription>Adicione campos customizados às suas entidades</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -148,7 +149,7 @@ export default function CustomFieldsPage() {
             <Label>Campo obrigatório</Label>
           </div>
           <Button onClick={handleCreate} disabled={!name.trim()}>
-            <Plus className="mr-2 h-4 w-4" /> Criar Campo
+            <Icon icon={Plus} size={16} className="mr-2" /> Criar Campo
           </Button>
         </CardContent>
       </Card>
@@ -173,7 +174,7 @@ export default function CustomFieldsPage() {
                     {field.options && <span className="text-xs text-muted-foreground">({field.options.join(", ")})</span>}
                   </div>
                   <Button variant="ghost" size="icon" onClick={() => handleDelete(field.id)}>
-                    <Trash2 className="h-4 w-4 text-destructive" />
+                    <Icon icon={Trash2} size={16} className="text-destructive" />
                   </Button>
                 </div>
               ))}

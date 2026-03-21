@@ -7,6 +7,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { Eye, EyeOff, Loader2 } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -150,9 +151,9 @@ export default function RegisterPage() {
                     disabled={isLoading}
                   >
                     {showPassword ? (
-                      <EyeOff className="h-4 w-4 text-muted-foreground" />
+                      <Icon icon={EyeOff} size={16} className="text-muted-foreground" />
                     ) : (
-                      <Eye className="h-4 w-4 text-muted-foreground" />
+                      <Icon icon={Eye} size={16} className="text-muted-foreground" />
                     )}
                   </Button>
                 </div>
@@ -183,7 +184,7 @@ export default function RegisterPage() {
                 variant="gradient"
                 disabled={isLoading}
               >
-                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {isLoading && <Icon icon={Loader2} size={16} className="mr-2 animate-spin" />}
                 Criar conta
               </Button>
 

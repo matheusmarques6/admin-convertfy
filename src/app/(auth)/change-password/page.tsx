@@ -5,6 +5,7 @@ import { z } from "zod"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { Lock, Loader2, Eye, EyeOff } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -89,9 +90,7 @@ export default function ChangePasswordPage() {
     <div className="min-h-screen flex items-center justify-center p-4">
       <Card className="w-full max-w-md rounded-xl border-border">
         <CardHeader className="space-y-1 text-center">
-          <div className="mx-auto mb-4 rounded-full bg-primary/10 p-3 w-fit">
-            <Lock className="h-6 w-6 text-primary" />
-          </div>
+          <Icon icon={Lock} size={24} className="text-primary bg-primary/10 rounded-full mx-auto mb-4" />
           <CardTitle className="text-2xl">Alterar Senha</CardTitle>
           <CardDescription>
             Por segurança, você precisa criar uma nova senha para acessar o sistema.
@@ -117,9 +116,9 @@ export default function ChangePasswordPage() {
                   onClick={() => setShowNewPassword(!showNewPassword)}
                 >
                   {showNewPassword ? (
-                    <EyeOff className="h-4 w-4 text-muted-foreground" />
+                    <Icon icon={EyeOff} size={16} className="text-muted-foreground" />
                   ) : (
-                    <Eye className="h-4 w-4 text-muted-foreground" />
+                    <Icon icon={Eye} size={16} className="text-muted-foreground" />
                   )}
                 </Button>
               </div>
@@ -146,9 +145,9 @@ export default function ChangePasswordPage() {
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                 >
                   {showConfirmPassword ? (
-                    <EyeOff className="h-4 w-4 text-muted-foreground" />
+                    <Icon icon={EyeOff} size={16} className="text-muted-foreground" />
                   ) : (
-                    <Eye className="h-4 w-4 text-muted-foreground" />
+                    <Icon icon={Eye} size={16} className="text-muted-foreground" />
                   )}
                 </Button>
               </div>
@@ -168,7 +167,7 @@ export default function ChangePasswordPage() {
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Icon icon={Loader2} size={16} className="mr-2 animate-spin" />
                   Alterando...
                 </>
               ) : (

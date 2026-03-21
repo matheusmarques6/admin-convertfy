@@ -1,5 +1,6 @@
 import { Metadata } from "next"
 import { Rocket, Clock, CheckCircle2 } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { PagePermissionWrapper } from "@/components/page-permission-wrapper"
 import { PageHeader } from "@/components/ui/page-header"
 import { OnboardingTabs } from "@/components/onboarding/onboarding-tabs"
@@ -20,11 +21,11 @@ export default function OnboardingPage() {
         actions={
           <div className="hidden sm:flex items-center gap-4 text-sm">
             <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-amber-400" />
+              <Icon icon={Clock} size={16} className="text-amber-400" />
               <span className="text-muted-foreground">Arraste para mover entre etapas</span>
             </div>
             <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              <Icon icon={CheckCircle2} size={16} className="text-emerald-400" />
               <span className="text-muted-foreground">Conclusão agenda feedback em 30 dias</span>
             </div>
           </div>

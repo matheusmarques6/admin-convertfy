@@ -2,6 +2,7 @@
 
 import { useEffect } from "react"
 import { AlertTriangle, RefreshCw, Home } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 
 export default function GlobalError({
@@ -17,7 +18,7 @@ export default function GlobalError({
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-background p-8 text-center">
-      <AlertTriangle className="h-16 w-16 text-destructive mb-6" />
+      <Icon icon={AlertTriangle} customSize={64} className="text-destructive mb-6" />
       <h1 className="text-2xl font-bold mb-2">Erro Inesperado</h1>
       <p className="text-muted-foreground mb-8 max-w-lg">
         Ocorreu um erro ao carregar esta página. Se o problema persistir, entre em contato com o suporte.
@@ -29,12 +30,12 @@ export default function GlobalError({
       )}
       <div className="flex gap-3">
         <Button onClick={reset} variant="default">
-          <RefreshCw className="h-4 w-4 mr-2" />
+          <Icon icon={RefreshCw} size={16} className="mr-2" />
           Tentar novamente
         </Button>
         <Button variant="outline" asChild>
           <a href="/admin/dashboard">
-            <Home className="h-4 w-4 mr-2" />
+            <Icon icon={Home} size={16} className="mr-2" />
             Voltar ao início
           </a>
         </Button>

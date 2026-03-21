@@ -4,6 +4,7 @@ import { useState, useCallback } from "react"
 import useSWR from "swr"
 import { useRouter } from "next/navigation"
 import { FileBarChart, ExternalLink, Loader2 } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { PageHeader } from "@/components/ui/page-header"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -96,7 +97,7 @@ export default function ReportJobsPage() {
         description="Acompanhe relatorios gerados, pendentes e com falhas"
         actions={
           <Button onClick={() => router.push(ROUTES.ADMIN.STORES.LIST)}>
-            <ExternalLink className="h-4 w-4 mr-2" />
+            <Icon icon={ExternalLink} size={16} className="mr-2" />
             Gerar via Painel de Lojas
           </Button>
         }
@@ -126,7 +127,7 @@ export default function ReportJobsPage() {
           {hasMore && (
             <div className="flex justify-center pt-4">
               <Button variant="outline" onClick={loadMore} disabled={isLoadingMore}>
-                {isLoadingMore && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                {isLoadingMore && <Icon icon={Loader2} size={16} className="mr-2 animate-spin" />}
                 Carregar mais
               </Button>
             </div>

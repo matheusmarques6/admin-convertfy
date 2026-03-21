@@ -7,6 +7,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { Eye, EyeOff, Loader2, AlertTriangle, ArrowLeft } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -117,9 +118,7 @@ export default function LoginPage() {
           <Card className="rounded-xl border-border">
             <CardHeader className="space-y-1 text-center">
               <div className="flex justify-center mb-4">
-                <div className="rounded-full bg-warning/10 p-4">
-                  <AlertTriangle className="h-8 w-8 text-warning" />
-                </div>
+                <Icon icon={AlertTriangle} customSize={32} className="text-warning bg-warning/10 rounded-full" />
               </div>
               <CardTitle className="text-2xl">Conta Temporariamente Bloqueada</CardTitle>
               <CardDescription className="text-base">
@@ -149,7 +148,7 @@ export default function LoginPage() {
                 className="w-full"
                 onClick={() => setIsRateLimited(false)}
               >
-                <ArrowLeft className="mr-2 h-4 w-4" />
+                <Icon icon={ArrowLeft} size={16} className="mr-2" />
                 Tentar novamente
               </Button>
             </CardFooter>
@@ -205,9 +204,9 @@ export default function LoginPage() {
                       disabled={isLoading}
                     >
                       {showPassword ? (
-                        <EyeOff className="h-4 w-4 text-muted-foreground" />
+                        <Icon icon={EyeOff} size={16} className="text-muted-foreground" />
                       ) : (
-                        <Eye className="h-4 w-4 text-muted-foreground" />
+                        <Icon icon={Eye} size={16} className="text-muted-foreground" />
                       )}
                     </Button>
                   </div>
@@ -224,7 +223,7 @@ export default function LoginPage() {
                   variant="gradient"
                   disabled={isLoading}
                 >
-                  {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {isLoading && <Icon icon={Loader2} size={16} className="mr-2 animate-spin" />}
                   Entrar
                 </Button>
 

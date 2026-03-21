@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ArrowLeft, Mail, Plus, Trash2, Loader2, Edit2, X } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/lib/hooks/use-toast"
@@ -100,18 +101,18 @@ export default function EmailTemplatesPage() {
   }
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
+    return <div className="flex items-center justify-center h-64"><Icon icon={Loader2} customSize={32} className="animate-spin text-muted-foreground" /></div>
   }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" asChild>
-          <Link href="/admin/settings"><ArrowLeft className="h-5 w-5" /></Link>
+          <Link href="/admin/settings"><Icon icon={ArrowLeft} size={20} /></Link>
         </Button>
         <p className="text-muted-foreground">Crie e edite templates de email</p>
         <div className="ml-auto">
-          <Button onClick={startNew}><Plus className="mr-2 h-4 w-4" /> Novo Template</Button>
+          <Button onClick={startNew}><Icon icon={Plus} size={16} className="mr-2" /> Novo Template</Button>
         </div>
       </div>
 
@@ -119,7 +120,7 @@ export default function EmailTemplatesPage() {
         {/* Lista */}
         <Card className="rounded-xl border bg-card lg:col-span-1">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Mail className="h-5 w-5" /> Templates</CardTitle>
+            <CardTitle className="flex items-center gap-2"><Icon icon={Mail} size={20} /> Templates</CardTitle>
             <CardDescription>{templates.length} template(s)</CardDescription>
           </CardHeader>
           <CardContent>
@@ -135,10 +136,10 @@ export default function EmailTemplatesPage() {
                       <span className="font-medium text-sm">{tmpl.name}</span>
                       <div className="flex gap-1">
                         <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); startEdit(tmpl) }}>
-                          <Edit2 className="h-3 w-3" />
+                          <Icon icon={Edit2} customSize={12} />
                         </Button>
                         <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); handleDelete(tmpl.id) }}>
-                          <Trash2 className="h-3 w-3 text-destructive" />
+                          <Icon icon={Trash2} customSize={12} className="text-destructive" />
                         </Button>
                       </div>
                     </div>
@@ -156,7 +157,7 @@ export default function EmailTemplatesPage() {
             <CardTitle>{isNew ? "Novo Template" : editing ? `Editando: ${editing.name}` : "Editor"}</CardTitle>
             {(isNew || editing) && (
               <Button variant="ghost" size="icon" className="absolute right-4 top-4" onClick={cancelEdit}>
-                <X className="h-4 w-4" />
+                <Icon icon={X} size={16} />
               </Button>
             )}
           </CardHeader>

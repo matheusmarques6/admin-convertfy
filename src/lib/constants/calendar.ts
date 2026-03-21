@@ -1,5 +1,6 @@
 import { Mail, MessageSquare, Send } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 
 // ============================================
 // TYPES

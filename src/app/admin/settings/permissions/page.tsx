@@ -3,6 +3,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft, Key, ShieldCheck, ShieldAlert, Shield, Eye } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import Link from "next/link"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
@@ -56,7 +57,7 @@ export default function PermissionsPage() {
     <div className="space-y-6">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" asChild>
-          <Link href="/admin/settings"><ArrowLeft className="h-5 w-5" /></Link>
+          <Link href="/admin/settings"><Icon icon={ArrowLeft} size={20} /></Link>
         </Button>
         <p className="text-muted-foreground">Visualize as permissões por cargo</p>
       </div>
@@ -64,7 +65,7 @@ export default function PermissionsPage() {
       <Card className="rounded-xl border bg-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Key className="h-5 w-5" />
+            <Icon icon={Key} size={20} />
             Matriz de Permissões
           </CardTitle>
           <CardDescription>
@@ -80,7 +81,7 @@ export default function PermissionsPage() {
                 {roles.map((role) => (
                   <TableHead key={role.name} className="text-center">
                     <div className="flex items-center justify-center gap-1">
-                      <role.icon className="h-4 w-4" />
+                      <Icon icon={role.icon} size={16} />
                       <Badge variant={role.color}>{role.name}</Badge>
                     </div>
                   </TableHead>

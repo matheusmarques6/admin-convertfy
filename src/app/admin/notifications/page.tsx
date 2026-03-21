@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { Bell, Check, CheckCheck, Trash2, Loader2, Info, AlertTriangle, XCircle, PartyPopper } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -13,13 +14,13 @@ import { toast } from "@/lib/hooks/use-toast"
 function getNotificationIcon(type: string) {
   switch (type) {
     case "success":
-      return <PartyPopper className="h-4 w-4 text-success" />
+      return <Icon icon={PartyPopper} size={16} className="text-success" />
     case "warning":
-      return <AlertTriangle className="h-4 w-4 text-warning" />
+      return <Icon icon={AlertTriangle} size={16} className="text-warning" />
     case "error":
-      return <XCircle className="h-4 w-4 text-destructive" />
+      return <Icon icon={XCircle} size={16} className="text-destructive" />
     default:
-      return <Info className="h-4 w-4 text-info" />
+      return <Icon icon={Info} size={16} className="text-info" />
   }
 }
 
@@ -104,8 +105,8 @@ export default function NotificationsPage() {
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/10 shrink-0">
-            <Bell className="w-5 h-5 text-primary" />
+          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/10">
+            <Icon icon={Bell} size={20} className="text-primary" />
           </div>
           <div>
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Notificações</h1>
@@ -116,7 +117,7 @@ export default function NotificationsPage() {
         </div>
         {unreadCount > 0 && (
           <Button variant="outline" size="sm" onClick={handleMarkAllAsRead} className="self-end sm:self-auto">
-            <CheckCheck className="mr-2 h-4 w-4" />
+            <Icon icon={CheckCheck} size={16} className="mr-2" />
             Marcar todas como lidas
           </Button>
         )}
@@ -125,7 +126,7 @@ export default function NotificationsPage() {
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
           <TabsTrigger value="all" className="gap-2">
-            <Bell className="h-4 w-4" />
+            <Icon icon={Bell} size={16} />
             Todas
             <Badge variant="secondary" className="ml-1">{notifications.length}</Badge>
           </TabsTrigger>
@@ -140,12 +141,12 @@ export default function NotificationsPage() {
         <TabsContent value={tab} className="mt-4">
           {isLoading ? (
             <div className="flex items-center justify-center py-16">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              <Icon icon={Loader2} size={24} className="animate-spin text-muted-foreground" />
             </div>
           ) : filtered.length === 0 ? (
             <Card className="border-dashed">
               <CardContent className="flex flex-col items-center justify-center py-12">
-                <Bell className="h-10 w-10 text-muted-foreground/50 mb-3" />
+                <Icon icon={Bell} customSize={40} className="text-muted-foreground/50 mb-3" />
                 <p className="text-lg font-medium">
                   {tab === "unread" ? "Nenhuma notificação não lida" : "Nenhuma notificação"}
                 </p>
@@ -192,7 +193,7 @@ export default function NotificationsPage() {
                           onClick={() => handleMarkAsRead(notification.id)}
                           title="Marcar como lida"
                         >
-                          <Check className="h-4 w-4" />
+                          <Icon icon={Check} size={16} />
                         </Button>
                       )}
                       <Button
@@ -202,7 +203,7 @@ export default function NotificationsPage() {
                         onClick={() => handleDelete(notification.id)}
                         title="Remover"
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Icon icon={Trash2} size={16} />
                       </Button>
                     </div>
                   </CardContent>
