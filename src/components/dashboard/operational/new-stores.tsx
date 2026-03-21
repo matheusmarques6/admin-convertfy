@@ -70,7 +70,7 @@ export function NewStores({ stores }: NewStoresProps) {
             <CardTitle className="text-sm font-medium text-foreground">Lojas para Implementação</CardTitle>
           </div>
           {stores.length > 0 && (
-            <Badge variant="neutral" className="rounded-full text-xs">
+            <Badge variant="neutral" className="text-xs">
               {stores.length}
             </Badge>
           )}

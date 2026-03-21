@@ -235,7 +235,7 @@ function StatCard({
   )
 
   return (
-    <div className="bg-card rounded-xl border border-border shadow-sm p-5 hover:shadow-md transition-shadow">
+    <div className="bg-card rounded-xl border border-border p-5 hover:shadow-md transition-shadow">
       {content}
     </div>
   )
@@ -413,7 +413,7 @@ function InvoiceRow({ invoice, onClick }: { invoice: Invoice; onClick: () => voi
   return (
     <div
       onClick={isLocalPending ? undefined : onClick}
-      className={`flex items-center gap-4 p-4 rounded-xl bg-card border border-border transition-all group shadow-sm ${
+      className={`flex items-center gap-4 p-4 rounded-xl bg-card border border-border transition-all group ${
         isLocalPending ? "cursor-default" : "hover:bg-accent/50 cursor-pointer"
       }`}
     >
@@ -741,7 +741,7 @@ export default function PortalInvoicesPage() {
 
         {/* ========== NO PENDING INVOICES MESSAGE ========== */}
         {!nextInvoice && stats && stats.pending === 0 && stats.overdue === 0 && (
-          <div className="rounded-2xl bg-card border border-emerald-200 dark:border-emerald-500/20 shadow-sm p-8 text-center">
+          <div className="rounded-2xl bg-card border border-emerald-200 dark:border-emerald-500/20 p-8 text-center">
             <div className="rounded-full bg-emerald-50 dark:bg-emerald-500/10 p-4 w-fit mx-auto mb-4">
               <CheckCircle className="h-10 w-10 text-emerald-600" />
             </div>
@@ -793,7 +793,7 @@ export default function PortalInvoicesPage() {
         )}
 
         {/* ========== FILTERS ========== */}
-        <div className="bg-card rounded-xl border border-border shadow-sm p-4">
+        <div className="bg-card rounded-xl border border-border p-4">
           <div className="flex flex-col gap-4 md:flex-row md:items-center">
             <div className="flex-1">
               <div className="relative">
@@ -840,7 +840,7 @@ export default function PortalInvoicesPage() {
           <h2 className="text-[15px] font-semibold text-foreground">Histórico de Faturas</h2>
 
           {historyInvoices.length === 0 ? (
-            <div className="bg-card rounded-xl border border-border shadow-sm p-12 text-center">
+            <div className="bg-card rounded-xl border border-border p-12 text-center">
               <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
               <p className="text-lg font-medium text-muted-foreground mb-1">
                 Nenhuma fatura encontrada
@@ -869,7 +869,7 @@ export default function PortalInvoicesPage() {
         </div>
 
         {/* ========== PAYMENT INFO ========== */}
-        <div className="bg-card rounded-xl border border-border shadow-sm p-6">
+        <div className="bg-card rounded-xl border border-border p-6">
           <h3 className="text-[15px] font-semibold text-foreground mb-4">
             Informações de Pagamento
           </h3>

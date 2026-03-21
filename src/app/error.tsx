@@ -29,7 +29,7 @@ export default function GlobalError({
         </p>
       )}
       <div className="flex gap-3">
-        <Button onClick={reset} variant="default">
+        <Button onClick={reset} variant="primary">
           <Icon icon={RefreshCw} size={16} className="mr-2" />
           Tentar novamente
         </Button>

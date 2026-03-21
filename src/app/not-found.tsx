@@ -12,7 +12,7 @@ export default function NotFound() {
         A página que você está procurando não existe ou foi movida.
       </p>
       <div className="flex gap-3">
-        <Button variant="default" asChild>
+        <Button variant="primary" asChild>
           <a href="/admin/dashboard">
             <Icon icon={Home} size={16} className="mr-2" />
             Ir para o Dashboard

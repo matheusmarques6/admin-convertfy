@@ -368,7 +368,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
                 {/* Actions */}
                 <div className="flex gap-2">
                   <Button
-                    variant="default"
+                    variant="primary"
                     size="sm"
                     className="flex-1"
                     onClick={() => router.push(`/admin/stores/${store.id}`)}

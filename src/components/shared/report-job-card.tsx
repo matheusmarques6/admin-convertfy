@@ -203,7 +203,7 @@ export function ReportJobCard({
           <div className="flex items-center gap-2">
             <Button
               size="sm"
-              variant="default"
+              variant="primary"
               className="h-7 text-xs"
               onClick={() => router.push(`/admin/report-jobs/${job.id}`)}
             >
@@ -249,7 +249,7 @@ export function ReportJobCard({
             {isPartial && (
               <Button
                 size="sm"
-                variant="default"
+                variant="primary"
                 className="h-7 text-xs"
                 onClick={() => router.push(`/admin/report-jobs/${job.id}`)}
               >

@@ -405,7 +405,7 @@ export default function PortalDashboardPage() {
         <AnimatedItem>
           <button
             onClick={() => setShowAnalytics(!showAnalytics)}
-            className="w-full flex items-center justify-between p-4 rounded-xl border border-slate-200/80 dark:border-slate-700/40 bg-white dark:bg-slate-800/40 transition-all duration-200 hover:shadow-sm hover:border-slate-300 dark:hover:border-slate-600 group"
+            className="w-full flex items-center justify-between p-4 rounded-xl border border-slate-200/80 dark:border-slate-700/40 bg-white dark:bg-slate-800/40 transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-600 group"
           >
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -484,7 +484,7 @@ function KpiCard({
   href?: string
 }) {
   const content = (
-    <div className={`group rounded-xl border border-slate-200/80 dark:border-slate-700/40 bg-white dark:bg-slate-800/40 p-4 transition-all duration-200 hover:shadow-sm hover:border-slate-300 dark:hover:border-slate-600 ${href ? "cursor-pointer" : ""}`}>
+    <div className={`group rounded-xl border border-slate-200/80 dark:border-slate-700/40 bg-white dark:bg-slate-800/40 p-4 transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-600 ${href ? "cursor-pointer" : ""}`}>
       <div className="flex items-center gap-2 mb-3">
         <div className={`w-7 h-7 rounded-lg ${bgClass} flex items-center justify-center`}>
           <Icon className={`h-3.5 w-3.5 ${accentClass}`} />

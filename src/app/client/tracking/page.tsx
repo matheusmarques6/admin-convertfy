@@ -330,7 +330,7 @@ export default function PortalTrackingPage() {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[50vh]">
-        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200 dark:border-slate-700/40 p-8 text-center max-w-sm shadow-sm">
+        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200 dark:border-slate-700/40 p-8 text-center max-w-sm">
           <AlertCircle className="h-10 w-10 text-red-500 mx-auto mb-3" />
           <p className="text-sm text-slate-600 dark:text-slate-300 mb-4">{error}</p>
           <Button onClick={() => fetchStoreData()} size="sm" className="bg-primary hover:bg-primary/85 text-white">Tentar novamente</Button>
@@ -354,7 +354,7 @@ export default function PortalTrackingPage() {
               ? "Conecte a Shopify na página de Integrações para ativar o rastreamento."
               : "Ative o rastreamento na página de Integrações para começar a acompanhar seus pedidos."}
           </p>
-          <Button asChild className="bg-primary hover:bg-primary/85 text-white shadow-sm">
+          <Button asChild className="bg-primary hover:bg-primary/85 text-white">
             <Link href="/client/integrations">
               Ir para Integrações
               <ArrowRight className="h-4 w-4 ml-2" />
