@@ -274,7 +274,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
             <p className="text-muted-foreground text-center mt-1">
               {loadError}
             </p>
-            <Button variant="outline" onClick={loadStores} className="mt-4">
+            <Button variant="secondary" onClick={loadStores} className="mt-4">
               <RefreshCw className="mr-2 h-4 w-4" />
               Tentar novamente
             </Button>
@@ -377,7 +377,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
                     Ir para Loja
                   </Button>
                   <Button
-                    variant="outline"
+                    variant="secondary"
                     size="sm"
                     className="flex-1"
                     onClick={() => openDialog(store)}
@@ -386,7 +386,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
                     Editar
                   </Button>
                   <Button
-                    variant="outline"
+                    variant="secondary"
                     size="sm"
                     className="text-destructive hover:text-destructive"
                     onClick={() => setDeleteStore(store)}
@@ -490,7 +490,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+            <Button variant="secondary" onClick={() => setDialogOpen(false)}>
               Cancelar
             </Button>
             <Button onClick={handleSave} disabled={isSaving}>

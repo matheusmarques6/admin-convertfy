@@ -352,7 +352,7 @@ export function KlaviyoFullscreenReport({ storeId, storeName, period }: KlaviyoF
           <p className="text-sm text-muted-foreground">{errorMessage}</p>
         </div>
         <div className="flex gap-3">
-          <Button variant="outline" onClick={() => router.back()}>
+          <Button variant="secondary" onClick={() => router.back()}>
             <ArrowLeft className="w-4 h-4 mr-2" />Voltar
           </Button>
           <Button onClick={() => { mutateKlaviyo(); mutateShopify() }}>
@@ -424,7 +424,7 @@ export function KlaviyoFullscreenReport({ storeId, storeName, period }: KlaviyoF
           <span className="text-sm text-muted-foreground">{getFormattedDateRange()}</span>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="outline" size="icon" onClick={() => { mutateKlaviyo(); mutateShopify() }} disabled={isLoading} className="bg-card border-border h-9 w-9">
+          <Button variant="secondary" size="icon" onClick={() => { mutateKlaviyo(); mutateShopify() }} disabled={isLoading} className="bg-card border-border h-9 w-9">
             <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
           </Button>
           <Button onClick={handleExportPDF} disabled={isExporting} className="bg-primary hover:bg-primary/90 h-9 px-4">

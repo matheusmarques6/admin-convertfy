@@ -568,7 +568,7 @@ export function ReportsList({
                 />
               </div>
               <Button
-                variant="outline"
+                variant="secondary"
                 onClick={() => setShowFilters(!showFilters)}
                 className={hasActiveFilters ? "border-primary" : ""}
               >
@@ -696,7 +696,7 @@ export function ReportsList({
             </p>
             <div className="flex gap-2 mt-4">
               {monthFilter !== "all" && (
-                <Button variant="outline" onClick={() => setMonthFilter("all")}>
+                <Button variant="secondary" onClick={() => setMonthFilter("all")}>
                   Ver todos os meses
                 </Button>
               )}
@@ -839,13 +839,13 @@ export function ReportsList({
 
                         {/* Actions */}
                         <div className="flex gap-2">
-                          <Button variant="outline" size="sm" className="flex-1" asChild>
+                          <Button variant="secondary" size="sm" className="flex-1" asChild>
                             <Link href={`/admin/reports/${report.id}`}>
                               <Eye className="mr-2 h-3 w-3" />
                               Ver
                             </Link>
                           </Button>
-                          <Button variant="outline" size="sm" asChild>
+                          <Button variant="secondary" size="sm" asChild>
                             <Link href={`/admin/reports/${report.id}/edit`}>
                               <Pencil className="h-3 w-3" />
                             </Link>

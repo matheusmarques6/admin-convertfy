@@ -546,7 +546,7 @@ function CampaignsTab({
             endDate={customEnd}
             onApply={onCustomDateApply}
           />
-          <Button variant="outline" size="sm" onClick={onRefresh} disabled={refreshing}>
+          <Button variant="secondary" size="sm" onClick={onRefresh} disabled={refreshing}>
             <RefreshCw className={`h-4 w-4 mr-1 ${refreshing ? "animate-spin" : ""}`} />
             Atualizar
           </Button>
@@ -651,7 +651,7 @@ function FlowsTab({
         <div className="flex items-center gap-3">
           <h3 className="text-lg font-semibold">Flows Klaviyo</h3>
           {driveFolderUrl && (
-            <Button variant="outline" size="sm" asChild>
+            <Button variant="secondary" size="sm" asChild>
               <a href={driveFolderUrl} target="_blank" rel="noopener noreferrer">
                 <Link2 className="h-4 w-4 mr-1" />
                 Pasta de Copys
@@ -675,7 +675,7 @@ function FlowsTab({
             endDate={customEnd}
             onApply={onCustomDateApply}
           />
-          <Button variant="outline" size="sm" onClick={onRefresh} disabled={refreshing}>
+          <Button variant="secondary" size="sm" onClick={onRefresh} disabled={refreshing}>
             <RefreshCw className={`h-4 w-4 mr-1 ${refreshing ? "animate-spin" : ""}`} />
             Atualizar
           </Button>

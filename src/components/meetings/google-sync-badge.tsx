@@ -91,7 +91,7 @@ export function MeetingJoinButton({
   const label = isGoogleMeet ? "Entrar na reuniao" : "Entrar"
 
   return (
-    <Button variant="outline" size={size} className={className} asChild>
+    <Button variant="secondary" size={size} className={className} asChild>
       <a href={meetingUrl} target="_blank" rel="noopener noreferrer">
         <Icon className={cn("h-3 w-3", size === "sm" ? "mr-1" : "mr-2")} />
         {label}
@@ -147,7 +147,7 @@ export function RetrySyncButton({
 
   return (
     <Button
-      variant="outline"
+      variant="secondary"
       size="sm"
       className={cn("gap-1", className)}
       onClick={handleRetry}

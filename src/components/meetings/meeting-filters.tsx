@@ -116,7 +116,7 @@ export function MeetingFilters({
       {filters.period === "custom" && (
         <Popover open={showCustomDate} onOpenChange={setShowCustomDate}>
           <PopoverTrigger asChild>
-            <Button variant="outline" size="sm" className="h-8 text-xs gap-1">
+            <Button variant="secondary" size="sm" className="h-8 text-xs gap-1">
               <Icon icon={CalendarIcon} customSize={12} />
               {filters.customDateStart && filters.customDateEnd
                 ? `${format(filters.customDateStart, "dd/MM")} - ${format(filters.customDateEnd, "dd/MM")}`

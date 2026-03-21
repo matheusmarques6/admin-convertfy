@@ -297,7 +297,7 @@ export function StoreTrackingTab({ storeId }: StoreTrackingTabProps) {
                 </pre>
                 <Button
                   size="sm"
-                  variant="outline"
+                  variant="secondary"
                   className="absolute top-2 right-2"
                   onClick={handleCopySnippet}
                 >
@@ -314,7 +314,7 @@ export function StoreTrackingTab({ storeId }: StoreTrackingTabProps) {
                 <CardTitle className="text-base">Estatísticas</CardTitle>
                 <Button
                   size="sm"
-                  variant="outline"
+                  variant="secondary"
                   onClick={handleSync}
                   disabled={syncing || !enabled}
                 >
@@ -347,7 +347,7 @@ export function StoreTrackingTab({ storeId }: StoreTrackingTabProps) {
 
           {/* Preview toggle */}
           <Button
-            variant="outline"
+            variant="secondary"
             className="w-full"
             onClick={() => setShowPreview(!showPreview)}
           >

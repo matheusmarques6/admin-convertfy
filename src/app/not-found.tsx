@@ -18,7 +18,7 @@ export default function NotFound() {
             Ir para o Dashboard
           </a>
         </Button>
-        <Button variant="outline" asChild>
+        <Button variant="secondary" asChild>
           <a href="javascript:history.back()">
             <Icon icon={ArrowLeft} size={16} className="mr-2" />
             Voltar

@@ -587,7 +587,7 @@ export default function ProfilePage() {
             <div className="md:col-span-3">
               <Button
                 type="submit"
-                variant="outline"
+                variant="secondary"
                 disabled={changingPassword || !currentPassword || !newPassword || !confirmPassword}
               >
                 {changingPassword ? (

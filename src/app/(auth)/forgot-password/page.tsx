@@ -311,7 +311,7 @@ export default function ForgotPasswordPage() {
             </CardContent>
             <CardFooter className="flex flex-col space-y-4">
               <Button
-                variant="outline"
+                variant="secondary"
                 className="w-full"
                 onClick={handleResend}
               >

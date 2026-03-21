@@ -319,7 +319,7 @@ export function CampaignsListView() {
           }}
         />
 
-        <Button variant="outline" size="sm" onClick={() => fetchData(true)} disabled={refreshing}>
+        <Button variant="secondary" size="sm" onClick={() => fetchData(true)} disabled={refreshing}>
           <RefreshCw className={`h-4 w-4 mr-1 ${refreshing ? "animate-spin" : ""}`} />
           Atualizar
         </Button>

@@ -72,7 +72,7 @@ export default async function ClientPage({
         ]}
         actions={
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" asChild>
+            <Button variant="secondary" size="sm" asChild>
               <Link href={`/admin/clients/${client.id}/edit`}>
                 <Icon icon={Edit} size={16} className="mr-2" />
                 Editar
@@ -111,7 +111,7 @@ export default async function ClientPage({
           {client.tags && client.tags.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-2">
               {client.tags.map((tag: string) => (
-                <Badge key={tag} variant="outline" className="text-xs">
+                <Badge key={tag} variant="neutral" showDot={false} className="text-xs">
                   {tag}
                 </Badge>
               ))}

@@ -61,7 +61,7 @@ export function StoreFormTab({ storeId, clientId }: StoreFormTabProps) {
               className="text-xs bg-muted/50"
             />
             <Button
-              variant="outline"
+              variant="secondary"
               size="sm"
               onClick={() => {
                 const link = `${window.location.origin}/cliente/onboarding`

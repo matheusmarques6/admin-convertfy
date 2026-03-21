@@ -234,7 +234,7 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
     return (
       <div className="pt-4 border-t">
         <Button
-          variant="outline"
+          variant="secondary"
           size="sm"
           disabled={isDownloading}
           onClick={() => handleViewDocument(contract.document_url!)}
@@ -264,7 +264,7 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
             </div>
             <div className="flex items-center gap-2">
               <Badge variant="positive">Ativo</Badge>
-              <Button variant="outline" size="sm" onClick={handleOpenDialog}>
+              <Button variant="secondary" size="sm" onClick={handleOpenDialog}>
                 <Icon icon={Plus} size={16} className="mr-2" />
                 Novo Contrato
               </Button>
@@ -487,7 +487,7 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDialog(false)} disabled={saving}>
+            <Button variant="secondary" onClick={() => setShowDialog(false)} disabled={saving}>
               Cancelar
             </Button>
             <Button onClick={handleCreateContract} disabled={saving || formData.monthly_value === 0}>

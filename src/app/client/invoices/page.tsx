@@ -365,7 +365,7 @@ function BoletoCard({ invoice, onPayClick }: { invoice: Invoice; onPayClick: () 
               {/* Boleto Button */}
               {invoice.bank_slip_url && (
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   className="flex-1 bg-muted border-border text-foreground hover:bg-accent h-14"
                   asChild
                 >
@@ -526,7 +526,7 @@ function PixModal({
           {/* Copy Button */}
           <Button
             onClick={copyPixCode}
-            variant="outline"
+            variant="secondary"
             className="w-full bg-muted border-border text-foreground hover:bg-accent"
           >
             {copied ? (
@@ -808,7 +808,7 @@ export default function PortalInvoicesPage() {
             </div>
             <div className="flex items-center gap-2">
               <Button
-                variant="outline"
+                variant="secondary"
                 size="sm"
                 onClick={fetchInvoices}
                 disabled={loading}

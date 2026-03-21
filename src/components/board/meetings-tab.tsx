@@ -293,7 +293,7 @@ export function MeetingsTab({ meetings, clients, members = [], onMeetingChange }
                         </div>
                         <div className="flex items-center gap-2">
                           {meeting.meeting_url && (
-                            <Button variant="outline" size="sm" asChild>
+                            <Button variant="secondary" size="sm" asChild>
                               <a href={meeting.meeting_url} target="_blank" rel="noopener noreferrer">
                                 <Icon icon={ExternalLink} customSize={12} className="mr-1" />
                                 Entrar

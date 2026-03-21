@@ -88,7 +88,7 @@ export function TodayAgenda({ meetings }: TodayAgendaProps) {
                     </div>
                   </div>
                   {meeting.meeting_url && (
-                    <Button variant="outline" size="sm" className="h-7 text-xs shrink-0" asChild>
+                    <Button variant="secondary" size="sm" className="h-7 text-xs shrink-0" asChild>
                       <a href={meeting.meeting_url} target="_blank" rel="noopener noreferrer">
                         <Icon icon={ExternalLink} customSize={12} className="mr-1" />
                         Entrar

@@ -44,7 +44,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
           </p>
           <Button
             onClick={() => this.setState({ hasError: false, error: null })}
-            variant="outline"
+            variant="secondary"
           >
             <Icon icon={RefreshCw} size={16} className="mr-2" />
             Tentar novamente

@@ -138,7 +138,7 @@ export default function PortalFlowsPage() {
             </SelectContent>
           </Select>
           <Button
-            variant="outline"
+            variant="secondary"
             size="icon"
             onClick={() => fetchData(true)}
             disabled={refreshing}

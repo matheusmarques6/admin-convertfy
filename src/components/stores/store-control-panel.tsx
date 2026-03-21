@@ -583,7 +583,7 @@ export function StoreControlPanel() {
             )}
 
             <Button
-              variant="outline"
+              variant="secondary"
               size="icon"
               onClick={fetchStores}
               disabled={isLoading}
@@ -784,7 +784,7 @@ export function StoreControlPanel() {
                           <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
                             <Button
                               size="sm"
-                              variant="outline"
+                              variant="secondary"
                               onClick={() => {
                                 setSelectedStore(store)
                                 setIsRegisterDialogOpen(true)
@@ -970,7 +970,7 @@ export function StoreControlPanel() {
                     </div>
                     <Button
                       size="sm"
-                      variant="outline"
+                      variant="secondary"
                       onClick={() => {
                         setSelectedStore(store)
                         setIsRegisterDialogOpen(true)
@@ -994,7 +994,7 @@ export function StoreControlPanel() {
               </span>
               <div className="flex items-center gap-1.5 order-1 sm:order-2">
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   size="sm"
                   onClick={() => setPage(p => Math.max(1, p - 1))}
                   disabled={page <= 1 || isLoading}
@@ -1009,7 +1009,7 @@ export function StoreControlPanel() {
                   <span className="text-xs text-muted-foreground">{totalPages}</span>
                 </div>
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   size="sm"
                   onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                   disabled={page >= totalPages || isLoading}
@@ -1141,7 +1141,7 @@ export function StoreControlPanel() {
           )}
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsRegisterDialogOpen(false)}>Cancelar</Button>
+            <Button variant="secondary" onClick={() => setIsRegisterDialogOpen(false)}>Cancelar</Button>
             <Button onClick={handleRegisterFeedback} disabled={isSubmitting}>
               {isSubmitting ? (
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Salvando...</>
@@ -1221,7 +1221,7 @@ export function StoreControlPanel() {
                 <div className="flex gap-2">
                   {selectedStore.client_id && (
                     <Button
-                      variant="outline"
+                      variant="secondary"
                       size="sm"
                       className="flex-1"
                       onClick={() => router.push(`/admin/clients/${selectedStore.client_id}?tab=stores`)}
@@ -1231,7 +1231,7 @@ export function StoreControlPanel() {
                     </Button>
                   )}
                   <Button
-                    variant="outline"
+                    variant="secondary"
                     size="sm"
                     className="flex-1"
                     onClick={() => router.push(`/admin/reports?store_id=${selectedStore.id}`)}
@@ -1245,7 +1245,7 @@ export function StoreControlPanel() {
           )}
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>Cancelar</Button>
+            <Button variant="secondary" onClick={() => setIsEditDialogOpen(false)}>Cancelar</Button>
             <Button onClick={handleSaveStoreSettings} disabled={isSubmitting}>
               {isSubmitting ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Salvando...</> : 'Salvar Configuracoes'}
             </Button>

@@ -147,7 +147,7 @@ export function DataTable<T>({
           </p>
           <div className="flex items-center gap-2">
             <Button
-              variant="outline"
+              variant="secondary"
               size="sm"
               onClick={() => setPage(p => p - 1)}
               disabled={page === 0}
@@ -158,7 +158,7 @@ export function DataTable<T>({
               {page + 1} / {totalPages}
             </span>
             <Button
-              variant="outline"
+              variant="secondary"
               size="sm"
               onClick={() => setPage(p => p + 1)}
               disabled={page >= totalPages - 1}

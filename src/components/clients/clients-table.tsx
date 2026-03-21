@@ -266,7 +266,7 @@ export function ClientsTable({ clients, totalCount, currentPage, hasActiveFilter
           <p className="text-muted-foreground mt-1">
             Tente ajustar os filtros ou limpar a busca
           </p>
-          <Button variant="outline" asChild className="mt-4">
+          <Button variant="secondary" asChild className="mt-4">
             <Link href="/admin/clients">Limpar filtros</Link>
           </Button>
         </div>
@@ -553,7 +553,7 @@ export function ClientsTable({ clients, totalCount, currentPage, hasActiveFilter
           </p>
           <div className="flex items-center gap-2">
             <Button
-              variant="outline"
+              variant="secondary"
               size="sm"
               disabled={currentPage <= 1}
               onClick={() => router.push(buildPageUrl(currentPage - 1))}
@@ -564,7 +564,7 @@ export function ClientsTable({ clients, totalCount, currentPage, hasActiveFilter
               Página {currentPage} de {totalPages}
             </span>
             <Button
-              variant="outline"
+              variant="secondary"
               size="sm"
               disabled={currentPage >= totalPages}
               onClick={() => router.push(buildPageUrl(currentPage + 1))}

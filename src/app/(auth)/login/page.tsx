@@ -138,7 +138,7 @@ export default function LoginPage() {
               </p>
             </CardContent>
             <CardFooter className="flex flex-col space-y-4">
-              <Button asChild variant="outline" className="w-full">
+              <Button asChild variant="secondary" className="w-full">
                 <Link href="/forgot-password">
                   Recuperar Senha
                 </Link>

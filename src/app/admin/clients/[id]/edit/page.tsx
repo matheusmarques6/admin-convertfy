@@ -378,7 +378,7 @@ export default function EditClientPage({
             <Icon icon={AlertCircle} customSize={48} className="text-destructive mb-4" />
             <h3 className="text-lg font-medium text-destructive">Erro</h3>
             <p className="text-muted-foreground text-center mt-1">{error}</p>
-            <Button variant="outline" className="mt-4" asChild>
+            <Button variant="secondary" className="mt-4" asChild>
               <Link href="/admin/clients">Voltar para Clientes</Link>
             </Button>
           </CardContent>
@@ -767,7 +767,7 @@ export default function EditClientPage({
 
         {/* Actions */}
         <div className="flex justify-end gap-4">
-          <Button type="button" variant="outline" asChild disabled={isLoading}>
+          <Button type="button" variant="secondary" asChild disabled={isLoading}>
             <Link href={`/admin/clients/${id}`}>Cancelar</Link>
           </Button>
           <Button type="submit" disabled={isLoading}>

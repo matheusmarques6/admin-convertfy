@@ -455,7 +455,7 @@ export function TaskDialog({
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button
-                        variant="outline"
+                        variant="secondary"
                         className={cn(
                           "justify-start text-left font-normal",
                           !dueDate && "text-muted-foreground"
@@ -614,7 +614,7 @@ export function TaskDialog({
           </Tabs>
 
           <DialogFooter className="pt-4 border-t">
-            <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting}>
+            <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting}>
               Cancelar
             </Button>
             <Button type="submit" disabled={isSubmitting}>

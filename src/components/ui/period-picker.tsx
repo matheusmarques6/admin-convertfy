@@ -86,7 +86,7 @@ export function PeriodPicker({
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <Button
-          variant="outline"
+          variant="secondary"
           size="sm"
           className={cn(
             "h-9 gap-1.5 rounded-lg text-sm font-medium",

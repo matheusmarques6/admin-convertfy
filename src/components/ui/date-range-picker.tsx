@@ -68,7 +68,7 @@ export function DateRangePicker({
     <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverTrigger asChild>
         {trigger || (
-          <Button variant="outline" size="sm" className="gap-2 text-xs">
+          <Button variant="secondary" size="sm" className="gap-2 text-xs">
             <Icon icon={CalendarDays} size={16} />
             {formatLabel()}
           </Button>

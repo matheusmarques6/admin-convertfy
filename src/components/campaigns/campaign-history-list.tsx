@@ -269,7 +269,7 @@ function StoreActionButton({
 
   if (store.status === "generating" || store.status === "pending") {
     return (
-      <Button variant="outline" size="sm" disabled>
+      <Button variant="secondary" size="sm" disabled>
         <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
         {store.status === "generating" ? "Gerando..." : "Aguardando"}
       </Button>
@@ -279,7 +279,7 @@ function StoreActionButton({
   if (store.status === "error") {
     return (
       <Button
-        variant="outline"
+        variant="secondary"
         size="sm"
         onClick={handleRegenerate}
         disabled={loading}
@@ -298,7 +298,7 @@ function StoreActionButton({
   // done
   return (
     <Button
-      variant="outline"
+      variant="secondary"
       size="sm"
       onClick={handleRegenerate}
       disabled={loading}
@@ -517,7 +517,7 @@ function ExpandableGenerationRow({
         {/* Add stores button (only for done campaigns) */}
         {generation.status === "done" && (
           <Button
-            variant="outline"
+            variant="secondary"
             size="sm"
             onClick={(e) => {
               e.stopPropagation()
@@ -534,7 +534,7 @@ function ExpandableGenerationRow({
         <AlertDialog>
           <AlertDialogTrigger asChild>
             <Button
-              variant="outline"
+              variant="secondary"
               size="sm"
               onClick={(e) => e.stopPropagation()}
               disabled={deleting}

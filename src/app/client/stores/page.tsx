@@ -332,7 +332,7 @@ export default function PortalStoresPage() {
                     </Button>
                     {needsSetup && (
                       <Button
-                        variant="outline"
+                        variant="secondary"
                         onClick={() => openCredentialsDialog(store)}
                         className="border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]"
                       >
@@ -341,7 +341,7 @@ export default function PortalStoresPage() {
                       </Button>
                     )}
                     {!needsSetup && store.store_url && (
-                      <Button variant="outline" size="icon" asChild className="border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
+                      <Button variant="secondary" size="icon" asChild className="border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
                         <a href={store.store_url} target="_blank" rel="noopener noreferrer">
                           <ExternalLink className="h-4 w-4" />
                         </a>
@@ -444,7 +444,7 @@ export default function PortalStoresPage() {
                   </p>
                 </div>
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   size="sm"
                   onClick={testKlaviyo}
                   disabled={testing === "klaviyo" || !credForm.klaviyo_private_key}
@@ -503,7 +503,7 @@ export default function PortalStoresPage() {
                   </p>
                 </div>
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   size="sm"
                   onClick={testShopify}
                   disabled={testing === "shopify" || !credForm.shopify_store_domain || !credForm.shopify_access_token}
@@ -539,7 +539,7 @@ export default function PortalStoresPage() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)} className="border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
+            <Button variant="secondary" onClick={() => setDialogOpen(false)} className="border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
               Cancelar
             </Button>
             <Button

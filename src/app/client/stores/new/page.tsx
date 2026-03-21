@@ -287,7 +287,7 @@ export default function PortalNewStorePage() {
             <Button onClick={() => router.push("/client/onboarding")} className="w-full bg-primary hover:bg-primary/85 text-white shadow-sm">
               Ver Onboarding
             </Button>
-            <Button variant="outline" onClick={() => router.push("/client/stores")} className="w-full border-slate-200 dark:border-slate-700/40 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
+            <Button variant="secondary" onClick={() => router.push("/client/stores")} className="w-full border-slate-200 dark:border-slate-700/40 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
               Voltar para Lojas
             </Button>
           </CardContent>
@@ -595,7 +595,7 @@ export default function PortalNewStorePage() {
 
           {/* Navigation */}
           <div className="flex justify-between pt-6 border-t dark:border-slate-700/40">
-            <Button variant="outline" onClick={prevStep} disabled={currentStep === 1}>
+            <Button variant="secondary" onClick={prevStep} disabled={currentStep === 1}>
               <ChevronLeft className="h-4 w-4 mr-1" />
               Voltar
             </Button>

@@ -215,7 +215,7 @@ export function GoogleCalendarCard() {
               </Button>
               <Button
                 size="sm"
-                variant="outline"
+                variant="secondary"
                 onClick={() => setDisconnectDialogOpen(true)}
               >
                 <Unplug className="h-4 w-4" />
@@ -271,7 +271,7 @@ export function GoogleCalendarCard() {
           )}
           <Button
             size="sm"
-            variant="outline"
+            variant="secondary"
             className="w-full"
             onClick={() => setDisconnectDialogOpen(true)}
           >

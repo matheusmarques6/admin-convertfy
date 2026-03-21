@@ -130,7 +130,7 @@ function BreakdownCard({
   isProfit?: boolean
 }) {
   return (
-    <div className={`rounded-xl border ${borderClass} ${bgClass} p-4 transition-all duration-200 hover:shadow-sm`}>
+    <div className={`rounded-xl border ${borderClass} ${bgClass} p-4 transition-all duration-200`}>
       <div className="flex items-center gap-2 mb-2.5">
         <Icon icon={IconComponent} size={16} className={accentClass} strokeWidth={1.8} />
         <span className="text-xs font-medium text-slate-600 dark:text-slate-400">{label}</span>

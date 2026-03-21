@@ -258,7 +258,7 @@ export function WiseReconciliation() {
           </p>
         </div>
         <Button
-          variant="outline"
+          variant="secondary"
           size="sm"
           onClick={handleRefresh}
           disabled={refreshing}
@@ -309,7 +309,7 @@ export function WiseReconciliation() {
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
-                    variant="outline"
+                    variant="secondary"
                     className={cn(
                       "w-full sm:w-[280px] justify-start text-left font-normal"
                     )}
@@ -419,7 +419,7 @@ export function WiseReconciliation() {
                         {!isReconciled && (
                           <Button
                             size="sm"
-                            variant="outline"
+                            variant="secondary"
                             onClick={() => openReconcileDialog(payment)}
                           >
                             <Link2 className="h-4 w-4 mr-1" />
@@ -537,7 +537,7 @@ export function WiseReconciliation() {
 
           <DialogFooter>
             <Button
-              variant="outline"
+              variant="secondary"
               onClick={() =>
                 setReconcileDialog({ open: false, payment: null })
               }

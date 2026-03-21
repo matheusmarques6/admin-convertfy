@@ -112,7 +112,7 @@ export function ImportAsaasButton() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" className="relative">
+        <Button variant="secondary" className="relative">
           <Icon icon={Download} size={16} className="mr-2" />
           Importar do Asaas
           {pendingCount > 0 && (
@@ -207,7 +207,7 @@ export function ImportAsaasButton() {
 
         <DialogFooter className="flex-col sm:flex-row gap-2">
           <Button
-            variant="outline"
+            variant="secondary"
             onClick={loadStats}
             disabled={isLoading || isImporting}
           >

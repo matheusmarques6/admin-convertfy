@@ -463,7 +463,7 @@ export default function PortalSettingsPage() {
                 />
               </div>
 
-              <Button type="submit" disabled={changingPassword} variant="outline" className="border-slate-200 dark:border-slate-700/40 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
+              <Button type="submit" disabled={changingPassword} variant="secondary" className="border-slate-200 dark:border-slate-700/40 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
                 {changingPassword ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 ) : (

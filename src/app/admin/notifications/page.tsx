@@ -116,7 +116,7 @@ export default function NotificationsPage() {
           </div>
         </div>
         {unreadCount > 0 && (
-          <Button variant="outline" size="sm" onClick={handleMarkAllAsRead} className="self-end sm:self-auto">
+          <Button variant="secondary" size="sm" onClick={handleMarkAllAsRead} className="self-end sm:self-auto">
             <Icon icon={CheckCheck} size={16} className="mr-2" />
             Marcar todas como lidas
           </Button>

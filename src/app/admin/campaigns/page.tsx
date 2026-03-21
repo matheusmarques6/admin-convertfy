@@ -95,7 +95,7 @@ export default function CampaignsCalendarPage() {
             </div>
 
             <Button
-              variant="outline"
+              variant="secondary"
               size="sm"
               onClick={() => setShowQuickModal(true)}
             >
@@ -104,7 +104,7 @@ export default function CampaignsCalendarPage() {
             </Button>
 
             <Button
-              variant="outline"
+              variant="secondary"
               onClick={() => {
                 cal.setSelectedDate(null)
                 cal.setShowFormModal(true)
@@ -168,7 +168,7 @@ export default function CampaignsCalendarPage() {
         <CardContent className="p-4">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="icon" onClick={cal.prevMonth}>
+              <Button variant="secondary" size="icon" onClick={cal.prevMonth}>
                 <ChevronLeft className="h-4 w-4" />
               </Button>
               <div className="w-32 sm:w-48 text-center">
@@ -176,7 +176,7 @@ export default function CampaignsCalendarPage() {
                   {monthNames[cal.month]} {cal.year}
                 </h2>
               </div>
-              <Button variant="outline" size="icon" onClick={cal.nextMonth}>
+              <Button variant="secondary" size="icon" onClick={cal.nextMonth}>
                 <ChevronRight className="h-4 w-4" />
               </Button>
               <Button variant="ghost" size="sm" onClick={cal.goToToday}>
@@ -204,7 +204,7 @@ export default function CampaignsCalendarPage() {
 
               {cal.selectedStore !== "all" ? (
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   size="sm"
                   onClick={() => cal.syncCampaigns(cal.selectedStore)}
                   disabled={cal.syncing}
@@ -214,7 +214,7 @@ export default function CampaignsCalendarPage() {
                 </Button>
               ) : (
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   size="sm"
                   onClick={() => cal.syncAllStores()}
                   disabled={cal.syncingAll}
@@ -336,7 +336,7 @@ export default function CampaignsCalendarPage() {
               </div>
               <div className="flex gap-2 mt-4">
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   className="flex-1"
                   onClick={() => setShowQuickModal(true)}
                 >

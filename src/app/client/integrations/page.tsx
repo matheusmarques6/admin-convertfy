@@ -427,7 +427,7 @@ export default function PortalIntegrationsPage() {
               </div>
             </div>
             <Button
-              variant="outline"
+              variant="secondary"
               onClick={() => openDialog("shopify")}
               className="w-full border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]"
             >
@@ -486,7 +486,7 @@ export default function PortalIntegrationsPage() {
               </div>
             </div>
             <Button
-              variant="outline"
+              variant="secondary"
               onClick={() => openDialog("klaviyo")}
               className="w-full border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]"
             >
@@ -601,7 +601,7 @@ export default function PortalIntegrationsPage() {
                   </div>
 
                   <Button
-                    variant="outline"
+                    variant="secondary"
                     size="sm"
                     onClick={() => openCarrierDialog(carrier)}
                     className="w-full mt-auto border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]"
@@ -713,11 +713,11 @@ export default function PortalIntegrationsPage() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)} className="border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
+            <Button variant="secondary" onClick={() => setDialogOpen(false)} className="border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
               Cancelar
             </Button>
             <Button
-              variant="outline"
+              variant="secondary"
               onClick={handleTestConnection}
               disabled={testing || saving}
               className="border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]"
@@ -813,7 +813,7 @@ export default function PortalIntegrationsPage() {
                 </div>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setCarrierDialogOpen(false)} className="border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
+                <Button variant="secondary" onClick={() => setCarrierDialogOpen(false)} className="border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
                   Cancelar
                 </Button>
                 <Button

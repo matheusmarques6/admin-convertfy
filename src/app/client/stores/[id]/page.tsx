@@ -509,7 +509,7 @@ export default function PortalStoreReportPage({
         <h2 className="text-xl font-semibold mb-2">Erro ao carregar</h2>
         <p className="text-slate-500 dark:text-slate-400 mb-4">{error}</p>
         <div className="flex gap-2">
-          <Button variant="outline" asChild>
+          <Button variant="secondary" asChild>
             <Link href="/client/stores">
               <ArrowLeft className="mr-2 h-4 w-4" />
               Voltar
@@ -561,7 +561,7 @@ export default function PortalStoreReportPage({
             </SelectContent>
           </Select>
           <Button
-            variant="outline"
+            variant="secondary"
             size="sm"
             onClick={() => fetchReport(true)}
             disabled={refreshing}

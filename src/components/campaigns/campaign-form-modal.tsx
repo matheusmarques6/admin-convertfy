@@ -583,7 +583,7 @@ export function CampaignFormModal({
 
             {/* Actions */}
             <div className="flex justify-end gap-2 pt-4 border-t">
-              <Button type="button" variant="outline" onClick={onClose}>
+              <Button type="button" variant="secondary" onClick={onClose}>
                 Cancelar
               </Button>
               <Button type="submit" disabled={loading || selectedStoreIds.length === 0}>

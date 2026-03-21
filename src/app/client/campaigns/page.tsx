@@ -248,7 +248,7 @@ function PortalCampaignsContent() {
           {/* Refresh button */}
           <div className="flex justify-end">
             <Button
-              variant="outline"
+              variant="secondary"
               onClick={fetchCampaigns}
               disabled={loading}
               className="bg-white dark:bg-[#151922] border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-white/[0.06]"

@@ -244,7 +244,7 @@ export function RefundDialog({ open, onOpenChange, charge, onSuccess }: RefundDi
 
         <DialogFooter className="gap-2 sm:gap-0">
           <Button
-            variant="outline"
+            variant="secondary"
             onClick={() => handleOpenChange(false)}
             disabled={isSubmitting}
           >

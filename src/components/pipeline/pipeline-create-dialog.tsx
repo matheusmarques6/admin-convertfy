@@ -241,7 +241,7 @@ export function PipelineCreateDialog({
               <Label>Etapas da Pipeline</Label>
               <Button
                 type="button"
-                variant="outline"
+                variant="secondary"
                 size="sm"
                 onClick={handleAddStage}
                 disabled={isLoading}
@@ -329,7 +329,7 @@ export function PipelineCreateDialog({
           <div className="flex justify-end gap-2 pt-4">
             <Button
               type="button"
-              variant="outline"
+              variant="secondary"
               onClick={() => onOpenChange(false)}
               disabled={isLoading}
             >

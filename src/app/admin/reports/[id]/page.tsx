@@ -300,18 +300,18 @@ export default function ReportPage() {
               {getReportTypeLabel(report.report_type)}
             </Badge>
             {getStatusBadge(report.status)}
-            <Button variant="outline" size="sm" onClick={copyReportLink}>
+            <Button variant="secondary" size="sm" onClick={copyReportLink}>
               <Copy className="mr-2 h-4 w-4" />
               Copiar Link
             </Button>
-            <Button variant="outline" size="sm" asChild>
+            <Button variant="secondary" size="sm" asChild>
               <Link href={`/admin/reports/${reportId}/edit`}>
                 <Pencil className="mr-2 h-4 w-4" />
                 Editar
               </Link>
             </Button>
             {report.document_url && (
-              <Button variant="outline" size="sm" asChild>
+              <Button variant="secondary" size="sm" asChild>
                 <a href={report.document_url} target="_blank" rel="noopener noreferrer">
                   <Download className="mr-2 h-4 w-4" />
                   Download PDF
@@ -320,7 +320,7 @@ export default function ReportPage() {
             )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon">
+                <Button variant="secondary" size="icon">
                   <MoreHorizontal className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>

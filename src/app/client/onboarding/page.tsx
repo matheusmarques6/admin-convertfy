@@ -259,7 +259,7 @@ export default function PortalOnboardingPage() {
                           </span>
                         ) : isIntegrationStep && step.status === "pending" ? (
                           <Button
-                            variant="outline"
+                            variant="secondary"
                             size="sm"
                             className="shrink-0 border-slate-200 dark:border-slate-700/40 text-slate-700 dark:text-slate-200"
                             onClick={() => router.push("/client/stores")}
@@ -268,7 +268,7 @@ export default function PortalOnboardingPage() {
                           </Button>
                         ) : !isDone && step.status !== "pending" ? (
                           <Badge
-                            variant="outline"
+                            variant="secondary"
                             className={cn("text-xs shrink-0", statusConfig[step.status]?.color)}
                           >
                             {statusConfig[step.status]?.label}

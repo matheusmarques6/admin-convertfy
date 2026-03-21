@@ -526,7 +526,7 @@ export function WorkflowBuilder({ initialNodes = [], initialEdges = [], onChange
                   {actionTypes.map((action) => (
                     <Button
                       key={action.type}
-                      variant="outline"
+                      variant="secondary"
                       size="sm"
                       className="h-auto py-3 px-3 flex flex-col items-center gap-1.5 relative hover:border-primary/50"
                       onClick={() => addNode("action", { type: action.type, label: action.label })}
@@ -552,7 +552,7 @@ export function WorkflowBuilder({ initialNodes = [], initialEdges = [], onChange
               <div className="space-y-3">
                 <Label className="text-xs text-muted-foreground uppercase tracking-wide">Tempo</Label>
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   size="sm"
                   className="w-full h-auto py-3 px-3 flex items-center gap-2 hover:border-primary/50"
                   onClick={() => addNode("delay", { type: "delay", label: "Aguardar" })}
@@ -573,7 +573,7 @@ export function WorkflowBuilder({ initialNodes = [], initialEdges = [], onChange
                   {logicTypes.map((logic) => (
                     <Button
                       key={logic.type}
-                      variant="outline"
+                      variant="secondary"
                       size="sm"
                       className="h-auto py-3 px-3 flex flex-col items-center gap-1.5 hover:border-primary/50"
                       onClick={() => addNode(

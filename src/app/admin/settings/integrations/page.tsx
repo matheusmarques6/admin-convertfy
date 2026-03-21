@@ -474,7 +474,7 @@ export default function IntegrationsPage() {
                       {isConnected ? (
                         <>
                           <Button
-                            variant="outline"
+                            variant="secondary"
                             size="sm"
                             className="flex-1"
                             onClick={() => openConfigDialog(config.type)}
@@ -483,7 +483,7 @@ export default function IntegrationsPage() {
                             Configurar
                           </Button>
                           <Button
-                            variant="outline"
+                            variant="secondary"
                             size="sm"
                             onClick={() => handleSync(config.type)}
                             disabled={isTesting === config.type}
@@ -655,7 +655,7 @@ export default function IntegrationsPage() {
             )}
             <div className="flex gap-2 w-full sm:w-auto">
               <Button
-                variant="outline"
+                variant="secondary"
                 onClick={handleTestConnection}
                 disabled={isTesting !== null || isSaving}
                 className="flex-1 sm:flex-initial"

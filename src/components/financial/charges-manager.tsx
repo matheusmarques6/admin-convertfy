@@ -455,7 +455,7 @@ export function ChargesManager() {
               </div>
               <Popover>
                 <PopoverTrigger asChild>
-                  <Button variant="outline" size="icon">
+                  <Button variant="secondary" size="icon">
                     <Filter className="h-4 w-4" />
                   </Button>
                 </PopoverTrigger>
@@ -470,7 +470,7 @@ export function ChargesManager() {
                     />
                     <div className="flex gap-2">
                       <Button
-                        variant="outline"
+                        variant="secondary"
                         size="sm"
                         onClick={() => setDateRange({})}
                       >
@@ -484,7 +484,7 @@ export function ChargesManager() {
                 </PopoverContent>
               </Popover>
               <Button
-                variant="outline"
+                variant="secondary"
                 size="icon"
                 onClick={() => mutate()}
                 disabled={isRefreshing}

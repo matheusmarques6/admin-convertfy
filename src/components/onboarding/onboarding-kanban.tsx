@@ -559,7 +559,7 @@ export function OnboardingKanban() {
           </div>
 
           {viewMode === "pipeline" && (
-            <Button variant="outline" size="sm" onClick={fetchOnboardings} title={realtimeConnected ? "Atualização automática ativa" : "Clique para atualizar"}>
+            <Button variant="secondary" size="sm" onClick={fetchOnboardings} title={realtimeConnected ? "Atualização automática ativa" : "Clique para atualizar"}>
               <RefreshCw className="h-4 w-4 mr-2" />
               Atualizar
               {realtimeConnected && (
@@ -850,7 +850,7 @@ export function OnboardingKanban() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowNewOnboardingDialog(false)}>
+            <Button variant="secondary" onClick={() => setShowNewOnboardingDialog(false)}>
               Cancelar
             </Button>
             <Button onClick={handleCreateOnboarding} disabled={!newOnboardingClientId}>

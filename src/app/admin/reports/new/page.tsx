@@ -686,7 +686,7 @@ export default function NewReportPage() {
 
             {/* Submit Button */}
             <div className="flex gap-3">
-              <Button variant="outline" asChild>
+              <Button variant="secondary" asChild>
                 <Link href="/admin/reports">Cancelar</Link>
               </Button>
               <Button

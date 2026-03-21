@@ -109,7 +109,7 @@ export function StoresListModal({ stores, variant, open, onOpenChange }: StoresL
             {totalPages > 1 && (
               <div className="flex items-center justify-between pt-3 border-t border-border">
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   size="sm"
                   disabled={page <= 1}
                   onClick={() => setPage(p => p - 1)}
@@ -121,7 +121,7 @@ export function StoresListModal({ stores, variant, open, onOpenChange }: StoresL
                   Pagina {page} de {totalPages}
                 </span>
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   size="sm"
                   disabled={page >= totalPages}
                   onClick={() => setPage(p => p + 1)}

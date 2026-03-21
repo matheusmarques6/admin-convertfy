@@ -106,7 +106,7 @@ export function ClientMeetings({ clientId }: ClientMeetingsProps) {
                   </div>
                   <div className="flex items-center gap-2">
                     {meeting.meeting_url && (
-                      <Button variant="outline" size="sm" asChild>
+                      <Button variant="secondary" size="sm" asChild>
                         <a
                           href={meeting.meeting_url}
                           target="_blank"

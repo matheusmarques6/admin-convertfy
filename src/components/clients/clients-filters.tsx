@@ -94,7 +94,7 @@ export function ClientsFilters() {
         {/* Filters Popover */}
         <Popover>
           <PopoverTrigger asChild>
-            <Button variant="outline" className="shrink-0">
+            <Button variant="secondary" className="shrink-0">
               <Icon icon={Filter} size={16} className="mr-2" />
               Filtros
               {activeFilters.length > 0 && (
@@ -142,7 +142,7 @@ export function ClientsFilters() {
                 <Button onClick={applyFilters} className="flex-1">
                   Aplicar
                 </Button>
-                <Button variant="outline" onClick={clearAllFilters}>
+                <Button variant="secondary" onClick={clearAllFilters}>
                   Limpar
                 </Button>
               </div>

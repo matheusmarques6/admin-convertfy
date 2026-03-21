@@ -338,7 +338,7 @@ export function OnboardingTabs() {
                         className="text-xs bg-muted/50"
                       />
                       <Button
-                        variant="outline"
+                        variant="secondary"
                         size="sm"
                         onClick={() => {
                           const link = `${window.location.origin}/cliente/onboarding`
@@ -401,7 +401,7 @@ export function OnboardingTabs() {
                       Gerado em {new Date(b.generated_at).toLocaleDateString("pt-BR")}
                     </p>
                     <Button
-                      variant="outline"
+                      variant="secondary"
                       size="sm"
                       className="w-full mt-3"
                       onClick={() => openBriefingDialog(b.store_id)}

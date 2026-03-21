@@ -179,7 +179,7 @@ export function ClientPerformanceKPIs() {
           <CardContent className="flex items-center gap-3 py-4">
             <AlertCircle className="h-5 w-5 text-destructive" />
             <p className="text-sm text-destructive">{error}</p>
-            <Button variant="outline" size="sm" onClick={refresh} className="ml-auto">
+            <Button variant="secondary" size="sm" onClick={refresh} className="ml-auto">
               Tentar novamente
             </Button>
           </CardContent>
@@ -482,7 +482,7 @@ export function ClientPerformanceTables() {
             Configure as integrações Klaviyo e Shopify nas lojas do cliente para visualizar dados de performance.
           </p>
           <Button
-            variant="outline"
+            variant="secondary"
             size="sm"
             className="mt-4"
             onClick={onNavigateToStores}
@@ -509,7 +509,7 @@ export function ClientPerformanceTables() {
             enquanto a Visão Geral busca dados completos de campanhas e flows.
           </p>
           <Button
-            variant="outline"
+            variant="secondary"
             size="sm"
             className="mt-4"
             onClick={onNavigateToStores}

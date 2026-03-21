@@ -467,7 +467,7 @@ export function ClientPortalUsers({ clientId, clientName }: ClientPortalUsersPro
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAddModal(false)}>
+            <Button variant="secondary" onClick={() => setShowAddModal(false)}>
               Cancelar
             </Button>
             <Button onClick={handleCreateUser} disabled={submitting || !formData.name || !formData.email}>

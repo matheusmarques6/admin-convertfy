@@ -260,12 +260,12 @@ export function MeetingCompletionDialog({
 
         <DialogFooter>
           {isReadOnly ? (
-            <Button variant="outline" onClick={onClose}>
+            <Button variant="secondary" onClick={onClose}>
               Fechar
             </Button>
           ) : (
             <>
-              <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
+              <Button variant="secondary" onClick={onClose} disabled={isSubmitting}>
                 Cancelar
               </Button>
               <Button onClick={handleComplete} disabled={isSubmitting}>

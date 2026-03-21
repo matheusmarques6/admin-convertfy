@@ -38,7 +38,7 @@ export function RefreshButton({
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
-            variant="outline"
+            variant="secondary"
             size="icon"
             onClick={onRefresh}
             disabled={isRefreshing}

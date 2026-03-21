@@ -32,7 +32,7 @@ export function CalendarNavigation({
     <div className="flex items-center gap-3">
       <div className="flex items-center gap-2">
         <Button
-          variant="outline"
+          variant="secondary"
           size="icon"
           onClick={onPrev}
           className="bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-700"
@@ -45,7 +45,7 @@ export function CalendarNavigation({
           </h2>
         </div>
         <Button
-          variant="outline"
+          variant="secondary"
           size="icon"
           onClick={onNext}
           className="bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-700"

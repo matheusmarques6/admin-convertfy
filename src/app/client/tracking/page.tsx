@@ -380,7 +380,7 @@ export default function PortalTrackingPage() {
           </p>
         </div>
         <Button
-          variant="outline"
+          variant="secondary"
           size="icon"
           onClick={() => fetchStoreData(true)}
           disabled={refreshing}
@@ -732,7 +732,7 @@ export default function PortalTrackingPage() {
                 </span>
                 <div className="flex gap-2">
                   <Button
-                    variant="outline"
+                    variant="secondary"
                     size="sm"
                     disabled={page <= 1}
                     onClick={() => setPage(page - 1)}
@@ -741,7 +741,7 @@ export default function PortalTrackingPage() {
                     Anterior
                   </Button>
                   <Button
-                    variant="outline"
+                    variant="secondary"
                     size="sm"
                     disabled={page >= totalPages}
                     onClick={() => setPage(page + 1)}
@@ -1006,7 +1006,7 @@ export default function PortalTrackingPage() {
                 Código de Instalação
               </h3>
               <Button
-                variant="outline"
+                variant="secondary"
                 size="sm"
                 onClick={handleCopy}
                 className="border-slate-200/80 dark:border-slate-700/40 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]"

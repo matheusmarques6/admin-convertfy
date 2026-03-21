@@ -272,7 +272,7 @@ export function CopyGenerationBoard() {
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setActionTask(null)}>
+            <Button variant="secondary" onClick={() => setActionTask(null)}>
               Cancelar
             </Button>
             <Button
@@ -348,7 +348,7 @@ function GenerationCard({
 
           {/* Progress badge */}
           <Badge
-            variant="outline"
+            variant="secondary"
             className={allDone ? "border-emerald-500 text-emerald-600" : ""}
           >
             {completedCount}/{tasks.length}

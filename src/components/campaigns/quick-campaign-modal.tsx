@@ -103,7 +103,7 @@ export function QuickCampaignModal({
           </div>
 
           <div className="flex gap-2 pt-2">
-            <Button variant="outline" className="flex-1" onClick={onClose}>
+            <Button variant="secondary" className="flex-1" onClick={onClose}>
               Cancelar
             </Button>
             <Button className="flex-1" onClick={handleSave} disabled={loading}>

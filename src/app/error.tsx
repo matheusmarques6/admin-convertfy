@@ -33,7 +33,7 @@ export default function GlobalError({
           <Icon icon={RefreshCw} size={16} className="mr-2" />
           Tentar novamente
         </Button>
-        <Button variant="outline" asChild>
+        <Button variant="secondary" asChild>
           <a href="/admin/dashboard">
             <Icon icon={Home} size={16} className="mr-2" />
             Voltar ao início

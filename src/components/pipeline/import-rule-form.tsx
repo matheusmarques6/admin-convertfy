@@ -345,7 +345,7 @@ export function ImportRuleForm({
             </div>
             <Button
               type="button"
-              variant="outline"
+              variant="secondary"
               size="sm"
               onClick={handleAddCondition}
               disabled={isLoading}
@@ -485,7 +485,7 @@ export function ImportRuleForm({
             <div className="flex items-center gap-3">
               <Button
                 type="button"
-                variant="outline"
+                variant="secondary"
                 size="sm"
                 onClick={handlePreview}
                 disabled={isPreviewLoading}
@@ -617,7 +617,7 @@ export function ImportRuleForm({
         <div className="flex justify-end gap-2">
           <Button
             type="button"
-            variant="outline"
+            variant="secondary"
             onClick={onCancel}
             disabled={isLoading}
           >

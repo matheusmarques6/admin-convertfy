@@ -542,7 +542,7 @@ export default function NewClientPage() {
 
         {/* Actions */}
         <div className="flex justify-end gap-4">
-          <Button type="button" variant="outline" asChild disabled={isLoading}>
+          <Button type="button" variant="secondary" asChild disabled={isLoading}>
             <Link href="/admin/clients">Cancelar</Link>
           </Button>
           <Button type="submit" disabled={isLoading}>

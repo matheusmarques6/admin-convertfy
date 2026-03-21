@@ -211,7 +211,7 @@ export function CommemorativeDatesCard({ selectedMonth }: CommemorativeDatesCard
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {selectedDate.bestCampaignTypes.map((type) => (
-                      <Badge key={type} variant="secondary" className="text-xs">
+                      <Badge key={type} variant="neutral" className="text-xs">
                         {type}
                       </Badge>
                     ))}

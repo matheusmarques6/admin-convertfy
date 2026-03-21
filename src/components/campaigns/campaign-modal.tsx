@@ -561,7 +561,7 @@ export function CampaignModal({
             {canApprove && (
               <div className="flex gap-2">
                 <Button
-                  variant="default"
+                  variant="primary"
                   className="flex-1 bg-emerald-600 hover:bg-emerald-700"
                   onClick={handleApprove}
                   disabled={approving}
@@ -574,7 +574,7 @@ export function CampaignModal({
                   Aprovar
                 </Button>
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   className="flex-1 border-orange-500 text-orange-600 hover:bg-orange-50"
                   onClick={() => setShowRejectDialog(true)}
                 >
@@ -587,7 +587,7 @@ export function CampaignModal({
             {/* Submit for Review */}
             {canSubmit && (
               <Button
-                variant="outline"
+                variant="secondary"
                 className="w-full"
                 onClick={handleSubmit}
                 disabled={submitting}
@@ -673,7 +673,7 @@ export function CampaignModal({
                 </div>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setShowRejectDialog(false)}>
+                <Button variant="secondary" onClick={() => setShowRejectDialog(false)}>
                   Cancelar
                 </Button>
                 <Button

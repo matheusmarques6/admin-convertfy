@@ -319,7 +319,7 @@ export function CampaignBatchModal({
               {languages.map((lang) => (
                 <Button
                   key={lang}
-                  variant="outline"
+                  variant="secondary"
                   size="sm"
                   onClick={() => selectByLanguage(lang)}
                   className="gap-1"
@@ -332,7 +332,7 @@ export function CampaignBatchModal({
                 </Button>
               ))}
               <Button
-                variant="outline"
+                variant="secondary"
                 size="sm"
                 onClick={selectAll}
               >
@@ -432,7 +432,7 @@ export function CampaignBatchModal({
 
         <DialogFooter className="gap-2">
           <Button
-            variant="outline"
+            variant="secondary"
             onClick={() => onOpenChange(false)}
             disabled={submitting}
           >

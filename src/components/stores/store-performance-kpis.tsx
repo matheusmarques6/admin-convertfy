@@ -116,7 +116,7 @@ export function StorePerformanceKPIs() {
           <CardContent className="flex items-center gap-3 py-4">
             <AlertCircle className="h-5 w-5 text-destructive" />
             <p className="text-sm text-destructive">{error}</p>
-            <Button variant="outline" size="sm" onClick={refresh} className="ml-auto">
+            <Button variant="secondary" size="sm" onClick={refresh} className="ml-auto">
               Tentar novamente
             </Button>
           </CardContent>

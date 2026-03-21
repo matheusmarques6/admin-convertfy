@@ -177,11 +177,11 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
             {error}
           </p>
           <div className="flex gap-2 mt-4">
-            <Button variant="outline" size="sm" onClick={() => loadData()}>
+            <Button variant="secondary" size="sm" onClick={() => loadData()}>
               <RefreshCw className="mr-2 h-3.5 w-3.5" />
               Tentar Novamente
             </Button>
-            <Button variant="outline" size="sm" asChild>
+            <Button variant="secondary" size="sm" asChild>
               <Link href="/admin/settings/integrations">Verificar Integração</Link>
             </Button>
           </div>
@@ -200,7 +200,7 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
           <p className="text-sm text-muted-foreground text-center mt-1">
             Configure a integração com Asaas para ver métricas de faturamento
           </p>
-          <Button variant="outline" size="sm" className="mt-4" asChild>
+          <Button variant="secondary" size="sm" className="mt-4" asChild>
             <Link href="/admin/settings/integrations">Configurar Integração</Link>
           </Button>
         </div>

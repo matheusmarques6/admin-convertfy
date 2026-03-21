@@ -112,7 +112,7 @@ export default function ReportJobsPage() {
       ) : error ? (
         <div className="text-center py-12">
           <p className="text-sm text-destructive">Erro ao carregar relatorios.</p>
-          <Button variant="outline" size="sm" className="mt-2" onClick={() => mutate()}>
+          <Button variant="secondary" size="sm" className="mt-2" onClick={() => mutate()}>
             Tentar novamente
           </Button>
         </div>
@@ -126,7 +126,7 @@ export default function ReportJobsPage() {
 
           {hasMore && (
             <div className="flex justify-center pt-4">
-              <Button variant="outline" onClick={loadMore} disabled={isLoadingMore}>
+              <Button variant="secondary" onClick={loadMore} disabled={isLoadingMore}>
                 {isLoadingMore && <Icon icon={Loader2} size={16} className="mr-2 animate-spin" />}
                 Carregar mais
               </Button>

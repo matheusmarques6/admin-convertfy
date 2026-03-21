@@ -193,7 +193,7 @@ export default function EmailTemplatesPage() {
                     placeholder="Conteúdo do email..." rows={12} className="font-mono text-sm" />
                 </div>
                 <div className="flex justify-end gap-2">
-                  <Button variant="outline" onClick={cancelEdit}>Cancelar</Button>
+                  <Button variant="secondary" onClick={cancelEdit}>Cancelar</Button>
                   <Button onClick={handleSave} disabled={!form.name.trim() || !form.subject.trim()}>
                     {isNew ? "Criar" : "Salvar"}
                   </Button>

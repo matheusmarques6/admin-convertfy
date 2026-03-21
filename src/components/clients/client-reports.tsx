@@ -548,7 +548,7 @@ export function ClientReports({ clientId }: ClientReportsProps) {
         </TabsList>
         <div className="flex items-center gap-2">
           {savedReports.length >= 2 && (
-            <Button variant="outline" onClick={() => setShowCompareDialog(true)}>
+            <Button variant="secondary" onClick={() => setShowCompareDialog(true)}>
               <GitCompare className="mr-2 h-4 w-4" />
               Comparar
             </Button>
@@ -665,7 +665,7 @@ export function ClientReports({ clientId }: ClientReportsProps) {
                   {/* Actions */}
                   <div className="flex gap-2 pt-2 border-t">
                     <Button
-                      variant="outline"
+                      variant="secondary"
                       size="sm"
                       className="flex-1"
                       onClick={() => setViewingReport(report)}
@@ -768,7 +768,7 @@ export function ClientReports({ clientId }: ClientReportsProps) {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
+            <Button variant="secondary" onClick={() => setShowCreateDialog(false)}>
               Cancelar
             </Button>
             <Button onClick={createReport} disabled={isCreating || !selectedStore}>
@@ -794,7 +794,7 @@ export function ClientReports({ clientId }: ClientReportsProps) {
                 </DialogDescription>
               </div>
               <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={handleExportPDF}>
+                <Button variant="secondary" size="sm" onClick={handleExportPDF}>
                   <Download className="mr-2 h-4 w-4" />
                   Exportar PDF
                 </Button>
@@ -873,7 +873,7 @@ export function ClientReports({ clientId }: ClientReportsProps) {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCompareDialog(false)}>
+            <Button variant="secondary" onClick={() => setShowCompareDialog(false)}>
               Cancelar
             </Button>
             <Button

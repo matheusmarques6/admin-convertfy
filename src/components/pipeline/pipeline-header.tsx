@@ -88,7 +88,7 @@ export function PipelineHeader({
         {/* Pipeline Selector - always visible */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" className="gap-2">
+            <Button variant="secondary" className="gap-2">
               {currentPipeline?.name || "Selecionar Pipeline"}
               <ChevronDown className="h-4 w-4" />
             </Button>
@@ -161,7 +161,7 @@ export function PipelineHeader({
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   size="icon"
                   className="relative"
                   onClick={() => setShowImportRules(true)}
@@ -185,7 +185,7 @@ export function PipelineHeader({
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   size="icon"
                   onClick={() => setShowMembers(true)}
                 >
@@ -203,7 +203,7 @@ export function PipelineHeader({
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   size="icon"
                   onClick={() => setShowSettings(true)}
                 >

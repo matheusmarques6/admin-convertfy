@@ -98,7 +98,7 @@ export function AgentBoardConfig({
           </p>
         </div>
         <Button
-          variant="outline"
+          variant="secondary"
           size="sm"
           onClick={handleResetDefaults}
           disabled={isDefault}

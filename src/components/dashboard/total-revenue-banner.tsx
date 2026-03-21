@@ -229,7 +229,7 @@ export function TotalRevenueBanner({ storeIds, period: controlledPeriod, onPerio
           <p className="text-sm text-muted-foreground text-center mt-1.5 max-w-xs">
             Tente novamente em alguns instantes
           </p>
-          <Button variant="outline" size="sm" className="mt-3" onClick={() => mutate()}>
+          <Button variant="secondary" size="sm" className="mt-3" onClick={() => mutate()}>
             <Icon icon={RefreshCw} customSize={14} className="mr-1.5" />
             Tentar novamente
           </Button>

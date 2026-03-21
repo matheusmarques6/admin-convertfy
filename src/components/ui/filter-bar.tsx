@@ -98,7 +98,7 @@ export function FilterBar({ search, filters = [], onClearAll, className }: Filte
           {activeFilters.map((filter) => {
             const selectedOption = filter.options.find(o => o.value === filter.value)
             return (
-              <Badge key={filter.key} variant="secondary" className="flex items-center gap-1 pr-1">
+              <Badge key={filter.key} variant="neutral" className="flex items-center gap-1 pr-1">
                 <span className="text-muted-foreground mr-1">{filter.label}:</span>
                 {selectedOption?.label || filter.value}
                 <button

@@ -156,7 +156,7 @@ export function BoardCalendarView({
           </h2>
           <div className="flex items-center gap-1">
             <Button
-              variant="outline"
+              variant="secondary"
               size="icon"
               aria-label="Mês anterior"
               onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
@@ -164,7 +164,7 @@ export function BoardCalendarView({
               <Icon icon={ChevronLeft} size={16} />
             </Button>
             <Button
-              variant="outline"
+              variant="secondary"
               size="sm"
               onClick={() => {
                 setCurrentMonth(new Date())
@@ -174,7 +174,7 @@ export function BoardCalendarView({
               Hoje
             </Button>
             <Button
-              variant="outline"
+              variant="secondary"
               size="icon"
               aria-label="Próximo mês"
               onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}

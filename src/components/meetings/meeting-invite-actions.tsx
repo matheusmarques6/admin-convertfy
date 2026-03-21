@@ -86,7 +86,7 @@ export function MeetingInviteActions({
   return (
     <div className="flex items-center gap-1">
       <Button
-        variant="outline"
+        variant="secondary"
         size={compact ? "icon" : "sm"}
         className={compact ? "h-7 w-7" : "h-7 text-xs"}
         onClick={() => handleResponse("accepted")}
@@ -97,7 +97,7 @@ export function MeetingInviteActions({
         {!compact && "Aceitar"}
       </Button>
       <Button
-        variant="outline"
+        variant="secondary"
         size={compact ? "icon" : "sm"}
         className={compact ? "h-7 w-7" : "h-7 text-xs"}
         onClick={() => handleResponse("declined")}

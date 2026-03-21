@@ -283,7 +283,7 @@ export default function PortalDashboardPage() {
           </Select>
 
           <Button
-            variant="outline"
+            variant="secondary"
             size="icon"
             onClick={() => {
               triggerRefresh()

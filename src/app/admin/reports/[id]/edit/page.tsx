@@ -296,7 +296,7 @@ export default function EditReportPage() {
             </Badge>
             {!isManual && (
               <Button
-                variant="outline"
+                variant="secondary"
                 onClick={handleRegenerate}
                 disabled={isRegenerating}
               >

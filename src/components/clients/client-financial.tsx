@@ -748,7 +748,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           <AlertCircle className="h-12 w-12 text-destructive mb-4" />
           <h3 className="text-lg font-medium text-destructive">Erro ao carregar</h3>
           <p className="text-muted-foreground text-center mt-1">{error}</p>
-          <Button variant="outline" className="mt-4" onClick={() => { mutatePayments(); mutateSubscriptions() }}>
+          <Button variant="secondary" className="mt-4" onClick={() => { mutatePayments(); mutateSubscriptions() }}>
             <RefreshCw className="mr-2 h-4 w-4" />
             Tentar novamente
           </Button>
@@ -824,12 +824,12 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
               ))}
             </SelectContent>
           </Select>
-          <Button variant="outline" size="icon" onClick={() => { mutatePayments(); mutateSubscriptions(); loadLocalData(); }} disabled={isLoading}>
+          <Button variant="secondary" size="icon" onClick={() => { mutatePayments(); mutateSubscriptions(); loadLocalData(); }} disabled={isLoading}>
             <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
           </Button>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => setSubscriptionDialogOpen(true)}>
+          <Button variant="secondary" onClick={() => setSubscriptionDialogOpen(true)}>
             <Repeat className="mr-2 h-4 w-4" />
             Nova Assinatura
           </Button>
@@ -1224,7 +1224,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
               </div>
 
               <DialogFooter>
-                <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>Cancelar</Button>
+                <Button variant="secondary" onClick={() => setCreateDialogOpen(false)}>Cancelar</Button>
                 <Button onClick={handleCreateCharge} disabled={isCreating || chargeForm.value === 0}>
                   {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Criar Fatura
@@ -1252,7 +1252,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                         unoptimized
                       />
                       <Button
-                        variant="outline"
+                        variant="secondary"
                         size="sm"
                         className="mt-2"
                         onClick={() => {
@@ -1268,7 +1268,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                 )}
 
                 {createdPayment.bankSlipUrl && (
-                  <Button variant="outline" className="w-full" asChild>
+                  <Button variant="secondary" className="w-full" asChild>
                     <a href={createdPayment.bankSlipUrl} target="_blank" rel="noopener noreferrer">
                       <FileText className="mr-2 h-4 w-4" />
                       Ver Boleto
@@ -1277,7 +1277,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                 )}
 
                 {createdPayment.invoiceUrl && (
-                  <Button variant="outline" className="w-full" asChild>
+                  <Button variant="secondary" className="w-full" asChild>
                     <a href={createdPayment.invoiceUrl} target="_blank" rel="noopener noreferrer">
                       <ExternalLink className="mr-2 h-4 w-4" />
                       Link de Pagamento
@@ -1389,7 +1389,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setSubscriptionDialogOpen(false)}>Cancelar</Button>
+            <Button variant="secondary" onClick={() => setSubscriptionDialogOpen(false)}>Cancelar</Button>
             <Button onClick={handleCreateSubscription} disabled={isCreating || subscriptionForm.value === 0}>
               {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Criar Assinatura
@@ -1477,7 +1477,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setStatusDialogOpen(false)}>Cancelar</Button>
+            <Button variant="secondary" onClick={() => setStatusDialogOpen(false)}>Cancelar</Button>
             <Button onClick={handleUpdateChargeStatus} disabled={isCreating}>
               {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Salvar Alterações

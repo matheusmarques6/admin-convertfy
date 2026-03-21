@@ -190,7 +190,7 @@ export function StoreSelector({
         </Select>
 
         <Button
-          variant="outline"
+          variant="secondary"
           size="sm"
           onClick={handleSelectAll}
           aria-label={

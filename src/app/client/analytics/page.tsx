@@ -149,7 +149,7 @@ export default function PortalAnalyticsPage() {
           </Select>
 
           <Button
-            variant="outline"
+            variant="secondary"
             size="icon"
             onClick={() => fetchData(true)}
             disabled={refreshing}

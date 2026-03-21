@@ -305,7 +305,7 @@ export function SubscriptionsManager() {
                 />
               </div>
               <Button
-                variant="outline"
+                variant="secondary"
                 size="icon"
                 onClick={() => loadSubscriptions(true)}
                 disabled={isRefreshing}

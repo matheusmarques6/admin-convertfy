@@ -364,7 +364,7 @@ export default function EditAutomationPage() {
               </div>
               <Button
                 type="button"
-                variant="outline"
+                variant="secondary"
                 size="sm"
                 onClick={addAction}
                 disabled={isLoading}
@@ -443,7 +443,7 @@ export default function EditAutomationPage() {
 
         {/* Actions */}
         <div className="flex justify-end gap-4">
-          <Button type="button" variant="outline" asChild disabled={isLoading}>
+          <Button type="button" variant="secondary" asChild disabled={isLoading}>
             <Link href="/admin/automations">Cancelar</Link>
           </Button>
           <Button type="submit" disabled={isLoading}>

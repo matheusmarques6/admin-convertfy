@@ -67,7 +67,7 @@ export function StoreDeleteAction({ storeId, storeName }: StoreDeleteActionProps
       <AlertDialogTrigger asChild>
         <Button
           size="sm"
-          variant="outline"
+          variant="secondary"
           className="text-destructive hover:text-destructive"
         >
           <Icon icon={Trash2} size={16} className="mr-1" />

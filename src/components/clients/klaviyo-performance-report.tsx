@@ -928,10 +928,10 @@ export function KlaviyoPerformanceReport({ storeId, storeName, savedReportData }
             />
             </>
           )}
-          <Button variant="outline" size="icon" onClick={() => { mutateKlaviyo(); mutateShopify() }} disabled={klaviyoValidating} className="bg-card border-border h-9 w-9 hover:bg-muted">
+          <Button variant="secondary" size="icon" onClick={() => { mutateKlaviyo(); mutateShopify() }} disabled={klaviyoValidating} className="bg-card border-border h-9 w-9 hover:bg-muted">
             <RefreshCw className={`w-4 h-4 ${klaviyoValidating ? "animate-spin" : ""}`} />
           </Button>
-          <Button variant="outline" size="icon" onClick={openFullscreenReport} className="bg-card border-border h-9 w-9 hover:bg-muted" title="Abrir em nova página">
+          <Button variant="secondary" size="icon" onClick={openFullscreenReport} className="bg-card border-border h-9 w-9 hover:bg-muted" title="Abrir em nova página">
             <ExternalLink className="w-4 h-4" />
           </Button>
           <Button onClick={handleExportPDF} disabled={isExporting} className="bg-primary hover:bg-primary/90 h-9 px-4">

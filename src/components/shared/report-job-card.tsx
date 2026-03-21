@@ -259,7 +259,7 @@ export function ReportJobCard({
             )}
             <Button
               size="sm"
-              variant="outline"
+              variant="secondary"
               className="h-7 text-xs"
               onClick={onRetry}
             >

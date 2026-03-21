@@ -374,7 +374,7 @@ export function OnboardingApprovals() {
                   <Icon icon={Check} size={16} className="mr-1" />
                   Aprovar
                 </Button>
-                <Button size="sm" variant="outline" onClick={() => openAction(onb, "revision_requested")}>
+                <Button size="sm" variant="secondary" onClick={() => openAction(onb, "revision_requested")}>
                   <Icon icon={MessageSquare} size={16} className="mr-1" />
                   Revisão
                 </Button>
@@ -426,7 +426,7 @@ export function OnboardingApprovals() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setActionDialog({ open: false })}>
+            <Button variant="secondary" onClick={() => setActionDialog({ open: false })}>
               Cancelar
             </Button>
             <Button

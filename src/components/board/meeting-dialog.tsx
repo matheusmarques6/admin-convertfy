@@ -455,7 +455,7 @@ export function MeetingDialog({
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button
-                        variant="outline"
+                        variant="secondary"
                         className={cn(
                           "justify-start text-left font-normal",
                           !scheduledDate && "text-muted-foreground"
@@ -650,7 +650,7 @@ export function MeetingDialog({
           </div>
 
           <DialogFooter className="pt-4">
-            <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting}>
+            <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting}>
               Cancelar
             </Button>
             <Button type="submit" disabled={isSubmitting}>

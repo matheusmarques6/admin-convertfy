@@ -130,7 +130,7 @@ export function AddStoresModal({
 
         <DialogFooter>
           <Button
-            variant="outline"
+            variant="secondary"
             onClick={() => handleOpenChange(false)}
             disabled={isSubmitting}
           >

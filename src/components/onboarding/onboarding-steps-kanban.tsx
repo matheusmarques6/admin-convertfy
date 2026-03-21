@@ -410,7 +410,7 @@ export function OnboardingStepsKanban() {
         )}
 
         <div className="ml-auto">
-          <Button variant="outline" size="sm" className="h-8" onClick={fetchSteps}>
+          <Button variant="secondary" size="sm" className="h-8" onClick={fetchSteps}>
             <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
             Atualizar
             {realtimeConnected && (
