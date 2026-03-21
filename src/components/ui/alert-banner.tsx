@@ -27,21 +27,21 @@ const variantConfig = {
     container:
       "bg-amber-500/10 border-amber-500/30 text-amber-400",
     iconClass: "text-amber-400",
-    actionVariant: "warning" as const,
+    actionVariant: "secondary" as const,
   },
   info: {
     icon: Info,
     container:
       "bg-blue-500/10 border-blue-500/30 text-blue-400",
     iconClass: "text-blue-400",
-    actionVariant: "default" as const,
+    actionVariant: "primary" as const,
   },
   success: {
     icon: CheckCircle2,
     container:
       "bg-green-500/10 border-green-500/30 text-green-400",
     iconClass: "text-green-400",
-    actionVariant: "success" as const,
+    actionVariant: "primary" as const,
   },
 } as const
 

@@ -544,7 +544,7 @@ export default function PortalStoreReportPage({
             <h1 className="text-2xl font-bold">{store.store_name}</h1>
             <p className="text-slate-500 dark:text-slate-400 capitalize">{store.platform}</p>
           </div>
-          <Badge variant={store.is_active ? "default" : "secondary"}>
+          <Badge variant={store.is_active ? "info" : "neutral"}>
             {store.is_active ? "Ativa" : "Inativa"}
           </Badge>
         </div>

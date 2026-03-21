@@ -18,6 +18,7 @@ import {
   PieChart,
   ChevronRight,
 } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Select,
@@ -477,7 +478,7 @@ function KpiCard({
 }: {
   label: string
   value: string | number
-  icon: React.ElementType
+  icon: LucideIcon
   accentClass: string
   bgClass: string
   variation?: number

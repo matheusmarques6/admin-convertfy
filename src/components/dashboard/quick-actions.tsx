@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { Plus, UserPlus, Calendar, FileText, Zap, Rocket, ClipboardList, Store, PenLine } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import { usePermissions } from "@/lib/hooks/use-permissions"
@@ -9,7 +10,7 @@ import { usePermissions } from "@/lib/hooks/use-permissions"
 interface QuickAction {
   label: string
   href: string
-  icon: React.ElementType
+  icon: LucideIcon
   primary?: boolean
   requiredFeatures?: string[]
 }
@@ -44,7 +45,7 @@ export function QuickActions() {
       {visibleActions.map((action) => (
         <Button
           key={action.label}
-          variant={action.primary ? "default" : "outline"}
+          variant={action.primary ? "primary" : "secondary"}
           size="sm"
           className="h-9 px-3.5 text-xs font-medium rounded-xl gap-1.5 transition-all duration-200 hover:shadow-sm"
           asChild

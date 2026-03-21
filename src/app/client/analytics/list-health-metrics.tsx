@@ -1,4 +1,5 @@
 import { Shield, Users, MailOpen, MousePointerClick, UserMinus, Send } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
 import { formatNumber } from "@/lib/utils/format"
 import type { KlaviyoData } from "../dashboard/types"
@@ -25,7 +26,7 @@ function MetricRow({
   value,
   colorClass,
 }: {
-  icon: React.ElementType
+  icon: LucideIcon
   label: string
   value: string
   colorClass: string

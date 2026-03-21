@@ -405,8 +405,7 @@ export function WiseReconciliation() {
                       <TableCell>
                         {isReconciled ? (
                           <Badge
-                            variant="default"
-                            className="bg-success/10 text-success hover:bg-success/20"
+                            variant="positive"
                           >
                             <Check className="h-3 w-3 mr-1" />
                             Reconciliado

@@ -1,4 +1,5 @@
 import { TrendingUp, Zap, Send, MessageSquare, Wallet } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
 import { formatCurrency } from "@/lib/utils/format"
 import { VariationBadge } from "./components"
@@ -123,7 +124,7 @@ function BreakdownCard({
   label: string
   value: number
   percent: number
-  icon: React.ElementType
+  icon: LucideIcon
   accentClass: string
   bgClass: string
   borderClass: string
@@ -132,7 +133,7 @@ function BreakdownCard({
   return (
     <div className={`rounded-xl border ${borderClass} ${bgClass} p-4 transition-all duration-200`}>
       <div className="flex items-center gap-2 mb-2.5">
-        <Icon icon={IconComponent} size={16} className={accentClass} strokeWidth={1.8} />
+        <Icon icon={IconComponent} size={16} className={accentClass} />
         <span className="text-xs font-medium text-slate-600 dark:text-slate-400">{label}</span>
       </div>
       <p className="text-lg font-bold text-slate-800 dark:text-white tabular-nums">{formatCurrency(value)}</p>

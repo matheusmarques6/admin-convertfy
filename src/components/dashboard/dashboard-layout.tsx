@@ -361,7 +361,7 @@ export function DashboardLayout({ data, userRole }: DashboardLayoutProps) {
           {criticalAlerts.map((alert, i) => (
             <Link key={i} href={alert.href}>
               <Badge
-                variant={alert.variant === "destructive" ? "destructive" : "secondary"}
+                variant={alert.variant === "destructive" ? "negative" : "neutral"}
                 className={cn(
                   "text-xs cursor-pointer transition-all hover:scale-105",
                   alert.variant === "warning" && "bg-warning/10 text-warning border-warning/20 hover:bg-warning/20",

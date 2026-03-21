@@ -106,7 +106,7 @@ export function ParticipantRsvpStatus({
           <Tooltip>
             <TooltipTrigger asChild>
               <Badge
-                variant="secondary"
+                variant="neutral"
                 className={cn(
                   "gap-1 cursor-default text-xs px-1.5 py-0",
                   isDivergent && "border-yellow-500/60 bg-yellow-500/5"

@@ -9,6 +9,7 @@ import {
   Target,
   Clock,
 } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 import { formatCurrency, formatNumber } from "@/lib/utils"
 import { cn } from "@/lib/utils"
 
@@ -30,7 +31,7 @@ export function DashboardMetrics({ metrics }: DashboardMetricsProps) {
     change?: string
     changeType?: "positive" | "negative"
     subtitle?: string
-    icon: React.ElementType
+    icon: LucideIcon
     iconColor: string
     iconBg: string
   }> = [

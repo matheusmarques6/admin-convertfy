@@ -93,15 +93,15 @@ function getActivityColor(dateStr: string | null | undefined): string {
   return "bg-muted-foreground/40"
 }
 
-const roleLabels: Record<string, { label: string; variant: "default" | "secondary" | "success" | "destructive" | "warning" | "outline" }> = {
-  owner: { label: "Owner", variant: "default" },
-  manager: { label: "Gerente", variant: "success" },
+const roleLabels: Record<string, { label: string; variant: "positive" | "negative" | "warning" | "neutral" | "info" }> = {
+  owner: { label: "Owner", variant: "info" },
+  manager: { label: "Gerente", variant: "positive" },
   coordinator: { label: "Coordenador", variant: "warning" },
-  copywriter: { label: "Copywriter", variant: "secondary" },
-  designer: { label: "Designer", variant: "secondary" },
-  developer: { label: "Desenvolvedor", variant: "secondary" },
-  support: { label: "Suporte", variant: "outline" },
-  analyst: { label: "Analista", variant: "outline" },
+  copywriter: { label: "Copywriter", variant: "neutral" },
+  designer: { label: "Designer", variant: "neutral" },
+  developer: { label: "Desenvolvedor", variant: "neutral" },
+  support: { label: "Suporte", variant: "neutral" },
+  analyst: { label: "Analista", variant: "neutral" },
 }
 
 export function TeamTable({ members, features, organizations, stores }: TeamTableProps) {

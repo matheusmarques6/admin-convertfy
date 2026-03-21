@@ -12,7 +12,7 @@ const roles = [
   {
     name: "Admin",
     icon: ShieldAlert,
-    color: "destructive" as const,
+    color: "negative" as const,
     permissions: {
       clients: "Total", pipeline: "Total", reports: "Total", settings: "Total",
       team: "Total", financial: "Total", integrations: "Total", delete: "Sim",
@@ -21,7 +21,7 @@ const roles = [
   {
     name: "Manager",
     icon: ShieldCheck,
-    color: "default" as const,
+    color: "info" as const,
     permissions: {
       clients: "Total", pipeline: "Total", reports: "Total", settings: "Leitura",
       team: "Leitura", financial: "Leitura", integrations: "Leitura", delete: "Não",
@@ -30,7 +30,7 @@ const roles = [
   {
     name: "Member",
     icon: Shield,
-    color: "secondary" as const,
+    color: "neutral" as const,
     permissions: {
       clients: "Próprios", pipeline: "Edição", reports: "Leitura", settings: "Não",
       team: "Não", financial: "Não", integrations: "Não", delete: "Não",
@@ -39,7 +39,7 @@ const roles = [
   {
     name: "Viewer",
     icon: Eye,
-    color: "outline" as const,
+    color: "warning" as const,
     permissions: {
       clients: "Leitura", pipeline: "Leitura", reports: "Leitura", settings: "Não",
       team: "Não", financial: "Não", integrations: "Não", delete: "Não",

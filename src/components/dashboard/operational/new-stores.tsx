@@ -106,7 +106,7 @@ export function NewStores({ stores }: NewStoresProps) {
                         <div className="flex items-center gap-2">
                           <p className="text-sm font-medium truncate text-foreground">{store.store_name}</p>
                           <Badge
-                            variant="secondary"
+                            variant="neutral"
                             className={cn("text-[10px] h-5 px-2 shrink-0", platform.color)}
                           >
                             {platform.label}
@@ -122,7 +122,7 @@ export function NewStores({ stores }: NewStoresProps) {
                           <div className="mt-1.5 space-y-1">
                             <div className="flex items-center justify-between">
                               <Badge
-                                variant="secondary"
+                                variant="neutral"
                                 className={cn("text-[10px] h-5 px-2", onboardingStatus?.color)}
                               >
                                 {onboardingStatus?.label} {onboarding.progress_percent}%

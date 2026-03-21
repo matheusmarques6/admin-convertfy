@@ -208,7 +208,7 @@ export default function PortalOnboardingPage() {
                     <Icon className={cn("h-5 w-5", allDone ? "text-emerald-600" : "text-slate-400 dark:text-slate-500")} />
                     {group.label}
                   </CardTitle>
-                  <Badge variant={allDone ? "default" : "secondary"} className={cn("text-xs", allDone && "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20")}>
+                  <Badge variant={allDone ? "info" : "neutral"} className={cn("text-xs", allDone && "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20")}>
                     {group.completed}/{group.total}
                   </Badge>
                 </div>
@@ -268,7 +268,7 @@ export default function PortalOnboardingPage() {
                           </Button>
                         ) : !isDone && step.status !== "pending" ? (
                           <Badge
-                            variant="secondary"
+                            variant="neutral"
                             className={cn("text-xs shrink-0", statusConfig[step.status]?.color)}
                           >
                             {statusConfig[step.status]?.label}

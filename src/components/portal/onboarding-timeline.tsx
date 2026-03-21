@@ -1,6 +1,7 @@
 "use client"
 
 import { Check, Clock, Palette, Code2, Sparkles, CircleDot } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 import { Icon as IconWrapper } from "@/components/ui/icon"
 
 interface TimelinePhase {
@@ -25,7 +26,7 @@ const DEFAULT_PHASES: TimelinePhase[] = [
 
 const PHASE_ORDER = ["pending_approval", "generating_copies", "design", "implementation", "completed"]
 
-const PHASE_ICONS: Record<string, React.ElementType> = {
+const PHASE_ICONS: Record<string, LucideIcon> = {
   pending_approval: Clock,
   generating_copies: Sparkles,
   design: Palette,

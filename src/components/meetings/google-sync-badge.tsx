@@ -75,7 +75,7 @@ interface MeetingJoinButtonProps {
   meetingUrl?: string
   meetingUrlSource?: MeetingUrlSource
   className?: string
-  size?: "sm" | "default"
+  size?: "sm" | "md"
 }
 
 export function MeetingJoinButton({

@@ -185,7 +185,7 @@ export function OperationalOverview({ activities, onboardings }: OperationalOver
                             </p>
                             <div className="flex items-center gap-2 mt-1.5">
                               <Badge
-                                variant="secondary"
+                                variant="neutral"
                                 className={cn("text-[10px] h-5 px-2", status.color)}
                               >
                                 {status.label}

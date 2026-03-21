@@ -96,11 +96,11 @@ interface ClientStatus {
   }
 }
 
-const statusLabels: Record<string, { label: string; variant: "default" | "secondary" | "success" | "destructive" | "warning" }> = {
-  active: { label: "Ativo", variant: "success" },
-  inactive: { label: "Inativo", variant: "secondary" },
-  churned: { label: "Churned", variant: "destructive" },
-  prospect: { label: "Prospect", variant: "default" },
+const statusLabels: Record<string, { label: string; variant: "positive" | "negative" | "warning" | "neutral" | "info" }> = {
+  active: { label: "Ativo", variant: "positive" },
+  inactive: { label: "Inativo", variant: "neutral" },
+  churned: { label: "Churned", variant: "negative" },
+  prospect: { label: "Prospect", variant: "info" },
   onboarding: { label: "Onboarding", variant: "warning" },
 }
 

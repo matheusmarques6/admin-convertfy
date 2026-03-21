@@ -318,7 +318,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
                       </CardDescription>
                     </div>
                   </div>
-                  <Badge variant={store.is_active ? "success" : "secondary"}>
+                  <Badge variant={store.is_active ? "positive" : "neutral"}>
                     {store.is_active ? "Ativa" : "Inativa"}
                   </Badge>
                 </div>

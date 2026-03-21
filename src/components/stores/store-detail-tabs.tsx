@@ -582,7 +582,7 @@ function CampaignsTab({
                     <tr key={c.id} className="border-b last:border-0">
                       <td className="py-2 pr-4 font-medium max-w-[200px] truncate">{c.name}</td>
                       <td className="py-2 pr-4">
-                        <Badge variant={c.status === "sent" ? "success" : "secondary"}>
+                        <Badge variant={c.status === "sent" ? "positive" : "neutral"}>
                           {c.status}
                         </Badge>
                       </td>
@@ -711,7 +711,7 @@ function FlowsTab({
                     <tr key={f.id} className="border-b last:border-0">
                       <td className="py-2 pr-4 font-medium max-w-[200px] truncate">{f.name}</td>
                       <td className="py-2 pr-4">
-                        <Badge variant={f.status === "live" ? "success" : "secondary"}>
+                        <Badge variant={f.status === "live" ? "positive" : "neutral"}>
                           {f.status}
                         </Badge>
                       </td>
@@ -1033,7 +1033,7 @@ function CredentialsForm({
               <Store className="h-4 w-4 text-success" />
               Integração Shopify
             </h4>
-            <Badge variant={shopifyConfigured ? "success" : "secondary"} className="text-xs">
+            <Badge variant={shopifyConfigured ? "positive" : "neutral"} className="text-xs">
               {shopifyConfigured ? "Configurado" : "Não configurado"}
             </Badge>
           </div>
@@ -1088,7 +1088,7 @@ function CredentialsForm({
               <Key className="h-4 w-4 text-primary" />
               Integração Klaviyo
             </h4>
-            <Badge variant={klaviyoConfigured ? "success" : "secondary"} className="text-xs">
+            <Badge variant={klaviyoConfigured ? "positive" : "neutral"} className="text-xs">
               {klaviyoConfigured ? "Configurado" : "Não configurado"}
             </Badge>
           </div>
@@ -1152,7 +1152,7 @@ function CredentialsForm({
               <BarChart3 className="h-4 w-4 text-warning" />
               Integração Google Analytics (GA4)
             </h4>
-            <Badge variant={ga4Configured ? "success" : "secondary"} className="text-xs">
+            <Badge variant={ga4Configured ? "positive" : "neutral"} className="text-xs">
               {ga4Configured ? "Configurado" : "Não configurado"}
             </Badge>
           </div>

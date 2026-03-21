@@ -477,7 +477,7 @@ export function ImportRulesDialog({
                             />
                             <p className="font-medium truncate">{rule.name}</p>
                             <Badge
-                              variant={rule.is_active ? "default" : "secondary"}
+                              variant={rule.is_active ? "info" : "neutral"}
                               className="text-xs"
                             >
                               {rule.is_active ? "Ativa" : "Inativa"}

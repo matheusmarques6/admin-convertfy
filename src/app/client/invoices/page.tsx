@@ -22,6 +22,7 @@ import {
   Banknote,
   Check,
 } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -217,7 +218,7 @@ function StatCard({
   title: string
   value: string | number
   subtitle?: string
-  icon: React.ElementType
+  icon: LucideIcon
   iconColor?: string
   iconBgColor?: string
 }) {

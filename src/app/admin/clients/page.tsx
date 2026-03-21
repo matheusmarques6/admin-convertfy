@@ -385,7 +385,7 @@ export default async function ClientsPage({ searchParams }: PageProps) {
           >
             {tab.label}
             <Badge
-              variant={currentStatusTab === tab.value ? "secondary" : "outline"}
+              variant={currentStatusTab === tab.value ? "neutral" : "neutral"} showDot={false}
               className="ml-0.5 h-5 min-w-[20px] px-1.5 text-[11px] tabular-nums"
             >
               {tab.count}

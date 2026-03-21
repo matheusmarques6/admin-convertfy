@@ -91,7 +91,7 @@ export function NewClients({ clients }: NewClientsProps) {
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-medium truncate text-foreground">{client.name}</p>
                       <Badge
-                        variant="secondary"
+                        variant="neutral"
                         className={cn("text-[10px] h-5 px-2 shrink-0", STATUS_COLORS[client.status])}
                       >
                         {STATUS_LABELS[client.status] || client.status}

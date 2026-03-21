@@ -362,7 +362,7 @@ export function MeetingDialog({
                         return (
                           <Badge
                             key={`${participant.type}-${participant.id}`}
-                            variant="secondary"
+                            variant="neutral"
                             className="flex items-center gap-1"
                           >
                             <Avatar className="h-4 w-4">
@@ -379,16 +379,17 @@ export function MeetingDialog({
                                 compact
                               />
                             )}
-                            <Icon
-                              icon={X}
-                              customSize={12}
+                            <button
+                              type="button"
                               className="cursor-pointer hover:text-destructive"
                               onClick={() => {
                                 setSelectedParticipants(prev =>
                                   prev.filter(p => !(p.id === participant.id && p.type === participant.type))
                                 )
                               }}
-                            />
+                            >
+                              <Icon icon={X} customSize={12} />
+                            </button>
                           </Badge>
                         )
                       })}

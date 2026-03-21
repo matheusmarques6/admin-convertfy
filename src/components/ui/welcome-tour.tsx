@@ -15,6 +15,7 @@ import {
   Check,
   Sparkles,
 } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
 
 const WELCOME_TOUR_KEY = "convertfy-welcome-tour-completed"
@@ -22,7 +23,7 @@ const WELCOME_TOUR_KEY = "convertfy-welcome-tour-completed"
 interface TourStep {
   title: string
   description: string
-  icon: React.ElementType
+  icon: LucideIcon
   color: string
 }
 

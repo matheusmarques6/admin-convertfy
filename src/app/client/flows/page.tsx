@@ -11,6 +11,7 @@ import {
   DollarSign,
   X,
 } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Select,
@@ -277,7 +278,7 @@ function SummaryCard({
   valueColor = "text-slate-800 dark:text-slate-100",
   isSmallValue = false,
 }: {
-  icon: React.ElementType
+  icon: LucideIcon
   iconBg: string
   iconColor: string
   label: string

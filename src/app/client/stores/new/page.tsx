@@ -315,7 +315,7 @@ export default function PortalNewStorePage() {
           <CardContent className="pt-6">
             <div className="flex gap-4">
               <Button
-                variant={formMode === "new" ? "default" : "outline"}
+                variant={formMode === "new" ? "primary" : "secondary"}
                 onClick={() => { setFormMode("new"); updateField("replace_store_id", "") }}
                 className="flex-1"
               >
@@ -323,7 +323,7 @@ export default function PortalNewStorePage() {
                 Nova loja
               </Button>
               <Button
-                variant={formMode === "replace" ? "default" : "outline"}
+                variant={formMode === "replace" ? "primary" : "secondary"}
                 onClick={() => setFormMode("replace")}
                 className="flex-1"
               >

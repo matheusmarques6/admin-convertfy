@@ -1,4 +1,5 @@
 import { TrendingUp, TrendingDown } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
 import { formatCurrency, formatNumber } from "@/lib/utils/format"
 
@@ -30,7 +31,7 @@ export function MetricCard({
   title: string
   value: string | number
   subtitle?: string
-  icon: React.ElementType
+  icon: LucideIcon
   highlight?: boolean
 }) {
   return (
@@ -90,7 +91,7 @@ export function ChannelCard({
   title: string
   percent: number
   value: number
-  icon: React.ElementType
+  icon: LucideIcon
   color: string
   active?: boolean
 }) {

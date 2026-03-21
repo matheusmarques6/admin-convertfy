@@ -165,7 +165,7 @@ export function StorePerformanceTables() {
                         <div className="font-medium truncate" title={f.name}>
                           {f.name}
                         </div>
-                        <Badge variant={f.status === "live" ? "success" : "secondary"} className="text-xs mt-1">
+                        <Badge variant={f.status === "live" ? "positive" : "neutral"} className="text-xs mt-1">
                           {f.status}
                         </Badge>
                       </TableCell>

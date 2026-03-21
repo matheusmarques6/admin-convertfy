@@ -256,7 +256,7 @@ export default function EditAutomationPage() {
           { label: automation?.name || "Automação" },
         ]}
         actions={
-          <Badge variant={isActive ? "default" : "secondary"}>
+          <Badge variant={isActive ? "info" : "neutral"}>
             {isActive ? "Ativa" : "Pausada"}
           </Badge>
         }

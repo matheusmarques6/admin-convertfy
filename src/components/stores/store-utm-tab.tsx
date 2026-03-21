@@ -517,7 +517,7 @@ function UtmTemplatesSection({
                     </TableCell>
                     <TableCell className="text-center">{t.usage_count}</TableCell>
                     <TableCell className="text-center">
-                      <Badge variant={t.is_active ? "default" : "secondary"} className="text-xs">
+                      <Badge variant={t.is_active ? "info" : "neutral"} className="text-xs">
                         {t.is_active ? "Ativo" : "Inativo"}
                       </Badge>
                     </TableCell>

@@ -167,7 +167,7 @@ export function ImportLogsDialog({
 
                         <div className="flex flex-col items-end gap-1 flex-shrink-0">
                           <Badge
-                            variant={log.status === "success" ? "default" : "secondary"}
+                            variant={log.status === "success" ? "info" : "neutral"}
                             className="text-xs"
                           >
                             {config.label}

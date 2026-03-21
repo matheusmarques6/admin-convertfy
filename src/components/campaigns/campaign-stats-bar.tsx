@@ -1,6 +1,7 @@
 "use client"
 
 import { Eye, CheckCircle, Users, DollarSign } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 import { Icon as IconWrapper } from "@/components/ui/icon"
 import { formatCurrencyCompact } from "@/lib/utils/format"
 
@@ -24,7 +25,7 @@ interface StatCardProps {
   title: string
   value: string | number
   subtitle?: string
-  icon: React.ElementType
+  icon: LucideIcon
   iconColor?: string
   iconBgColor?: string
 }

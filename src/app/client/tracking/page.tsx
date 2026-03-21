@@ -30,6 +30,7 @@ import {
   Info,
   KeyRound,
 } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -93,7 +94,7 @@ interface TrackingOrder {
 
 // ─── Constants ──────────────────────────────────────────────────────────────────
 
-const STATUS_LABELS: Record<string, { label: string; color: string; icon: React.ElementType }> = {
+const STATUS_LABELS: Record<string, { label: string; color: string; icon: LucideIcon }> = {
   pending: { label: "Pendente", color: "text-slate-500 bg-slate-50 dark:bg-slate-800 dark:text-slate-400", icon: Clock },
   in_transit: { label: "Em Trânsito", color: "text-amber-600 bg-amber-50 dark:bg-amber-500/10 dark:text-amber-400", icon: Truck },
   delivered: { label: "Entregue", color: "text-emerald-600 bg-emerald-50 dark:bg-emerald-500/10 dark:text-emerald-400", icon: CheckCircle2 },

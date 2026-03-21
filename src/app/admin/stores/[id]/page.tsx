@@ -156,7 +156,7 @@ export default async function StoreDetailPage({
       />
 
       <div className="flex items-center gap-2 flex-wrap">
-        <Badge variant={store.is_active ? "success" : "secondary"}>
+        <Badge variant={store.is_active ? "positive" : "neutral"}>
           {store.is_active ? "Ativa" : "Inativa"}
         </Badge>
         {store.platform && (

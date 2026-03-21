@@ -48,14 +48,14 @@ export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps)
     return hasFeature(requiredFeature)
   })
 
-  const getSeverityColor = (severity: "high" | "medium" | "low") => {
+  const getSeverityColor = (severity: "high" | "medium" | "low"): "positive" | "negative" | "warning" | "neutral" | "info" => {
     switch (severity) {
       case "high":
-        return "destructive"
+        return "negative"
       case "medium":
         return "warning"
       case "low":
-        return "secondary"
+        return "neutral"
     }
   }
 

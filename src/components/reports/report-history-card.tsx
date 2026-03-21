@@ -11,6 +11,7 @@ import {
   RefreshCw,
   Pause,
 } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { ROUTES } from "@/lib/routes"
@@ -28,16 +29,16 @@ interface ReportHistoryCardProps {
 
 const STATUS_CONFIG: Record<
   ReportJobStatus,
-  { icon: React.ElementType; label: string; variant: "default" | "secondary" | "destructive" | "outline" }
+  { icon: LucideIcon; label: string; variant: "positive" | "negative" | "warning" | "neutral" | "info" }
 > = {
-  queued: { icon: Clock, label: "Na fila", variant: "secondary" },
-  processing: { icon: Loader2, label: "Processando", variant: "default" },
-  paused: { icon: Pause, label: "Pausado", variant: "outline" },
-  completed: { icon: Check, label: "Concluido", variant: "default" },
-  partial: { icon: AlertTriangle, label: "Parcial", variant: "outline" },
-  failed: { icon: AlertTriangle, label: "Falhou", variant: "destructive" },
-  cancelled: { icon: Clock, label: "Cancelado", variant: "secondary" },
-  expired: { icon: Clock, label: "Expirado", variant: "secondary" },
+  queued: { icon: Clock, label: "Na fila", variant: "neutral" },
+  processing: { icon: Loader2, label: "Processando", variant: "info" },
+  paused: { icon: Pause, label: "Pausado", variant: "neutral" },
+  completed: { icon: Check, label: "Concluido", variant: "positive" },
+  partial: { icon: AlertTriangle, label: "Parcial", variant: "warning" },
+  failed: { icon: AlertTriangle, label: "Falhou", variant: "negative" },
+  cancelled: { icon: Clock, label: "Cancelado", variant: "neutral" },
+  expired: { icon: Clock, label: "Expirado", variant: "neutral" },
 }
 
 function formatDateRange(startDate: string | null, endDate: string | null): string {

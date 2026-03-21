@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { Plus, Calendar, Video, CheckCircle, XCircle, Clock, Loader2, FileText } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -15,11 +16,11 @@ interface ClientMeetingsProps {
   clientId: string
 }
 
-const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "success" | "destructive" | "warning"; icon: React.ElementType }> = {
-  scheduled: { label: "Agendada", variant: "default", icon: Clock },
-  completed: { label: "Realizada", variant: "success", icon: CheckCircle },
-  cancelled: { label: "Cancelada", variant: "secondary", icon: XCircle },
-  no_show: { label: "Não Compareceu", variant: "destructive", icon: XCircle },
+const statusConfig: Record<string, { label: string; variant: "positive" | "negative" | "warning" | "neutral" | "info"; icon: LucideIcon }> = {
+  scheduled: { label: "Agendada", variant: "info", icon: Clock },
+  completed: { label: "Realizada", variant: "positive", icon: CheckCircle },
+  cancelled: { label: "Cancelada", variant: "neutral", icon: XCircle },
+  no_show: { label: "Não Compareceu", variant: "negative", icon: XCircle },
 }
 
 export function ClientMeetings({ clientId }: ClientMeetingsProps) {

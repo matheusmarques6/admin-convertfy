@@ -6,6 +6,7 @@ import {
   ClipboardList,
   Rocket,
 } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 import { formatNumber } from "@/lib/utils"
 import { cn } from "@/lib/utils"
 
@@ -23,7 +24,7 @@ export function OperationalMetrics({ metrics }: OperationalMetricsProps) {
     title: string
     value: string
     subtitle?: string
-    icon: React.ElementType
+    icon: LucideIcon
     iconColor: string
     iconBg: string
   }> = [

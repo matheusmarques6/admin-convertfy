@@ -549,7 +549,7 @@ export function CampaignsListView() {
                             {c.store?.store_name || "-"}
                           </td>
                           <td className="py-2 pr-4">
-                            <Badge variant={c.status === "sent" ? "success" : c.status === "draft" ? "secondary" : "outline"} className="text-xs">
+                            <Badge variant={c.status === "sent" ? "positive" : "neutral"} showDot={c.status !== "sent" && c.status !== "draft" ? false : undefined} className="text-xs">
                               {c.status}
                             </Badge>
                           </td>

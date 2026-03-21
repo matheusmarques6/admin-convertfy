@@ -1,4 +1,5 @@
 import { Users, UserPlus, RefreshCw, Mail, UserCheck, Repeat } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
 import { formatNumber, formatPercent } from "@/lib/utils/format"
 import type { KlaviyoData, ShopifyData } from "../dashboard/types"
@@ -15,7 +16,7 @@ function StatBlock({
   subtitle,
   colorClass,
 }: {
-  icon: React.ElementType
+  icon: LucideIcon
   label: string
   value: string
   subtitle?: string

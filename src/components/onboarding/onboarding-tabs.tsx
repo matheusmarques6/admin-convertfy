@@ -313,7 +313,7 @@ export function OnboardingTabs() {
 
                     {selectedClient && (
                       <Badge
-                        variant={selectedClient.form_complete ? "success" : "secondary"}
+                        variant={selectedClient.form_complete ? "positive" : "neutral"}
                         className="gap-1 whitespace-nowrap"
                       >
                         {selectedClient.form_complete ? (

@@ -60,11 +60,11 @@ export function OperationalAlerts({ alerts }: OperationalAlertsProps) {
   const getSeverityColor = (severity: "high" | "medium" | "low") => {
     switch (severity) {
       case "high":
-        return "destructive" as const
+        return "negative" as const
       case "medium":
         return "warning" as const
       case "low":
-        return "secondary" as const
+        return "neutral" as const
     }
   }
 
@@ -79,7 +79,7 @@ export function OperationalAlerts({ alerts }: OperationalAlertsProps) {
             <CardDescription>Itens que precisam da sua atenção</CardDescription>
           </div>
           {filteredAlerts.length > 0 && (
-            <Badge variant={highCount > 0 ? "destructive" : "secondary"} className="bg-destructive/10 text-destructive border-0 text-xs rounded-full">
+            <Badge variant={highCount > 0 ? "negative" : "neutral"} className="bg-destructive/10 text-destructive border-0 text-xs rounded-full">
               {filteredAlerts.length}
             </Badge>
           )}

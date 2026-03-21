@@ -157,7 +157,7 @@ export function ClientsFilters() {
           {activeFilters.map((filter) => filter && (
             <Badge
               key={filter.key}
-              variant="secondary"
+              variant="neutral"
               className="flex items-center gap-1"
             >
               {filter.value}

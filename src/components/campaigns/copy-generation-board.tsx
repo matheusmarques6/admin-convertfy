@@ -278,7 +278,7 @@ export function CopyGenerationBoard() {
             <Button
               onClick={handleTaskAction}
               disabled={submitting}
-              variant={actionType === "skip" ? "secondary" : "default"}
+              variant={actionType === "skip" ? "secondary" : "primary"}
             >
               {submitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               {actionType === "start" && "Iniciar"}
@@ -348,7 +348,7 @@ function GenerationCard({
 
           {/* Progress badge */}
           <Badge
-            variant="secondary"
+            variant="neutral"
             className={allDone ? "border-emerald-500 text-emerald-600" : ""}
           >
             {completedCount}/{tasks.length}

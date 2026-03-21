@@ -681,19 +681,19 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
   }
 
   function getStatusBadge(status: string) {
-    const statusMap: Record<string, { label: string; variant: "default" | "secondary" | "success" | "destructive" | "warning"; icon: typeof CheckCircle2 }> = {
-      RECEIVED: { label: "Pago", variant: "success", icon: CheckCircle2 },
-      CONFIRMED: { label: "Confirmado", variant: "success", icon: CheckCircle2 },
-      RECEIVED_IN_CASH: { label: "Recebido", variant: "success", icon: CheckCircle2 },
+    const statusMap: Record<string, { label: string; variant: "positive" | "negative" | "warning" | "neutral" | "info"; icon: typeof CheckCircle2 }> = {
+      RECEIVED: { label: "Pago", variant: "positive", icon: CheckCircle2 },
+      CONFIRMED: { label: "Confirmado", variant: "positive", icon: CheckCircle2 },
+      RECEIVED_IN_CASH: { label: "Recebido", variant: "positive", icon: CheckCircle2 },
       PENDING: { label: "Pendente", variant: "warning", icon: Clock },
       pending: { label: "Pendente", variant: "warning", icon: Clock },
-      OVERDUE: { label: "Vencido", variant: "destructive", icon: AlertCircle },
-      overdue: { label: "Vencido", variant: "destructive", icon: AlertCircle },
-      paid: { label: "Pago", variant: "success", icon: CheckCircle2 },
-      cancelled: { label: "Cancelado", variant: "secondary", icon: XCircle },
-      REFUNDED: { label: "Estornado", variant: "secondary", icon: XCircle },
+      OVERDUE: { label: "Vencido", variant: "negative", icon: AlertCircle },
+      overdue: { label: "Vencido", variant: "negative", icon: AlertCircle },
+      paid: { label: "Pago", variant: "positive", icon: CheckCircle2 },
+      cancelled: { label: "Cancelado", variant: "neutral", icon: XCircle },
+      REFUNDED: { label: "Estornado", variant: "neutral", icon: XCircle },
     }
-    const info = statusMap[status] || { label: status, variant: "default" as const, icon: Clock }
+    const info = statusMap[status] || { label: status, variant: "info" as const, icon: Clock }
     const Icon = info.icon
 
     return (
@@ -1002,7 +1002,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                     <div className="flex items-center justify-between">
                       <CardTitle className="text-lg">{formatCurrency(sub.value)}</CardTitle>
                       <div className="flex items-center gap-2">
-                        <Badge variant={sub.status === "active" ? "success" : "secondary"}>
+                        <Badge variant={sub.status === "active" ? "positive" : "neutral"}>
                           {sub.status === "active" ? "Ativa" : sub.status === "inactive" ? "Inativa" : "Cancelada"}
                         </Badge>
                         <DropdownMenu>
@@ -1061,7 +1061,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
                     <div className="flex items-center justify-between">
                       <CardTitle className="text-lg">{formatCurrency(sub.value)}</CardTitle>
                       <div className="flex items-center gap-2">
-                        <Badge variant={sub.isActive ? "success" : "secondary"}>{sub.statusLabel}</Badge>
+                        <Badge variant={sub.isActive ? "positive" : "neutral"}>{sub.statusLabel}</Badge>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="icon" className="h-8 w-8">

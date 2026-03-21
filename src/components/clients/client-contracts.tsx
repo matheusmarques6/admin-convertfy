@@ -37,11 +37,11 @@ interface ClientContractsProps {
 
 const statusConfig: Record<
   string,
-  { label: string; variant: "default" | "secondary" | "success" | "destructive" | "warning" }
+  { label: string; variant: "positive" | "negative" | "warning" | "neutral" | "info" }
 > = {
-  active: { label: "Ativo", variant: "success" },
-  expired: { label: "Expirado", variant: "secondary" },
-  cancelled: { label: "Cancelado", variant: "destructive" },
+  active: { label: "Ativo", variant: "positive" },
+  expired: { label: "Expirado", variant: "neutral" },
+  cancelled: { label: "Cancelado", variant: "negative" },
   pending: { label: "Pendente", variant: "warning" },
 }
 

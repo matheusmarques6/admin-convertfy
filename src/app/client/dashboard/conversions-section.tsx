@@ -1,4 +1,5 @@
 import { Ticket, Tag, Link2, Globe, Megaphone, Monitor } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
 import { formatPercent, formatCurrencyCompact } from "@/lib/utils/format"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -17,7 +18,7 @@ function UtmRankingList({
 }: {
   items: Array<Record<string, string | number>>
   labelKey: string
-  icon: React.ComponentType<{ className?: string }>
+  icon: LucideIcon
 }) {
   if (!items || items.length === 0) {
     return <EmptyState compact icon={Link2} title="Nenhum dado disponivel" />

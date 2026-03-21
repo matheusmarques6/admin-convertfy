@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { Zap, Send, MessageSquare, BarChart3 } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
 import { formatCurrency } from "@/lib/utils/format"
 import type { KlaviyoData } from "./types"
@@ -129,7 +130,7 @@ function ChannelCardLocal({
   title: string
   percent: number
   value: number
-  icon: React.ElementType
+  icon: LucideIcon
   color: string
   active?: boolean
   onClick: () => void
