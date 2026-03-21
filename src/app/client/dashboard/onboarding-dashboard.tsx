@@ -198,7 +198,7 @@ function PipelineDesktop({ phases, currentPhase }: { phases: PhaseTimelineItem[]
                   className={cn(
                     "flex items-center justify-center rounded-full transition-all duration-300",
                     isComplete && "h-11 w-11 bg-emerald-500 text-white",
-                    isActive && "h-13 w-13 bg-[#05AFF2] text-white shadow-[0_0_20px_rgba(5,175,242,0.3)] ring-4 ring-[#05AFF2]/20",
+                    isActive && "h-13 w-13 bg-[#05AFF2] text-white",
                     !isComplete && !isActive && "h-11 w-11 bg-slate-100 dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-600 text-slate-400 dark:text-slate-500"
                   )}
                   style={isActive ? { width: 52, height: 52 } : { width: 44, height: 44 }}
@@ -282,7 +282,7 @@ function PipelineMobile({ phases, currentPhase }: { phases: PhaseTimelineItem[];
                   className={cn(
                     "flex items-center justify-center rounded-full",
                     isComplete && "h-9 w-9 bg-emerald-500 text-white",
-                    isActive && "h-10 w-10 bg-[#05AFF2] text-white shadow-[0_0_16px_rgba(5,175,242,0.3)]",
+                    isActive && "h-10 w-10 bg-[#05AFF2] text-white",
                     !isComplete && !isActive && "h-9 w-9 bg-slate-100 dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-600 text-slate-400"
                   )}
                 >

@@ -62,7 +62,7 @@ export function OnboardingStepper({ steps, currentIndex, onNavigate }: Onboardin
                     customSize={isActive ? 20 : 16}
                     className={cn(
                       "transition-all duration-300",
-                      isActive && "sm:!h-8 sm:!w-8 text-primary drop-shadow-[0_0_10px_rgba(124,58,237,0.4)]",
+                      isActive && "sm:!h-8 sm:!w-8 text-primary",
                       isComplete && "sm:!h-6 sm:!w-6 text-primary opacity-85",
                       !isActive && !isComplete && "sm:!h-6 sm:!w-6 text-muted-foreground/20"
                     )}
