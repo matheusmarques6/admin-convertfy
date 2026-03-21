@@ -1,6 +1,7 @@
 "use client"
 
 import { RotateCw } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import {
   Tooltip,
@@ -27,7 +28,7 @@ export function RefreshButton({
   className,
 }: RefreshButtonProps) {
   const sizeClasses = size === "sm" ? "h-8 w-8" : "h-9 w-9"
-  const iconSize = size === "sm" ? "h-3.5 w-3.5" : "h-4 w-4"
+  const iconPixels = size === "sm" ? 14 : 16
   const tooltipLabel = lastFetchedAt
     ? `Ultimo sync: ${getFreshnessLabel(lastFetchedAt)}`
     : "Nenhum sync realizado"
@@ -43,9 +44,7 @@ export function RefreshButton({
             disabled={isRefreshing}
             className={cn(sizeClasses, className)}
           >
-            <RotateCw
-              className={cn(iconSize, isRefreshing && "animate-spin")}
-            />
+            <Icon icon={RotateCw} customSize={iconPixels} className={cn(isRefreshing && "animate-spin")} />
           </Button>
         </TooltipTrigger>
         <TooltipContent>{tooltipLabel}</TooltipContent>

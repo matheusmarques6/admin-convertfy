@@ -1,6 +1,7 @@
 "use client"
 
 import { Eye, CheckCircle, Users, DollarSign } from "lucide-react"
+import { Icon as IconWrapper } from "@/components/ui/icon"
 import { formatCurrencyCompact } from "@/lib/utils/format"
 
 // ============================================

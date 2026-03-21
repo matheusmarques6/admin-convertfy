@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Target, TrendingUp, TrendingDown, Loader2, Settings } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { formatCurrency } from "@/lib/utils"
 import { cn } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
@@ -77,7 +78,7 @@ export function RevenueGoalCard({ currentRevenue, isLoading }: RevenueGoalCardPr
     return (
       <div className="rounded-xl border border-border bg-card p-5">
         <div className="flex items-center justify-center py-4">
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+          <Icon icon={Loader2} size={20} className="animate-spin text-muted-foreground" />
         </div>
       </div>
     )
@@ -92,7 +93,7 @@ export function RevenueGoalCard({ currentRevenue, isLoading }: RevenueGoalCardPr
         >
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
-              <Target className="h-5 w-5 text-primary" />
+              <Icon icon={Target} size={20} className="text-primary" />
             </div>
             <div>
               <p className="text-sm font-semibold text-foreground">Definir Meta de Resultado</p>
@@ -120,7 +121,7 @@ export function RevenueGoalCard({ currentRevenue, isLoading }: RevenueGoalCardPr
               "h-10 w-10 rounded-xl flex items-center justify-center",
               isAchieved ? "bg-success/10" : "bg-primary/10"
             )}>
-              <Target className={cn("h-5 w-5", isAchieved ? "text-success" : "text-primary")} />
+              <Icon icon={Target} size={20} className={cn(isAchieved ? "text-success" : "text-primary")} />
             </div>
             <div>
               <h3 className="text-sm font-semibold text-foreground">Meta de Resultado</h3>
@@ -139,9 +140,9 @@ export function RevenueGoalCard({ currentRevenue, isLoading }: RevenueGoalCardPr
                   : "bg-muted text-muted-foreground"
             )}>
               {isAchieved ? (
-                <TrendingUp className="h-3 w-3" />
+                <Icon icon={TrendingUp} customSize={12} />
               ) : (
-                <TrendingDown className="h-3 w-3" />
+                <Icon icon={TrendingDown} customSize={12} />
               )}
               {percentage.toFixed(1)}%
             </div>
@@ -151,7 +152,7 @@ export function RevenueGoalCard({ currentRevenue, isLoading }: RevenueGoalCardPr
               className="h-7 w-7"
               onClick={() => { setEditGoal(goal.toString()); setSettingsOpen(true) }}
             >
-              <Settings className="h-3.5 w-3.5" />
+              <Icon icon={Settings} customSize={14} />
             </Button>
           </div>
         </div>
@@ -219,7 +220,7 @@ function GoalDialog({
       <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Target className="h-4 w-4 text-primary" />
+            <Icon icon={Target} size={16} className="text-primary" />
             Definir Meta Mensal
           </DialogTitle>
         </DialogHeader>

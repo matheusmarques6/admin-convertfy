@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Search, Filter, X } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -80,7 +81,7 @@ export function ClientsFilters() {
       <div className="flex flex-col sm:flex-row gap-4">
         {/* Search */}
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Icon icon={Search} size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Buscar por nome, email ou empresa..."
             value={search}
@@ -94,7 +95,7 @@ export function ClientsFilters() {
         <Popover>
           <PopoverTrigger asChild>
             <Button variant="outline" className="shrink-0">
-              <Filter className="mr-2 h-4 w-4" />
+              <Icon icon={Filter} size={16} className="mr-2" />
               Filtros
               {activeFilters.length > 0 && (
                 <Badge variant="secondary" className="ml-2">
@@ -164,7 +165,7 @@ export function ClientsFilters() {
                 onClick={() => clearFilter(filter.key)}
                 className="ml-1 hover:text-foreground"
               >
-                <X className="h-3 w-3" />
+                <Icon icon={X} customSize={12} />
               </button>
             </Badge>
           ))}

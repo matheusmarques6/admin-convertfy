@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { Plus, UserPlus, Calendar, FileText, Zap, Rocket, ClipboardList, Store, PenLine } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import { usePermissions } from "@/lib/hooks/use-permissions"
 

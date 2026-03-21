@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { type LucideIcon, ChevronRight } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { Icon as IconWrapper } from "@/components/ui/icon"
 import { Badge } from "@/components/ui/badge"
 
 interface BreadcrumbItem {
@@ -22,7 +23,7 @@ interface PageHeaderProps {
 export function PageHeader({
   title,
   description,
-  icon: Icon,
+  icon: IconProp,
   badge,
   breadcrumb,
   actions,
@@ -36,7 +37,7 @@ export function PageHeader({
           {breadcrumb.map((item, index) => (
             <span key={index} className="flex items-center gap-1">
               {index > 0 && (
-                <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+                <IconWrapper icon={ChevronRight} size={16} />
               )}
               {item.href ? (
                 <Link
@@ -58,9 +59,9 @@ export function PageHeader({
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
           <div className="flex items-center gap-3">
-            {Icon && (
+            {IconProp && (
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <Icon className="h-5 w-5" />
+                <IconWrapper icon={IconProp} />
               </div>
             )}
             <div className="flex items-center gap-2">
@@ -76,7 +77,7 @@ export function PageHeader({
           </div>
 
           {description && (
-            <p className={cn("text-sm text-muted-foreground", Icon && "pl-[52px]")}>
+            <p className={cn("text-sm text-muted-foreground", IconProp && "pl-[52px]")}>
               {description}
             </p>
           )}

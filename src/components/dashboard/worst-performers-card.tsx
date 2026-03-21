@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react"
 import Link from "next/link"
 import { TrendingDown } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -38,7 +39,7 @@ export function WorstPerformersCard({ stores: storesProp, allStores, isLoading, 
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="h-8 w-8 rounded-lg bg-destructive/10 flex items-center justify-center">
-              <TrendingDown className="h-4 w-4 text-destructive" />
+              <Icon icon={TrendingDown} size={16} className="text-destructive" />
             </div>
             <CardTitle className="text-sm font-semibold">Atencao Necessaria</CardTitle>
           </div>

@@ -1,5 +1,6 @@
 import { type LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { Icon as IconWrapper } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 
@@ -19,11 +20,11 @@ interface EmptyStateProps {
   className?: string
 }
 
-export function EmptyState({ icon: Icon, title, description, action, link, compact, className }: EmptyStateProps) {
+export function EmptyState({ icon: IconProp, title, description, action, link, compact, className }: EmptyStateProps) {
   if (compact) {
     return (
       <div className={cn("flex flex-col items-center justify-center text-center py-6", className)}>
-        {Icon && <Icon className="h-8 w-8 mb-2 text-muted-foreground/40" />}
+        {IconProp && <IconWrapper icon={IconProp} customSize={32} className="mb-2 text-muted-foreground/40" />}
         <p className="text-sm text-muted-foreground">{title}</p>
         {description && <p className="text-xs text-muted-foreground/70 mt-0.5">{description}</p>}
         {link && (
@@ -41,10 +42,8 @@ export function EmptyState({ icon: Icon, title, description, action, link, compa
       "border-2 border-dashed border-border rounded-xl bg-muted/30",
       className
     )}>
-      {Icon && (
-        <div className="rounded-full bg-muted p-4 mb-4">
-          <Icon className="h-8 w-8 text-muted-foreground" />
-        </div>
+      {IconProp && (
+        <IconWrapper icon={IconProp} customSize={32} className="mb-4 text-muted-foreground" />
       )}
       <h3 className="text-base font-semibold text-foreground mb-1">{title}</h3>
       {description && (

@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { Users, UserPlus } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"

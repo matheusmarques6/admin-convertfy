@@ -15,6 +15,7 @@ import {
   Pencil,
   Trash2,
 } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -184,7 +185,7 @@ export function MeetingsTab({ meetings, clients, members = [], onMeetingChange }
               </p>
             </div>
             <Button onClick={handleNewMeeting}>
-              <Plus className="mr-2 h-4 w-4" />
+              <Icon icon={Plus} size={16} className="mr-2" />
               Nova Reunião
             </Button>
           </div>
@@ -194,7 +195,7 @@ export function MeetingsTab({ meetings, clients, members = [], onMeetingChange }
             <Card className="rounded-xl border bg-card">
               <CardContent className="flex items-center gap-4 pt-6">
                 <div className="rounded-lg p-3 bg-primary/10">
-                  <Calendar className="h-5 w-5 text-primary" />
+                  <Icon icon={Calendar} size={20} className="text-primary" />
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Próximas</p>
@@ -205,7 +206,7 @@ export function MeetingsTab({ meetings, clients, members = [], onMeetingChange }
             <Card className="rounded-xl border bg-card">
               <CardContent className="flex items-center gap-4 pt-6">
                 <div className="rounded-lg p-3 bg-emerald-500/10">
-                  <CheckCircle className="h-5 w-5 text-emerald-500" />
+                  <Icon icon={CheckCircle} size={20} className="text-emerald-500" />
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Realizadas</p>
@@ -218,7 +219,7 @@ export function MeetingsTab({ meetings, clients, members = [], onMeetingChange }
             <Card className="rounded-xl border bg-card">
               <CardContent className="flex items-center gap-4 pt-6">
                 <div className="rounded-lg p-3 bg-amber-500/10">
-                  <Video className="h-5 w-5 text-amber-500" />
+                  <Icon icon={Video} size={20} className="text-amber-500" />
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Hoje</p>
@@ -232,14 +233,14 @@ export function MeetingsTab({ meetings, clients, members = [], onMeetingChange }
           <Card className="rounded-xl border bg-card">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
-                <Calendar className="h-5 w-5 text-primary" />
+                <Icon icon={Calendar} size={20} className="text-primary" />
                 Próximas Reuniões
               </CardTitle>
             </CardHeader>
             <CardContent>
               {upcomingMeetings.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
-                  <Video className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                  <Icon icon={Video} customSize={40} className="mx-auto mb-2 opacity-50" />
                   <p>Nenhuma reunião agendada</p>
                   <Button variant="link" onClick={handleNewMeeting}>
                     Agendar primeira reunião
@@ -266,8 +267,7 @@ export function MeetingsTab({ meetings, clients, members = [], onMeetingChange }
                             "rounded-lg p-2",
                             isHappeningNow ? "bg-primary/20" : "bg-primary/10"
                           )}>
-                            <Video className={cn(
-                              "h-4 w-4",
+                            <Icon icon={Video} size={16} className={cn(
                               isHappeningNow ? "text-primary animate-pulse" : "text-primary"
                             )} />
                           </div>
@@ -295,7 +295,7 @@ export function MeetingsTab({ meetings, clients, members = [], onMeetingChange }
                           {meeting.meeting_url && (
                             <Button variant="outline" size="sm" asChild>
                               <a href={meeting.meeting_url} target="_blank" rel="noopener noreferrer">
-                                <ExternalLink className="mr-1 h-3 w-3" />
+                                <Icon icon={ExternalLink} customSize={12} className="mr-1" />
                                 Entrar
                               </a>
                             </Button>
@@ -303,32 +303,32 @@ export function MeetingsTab({ meetings, clients, members = [], onMeetingChange }
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button variant="ghost" size="icon" className="h-8 w-8">
-                                <MoreHorizontal className="h-4 w-4" />
+                                <Icon icon={MoreHorizontal} size={16} />
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem onClick={() => handleEditMeeting(meeting)}>
-                                <Pencil className="mr-2 h-4 w-4" />
+                                <Icon icon={Pencil} size={16} className="mr-2" />
                                 Editar
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => handleStatusChange(meeting.id, "completed")}>
-                                <CheckCircle className="mr-2 h-4 w-4" />
+                                <Icon icon={CheckCircle} size={16} className="mr-2" />
                                 Marcar como realizada
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => handleStatusChange(meeting.id, "no_show")}>
-                                <AlertCircle className="mr-2 h-4 w-4" />
+                                <Icon icon={AlertCircle} size={16} className="mr-2" />
                                 Marcar como no-show
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem onClick={() => handleStatusChange(meeting.id, "cancelled")}>
-                                <XCircle className="mr-2 h-4 w-4" />
+                                <Icon icon={XCircle} size={16} className="mr-2" />
                                 Cancelar
                               </DropdownMenuItem>
                               <DropdownMenuItem
                                 onClick={() => handleDeleteMeeting(meeting.id)}
                                 className="text-destructive"
                               >
-                                <Trash2 className="mr-2 h-4 w-4" />
+                                <Icon icon={Trash2} size={16} className="mr-2" />
                                 Excluir
                               </DropdownMenuItem>
                             </DropdownMenuContent>
@@ -359,8 +359,7 @@ export function MeetingsTab({ meetings, clients, members = [], onMeetingChange }
                         onClick={() => handleEditMeeting(meeting)}
                       >
                         <div className="flex items-center gap-3">
-                          <config.icon className={cn(
-                            "h-4 w-4",
+                          <Icon icon={config.icon} size={16} className={cn(
                             meeting.status === "completed" && "text-success",
                             meeting.status === "no_show" && "text-destructive",
                             meeting.status === "cancelled" && "text-muted-foreground"

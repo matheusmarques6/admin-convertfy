@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Plus, LayoutGrid, Calendar, Video } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { TaskBoard } from "./task-board"
@@ -157,22 +158,22 @@ export function TaskBoardWithCalendar({
           <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)}>
             <TabsList>
               <TabsTrigger value="kanban" className="gap-2">
-                <LayoutGrid className="h-4 w-4" />
+                <Icon icon={LayoutGrid} size={16} />
                 Tarefas
               </TabsTrigger>
               <TabsTrigger value="meetings" className="gap-2">
-                <Video className="h-4 w-4" />
+                <Icon icon={Video} size={16} />
                 Reuniões
               </TabsTrigger>
               <TabsTrigger value="calendar" className="gap-2">
-                <Calendar className="h-4 w-4" />
+                <Icon icon={Calendar} size={16} />
                 Calendário
               </TabsTrigger>
             </TabsList>
           </Tabs>
           {viewMode === "kanban" && (
             <Button onClick={handleNewTask}>
-              <Plus className="mr-2 h-4 w-4" />
+              <Icon icon={Plus} size={16} className="mr-2" />
               Nova Tarefa
             </Button>
           )}

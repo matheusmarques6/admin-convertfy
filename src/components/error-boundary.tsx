@@ -2,6 +2,7 @@
 
 import React from "react"
 import { AlertTriangle, RefreshCw } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 
 interface ErrorBoundaryProps {

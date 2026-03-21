@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { Rocket, Clock, AlertTriangle, ArrowRight } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"

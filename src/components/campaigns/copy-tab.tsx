@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { Loader2, Store, Check, Search, ChevronLeft, ChevronRight } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import Link from "next/link"
 
 import { Button } from "@/components/ui/button"

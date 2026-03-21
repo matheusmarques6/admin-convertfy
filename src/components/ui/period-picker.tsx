@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { CalendarDays, ChevronDown } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import type { DateRange } from "react-day-picker"
@@ -92,9 +93,9 @@ export function PeriodPicker({
             className
           )}
         >
-          <CalendarDays className="h-3.5 w-3.5" />
+          <Icon icon={CalendarDays} size={16} />
           {activeLabel}
-          <ChevronDown className="h-3 w-3 opacity-60" />
+          <Icon icon={ChevronDown} customSize={12} className="opacity-60" />
         </Button>
       </PopoverTrigger>
       <PopoverContent

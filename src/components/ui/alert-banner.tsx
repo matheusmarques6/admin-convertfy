@@ -11,6 +11,7 @@ import {
   type LucideIcon,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { Icon } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 
 const variantConfig = {
@@ -101,7 +102,7 @@ export function AlertBanner({
             config.container
           )}
         >
-          <IconComponent className={cn("mt-0.5 h-5 w-5 shrink-0", config.iconClass)} />
+          <Icon icon={IconComponent} size={20} className={cn("mt-0.5", config.iconClass)} />
 
           <div className="flex min-w-0 flex-1 flex-col gap-1">
             <p className="text-sm font-medium leading-tight">{title}</p>
@@ -142,7 +143,7 @@ export function AlertBanner({
               )}
               aria-label="Dismiss"
             >
-              <X className="h-4 w-4" />
+              <Icon icon={X} size={16} />
             </button>
           )}
         </div>

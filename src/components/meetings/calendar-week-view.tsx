@@ -14,6 +14,7 @@ import {
 } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { Video, ExternalLink, CheckCircle } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { cn } from "@/lib/utils"
 import type { Meeting, MeetingStatus } from "@/types"
 
@@ -177,7 +178,7 @@ export function CalendarWeekView({
                       title={`${meeting.title}${meeting.client ? ` - ${meeting.client.name}` : ""}`}
                     >
                       <div className="flex items-center gap-1">
-                        <Video className="h-3 w-3 flex-shrink-0" />
+                        <Icon icon={Video} customSize={12} />
                         <span className="text-xs font-medium truncate">
                           {format(parseISO(meeting.scheduled_at), "HH:mm")}
                         </span>
@@ -194,10 +195,10 @@ export function CalendarWeekView({
                       )}
                       {height >= 72 && meeting.meeting_url && (
                         <div className="flex items-center gap-1 mt-0.5">
-                          <ExternalLink className="h-2.5 w-2.5" />
+                          <Icon icon={ExternalLink} customSize={10} />
                           <span className="text-[10px]">Link</span>
                           {meeting.google_sync_status === "synced" && (
-                            <CheckCircle className="h-2.5 w-2.5 text-green-500" />
+                            <Icon icon={CheckCircle} customSize={10} className="text-green-500" />
                           )}
                         </div>
                       )}

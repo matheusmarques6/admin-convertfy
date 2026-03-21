@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Store, Bell } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { AlertBanner } from "@/components/ui/alert-banner"
 import { StoreControlPanel } from "@/components/stores/store-control-panel"
 import { StoreAlertsPanel } from "@/components/stores/store-alerts-panel"
@@ -63,7 +64,7 @@ export function StoresPageTabs() {
               : "text-muted-foreground hover:text-foreground"
           )}
         >
-          <Store className="h-4 w-4" />
+          <Icon icon={Store} size={16} />
           Lojas
         </button>
         <button
@@ -75,7 +76,7 @@ export function StoresPageTabs() {
               : "text-muted-foreground hover:text-foreground"
           )}
         >
-          <Bell className="h-4 w-4" />
+          <Icon icon={Bell} size={16} />
           Alertas
           {activeAlertsCount > 0 && (
             <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground px-1.5">

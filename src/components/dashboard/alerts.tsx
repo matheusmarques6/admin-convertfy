@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { Calendar, AlertCircle, Clock, FileText, HeartPulse, TrendingDown, ShieldAlert, Mail, Zap, AlertTriangle } from "lucide-react"
+import { Icon as IconWrapper } from "@/components/ui/icon"
 import { CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"

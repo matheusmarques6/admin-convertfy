@@ -1,6 +1,7 @@
 "use client"
 
 import { Zap } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -73,7 +74,7 @@ export function StorePerformanceTables() {
     return (
       <Card>
         <CardContent className="flex flex-col items-center justify-center py-12">
-          <Zap className="h-10 w-10 text-muted-foreground mb-3" />
+          <Icon icon={Zap} customSize={40} className="text-muted-foreground mb-3" />
           <p className="text-sm font-medium">Nenhum dado encontrado neste período</p>
           <p className="text-xs text-muted-foreground mt-1 text-center max-w-sm">
             Não há dados de campanhas ou flows para o período selecionado.

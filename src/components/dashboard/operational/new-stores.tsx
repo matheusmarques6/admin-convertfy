@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { Store } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -65,7 +66,7 @@ export function NewStores({ stores }: NewStoresProps) {
       <CardHeader className="p-5 pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Store className="h-4 w-4 text-success" />
+            <Icon icon={Store} size={16} className="text-success" />
             <CardTitle className="text-sm font-medium text-foreground">Lojas para Implementação</CardTitle>
           </div>
           {stores.length > 0 && (
@@ -99,7 +100,7 @@ export function NewStores({ stores }: NewStoresProps) {
                   >
                     <div className="flex items-start gap-3">
                       <div className="rounded-md p-1.5 bg-success/10 shrink-0">
-                        <Store className="h-3.5 w-3.5 text-success" />
+                        <Icon icon={Store} customSize={14} className="text-success" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">

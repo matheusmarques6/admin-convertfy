@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react"
 import { ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight, type LucideIcon } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import {
   Table,
   TableBody,
@@ -81,9 +82,9 @@ export function DataTable<T>({
   const pagedData = sortedData.slice(page * pageSize, (page + 1) * pageSize)
 
   function SortIcon({ columnKey }: { columnKey: string }) {
-    if (sortKey !== columnKey) return <ArrowUpDown className="ml-1 h-3 w-3 text-muted-foreground/50" />
-    if (sortDir === "asc") return <ArrowUp className="ml-1 h-3 w-3 text-foreground" />
-    return <ArrowDown className="ml-1 h-3 w-3 text-foreground" />
+    if (sortKey !== columnKey) return <Icon icon={ArrowUpDown} customSize={12} className="ml-1 text-muted-foreground/50" />
+    if (sortDir === "asc") return <Icon icon={ArrowUp} customSize={12} className="ml-1 text-foreground" />
+    return <Icon icon={ArrowDown} customSize={12} className="ml-1 text-foreground" />
   }
 
   if (data.length === 0) {
@@ -151,7 +152,7 @@ export function DataTable<T>({
               onClick={() => setPage(p => p - 1)}
               disabled={page === 0}
             >
-              <ChevronLeft className="h-4 w-4" />
+              <Icon icon={ChevronLeft} size={16} />
             </Button>
             <span className="text-sm text-muted-foreground">
               {page + 1} / {totalPages}
@@ -162,7 +163,7 @@ export function DataTable<T>({
               onClick={() => setPage(p => p + 1)}
               disabled={page >= totalPages - 1}
             >
-              <ChevronRight className="h-4 w-4" />
+              <Icon icon={ChevronRight} size={16} />
             </Button>
           </div>
         </div>

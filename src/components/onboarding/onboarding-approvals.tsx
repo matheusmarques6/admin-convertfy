@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { useToast } from "@/lib/hooks/use-toast"
 import { Check, X, MessageSquare, Store, User, Calendar, Loader2, FileText, ExternalLink, ImageIcon, BookOpen } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import Link from "next/link"
 
 interface PendingOnboarding {

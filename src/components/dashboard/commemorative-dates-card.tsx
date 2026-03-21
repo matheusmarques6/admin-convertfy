@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react"
 import { CalendarHeart, Sparkles, X, TrendingUp, Mail, Workflow, ArrowRight } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -101,7 +102,7 @@ export function CommemorativeDatesCard({ selectedMonth }: CommemorativeDatesCard
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <div className="h-8 w-8 rounded-lg bg-pink-500/10 flex items-center justify-center">
-                <CalendarHeart className="h-4 w-4 text-pink-500" />
+                <Icon icon={CalendarHeart} size={16} className="text-pink-500" />
               </div>
               <div>
                 <CardTitle className="text-sm font-semibold">Datas Comemorativas</CardTitle>
@@ -189,13 +190,13 @@ export function CommemorativeDatesCard({ selectedMonth }: CommemorativeDatesCard
                 {/* Tips/Insights */}
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
-                    <Sparkles className="h-4 w-4 text-primary" />
+                    <Icon icon={Sparkles} size={16} className="text-primary" />
                     <h4 className="text-sm font-semibold text-foreground">Insights para Campanhas</h4>
                   </div>
                   <div className="space-y-2">
                     {selectedDate.tips.map((tip, i) => (
                       <div key={i} className="flex items-start gap-2.5 p-3 rounded-lg bg-primary/5">
-                        <TrendingUp className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
+                        <Icon icon={TrendingUp} customSize={14} className="text-primary mt-0.5" />
                         <p className="text-xs text-foreground leading-relaxed">{tip}</p>
                       </div>
                     ))}
@@ -205,7 +206,7 @@ export function CommemorativeDatesCard({ selectedMonth }: CommemorativeDatesCard
                 {/* Recommended campaign types */}
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
-                    <Mail className="h-4 w-4 text-brand-400" />
+                    <Icon icon={Mail} size={16} className="text-brand-400" />
                     <h4 className="text-sm font-semibold text-foreground">Tipos de Campanha Recomendados</h4>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
@@ -220,7 +221,7 @@ export function CommemorativeDatesCard({ selectedMonth }: CommemorativeDatesCard
                 {/* Suggested timeline */}
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
-                    <Workflow className="h-4 w-4 text-warning" />
+                    <Icon icon={Workflow} size={16} className="text-warning" />
                     <h4 className="text-sm font-semibold text-foreground">Timeline Sugerida</h4>
                   </div>
                   <div className="space-y-1.5">

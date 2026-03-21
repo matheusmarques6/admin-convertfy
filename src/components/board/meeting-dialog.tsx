@@ -7,6 +7,7 @@ import { z } from "zod"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { CalendarIcon, Clock, Video, Link as LinkIcon, Users, X, Globe, AlertTriangle, ExternalLink } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import {
   Dialog,
   DialogContent,
@@ -287,7 +288,7 @@ export function MeetingDialog({
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Video className="h-5 w-5 text-primary" />
+            <Icon icon={Video} size={20} className="text-primary" />
             {isEditing ? "Editar Reunião" : "Agendar Reunião"}
           </DialogTitle>
           <DialogDescription>
@@ -346,7 +347,7 @@ export function MeetingDialog({
               {members.length > 0 && (
                 <div className="grid gap-2">
                   <Label className="flex items-center gap-2">
-                    <Users className="h-4 w-4" />
+                    <Icon icon={Users} size={16} />
                     Participantes
                   </Label>
 
@@ -378,8 +379,10 @@ export function MeetingDialog({
                                 compact
                               />
                             )}
-                            <X
-                              className="h-3 w-3 cursor-pointer hover:text-destructive"
+                            <Icon
+                              icon={X}
+                              customSize={12}
+                              className="cursor-pointer hover:text-destructive"
                               onClick={() => {
                                 setSelectedParticipants(prev =>
                                   prev.filter(p => !(p.id === participant.id && p.type === participant.type))
@@ -458,7 +461,7 @@ export function MeetingDialog({
                           !scheduledDate && "text-muted-foreground"
                         )}
                       >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        <Icon icon={CalendarIcon} size={16} className="mr-2" />
                         {scheduledDate ? format(scheduledDate, "dd/MM/yyyy", { locale: ptBR }) : "Selecione"}
                       </Button>
                     </PopoverTrigger>
@@ -478,7 +481,7 @@ export function MeetingDialog({
                 <div className="grid gap-2">
                   <Label>Horário *</Label>
                   <div className="relative">
-                    <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Icon icon={Clock} size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       type="time"
                       value={scheduledTime}
@@ -518,7 +521,7 @@ export function MeetingDialog({
                   />
                   <label htmlFor="create_google_meet" className="flex-1 cursor-pointer">
                     <div className="flex items-center gap-2">
-                      <Video className="h-4 w-4 text-primary" />
+                      <Icon icon={Video} size={16} className="text-primary" />
                       <span className="text-sm font-medium">Criar Google Meet automaticamente</span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5">
@@ -531,7 +534,7 @@ export function MeetingDialog({
               {/* AC 42.7.7: Inline alert when Google Calendar is not connected */}
               {!hasGoogleCalendar && (
                 <div className="flex items-start gap-3 p-3 rounded-lg border border-amber-500/30 bg-amber-500/5">
-                  <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-amber-500" />
+                  <Icon icon={AlertTriangle} size={16} className="mt-0.5 text-amber-500" />
                   <div className="flex-1">
                     <p className="text-sm text-amber-700 dark:text-amber-400">
                       Conecte seu Google Calendar para criar reunioes com Meet automatico
@@ -542,7 +545,7 @@ export function MeetingDialog({
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-300 hover:underline mt-1"
                     >
-                      <ExternalLink className="h-3 w-3" />
+                      <Icon icon={ExternalLink} customSize={12} />
                       Conectar agora
                     </a>
                   </div>
@@ -573,7 +576,7 @@ export function MeetingDialog({
 
               <div className="grid gap-2">
                 <Label className="flex items-center gap-2">
-                  <LinkIcon className="h-4 w-4" />
+                  <Icon icon={LinkIcon} size={16} />
                   Link da Reuniao
                 </Label>
                 <Input
@@ -594,7 +597,7 @@ export function MeetingDialog({
               {/* Timezone */}
               <div className="grid gap-2">
                 <Label className="flex items-center gap-2">
-                  <Globe className="h-4 w-4" />
+                  <Icon icon={Globe} size={16} />
                   Fuso horario
                 </Label>
                 <Select

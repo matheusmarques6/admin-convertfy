@@ -1,5 +1,6 @@
 import { AlertCircle, RefreshCw, type LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { Icon as IconWrapper } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 
 interface ErrorStateProps {
@@ -12,7 +13,7 @@ interface ErrorStateProps {
 }
 
 export function ErrorState({
-  icon: Icon = AlertCircle,
+  icon: IconProp = AlertCircle,
   title = "Algo deu errado",
   description = "Ocorreu um erro inesperado. Tente novamente.",
   onRetry,
@@ -25,14 +26,12 @@ export function ErrorState({
       "border border-destructive/20 rounded-xl bg-destructive/5",
       className
     )}>
-      <div className="rounded-full bg-destructive/10 p-4 mb-4">
-        <Icon className="h-8 w-8 text-destructive" />
-      </div>
+      <IconWrapper icon={IconProp} customSize={32} className="mb-4 text-destructive" />
       <h3 className="text-base font-semibold text-foreground mb-1">{title}</h3>
       <p className="text-sm text-muted-foreground max-w-sm mb-4">{description}</p>
       {onRetry && (
         <Button variant="outline" size="sm" onClick={onRetry}>
-          <RefreshCw className="mr-2 h-4 w-4" />
+          <IconWrapper icon={RefreshCw} size={16} className="mr-2" />
           {retryLabel}
         </Button>
       )}

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { Globe, Mail, Phone, Building, User, Calendar, Loader2, AlertCircle, CheckCircle2 } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"

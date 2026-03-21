@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { AlertTriangle, Loader2, RotateCcw } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import {
   Dialog,
   DialogContent,

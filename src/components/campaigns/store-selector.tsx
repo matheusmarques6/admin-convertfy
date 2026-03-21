@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useCallback } from "react"
 import { Check, Globe } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"

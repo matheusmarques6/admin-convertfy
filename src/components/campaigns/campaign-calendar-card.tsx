@@ -2,6 +2,7 @@
 
 import React from "react"
 import { Users } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { Badge } from "@/components/ui/badge"
 import { formatCurrencyCompact } from "@/lib/utils/format"
 import { CHANNEL_CONFIG, STATUS_CONFIG } from "@/lib/constants/calendar"

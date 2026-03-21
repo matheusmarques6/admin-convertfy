@@ -13,6 +13,7 @@ import {
   Mail,
   Zap,
 } from "lucide-react"
+import { Icon as IconWrapper } from "@/components/ui/icon"
 import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"

@@ -3,6 +3,7 @@
 import { ReactNode } from "react"
 import { usePermissions } from "@/lib/hooks/use-permissions"
 import { ShieldAlert, Loader2 } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 

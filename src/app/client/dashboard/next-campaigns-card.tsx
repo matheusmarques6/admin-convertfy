@@ -1,4 +1,5 @@
 import { Send, Calendar, ArrowRight } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import Link from "next/link"
 import { EmptyState } from "@/components/ui/empty-state"
 import type { UpcomingCampaign } from "./types"

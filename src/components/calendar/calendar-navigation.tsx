@@ -1,6 +1,7 @@
 "use client"
 
 import { ChevronLeft, ChevronRight } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import { MONTH_NAMES } from "@/lib/constants/calendar"
 

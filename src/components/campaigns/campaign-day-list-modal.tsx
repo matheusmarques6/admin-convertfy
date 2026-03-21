@@ -1,6 +1,7 @@
 "use client"
 
 import { Mail } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { Badge } from "@/components/ui/badge"
 import {
   Dialog,

@@ -1,4 +1,5 @@
 import { TrendingUp, Zap, Send, MessageSquare, Wallet } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { formatCurrency } from "@/lib/utils/format"
 import { VariationBadge } from "./components"
 import type { KlaviyoData, PreviousPeriodData } from "./types"
@@ -46,7 +47,7 @@ export function HeroSection({ klaviyo, previousPeriod }: HeroSectionProps) {
 
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-primary/15 border border-primary/20">
-                <TrendingUp className="h-3.5 w-3.5 text-primary" />
+                <Icon icon={TrendingUp} customSize={14} className="text-primary" />
                 <span className="text-sm font-bold text-primary tabular-nums">{attributionPercent.toFixed(1)}%</span>
               </div>
               <span className="text-[13px] text-slate-400">
@@ -113,7 +114,7 @@ function BreakdownCard({
   label,
   value,
   percent,
-  icon: Icon,
+  icon: IconComponent,
   accentClass,
   bgClass,
   borderClass,
@@ -131,7 +132,7 @@ function BreakdownCard({
   return (
     <div className={`rounded-xl border ${borderClass} ${bgClass} p-4 transition-all duration-200 hover:shadow-sm`}>
       <div className="flex items-center gap-2 mb-2.5">
-        <Icon className={`h-4 w-4 ${accentClass}`} strokeWidth={1.8} />
+        <Icon icon={IconComponent} size={16} className={accentClass} strokeWidth={1.8} />
         <span className="text-xs font-medium text-slate-600 dark:text-slate-400">{label}</span>
       </div>
       <p className="text-lg font-bold text-slate-800 dark:text-white tabular-nums">{formatCurrency(value)}</p>

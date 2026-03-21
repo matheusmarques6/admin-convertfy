@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect } from "react"
 import Link from "next/link"
 import { Trophy, TrendingDown, ChevronLeft, ChevronRight } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import {
   Dialog,
   DialogContent,

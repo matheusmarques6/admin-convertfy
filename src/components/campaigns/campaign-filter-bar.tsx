@@ -1,6 +1,7 @@
 "use client"
 
 import { Mail, MessageSquare, Filter } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import {
   Select,
   SelectContent,

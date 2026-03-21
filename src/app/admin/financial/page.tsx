@@ -7,6 +7,7 @@ import { WiseReconciliation } from "@/components/financial/wise-reconciliation"
 import { BillingMetrics } from "@/components/dashboard/billing-metrics"
 import { FinancialCharts } from "@/components/dashboard/financial-charts"
 import { BarChart3, DollarSign, Repeat, Wallet, Landmark } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { PermissionGate } from "@/components/permission-gate"
 
 export default function FinancialPage() {
@@ -16,7 +17,7 @@ export default function FinancialPage() {
       {/* Header */}
       <div className="flex items-center gap-3">
         <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/10">
-          <Landmark className="w-5 h-5 text-primary" />
+          <Icon icon={Landmark} size={20} className="text-primary" />
         </div>
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Financeiro</h1>
@@ -28,19 +29,19 @@ export default function FinancialPage() {
       <Tabs defaultValue="analysis">
         <TabsList>
           <TabsTrigger value="analysis" className="gap-1.5 sm:gap-2">
-            <BarChart3 className="h-4 w-4" />
+            <Icon icon={BarChart3} size={16} />
             <span className="text-xs sm:text-sm">Análise</span>
           </TabsTrigger>
           <TabsTrigger value="charges" className="gap-1.5 sm:gap-2">
-            <DollarSign className="h-4 w-4" />
+            <Icon icon={DollarSign} size={16} />
             <span className="text-xs sm:text-sm">Faturas</span>
           </TabsTrigger>
           <TabsTrigger value="subscriptions" className="gap-1.5 sm:gap-2">
-            <Repeat className="h-4 w-4" />
+            <Icon icon={Repeat} size={16} />
             <span className="text-xs sm:text-sm">Assinaturas</span>
           </TabsTrigger>
           <TabsTrigger value="wise" className="gap-1.5 sm:gap-2">
-            <Wallet className="h-4 w-4" />
+            <Icon icon={Wallet} size={16} />
             <span className="text-xs sm:text-sm">Wise</span>
           </TabsTrigger>
         </TabsList>

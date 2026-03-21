@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Trash2 } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu"
 import {
   AlertDialog,

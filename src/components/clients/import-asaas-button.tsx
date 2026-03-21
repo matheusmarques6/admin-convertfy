@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Download, Loader2, RefreshCw, Users } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -112,7 +113,7 @@ export function ImportAsaasButton() {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button variant="outline" className="relative">
-          <Download className="mr-2 h-4 w-4" />
+          <Icon icon={Download} size={16} className="mr-2" />
           Importar do Asaas
           {pendingCount > 0 && (
             <span className="absolute -top-2 -right-2 h-5 min-w-5 rounded-full bg-destructive text-destructive-foreground text-xs flex items-center justify-center px-1">
@@ -124,7 +125,7 @@ export function ImportAsaasButton() {
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5" />
+            <Icon icon={Users} size={20} />
             Importar Clientes do Asaas
           </DialogTitle>
           <DialogDescription>
@@ -136,7 +137,7 @@ export function ImportAsaasButton() {
         <div className="py-4">
           {isLoading ? (
             <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              <Icon icon={Loader2} size={24} className="animate-spin text-muted-foreground" />
             </div>
           ) : stats ? (
             <div className="space-y-4">
@@ -210,7 +211,7 @@ export function ImportAsaasButton() {
             onClick={loadStats}
             disabled={isLoading || isImporting}
           >
-            <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
+            <Icon icon={RefreshCw} size={16} className={`mr-2 ${isLoading ? "animate-spin" : ""}`} />
             Atualizar
           </Button>
           <Button
@@ -218,9 +219,9 @@ export function ImportAsaasButton() {
             disabled={!stats?.connected || isImporting || isLoading}
           >
             {isImporting ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <Icon icon={Loader2} size={16} className="mr-2 animate-spin" />
             ) : (
-              <Download className="mr-2 h-4 w-4" />
+              <Icon icon={Download} size={16} className="mr-2" />
             )}
             {isImporting ? "Importando..." : "Importar Todos"}
           </Button>

@@ -17,6 +17,7 @@ import {
 } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { ChevronLeft, ChevronRight, Video } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -160,7 +161,7 @@ export function BoardCalendarView({
               aria-label="Mês anterior"
               onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
             >
-              <ChevronLeft className="h-4 w-4" />
+              <Icon icon={ChevronLeft} size={16} />
             </Button>
             <Button
               variant="outline"
@@ -178,7 +179,7 @@ export function BoardCalendarView({
               aria-label="Próximo mês"
               onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
             >
-              <ChevronRight className="h-4 w-4" />
+              <Icon icon={ChevronRight} size={16} />
             </Button>
           </div>
         </div>
@@ -239,7 +240,7 @@ export function BoardCalendarView({
                           title={event.title}
                         >
                           {event.type === "meeting" && (
-                            <Video className="h-3 w-3 inline mr-0.5" />
+                            <Icon icon={Video} customSize={12} className="inline mr-0.5" />
                           )}
                           {event.title}
                         </div>
@@ -321,9 +322,9 @@ export function BoardCalendarView({
                     >
                       <div className="flex items-start gap-2">
                         {event.type === "meeting" ? (
-                          <Video className="h-4 w-4 mt-0.5 text-primary" />
+                          <Icon icon={Video} size={16} className="mt-0.5 text-primary" />
                         ) : (
-                          <StatusIcon className="h-4 w-4 mt-0.5" />
+                          <Icon icon={StatusIcon} size={16} className="mt-0.5" />
                         )}
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-sm truncate">

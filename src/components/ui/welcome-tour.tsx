@@ -15,6 +15,7 @@ import {
   Check,
   Sparkles,
 } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 
 const WELCOME_TOUR_KEY = "convertfy-welcome-tour-completed"
 
@@ -110,7 +111,6 @@ export function WelcomeTour() {
 
   const step = TOUR_STEPS[currentStep]
   const isLastStep = currentStep === TOUR_STEPS.length - 1
-  const Icon = step.icon
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) completeTour() }}>
@@ -138,7 +138,7 @@ export function WelcomeTour() {
               "bg-primary/10"
             )}
           >
-            <Icon className={cn("h-8 w-8", step.color)} />
+            <Icon icon={step.icon} customSize={32} className={step.color} />
           </div>
 
           <h2 className="text-xl font-bold tracking-tight mb-2">
@@ -172,11 +172,11 @@ export function WelcomeTour() {
           <Button size="sm" onClick={nextStep} className="gap-2">
             {isLastStep ? (
               <>
-                Começar <Check className="h-4 w-4" />
+                Começar <Icon icon={Check} size={16} />
               </>
             ) : (
               <>
-                Próximo <ArrowRight className="h-4 w-4" />
+                Próximo <Icon icon={ArrowRight} size={16} />
               </>
             )}
           </Button>

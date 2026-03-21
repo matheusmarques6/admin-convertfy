@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { format, isToday, parseISO } from "date-fns"
 import { Video, ExternalLink, Calendar, ArrowRight } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import { CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -32,13 +33,13 @@ export function TodayAgenda({ meetings }: TodayAgendaProps) {
       <CardHeader className="p-5 pb-3">
         <CardTitle className="text-sm font-medium flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Calendar className="h-4 w-4 text-primary" />
+            <Icon icon={Calendar} size={16} className="text-primary" />
             <span className="text-foreground">Agenda de Hoje</span>
           </div>
           <Button variant="ghost" size="sm" className="text-xs text-muted-foreground hover:text-primary h-7" asChild>
             <Link href="/admin/meetings?view=calendar">
               Ver calendário
-              <ArrowRight className="ml-1 h-3 w-3" />
+              <Icon icon={ArrowRight} customSize={12} className="ml-1" />
             </Link>
           </Button>
         </CardTitle>
@@ -46,7 +47,7 @@ export function TodayAgenda({ meetings }: TodayAgendaProps) {
       <CardContent>
         {todayMeetings.length === 0 ? (
           <div className="text-center py-6 text-muted-foreground text-sm">
-            <Video className="h-8 w-8 mx-auto mb-1.5 opacity-20" />
+            <Icon icon={Video} customSize={32} className="mx-auto mb-1.5 opacity-20" />
             <p>Nenhuma reunião hoje</p>
           </div>
         ) : (
@@ -70,8 +71,7 @@ export function TodayAgenda({ meetings }: TodayAgendaProps) {
                       "rounded-md p-1.5",
                       isHappeningNow ? "bg-primary/10" : "bg-muted"
                     )}>
-                      <Video className={cn(
-                        "h-3.5 w-3.5",
+                      <Icon icon={Video} customSize={14} className={cn(
                         isHappeningNow ? "text-primary animate-pulse" : "text-muted-foreground"
                       )} />
                     </div>
@@ -90,7 +90,7 @@ export function TodayAgenda({ meetings }: TodayAgendaProps) {
                   {meeting.meeting_url && (
                     <Button variant="outline" size="sm" className="h-7 text-xs shrink-0" asChild>
                       <a href={meeting.meeting_url} target="_blank" rel="noopener noreferrer">
-                        <ExternalLink className="mr-1 h-3 w-3" />
+                        <Icon icon={ExternalLink} customSize={12} className="mr-1" />
                         Entrar
                       </a>
                     </Button>

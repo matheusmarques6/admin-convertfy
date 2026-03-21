@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { CalendarDays } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import type { DateRange } from "react-day-picker"
@@ -68,7 +69,7 @@ export function DateRangePicker({
       <PopoverTrigger asChild>
         {trigger || (
           <Button variant="outline" size="sm" className="gap-2 text-xs">
-            <CalendarDays className="h-3.5 w-3.5" />
+            <Icon icon={CalendarDays} size={16} />
             {formatLabel()}
           </Button>
         )}

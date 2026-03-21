@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { Calendar, Clock, CircleDot, ArrowRight } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -70,7 +71,7 @@ export function WeekCalendarPreview({ meetings, tasks }: WeekCalendarPreviewProp
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
-              <Calendar className="h-4 w-4 text-primary" />
+              <Icon icon={Calendar} size={16} className="text-primary" />
             </div>
             <CardTitle className="text-sm font-semibold">Esta Semana</CardTitle>
           </div>
@@ -125,7 +126,7 @@ export function WeekCalendarPreview({ meetings, tasks }: WeekCalendarPreviewProp
 
           {todayMeetingsSorted.slice(0, 3).map((m) => (
             <div key={m.id} className="flex items-center gap-2 text-xs p-2 rounded-lg hover:bg-muted/30 transition-colors">
-              <Clock className="h-3.5 w-3.5 text-primary shrink-0" />
+              <Icon icon={Clock} customSize={14} className="text-primary" />
               <span className="text-muted-foreground tabular-nums font-medium">
                 {new Date(m.scheduled_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
               </span>
@@ -135,7 +136,7 @@ export function WeekCalendarPreview({ meetings, tasks }: WeekCalendarPreviewProp
 
           {todayEvents.tasks.length > 0 && (
             <div className="flex items-center gap-2 text-xs p-2 rounded-lg bg-warning/5">
-              <CircleDot className="h-3.5 w-3.5 text-warning shrink-0" />
+              <Icon icon={CircleDot} customSize={14} className="text-warning" />
               <span className="text-foreground">
                 {todayEvents.tasks.length} {todayEvents.tasks.length === 1 ? "tarefa vence" : "tarefas vencem"} hoje
               </span>
@@ -148,7 +149,7 @@ export function WeekCalendarPreview({ meetings, tasks }: WeekCalendarPreviewProp
           <Button variant="ghost" size="sm" className="w-full text-xs text-primary group" asChild>
             <Link href="/admin/meetings?view=calendar">
               Ver Calendario
-              <ArrowRight className="h-3.5 w-3.5 ml-1 transition-transform group-hover:translate-x-0.5" />
+              <Icon icon={ArrowRight} customSize={14} className="ml-1 transition-transform group-hover:translate-x-0.5" />
             </Link>
           </Button>
         </div>

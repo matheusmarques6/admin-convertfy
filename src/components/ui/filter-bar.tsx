@@ -1,6 +1,7 @@
 "use client"
 
 import { Search, X } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -49,7 +50,7 @@ export function FilterBar({ search, filters = [], onClearAll, className }: Filte
         {/* Search */}
         {search && (
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Icon icon={Search} size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder={search.placeholder || "Buscar..."}
               value={search.value}
@@ -85,7 +86,7 @@ export function FilterBar({ search, filters = [], onClearAll, className }: Filte
             className="shrink-0 text-muted-foreground h-10"
             onClick={onClearAll}
           >
-            <X className="mr-1 h-3 w-3" />
+            <Icon icon={X} customSize={12} className="mr-1" />
             Limpar
           </Button>
         )}
@@ -104,7 +105,7 @@ export function FilterBar({ search, filters = [], onClearAll, className }: Filte
                   onClick={() => filter.onChange("all")}
                   className="ml-1 rounded-full p-0.5 hover:bg-muted"
                 >
-                  <X className="h-3 w-3" />
+                  <Icon icon={X} customSize={12} />
                 </button>
               </Badge>
             )

@@ -1,6 +1,7 @@
 import { Suspense } from "react"
 import Link from "next/link"
 import { Plus, Zap, Play, Pause, MoreHorizontal, Trash2, Edit, TrendingUp, TrendingDown, Activity } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { createClient } from "@/lib/supabase/server"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -79,7 +80,7 @@ function TrendBadge({ value, label, positive }: { value: number; label: string; 
 
   return (
     <span className={cn("inline-flex items-center gap-0.5 text-[10px] font-medium", colorClass)}>
-      {positive !== undefined && (positive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />)}
+      {positive !== undefined && (positive ? <Icon icon={TrendingUp} customSize={12} /> : <Icon icon={TrendingDown} customSize={12} />)}
       {value}
       <span className="text-muted-foreground/50 ml-0.5">{label}</span>
     </span>
@@ -122,8 +123,8 @@ export default async function AutomationsPage() {
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/10 shrink-0">
-            <Zap className="w-5 h-5 text-primary" />
+          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/10">
+            <Icon icon={Zap} size={20} className="text-primary" />
           </div>
           <div>
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Automações</h1>
@@ -132,7 +133,7 @@ export default async function AutomationsPage() {
         </div>
         <Button asChild className="self-end sm:self-auto">
           <Link href="/admin/automations/new">
-            <Plus className="mr-2 h-4 w-4" />
+            <Icon icon={Plus} size={16} className="mr-2" />
             Nova Automação
           </Link>
         </Button>
@@ -143,7 +144,7 @@ export default async function AutomationsPage() {
         <Card className="rounded-xl border bg-card pt-6">
           <CardContent className="flex items-center gap-4">
             <div className="rounded-lg p-3 bg-primary/10">
-              <Zap className="h-5 w-5 text-primary" />
+              <Icon icon={Zap} size={20} className="text-primary" />
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Total</p>
@@ -154,7 +155,7 @@ export default async function AutomationsPage() {
         <Card className="rounded-xl border bg-card pt-6">
           <CardContent className="flex items-center gap-4">
             <div className="rounded-lg p-3 bg-emerald-500/10">
-              <Play className="h-5 w-5 text-emerald-500" />
+              <Icon icon={Play} size={20} className="text-emerald-500" />
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Ativas</p>

@@ -1,6 +1,7 @@
 "use client"
 
 import { AlertTriangle, Clock } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 
 export const PARTIAL_DATA_TOOLTIP = "Algumas lojas tiveram erro na ultima sincronizacao. Os dados podem estar incompletos."
 import { Badge } from "@/components/ui/badge"
@@ -21,7 +22,7 @@ export function SyncStatusBadge({ status, compact = false }: SyncStatusBadgeProp
         <Tooltip>
           <TooltipTrigger asChild>
             <Badge variant="outline" className="text-muted-foreground gap-1">
-              <Clock className="h-3 w-3" />
+              <Icon icon={Clock} customSize={12} />
               {!compact && "Aguardando"}
             </Badge>
           </TooltipTrigger>
@@ -37,7 +38,7 @@ export function SyncStatusBadge({ status, compact = false }: SyncStatusBadgeProp
         <Tooltip>
           <TooltipTrigger asChild>
             <Badge variant="outline" className="text-yellow-600 dark:text-yellow-400 border-yellow-600/30 dark:border-yellow-400/30 gap-1">
-              <AlertTriangle className="h-3 w-3" />
+              <Icon icon={AlertTriangle} customSize={12} />
               {!compact && "Dados parciais"}
             </Badge>
           </TooltipTrigger>

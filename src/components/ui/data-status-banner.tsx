@@ -4,6 +4,7 @@ import { AlertCircle, Clock, Loader2, Info } from "lucide-react"
 import type { DataStatus } from "@/lib/shared/data-status"
 import { getFreshnessLabel } from "@/hooks/use-data-status"
 import { cn } from "@/lib/utils"
+import { Icon } from "@/components/ui/icon"
 
 interface DataStatusBannerProps {
   status: DataStatus | undefined
@@ -17,23 +18,23 @@ const variants: Record<DataStatus, {
   color: string
 }> = {
   loading: {
-    icon: <Loader2 className="h-4 w-4 animate-spin" />,
+    icon: <Icon icon={Loader2} size={16} className="animate-spin" />,
     color: "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300",
   },
   syncing: {
-    icon: <Loader2 className="h-4 w-4 animate-spin" />,
+    icon: <Icon icon={Loader2} size={16} className="animate-spin" />,
     color: "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300",
   },
   stale: {
-    icon: <Clock className="h-4 w-4" />,
+    icon: <Icon icon={Clock} size={16} />,
     color: "bg-yellow-50 text-yellow-700 dark:bg-yellow-950 dark:text-yellow-300",
   },
   error: {
-    icon: <AlertCircle className="h-4 w-4" />,
+    icon: <Icon icon={AlertCircle} size={16} />,
     color: "bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300",
   },
   empty: {
-    icon: <Info className="h-4 w-4" />,
+    icon: <Icon icon={Info} size={16} />,
     color: "bg-muted text-muted-foreground",
   },
   ready: {

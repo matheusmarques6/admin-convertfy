@@ -10,6 +10,7 @@ import {
   Link2,
   ExternalLink,
 } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -119,7 +120,7 @@ export function TaskCard({
           </Badge>
           {task.source_type === "auto_onboarding_step" && (
             <Badge variant="secondary" className="text-[10px] gap-1">
-              <Link2 className="h-3 w-3" />
+              <Icon icon={Link2} customSize={12} />
               Etapa de onboarding
             </Badge>
           )}
@@ -132,7 +133,7 @@ export function TaskCard({
               size="icon"
               className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
             >
-              <MoreHorizontal className="h-4 w-4" />
+              <Icon icon={MoreHorizontal} size={16} />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
@@ -140,7 +141,7 @@ export function TaskCard({
             <DropdownMenuSeparator />
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>
-                <ArrowRight className="mr-2 h-4 w-4" />
+                <Icon icon={ArrowRight} size={16} className="mr-2" />
                 Mover para
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
@@ -160,7 +161,7 @@ export function TaskCard({
               className="text-destructive focus:text-destructive"
               onClick={() => onDelete(task.id)}
             >
-              <Trash2 className="mr-2 h-4 w-4" />
+              <Icon icon={Trash2} size={16} className="mr-2" />
               Excluir
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -189,9 +190,9 @@ export function TaskCard({
               )}
             >
               {isOverdue ? (
-                <AlertCircle className="h-3 w-3" />
+                <Icon icon={AlertCircle} customSize={12} />
               ) : (
-                <Calendar className="h-3 w-3" />
+                <Icon icon={Calendar} customSize={12} />
               )}
               {formatDueDate(task.due_date)}
             </div>
@@ -200,7 +201,7 @@ export function TaskCard({
           {/* Comments count */}
           {task.comments_count && task.comments_count > 0 && (
             <div className="flex items-center gap-1 text-xs text-muted-foreground">
-              <MessageSquare className="h-3 w-3" />
+              <Icon icon={MessageSquare} customSize={12} />
               {task.comments_count}
             </div>
           )}
@@ -213,7 +214,7 @@ export function TaskCard({
               className="flex items-center gap-1 text-xs text-primary hover:underline"
               aria-label="Ver pipeline de onboarding"
             >
-              <ExternalLink className="h-3 w-3" />
+              <Icon icon={ExternalLink} customSize={12} />
               Ver pipeline
             </button>
           )}

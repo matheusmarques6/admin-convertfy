@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { Plus, FileText, Calendar, Loader2, Upload, X, Paperclip, ExternalLink } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -221,7 +222,7 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
     return (
       <Card>
         <CardContent className="flex items-center justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <Icon icon={Loader2} size={24} className="animate-spin text-muted-foreground" />
         </CardContent>
       </Card>
     )
@@ -239,9 +240,9 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
           onClick={() => handleViewDocument(contract.document_url!)}
         >
           {isDownloading ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            <Icon icon={Loader2} size={16} className="mr-2 animate-spin" />
           ) : (
-            <ExternalLink className="mr-2 h-4 w-4" />
+            <Icon icon={ExternalLink} size={16} className="mr-2" />
           )}
           {isDownloading ? "Gerando link..." : "Ver Documento"}
         </Button>
@@ -264,7 +265,7 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
             <div className="flex items-center gap-2">
               <Badge variant="success">Ativo</Badge>
               <Button variant="outline" size="sm" onClick={handleOpenDialog}>
-                <Plus className="mr-2 h-4 w-4" />
+                <Icon icon={Plus} size={16} className="mr-2" />
                 Novo Contrato
               </Button>
             </div>
@@ -304,14 +305,12 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
       ) : (
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center justify-center py-8">
-            <div className="rounded-full bg-muted p-3 mb-4">
-              <FileText className="h-6 w-6 text-muted-foreground" />
-            </div>
+            <Icon icon={FileText} size={24} className="text-muted-foreground mb-4" />
             <p className="text-muted-foreground mb-4">
               Nenhum contrato ativo
             </p>
             <Button onClick={handleOpenDialog}>
-              <Plus className="mr-2 h-4 w-4" />
+              <Icon icon={Plus} size={16} className="mr-2" />
               Novo Contrato
             </Button>
           </CardContent>
@@ -334,7 +333,7 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
                 >
                   <div className="flex items-center gap-4">
                     <div className="rounded-lg p-2 bg-background">
-                      <Calendar className="h-4 w-4 text-muted-foreground" />
+                      <Icon icon={Calendar} size={16} className="text-muted-foreground" />
                     </div>
                     <div>
                       <p className="font-medium">{contract.plan_name}</p>
@@ -356,9 +355,9 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
                         onClick={() => handleViewDocument(contract.document_url!)}
                       >
                         {downloadingDoc === contract.document_url ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <Icon icon={Loader2} size={16} className="animate-spin" />
                         ) : (
-                          <FileText className="h-4 w-4" />
+                          <Icon icon={FileText} size={16} />
                         )}
                       </Button>
                     )}
@@ -451,7 +450,7 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
               <Label>Documento (PDF, DOC, DOCX)</Label>
               {selectedFile ? (
                 <div className="flex items-center gap-2 p-3 rounded-lg border bg-muted/50">
-                  <Paperclip className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <Icon icon={Paperclip} size={16} className="text-muted-foreground" />
                   <span className="text-sm truncate flex-1">{selectedFile.name}</span>
                   <Button
                     type="button"
@@ -461,7 +460,7 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
                     onClick={handleRemoveFile}
                     disabled={saving}
                   >
-                    <X className="h-3.5 w-3.5" />
+                    <Icon icon={X} customSize={14} />
                   </Button>
                 </div>
               ) : (
@@ -469,7 +468,7 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
                   className="flex items-center justify-center gap-2 p-4 rounded-lg border-2 border-dashed cursor-pointer hover:border-primary/50 hover:bg-muted/50 transition-colors"
                   onClick={() => fileInputRef.current?.click()}
                 >
-                  <Upload className="h-5 w-5 text-muted-foreground" />
+                  <Icon icon={Upload} size={20} className="text-muted-foreground" />
                   <span className="text-sm text-muted-foreground">
                     Clique para anexar arquivo
                   </span>
@@ -493,9 +492,9 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
             </Button>
             <Button onClick={handleCreateContract} disabled={saving || formData.monthly_value === 0}>
               {saving ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Icon icon={Loader2} size={16} className="mr-2 animate-spin" />
               ) : (
-                <Plus className="mr-2 h-4 w-4" />
+                <Icon icon={Plus} size={16} className="mr-2" />
               )}
               {saving ? "Criando..." : "Criar Contrato"}
             </Button>

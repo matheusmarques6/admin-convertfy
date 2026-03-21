@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { LayoutGrid, AlertTriangle, Ban, ArrowRight } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
