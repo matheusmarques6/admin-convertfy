@@ -604,7 +604,7 @@ export function ClientReports({ clientId }: ClientReportsProps) {
             const { currency, locale } = getReportCurrency(report)
 
             return (
-              <Card key={report.id} className="rounded-xl border bg-card">
+              <Card key={report.id} className="rounded-xl border">
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between">
                     <CardTitle className="text-base flex items-center gap-2">
@@ -985,7 +985,7 @@ export function ClientReports({ clientId }: ClientReportsProps) {
                 </div>
 
                 {/* Summary */}
-                <Card className="rounded-xl border bg-card text-foreground">
+                <Card className="rounded-xl border text-foreground">
                   <CardContent className="py-4">
                     <h4 className="font-medium mb-3">Resumo da Comparação</h4>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

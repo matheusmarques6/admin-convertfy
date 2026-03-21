@@ -116,7 +116,7 @@ export function GoogleCalendarCard() {
   // Loading skeleton
   if (isLoading) {
     return (
-      <Card className="rounded-xl border bg-card">
+      <Card className="rounded-xl border">
         <CardHeader className="pb-3">
           <div className="flex items-center gap-3">
             <div className="rounded-lg p-2 bg-blue-500/10">
@@ -140,7 +140,7 @@ export function GoogleCalendarCard() {
   // Disconnected state
   if (!connected) {
     return (
-      <Card className="rounded-xl border bg-card">
+      <Card className="rounded-xl border">
         <CardHeader className="pb-3">
           <div className="flex items-center gap-3">
             <div className="rounded-lg p-2 bg-blue-500/10">
@@ -181,7 +181,7 @@ export function GoogleCalendarCard() {
   // Connected but inactive (error state)
   if (!isActive) {
     return (
-      <Card className="rounded-xl border bg-card border-destructive/50">
+      <Card className="rounded-xl border border-destructive/50">
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3">
@@ -236,7 +236,7 @@ export function GoogleCalendarCard() {
 
   // Connected and active
   return (
-    <Card className="rounded-xl border bg-card border-success/50">
+    <Card className="rounded-xl border border-success/50">
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">

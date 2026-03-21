@@ -237,7 +237,7 @@ export function ClientPortalUsers({ clientId, clientName }: ClientPortalUsersPro
   const hasLoggedIn = (user: ClientPortalUser) => (user.login_count || 0) > 0
 
   return (
-    <Card className="rounded-xl border bg-card">
+    <Card className="rounded-xl border">
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>

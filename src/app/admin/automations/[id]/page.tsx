@@ -265,7 +265,7 @@ export default function EditAutomationPage() {
       {/* Form */}
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         {/* Basic Info */}
-        <Card className="rounded-xl border bg-card">
+        <Card className="rounded-xl border">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Icon icon={Zap} size={20} />
@@ -319,7 +319,7 @@ export default function EditAutomationPage() {
         </Card>
 
         {/* Trigger */}
-        <Card className="rounded-xl border bg-card">
+        <Card className="rounded-xl border">
           <CardHeader>
             <CardTitle>Gatilho</CardTitle>
             <CardDescription>
@@ -353,7 +353,7 @@ export default function EditAutomationPage() {
         </Card>
 
         {/* Actions */}
-        <Card className="rounded-xl border bg-card">
+        <Card className="rounded-xl border">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>

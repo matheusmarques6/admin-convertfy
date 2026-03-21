@@ -164,7 +164,7 @@ export default function CampaignsCalendarPage() {
       {viewMode === "calendar" && (<>
 
       {/* Filters and Navigation */}
-      <Card className="rounded-xl border bg-card">
+      <Card className="rounded-xl border">
         <CardContent className="p-4">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div className="flex items-center gap-2">

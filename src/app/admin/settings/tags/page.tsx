@@ -87,7 +87,7 @@ export default function TagsPage() {
         <p className="text-muted-foreground">Gerencie as tags do sistema</p>
       </div>
 
-      <Card className="rounded-xl border bg-card">
+      <Card className="rounded-xl border">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Icon icon={Tag} size={20} />
@@ -129,7 +129,7 @@ export default function TagsPage() {
         </CardContent>
       </Card>
 
-      <Card className="rounded-xl border bg-card">
+      <Card className="rounded-xl border">
         <CardHeader>
           <CardTitle>Tags Existentes</CardTitle>
           <CardDescription>{tags.length} tag(s) cadastrada(s)</CardDescription>

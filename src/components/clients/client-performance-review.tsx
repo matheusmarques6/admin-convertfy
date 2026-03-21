@@ -544,7 +544,7 @@ export function ClientPerformanceTables() {
     <div className="space-y-6">
       {/* Recent Campaigns Table */}
       {allCampaigns.length > 0 && (
-        <Card className="rounded-xl border bg-card">
+        <Card className="rounded-xl border">
           <CardHeader>
             <CardTitle className="text-base">Mensagens recentes de campanha</CardTitle>
           </CardHeader>
@@ -609,7 +609,7 @@ export function ClientPerformanceTables() {
 
       {/* Top Flows Table */}
       {allFlows.length > 0 && (
-        <Card className="rounded-xl border bg-card">
+        <Card className="rounded-xl border">
           <CardHeader>
             <CardTitle className="text-base">Fluxos com melhor desempenho</CardTitle>
           </CardHeader>

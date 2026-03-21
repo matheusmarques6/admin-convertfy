@@ -761,7 +761,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
     <div className="space-y-6">
       {/* Summary Cards */}
       <div className="grid gap-3 md:grid-cols-4">
-        <Card className="rounded-xl border bg-card p-5">
+        <Card className="rounded-xl border p-5">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-medium text-muted-foreground">Total Recebido</span>
             <div className="rounded-full w-2 h-2 bg-emerald-500" />
@@ -774,7 +774,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           </p>
         </Card>
 
-        <Card className="rounded-xl border bg-card p-5">
+        <Card className="rounded-xl border p-5">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-medium text-muted-foreground">Pendente</span>
             <div className="rounded-full w-2 h-2 bg-amber-500" />
@@ -787,7 +787,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           </p>
         </Card>
 
-        <Card className="rounded-xl border bg-card p-5">
+        <Card className="rounded-xl border p-5">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-medium text-muted-foreground">Vencido</span>
             <div className="rounded-full w-2 h-2 bg-red-500" />
@@ -800,7 +800,7 @@ export function ClientFinancial({ clientId, clientName }: ClientFinancialProps) 
           </p>
         </Card>
 
-        <Card className="rounded-xl border bg-card p-6">
+        <Card className="rounded-xl border p-6">
           <p className="text-sm text-muted-foreground mb-1">Assinaturas Ativas</p>
           <p className="text-2xl font-bold text-foreground">
             {computedSummary.activeSubsCount}

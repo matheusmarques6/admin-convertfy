@@ -19,7 +19,7 @@ export default function AppearancePage() {
         <p className="text-muted-foreground">Configurações visuais do sistema</p>
       </div>
 
-      <Card className="rounded-xl border bg-card">
+      <Card className="rounded-xl border">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Icon icon={Palette} size={20} />
@@ -52,7 +52,7 @@ export default function AppearancePage() {
         </CardContent>
       </Card>
 
-      <Card className="rounded-xl border bg-card">
+      <Card className="rounded-xl border">
         <CardHeader>
           <CardTitle>Identidade Visual</CardTitle>
           <CardDescription>Cores e logo do sistema</CardDescription>

@@ -147,7 +147,7 @@ export default function NewAutomationPage() {
       />
 
       {/* Basic Info */}
-      <Card className="rounded-xl border bg-card">
+      <Card className="rounded-xl border">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <Zap className="h-4 w-4" />
@@ -177,7 +177,7 @@ export default function NewAutomationPage() {
       </Card>
 
       {/* Workflow Builder */}
-      <Card className="rounded-xl border bg-card">
+      <Card className="rounded-xl border">
         <CardHeader>
           <CardTitle className="text-base">Construtor de Fluxo</CardTitle>
           <CardDescription>

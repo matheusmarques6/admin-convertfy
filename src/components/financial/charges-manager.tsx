@@ -372,7 +372,7 @@ export function ChargesManager() {
     <div className="space-y-6">
       {/* Summary Cards */}
       <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="rounded-xl border bg-card p-4">
+        <Card className="rounded-xl border p-4">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-medium text-muted-foreground">Vencidas</span>
             <div className="rounded-full p-1.5 bg-red-500/10">
@@ -387,7 +387,7 @@ export function ChargesManager() {
           </p>
         </Card>
 
-        <Card className="rounded-xl border bg-card p-4">
+        <Card className="rounded-xl border p-4">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-medium text-muted-foreground">Pendentes</span>
             <div className="rounded-full p-1.5 bg-amber-500/10">
@@ -402,7 +402,7 @@ export function ChargesManager() {
           </p>
         </Card>
 
-        <Card className="rounded-xl border bg-card p-4">
+        <Card className="rounded-xl border p-4">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-medium text-muted-foreground">Próximos 7 dias</span>
             <div className="rounded-full p-1.5 bg-blue-500/10">
@@ -417,7 +417,7 @@ export function ChargesManager() {
           </p>
         </Card>
 
-        <Card className="rounded-xl border bg-card p-4">
+        <Card className="rounded-xl border p-4">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-medium text-muted-foreground">Recebidas</span>
             <div className="rounded-full p-1.5 bg-emerald-500/10">
@@ -434,7 +434,7 @@ export function ChargesManager() {
       </div>
 
       {/* Filters and Table */}
-      <Card className="rounded-xl border bg-card">
+      <Card className="rounded-xl border">
         <CardHeader>
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>

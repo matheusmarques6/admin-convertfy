@@ -587,7 +587,7 @@ export default function ReportPage() {
 
       {/* Top Flows */}
       {reportData?.flows && reportData.flows.length > 0 && (
-        <Card className="rounded-xl border bg-card">
+        <Card className="rounded-xl border">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Zap className="h-5 w-5 text-primary" />
@@ -624,7 +624,7 @@ export default function ReportPage() {
 
       {/* Top Campaigns */}
       {reportData?.campaigns && reportData.campaigns.length > 0 && (
-        <Card className="rounded-xl border bg-card">
+        <Card className="rounded-xl border">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Mail className="h-5 w-5 text-blue-500" />
@@ -661,7 +661,7 @@ export default function ReportPage() {
 
       {/* Notes */}
       {report.notes && (
-        <Card className="rounded-xl border bg-card">
+        <Card className="rounded-xl border">
           <CardHeader>
             <CardTitle>Observações</CardTitle>
             <CardDescription>Notas e insights sobre o período</CardDescription>
@@ -673,7 +673,7 @@ export default function ReportPage() {
       )}
 
       {/* Metadata */}
-      <Card className="rounded-xl border bg-card">
+      <Card className="rounded-xl border">
         <CardHeader>
           <CardTitle>Informações do Relatório</CardTitle>
         </CardHeader>

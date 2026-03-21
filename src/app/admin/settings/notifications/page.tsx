@@ -96,7 +96,7 @@ export default function NotificationsPage() {
         <p className="text-muted-foreground">Configure suas preferências de notificação</p>
       </div>
 
-      <Card className="rounded-xl border bg-card">
+      <Card className="rounded-xl border">
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Icon icon={Mail} size={20} /> Notificações por Email</CardTitle>
           <CardDescription>Escolha quais eventos geram notificação por email</CardDescription>
@@ -114,7 +114,7 @@ export default function NotificationsPage() {
         </CardContent>
       </Card>
 
-      <Card className="rounded-xl border bg-card">
+      <Card className="rounded-xl border">
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Icon icon={Smartphone} size={20} /> Notificações Push</CardTitle>
           <CardDescription>Escolha quais eventos geram notificação push</CardDescription>

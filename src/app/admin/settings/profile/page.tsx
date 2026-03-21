@@ -328,7 +328,7 @@ export default function ProfilePage() {
 
       <div className="grid gap-6 md:grid-cols-2">
         {/* Profile Edit */}
-        <Card className="rounded-xl border bg-card">
+        <Card className="rounded-xl border">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <User className="h-5 w-5 text-primary" />
@@ -463,7 +463,7 @@ export default function ProfilePage() {
         </Card>
 
         {/* Account Info (read-only) */}
-        <Card className="rounded-xl border bg-card">
+        <Card className="rounded-xl border">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Shield className="h-5 w-5 text-primary" />
@@ -503,7 +503,7 @@ export default function ProfilePage() {
       </div>
 
       {/* Password Change */}
-      <Card className="rounded-xl border bg-card">
+      <Card className="rounded-xl border">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Lock className="h-5 w-5 text-amber-600" />

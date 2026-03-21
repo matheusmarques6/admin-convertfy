@@ -71,7 +71,7 @@ export function ClientTimeline({ clientId }: ClientTimelineProps) {
   }
 
   return (
-    <Card className="rounded-xl border bg-card">
+    <Card className="rounded-xl border">
       <CardHeader>
         <CardTitle className="text-base">Histórico de Atividades</CardTitle>
       </CardHeader>

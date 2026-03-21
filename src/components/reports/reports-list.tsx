@@ -417,7 +417,7 @@ export function ReportsList({
 
       {/* Stats */}
       <div className="grid gap-4 md:grid-cols-3">
-        <Card className="rounded-xl border bg-card">
+        <Card className="rounded-xl border">
           <CardContent className="flex items-center gap-4 pt-6">
             <div className="rounded-lg p-3 bg-primary/10">
               <FileText className="h-5 w-5 text-primary" />
@@ -428,7 +428,7 @@ export function ReportsList({
             </div>
           </CardContent>
         </Card>
-        <Card className="rounded-xl border bg-card">
+        <Card className="rounded-xl border">
           <CardContent className="flex items-center gap-4 pt-6">
             <div className="rounded-lg p-3 bg-emerald-500/10">
               <Calendar className="h-5 w-5 text-emerald-500" />
@@ -439,7 +439,7 @@ export function ReportsList({
             </div>
           </CardContent>
         </Card>
-        <Card className="rounded-xl border bg-card">
+        <Card className="rounded-xl border">
           <CardContent className="flex items-center gap-4 pt-6">
             <div className="rounded-lg p-3 bg-amber-500/10">
               <Clock className="h-5 w-5 text-amber-500" />
@@ -503,7 +503,7 @@ export function ReportsList({
 
       {/* Pending Reports Section */}
       {pendingStores.length > 0 && (
-        <Card className="rounded-xl border bg-card">
+        <Card className="rounded-xl border">
           <CardHeader>
             <div className="flex items-center gap-2">
               <AlertCircle className="h-5 w-5 text-amber-500" />
@@ -554,7 +554,7 @@ export function ReportsList({
       )}
 
       {/* Filters */}
-      <Card className="rounded-xl border bg-card">
+      <Card className="rounded-xl border">
         <CardContent className="pt-6">
           <div className="flex flex-col gap-4">
             <div className="flex items-center gap-4">
@@ -711,7 +711,7 @@ export function ReportsList({
         </Card>
       ) : (
         displayedMonths.map((month) => (
-          <Card key={month} className="rounded-xl border bg-card">
+          <Card key={month} className="rounded-xl border">
             <CardHeader>
               <CardTitle className="text-base">{formatMonth(month)}</CardTitle>
               <CardDescription>

@@ -240,7 +240,7 @@ export function SubscriptionsManager() {
     <div className="space-y-6">
       {/* Summary Cards */}
       <div className="grid gap-4 md:grid-cols-3">
-        <Card className="rounded-xl border bg-card">
+        <Card className="rounded-xl border">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
               <Repeat className="h-4 w-4 text-emerald-500" />
@@ -254,7 +254,7 @@ export function SubscriptionsManager() {
           </CardContent>
         </Card>
 
-        <Card className="rounded-xl border bg-card">
+        <Card className="rounded-xl border">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
               <Calendar className="h-4 w-4 text-primary" />
@@ -269,7 +269,7 @@ export function SubscriptionsManager() {
           </CardContent>
         </Card>
 
-        <Card className="rounded-xl border bg-card">
+        <Card className="rounded-xl border">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
               <User className="h-4 w-4 text-muted-foreground" />
@@ -285,7 +285,7 @@ export function SubscriptionsManager() {
       </div>
 
       {/* Table */}
-      <Card className="rounded-xl border bg-card">
+      <Card className="rounded-xl border">
         <CardHeader>
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>

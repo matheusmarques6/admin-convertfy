@@ -153,7 +153,7 @@ export default function ToolsPage() {
         <TabsContent value="ai" className="space-y-6">
           <div className="grid gap-6 md:grid-cols-2">
             {/* Email Subject Generator */}
-            <Card className="rounded-xl border bg-card">
+            <Card className="rounded-xl border">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Mail className="h-4 w-4 text-primary" />
@@ -211,7 +211,7 @@ export default function ToolsPage() {
             </Card>
 
             {/* Ad Copy Generator */}
-            <Card className="rounded-xl border bg-card">
+            <Card className="rounded-xl border">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Sparkles className="h-4 w-4 text-primary" />
@@ -286,7 +286,7 @@ export default function ToolsPage() {
         <TabsContent value="calculators" className="space-y-6">
           <div className="grid gap-6 md:grid-cols-2">
             {/* ROAS Calculator */}
-            <Card className="rounded-xl border bg-card">
+            <Card className="rounded-xl border">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Calculator className="h-4 w-4 text-primary" />
@@ -330,7 +330,7 @@ export default function ToolsPage() {
             </Card>
 
             {/* Benchmark Card */}
-            <Card className="rounded-xl border bg-card">
+            <Card className="rounded-xl border">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <BarChart3 className="h-4 w-4 text-primary" />

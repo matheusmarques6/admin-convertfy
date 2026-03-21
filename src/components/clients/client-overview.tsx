@@ -95,7 +95,7 @@ export function ClientOverview({ client }: ClientOverviewProps) {
   return (
     <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
       {/* Contact Info */}
-      <Card className="rounded-xl border bg-card">
+      <Card className="rounded-xl border">
         <CardHeader>
           <CardTitle className="text-base">Informações de Contato</CardTitle>
         </CardHeader>
@@ -159,7 +159,7 @@ export function ClientOverview({ client }: ClientOverviewProps) {
       </Card>
 
       {/* Contract & Financial Summary */}
-      <Card className="rounded-xl border bg-card">
+      <Card className="rounded-xl border">
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-base">Resumo Financeiro</CardTitle>
           {isLoadingAsaas ? (
@@ -248,7 +248,7 @@ export function ClientOverview({ client }: ClientOverviewProps) {
       </Card>
 
       {/* Responsible & Next Meeting */}
-      <Card className="rounded-xl border bg-card">
+      <Card className="rounded-xl border">
         <CardHeader>
           <CardTitle className="text-base">Gestão</CardTitle>
         </CardHeader>
@@ -305,7 +305,7 @@ export function ClientOverview({ client }: ClientOverviewProps) {
           : []
         if (displayFields.length === 0) return null
         return (
-          <Card className="rounded-xl border bg-card md:col-span-2 lg:col-span-3">
+          <Card className="rounded-xl border md:col-span-2 lg:col-span-3">
             <CardHeader>
               <CardTitle className="text-base">Campos Personalizados</CardTitle>
             </CardHeader>

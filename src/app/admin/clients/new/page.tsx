@@ -261,7 +261,7 @@ export default function NewClientPage() {
       {/* Form */}
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         {/* Required Fields for Asaas */}
-        <Card className="rounded-xl border bg-card">
+        <Card className="rounded-xl border">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               Dados Obrigatórios
@@ -328,7 +328,7 @@ export default function NewClientPage() {
         </Card>
 
         {/* Additional Info */}
-        <Card className="rounded-xl border bg-card">
+        <Card className="rounded-xl border">
           <CardHeader>
             <CardTitle>Informações Adicionais</CardTitle>
             <CardDescription>
@@ -385,7 +385,7 @@ export default function NewClientPage() {
         </Card>
 
         {/* Address */}
-        <Card className="rounded-xl border bg-card">
+        <Card className="rounded-xl border">
           <CardHeader>
             <CardTitle>Endereço</CardTitle>
             <CardDescription>
@@ -499,7 +499,7 @@ export default function NewClientPage() {
         </Card>
 
         {/* Integration */}
-        <Card className="rounded-xl border bg-card">
+        <Card className="rounded-xl border">
           <CardHeader>
             <CardTitle>Integração Asaas</CardTitle>
             <CardDescription>
@@ -523,7 +523,7 @@ export default function NewClientPage() {
         </Card>
 
         {/* Notes */}
-        <Card className="rounded-xl border bg-card">
+        <Card className="rounded-xl border">
           <CardHeader>
             <CardTitle>Observações</CardTitle>
             <CardDescription>

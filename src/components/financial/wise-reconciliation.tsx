@@ -272,7 +272,7 @@ export function WiseReconciliation() {
       {balances.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {Object.entries(totalByCurrency).map(([currency, amount]) => (
-            <Card key={currency} className="rounded-xl border bg-card">
+            <Card key={currency} className="rounded-xl border">
               <CardHeader className="pb-2">
                 <CardDescription>Saldo {currency}</CardDescription>
                 <CardTitle className="text-xl">
@@ -285,7 +285,7 @@ export function WiseReconciliation() {
       )}
 
       {/* Filters */}
-      <Card className="rounded-xl border bg-card">
+      <Card className="rounded-xl border">
         <CardHeader>
           <CardTitle className="text-base">Filtros</CardTitle>
         </CardHeader>
@@ -339,7 +339,7 @@ export function WiseReconciliation() {
       </Card>
 
       {/* Transactions Table */}
-      <Card className="rounded-xl border bg-card">
+      <Card className="rounded-xl border">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <ArrowDownRight className="h-4 w-4 text-success" />

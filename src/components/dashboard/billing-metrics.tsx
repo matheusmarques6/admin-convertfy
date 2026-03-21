@@ -155,7 +155,7 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
         </div>
         <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
           {[...Array(5)].map((_, i) => (
-            <div key={i} className="rounded-xl border bg-card">
+            <div key={i} className="rounded-xl border">
               <div className="h-28 flex items-center justify-center">
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
               </div>

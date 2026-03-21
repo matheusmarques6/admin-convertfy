@@ -115,7 +115,7 @@ export default async function SettingsPage() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {items.map((item) => (
           <Link key={item.href} href={item.href} className="group">
-            <Card className="h-full rounded-xl border bg-card transition-all duration-200 hover:border-primary/40 hover:shadow-md hover:shadow-primary/5">
+            <Card className="h-full rounded-xl border transition-all duration-200 hover:border-primary/40 hover:shadow-md hover:shadow-primary/5">
               <CardHeader className="p-5">
                 <div className="flex items-start gap-4">
                   <Icon icon={item.icon} size={20} className="text-primary" />

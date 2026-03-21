@@ -62,7 +62,7 @@ export default function PermissionsPage() {
         <p className="text-muted-foreground">Visualize as permissões por cargo</p>
       </div>
 
-      <Card className="rounded-xl border bg-card">
+      <Card className="rounded-xl border">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Icon icon={Key} size={20} />

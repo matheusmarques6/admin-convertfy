@@ -18,7 +18,7 @@ export default function FinancialLoading() {
       </div>
 
       {/* Chart */}
-      <div className="rounded-xl border bg-card p-6">
+      <div className="rounded-xl border p-6">
         <Skeleton className="h-5 w-40 mb-4" />
         <Skeleton className="h-[300px] w-full" />
       </div>

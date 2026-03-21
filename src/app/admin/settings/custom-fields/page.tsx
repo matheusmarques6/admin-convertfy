@@ -104,7 +104,7 @@ export default function CustomFieldsPage() {
         <p className="text-muted-foreground">Crie campos extras para clientes e deals</p>
       </div>
 
-      <Card className="rounded-xl border bg-card">
+      <Card className="rounded-xl border">
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Icon icon={Layers} size={20} /> Novo Campo</CardTitle>
           <CardDescription>Adicione campos customizados às suas entidades</CardDescription>
@@ -154,7 +154,7 @@ export default function CustomFieldsPage() {
         </CardContent>
       </Card>
 
-      <Card className="rounded-xl border bg-card">
+      <Card className="rounded-xl border">
         <CardHeader>
           <CardTitle>Campos Existentes</CardTitle>
           <CardDescription>{fields.length} campo(s) cadastrado(s)</CardDescription>

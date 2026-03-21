@@ -302,7 +302,7 @@ export function ClientStores({ clientId, clientName }: ClientStoresProps) {
       ) : stores.length > 0 ? (
         <div className="grid gap-4 md:grid-cols-2">
           {stores.map((store) => (
-            <Card key={store.id} className="rounded-xl border bg-card">
+            <Card key={store.id} className="rounded-xl border">
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">

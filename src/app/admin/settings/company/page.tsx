@@ -82,7 +82,7 @@ export default function CompanyPage() {
         <p className="text-muted-foreground">Configure as informações da sua empresa</p>
       </div>
 
-      <Card className="rounded-xl border bg-card">
+      <Card className="rounded-xl border">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Icon icon={Building} size={20} />

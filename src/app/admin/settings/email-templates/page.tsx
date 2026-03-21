@@ -118,7 +118,7 @@ export default function EmailTemplatesPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Lista */}
-        <Card className="rounded-xl border bg-card lg:col-span-1">
+        <Card className="rounded-xl border lg:col-span-1">
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><Icon icon={Mail} size={20} /> Templates</CardTitle>
             <CardDescription>{templates.length} template(s)</CardDescription>
@@ -152,7 +152,7 @@ export default function EmailTemplatesPage() {
         </Card>
 
         {/* Editor */}
-        <Card className="rounded-xl border bg-card lg:col-span-2">
+        <Card className="rounded-xl border lg:col-span-2">
           <CardHeader>
             <CardTitle>{isNew ? "Novo Template" : editing ? `Editando: ${editing.name}` : "Editor"}</CardTitle>
             {(isNew || editing) && (
