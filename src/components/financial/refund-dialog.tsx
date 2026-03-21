@@ -123,7 +123,7 @@ export function RefundDialog({ open, onOpenChange, charge, onSuccess }: RefundDi
       <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <RotateCcw className="h-5 w-5" />
+            <Icon icon={RotateCcw} size={20} />
             Reembolsar Cobranca
           </DialogTitle>
           <DialogDescription>
@@ -222,7 +222,7 @@ export function RefundDialog({ open, onOpenChange, charge, onSuccess }: RefundDi
           {/* Subscription warning */}
           {charge.subscription_id && (
             <Alert variant="warning">
-              <AlertTriangle className="h-4 w-4" />
+              <Icon icon={AlertTriangle} size={16} />
               <AlertTitle>Cobranca vinculada a assinatura</AlertTitle>
               <AlertDescription>
                 O reembolso nao cancela a assinatura automaticamente. A assinatura continuara ativa.
@@ -232,7 +232,7 @@ export function RefundDialog({ open, onOpenChange, charge, onSuccess }: RefundDi
 
           {/* Destructive warning */}
           <Alert variant="destructive">
-            <AlertTriangle className="h-4 w-4" />
+            <Icon icon={AlertTriangle} size={16} />
             <AlertTitle>Acao irreversivel</AlertTitle>
             <AlertDescription>
               {isAsaas
@@ -257,12 +257,12 @@ export function RefundDialog({ open, onOpenChange, charge, onSuccess }: RefundDi
           >
             {isSubmitting ? (
               <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                <Icon icon={Loader2} size={16} className="mr-2 animate-spin" />
                 Processando...
               </>
             ) : (
               <>
-                <RotateCcw className="h-4 w-4 mr-2" />
+                <Icon icon={RotateCcw} size={16} className="mr-2" />
                 Confirmar Reembolso
               </>
             )}

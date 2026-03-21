@@ -9,6 +9,7 @@ import {
   Users,
 } from "lucide-react"
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Icon } from "@/components/ui/icon"
 import { createClient } from "@/lib/supabase/server"
 import { type LucideIcon } from "lucide-react"
 
@@ -100,7 +101,7 @@ export default async function SettingsPage() {
       {/* Header */}
       <div className="flex items-center gap-4">
         <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
-          <Settings className="h-6 w-6 text-primary" />
+          <Icon icon={Settings} size={24} className="text-primary" />
         </div>
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Configuracoes</h1>
@@ -117,9 +118,7 @@ export default async function SettingsPage() {
             <Card className="h-full rounded-xl border bg-card transition-all duration-200 hover:border-primary/40 hover:shadow-md hover:shadow-primary/5">
               <CardHeader className="p-5">
                 <div className="flex items-start gap-4">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/10 transition-colors duration-200 group-hover:bg-primary/15">
-                    <item.icon className="h-5 w-5 text-primary" />
-                  </div>
+                  <Icon icon={item.icon} size={20} className="text-primary" />
                   <div className="flex-1 space-y-1">
                     <CardTitle className="flex items-center justify-between text-base font-semibold">
                       <span className="flex items-center gap-2">
@@ -130,7 +129,7 @@ export default async function SettingsPage() {
                           </span>
                         )}
                       </span>
-                      <ChevronRight className="h-4 w-4 text-muted-foreground/50 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-primary" />
+                      <Icon icon={ChevronRight} size={16} className="text-muted-foreground/50 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-primary" />
                     </CardTitle>
                     <CardDescription className="text-sm leading-relaxed">
                       {item.description}

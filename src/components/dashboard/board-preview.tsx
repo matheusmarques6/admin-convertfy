@@ -40,7 +40,7 @@ export function BoardPreview({ tasks }: BoardPreviewProps) {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
-              <LayoutGrid className="h-4 w-4 text-primary" />
+              <Icon icon={LayoutGrid} size={16} className="text-primary" />
             </div>
             <CardTitle className="text-sm font-semibold">Board</CardTitle>
           </div>
@@ -70,13 +70,13 @@ export function BoardPreview({ tasks }: BoardPreviewProps) {
         <div className="space-y-1.5">
           {overdue > 0 && (
             <div className="flex items-center gap-2 text-xs text-warning p-2 rounded-lg bg-warning/5">
-              <AlertTriangle className="h-3.5 w-3.5" />
+              <Icon icon={AlertTriangle} customSize={14} />
               <span>{overdue} {overdue === 1 ? "tarefa vencida" : "tarefas vencidas"}</span>
             </div>
           )}
           {blocked > 0 && (
             <div className="flex items-center gap-2 text-xs text-destructive p-2 rounded-lg bg-destructive/5">
-              <Ban className="h-3.5 w-3.5" />
+              <Icon icon={Ban} customSize={14} />
               <span>{blocked} {blocked === 1 ? "tarefa bloqueada" : "tarefas bloqueadas"}</span>
             </div>
           )}
@@ -87,7 +87,7 @@ export function BoardPreview({ tasks }: BoardPreviewProps) {
           <Button variant="ghost" size="sm" className="w-full text-xs text-primary group" asChild>
             <Link href="/admin/board">
               Ver Board
-              <ArrowRight className="h-3.5 w-3.5 ml-1 transition-transform group-hover:translate-x-0.5" />
+              <Icon icon={ArrowRight} customSize={14} className="ml-1 transition-transform group-hover:translate-x-0.5" />
             </Link>
           </Button>
         </div>

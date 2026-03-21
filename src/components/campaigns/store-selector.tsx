@@ -208,7 +208,7 @@ export function StoreSelector({
       {/* Empty filtered state */}
       {filteredStores.length === 0 && (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center">
-          <Globe className="mb-2 h-8 w-8 text-muted-foreground" />
+          <Icon icon={Globe} customSize={32} className="mb-2 text-muted-foreground" />
           <p className="text-sm text-muted-foreground">
             Nenhuma loja encontrada com os filtros selecionados.
           </p>
@@ -243,7 +243,7 @@ export function StoreSelector({
                     : "border-muted-foreground/30",
                 )}
               >
-                {isSelected && <Check className="h-3 w-3" />}
+                {isSelected && <Icon icon={Check} customSize={12} />}
               </div>
 
               <div className="min-w-0 flex-1">

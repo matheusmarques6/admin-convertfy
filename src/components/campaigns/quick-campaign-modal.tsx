@@ -69,11 +69,11 @@ export function QuickCampaignModal({
       <Card className="w-full max-w-md mx-4">
         <CardHeader className="flex flex-row items-center justify-between pb-3">
           <div className="flex items-center gap-2">
-            <Zap className="h-5 w-5 text-warning" />
+            <Icon icon={Zap} size={20} className="text-warning" />
             <CardTitle className="text-lg">Campanha Rápida</CardTitle>
           </div>
           <Button variant="ghost" size="icon" onClick={onClose}>
-            <X className="h-4 w-4" />
+            <Icon icon={X} size={16} />
           </Button>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -108,9 +108,9 @@ export function QuickCampaignModal({
             </Button>
             <Button className="flex-1" onClick={handleSave} disabled={loading}>
               {loading ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                <Icon icon={Loader2} size={16} className="animate-spin mr-2" />
               ) : (
-                <Zap className="h-4 w-4 mr-2" />
+                <Icon icon={Zap} size={16} className="mr-2" />
               )}
               Criar Rápida
             </Button>

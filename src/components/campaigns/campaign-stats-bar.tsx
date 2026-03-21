@@ -68,7 +68,7 @@ function StatCard({
           {subtitle && <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{subtitle}</p>}
         </div>
         <div className={`rounded-xl p-3 ${iconBgColor}`}>
-          <Icon className={`h-6 w-6 ${iconColor}`} />
+          <IconWrapper icon={Icon} size={24} className={iconColor} />
         </div>
       </div>
     </div>

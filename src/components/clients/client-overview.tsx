@@ -103,7 +103,7 @@ export function ClientOverview({ client }: ClientOverviewProps) {
           {client.email && (
             <div className="flex items-center gap-3">
               <div className="rounded-lg p-2 bg-muted">
-                <Mail className="h-4 w-4 text-muted-foreground" />
+                <Icon icon={Mail} size={16} className="text-muted-foreground" />
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Email</p>
@@ -116,7 +116,7 @@ export function ClientOverview({ client }: ClientOverviewProps) {
           {client.phone && (
             <div className="flex items-center gap-3">
               <div className="rounded-lg p-2 bg-muted">
-                <Phone className="h-4 w-4 text-muted-foreground" />
+                <Icon icon={Phone} size={16} className="text-muted-foreground" />
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Telefone</p>
@@ -129,7 +129,7 @@ export function ClientOverview({ client }: ClientOverviewProps) {
           {client.company && (
             <div className="flex items-center gap-3">
               <div className="rounded-lg p-2 bg-muted">
-                <Building className="h-4 w-4 text-muted-foreground" />
+                <Icon icon={Building} size={16} className="text-muted-foreground" />
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Empresa</p>
@@ -140,7 +140,7 @@ export function ClientOverview({ client }: ClientOverviewProps) {
           {client.website && (
             <div className="flex items-center gap-3">
               <div className="rounded-lg p-2 bg-muted">
-                <Globe className="h-4 w-4 text-muted-foreground" />
+                <Icon icon={Globe} size={16} className="text-muted-foreground" />
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Website</p>
@@ -163,10 +163,10 @@ export function ClientOverview({ client }: ClientOverviewProps) {
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-base">Resumo Financeiro</CardTitle>
           {isLoadingAsaas ? (
-            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            <Icon icon={Loader2} size={16} className="animate-spin text-muted-foreground" />
           ) : hasAsaasId ? (
             <Badge variant="success" className="text-xs">
-              <CheckCircle2 className="h-3 w-3 mr-1" />
+              <Icon icon={CheckCircle2} customSize={12} className="mr-1" />
               Asaas
             </Badge>
           ) : (
@@ -235,7 +235,7 @@ export function ClientOverview({ client }: ClientOverviewProps) {
           )}
           {overdueAmount > 0 && (
             <div className="flex items-center gap-2 p-2 rounded-lg bg-destructive/10 border border-destructive/20">
-              <AlertCircle className="h-4 w-4 text-destructive" />
+              <Icon icon={AlertCircle} size={16} className="text-destructive" />
               <div>
                 <p className="text-xs text-destructive">Vencido</p>
                 <p className="text-sm font-medium text-destructive">
@@ -255,7 +255,7 @@ export function ClientOverview({ client }: ClientOverviewProps) {
         <CardContent className="space-y-4">
           <div className="flex items-center gap-3">
             <div className="rounded-lg p-2 bg-muted">
-              <User className="h-4 w-4 text-muted-foreground" />
+              <Icon icon={User} size={16} className="text-muted-foreground" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Responsável</p>
@@ -276,7 +276,7 @@ export function ClientOverview({ client }: ClientOverviewProps) {
           </div>
           <div className="flex items-center gap-3">
             <div className="rounded-lg p-2 bg-muted">
-              <Calendar className="h-4 w-4 text-muted-foreground" />
+              <Icon icon={Calendar} size={16} className="text-muted-foreground" />
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Próxima Reunião</p>

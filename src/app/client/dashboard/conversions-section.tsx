@@ -1,4 +1,5 @@
 import { Ticket, Tag, Link2, Globe, Megaphone, Monitor } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { formatPercent, formatCurrencyCompact } from "@/lib/utils/format"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { EmptyState } from "@/components/ui/empty-state"
@@ -12,7 +13,7 @@ interface ConversionsSectionProps {
 function UtmRankingList({
   items,
   labelKey,
-  icon: Icon,
+  icon: IconComponent,
 }: {
   items: Array<Record<string, string | number>>
   labelKey: string
@@ -33,7 +34,7 @@ function UtmRankingList({
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate flex items-center gap-1">
-              <Icon className="h-3 w-3" />
+              <Icon icon={IconComponent} customSize={12} />
               {String(item[labelKey])}
             </p>
             <p className="text-xs text-slate-500 dark:text-slate-400">{item.orders} pedidos</p>
@@ -56,7 +57,7 @@ export function ConversionsSection({ shopify }: ConversionsSectionProps) {
       <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium text-slate-800 dark:text-slate-100 flex items-center gap-2">
-            <Ticket className="h-4 w-4 text-primary" />
+            <Icon icon={Ticket} size={16} className="text-primary" />
             Conversoes por Cupom
           </h3>
           <span className="text-xs text-slate-500 dark:text-slate-400">Pedidos pagos</span>
@@ -84,7 +85,7 @@ export function ConversionsSection({ shopify }: ConversionsSectionProps) {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate flex items-center gap-1">
-                    <Tag className="h-3 w-3" />
+                    <Icon icon={Tag} customSize={12} />
                     {coupon.code}
                   </p>
                   <p className="text-xs text-slate-500 dark:text-slate-400">{coupon.orders} pedidos</p>
@@ -104,7 +105,7 @@ export function ConversionsSection({ shopify }: ConversionsSectionProps) {
       <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium text-slate-800 dark:text-slate-100 flex items-center gap-2">
-            <Link2 className="h-4 w-4 text-[#05AFF2]" />
+            <Icon icon={Link2} size={16} className="text-[#05AFF2]" />
             Conversoes por UTM
           </h3>
           <span className="text-xs text-slate-500 dark:text-slate-400">Pedidos pagos</span>

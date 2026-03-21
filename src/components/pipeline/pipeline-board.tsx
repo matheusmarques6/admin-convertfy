@@ -9,6 +9,7 @@ import {
   DropResult,
 } from "@hello-pangea/dnd"
 import { Plus, MoreHorizontal, Trash2, Edit, Lock } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -148,7 +149,7 @@ export function PipelineBoard({
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
-          <Lock className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
+          <Icon icon={Lock} customSize={48} className="mx-auto text-muted-foreground/50 mb-3" />
           <p className="text-lg font-medium">
             {pipelineId ? "Pipeline sem etapas" : "Nenhuma pipeline selecionada"}
           </p>
@@ -194,7 +195,7 @@ export function PipelineBoard({
                         className="h-8 w-8"
                         onClick={() => handleAddDeal(stage.id)}
                       >
-                        <Plus className="h-4 w-4" />
+                        <Icon icon={Plus} size={16} />
                       </Button>
                     )}
                   </div>
@@ -252,21 +253,21 @@ export function PipelineBoard({
                                             size="icon"
                                             className="h-6 w-6 flex-shrink-0"
                                           >
-                                            <MoreHorizontal className="h-3 w-3" />
+                                            <Icon icon={MoreHorizontal} customSize={12} />
                                           </Button>
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent align="end">
                                           <DropdownMenuItem
                                             onClick={() => setEditingDeal(deal)}
                                           >
-                                            <Edit className="mr-2 h-4 w-4" />
+                                            <Icon icon={Edit} size={16} className="mr-2" />
                                             Editar
                                           </DropdownMenuItem>
                                           <DropdownMenuItem
                                             className="text-destructive"
                                             onClick={() => setDeletingDeal(deal)}
                                           >
-                                            <Trash2 className="mr-2 h-4 w-4" />
+                                            <Icon icon={Trash2} size={16} className="mr-2" />
                                             Excluir
                                           </DropdownMenuItem>
                                         </DropdownMenuContent>

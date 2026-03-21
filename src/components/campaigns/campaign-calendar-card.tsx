@@ -48,8 +48,6 @@ export const CampaignCalendarCard = React.memo(function CampaignCalendarCard({
 }: CampaignCalendarCardProps) {
   const channelConfig = CHANNEL_CONFIG[campaign.channel] || CHANNEL_CONFIG.email
   const statusConfig = STATUS_CONFIG[campaign.status] || STATUS_CONFIG.scheduled
-  const ChannelIcon = channelConfig.icon
-
   if (compact) {
     return (
       <div
@@ -65,7 +63,7 @@ export const CampaignCalendarCard = React.memo(function CampaignCalendarCard({
         title={campaign.name}
       >
         <div className="flex items-center gap-1.5 truncate">
-          <ChannelIcon className="h-3 w-3 flex-shrink-0" />
+          <Icon icon={channelConfig.icon} customSize={12} />
           <span className="truncate">{campaign.name}</span>
         </div>
         {campaign.hasKlaviyoMetrics && campaign.status === "sent" && (
@@ -87,7 +85,7 @@ export const CampaignCalendarCard = React.memo(function CampaignCalendarCard({
           className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
           style={{ backgroundColor: campaign.color || "#3b82f6" }}
         >
-          <ChannelIcon className="h-5 w-5 text-white" />
+          <Icon icon={channelConfig.icon} size={20} className="text-white" />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
@@ -110,7 +108,7 @@ export const CampaignCalendarCard = React.memo(function CampaignCalendarCard({
           )}
           {campaign.recipients && (
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              <Users className="h-3 w-3 inline mr-1" />
+              <Icon icon={Users} customSize={12} className="inline mr-1" />
               {formatNumber(campaign.recipients)} destinatarios
             </p>
           )}

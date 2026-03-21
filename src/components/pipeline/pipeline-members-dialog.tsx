@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Loader2, Plus, X, Crown, Pencil, Eye } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import {
   Dialog,
   DialogContent,

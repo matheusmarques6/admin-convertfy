@@ -59,7 +59,6 @@ export function CampaignDayListModal({
         </DialogHeader>
         <div className="space-y-3 mt-4">
           {campaigns.map((campaign) => {
-            const ChannelIcon = CHANNEL_CONFIG[campaign.channel]?.icon || Mail
             const statusConfig = STATUS_CONFIG[campaign.status]
             return (
               <div
@@ -71,7 +70,7 @@ export function CampaignDayListModal({
                   className="w-12 h-12 rounded-xl flex items-center justify-center"
                   style={{ backgroundColor: campaign.color || "#3b82f6" }}
                 >
-                  <ChannelIcon className="h-6 w-6 text-white" />
+                  <Icon icon={CHANNEL_CONFIG[campaign.channel]?.icon || Mail} size={24} className="text-white" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-slate-800 dark:text-slate-100 truncate">{campaign.name}</p>

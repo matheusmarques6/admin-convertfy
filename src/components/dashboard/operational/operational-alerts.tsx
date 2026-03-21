@@ -90,7 +90,7 @@ export function OperationalAlerts({ alerts }: OperationalAlertsProps) {
           <ScrollArea className="h-[300px] pr-4">
             <div className="space-y-2">
               {filteredAlerts.map((alert) => {
-                const Icon = ALERT_ICONS[alert.type] || Clock
+                const AlertIcon = ALERT_ICONS[alert.type] || Clock
                 const content = (
                   <div
                     className="flex items-start gap-3 p-2.5 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors"
@@ -99,10 +99,10 @@ export function OperationalAlerts({ alerts }: OperationalAlertsProps) {
                       alert.severity === "high" ? "bg-destructive/10" :
                       alert.severity === "medium" ? "bg-warning/10" : "bg-muted"
                     }`}>
-                      <Icon className={`h-3.5 w-3.5 ${
+                      <IconWrapper icon={AlertIcon} customSize={14} className={
                         alert.severity === "high" ? "text-destructive" :
                         alert.severity === "medium" ? "text-warning" : "text-muted-foreground"
-                      }`} />
+                      } />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-foreground">{alert.title}</p>
@@ -128,7 +128,7 @@ export function OperationalAlerts({ alerts }: OperationalAlertsProps) {
           </ScrollArea>
         ) : (
           <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-            <CheckCircle2 className="h-8 w-8 mb-2 text-success opacity-50" />
+            <IconWrapper icon={CheckCircle2} customSize={32} className="mb-2 text-success opacity-50" />
             <p className="text-sm">Sem alertas recentes</p>
           </div>
         )}

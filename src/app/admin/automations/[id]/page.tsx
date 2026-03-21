@@ -7,6 +7,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { Loader2, Zap, Plus, Trash2 } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -267,7 +268,7 @@ export default function EditAutomationPage() {
         <Card className="rounded-xl border bg-card">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Zap className="h-5 w-5" />
+              <Icon icon={Zap} size={20} />
               Informações Básicas
             </CardTitle>
           </CardHeader>
@@ -368,7 +369,7 @@ export default function EditAutomationPage() {
                 onClick={addAction}
                 disabled={isLoading}
               >
-                <Plus className="mr-2 h-4 w-4" />
+                <Icon icon={Plus} size={16} className="mr-2" />
                 Adicionar Ação
               </Button>
             </div>
@@ -431,7 +432,7 @@ export default function EditAutomationPage() {
                       onClick={() => removeAction(action.id)}
                       disabled={isLoading}
                     >
-                      <Trash2 className="h-4 w-4 text-destructive" />
+                      <Icon icon={Trash2} size={16} className="text-destructive" />
                     </Button>
                   </div>
                 ))}
@@ -446,7 +447,7 @@ export default function EditAutomationPage() {
             <Link href="/admin/automations">Cancelar</Link>
           </Button>
           <Button type="submit" disabled={isLoading}>
-            {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {isLoading && <Icon icon={Loader2} size={16} className="mr-2 animate-spin" />}
             Salvar Alterações
           </Button>
         </div>

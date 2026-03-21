@@ -64,7 +64,7 @@ export function AutomationDeleteButton({ automationId, automationName }: Automat
           setShowDialog(true)
         }}
       >
-        <Trash2 className="mr-2 h-4 w-4" />
+        <Icon icon={Trash2} size={16} className="mr-2" />
         Excluir
       </DropdownMenuItem>
 

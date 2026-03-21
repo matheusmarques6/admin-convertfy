@@ -26,9 +26,7 @@ interface PermissionGateProps {
 function AccessDenied() {
   return (
     <div className="flex flex-col items-center justify-center min-h-[400px] text-center p-8">
-      <div className="rounded-full bg-destructive/10 p-4 mb-4">
-        <ShieldAlert className="h-12 w-12 text-destructive" />
-      </div>
+      <Icon icon={ShieldAlert} customSize={48} className="text-destructive bg-destructive/10 rounded-full p-4 mb-4" />
       <h2 className="text-2xl font-semibold mb-2">Acesso Negado</h2>
       <p className="text-muted-foreground mb-6 max-w-md">
         Você não tem permissão para acessar esta página.
@@ -44,7 +42,7 @@ function AccessDenied() {
 function LoadingState() {
   return (
     <div className="flex items-center justify-center min-h-[400px]">
-      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <Icon icon={Loader2} customSize={32} className="animate-spin text-muted-foreground" />
     </div>
   )
 }

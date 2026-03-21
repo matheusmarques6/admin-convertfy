@@ -7,6 +7,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { Loader2, AlertCircle, CheckCircle2 } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -232,7 +233,7 @@ export default function NewClientPage() {
       {!hasRequiredAsaasFields() && (
         <Card className="border-warning/50 bg-warning/10">
           <CardContent className="flex items-start gap-3 py-4">
-            <AlertCircle className="h-5 w-5 text-warning mt-0.5" />
+            <Icon icon={AlertCircle} size={20} className="text-warning mt-0.5" />
             <div>
               <p className="font-medium text-warning">Campos obrigatórios para assinaturas automáticas</p>
               <p className="text-sm text-muted-foreground">
@@ -246,7 +247,7 @@ export default function NewClientPage() {
       {hasRequiredAsaasFields() && (
         <Card className="border-success/50 bg-success/10">
           <CardContent className="flex items-start gap-3 py-4">
-            <CheckCircle2 className="h-5 w-5 text-success mt-0.5" />
+            <Icon icon={CheckCircle2} size={20} className="text-success mt-0.5" />
             <div>
               <p className="font-medium text-success">Pronto para integração Asaas</p>
               <p className="text-sm text-muted-foreground">

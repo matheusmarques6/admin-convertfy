@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Loader2, CheckCircle2, XCircle, MinusCircle } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import {
   Dialog,
   DialogContent,
@@ -110,7 +111,7 @@ export function ImportLogsDialog({
           {/* Logs */}
           {isLoading ? (
             <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              <Icon icon={Loader2} size={24} className="animate-spin text-muted-foreground" />
             </div>
           ) : logs.length === 0 ? (
             <div className="text-center py-8">
@@ -121,7 +122,6 @@ export function ImportLogsDialog({
               <div className="space-y-2">
                 {logs.map((log) => {
                   const config = statusConfig[log.status]
-                  const StatusIcon = config.icon
 
                   return (
                     <div
@@ -130,8 +130,10 @@ export function ImportLogsDialog({
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-start gap-2 flex-1 min-w-0">
-                          <StatusIcon
-                            className={`h-4 w-4 mt-0.5 flex-shrink-0 ${config.color}`}
+                          <Icon
+                            icon={config.icon}
+                            size={16}
+                            className={`mt-0.5 ${config.color}`}
                           />
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium truncate">

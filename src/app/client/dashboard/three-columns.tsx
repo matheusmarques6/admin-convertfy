@@ -1,4 +1,5 @@
 import { Zap, Send, Mail } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { formatCurrency, formatNumber } from "@/lib/utils/format"
 import { EmptyState } from "@/components/ui/empty-state"
 import type { KlaviyoData } from "./types"
@@ -14,7 +15,7 @@ export function ThreeColumns({ klaviyo }: ThreeColumnsProps) {
       <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium text-slate-800 dark:text-slate-100 flex items-center gap-2">
-            <Zap className="h-4 w-4 text-primary" />
+            <Icon icon={Zap} size={16} className="text-primary" />
             Fluxos com melhor desempenho
           </h3>
         </div>
@@ -38,7 +39,7 @@ export function ThreeColumns({ klaviyo }: ThreeColumnsProps) {
                     <tr key={flow.id} className={`border-b border-slate-200/30 dark:border-slate-700/20 last:border-0 ${index === 0 ? "bg-emerald-50/50 dark:bg-emerald-500/10" : ""}`}>
                       <td className="py-2.5 pr-3">
                         <div className="flex items-center gap-2 min-w-0">
-                          <Mail className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400 shrink-0" />
+                          <Icon icon={Mail} customSize={14} className="text-slate-500 dark:text-slate-400" />
                           <span className="font-medium text-slate-800 dark:text-slate-100 truncate max-w-[140px] sm:max-w-[200px]" title={flow.name}>
                             {flow.name}
                           </span>
@@ -67,7 +68,7 @@ export function ThreeColumns({ klaviyo }: ThreeColumnsProps) {
       <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium text-slate-800 dark:text-slate-100 flex items-center gap-2">
-            <Send className="h-4 w-4 text-[#05AFF2]" />
+            <Icon icon={Send} size={16} className="text-[#05AFF2]" />
             Mensagens recentes de campanha
           </h3>
         </div>
@@ -92,7 +93,7 @@ export function ThreeColumns({ klaviyo }: ThreeColumnsProps) {
                     <tr key={campaign.id} className={`border-b border-slate-200/30 dark:border-slate-700/20 last:border-0 ${index === 0 ? "bg-sky-50/50 dark:bg-blue-500/10" : ""}`}>
                       <td className="py-2.5 pr-3">
                         <div className="flex items-center gap-2 min-w-0">
-                          <Mail className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400 shrink-0" />
+                          <Icon icon={Mail} customSize={14} className="text-slate-500 dark:text-slate-400" />
                           <div className="min-w-0">
                             <span className="font-medium text-slate-800 dark:text-slate-100 truncate block max-w-[140px] sm:max-w-[220px]" title={campaign.name}>
                               {campaign.name}

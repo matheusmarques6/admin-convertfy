@@ -168,7 +168,7 @@ export default async function AutomationsPage() {
         <Card className="rounded-xl border bg-card pt-6">
           <CardContent className="flex items-center gap-4">
             <div className="rounded-lg p-3 bg-muted">
-              <Pause className="h-5 w-5 text-muted-foreground" />
+              <Icon icon={Pause} size={20} className="text-muted-foreground" />
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Pausadas</p>
@@ -181,7 +181,7 @@ export default async function AutomationsPage() {
         <Card className="rounded-xl border bg-card pt-6">
           <CardContent className="flex items-center gap-4">
             <div className="rounded-lg p-3 bg-info/10">
-              <Activity className="h-5 w-5 text-info" />
+              <Icon icon={Activity} size={20} className="text-info" />
             </div>
             <div>
               <div className="flex items-center gap-2">
@@ -204,16 +204,14 @@ export default async function AutomationsPage() {
         {automations.length === 0 ? (
           <Card className="border-dashed">
             <CardContent className="flex flex-col items-center justify-center py-12">
-              <div className="rounded-full bg-muted p-4 mb-4">
-                <Zap className="h-8 w-8 text-muted-foreground" />
-              </div>
+              <Icon icon={Zap} customSize={32} className="text-muted-foreground mb-4" />
               <h3 className="text-lg font-medium">Nenhuma automação criada</h3>
               <p className="text-muted-foreground mt-1 text-center max-w-sm">
                 Crie sua primeira automação para automatizar tarefas repetitivas
               </p>
               <Button asChild className="mt-4">
                 <Link href="/admin/automations/new">
-                  <Plus className="mr-2 h-4 w-4" />
+                  <Icon icon={Plus} size={16} className="mr-2" />
                   Criar Automação
                 </Link>
               </Button>
@@ -231,7 +229,7 @@ export default async function AutomationsPage() {
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-3">
                         <div className={`rounded-lg p-2 ${automation.is_active ? "bg-primary/10" : "bg-muted"}`}>
-                          <Zap className={`h-4 w-4 ${automation.is_active ? "text-primary" : "text-muted-foreground"}`} />
+                          <Icon icon={Zap} size={16} className={automation.is_active ? "text-primary" : "text-muted-foreground"} />
                         </div>
                         <div>
                           <CardTitle className="text-base">{automation.name}</CardTitle>
@@ -245,18 +243,18 @@ export default async function AutomationsPage() {
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <MoreHorizontal className="h-4 w-4" />
+                            <Icon icon={MoreHorizontal} size={16} />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem asChild>
                             <Link href={`/admin/automations/${automation.id}`}>
-                              <Edit className="mr-2 h-4 w-4" />
+                              <Icon icon={Edit} size={16} className="mr-2" />
                               Editar
                             </Link>
                           </DropdownMenuItem>
                           <DropdownMenuItem className="text-destructive">
-                            <Trash2 className="mr-2 h-4 w-4" />
+                            <Icon icon={Trash2} size={16} className="mr-2" />
                             Excluir
                           </DropdownMenuItem>
                         </DropdownMenuContent>

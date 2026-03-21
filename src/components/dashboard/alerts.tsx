@@ -70,7 +70,7 @@ export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps)
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="h-8 w-8 rounded-lg bg-warning/10 flex items-center justify-center">
-              <AlertTriangle className="h-4 w-4 text-warning" />
+              <IconWrapper icon={AlertTriangle} size={16} className="text-warning" />
             </div>
             <CardTitle className="text-sm font-semibold text-foreground">Alertas</CardTitle>
           </div>
@@ -87,7 +87,7 @@ export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps)
           <ScrollArea className="flex-1 max-h-[280px]">
             <div className="space-y-2">
               {filteredAlerts.map((alert) => {
-                const Icon = ALERT_ICONS[alert.type] || Clock
+                const AlertIcon = ALERT_ICONS[alert.type] || Clock
                 const content = (
                   <div
                     className="flex items-start gap-3 p-3 rounded-xl bg-muted/30 hover:bg-muted/50 transition-all duration-200"
@@ -96,10 +96,10 @@ export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps)
                       alert.severity === "high" ? "bg-destructive/10" :
                       alert.severity === "medium" ? "bg-warning/10" : "bg-muted"
                     }`}>
-                      <Icon className={`h-4 w-4 ${
+                      <IconWrapper icon={AlertIcon} size={16} className={
                         alert.severity === "high" ? "text-destructive" :
                         alert.severity === "medium" ? "text-warning" : "text-muted-foreground"
-                      }`} />
+                      } />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-foreground">{alert.title}</p>
@@ -139,7 +139,7 @@ export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps)
         {meetings.length > 0 && (
           <>
             <div className="flex items-center gap-2 pt-2 mt-auto border-t border-border">
-              <Calendar className="h-4 w-4 text-muted-foreground" />
+              <IconWrapper icon={Calendar} size={16} className="text-muted-foreground" />
               <span className="text-xs font-semibold text-foreground uppercase tracking-wider">Proximas Reunioes</span>
             </div>
             <div className="space-y-1.5">

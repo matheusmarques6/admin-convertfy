@@ -1,5 +1,6 @@
 import { Suspense } from "react"
 import { Kanban, TrendingUp, DollarSign } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { PipelineBoard } from "@/components/pipeline/pipeline-board"
 import { PipelineHeader } from "@/components/pipeline/pipeline-header"
@@ -150,7 +151,7 @@ export default async function PipelinePage({
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div className="flex items-center gap-3">
           <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/10">
-            <Kanban className="w-5 h-5 text-primary" />
+            <Icon icon={Kanban} size={20} className="text-primary" />
           </div>
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Pipeline</h1>
@@ -161,14 +162,14 @@ export default async function PipelinePage({
         {data.deals.length > 0 && (
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2 px-3 py-2 rounded-lg border bg-card">
-              <TrendingUp className="h-4 w-4 text-primary" />
+              <Icon icon={TrendingUp} size={16} className="text-primary" />
               <div>
                 <p className="text-lg font-bold leading-none">{data.deals.length}</p>
                 <p className="text-[10px] text-muted-foreground mt-0.5">deals ativos</p>
               </div>
             </div>
             <div className="flex items-center gap-2 px-3 py-2 rounded-lg border bg-card">
-              <DollarSign className="h-4 w-4 text-success" />
+              <Icon icon={DollarSign} size={16} className="text-success" />
               <div>
                 <p className="text-lg font-bold leading-none">
                   {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(

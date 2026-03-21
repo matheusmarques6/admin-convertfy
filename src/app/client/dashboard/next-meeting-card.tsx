@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Video, Clock, Calendar } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { EmptyState } from "@/components/ui/empty-state"
 import { MeetingJoinButton } from "@/components/meetings/google-sync-badge"
 import type { PortalMeeting } from "./types"
@@ -31,7 +32,7 @@ export function NextMeetingCard({ meetings }: NextMeetingCardProps) {
       <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200">
         <div className="flex items-center gap-2 mb-3">
           <div className="flex items-center justify-center h-7 w-7 rounded-lg bg-purple-50 dark:bg-purple-500/10">
-            <Video className="h-4 w-4 text-purple-600" />
+            <Icon icon={Video} size={16} className="text-purple-600" />
           </div>
           <span className="text-[13px] text-slate-500 dark:text-slate-400 uppercase tracking-wide">Proxima Reuniao</span>
         </div>
@@ -59,7 +60,7 @@ export function NextMeetingCard({ meetings }: NextMeetingCardProps) {
     <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200">
       <div className="flex items-center gap-2 mb-3">
         <div className={`flex items-center justify-center h-7 w-7 rounded-lg ${isWithin24h ? "bg-cyan-50 dark:bg-cyan-500/10" : "bg-purple-50 dark:bg-purple-500/10"}`}>
-          <Video className={`h-4 w-4 ${isWithin24h ? "text-cyan-600" : "text-purple-600"}`} />
+          <Icon icon={Video} size={16} className={isWithin24h ? "text-cyan-600" : "text-purple-600"} />
         </div>
         <span className="text-[13px] text-slate-500 dark:text-slate-400 uppercase tracking-wide">Proxima Reuniao</span>
       </div>
@@ -67,7 +68,7 @@ export function NextMeetingCard({ meetings }: NextMeetingCardProps) {
       <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-1">{nextMeeting.title}</p>
 
       <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 mb-2">
-        <Calendar className="h-3 w-3" />
+        <Icon icon={Calendar} customSize={12} />
         <span>{dateLabel}</span>
         <span>·</span>
         <span>{nextMeeting.duration}min</span>
@@ -76,7 +77,7 @@ export function NextMeetingCard({ meetings }: NextMeetingCardProps) {
       {/* Countdown when < 24h */}
       {isWithin24h && (
         <div className="flex items-center gap-1.5 mb-3">
-          <Clock className="h-3.5 w-3.5 text-[#05AFF2]" />
+          <Icon icon={Clock} customSize={14} className="text-[#05AFF2]" />
           <span className="text-sm font-medium text-[#05AFF2]">
             {diffHours > 0 ? `${diffHours}h ${diffMinutes}min` : `${diffMinutes}min`}
           </span>

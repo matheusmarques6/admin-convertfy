@@ -142,7 +142,7 @@ export function AddStoresModal({
           >
             {isSubmitting ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Icon icon={Loader2} size={16} className="mr-2 animate-spin" />
                 Adicionando...
               </>
             ) : (

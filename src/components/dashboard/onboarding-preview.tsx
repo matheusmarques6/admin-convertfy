@@ -65,7 +65,7 @@ export function OnboardingPreview({ onboardings, userRole }: OnboardingPreviewPr
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
-              <Rocket className="h-4 w-4 text-primary" />
+              <Icon icon={Rocket} size={16} className="text-primary" />
             </div>
             <CardTitle className="text-sm font-semibold">
               {isOverviewRole ? "Onboardings" : `Seus ${PHASES.find((p) => p.id === allowedPhases?.[0])?.label || "Onboardings"}`}
@@ -130,7 +130,7 @@ export function OnboardingPreview({ onboardings, userRole }: OnboardingPreviewPr
             {nearDeadline.length > 0 && (
               <div className="space-y-1.5">
                 <div className="flex items-center gap-1.5 text-xs text-warning">
-                  <AlertTriangle className="h-3.5 w-3.5" />
+                  <Icon icon={AlertTriangle} customSize={14} />
                   <span className="font-semibold">Proximos a vencer</span>
                 </div>
                 {nearDeadline.map((o) => {
@@ -139,7 +139,7 @@ export function OnboardingPreview({ onboardings, userRole }: OnboardingPreviewPr
                     <div key={o.id} className="flex items-center justify-between text-xs p-2 rounded-lg bg-warning/5">
                       <span className="truncate text-foreground">{store?.store_name || "Loja"}</span>
                       <div className="flex items-center gap-1.5 text-muted-foreground">
-                        <Clock className="h-3 w-3" />
+                        <Icon icon={Clock} customSize={12} />
                         <span>{new Date(o.target_completion_date!).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}</span>
                         <span className="font-semibold text-foreground">{o.progress_percent || 0}%</span>
                       </div>
@@ -155,7 +155,7 @@ export function OnboardingPreview({ onboardings, userRole }: OnboardingPreviewPr
           <Button variant="ghost" size="sm" className="w-full text-xs text-primary group" asChild>
             <Link href="/admin/onboarding">
               Ver Onboardings
-              <ArrowRight className="h-3.5 w-3.5 ml-1 transition-transform group-hover:translate-x-0.5" />
+              <Icon icon={ArrowRight} customSize={14} className="ml-1 transition-transform group-hover:translate-x-0.5" />
             </Link>
           </Button>
         </div>

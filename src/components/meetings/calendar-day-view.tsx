@@ -10,6 +10,7 @@ import {
 } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { Video, CheckCircle, Users } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -132,7 +133,7 @@ export function CalendarDayView({
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <Video className="h-4 w-4 flex-shrink-0 text-primary dark:text-primary" />
+                        <Icon icon={Video} size={16} className="text-primary dark:text-primary" />
                         <span className="font-semibold text-sm truncate">
                           {meeting.title}
                         </span>
@@ -165,7 +166,7 @@ export function CalendarDayView({
                       {/* Participants */}
                       {height >= 90 && meeting.participants && meeting.participants.length > 0 && (
                         <div className="flex items-center gap-1 mt-1.5">
-                          <Users className="h-3 w-3 text-muted-foreground" />
+                          <Icon icon={Users} customSize={12} className="text-muted-foreground" />
                           <div className="flex -space-x-1.5">
                             {meeting.participants.slice(0, 5).map((p) => {
                               const name = p.profile?.name || p.org_member?.profile?.name || "?"
@@ -213,7 +214,7 @@ export function CalendarDayView({
                             }}
                             title="Marcar como realizada"
                           >
-                            <CheckCircle className="h-4 w-4 text-success" />
+                            <Icon icon={CheckCircle} size={16} className="text-success" />
                           </Button>
                         )}
                       </div>
@@ -247,7 +248,7 @@ export function CalendarDayView({
                 onClick={() => onMeetingClick?.(meeting)}
               >
                 <div className="flex items-center gap-2 mb-1">
-                  <config.icon className="h-3.5 w-3.5" />
+                  <Icon icon={config.icon} customSize={14} />
                   <span className="text-sm font-medium truncate">{meeting.title}</span>
                   <GoogleSyncBadge
                     status={meeting.google_sync_status}

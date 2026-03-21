@@ -1,4 +1,5 @@
 import { Crown, ShoppingCart } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { formatCurrency, formatCurrencyCompact } from "@/lib/utils/format"
 import { EmptyState } from "@/components/ui/empty-state"
 import type { ShopifyData } from "./types"
@@ -14,7 +15,7 @@ export function RankingsSection({ shopify }: RankingsSectionProps) {
       <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium text-slate-800 dark:text-slate-100 flex items-center gap-2">
-            <Crown className="h-4 w-4 text-amber-400" />
+            <Icon icon={Crown} size={16} className="text-amber-400" />
             Top Clientes
           </h3>
           <span className="text-xs text-slate-500 dark:text-slate-400">Por receita no período</span>
@@ -30,7 +31,7 @@ export function RankingsSection({ shopify }: RankingsSectionProps) {
                   index === 2 ? "bg-orange-500/15 text-orange-600 dark:bg-orange-500/20 dark:text-orange-400" :
                   "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
                 }`}>
-                  {index < 3 ? <Crown className="h-3.5 w-3.5" /> : index + 1}
+                  {index < 3 ? <Icon icon={Crown} customSize={14} /> : index + 1}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">{customer.email}</p>
@@ -57,7 +58,7 @@ export function RankingsSection({ shopify }: RankingsSectionProps) {
       <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium text-slate-800 dark:text-slate-100 flex items-center gap-2">
-            <ShoppingCart className="h-4 w-4 text-[#05AFF2]" />
+            <Icon icon={ShoppingCart} size={16} className="text-[#05AFF2]" />
             Top Produtos
           </h3>
           <span className="text-xs text-slate-500 dark:text-slate-400">Por receita no período</span>

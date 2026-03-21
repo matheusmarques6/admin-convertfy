@@ -62,7 +62,7 @@ export function NewClients({ clients }: NewClientsProps) {
       <CardHeader className="p-5 pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <UserPlus className="h-4 w-4 text-primary" />
+            <Icon icon={UserPlus} size={16} className="text-primary" />
             <CardTitle className="text-sm font-medium text-foreground">Novos Clientes</CardTitle>
           </div>
           {clients.length > 0 && (
@@ -119,7 +119,7 @@ export function NewClients({ clients }: NewClientsProps) {
           </ScrollArea>
         ) : (
           <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-            <Users className="h-8 w-8 mb-2 opacity-50" />
+            <Icon icon={Users} customSize={32} className="mb-2 opacity-50" />
             <p className="text-sm">Nenhum novo cliente nos últimos 30 dias</p>
           </div>
         )}

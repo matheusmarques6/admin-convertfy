@@ -37,7 +37,7 @@ export function CalendarNavigation({
           onClick={onPrev}
           className="bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-700"
         >
-          <ChevronLeft className="h-4 w-4" />
+          <Icon icon={ChevronLeft} size={16} />
         </Button>
         <div className="w-44 text-center">
           <h2 className="text-[15px] font-semibold text-slate-800 dark:text-slate-100">
@@ -50,7 +50,7 @@ export function CalendarNavigation({
           onClick={onNext}
           className="bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-700"
         >
-          <ChevronRight className="h-4 w-4" />
+          <Icon icon={ChevronRight} size={16} />
         </Button>
         <Button
           variant="ghost"

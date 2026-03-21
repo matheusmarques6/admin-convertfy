@@ -50,7 +50,7 @@ export function QuickActions() {
           asChild
         >
           <Link href={action.href}>
-            <action.icon className="h-3.5 w-3.5" />
+            <Icon icon={action.icon} customSize={14} />
             {action.label}
           </Link>
         </Button>

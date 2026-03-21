@@ -1,4 +1,5 @@
 import { Zap } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { formatCurrency, formatNumber } from "@/lib/utils/format"
 import { EmptyState } from "@/components/ui/empty-state"
 
@@ -21,7 +22,7 @@ export function TopFlowCard({ flows }: TopFlowCardProps) {
       <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200">
         <div className="flex items-center gap-2 mb-3">
           <div className="flex items-center justify-center h-7 w-7 rounded-lg bg-purple-50 dark:bg-purple-500/10">
-            <Zap className="h-4 w-4 text-purple-600" />
+            <Icon icon={Zap} size={16} className="text-purple-600" />
           </div>
           <span className="text-[13px] text-slate-500 dark:text-slate-400 uppercase tracking-wide">Top Flow</span>
         </div>
@@ -38,7 +39,7 @@ export function TopFlowCard({ flows }: TopFlowCardProps) {
     <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200">
       <div className="flex items-center gap-2 mb-3">
         <div className="flex items-center justify-center h-7 w-7 rounded-lg bg-purple-50 dark:bg-purple-500/10">
-          <Zap className="h-4 w-4 text-purple-600" />
+          <Icon icon={Zap} size={16} className="text-purple-600" />
         </div>
         <span className="text-[13px] text-slate-500 dark:text-slate-400 uppercase tracking-wide">Top Flow</span>
       </div>

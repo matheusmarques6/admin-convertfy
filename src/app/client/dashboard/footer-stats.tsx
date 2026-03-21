@@ -1,4 +1,5 @@
 import { Users, TrendingUp, RefreshCw } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { formatNumber, formatPercent } from "@/lib/utils/format"
 import type { KlaviyoData, ShopifyData } from "./types"
 
@@ -14,19 +15,19 @@ export function FooterStats({ klaviyo, shopify, lastUpdated }: FooterStatsProps)
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div className="flex items-center gap-3 sm:gap-6">
           <div className="flex items-center gap-2">
-            <Users className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+            <Icon icon={Users} size={16} className="text-slate-500 dark:text-slate-400" />
             <span className="text-sm text-slate-600 dark:text-slate-300">Clientes: {formatNumber(shopify?.totalCustomers || 0)}</span>
           </div>
           <div className="flex items-center gap-2">
-            <TrendingUp className="h-4 w-4 text-emerald-600" />
+            <Icon icon={TrendingUp} size={16} className="text-emerald-600" />
             <span className="text-sm text-slate-600 dark:text-slate-300">Novos: {formatNumber(shopify?.newCustomers || 0)}</span>
           </div>
           <div className="flex items-center gap-2">
-            <RefreshCw className="h-4 w-4 text-blue-400" />
+            <Icon icon={RefreshCw} size={16} className="text-blue-400" />
             <span className="text-sm text-slate-600 dark:text-slate-300">Recorrentes: {formatPercent(shopify?.recurringCustomerRate || 0)}</span>
           </div>
           <div className="flex items-center gap-2">
-            <Users className="h-4 w-4 text-purple-400" />
+            <Icon icon={Users} size={16} className="text-purple-400" />
             <span className="text-sm text-slate-600 dark:text-slate-300">Leads: {formatNumber(klaviyo?.totalLeads || 0)}</span>
           </div>
         </div>

@@ -1,4 +1,5 @@
 import { Shield } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 
 interface ListHealthCardProps {
   bounceRate: number
@@ -24,7 +25,7 @@ export function ListHealthCard({ bounceRate, unsubscribeRate }: ListHealthCardPr
     <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20 hover:shadow-md transition-shadow duration-200">
       <div className="flex items-center gap-2 mb-4">
         <div className={`w-7 h-7 rounded-lg ${status.iconBg} flex items-center justify-center`}>
-          <Shield className={`h-3.5 w-3.5 ${status.iconColor}`} />
+          <Icon icon={Shield} customSize={14} className={status.iconColor} />
         </div>
         <span className="text-[13px] font-semibold text-slate-800 dark:text-slate-100">Saúde da Lista</span>
       </div>

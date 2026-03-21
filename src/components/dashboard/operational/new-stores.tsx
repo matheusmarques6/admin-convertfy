@@ -154,7 +154,7 @@ export function NewStores({ stores }: NewStoresProps) {
           </ScrollArea>
         ) : (
           <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-            <Store className="h-8 w-8 mb-2 opacity-50" />
+            <Icon icon={Store} customSize={32} className="mb-2 opacity-50" />
             <p className="text-sm">Nenhuma loja pendente de implementacao</p>
           </div>
         )}
