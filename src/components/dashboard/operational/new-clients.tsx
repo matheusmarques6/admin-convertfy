@@ -66,7 +66,7 @@ export function NewClients({ clients }: NewClientsProps) {
             <CardTitle className="text-sm font-medium text-foreground">Novos Clientes</CardTitle>
           </div>
           {clients.length > 0 && (
-            <Badge variant="neutral" className="rounded-full text-xs">
+            <Badge variant="neutral" className="text-xs">
               {clients.length}
             </Badge>
           )}

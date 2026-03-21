@@ -206,7 +206,7 @@ export default function PortalDashboardPage() {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh]">
-        <div className="rounded-2xl border border-slate-200 dark:border-slate-700/40 bg-white dark:bg-slate-900/50 p-10 text-center max-w-md shadow-sm">
+        <div className="rounded-2xl border border-slate-200 dark:border-slate-700/40 bg-white dark:bg-slate-900/50 p-10 text-center max-w-md ">
           <div className="w-14 h-14 rounded-2xl bg-red-50 dark:bg-red-500/10 flex items-center justify-center mx-auto mb-4">
             <AlertCircle className="h-7 w-7 text-red-500" />
           </div>
@@ -270,7 +270,7 @@ export default function PortalDashboardPage() {
           <StaleBadge period={period} lastFetchedAt={data?.lastFetchedAt} />
 
           <Select value={period} onValueChange={setPeriod}>
-            <SelectTrigger className="w-[130px] h-10 rounded-xl border-slate-200 dark:border-slate-700/40 bg-white dark:bg-slate-800/50 text-slate-700 dark:text-slate-200 shadow-sm">
+            <SelectTrigger className="w-[130px] h-10 rounded-xl border-slate-200 dark:border-slate-700/40 bg-white dark:bg-slate-800/50 text-slate-700 dark:text-slate-200 ">
               <CalendarDays className="h-4 w-4 mr-2 text-slate-400 dark:text-slate-500" />
               <SelectValue />
             </SelectTrigger>

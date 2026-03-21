@@ -174,7 +174,7 @@ export default function TrackPage() {
         {!loading && results.length > 0 && (
           <div className="space-y-6">
             {results.map((result, idx) => (
-              <div key={idx} className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+              <div key={idx} className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden">
                 {/* Order Header */}
                 <div className="p-5 border-b border-slate-100">
                   <div className="flex items-start justify-between">
