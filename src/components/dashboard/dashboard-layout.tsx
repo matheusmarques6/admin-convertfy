@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo } from "react"
+import { useMemo, useState, useCallback, useRef } from "react"
 import Link from "next/link"
 import {
   AlertTriangle,
@@ -23,6 +23,10 @@ import { BoardPreview } from "./board-preview"
 import { WeekCalendarPreview } from "./week-calendar-preview"
 import { OnboardingPreview } from "./onboarding-preview"
 import { RecentActivity } from "./recent-activity"
+import { TotalRevenueBanner, type TotalRevenueData } from "./total-revenue-banner"
+import { TopStoresCard } from "./top-stores-card"
+import { WorstPerformersCard } from "./worst-performers-card"
+import { DashboardAlerts } from "./alerts"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
@@ -305,6 +309,15 @@ export function DashboardLayout({ data, userRole }: DashboardLayoutProps) {
   const isAdminOrOwner = permissions?.isAdmin || permissions?.isOrgOwner
   const canViewReports = isAdminOrOwner || hasFeature("view_reports")
 
+  // Revenue state for strategic cards
+  const [revenuePeriod, setRevenuePeriod] = useState("30d")
+  const [revenueData, setRevenueData] = useState<TotalRevenueData | null>(null)
+  const revenueResolved = useRef(false)
+  const handleRevenueData = useCallback((d: TotalRevenueData | null) => {
+    revenueResolved.current = true
+    setRevenueData(d)
+  }, [])
+
   // Compute critical alerts for top banner
   const criticalAlerts = useMemo(() => {
     const items: Array<{ label: string; href: string; count: number; variant: "destructive" | "warning" }> = []
@@ -359,6 +372,25 @@ export function DashboardLayout({ data, userRole }: DashboardLayoutProps) {
       {/* Quick Actions */}
       <QuickActions />
 
+      {/* Strategic: Revenue Banner */}
+      <TotalRevenueBanner period={revenuePeriod} onPeriodChange={setRevenuePeriod} onDataChange={handleRevenueData} />
+
+      {/* Store Performance: Top + Worst */}
+      <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
+        <TopStoresCard
+          stores={revenueData?.topStores}
+          allStores={revenueData?.storeBreakdown}
+          isLoading={!revenueResolved.current}
+          dataStatus={revenueData?.dataStatus}
+        />
+        <WorstPerformersCard
+          stores={revenueData?.bottomStores}
+          allStores={revenueData?.storeBreakdown}
+          isLoading={!revenueResolved.current}
+          dataStatus={revenueData?.dataStatus}
+        />
+      </div>
+
       {/* Primary Grid: Board + Calendar side by side */}
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
         <BoardPreview tasks={data.activeTasks} />
@@ -372,8 +404,11 @@ export function DashboardLayout({ data, userRole }: DashboardLayoutProps) {
         <OnboardingPreview onboardings={data.activeOnboardings} userRole={userRole} />
       </div>
 
-      {/* Activity */}
-      <RecentActivity activities={data.activities} />
+      {/* Alerts + Activity */}
+      <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
+        <DashboardAlerts meetings={data.upcomingMeetings} alerts={data.alerts} />
+        <RecentActivity activities={data.activities} />
+      </div>
     </div>
   )
 }

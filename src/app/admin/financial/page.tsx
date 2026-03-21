@@ -1,27 +1,15 @@
 "use client"
 
-import { useState, useCallback, useRef } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ChargesManager } from "@/components/financial/charges-manager"
 import { SubscriptionsManager } from "@/components/financial/subscriptions-manager"
 import { WiseReconciliation } from "@/components/financial/wise-reconciliation"
 import { BillingMetrics } from "@/components/dashboard/billing-metrics"
 import { FinancialCharts } from "@/components/dashboard/financial-charts"
-import { TotalRevenueBanner, type TotalRevenueData } from "@/components/dashboard/total-revenue-banner"
-import { TopStoresCard } from "@/components/dashboard/top-stores-card"
-import { WorstPerformersCard } from "@/components/dashboard/worst-performers-card"
-import { BarChart3, DollarSign, Repeat, Wallet, Landmark, TrendingUp } from "lucide-react"
+import { BarChart3, DollarSign, Repeat, Wallet, Landmark } from "lucide-react"
 import { PermissionGate } from "@/components/permission-gate"
 
 export default function FinancialPage() {
-  const [revenuePeriod, setRevenuePeriod] = useState("30d")
-  const [revenueData, setRevenueData] = useState<TotalRevenueData | null>(null)
-  const revenueResolved = useRef(false)
-  const handleRevenueData = useCallback((d: TotalRevenueData | null) => {
-    revenueResolved.current = true
-    setRevenueData(d)
-  }, [])
-
   return (
     <PermissionGate requiredFeatures={["view_financial"]}>
     <div className="space-y-6">
@@ -34,25 +22,6 @@ export default function FinancialPage() {
           <h1 className="text-2xl font-bold tracking-tight">Financeiro</h1>
           <p className="text-sm text-muted-foreground">Receita, faturas e assinaturas da agência</p>
         </div>
-      </div>
-
-      {/* Revenue Banner */}
-      <TotalRevenueBanner period={revenuePeriod} onPeriodChange={setRevenuePeriod} onDataChange={handleRevenueData} />
-
-      {/* Store Performance */}
-      <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
-        <TopStoresCard
-          stores={revenueData?.topStores}
-          allStores={revenueData?.storeBreakdown}
-          isLoading={!revenueResolved.current}
-          dataStatus={revenueData?.dataStatus}
-        />
-        <WorstPerformersCard
-          stores={revenueData?.bottomStores}
-          allStores={revenueData?.storeBreakdown}
-          isLoading={!revenueResolved.current}
-          dataStatus={revenueData?.dataStatus}
-        />
       </div>
 
       {/* Tabs */}
