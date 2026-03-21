@@ -213,7 +213,7 @@ export function ChargesManager() {
             </Badge>
           )
         }
-        return <Badge variant="secondary">{charge.statusLabel}</Badge>
+        return <Badge variant="neutral">{charge.statusLabel}</Badge>
     }
   }
 

@@ -110,7 +110,7 @@ export function CommemorativeDatesCard({ selectedMonth }: CommemorativeDatesCard
               </div>
             </div>
             {monthDates.length > 0 && (
-              <Badge variant="secondary" className="text-xs">
+              <Badge variant="neutral" className="text-xs">
                 {monthDates.length} {monthDates.length === 1 ? "data" : "datas"}
               </Badge>
             )}

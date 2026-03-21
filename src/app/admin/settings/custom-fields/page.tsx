@@ -169,7 +169,7 @@ export default function CustomFieldsPage() {
                   <div className="flex items-center gap-3">
                     <span className="font-medium">{field.name}</span>
                     <Badge variant="outline">{fieldTypeLabels[field.field_type] || field.field_type}</Badge>
-                    <Badge variant="secondary">{entityTypeLabels[field.entity_type] || field.entity_type}</Badge>
+                    <Badge variant="neutral">{entityTypeLabels[field.entity_type] || field.entity_type}</Badge>
                     {field.required && <Badge variant="destructive">Obrigatório</Badge>}
                     {field.options && <span className="text-xs text-muted-foreground">({field.options.join(", ")})</span>}
                   </div>

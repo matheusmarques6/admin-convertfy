@@ -128,7 +128,7 @@ export default function NotificationsPage() {
           <TabsTrigger value="all" className="gap-2">
             <Icon icon={Bell} size={16} />
             Todas
-            <Badge variant="secondary" className="ml-1">{notifications.length}</Badge>
+            <Badge variant="neutral" className="ml-1">{notifications.length}</Badge>
           </TabsTrigger>
           <TabsTrigger value="unread" className="gap-2">
             Não lidas

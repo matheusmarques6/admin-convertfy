@@ -146,7 +146,7 @@ export function TaskListBoard() {
             </div>
             <CardTitle className="text-sm font-semibold">Tarefas</CardTitle>
           </div>
-          <Badge variant="secondary" className="text-xs font-medium">
+          <Badge variant="neutral" className="text-xs font-medium">
             {totalActive} ativas
           </Badge>
         </div>

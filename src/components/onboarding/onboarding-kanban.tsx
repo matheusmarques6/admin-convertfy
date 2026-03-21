@@ -598,7 +598,7 @@ export function OnboardingKanban() {
                     <div className="flex items-center gap-2">
                       <span style={{ color: stage.color }}>{stage.icon}</span>
                       <h3 className="font-semibold">{stage.name}</h3>
-                      <Badge variant="secondary" className="rounded-full">
+                      <Badge variant="neutral" className="rounded-full">
                         {stageOnboardings.length}
                       </Badge>
                     </div>

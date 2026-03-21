@@ -628,7 +628,7 @@ export function ClientReports({ clientId }: ClientReportsProps) {
                 <CardContent className="space-y-4">
                   {/* Period Badge */}
                   <div className="flex items-center gap-2">
-                    <Badge variant="secondary">
+                    <Badge variant="neutral">
                       {getPeriodLabel(report.period, report.date_range)}
                     </Badge>
                     <Badge variant="outline" className="capitalize">
@@ -924,7 +924,7 @@ export function ClientReports({ clientId }: ClientReportsProps) {
                     <p className="text-xs text-muted-foreground">{getPeriodLabel(report1.period, report1.date_range)}</p>
                   </div>
                   <div className="text-center">
-                    <Badge variant="secondary" className="mb-1">Comparação</Badge>
+                    <Badge variant="neutral" className="mb-1">Comparação</Badge>
                     <p className="text-sm font-medium">{report2.store_name}</p>
                     <p className="text-xs text-muted-foreground">{getPeriodLabel(report2.period, report2.date_range)}</p>
                   </div>

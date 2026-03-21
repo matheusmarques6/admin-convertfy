@@ -194,7 +194,7 @@ export function OnboardingApprovals() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">Aprovações Pendentes</h3>
-        <Badge variant="secondary">{onboardings.length} pendente{onboardings.length > 1 ? "s" : ""}</Badge>
+        <Badge variant="neutral">{onboardings.length} pendente{onboardings.length > 1 ? "s" : ""}</Badge>
       </div>
 
       {onboardings.map((onb) => (
@@ -325,7 +325,7 @@ export function OnboardingApprovals() {
                 <div className="flex flex-wrap gap-2">
                   {onb.store_onboarding_data?.logo_url && (
                     <a href={onb.store_onboarding_data.logo_url} target="_blank" rel="noopener noreferrer">
-                      <Badge variant="secondary" className="cursor-pointer hover:bg-muted gap-1">
+                      <Badge variant="neutral" className="cursor-pointer hover:bg-muted gap-1">
                         <Icon icon={ImageIcon} customSize={12} />
                         Logo
                         <Icon icon={ExternalLink} customSize={12} />
@@ -334,7 +334,7 @@ export function OnboardingApprovals() {
                   )}
                   {onb.store_onboarding_data?.brand_manual_url && (
                     <a href={onb.store_onboarding_data.brand_manual_url} target="_blank" rel="noopener noreferrer">
-                      <Badge variant="secondary" className="cursor-pointer hover:bg-muted gap-1">
+                      <Badge variant="neutral" className="cursor-pointer hover:bg-muted gap-1">
                         <Icon icon={BookOpen} customSize={12} />
                         Manual da Marca
                         <Icon icon={ExternalLink} customSize={12} />
@@ -358,9 +358,9 @@ export function OnboardingApprovals() {
             <div className="flex items-center justify-between pt-2 border-t">
               <div className="flex items-center gap-2">
                 {onb.store_onboarding_data?.is_complete ? (
-                  <Badge variant="default" className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs">Formulário Completo</Badge>
+                  <Badge variant="info" className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs">Formulário Completo</Badge>
                 ) : (
-                  <Badge variant="secondary" className="text-xs">Formulário Parcial</Badge>
+                  <Badge variant="neutral" className="text-xs">Formulário Parcial</Badge>
                 )}
                 <Button size="sm" variant="ghost" asChild>
                   <Link href={`/admin/stores/${onb.store_id}`}>

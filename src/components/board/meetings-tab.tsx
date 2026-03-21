@@ -275,7 +275,7 @@ export function MeetingsTab({ meetings, clients, members = [], onMeetingChange }
                             <div className="flex items-center gap-2">
                               <p className="font-medium">{meeting.title}</p>
                               {isHappeningNow && (
-                                <Badge variant="default" className="text-xs">
+                                <Badge variant="info" className="text-xs">
                                   Agora
                                 </Badge>
                               )}

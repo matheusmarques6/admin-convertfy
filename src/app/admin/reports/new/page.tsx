@@ -732,7 +732,7 @@ export default function NewReportPage() {
                 {/* Report Type */}
                 <div>
                   <p className="text-sm text-muted-foreground">Tipo</p>
-                  <Badge variant="secondary" className="capitalize">
+                  <Badge variant="neutral" className="capitalize">
                     {REPORT_TYPES.find(t => t.value === reportType)?.label || reportType}
                   </Badge>
                 </div>

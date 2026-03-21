@@ -457,7 +457,7 @@ export function MeetingsPageClient({
                                 <div className="flex items-center gap-2">
                                   <p className="font-medium">{meeting.title}</p>
                                   {isHappeningNow && (
-                                    <Badge variant="default" className="text-xs">Agora</Badge>
+                                    <Badge variant="info" className="text-xs">Agora</Badge>
                                   )}
                                   <GoogleSyncBadge
                                     status={meeting.google_sync_status}

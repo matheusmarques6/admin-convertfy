@@ -439,7 +439,7 @@ export function StoreBriefingView({
         const v = d as BriefingData["foco_campanhas"]
         return (
           <div className="space-y-2 text-sm">
-            <Badge variant="secondary">{v.abordagem}</Badge>
+            <Badge variant="neutral">{v.abordagem}</Badge>
             <p className="text-muted-foreground">{v.descricao}</p>
           </div>
         )
@@ -466,7 +466,7 @@ export function StoreBriefingView({
         const v = d as BriefingData["perfil_marca"]
         return (
           <div className="space-y-2 text-sm">
-            <Badge variant="secondary">{v.tipo}</Badge>
+            <Badge variant="neutral">{v.tipo}</Badge>
             <p className="text-muted-foreground">{v.descricao}</p>
           </div>
         )

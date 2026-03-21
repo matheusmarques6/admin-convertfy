@@ -229,7 +229,7 @@ export function SubscriptionsManager() {
       )
     }
     return (
-      <Badge variant="secondary" className="gap-1">
+      <Badge variant="neutral" className="gap-1">
         <AlertCircle className="h-3 w-3" />
         {sub.statusLabel}
       </Badge>

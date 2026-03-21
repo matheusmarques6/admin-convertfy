@@ -285,7 +285,7 @@ export function ClientPortalUsers({ clientId, clientName }: ClientPortalUsersPro
                     <div className="flex items-center gap-2">
                       <p className="font-medium">{user.name}</p>
                       {user.is_primary && (
-                        <Badge variant="secondary" className="text-xs">
+                        <Badge variant="neutral" className="text-xs">
                           Principal
                         </Badge>
                       )}

@@ -69,7 +69,7 @@ export function PageHeader({
                 {title}
               </h1>
               {badge !== undefined && badge !== null && (
-                <Badge variant="secondary" className="tabular-nums">
+                <Badge variant="neutral" className="tabular-nums">
                   {badge}
                 </Badge>
               )}

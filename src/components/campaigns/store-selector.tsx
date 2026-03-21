@@ -256,7 +256,7 @@ export function StoreSelector({
                   </span>
                 </div>
                 <div className="mt-1.5 flex items-center gap-2">
-                  <Badge variant="secondary" className="text-xs">
+                  <Badge variant="neutral" className="text-xs">
                     {getLanguageLabel(store.language)}
                   </Badge>
                   <span className="text-xs text-muted-foreground">

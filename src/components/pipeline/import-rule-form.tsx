@@ -498,7 +498,7 @@ export function ImportRuleForm({
                 Testar Regra
               </Button>
               {previewCount !== null && (
-                <Badge variant="secondary">
+                <Badge variant="neutral">
                   {previewCount} cliente{previewCount !== 1 ? "s" : ""}{" "}
                   correspondem
                 </Badge>

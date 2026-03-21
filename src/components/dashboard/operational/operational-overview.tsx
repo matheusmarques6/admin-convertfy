@@ -114,7 +114,7 @@ export function OperationalOverview({ activities, onboardings }: OperationalOver
             <TabsTrigger value="onboardings" className="flex-1 rounded-md text-xs h-7">
               Onboardings
               {onboardings.length > 0 && (
-                <Badge variant="secondary" className="ml-1.5 rounded-full text-[10px] px-1.5 py-0">
+                <Badge variant="neutral" className="ml-1.5 rounded-full text-[10px] px-1.5 py-0">
                   {onboardings.length}
                 </Badge>
               )}

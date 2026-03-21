@@ -150,7 +150,7 @@ export function MeetingCompletionDialog({
               <Icon icon={Video} size={16} className="text-primary" />
               <span className="font-medium">{meeting.title}</span>
               {isCompleted && (
-                <Badge variant="secondary" className="ml-auto">
+                <Badge variant="neutral" className="ml-auto">
                   <Icon icon={CheckCircle} customSize={12} className="mr-1" />
                   {MEETING_STATUS_CONFIG.completed.label}
                 </Badge>

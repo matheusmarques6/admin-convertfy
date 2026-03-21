@@ -70,7 +70,7 @@ export function NewStores({ stores }: NewStoresProps) {
             <CardTitle className="text-sm font-medium text-foreground">Lojas para Implementação</CardTitle>
           </div>
           {stores.length > 0 && (
-            <Badge variant="secondary" className="rounded-full text-xs">
+            <Badge variant="neutral" className="rounded-full text-xs">
               {stores.length}
             </Badge>
           )}
@@ -137,7 +137,7 @@ export function NewStores({ stores }: NewStoresProps) {
                           </div>
                         ) : (
                           <div className="mt-1.5">
-                            <Badge variant="secondary" className="text-[10px] h-5 px-2 bg-yellow-500/10 text-yellow-600 dark:text-yellow-400">
+                            <Badge variant="neutral" className="text-[10px] h-5 px-2 bg-yellow-500/10 text-yellow-600 dark:text-yellow-400">
                               Sem onboarding
                             </Badge>
                             <span className="text-[10px] text-muted-foreground ml-2">

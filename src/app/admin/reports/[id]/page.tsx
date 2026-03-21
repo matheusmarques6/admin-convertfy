@@ -111,9 +111,9 @@ function getReportTypeLabel(type: string): string {
 function getStatusBadge(status: ReportStatus | undefined) {
   switch (status) {
     case "draft":
-      return <Badge variant="secondary"><Clock className="mr-1 h-3 w-3" />Rascunho</Badge>
+      return <Badge variant="neutral"><Clock className="mr-1 h-3 w-3" />Rascunho</Badge>
     case "published":
-      return <Badge variant="default"><CheckCircle className="mr-1 h-3 w-3" />Publicado</Badge>
+      return <Badge variant="info"><CheckCircle className="mr-1 h-3 w-3" />Publicado</Badge>
     case "sent":
       return <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/30"><Send className="mr-1 h-3 w-3" />Enviado</Badge>
     case "archived":

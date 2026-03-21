@@ -184,7 +184,7 @@ export function PipelineBoard({
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <h3 className="font-semibold">{stage.name}</h3>
-                      <Badge variant="secondary" className="rounded-full">
+                      <Badge variant="neutral" className="rounded-full">
                         {stageDeals.length}
                       </Badge>
                     </div>

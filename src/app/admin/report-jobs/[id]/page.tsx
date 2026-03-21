@@ -385,7 +385,7 @@ export default function ReportJobDetailPage({
                       {formatPercent(pctOfTotal)}
                     </TableCell>
                     <TableCell>
-                      <Badge variant="default" className="text-[10px]">
+                      <Badge variant="info" className="text-[10px]">
                         OK
                       </Badge>
                     </TableCell>

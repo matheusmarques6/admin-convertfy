@@ -211,7 +211,7 @@ export function StoreUtmTab({ storeId, storeUrl, period, customDates, currency =
                 <CardContent>
                   <div className="flex items-baseline gap-2">
                     <span className="text-3xl font-bold">{utmData.totalOrdersWithUtm}</span>
-                    <Badge variant="secondary" className="text-xs">
+                    <Badge variant="neutral" className="text-xs">
                       <TrendingUp className="h-3 w-3 mr-1" />
                       {formatPercent(utmData.utmTrackingRate)} do total
                     </Badge>

@@ -326,7 +326,7 @@ export function CampaignBatchModal({
                 >
                   {languageFlags[lang] || <Globe className="h-3 w-3" />}
                   {lang}
-                  <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-xs">
+                  <Badge variant="neutral" className="ml-1 px-1.5 py-0 text-xs">
                     {languageCounts[lang] || 0}
                   </Badge>
                 </Button>

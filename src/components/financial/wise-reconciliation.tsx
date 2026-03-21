@@ -344,7 +344,7 @@ export function WiseReconciliation() {
           <CardTitle className="text-base flex items-center gap-2">
             <ArrowDownRight className="h-4 w-4 text-success" />
             Pagamentos Recebidos
-            <Badge variant="secondary" className="ml-2">
+            <Badge variant="neutral" className="ml-2">
               {filteredPayments.length}
             </Badge>
           </CardTitle>
@@ -412,7 +412,7 @@ export function WiseReconciliation() {
                             Reconciliado
                           </Badge>
                         ) : (
-                          <Badge variant="secondary">Pendente</Badge>
+                          <Badge variant="neutral">Pendente</Badge>
                         )}
                       </TableCell>
                       <TableCell className="text-right">

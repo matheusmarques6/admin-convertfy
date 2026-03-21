@@ -250,7 +250,7 @@ export function OnboardingStepCard({
           </Badge>
           {/* Board context: "Onboarding" origin badge */}
           {context === "board" && (
-            <Badge variant="secondary" className="text-[10px] gap-1">
+            <Badge variant="neutral" className="text-[10px] gap-1">
               <Link2 className="h-3 w-3" />
               Onboarding
             </Badge>

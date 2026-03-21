@@ -166,15 +166,15 @@ function getPeriodLabel(period: string): string {
 function getStatusBadge(status: ReportStatus | undefined) {
   switch (status) {
     case "draft":
-      return <Badge variant="secondary" className="text-xs"><Clock className="mr-1 h-3 w-3" />Rascunho</Badge>
+      return <Badge variant="neutral" className="text-xs"><Clock className="mr-1 h-3 w-3" />Rascunho</Badge>
     case "published":
-      return <Badge variant="default" className="text-xs"><CheckCircle className="mr-1 h-3 w-3" />Publicado</Badge>
+      return <Badge variant="info" className="text-xs"><CheckCircle className="mr-1 h-3 w-3" />Publicado</Badge>
     case "sent":
       return <Badge variant="outline" className="text-xs bg-emerald-500/10 text-emerald-500 border-emerald-500/30"><Send className="mr-1 h-3 w-3" />Enviado</Badge>
     case "archived":
       return <Badge variant="outline" className="text-xs"><Archive className="mr-1 h-3 w-3" />Arquivado</Badge>
     default:
-      return <Badge variant="secondary" className="text-xs">-</Badge>
+      return <Badge variant="neutral" className="text-xs">-</Badge>
   }
 }
 
@@ -189,7 +189,7 @@ function getReportTypeBadge(type: string) {
     case "manual":
       return <Badge variant="outline" className="text-xs">Manual</Badge>
     default:
-      return <Badge variant="secondary" className="text-xs">{type}</Badge>
+      return <Badge variant="neutral" className="text-xs">{type}</Badge>
   }
 }
 
@@ -575,7 +575,7 @@ export function ReportsList({
                 <Filter className="mr-2 h-4 w-4" />
                 Filtros
                 {hasActiveFilters && (
-                  <Badge variant="secondary" className="ml-2 h-5 w-5 p-0 flex items-center justify-center">
+                  <Badge variant="neutral" className="ml-2 h-5 w-5 p-0 flex items-center justify-center">
                     !
                   </Badge>
                 )}

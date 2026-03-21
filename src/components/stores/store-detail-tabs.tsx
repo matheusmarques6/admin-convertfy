@@ -347,7 +347,7 @@ export function StoreDetailTabs({
                   <CardContent className="space-y-3 text-sm">
                     <div className="flex justify-between items-center">
                       <span className="text-muted-foreground">Fase</span>
-                      <Badge variant="secondary">
+                      <Badge variant="neutral">
                         {onboardingStatus === "in_progress" ? "Em Andamento" :
                          onboardingStatus === "not_started" ? "Não Iniciado" :
                          onboardingStatus === "paused" ? "Pausado" :
@@ -383,7 +383,7 @@ export function StoreDetailTabs({
                           Gerado
                         </Badge>
                       ) : (
-                        <Badge variant="secondary" className="text-[10px]">
+                        <Badge variant="neutral" className="text-[10px]">
                           <FileText className="h-3 w-3 mr-1" />
                           Não gerado
                         </Badge>

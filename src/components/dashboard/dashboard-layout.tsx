@@ -202,7 +202,7 @@ function PendingItemsCard({ pendingItems }: { pendingItems: PendingItems }) {
             <h3 className="text-sm font-semibold text-foreground">Atencao Necessaria</h3>
           </div>
           {total > 0 && (
-            <Badge variant="secondary" className="text-xs">{total}</Badge>
+            <Badge variant="neutral" className="text-xs">{total}</Badge>
           )}
         </div>
       </div>

@@ -119,7 +119,7 @@ export function TaskCard({
             {type.label}
           </Badge>
           {task.source_type === "auto_onboarding_step" && (
-            <Badge variant="secondary" className="text-[10px] gap-1">
+            <Badge variant="neutral" className="text-[10px] gap-1">
               <Icon icon={Link2} customSize={12} />
               Etapa de onboarding
             </Badge>

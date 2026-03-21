@@ -98,7 +98,7 @@ export function ClientsFilters() {
               <Icon icon={Filter} size={16} className="mr-2" />
               Filtros
               {activeFilters.length > 0 && (
-                <Badge variant="secondary" className="ml-2">
+                <Badge variant="neutral" className="ml-2">
                   {activeFilters.length}
                 </Badge>
               )}

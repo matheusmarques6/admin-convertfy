@@ -79,7 +79,7 @@ export function TodayAgenda({ meetings }: TodayAgendaProps) {
                       <div className="flex items-center gap-1.5">
                         <p className="text-sm font-medium truncate text-foreground">{meeting.title}</p>
                         {isHappeningNow && (
-                          <Badge variant="default" className="bg-primary text-primary-foreground text-[10px] h-4">Agora</Badge>
+                          <Badge variant="info" className="bg-primary text-primary-foreground text-[10px] h-4">Agora</Badge>
                         )}
                       </div>
                       <p className="text-xs text-muted-foreground">

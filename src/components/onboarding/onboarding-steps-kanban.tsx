@@ -439,7 +439,7 @@ export function OnboardingStepsKanban() {
                   <div className="flex items-center gap-2">
                     <span style={{ color: column.color }}>{column.icon}</span>
                     <h3 className="font-semibold text-sm">{column.title}</h3>
-                    <Badge variant="secondary" className="rounded-full ml-auto">
+                    <Badge variant="neutral" className="rounded-full ml-auto">
                       {columnSteps.length}
                     </Badge>
                   </div>

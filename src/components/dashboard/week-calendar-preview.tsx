@@ -75,7 +75,7 @@ export function WeekCalendarPreview({ meetings, tasks }: WeekCalendarPreviewProp
             </div>
             <CardTitle className="text-sm font-semibold">Esta Semana</CardTitle>
           </div>
-          <Badge variant="secondary" className="text-xs font-medium">
+          <Badge variant="neutral" className="text-xs font-medium">
             {todayEvents.total} {todayEvents.total === 1 ? "evento" : "eventos"} hoje
           </Badge>
         </div>

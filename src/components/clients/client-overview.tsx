@@ -170,7 +170,7 @@ export function ClientOverview({ client }: ClientOverviewProps) {
               Asaas
             </Badge>
           ) : (
-            <Badge variant="secondary" className="text-xs">Local</Badge>
+            <Badge variant="neutral" className="text-xs">Local</Badge>
           )}
         </CardHeader>
         <CardContent className="space-y-4">

@@ -299,7 +299,7 @@ export function TeamTable({ members, features, organizations, stores }: TeamTabl
                         Ativo
                       </Badge>
                     ) : (
-                      <Badge variant="secondary" className="flex items-center gap-1 w-fit">
+                      <Badge variant="neutral" className="flex items-center gap-1 w-fit">
                         <UserX className="h-3 w-3" />
                         Inativo
                       </Badge>

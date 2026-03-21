@@ -190,11 +190,11 @@ export function StoreTrackingTab({ storeId }: StoreTrackingTabProps) {
             </div>
             <div className="flex items-center gap-3">
               {enabled ? (
-                <Badge variant="default" className="gap-1">
+                <Badge variant="info" className="gap-1">
                   <Power className="h-3 w-3" /> Ativo
                 </Badge>
               ) : (
-                <Badge variant="secondary" className="gap-1">
+                <Badge variant="neutral" className="gap-1">
                   <PowerOff className="h-3 w-3" /> Inativo
                 </Badge>
               )}

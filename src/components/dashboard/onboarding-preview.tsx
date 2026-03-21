@@ -71,7 +71,7 @@ export function OnboardingPreview({ onboardings, userRole }: OnboardingPreviewPr
               {isOverviewRole ? "Onboardings" : `Seus ${PHASES.find((p) => p.id === allowedPhases?.[0])?.label || "Onboardings"}`}
             </CardTitle>
           </div>
-          <Badge variant="secondary" className="text-xs font-medium">
+          <Badge variant="neutral" className="text-xs font-medium">
             {filtered.length} ativos
           </Badge>
         </div>
