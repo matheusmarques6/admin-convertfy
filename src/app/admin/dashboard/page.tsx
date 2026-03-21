@@ -227,9 +227,33 @@ async function getDashboardData() {
   }
 }
 
+const EMPTY_DASHBOARD_DATA = {
+  upcomingMeetings: [],
+  activities: [],
+  alerts: [] as DashboardAlert[],
+  activeTasks: [],
+  weekMeetings: [],
+  weekTasks: [],
+  activeOnboardings: [],
+  pendingItems: {
+    draftReports: 0,
+    draftCampaigns: 0,
+    pendingReviewCampaigns: 0,
+    overdueTasksCount: 0,
+  },
+}
+
 export default async function DashboardPage() {
   const supabase = await createClient()
-  const { data: { user: authUser } } = await supabase.auth.getUser()
+
+  let authUser
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    authUser = user
+  } catch (err) {
+    console.error("[DashboardPage] auth.getUser() failed:", err)
+    redirect("/login")
+  }
 
   if (!authUser) {
     redirect("/login")
@@ -253,7 +277,13 @@ export default async function DashboardPage() {
 
   const userRole = isAdmin ? "owner" : (authOrgMember?.role || "support")
 
-  const data = await getDashboardData()
+  let data
+  try {
+    data = await getDashboardData()
+  } catch (err) {
+    console.error("[DashboardPage] getDashboardData() failed:", err)
+    data = EMPTY_DASHBOARD_DATA
+  }
 
   return <DashboardLayout data={data} userRole={userRole} />
 }
