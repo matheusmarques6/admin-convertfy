@@ -19,7 +19,7 @@ import {
   FileText,
 } from "lucide-react"
 import { usePermissions } from "@/lib/hooks/use-permissions"
-import { BoardPreview } from "./board-preview"
+import { TaskListBoard } from "./task-list-board"
 import { WeekCalendarPreview } from "./week-calendar-preview"
 import { OnboardingPreview } from "./onboarding-preview"
 import { RecentActivity } from "./recent-activity"
@@ -27,6 +27,10 @@ import { TotalRevenueBanner, type TotalRevenueData } from "./total-revenue-banne
 import { TopStoresCard } from "./top-stores-card"
 import { WorstPerformersCard } from "./worst-performers-card"
 import { DashboardAlerts } from "./alerts"
+import { RevenueGoalCard } from "./revenue-goal-card"
+import { CommemorativeDatesCard } from "./commemorative-dates-card"
+import { RevenueComparisonChart } from "./revenue-comparison-chart"
+import { BillingMetrics } from "./billing-metrics"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
@@ -110,7 +114,7 @@ function ClientHealthSummary({ alerts }: { alerts: DashboardAlert[] }) {
             <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
               <Users className="h-4 w-4 text-primary" />
             </div>
-            <h3 className="text-sm font-semibold text-foreground">Saúde dos Clientes</h3>
+            <h3 className="text-sm font-semibold text-foreground">Saude dos Clientes</h3>
           </div>
         </div>
       </div>
@@ -139,7 +143,7 @@ function ClientHealthSummary({ alerts }: { alerts: DashboardAlert[] }) {
                 </div>
                 <div>
                   <p className="text-xs font-medium text-foreground">Contratos expirando</p>
-                  <p className="text-[11px] text-muted-foreground">{contractAlerts.length} nos próximos 30 dias</p>
+                  <p className="text-[11px] text-muted-foreground">{contractAlerts.length} nos proximos 30 dias</p>
                 </div>
               </div>
               <ArrowRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -195,7 +199,7 @@ function PendingItemsCard({ pendingItems }: { pendingItems: PendingItems }) {
             <div className="h-8 w-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
               <ClipboardList className="h-4 w-4 text-amber-600" />
             </div>
-            <h3 className="text-sm font-semibold text-foreground">Pendências</h3>
+            <h3 className="text-sm font-semibold text-foreground">Atencao Necessaria</h3>
           </div>
           {total > 0 && (
             <Badge variant="secondary" className="text-xs">{total}</Badge>
@@ -226,8 +230,8 @@ function PendingItemsCard({ pendingItems }: { pendingItems: PendingItems }) {
                   <FileBarChart className="h-3.5 w-3.5 text-primary" />
                 </div>
                 <div>
-                  <p className="text-xs font-medium text-foreground">Relatórios rascunho</p>
-                  <p className="text-[11px] text-muted-foreground">{pendingItems.draftReports} aguardando publicação</p>
+                  <p className="text-xs font-medium text-foreground">Relatorios rascunho</p>
+                  <p className="text-[11px] text-muted-foreground">{pendingItems.draftReports} aguardando publicacao</p>
                 </div>
               </div>
               <ArrowRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -256,8 +260,8 @@ function PendingItemsCard({ pendingItems }: { pendingItems: PendingItems }) {
                   <Eye className="h-3.5 w-3.5 text-amber-600" />
                 </div>
                 <div>
-                  <p className="text-xs font-medium text-foreground">Campanhas em revisão</p>
-                  <p className="text-[11px] text-muted-foreground">{pendingItems.pendingReviewCampaigns} aguardando aprovação</p>
+                  <p className="text-xs font-medium text-foreground">Campanhas em revisao</p>
+                  <p className="text-[11px] text-muted-foreground">{pendingItems.pendingReviewCampaigns} aguardando aprovacao</p>
                 </div>
               </div>
               <ArrowRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -269,7 +273,7 @@ function PendingItemsCard({ pendingItems }: { pendingItems: PendingItems }) {
               <div className="h-10 w-10 rounded-full bg-success/10 flex items-center justify-center mb-2">
                 <CheckCircle className="h-5 w-5 text-success" />
               </div>
-              <p className="text-xs text-muted-foreground">Nenhuma pendência</p>
+              <p className="text-xs text-muted-foreground">Nenhuma pendencia</p>
             </div>
           )}
         </div>
@@ -307,7 +311,6 @@ export function DashboardLayout({ data, userRole }: DashboardLayoutProps) {
   const { permissions, hasFeature } = usePermissions()
 
   const isAdminOrOwner = permissions?.isAdmin || permissions?.isOrgOwner
-  const canViewReports = isAdminOrOwner || hasFeature("view_reports")
 
   // Revenue state for strategic cards
   const [revenuePeriod, setRevenuePeriod] = useState("30d")
@@ -344,14 +347,16 @@ export function DashboardLayout({ data, userRole }: DashboardLayoutProps) {
 
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto">
-      {/* Actionable Alerts Banner */}
+      {/* ============================================================ */}
+      {/* SECTION 1: Alertas Urgentes + Acoes Rapidas                   */}
+      {/* ============================================================ */}
       {criticalAlerts.length > 0 && (
         <div className="flex items-center gap-2 flex-wrap p-3 rounded-xl border border-border bg-card">
           <div className="flex items-center gap-2 mr-1">
             <div className="h-7 w-7 rounded-lg bg-warning/10 flex items-center justify-center">
               <MessageSquareWarning className="h-4 w-4 text-warning" />
             </div>
-            <span className="text-xs font-semibold text-foreground">Atenção</span>
+            <span className="text-xs font-semibold text-foreground">Atencao</span>
           </div>
           {criticalAlerts.map((alert, i) => (
             <Link key={i} href={alert.href}>
@@ -369,13 +374,34 @@ export function DashboardLayout({ data, userRole }: DashboardLayoutProps) {
         </div>
       )}
 
-      {/* Quick Actions */}
       <QuickActions />
 
-      {/* Strategic: Revenue Banner */}
+      {/* ============================================================ */}
+      {/* SECTION 2: Resultado Total (card grande) + Meta               */}
+      {/* ============================================================ */}
       <TotalRevenueBanner period={revenuePeriod} onPeriodChange={setRevenuePeriod} onDataChange={handleRevenueData} />
 
-      {/* Store Performance: Top + Worst */}
+      <RevenueGoalCard
+        currentRevenue={revenueData?.totalRevenue || 0}
+        isLoading={!revenueResolved.current}
+      />
+
+      {/* ============================================================ */}
+      {/* SECTION 3: Faturamento dos Clientes (Billing via Asaas)       */}
+      {/* ============================================================ */}
+      <BillingMetrics />
+
+      {/* ============================================================ */}
+      {/* SECTION 4: Grafico Comparativo + Top/Piores Lojas            */}
+      {/* ============================================================ */}
+      <RevenueComparisonChart
+        storeBreakdown={revenueData?.storeBreakdown}
+        totalRevenue={revenueData?.totalRevenue}
+        campaignRevenue={revenueData?.campaignRevenue}
+        flowRevenue={revenueData?.flowRevenue}
+        isLoading={!revenueResolved.current}
+      />
+
       <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
         <TopStoresCard
           stores={revenueData?.topStores}
@@ -391,20 +417,30 @@ export function DashboardLayout({ data, userRole }: DashboardLayoutProps) {
         />
       </div>
 
-      {/* Primary Grid: Board + Calendar side by side */}
-      <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
-        <BoardPreview tasks={data.activeTasks} />
-        <WeekCalendarPreview meetings={data.weekMeetings} tasks={data.weekTasks} />
+      {/* ============================================================ */}
+      {/* SECTION 5: Operacional - Tarefas + Calendario + Datas         */}
+      {/* ============================================================ */}
+      <div className="grid gap-4 grid-cols-1 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          <TaskListBoard />
+        </div>
+        <CommemorativeDatesCard />
       </div>
 
-      {/* Secondary Grid: Health + Pending + Onboarding */}
+      <WeekCalendarPreview meetings={data.weekMeetings} tasks={data.weekTasks} />
+
+      {/* ============================================================ */}
+      {/* SECTION 6: Saude + Pendencias + Onboarding                    */}
+      {/* ============================================================ */}
       <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
         <ClientHealthSummary alerts={data.alerts} />
         <PendingItemsCard pendingItems={data.pendingItems} />
         <OnboardingPreview onboardings={data.activeOnboardings} userRole={userRole} />
       </div>
 
-      {/* Alerts + Activity */}
+      {/* ============================================================ */}
+      {/* SECTION 7: Alertas + Atividade Recente                        */}
+      {/* ============================================================ */}
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
         <DashboardAlerts meetings={data.upcomingMeetings} alerts={data.alerts} />
         <RecentActivity activities={data.activities} />
