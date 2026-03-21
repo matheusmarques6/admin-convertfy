@@ -14,7 +14,7 @@ interface ReportHistoryListProps {
 interface Section {
   key: string
   title: string
-  icon: React.ElementType
+  icon: import("lucide-react").LucideIcon
   jobs: ReportJob[]
 }
 

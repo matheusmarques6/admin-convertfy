@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { Zap, Send, MessageSquare, BarChart3 } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { formatCurrency } from "@/lib/utils/format"
 import type { KlaviyoData } from "./types"
 
@@ -40,7 +41,7 @@ export function RevenueChannels({ klaviyo }: RevenueChannelsProps) {
     <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-medium text-slate-800 dark:text-slate-100 flex items-center gap-2">
-          <BarChart3 className="h-4 w-4 text-primary" />
+          <Icon icon={BarChart3} size={16} className="text-primary" />
           Canais de Receita
         </h3>
       </div>
@@ -120,7 +121,7 @@ function ChannelCardLocal({
   title,
   percent,
   value,
-  icon: Icon,
+  icon: IconComponent,
   color,
   active = false,
   onClick,
@@ -143,7 +144,7 @@ function ChannelCardLocal({
       onClick={onClick}
     >
       <div className="flex items-center gap-2 mb-2">
-        <Icon className={`h-4 w-4 ${active ? "text-current" : "text-slate-500 dark:text-slate-400"}`} />
+        <Icon icon={IconComponent} size={16} className={active ? "text-current" : "text-slate-500 dark:text-slate-400"} />
         <span className="text-xs text-slate-500 dark:text-slate-400">{title}</span>
       </div>
       <p className={`text-lg font-bold ${active ? "text-slate-800 dark:text-slate-100" : "text-slate-700 dark:text-slate-200"}`}>

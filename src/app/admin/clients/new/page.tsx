@@ -546,7 +546,7 @@ export default function NewClientPage() {
             <Link href="/admin/clients">Cancelar</Link>
           </Button>
           <Button type="submit" disabled={isLoading}>
-            {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {isLoading && <Icon icon={Loader2} size={16} className="mr-2 animate-spin" />}
             Criar Cliente
           </Button>
         </div>

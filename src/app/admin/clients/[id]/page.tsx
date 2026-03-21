@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation"
 import Link from "next/link"
 import { Edit } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { createClient } from "@/lib/supabase/server"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -73,7 +74,7 @@ export default async function ClientPage({
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" asChild>
               <Link href={`/admin/clients/${client.id}/edit`}>
-                <Edit className="mr-2 h-4 w-4" />
+                <Icon icon={Edit} size={16} className="mr-2" />
                 Editar
               </Link>
             </Button>

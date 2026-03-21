@@ -1,6 +1,7 @@
 "use client"
 
 import { Check, Clock, Palette, Code2, Sparkles, CircleDot } from "lucide-react"
+import { Icon as IconWrapper } from "@/components/ui/icon"
 
 interface TimelinePhase {
   id: string
@@ -64,7 +65,7 @@ export function OnboardingTimeline({ currentPhase, phases }: OnboardingTimelineP
           const isCompleted = phaseIndex < currentIndex
           const isActive = phaseIndex === currentIndex
           const isFuture = phaseIndex > currentIndex
-          const Icon = PHASE_ICONS[phase.id] || CircleDot
+          const PhaseIcon = PHASE_ICONS[phase.id] || CircleDot
 
           return (
             <div key={phase.id} className="flex items-center flex-1">
@@ -112,7 +113,7 @@ export function OnboardingTimeline({ currentPhase, phases }: OnboardingTimelineP
           const isCompleted = phaseIndex < currentIndex
           const isActive = phaseIndex === currentIndex
           const isFuture = phaseIndex > currentIndex
-          const Icon = PHASE_ICONS[phase.id] || CircleDot
+          const PhaseIcon = PHASE_ICONS[phase.id] || CircleDot
 
           return (
             <div key={phase.id} className="flex items-center gap-3">

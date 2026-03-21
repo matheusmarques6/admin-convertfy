@@ -1,11 +1,12 @@
 import { TrendingUp, TrendingDown } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { formatCurrency, formatNumber } from "@/lib/utils/format"
 import type { GlowColor } from "@/components/ui/glow-card"
 
 // Badge de variação (up/down)
 export function VariationBadge({ value, type = "percent" }: { value: number; type?: "percent" | "currency" }) {
   const isPositive = value >= 0
-  const Icon = isPositive ? TrendingUp : TrendingDown
+  const TrendIcon = isPositive ? TrendingUp : TrendingDown
 
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold ${
@@ -13,7 +14,7 @@ export function VariationBadge({ value, type = "percent" }: { value: number; typ
         ? "bg-emerald-500/15 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400"
         : "bg-red-500/15 text-red-600 dark:bg-red-500/20 dark:text-red-400"
     }`}>
-      <Icon className="h-3 w-3" />
+      <Icon icon={TrendIcon} customSize={12} />
       {type === "percent" ? `${isPositive ? "+" : ""}${value.toFixed(1)}%` : formatCurrency(Math.abs(value))}
     </span>
   )
@@ -24,7 +25,7 @@ export function MetricCard({
   title,
   value,
   subtitle,
-  icon: Icon,
+  icon: IconComponent,
   highlight = false,
 }: {
   title: string
@@ -40,7 +41,7 @@ export function MetricCard({
         <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
           highlight ? "bg-primary/10" : "bg-slate-100 dark:bg-slate-800"
         }`}>
-          <Icon className={`h-3.5 w-3.5 ${highlight ? "text-primary" : "text-slate-500 dark:text-slate-400"}`} />
+          <Icon icon={IconComponent} customSize={14} className={highlight ? "text-primary" : "text-slate-500 dark:text-slate-400"} />
         </div>
         <span className="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wide">{title}</span>
       </div>

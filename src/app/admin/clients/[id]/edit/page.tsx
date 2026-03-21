@@ -7,6 +7,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { Loader2, AlertCircle, CheckCircle2 } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -374,7 +375,7 @@ export default function EditClientPage({
       <div className="max-w-3xl mx-auto space-y-6">
         <Card className="border-destructive/50 bg-destructive/5">
           <CardContent className="flex flex-col items-center justify-center py-12">
-            <AlertCircle className="h-12 w-12 text-destructive mb-4" />
+            <Icon icon={AlertCircle} customSize={48} className="text-destructive mb-4" />
             <h3 className="text-lg font-medium text-destructive">Erro</h3>
             <p className="text-muted-foreground text-center mt-1">{error}</p>
             <Button variant="outline" className="mt-4" asChild>
@@ -431,7 +432,7 @@ export default function EditClientPage({
       {watch("asaas_customer_id") ? (
         <Card className="border-success/50 bg-success/10">
           <CardContent className="flex items-start gap-3 py-4">
-            <CheckCircle2 className="h-5 w-5 text-success mt-0.5" />
+            <Icon icon={CheckCircle2} size={20} className="text-success mt-0.5" />
             <div>
               <p className="font-medium text-success">Cliente vinculado ao Asaas</p>
               <p className="text-sm text-muted-foreground">
@@ -443,7 +444,7 @@ export default function EditClientPage({
       ) : !hasRequiredAsaasFields() ? (
         <Card className="border-warning/50 bg-warning/10">
           <CardContent className="flex items-start gap-3 py-4">
-            <AlertCircle className="h-5 w-5 text-warning mt-0.5" />
+            <Icon icon={AlertCircle} size={20} className="text-warning mt-0.5" />
             <div>
               <p className="font-medium text-warning">Campos obrigatórios para assinaturas</p>
               <p className="text-sm text-muted-foreground">
@@ -455,7 +456,7 @@ export default function EditClientPage({
       ) : (
         <Card className="border-primary/50 bg-primary/10">
           <CardContent className="flex items-start gap-3 py-4">
-            <CheckCircle2 className="h-5 w-5 text-primary mt-0.5" />
+            <Icon icon={CheckCircle2} size={20} className="text-primary mt-0.5" />
             <div>
               <p className="font-medium text-primary">Pronto para criar no Asaas</p>
               <p className="text-sm text-muted-foreground">
@@ -770,7 +771,7 @@ export default function EditClientPage({
             <Link href={`/admin/clients/${id}`}>Cancelar</Link>
           </Button>
           <Button type="submit" disabled={isLoading}>
-            {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {isLoading && <Icon icon={Loader2} size={16} className="mr-2 animate-spin" />}
             Salvar Alterações
           </Button>
         </div>

@@ -70,7 +70,7 @@ export function OnboardingStepper({ steps, currentIndex, onNavigate }: Onboardin
                   {/* Check badge for completed steps */}
                   {isComplete && (
                     <span className="absolute -bottom-0.5 -right-1 flex items-center justify-center w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full bg-emerald-500 border-2 border-background">
-                      <Icon icon={Check} customSize={8} className="sm:!h-2.5 sm:!w-2.5 text-white" strokeWidth={3} />
+                      <Icon icon={Check} customSize={8} className="sm:!h-2.5 sm:!w-2.5 text-white [stroke-width:3]" />
                     </span>
                   )}
                 </div>
