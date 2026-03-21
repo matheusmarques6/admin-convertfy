@@ -521,10 +521,10 @@ export default function NewReportPage() {
                                 <span>{store.store_name}</span>
                                 <div className="flex gap-1">
                                   {store.has_klaviyo && (
-                                    <Badge variant="outline" className="text-xs">Klaviyo</Badge>
+                                    <Badge variant="neutral" showDot={false} className="text-xs">Klaviyo</Badge>
                                   )}
                                   {store.has_shopify && (
-                                    <Badge variant="outline" className="text-xs">Shopify</Badge>
+                                    <Badge variant="neutral" showDot={false} className="text-xs">Shopify</Badge>
                                   )}
                                 </div>
                               </div>

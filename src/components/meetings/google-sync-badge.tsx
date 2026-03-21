@@ -58,7 +58,7 @@ export function GoogleSyncBadge({
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Badge variant="outline" className={cn("gap-1 cursor-default", className)}>
+          <Badge variant="neutral" showDot={false} className={cn("gap-1 cursor-default", className)}>
             <Icon className={cn("h-3 w-3", config.color)} />
             {!compact && <span className="text-xs">{config.label}</span>}
           </Badge>

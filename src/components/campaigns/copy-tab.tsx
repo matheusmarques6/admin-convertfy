@@ -498,7 +498,7 @@ export function CopyTab() {
   return (
     <div className="space-y-8">
       {/* ========== FORM: Gerar Copies ========== */}
-      <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 p-6">
+      <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-6">
         <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100 mb-1">
           Gerar Copies de Campanha
         </h2>
@@ -599,7 +599,7 @@ export function CopyTab() {
           <Button
             type="submit"
             disabled={!canSubmit}
-            className="bg-primary hover:bg-primary/85 text-white shadow-sm dark:shadow-slate-900/20"
+            className="bg-primary hover:bg-primary/85 text-white"
           >
             {submitting ? (
               <>

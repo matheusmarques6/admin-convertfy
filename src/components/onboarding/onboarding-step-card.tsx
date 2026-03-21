@@ -245,7 +245,7 @@ export function OnboardingStepCard({
             {statusConfig.label}
           </Badge>
           {/* Category badge */}
-          <Badge variant="outline" className="text-[10px]">
+          <Badge variant="neutral" showDot={false} className="text-[10px]">
             {categoryLabel}
           </Badge>
           {/* Board context: "Onboarding" origin badge */}

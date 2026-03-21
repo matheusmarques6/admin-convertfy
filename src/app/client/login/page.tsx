@@ -128,7 +128,7 @@ export default function PortalLoginPage() {
           </div>
 
           {/* Form Card */}
-          <div className="bg-white dark:bg-[#151922] rounded-2xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 p-8">
+          <div className="bg-white dark:bg-[#151922] rounded-2xl border border-slate-200/80 dark:border-slate-700/40 p-8">
             <div className="mb-6">
               <h1 className="text-xl font-semibold text-slate-800 dark:text-slate-100 mb-1">Bem-vindo de volta</h1>
               <p className="text-sm text-slate-500 dark:text-slate-400">Entre com suas credenciais para acessar o portal</p>

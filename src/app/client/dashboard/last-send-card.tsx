@@ -27,7 +27,7 @@ export function LastSendCard({ campaigns }: LastSendCardProps) {
 
   if (!lastCampaign) {
     return (
-      <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200">
+      <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200">
         <div className="flex items-center gap-2 mb-3">
           <div className="flex items-center justify-center h-7 w-7 rounded-lg bg-blue-50 dark:bg-blue-500/10">
             <Icon icon={Mail} size={16} className="text-blue-600" />
@@ -42,7 +42,7 @@ export function LastSendCard({ campaigns }: LastSendCardProps) {
   const sentDate = new Date(lastCampaign.sentAt)
 
   return (
-    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200">
+    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200">
       <div className="flex items-center gap-2 mb-3">
         <div className="flex items-center justify-center h-7 w-7 rounded-lg bg-blue-50 dark:bg-blue-500/10">
           <Icon icon={Mail} size={16} className="text-blue-600" />

@@ -173,7 +173,7 @@ export function ChargesManager() {
   const getStatusBadge = (charge: Charge) => {
     if (charge.isOverdue) {
       return (
-        <Badge variant="destructive" className="gap-1">
+        <Badge variant="negative" className="gap-1">
           <AlertCircle className="h-3 w-3" />
           Vencido ({charge.daysOverdue}d)
         </Badge>
@@ -192,7 +192,7 @@ export function ChargesManager() {
       case "CONFIRMED":
       case "RECEIVED_IN_CASH":
         return (
-          <Badge variant="success" className="gap-1">
+          <Badge variant="positive" className="gap-1">
             <CheckCircle2 className="h-3 w-3" />
             Recebido
           </Badge>
@@ -501,7 +501,7 @@ export function ChargesManager() {
                 <AlertCircle className="h-4 w-4" />
                 Vencidas
                 {data.summary.overdue.count > 0 && (
-                  <Badge variant="destructive" className="ml-1">
+                  <Badge variant="negative" className="ml-1">
                     {data.summary.overdue.count}
                   </Badge>
                 )}

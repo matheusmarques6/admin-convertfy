@@ -195,7 +195,7 @@ function ParticipantsList({ participants }: { participants?: PortalMeetingPartic
 function MeetSourceBadge({ source }: { source?: string }) {
   if (source !== "google_meet") return null
   return (
-    <Badge variant="outline" className="gap-1 text-[10px] px-1.5 py-0 h-4 border-blue-200 dark:border-blue-500/30 text-blue-600 dark:text-blue-400">
+    <Badge variant="neutral" showDot={false} className="gap-1 text-[10px] px-1.5 py-0 h-4 border-blue-200 dark:border-blue-500/30 text-blue-600 dark:text-blue-400">
       <Video className="h-2.5 w-2.5" />
       Meet
     </Badge>
@@ -251,7 +251,7 @@ export function MeetingsSection({ meetings }: MeetingsSectionProps) {
   const completedMeetings = localMeetings.filter(m => m.status === "completed")
 
   return (
-    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 p-5 relative">
+    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 relative">
       {/* Toast notification */}
       {toastMessage && (
         <div

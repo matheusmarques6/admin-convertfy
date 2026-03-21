@@ -289,7 +289,7 @@ export function PipelineBoard({
                                       </Avatar>
                                     )}
                                     {deal.probability != null && (
-                                      <Badge variant="outline" className="text-xs">
+                                      <Badge variant="neutral" showDot={false} className="text-xs">
                                         {deal.probability}%
                                       </Badge>
                                     )}

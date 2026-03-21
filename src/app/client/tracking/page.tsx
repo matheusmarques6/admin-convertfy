@@ -344,7 +344,7 @@ export default function PortalTrackingPage() {
   if (!store || !store.tracking_active) {
     return (
       <div className="max-w-[600px] mx-auto">
-        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 p-10 text-center">
+        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-10 text-center">
           <div className="w-14 h-14 rounded-full bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center mx-auto mb-4">
             <Package className="h-7 w-7 text-blue-500" />
           </div>
@@ -392,7 +392,7 @@ export default function PortalTrackingPage() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="bg-white dark:bg-[#151922] border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 rounded-lg p-1 h-auto w-full sm:w-auto inline-flex">
+        <TabsList className="bg-white dark:bg-[#151922] border border-slate-200/80 dark:border-slate-700/40 rounded-lg p-1 h-auto w-full sm:w-auto inline-flex">
           <TabsTrigger
             value="overview"
             className="gap-1.5 text-[13px] px-3 py-2 data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:shadow-none rounded-md"
@@ -428,7 +428,7 @@ export default function PortalTrackingPage() {
            ═══════════════════════════════════════════════════════════════════════ */}
         <TabsContent value="overview" className="mt-5 space-y-6">
           {/* How it works */}
-          <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 overflow-hidden">
+          <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700/30">
               <h3 className="text-[15px] font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                 <Info className="h-4 w-4 text-primary" />
@@ -476,7 +476,7 @@ export default function PortalTrackingPage() {
 
           {/* KPIs */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-4 shadow-sm dark:shadow-slate-900/20 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200">
+            <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-4 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200">
               <div className="flex items-center gap-2 mb-3">
                 <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center">
                   <Package className="h-3.5 w-3.5 text-blue-600" />
@@ -485,7 +485,7 @@ export default function PortalTrackingPage() {
               </div>
               <p className="text-xl font-bold text-slate-800 dark:text-slate-100">{stats.orders}</p>
             </div>
-            <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-4 shadow-sm dark:shadow-slate-900/20 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200">
+            <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-4 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200">
               <div className="flex items-center gap-2 mb-3">
                 <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center">
                   <Truck className="h-3.5 w-3.5 text-amber-600" />
@@ -494,7 +494,7 @@ export default function PortalTrackingPage() {
               </div>
               <p className="text-xl font-bold text-amber-600">{stats.pending}</p>
             </div>
-            <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-4 shadow-sm dark:shadow-slate-900/20 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200">
+            <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-4 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200">
               <div className="flex items-center gap-2 mb-3">
                 <div className="w-7 h-7 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center">
                   <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
@@ -509,7 +509,7 @@ export default function PortalTrackingPage() {
           <div className="grid gap-4 sm:grid-cols-2">
             <button
               onClick={() => setActiveTab("customize")}
-              className="flex items-center gap-4 bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 p-5 hover:shadow-md transition-shadow text-left"
+              className="flex items-center gap-4 bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 hover:shadow-md transition-shadow text-left"
             >
               <div className="w-10 h-10 rounded-lg bg-violet-50 dark:bg-violet-500/10 flex items-center justify-center flex-shrink-0">
                 <Palette className="h-5 w-5 text-violet-600" />
@@ -523,7 +523,7 @@ export default function PortalTrackingPage() {
 
             <button
               onClick={() => setActiveTab("install")}
-              className="flex items-center gap-4 bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 p-5 hover:shadow-md transition-shadow text-left"
+              className="flex items-center gap-4 bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 hover:shadow-md transition-shadow text-left"
             >
               <div className="w-10 h-10 rounded-lg bg-cyan-50 dark:bg-cyan-500/10 flex items-center justify-center flex-shrink-0">
                 <Code2 className="h-5 w-5 text-cyan-600" />
@@ -544,7 +544,7 @@ export default function PortalTrackingPage() {
           )}
 
           {stats.orders === 0 && (
-            <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 p-8 text-center">
+            <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-8 text-center">
               <Clock className="h-10 w-10 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
               <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Aguardando pedidos</h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
@@ -570,7 +570,7 @@ export default function PortalTrackingPage() {
               />
             </div>
             <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1) }}>
-              <SelectTrigger className="w-[180px] h-10 bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40 text-slate-700 dark:text-slate-200 rounded-lg shadow-sm dark:shadow-slate-900/20">
+              <SelectTrigger className="w-[180px] h-10 bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40 text-slate-700 dark:text-slate-200 rounded-lg">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent className="bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40 shadow-lg">
@@ -591,7 +591,7 @@ export default function PortalTrackingPage() {
           )}
 
           {/* Orders Table */}
-          <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 overflow-hidden">
+          <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 overflow-hidden">
             {ordersLoading ? (
               <div className="flex items-center justify-center py-16">
                 <Loader2 className="h-6 w-6 text-primary animate-spin" />
@@ -763,7 +763,7 @@ export default function PortalTrackingPage() {
             {/* Settings Panel */}
             <div className="lg:col-span-2 space-y-5">
               {/* Colors */}
-              <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 overflow-hidden">
+              <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 overflow-hidden">
                 <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-700/30">
                   <h3 className="text-[15px] font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                     <Palette className="h-4 w-4 text-primary" />
@@ -825,7 +825,7 @@ export default function PortalTrackingPage() {
               </div>
 
               {/* Language */}
-              <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 overflow-hidden">
+              <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 overflow-hidden">
                 <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-700/30">
                   <h3 className="text-[15px] font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                     <Globe className="h-4 w-4 text-primary" />
@@ -851,7 +851,7 @@ export default function PortalTrackingPage() {
               </div>
 
               {/* 17track API Key */}
-              <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 overflow-hidden">
+              <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 overflow-hidden">
                 <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-700/30">
                   <h3 className="text-[15px] font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                     <KeyRound className="h-4 w-4 text-primary" />
@@ -912,7 +912,7 @@ export default function PortalTrackingPage() {
 
             {/* Right: Preview */}
             <div className="lg:col-span-3">
-              <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 overflow-hidden">
+              <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 overflow-hidden">
                 <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-700/30 flex items-center justify-between">
                   <h3 className="text-[15px] font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                     <Eye className="h-4 w-4 text-primary" />
@@ -999,7 +999,7 @@ export default function PortalTrackingPage() {
            ═══════════════════════════════════════════════════════════════════════ */}
         <TabsContent value="install" className="mt-5 space-y-6">
           {/* Script Code */}
-          <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 overflow-hidden">
+          <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 overflow-hidden">
             <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-700/30 flex items-center justify-between">
               <h3 className="text-[15px] font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                 <FileCode className="h-4 w-4 text-cyan-600" />
@@ -1034,7 +1034,7 @@ export default function PortalTrackingPage() {
           </div>
 
           {/* Step by step */}
-          <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 overflow-hidden">
+          <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 overflow-hidden">
             <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-700/30">
               <h3 className="text-[15px] font-semibold text-slate-800 dark:text-slate-100">
                 Como instalar na sua loja

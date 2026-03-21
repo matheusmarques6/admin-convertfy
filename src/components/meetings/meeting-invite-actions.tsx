@@ -57,7 +57,7 @@ export function MeetingInviteActions({
 
   if (currentStatus === "accepted") {
     return (
-      <Badge variant="outline" className="text-emerald-500 border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-500/20 text-xs">
+      <Badge variant="neutral" showDot={false} className="text-emerald-500 border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-500/20 text-xs">
         <Icon icon={Check} customSize={12} className="mr-1" />
         Aceito
       </Badge>
@@ -66,7 +66,7 @@ export function MeetingInviteActions({
 
   if (currentStatus === "declined") {
     return (
-      <Badge variant="outline" className="text-destructive border-destructive/30 bg-destructive/10 dark:bg-destructive/20 text-xs">
+      <Badge variant="neutral" showDot={false} className="text-destructive border-destructive/30 bg-destructive/10 dark:bg-destructive/20 text-xs">
         <Icon icon={X} customSize={12} className="mr-1" />
         Recusado
       </Badge>
@@ -75,7 +75,7 @@ export function MeetingInviteActions({
 
   if (currentStatus === "tentative") {
     return (
-      <Badge variant="outline" className="text-amber-500 border-amber-500/30 bg-amber-500/10 dark:bg-amber-500/20 text-xs">
+      <Badge variant="neutral" showDot={false} className="text-amber-500 border-amber-500/30 bg-amber-500/10 dark:bg-amber-500/20 text-xs">
         <Icon icon={Clock} customSize={12} className="mr-1" />
         Talvez
       </Badge>

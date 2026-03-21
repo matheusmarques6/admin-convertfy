@@ -115,9 +115,9 @@ function getStatusBadge(status: ReportStatus | undefined) {
     case "published":
       return <Badge variant="info"><CheckCircle className="mr-1 h-3 w-3" />Publicado</Badge>
     case "sent":
-      return <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/30"><Send className="mr-1 h-3 w-3" />Enviado</Badge>
+      return <Badge variant="neutral" showDot={false} className="bg-emerald-500/10 text-emerald-500 border-emerald-500/30"><Send className="mr-1 h-3 w-3" />Enviado</Badge>
     case "archived":
-      return <Badge variant="outline"><Archive className="mr-1 h-3 w-3" />Arquivado</Badge>
+      return <Badge variant="neutral" showDot={false}><Archive className="mr-1 h-3 w-3" />Arquivado</Badge>
     default:
       return null
   }
@@ -295,7 +295,7 @@ export default function ReportPage() {
         ]}
         actions={
           <div className="flex items-center gap-2 flex-wrap">
-            <Badge variant="outline">
+            <Badge variant="neutral" showDot={false}>
               <FileText className="h-3 w-3 mr-1" />
               {getReportTypeLabel(report.report_type)}
             </Badge>
@@ -600,7 +600,7 @@ export default function ReportPage() {
               {reportData.flows.slice(0, 5).map((flow, index) => (
                 <div key={flow.id || index} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                   <div className="flex items-center gap-3">
-                    <Badge variant="outline" className="w-6 h-6 flex items-center justify-center p-0">
+                    <Badge variant="neutral" showDot={false} className="w-6 h-6 flex items-center justify-center p-0">
                       {index + 1}
                     </Badge>
                     <div>
@@ -637,7 +637,7 @@ export default function ReportPage() {
               {reportData.campaigns.slice(0, 5).map((campaign, index) => (
                 <div key={campaign.id || index} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
                   <div className="flex items-center gap-3">
-                    <Badge variant="outline" className="w-6 h-6 flex items-center justify-center p-0">
+                    <Badge variant="neutral" showDot={false} className="w-6 h-6 flex items-center justify-center p-0">
                       {index + 1}
                     </Badge>
                     <div>

@@ -160,7 +160,7 @@ export default async function StoreDetailPage({
           {store.is_active ? "Ativa" : "Inativa"}
         </Badge>
         {store.platform && (
-          <Badge variant="outline">{store.platform}</Badge>
+          <Badge variant="neutral" showDot={false}>{store.platform}</Badge>
         )}
         <span className="text-sm text-muted-foreground">{connectedCount} integração(ões) conectada(s)</span>
       </div>

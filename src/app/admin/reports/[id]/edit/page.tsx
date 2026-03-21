@@ -291,7 +291,7 @@ export default function EditReportPage() {
         ]}
         actions={
           <div className="flex items-center gap-2">
-            <Badge variant="outline">
+            <Badge variant="neutral" showDot={false}>
               {{ klaviyo: "Klaviyo", shopify: "Shopify", combined: "Combinado", manual: "Manual" }[report.report_type] || report.report_type}
             </Badge>
             {!isManual && (
@@ -741,7 +741,7 @@ export default function EditReportPage() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Tipo</p>
-                <Badge variant="outline" className="capitalize">
+                <Badge variant="neutral" showDot={false} className="capitalize">
                   {report.report_type}
                 </Badge>
               </div>

@@ -222,7 +222,7 @@ export function SubscriptionsManager() {
   const getStatusBadge = (sub: Subscription) => {
     if (sub.isActive) {
       return (
-        <Badge variant="success" className="gap-1">
+        <Badge variant="positive" className="gap-1">
           <CheckCircle2 className="h-3 w-3" />
           Ativa
         </Badge>
@@ -357,7 +357,7 @@ export function SubscriptionsManager() {
                       {formatCurrency(sub.value)}
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline">{sub.cycleLabel}</Badge>
+                      <Badge variant="neutral" showDot={false}>{sub.cycleLabel}</Badge>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">

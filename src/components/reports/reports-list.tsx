@@ -170,9 +170,9 @@ function getStatusBadge(status: ReportStatus | undefined) {
     case "published":
       return <Badge variant="info" className="text-xs"><CheckCircle className="mr-1 h-3 w-3" />Publicado</Badge>
     case "sent":
-      return <Badge variant="outline" className="text-xs bg-emerald-500/10 text-emerald-500 border-emerald-500/30"><Send className="mr-1 h-3 w-3" />Enviado</Badge>
+      return <Badge variant="neutral" showDot={false} className="text-xs bg-emerald-500/10 text-emerald-500 border-emerald-500/30"><Send className="mr-1 h-3 w-3" />Enviado</Badge>
     case "archived":
-      return <Badge variant="outline" className="text-xs"><Archive className="mr-1 h-3 w-3" />Arquivado</Badge>
+      return <Badge variant="neutral" showDot={false} className="text-xs"><Archive className="mr-1 h-3 w-3" />Arquivado</Badge>
     default:
       return <Badge variant="neutral" className="text-xs">-</Badge>
   }
@@ -181,13 +181,13 @@ function getStatusBadge(status: ReportStatus | undefined) {
 function getReportTypeBadge(type: string) {
   switch (type) {
     case "klaviyo":
-      return <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/30">Klaviyo</Badge>
+      return <Badge variant="neutral" showDot={false} className="text-xs bg-primary/10 text-primary border-primary/30">Klaviyo</Badge>
     case "shopify":
-      return <Badge variant="outline" className="text-xs bg-emerald-500/10 text-emerald-500 border-emerald-500/30">Shopify</Badge>
+      return <Badge variant="neutral" showDot={false} className="text-xs bg-emerald-500/10 text-emerald-500 border-emerald-500/30">Shopify</Badge>
     case "combined":
-      return <Badge variant="outline" className="text-xs bg-blue-500/10 text-blue-500 border-blue-500/30">Combinado</Badge>
+      return <Badge variant="neutral" showDot={false} className="text-xs bg-blue-500/10 text-blue-500 border-blue-500/30">Combinado</Badge>
     case "manual":
-      return <Badge variant="outline" className="text-xs">Manual</Badge>
+      return <Badge variant="neutral" showDot={false} className="text-xs">Manual</Badge>
     default:
       return <Badge variant="neutral" className="text-xs">{type}</Badge>
   }
@@ -527,12 +527,12 @@ export function ReportsList({
                     </p>
                     <div className="flex items-center gap-2 mt-1">
                       {store.has_klaviyo && (
-                        <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/30">
+                        <Badge variant="neutral" showDot={false} className="text-xs bg-primary/10 text-primary border-primary/30">
                           Klaviyo
                         </Badge>
                       )}
                       {store.has_shopify && (
-                        <Badge variant="outline" className="text-xs bg-emerald-500/10 text-emerald-500 border-emerald-500/30">
+                        <Badge variant="neutral" showDot={false} className="text-xs bg-emerald-500/10 text-emerald-500 border-emerald-500/30">
                           Shopify
                         </Badge>
                       )}

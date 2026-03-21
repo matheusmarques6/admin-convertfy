@@ -333,7 +333,7 @@ function BoletoCard({ invoice, onPayClick }: { invoice: Invoice; onPayClick: () 
         {canPay && isLocalNonAsaas(invoice) && (
           <div className="space-y-3">
             <div className="flex items-center justify-center gap-2">
-              <Badge variant="outline" className={`text-xs ${PAYMENT_METHOD_BADGE_COLORS[invoice.payment_method || ""] || PAYMENT_METHOD_BADGE_COLORS.boleto}`}>
+              <Badge variant="neutral" showDot={false} className={`text-xs ${PAYMENT_METHOD_BADGE_COLORS[invoice.payment_method || ""] || PAYMENT_METHOD_BADGE_COLORS.boleto}`}>
                 {PAYMENT_METHOD_LABELS[invoice.payment_method || ""] || invoice.payment_method}
               </Badge>
             </div>
@@ -429,7 +429,7 @@ function InvoiceRow({ invoice, onClick }: { invoice: Invoice; onClick: () => voi
             {invoice.description || "Mensalidade Convertfy"}
           </p>
           {isLocal && invoice.payment_method && (
-            <Badge variant="outline" className={`text-[10px] shrink-0 ${PAYMENT_METHOD_BADGE_COLORS[invoice.payment_method] || PAYMENT_METHOD_BADGE_COLORS.boleto}`}>
+            <Badge variant="neutral" showDot={false} className={`text-[10px] shrink-0 ${PAYMENT_METHOD_BADGE_COLORS[invoice.payment_method] || PAYMENT_METHOD_BADGE_COLORS.boleto}`}>
               {PAYMENT_METHOD_LABELS[invoice.payment_method] || invoice.payment_method}
             </Badge>
           )}
@@ -455,7 +455,7 @@ function InvoiceRow({ invoice, onClick }: { invoice: Invoice; onClick: () => voi
             }
           </p>
         )}
-        <Badge variant="outline" className={`text-xs ${statusConfig.color}`}>
+        <Badge variant="neutral" showDot={false} className={`text-xs ${statusConfig.color}`}>
           {statusConfig.label}
         </Badge>
       </div>

@@ -713,7 +713,7 @@ export function OnboardingKanban() {
                                       <Store className="h-3 w-3" />
                                       <span className="truncate">{onboarding.store.store_name}</span>
                                       {onboarding.store.platform && (
-                                        <Badge variant="outline" className="text-[10px] ml-1">
+                                        <Badge variant="neutral" showDot={false} className="text-[10px] ml-1">
                                           {onboarding.store.platform}
                                         </Badge>
                                       )}
@@ -724,7 +724,7 @@ export function OnboardingKanban() {
                                   {onboarding.form_complete !== undefined && (
                                     <div className="mt-2">
                                       {onboarding.form_complete ? (
-                                        <Badge variant="success" className="text-[10px]">
+                                        <Badge variant="positive" className="text-[10px]">
                                           <CheckCircle2 className="h-3 w-3 mr-1" />
                                           Formulário preenchido
                                         </Badge>
@@ -1007,7 +1007,7 @@ export function OnboardingKanban() {
                                   )}
                                 </div>
                                 {step.status === "blocked" && (
-                                  <Badge variant="destructive" className="text-xs">
+                                  <Badge variant="negative" className="text-xs">
                                     Bloqueado
                                   </Badge>
                                 )}

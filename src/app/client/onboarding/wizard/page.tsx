@@ -256,7 +256,7 @@ export default function OnboardingWizardPage() {
         </div>
 
         {/* Step Content */}
-        <div className="bg-white dark:bg-[#151922] rounded-2xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 overflow-hidden">
+        <div className="bg-white dark:bg-[#151922] rounded-2xl border border-slate-200/80 dark:border-slate-700/40 overflow-hidden">
           <div className="px-4 pt-6 pb-4 sm:px-8 sm:pt-8">
             <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">{STEPS[currentStep].label}</h2>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">

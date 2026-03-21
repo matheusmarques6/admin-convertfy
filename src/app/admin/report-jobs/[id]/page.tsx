@@ -287,7 +287,7 @@ export default function ReportJobDetailPage({
               {result.stores_processed}/{result.stores_processed + result.stores_failed} lojas processadas
             </span>
             {result.stores_failed > 0 && (
-              <Badge variant="destructive" className="text-[10px]">
+              <Badge variant="negative" className="text-[10px]">
                 {result.stores_failed} com falha
               </Badge>
             )}

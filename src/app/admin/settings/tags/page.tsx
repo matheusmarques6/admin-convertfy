@@ -144,7 +144,7 @@ export default function TagsPage() {
                   <div className="flex items-center gap-3">
                     <div className="w-4 h-4 rounded-full" style={{ backgroundColor: tag.color }} />
                     <span className="font-medium">{tag.name}</span>
-                    <Badge variant="outline">{tag.category}</Badge>
+                    <Badge variant="neutral" showDot={false}>{tag.category}</Badge>
                   </div>
                   <Button variant="ghost" size="icon" onClick={() => handleDelete(tag.id)}>
                     <Icon icon={Trash2} size={16} className="text-destructive" />

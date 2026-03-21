@@ -327,7 +327,7 @@ export default function CampaignsCalendarPage() {
                             {campaign.store?.store_name || "Loja"}
                           </p>
                         </div>
-                        <Badge variant="outline" className="capitalize">
+                        <Badge variant="neutral" showDot={false} className="capitalize">
                           {campaign.status}
                         </Badge>
                       </div>

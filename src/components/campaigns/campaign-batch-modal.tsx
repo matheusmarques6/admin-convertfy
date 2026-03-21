@@ -397,7 +397,7 @@ export function CampaignBatchModal({
                           {store.client?.company || store.client?.name || "Sem cliente"}
                         </p>
                       </div>
-                      <Badge variant="outline" className="text-xs">
+                      <Badge variant="neutral" showDot={false} className="text-xs">
                         {languageFlags[store.language] || "🌐"} {store.language || "pt-BR"}
                       </Badge>
                     </div>

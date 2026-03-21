@@ -290,18 +290,18 @@ export function ClientPortalUsers({ clientId, clientName }: ClientPortalUsersPro
                         </Badge>
                       )}
                       {!user.is_active && (
-                        <Badge variant="destructive" className="text-xs">
+                        <Badge variant="negative" className="text-xs">
                           Inativo
                         </Badge>
                       )}
                       {user.is_active && !hasLoggedIn(user) && (
-                        <Badge variant="outline" className="text-xs text-amber-600 border-amber-300 bg-amber-50">
+                        <Badge variant="neutral" showDot={false} className="text-xs text-amber-600 border-amber-300 bg-amber-50">
                           <Clock className="h-3 w-3 mr-1" />
                           Convite pendente
                         </Badge>
                       )}
                       {user.is_active && hasLoggedIn(user) && (
-                        <Badge variant="outline" className="text-xs text-emerald-600 border-emerald-300 bg-emerald-50">
+                        <Badge variant="neutral" showDot={false} className="text-xs text-emerald-600 border-emerald-300 bg-emerald-50">
                           <CheckCircle2 className="h-3 w-3 mr-1" />
                           Ativo
                         </Badge>

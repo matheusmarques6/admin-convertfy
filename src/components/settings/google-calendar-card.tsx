@@ -191,7 +191,7 @@ export function GoogleCalendarCard() {
               <div>
                 <CardTitle className="text-base">Google Calendar</CardTitle>
                 <div className="flex items-center gap-2 mt-1">
-                  <Badge variant="outline" className="text-destructive border-destructive">
+                  <Badge variant="neutral" showDot={false} className="text-destructive border-destructive">
                     <AlertTriangle className="h-3 w-3 mr-1" />
                     Erro
                   </Badge>
@@ -246,7 +246,7 @@ export function GoogleCalendarCard() {
             <div>
               <CardTitle className="text-base">Google Calendar</CardTitle>
               <div className="flex items-center gap-2 mt-1">
-                <Badge variant="outline" className="text-success border-success">
+                <Badge variant="neutral" showDot={false} className="text-success border-success">
                   <CheckCircle2 className="h-3 w-3 mr-1" />
                   Conectado
                 </Badge>

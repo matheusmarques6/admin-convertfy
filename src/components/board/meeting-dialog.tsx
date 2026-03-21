@@ -433,7 +433,7 @@ export function MeetingDialog({
                                 )}
                               </div>
                               {member.type === "org_member" && member.role && (
-                                <Badge variant="outline" className="text-[10px] shrink-0">
+                                <Badge variant="neutral" showDot={false} className="text-[10px] shrink-0">
                                   {member.role}
                                 </Badge>
                               )}

@@ -265,7 +265,7 @@ export default async function AutomationsPage() {
                     {/* Trigger */}
                     <div>
                       <p className="text-xs text-muted-foreground mb-1">Gatilho</p>
-                      <Badge variant="outline">{triggerLabel}</Badge>
+                      <Badge variant="neutral" showDot={false}>{triggerLabel}</Badge>
                     </div>
 
                     {/* Actions count */}

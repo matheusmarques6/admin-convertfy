@@ -293,7 +293,7 @@ export default function PortalSettingsPage() {
 
       <div className="grid gap-6 md:grid-cols-2">
         {/* Profile */}
-        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 overflow-hidden">
+        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700/30">
             <h3 className="text-[15px] font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
               <User className="h-4 w-4 text-primary" />
@@ -415,7 +415,7 @@ export default function PortalSettingsPage() {
         </div>
 
         {/* Change Password */}
-        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 overflow-hidden">
+        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700/30">
             <h3 className="text-[15px] font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
               <Lock className="h-4 w-4 text-amber-600" />
@@ -476,7 +476,7 @@ export default function PortalSettingsPage() {
         </div>
 
         {/* Notifications */}
-        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 overflow-hidden md:col-span-2">
+        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 overflow-hidden md:col-span-2">
           <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700/30">
             <h3 className="text-[15px] font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
               <Bell className="h-4 w-4 text-[#05AFF2]" />

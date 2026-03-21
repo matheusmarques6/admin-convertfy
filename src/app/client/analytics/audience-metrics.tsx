@@ -55,7 +55,7 @@ export function AudienceMetrics({ klaviyo, shopify }: AudienceMetricsProps) {
       : "text-slate-800 dark:text-slate-100"
 
   return (
-    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20">
+    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5">
       <div className="flex items-center gap-2 mb-2">
         <Icon icon={Users} size={16} className="text-slate-500 dark:text-slate-400" />
         <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Audiência & Clientes</h3>

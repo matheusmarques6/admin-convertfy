@@ -78,7 +78,7 @@ export function PipelineHeader({
         <div>
           <div className="flex items-center gap-2">
             {currentUserRole && (
-              <Badge variant="outline" className="text-xs">
+              <Badge variant="neutral" showDot={false} className="text-xs">
                 {roleLabels[currentUserRole]}
               </Badge>
             )}

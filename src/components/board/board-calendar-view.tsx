@@ -336,7 +336,7 @@ export function BoardCalendarView({
                             </p>
                           )}
                           <div className="flex items-center gap-2 mt-1.5">
-                            <Badge variant="outline" className="text-xs">
+                            <Badge variant="neutral" showDot={false} className="text-xs">
                               {event.type === "task" ? "Tarefa" : "Reunião"}
                             </Badge>
                             {event.type === "meeting" && (
@@ -345,7 +345,7 @@ export function BoardCalendarView({
                               </span>
                             )}
                             {event.priority && (
-                              <Badge variant="outline" className="text-xs">
+                              <Badge variant="neutral" showDot={false} className="text-xs">
                                 {TASK_PRIORITY_CONFIG[event.priority].label}
                               </Badge>
                             )}

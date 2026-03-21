@@ -263,7 +263,7 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <Badge variant="success">Ativo</Badge>
+              <Badge variant="positive">Ativo</Badge>
               <Button variant="outline" size="sm" onClick={handleOpenDialog}>
                 <Icon icon={Plus} size={16} className="mr-2" />
                 Novo Contrato

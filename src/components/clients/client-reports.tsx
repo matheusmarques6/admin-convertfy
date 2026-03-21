@@ -631,7 +631,7 @@ export function ClientReports({ clientId }: ClientReportsProps) {
                     <Badge variant="neutral">
                       {getPeriodLabel(report.period, report.date_range)}
                     </Badge>
-                    <Badge variant="outline" className="capitalize">
+                    <Badge variant="neutral" showDot={false} className="capitalize">
                       {report.report_type}
                     </Badge>
                   </div>
@@ -919,7 +919,7 @@ export function ClientReports({ clientId }: ClientReportsProps) {
                 <div className="grid grid-cols-3 gap-4">
                   <div className="font-medium text-muted-foreground">Métrica</div>
                   <div className="text-center">
-                    <Badge variant="outline" className="mb-1">Base</Badge>
+                    <Badge variant="neutral" showDot={false} className="mb-1">Base</Badge>
                     <p className="text-sm font-medium">{report1.store_name}</p>
                     <p className="text-xs text-muted-foreground">{getPeriodLabel(report1.period, report1.date_range)}</p>
                   </div>

@@ -296,7 +296,7 @@ export function OnboardingApprovals() {
                     <div>
                       <span className="text-muted-foreground text-xs">Sensibilidade de preço</span>
                       <p>
-                        <Badge variant="outline" className="text-xs">
+                        <Badge variant="neutral" showDot={false} className="text-xs">
                           {priceSensitivityLabel[onb.store_onboarding_data.price_sensitivity] || onb.store_onboarding_data.price_sensitivity}
                         </Badge>
                       </p>

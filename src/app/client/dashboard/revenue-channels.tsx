@@ -38,7 +38,7 @@ export function RevenueChannels({ klaviyo }: RevenueChannelsProps) {
     "Receita Total Atribuída"
 
   return (
-    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20">
+    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-medium text-slate-800 dark:text-slate-100 flex items-center gap-2">
           <Icon icon={BarChart3} size={16} className="text-primary" />

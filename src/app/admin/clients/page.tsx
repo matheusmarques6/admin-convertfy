@@ -401,7 +401,7 @@ export default async function ClientsPage({ searchParams }: PageProps) {
         {/* Results count indicator */}
         {hasActiveFilters && (
           <div className="flex items-center gap-2">
-            <Badge variant="outline" className="font-normal">
+            <Badge variant="neutral" showDot={false} className="font-normal">
               {totalCount} {totalCount === 1 ? "resultado encontrado" : "resultados encontrados"}
             </Badge>
           </div>

@@ -75,7 +75,7 @@ export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps)
             <CardTitle className="text-sm font-semibold text-foreground">Alertas</CardTitle>
           </div>
           {totalAlerts > 0 && (
-            <Badge variant="destructive" className="bg-destructive/10 text-destructive border-0 rounded-full text-xs px-2.5 h-6 font-semibold">
+            <Badge variant="negative" className="bg-destructive/10 text-destructive border-0 rounded-full text-xs px-2.5 h-6 font-semibold">
               {totalAlerts}
             </Badge>
           )}

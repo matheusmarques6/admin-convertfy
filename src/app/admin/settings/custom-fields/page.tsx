@@ -168,9 +168,9 @@ export default function CustomFieldsPage() {
                 <div key={field.id} className="flex items-center justify-between p-3 rounded-lg border">
                   <div className="flex items-center gap-3">
                     <span className="font-medium">{field.name}</span>
-                    <Badge variant="outline">{fieldTypeLabels[field.field_type] || field.field_type}</Badge>
+                    <Badge variant="neutral" showDot={false}>{fieldTypeLabels[field.field_type] || field.field_type}</Badge>
                     <Badge variant="neutral">{entityTypeLabels[field.entity_type] || field.entity_type}</Badge>
-                    {field.required && <Badge variant="destructive">Obrigatório</Badge>}
+                    {field.required && <Badge variant="negative">Obrigatório</Badge>}
                     {field.options && <span className="text-xs text-muted-foreground">({field.options.join(", ")})</span>}
                   </div>
                   <Button variant="ghost" size="icon" onClick={() => handleDelete(field.id)}>

@@ -21,7 +21,7 @@ export function SyncStatusBadge({ status, compact = false }: SyncStatusBadgeProp
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
-            <Badge variant="outline" className="text-muted-foreground gap-1">
+            <Badge variant="neutral" showDot={false} className="text-muted-foreground gap-1">
               <Icon icon={Clock} customSize={12} />
               {!compact && "Aguardando"}
             </Badge>
@@ -37,7 +37,7 @@ export function SyncStatusBadge({ status, compact = false }: SyncStatusBadgeProp
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
-            <Badge variant="outline" className="text-yellow-600 dark:text-yellow-400 border-yellow-600/30 dark:border-yellow-400/30 gap-1">
+            <Badge variant="neutral" showDot={false} className="text-yellow-600 dark:text-yellow-400 border-yellow-600/30 dark:border-yellow-400/30 gap-1">
               <Icon icon={AlertTriangle} customSize={12} />
               {!compact && "Dados parciais"}
             </Badge>
@@ -53,7 +53,7 @@ export function SyncStatusBadge({ status, compact = false }: SyncStatusBadgeProp
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Badge variant="outline" className="text-red-600 dark:text-red-400 border-red-600/30 dark:border-red-400/30 gap-1">
+          <Badge variant="neutral" showDot={false} className="text-red-600 dark:text-red-400 border-red-600/30 dark:border-red-400/30 gap-1">
             <AlertTriangle className="h-3 w-3" />
             {!compact && "Erro sync"}
           </Badge>

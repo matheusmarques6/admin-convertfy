@@ -358,7 +358,7 @@ export function RecoveryAnalysis({ stores, selectedStoreId }: RecoveryAnalysisPr
                       {data.byDiscountCode.map((item) => (
                         <TableRow key={item.code}>
                           <TableCell>
-                            <Badge variant="outline">{item.code}</Badge>
+                            <Badge variant="neutral" showDot={false}>{item.code}</Badge>
                           </TableCell>
                           <TableCell className="text-right">{item.orders}</TableCell>
                           <TableCell className="text-right font-medium">
@@ -391,7 +391,7 @@ export function RecoveryAnalysis({ stores, selectedStoreId }: RecoveryAnalysisPr
                       {data.byUtmSource.map((item) => (
                         <TableRow key={item.source}>
                           <TableCell>
-                            <Badge variant="outline">{item.source}</Badge>
+                            <Badge variant="neutral" showDot={false}>{item.source}</Badge>
                           </TableCell>
                           <TableCell className="text-right">{item.orders}</TableCell>
                           <TableCell className="text-right font-medium">

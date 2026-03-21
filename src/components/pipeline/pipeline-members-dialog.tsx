@@ -333,7 +333,7 @@ export function PipelineMembersDialog({
                             </Button>
                           </div>
                         ) : (
-                          <Badge variant="outline" className="text-xs">
+                          <Badge variant="neutral" showDot={false} className="text-xs">
                             <Icon icon={config.icon} customSize={12} className={`mr-1 ${config.color}`} />
                             {config.label}
                           </Badge>

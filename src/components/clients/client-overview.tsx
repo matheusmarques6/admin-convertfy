@@ -165,7 +165,7 @@ export function ClientOverview({ client }: ClientOverviewProps) {
           {isLoadingAsaas ? (
             <Icon icon={Loader2} size={16} className="animate-spin text-muted-foreground" />
           ) : hasAsaasId ? (
-            <Badge variant="success" className="text-xs">
+            <Badge variant="positive" className="text-xs">
               <Icon icon={CheckCircle2} customSize={12} className="mr-1" />
               Asaas
             </Badge>

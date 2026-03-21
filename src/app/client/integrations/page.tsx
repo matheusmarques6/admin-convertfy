@@ -393,7 +393,7 @@ export default function PortalIntegrationsPage() {
       {/* Integration Cards */}
       <div className="grid gap-6 md:grid-cols-3">
         {/* Shopify Card */}
-        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20">
+        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40">
           <CardHeader className="pb-3">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
@@ -438,7 +438,7 @@ export default function PortalIntegrationsPage() {
         </div>
 
         {/* Klaviyo Card */}
-        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20">
+        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40">
           <CardHeader className="pb-3">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
@@ -497,7 +497,7 @@ export default function PortalIntegrationsPage() {
         </div>
 
         {/* Rastreamento Card */}
-        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20">
+        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40">
           <CardHeader className="pb-3">
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-3">
@@ -569,7 +569,7 @@ export default function PortalIntegrationsPage() {
               return (
                 <div
                   key={carrier.id}
-                  className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 p-4 flex flex-col gap-3"
+                  className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-4 flex flex-col gap-3"
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-2.5">

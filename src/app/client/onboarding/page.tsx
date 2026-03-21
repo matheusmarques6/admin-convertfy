@@ -121,7 +121,7 @@ export default function PortalOnboardingPage() {
     return (
       <div className="space-y-6">
         <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Onboarding</h1>
-        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20">
+        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40">
           <div className="flex flex-col items-center justify-center py-16 text-center px-6">
             <div className="w-14 h-14 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4">
               <AlertCircle className="h-7 w-7 text-slate-400 dark:text-slate-500" />
@@ -150,7 +150,7 @@ export default function PortalOnboardingPage() {
       </div>
 
       {/* Progress Card */}
-      <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 p-6">
+      <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-6">
         {isCompleted ? (
           <div className="flex items-center gap-4">
             <div className="flex items-center justify-center h-14 w-14 rounded-full bg-emerald-50 dark:bg-emerald-500/10">
@@ -201,7 +201,7 @@ export default function PortalOnboardingPage() {
           const allDone = group.completed === group.total
 
           return (
-            <div key={group.category} className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 overflow-hidden">
+            <div key={group.category} className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 overflow-hidden">
               <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-700/30">
                 <div className="flex items-center justify-between">
                   <CardTitle className="flex items-center gap-2 text-[15px]">

@@ -411,24 +411,24 @@ export default function IntegrationsPage() {
                         <CardTitle className="text-base">{config.name}</CardTitle>
                         <div className="flex items-center gap-2 mt-1 flex-wrap">
                           {isConnected ? (
-                            <Badge variant="outline" className="text-success border-success">
+                            <Badge variant="neutral" showDot={false} className="text-success border-success">
                               <CheckCircle2 className="h-3 w-3 mr-1" />
                               Conectado
                             </Badge>
                           ) : (
-                            <Badge variant="outline" className="text-muted-foreground">
+                            <Badge variant="neutral" showDot={false} className="text-muted-foreground">
                               <XCircle className="h-3 w-3 mr-1" />
                               Desconectado
                             </Badge>
                           )}
                           {isConnected && config.type === "klaviyo" && status?.details && (
                             status.details.hasReportingAccess ? (
-                              <Badge variant="outline" className="text-success border-success">
+                              <Badge variant="neutral" showDot={false} className="text-success border-success">
                                 <BarChart3 className="h-3 w-3 mr-1" />
                                 Relatórios OK
                               </Badge>
                             ) : (
-                              <Badge variant="outline" className="text-warning border-warning">
+                              <Badge variant="neutral" showDot={false} className="text-warning border-warning">
                                 <AlertTriangle className="h-3 w-3 mr-1" />
                                 Sem relatórios
                               </Badge>

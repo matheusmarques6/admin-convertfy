@@ -34,7 +34,7 @@ export function MetricCard({
   highlight?: boolean
 }) {
   return (
-    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-4 shadow-sm dark:shadow-slate-900/20 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200">
+    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-4 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200">
       <div className="flex items-center gap-2 mb-3">
         <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
           highlight ? "bg-primary/10" : "bg-slate-100 dark:bg-slate-800"

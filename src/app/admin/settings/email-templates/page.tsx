@@ -143,7 +143,7 @@ export default function EmailTemplatesPage() {
                         </Button>
                       </div>
                     </div>
-                    <Badge variant="outline" className="mt-1 text-xs">{categoryLabels[tmpl.category] || tmpl.category}</Badge>
+                    <Badge variant="neutral" showDot={false} className="mt-1 text-xs">{categoryLabels[tmpl.category] || tmpl.category}</Badge>
                   </div>
                 ))}
               </div>

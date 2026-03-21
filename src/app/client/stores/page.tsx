@@ -257,7 +257,7 @@ export default function PortalStoresPage() {
 
       {/* Stores Grid */}
       {stores.length === 0 ? (
-        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20">
+        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40">
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Store className="h-12 w-12 text-slate-400 dark:text-slate-500 mb-4" />
             <h3 className="text-lg font-medium text-slate-800 dark:text-slate-100 mb-2">Nenhuma loja configurada</h3>
@@ -271,7 +271,7 @@ export default function PortalStoresPage() {
           {stores.map((store) => {
             const needsSetup = !store.hasKlaviyo || !store.shopify_access_token
             return (
-              <div key={store.id} className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20">
+              <div key={store.id} className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40">
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
@@ -357,7 +357,7 @@ export default function PortalStoresPage() {
 
       {/* Quick Stats Legend */}
       {stores.length > 0 && (
-        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20">
+        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40">
           <CardHeader>
             <CardTitle className="text-[15px] font-semibold text-slate-800 dark:text-slate-100">Como ler seus relatórios</CardTitle>
           </CardHeader>

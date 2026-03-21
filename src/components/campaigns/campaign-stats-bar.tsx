@@ -60,7 +60,7 @@ function StatCard({
   iconBgColor = "bg-emerald-50 dark:bg-emerald-500/10",
 }: StatCardProps) {
   return (
-    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 p-5 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow">
+    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow">
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">{title}</p>

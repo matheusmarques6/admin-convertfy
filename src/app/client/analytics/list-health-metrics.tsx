@@ -73,7 +73,7 @@ export function ListHealthMetrics({ klaviyo }: ListHealthMetricsProps) {
   const progress = (overallScore / 100) * circumference
 
   return (
-    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20">
+    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5">
       <div className="flex items-center gap-2 mb-4">
         <Icon icon={Shield} size={16} className="text-slate-500 dark:text-slate-400" />
         <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Saúde da Lista</h3>

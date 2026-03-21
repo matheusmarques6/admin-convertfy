@@ -213,7 +213,7 @@ export function StoreAlertsTab({ storeId }: StoreAlertsTabProps) {
         <div className="flex items-center gap-3">
           <h3 className="text-lg font-semibold">Alertas</h3>
           {activeCount > 0 && (
-            <Badge variant="destructive" className="text-xs">
+            <Badge variant="negative" className="text-xs">
               {activeCount} ativo{activeCount !== 1 ? "s" : ""}
             </Badge>
           )}

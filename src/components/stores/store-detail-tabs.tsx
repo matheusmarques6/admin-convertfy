@@ -310,7 +310,7 @@ export function StoreDetailTabs({
                   {platform && (
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Plataforma</span>
-                      <Badge variant="outline">{platform}</Badge>
+                      <Badge variant="neutral" showDot={false}>{platform}</Badge>
                     </div>
                   )}
                   <div className="flex justify-between items-center">
@@ -364,7 +364,7 @@ export function StoreDetailTabs({
                     <div className="flex justify-between items-center">
                       <span className="text-muted-foreground">Formulário</span>
                       {onboardingFormComplete ? (
-                        <Badge variant="success" className="text-[10px]">
+                        <Badge variant="positive" className="text-[10px]">
                           <CheckCircle2 className="h-3 w-3 mr-1" />
                           Preenchido
                         </Badge>
@@ -378,7 +378,7 @@ export function StoreDetailTabs({
                     <div className="flex justify-between items-center">
                       <span className="text-muted-foreground">Briefing</span>
                       {hasBriefing ? (
-                        <Badge variant="success" className="text-[10px]">
+                        <Badge variant="positive" className="text-[10px]">
                           <CheckCircle2 className="h-3 w-3 mr-1" />
                           Gerado
                         </Badge>

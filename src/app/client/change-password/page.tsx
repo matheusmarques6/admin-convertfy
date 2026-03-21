@@ -106,7 +106,7 @@ export default function ChangePasswordPage() {
   if (success) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F8F9FB] dark:bg-[#0B0E14] px-4">
-        <div className="bg-white dark:bg-[#151922] rounded-2xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 p-10 text-center max-w-md">
+        <div className="bg-white dark:bg-[#151922] rounded-2xl border border-slate-200/80 dark:border-slate-700/40 p-10 text-center max-w-md">
           <Icon icon={CheckCircle} customSize={32} className="text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 rounded-full mx-auto mb-4" />
           <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-100 mb-2">Senha alterada com sucesso!</h2>
           <p className="text-slate-500 dark:text-slate-400 text-sm">
@@ -131,7 +131,7 @@ export default function ChangePasswordPage() {
           </p>
         </div>
 
-        <div className="bg-white dark:bg-[#151922] rounded-2xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 overflow-hidden">
+        <div className="bg-white dark:bg-[#151922] rounded-2xl border border-slate-200/80 dark:border-slate-700/40 overflow-hidden">
           <div className="px-8 pt-8 pb-4 text-center">
             <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Primeira vez acessando?</h2>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Escolha uma senha segura para proteger sua conta</p>

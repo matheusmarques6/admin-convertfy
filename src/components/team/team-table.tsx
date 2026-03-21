@@ -294,7 +294,7 @@ export function TeamTable({ members, features, organizations, stores }: TeamTabl
                   </TableCell>
                   <TableCell>
                     {member.is_active ? (
-                      <Badge variant="success" className="flex items-center gap-1 w-fit">
+                      <Badge variant="positive" className="flex items-center gap-1 w-fit">
                         <UserCheck className="h-3 w-3" />
                         Ativo
                       </Badge>

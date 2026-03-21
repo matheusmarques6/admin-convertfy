@@ -134,7 +134,7 @@ export function CommemorativeDatesCard({ selectedMonth }: CommemorativeDatesCard
                       {d.date.split("-")[1]}/{String(month + 1).padStart(2, "0")}
                     </p>
                   </div>
-                  <Badge variant="outline" className={`text-[10px] shrink-0 ${categoryColors[d.category]}`}>
+                  <Badge variant="neutral" showDot={false} className={`text-[10px] shrink-0 ${categoryColors[d.category]}`}>
                     {categoryLabels[d.category]}
                   </Badge>
                 </button>

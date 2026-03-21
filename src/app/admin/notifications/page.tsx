@@ -133,7 +133,7 @@ export default function NotificationsPage() {
           <TabsTrigger value="unread" className="gap-2">
             Não lidas
             {unreadCount > 0 && (
-              <Badge variant="destructive" className="ml-1">{unreadCount}</Badge>
+              <Badge variant="negative" className="ml-1">{unreadCount}</Badge>
             )}
           </TabsTrigger>
         </TabsList>

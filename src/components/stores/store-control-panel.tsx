@@ -741,7 +741,7 @@ export function StoreControlPanel() {
                         {/* Feedback Status */}
                         <td className="px-4 py-3.5 text-center">
                           <div className="flex flex-col items-center gap-1">
-                            <Badge variant="outline" className={cn("text-[11px] font-medium gap-1 border", statusCfg.className)}>
+                            <Badge variant="neutral" showDot={false} className={cn("text-[11px] font-medium gap-1 border", statusCfg.className)}>
                               <span className={cn("w-1.5 h-1.5 rounded-full", statusCfg.dotColor)} />
                               {statusCfg.label}
                             </Badge>
@@ -943,7 +943,7 @@ export function StoreControlPanel() {
 
                     <div>
                       <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-0.5">Feedback</p>
-                      <Badge variant="outline" className={cn("text-[10px] font-medium gap-1 border px-1.5 py-0", statusCfg.className)}>
+                      <Badge variant="neutral" showDot={false} className={cn("text-[10px] font-medium gap-1 border px-1.5 py-0", statusCfg.className)}>
                         <span className={cn("w-1.5 h-1.5 rounded-full", statusCfg.dotColor)} />
                         {statusCfg.label}
                       </Badge>

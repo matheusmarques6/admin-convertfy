@@ -501,17 +501,17 @@ function UtmTemplatesSection({
                       )}
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="text-xs font-mono">
+                      <Badge variant="neutral" showDot={false} className="text-xs font-mono">
                         {t.utm_source}
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="text-xs font-mono">
+                      <Badge variant="neutral" showDot={false} className="text-xs font-mono">
                         {t.utm_medium}
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="text-xs font-mono">
+                      <Badge variant="neutral" showDot={false} className="text-xs font-mono">
                         {t.utm_campaign}
                       </Badge>
                     </TableCell>

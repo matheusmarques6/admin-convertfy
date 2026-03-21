@@ -399,12 +399,12 @@ export function ClientsTable({ clients, totalCount, currentPage, hasActiveFilter
                     ) : clientStatus ? (
                       <div className="space-y-1">
                         {clientStatus.hasOverdue ? (
-                          <Badge variant="destructive" className="flex items-center gap-1 w-fit">
+                          <Badge variant="negative" className="flex items-center gap-1 w-fit">
                             <AlertCircle className="h-3 w-3" />
                             Inadimplente
                           </Badge>
                         ) : (
-                          <Badge variant="success" className="flex items-center gap-1 w-fit">
+                          <Badge variant="positive" className="flex items-center gap-1 w-fit">
                             <CheckCircle2 className="h-3 w-3" />
                             Adimplente
                           </Badge>

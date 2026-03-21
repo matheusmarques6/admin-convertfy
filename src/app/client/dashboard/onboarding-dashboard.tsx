@@ -420,14 +420,14 @@ export function OnboardingDashboard({ firstName }: OnboardingDashboardProps) {
       </div>
 
       {/* Phase Pipeline */}
-      <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-6 shadow-sm dark:shadow-slate-900/20">
+      <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-6">
         <PipelineDesktop phases={phases} currentPhase={currentPhase} />
         <PipelineMobile phases={phases} currentPhase={currentPhase} />
       </div>
 
       {/* Current Phase Detail */}
       {currentSteps.length > 0 && (
-        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 border-l-4 border-l-[#05AFF2] p-6 shadow-sm dark:shadow-slate-900/20">
+        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 border-l-4 border-l-[#05AFF2] p-6">
           <div className="flex items-center gap-2 mb-1">
             <PhaseIcon className="h-4 w-4 text-[#05AFF2]" />
             <span className="text-xs uppercase tracking-wider text-slate-400 font-medium">
@@ -467,7 +467,7 @@ export function OnboardingDashboard({ firstName }: OnboardingDashboardProps) {
       {/* Bottom Row */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* ETA Card */}
-        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-6 shadow-sm dark:shadow-slate-900/20">
+        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-6">
           <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-[#05AFF2]/10 mb-4">
             <CalendarClock className="h-5 w-5 text-[#05AFF2]" />
           </div>
@@ -495,7 +495,7 @@ export function OnboardingDashboard({ firstName }: OnboardingDashboardProps) {
         </div>
 
         {/* Support CTA */}
-        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-6 shadow-sm dark:shadow-slate-900/20">
+        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-6">
           <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-emerald-500/10 mb-4">
             <MessageCircle className="h-5 w-5 text-emerald-500" />
           </div>

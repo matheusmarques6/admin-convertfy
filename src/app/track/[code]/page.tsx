@@ -160,7 +160,7 @@ export default function TrackPage() {
         )}
 
         {!loading && searched && results.length === 0 && (
-          <div className="text-center py-16 bg-white rounded-2xl border border-slate-200/80 shadow-sm">
+          <div className="text-center py-16 bg-white rounded-2xl border border-slate-200/80">
             <div className="w-16 h-16 rounded-full bg-slate-50 flex items-center justify-center mx-auto mb-4">
               <Package className="h-8 w-8 text-slate-300" />
             </div>

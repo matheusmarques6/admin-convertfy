@@ -271,8 +271,8 @@ export function CampaignModal({
                 <CardTitle className="text-xl">{campaign.name}</CardTitle>
                 <div className="flex items-center gap-2 mt-1 flex-wrap">
                   <Badge className={statusInfo.color}>{statusInfo.label}</Badge>
-                  <Badge variant="outline">{typeLabels[campaign.campaign_type]}</Badge>
-                  <Badge variant="outline" className="capitalize">
+                  <Badge variant="neutral" showDot={false}>{typeLabels[campaign.campaign_type]}</Badge>
+                  <Badge variant="neutral" showDot={false} className="capitalize">
                     {channelInfo?.label}
                   </Badge>
                   {campaign.source && sourceConfig[campaign.source] && (
@@ -713,7 +713,7 @@ export function CampaignModal({
                         <div className="flex items-center gap-2">
                           {h.from_status && (
                             <>
-                              <Badge variant="outline" className="text-xs">
+                              <Badge variant="neutral" showDot={false} className="text-xs">
                                 {statusConfig[h.from_status]?.label || h.from_status}
                               </Badge>
                               <span className="text-muted-foreground">→</span>

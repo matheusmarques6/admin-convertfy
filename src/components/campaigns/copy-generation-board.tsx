@@ -259,7 +259,7 @@ export function CopyGenerationBoard() {
           <div className="space-y-3">
             <div className="flex items-center gap-2 text-sm">
               <span className="text-muted-foreground">Role:</span>
-              <Badge variant="outline">
+              <Badge variant="neutral" showDot={false}>
                 {ROLE_CONFIG[actionTask?.role || ""]?.label || actionTask?.role}
               </Badge>
             </div>

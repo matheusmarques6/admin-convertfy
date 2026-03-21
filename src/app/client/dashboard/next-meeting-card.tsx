@@ -29,7 +29,7 @@ export function NextMeetingCard({ meetings }: NextMeetingCardProps) {
 
   if (!nextMeeting) {
     return (
-      <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200">
+      <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200">
         <div className="flex items-center gap-2 mb-3">
           <div className="flex items-center justify-center h-7 w-7 rounded-lg bg-purple-50 dark:bg-purple-500/10">
             <Icon icon={Video} size={16} className="text-purple-600" />
@@ -57,7 +57,7 @@ export function NextMeetingCard({ meetings }: NextMeetingCardProps) {
       : meetingDate.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
 
   return (
-    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200">
+    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200">
       <div className="flex items-center gap-2 mb-3">
         <div className={`flex items-center justify-center h-7 w-7 rounded-lg ${isWithin24h ? "bg-cyan-50 dark:bg-cyan-500/10" : "bg-purple-50 dark:bg-purple-500/10"}`}>
           <Icon icon={Video} size={16} className={isWithin24h ? "text-cyan-600" : "text-purple-600"} />
