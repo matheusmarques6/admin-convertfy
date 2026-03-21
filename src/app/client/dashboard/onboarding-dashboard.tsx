@@ -427,7 +427,7 @@ export function OnboardingDashboard({ firstName }: OnboardingDashboardProps) {
 
       {/* Current Phase Detail */}
       {currentSteps.length > 0 && (
-        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 border-l-4 border-l-[#05AFF2] p-6">
+        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-6">
           <div className="flex items-center gap-2 mb-1">
             <PhaseIcon className="h-4 w-4 text-[#05AFF2]" />
             <span className="text-xs uppercase tracking-wider text-slate-400 font-medium">

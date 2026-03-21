@@ -198,7 +198,7 @@ export function OnboardingApprovals() {
       </div>
 
       {onboardings.map((onb) => (
-        <Card key={onb.id} className="border-l-4 border-l-orange-400">
+        <Card key={onb.id}>
           <CardHeader className="pb-3">
             <div className="flex items-start justify-between">
               <div>
