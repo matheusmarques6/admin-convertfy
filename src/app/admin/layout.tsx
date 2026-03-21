@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
-import { Sidebar } from "@/components/layout/sidebar"
+import { Sidebar, SidebarMobileDrawer } from "@/components/layout/sidebar"
 import { Header } from "@/components/layout/header"
+import { MobileTopBar } from "@/components/layout/mobile-top-bar"
 import { DashboardClientWrapper } from "@/components/layout/dashboard-client-wrapper"
 import { ErrorBoundary } from "@/components/error-boundary"
 import { Permissions, StoreAccess } from "@/lib/hooks/use-permissions"
@@ -212,16 +213,25 @@ export default async function DashboardLayout({
   return (
     <DashboardClientWrapper initialPermissions={permissions}>
       <CommandPalette>
-        <div className="flex h-screen bg-background relative">
-          {/* Sidebar - Hidden on mobile */}
+        <div className="flex min-h-screen bg-[#FCFCFD] dark:bg-[#0F1117]">
+          {/* Sidebar — desktop/tablet (hidden on mobile) */}
           <div className="hidden md:block shrink-0">
             <Sidebar user={userData} />
           </div>
 
-          {/* Main Content */}
-          <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+          {/* Sidebar mobile drawer */}
+          <SidebarMobileDrawer user={userData} />
+
+          {/* Main content */}
+          <div className="flex-1 flex flex-col min-w-0">
+            {/* Mobile top bar — only < 768px */}
+            <MobileTopBar user={userData} />
+
+            {/* Desktop header — breadcrumbs + notifications (hidden on mobile) */}
             <Header user={userData} />
-            <main className="flex-1 overflow-auto px-4 py-5 md:px-8 md:py-6">
+
+            {/* Page content with responsive padding */}
+            <main className="flex-1 overflow-auto p-4 md:p-6 lg:p-8">
               <ErrorBoundary>
                 {children}
               </ErrorBoundary>

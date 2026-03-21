@@ -107,16 +107,16 @@
     --ring: var(--brand-400);
     --radius: var(--radius-md);
 
-    /* ═══ SIDEBAR (DS v3.0 — brand dark) ═══ */
-    --sidebar-background: var(--brand-900);
-    --sidebar-foreground: var(--gray-200);
-    --sidebar-primary: var(--brand-300);
+    /* ═══ SIDEBAR (DS v3.0 — light bg, brand active) ═══ */
+    --sidebar-background: #FFFFFF;
+    --sidebar-foreground: var(--gray-600);
+    --sidebar-primary: var(--brand-400);
     --sidebar-primary-foreground: #FFFFFF;
-    --sidebar-accent: var(--brand-800);
-    --sidebar-accent-foreground: var(--gray-100);
-    --sidebar-border: rgba(255,255,255,0.08);
+    --sidebar-accent: var(--brand-50);
+    --sidebar-accent-foreground: var(--brand-400);
+    --sidebar-border: rgba(0,0,0,0.08);
     --sidebar-ring: var(--brand-400);
-    --sidebar-muted: var(--brand-800);
+    --sidebar-muted: var(--gray-50);
     --sidebar-muted-foreground: var(--gray-400);
 
     /* ═══ CHART COLORS ═══ */
@@ -185,17 +185,17 @@
     --input: var(--dark-border);
     --ring: var(--dark-brand);
 
-    /* Sidebar dark */
-    --sidebar-background: #0A0C14;
-    --sidebar-foreground: var(--dark-text-secondary);
-    --sidebar-primary: var(--dark-brand);
+    /* Sidebar dark (DS v3.0 — surface bg, brand accent) */
+    --sidebar-background: #1A1D27;
+    --sidebar-foreground: #8B92A5;
+    --sidebar-primary: #7B8CEA;
     --sidebar-primary-foreground: #FFFFFF;
-    --sidebar-accent: var(--dark-surface);
-    --sidebar-accent-foreground: var(--dark-text);
-    --sidebar-border: var(--dark-border);
-    --sidebar-ring: var(--dark-brand);
-    --sidebar-muted: var(--dark-surface);
-    --sidebar-muted-foreground: var(--dark-text-muted);
+    --sidebar-accent: rgba(123,140,234,0.12);
+    --sidebar-accent-foreground: #7B8CEA;
+    --sidebar-border: rgba(255,255,255,0.08);
+    --sidebar-ring: #7B8CEA;
+    --sidebar-muted: #242836;
+    --sidebar-muted-foreground: #5C6378;
 
     /* Chart */
     --chart-1: var(--dark-brand);

@@ -7,7 +7,6 @@ import {
   Bell,
   Moon,
   Sun,
-  Menu,
   Check,
   Loader2,
   PartyPopper,
@@ -28,8 +27,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
-import { Sidebar } from "./sidebar"
 import { notificationService, type Notification } from "@/lib/services"
 import { useAuthStore } from "@/lib/store"
 import { toast } from "@/lib/hooks/use-toast"
@@ -227,19 +224,7 @@ export function Header({ user: userProp }: HeaderProps) {
   }, [pathname])
 
   return (
-    <header className="sticky top-0 z-40 flex h-14 items-center gap-2 sm:gap-4 border-b border-border bg-background/95 backdrop-blur-sm px-3 sm:px-6">
-      {/* Mobile Menu */}
-      <Sheet>
-        <SheetTrigger asChild>
-          <Button variant="ghost" size="icon" className="md:hidden h-8 w-8">
-            <Menu className="h-4 w-4" />
-          </Button>
-        </SheetTrigger>
-        <SheetContent side="left" className="p-0 w-[260px]">
-          <Sidebar user={userProp} forceExpanded />
-        </SheetContent>
-      </Sheet>
-
+    <header className="sticky top-0 z-40 hidden md:flex h-14 items-center gap-2 sm:gap-4 border-b border-border bg-background/95 backdrop-blur-sm px-3 sm:px-6">
       {/* Page Title with Breadcrumbs */}
       <div className="flex items-center gap-1 sm:gap-1.5 min-w-0 flex-1">
         {pageInfo.breadcrumbs.length > 0 ? (
