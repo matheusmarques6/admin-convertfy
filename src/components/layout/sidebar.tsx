@@ -220,7 +220,7 @@ export function Sidebar({ user, forceExpanded }: SidebarProps & { forceExpanded?
                 "relative flex items-center justify-center h-9 w-9 mx-auto rounded-lg transition-colors duration-150",
                 active
                   ? "text-white"
-                  : "text-[#b0b8c1] hover:text-white hover:bg-white/[0.07]"
+                  : "text-sidebar-foreground hover:text-white hover:bg-white/[0.07]"
               )}
             >
               {active && (
@@ -252,7 +252,7 @@ export function Sidebar({ user, forceExpanded }: SidebarProps & { forceExpanded?
               "relative flex items-center gap-3 h-9 px-3 w-full rounded-lg text-[13px] transition-colors duration-150",
               active
                 ? "text-white font-medium"
-                : "text-[#b0b8c1] hover:text-white hover:bg-white/[0.07]"
+                : "text-sidebar-foreground hover:text-white hover:bg-white/[0.07]"
             )}
           >
             {active && (
@@ -266,7 +266,7 @@ export function Sidebar({ user, forceExpanded }: SidebarProps & { forceExpanded?
             <span className="relative z-10 truncate">{item.name}</span>
             <ChevronDown
               className={cn(
-                "h-3 w-3 ml-auto relative z-10 text-[#6e7681] transition-transform duration-200",
+                "h-3 w-3 ml-auto relative z-10 text-sidebar-muted-foreground transition-transform duration-200",
                 isExpanded && "rotate-180"
               )}
             />
@@ -311,7 +311,7 @@ export function Sidebar({ user, forceExpanded }: SidebarProps & { forceExpanded?
           "relative flex items-center gap-3 h-9 px-3 rounded-lg text-[13px] transition-colors duration-150",
           active
             ? "text-white font-medium"
-            : "text-[#b0b8c1] hover:text-white hover:bg-white/[0.07]"
+            : "text-sidebar-foreground hover:text-white hover:bg-white/[0.07]"
         )}
       >
         {active && (
@@ -324,7 +324,7 @@ export function Sidebar({ user, forceExpanded }: SidebarProps & { forceExpanded?
         <Icon className="h-[18px] w-[18px] shrink-0 relative z-10" strokeWidth={1.7} />
         <span className="relative z-10 truncate">{item.name}</span>
         {item.badge && (
-          <span className="relative z-10 ml-auto text-[10px] font-medium bg-convertfy-blue/20 text-convertfy-blue px-1.5 py-0.5 rounded">
+          <span className="relative z-10 ml-auto text-[10px] font-medium bg-sidebar-primary/20 text-sidebar-primary px-1.5 py-0.5 rounded">
             {item.badge}
           </span>
         )}
@@ -357,7 +357,7 @@ export function Sidebar({ user, forceExpanded }: SidebarProps & { forceExpanded?
               {groupedNavigation.map((group, idx) => (
                 <div key={group.key} className={cn(idx > 0 && "mt-6")}>
                   {!sidebarCollapsed && group.label && (
-                    <p className="px-2.5 mb-1.5 text-[10px] font-semibold tracking-[0.08em] text-[#6e7681] uppercase">
+                    <p className="px-2.5 mb-1.5 text-[10px] font-semibold tracking-[0.08em] text-sidebar-muted-foreground uppercase">
                       {group.label}
                     </p>
                   )}
@@ -409,14 +409,14 @@ export function Sidebar({ user, forceExpanded }: SidebarProps & { forceExpanded?
                 {!sidebarCollapsed && (
                   <>
                     <div className="text-left overflow-hidden flex-1 min-w-0">
-                      <p className="text-[12px] font-medium text-[#e6edf3] truncate leading-tight">
+                      <p className="text-[12px] font-medium text-white truncate leading-tight">
                         {user?.name || "Usuario"}
                       </p>
-                      <p className="text-[10px] text-[#6e7681] truncate leading-tight">
+                      <p className="text-[10px] text-sidebar-muted-foreground truncate leading-tight">
                         {user?.email}
                       </p>
                     </div>
-                    <ChevronDown className="h-3 w-3 text-[#6e7681] shrink-0" />
+                    <ChevronDown className="h-3 w-3 text-sidebar-muted-foreground shrink-0" />
                   </>
                 )}
               </button>
@@ -469,7 +469,7 @@ export function Sidebar({ user, forceExpanded }: SidebarProps & { forceExpanded?
           {/* Collapse */}
           {!sidebarCollapsed ? (
             <button
-              className="flex items-center justify-center w-full h-7 mt-1 rounded-md text-[#6e7681] hover:text-[#b0b8c1] hover:bg-white/[0.06] transition-colors duration-150"
+              className="flex items-center justify-center w-full h-7 mt-1 rounded-md text-sidebar-muted-foreground hover:text-sidebar-foreground hover:bg-white/[0.06] transition-colors duration-150"
               onClick={() => setSidebarCollapsed(true)}
             >
               <ChevronLeft className="h-3.5 w-3.5" />
@@ -478,7 +478,7 @@ export function Sidebar({ user, forceExpanded }: SidebarProps & { forceExpanded?
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
-                  className="flex items-center justify-center w-full h-7 mt-1 rounded-md text-[#6e7681] hover:text-[#b0b8c1] hover:bg-white/[0.06] transition-colors duration-150"
+                  className="flex items-center justify-center w-full h-7 mt-1 rounded-md text-sidebar-muted-foreground hover:text-sidebar-foreground hover:bg-white/[0.06] transition-colors duration-150"
                   onClick={() => setSidebarCollapsed(false)}
                 >
                   <ChevronRight className="h-3.5 w-3.5" />

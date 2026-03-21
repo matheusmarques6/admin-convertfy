@@ -166,7 +166,7 @@ export function RevenueGoalCard({ currentRevenue, isLoading }: RevenueGoalCardPr
                   ? "bg-gradient-to-r from-success to-emerald-400"
                   : percentage >= 70
                     ? "bg-gradient-to-r from-warning to-amber-400"
-                    : "bg-gradient-to-r from-primary to-convertfy-blue"
+                    : "bg-gradient-to-r from-primary to-brand-400"
               )}
               style={{ width: `${percentage}%` }}
             />

@@ -243,8 +243,8 @@ const CircularProgress = ({
             strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="round" className="transition-all duration-1000 ease-out" />
           <defs>
             <linearGradient id="blueGradientFS" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="hsl(var(--primary))" />
-              <stop offset="100%" stopColor="hsl(var(--primary))" />
+              <stop offset="0%" stopColor="var(--primary)" />
+              <stop offset="100%" stopColor="var(--primary)" />
             </linearGradient>
           </defs>
         </svg>

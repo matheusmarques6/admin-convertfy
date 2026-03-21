@@ -339,10 +339,10 @@ export function WorkflowBuilder({ initialNodes = [], initialEdges = [], onChange
         animated: false,
         style: {
           strokeWidth: 2,
-          stroke: "hsl(var(--muted-foreground))",
+          stroke: "var(--muted-foreground)",
           strokeDasharray: "5 5",
         },
-        markerEnd: { type: MarkerType.ArrowClosed, color: "hsl(var(--muted-foreground))" },
+        markerEnd: { type: MarkerType.ArrowClosed, color: "var(--muted-foreground)" },
       }
       setEdges((eds) => addEdge(newEdge, eds))
     },
@@ -380,10 +380,10 @@ export function WorkflowBuilder({ initialNodes = [], initialEdges = [], onChange
         animated: false,
         style: {
           strokeWidth: 2,
-          stroke: "hsl(var(--muted-foreground))",
+          stroke: "var(--muted-foreground)",
           strokeDasharray: "5 5",
         },
-        markerEnd: { type: MarkerType.ArrowClosed, color: "hsl(var(--muted-foreground))" },
+        markerEnd: { type: MarkerType.ArrowClosed, color: "var(--muted-foreground)" },
       }
       setEdges((eds) => [...eds, newEdge])
     }
@@ -613,7 +613,7 @@ export function WorkflowBuilder({ initialNodes = [], initialEdges = [], onChange
               animated: false,
               style: {
                 strokeWidth: 2,
-                stroke: "hsl(var(--muted-foreground))",
+                stroke: "var(--muted-foreground)",
                 strokeDasharray: "5 5",
               },
             }}
@@ -623,7 +623,7 @@ export function WorkflowBuilder({ initialNodes = [], initialEdges = [], onChange
               variant={BackgroundVariant.Dots}
               gap={24}
               size={1}
-              color="hsl(var(--muted-foreground) / 0.15)"
+              color="color-mix(in srgb, var(--muted-foreground) 15%, transparent)"
             />
             <Controls
               className="!bg-card !border-border !shadow-lg [&>button]:!bg-card [&>button]:!border-border [&>button]:!text-foreground [&>button:hover]:!bg-muted"

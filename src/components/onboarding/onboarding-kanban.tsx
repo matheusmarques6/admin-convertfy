@@ -156,7 +156,7 @@ const LEGACY_STAGES: OnboardingStatus[] = ["not_started", "in_progress", "paused
 
 const STEP_CATEGORIES: Record<string, { label: string; color: string }> = {
   preparacao: { label: "Preparação", color: "#6366F1" },
-  integracao: { label: "Integração", color: "hsl(var(--primary))" },
+  integracao: { label: "Integração", color: "var(--primary)" },
   configuracao: { label: "Configuração", color: "#EC4899" },
   lancamento: { label: "Lançamento", color: "#10B981" },
 }

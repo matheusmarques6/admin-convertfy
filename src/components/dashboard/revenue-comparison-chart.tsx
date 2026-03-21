@@ -113,8 +113,8 @@ export function RevenueComparisonChart({
       <div className="rounded-xl border border-border bg-card">
         <CardHeader className="pb-3">
           <div className="flex items-center gap-2.5">
-            <div className="h-8 w-8 rounded-lg bg-convertfy-blue/10 flex items-center justify-center">
-              <BarChart3 className="h-4 w-4 text-convertfy-blue" />
+            <div className="h-8 w-8 rounded-lg bg-brand-400/10 flex items-center justify-center">
+              <BarChart3 className="h-4 w-4 text-brand-400" />
             </div>
             <CardTitle className="text-sm font-semibold">Faturamento: Total vs Convertfy</CardTitle>
           </div>
@@ -131,14 +131,14 @@ export function RevenueComparisonChart({
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2.5">
-            <div className="h-8 w-8 rounded-lg bg-convertfy-blue/10 flex items-center justify-center">
-              <BarChart3 className="h-4 w-4 text-convertfy-blue" />
+            <div className="h-8 w-8 rounded-lg bg-brand-400/10 flex items-center justify-center">
+              <BarChart3 className="h-4 w-4 text-brand-400" />
             </div>
             <div>
               <CardTitle className="text-sm font-semibold">Faturamento: Total vs Convertfy</CardTitle>
               {convertfyPercentage > 0 && (
                 <p className="text-[11px] text-muted-foreground">
-                  Convertfy representa <span className="font-semibold text-convertfy-blue">{convertfyPercentage.toFixed(1)}%</span> do faturamento
+                  Convertfy representa <span className="font-semibold text-brand-400">{convertfyPercentage.toFixed(1)}%</span> do faturamento
                 </p>
               )}
             </div>
@@ -172,24 +172,24 @@ export function RevenueComparisonChart({
               <AreaChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                 <defs>
                   <linearGradient id="storeRevenueGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="hsl(var(--muted-foreground))" stopOpacity={0.15} />
-                    <stop offset="95%" stopColor="hsl(var(--muted-foreground))" stopOpacity={0} />
+                    <stop offset="5%" stopColor="var(--muted-foreground)" stopOpacity={0.15} />
+                    <stop offset="95%" stopColor="var(--muted-foreground)" stopOpacity={0} />
                   </linearGradient>
                   <linearGradient id="convertfyRevenueGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#05AFF2" stopOpacity={0.25} />
-                    <stop offset="95%" stopColor="#05AFF2" stopOpacity={0} />
+                    <stop offset="5%" stopColor="#4E62D8" stopOpacity={0.25} />
+                    <stop offset="95%" stopColor="#4E62D8" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis
                   dataKey="month"
-                  stroke="hsl(var(--muted-foreground))"
+                  stroke="var(--muted-foreground)"
                   fontSize={11}
                   tickLine={false}
                   axisLine={false}
                 />
                 <YAxis
-                  stroke="hsl(var(--muted-foreground))"
+                  stroke="var(--muted-foreground)"
                   fontSize={11}
                   tickLine={false}
                   axisLine={false}
@@ -203,8 +203,8 @@ export function RevenueComparisonChart({
                 />
                 <RechartsTooltip
                   contentStyle={{
-                    backgroundColor: "hsl(var(--card))",
-                    border: "1px solid hsl(var(--border))",
+                    backgroundColor: "var(--card)",
+                    border: "1px solid var(--border)",
                     borderRadius: "8px",
                     fontSize: "12px",
                   }}
@@ -217,7 +217,7 @@ export function RevenueComparisonChart({
                   type="monotone"
                   dataKey="storeRevenue"
                   name="storeRevenue"
-                  stroke="hsl(var(--muted-foreground))"
+                  stroke="var(--muted-foreground)"
                   strokeWidth={2}
                   fill="url(#storeRevenueGradient)"
                   dot={false}
@@ -227,7 +227,7 @@ export function RevenueComparisonChart({
                   type="monotone"
                   dataKey="convertfyRevenue"
                   name="convertfyRevenue"
-                  stroke="#05AFF2"
+                  stroke="#4E62D8"
                   strokeWidth={2}
                   fill="url(#convertfyRevenueGradient)"
                   dot={false}
@@ -252,7 +252,7 @@ export function RevenueComparisonChart({
             <span className="text-muted-foreground">Faturamento Total (Asaas)</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-3 h-0.5 rounded-full bg-convertfy-blue" />
+            <div className="w-3 h-0.5 rounded-full bg-brand-400" />
             <span className="text-muted-foreground">Gerado pela Convertfy (Klaviyo)</span>
           </div>
         </div>

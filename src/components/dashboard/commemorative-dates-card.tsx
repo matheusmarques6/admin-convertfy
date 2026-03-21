@@ -205,7 +205,7 @@ export function CommemorativeDatesCard({ selectedMonth }: CommemorativeDatesCard
                 {/* Recommended campaign types */}
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
-                    <Mail className="h-4 w-4 text-convertfy-blue" />
+                    <Mail className="h-4 w-4 text-brand-400" />
                     <h4 className="text-sm font-semibold text-foreground">Tipos de Campanha Recomendados</h4>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
