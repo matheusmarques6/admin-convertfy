@@ -272,7 +272,7 @@ function StatsRow({ stats }: StatsRowProps) {
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
       {items.map((item) => (
-        <Card key={item.label} className={`border ${item.borderColor} transition-shadow hover:shadow-sm`}>
+        <Card key={item.label} className={`border ${item.borderColor} transition-shadow`}>
           <CardContent className="p-4">
             <div className="flex items-start gap-3">
               <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${item.bg}`}>

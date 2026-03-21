@@ -506,7 +506,7 @@ export function StoreControlPanel() {
                   "group rounded-xl border p-4 text-left transition-all duration-200",
                   isActive
                     ? card.bgActive
-                    : "border-border bg-card hover:border-border/80 hover:shadow-sm"
+                    : "border-border bg-card hover:border-border/80"
                 )}
               >
                 <div className="flex items-center justify-between mb-2">

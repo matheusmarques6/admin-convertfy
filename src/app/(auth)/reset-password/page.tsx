@@ -271,7 +271,7 @@ function ResetPasswordContent() {
               </p>
             </CardContent>
             <CardFooter>
-              <Button asChild className="w-full" variant="gradient">
+              <Button asChild className="w-full" variant="primary">
                 <Link href="/forgot-password">Solicitar Novo Link</Link>
               </Button>
             </CardFooter>
@@ -293,7 +293,7 @@ function ResetPasswordContent() {
               </p>
             </CardContent>
             <CardFooter>
-              <Button asChild className="w-full" variant="gradient">
+              <Button asChild className="w-full" variant="primary">
                 <Link href="/login">Ir para Login</Link>
               </Button>
             </CardFooter>
@@ -378,7 +378,7 @@ function ResetPasswordContent() {
                 <Button
                   type="submit"
                   className="w-full"
-                  variant="gradient"
+                  variant="primary"
                   disabled={isLoading}
                 >
                   {isLoading && <Icon icon={Loader2} size={16} className="mr-2 animate-spin" />}

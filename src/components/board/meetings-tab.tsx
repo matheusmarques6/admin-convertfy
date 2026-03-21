@@ -242,7 +242,7 @@ export function MeetingsTab({ meetings, clients, members = [], onMeetingChange }
                 <div className="text-center py-8 text-muted-foreground">
                   <Icon icon={Video} customSize={40} className="mx-auto mb-2 opacity-50" />
                   <p>Nenhuma reunião agendada</p>
-                  <Button variant="link" onClick={handleNewMeeting}>
+                  <Button variant="ghost" onClick={handleNewMeeting}>
                     Agendar primeira reunião
                   </Button>
                 </div>

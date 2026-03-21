@@ -246,7 +246,7 @@ export function MeetingCalendar({
                     <Icon icon={Video} customSize={32} className="mb-2 opacity-30" />
                     <p>Nenhuma reunião</p>
                     <Button
-                      variant="link"
+                      variant="ghost"
                       size="sm"
                       className="mt-1"
                       onClick={() => handleSlotClick(selectedDate)}

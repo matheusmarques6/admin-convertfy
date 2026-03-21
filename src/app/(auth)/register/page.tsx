@@ -181,7 +181,7 @@ export default function RegisterPage() {
               <Button
                 type="submit"
                 className="w-full"
-                variant="gradient"
+                variant="primary"
                 disabled={isLoading}
               >
                 {isLoading && <Icon icon={Loader2} size={16} className="mr-2 animate-spin" />}
