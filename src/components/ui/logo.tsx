@@ -9,10 +9,10 @@ interface LogoProps {
 }
 
 const sizes = {
-  sm: { height: 24, width: 110 },
-  md: { height: 28, width: 130 },
-  lg: { height: 32, width: 150 },
-  xl: { height: 40, width: 186 },
+  sm: { height: 26, width: 120 },
+  md: { height: 32, width: 150 },
+  lg: { height: 36, width: 168 },
+  xl: { height: 44, width: 206 },
 }
 
 /**
@@ -31,8 +31,8 @@ export function Logo({ className, size = "md" }: LogoProps) {
         alt="Convertfy"
         width={sizeConfig.width}
         height={sizeConfig.height}
-        className="h-auto w-auto object-contain dark:hidden"
-        style={{ maxHeight: sizeConfig.height, maxWidth: sizeConfig.width }}
+        className="object-contain dark:hidden"
+        style={{ height: sizeConfig.height, width: "auto" }}
         priority
       />
       {/* Dark mode logo */}
@@ -41,8 +41,8 @@ export function Logo({ className, size = "md" }: LogoProps) {
         alt="Convertfy"
         width={sizeConfig.width}
         height={sizeConfig.height}
-        className="h-auto w-auto object-contain hidden dark:block"
-        style={{ maxHeight: sizeConfig.height, maxWidth: sizeConfig.width }}
+        className="object-contain hidden dark:block"
+        style={{ height: sizeConfig.height, width: "auto" }}
         priority
       />
     </div>
