@@ -51,7 +51,7 @@ async function getDashboardData() {
     // Board preview: active tasks
     supabase
       .from("tasks")
-      .select("id, status, due_date")
+      .select("id, title, status, due_date")
       .not("status", "in", '("completed","cancelled")'),
     // Week calendar: meetings this week
     supabase
