@@ -180,7 +180,7 @@ export function DashboardTopBar({
             Dashboard
           </h1>
           <p className="text-sm text-gray-500 dark:text-[#8B92A5] mt-0.5">
-            {getGreeting()}, {userName} 👋
+            {getGreeting()}, {userName}
           </p>
         </div>
 
