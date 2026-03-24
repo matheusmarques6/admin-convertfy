@@ -102,11 +102,6 @@ function getLastRun(logs?: { executed_at: string }[]): string | null {
   return sorted[0].executed_at
 }
 
-function formatCompact(value: number): string {
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
-  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`
-  return value.toLocaleString("pt-BR")
-}
 
 // ─── ChannelBadge ────────────────────────────────────────
 

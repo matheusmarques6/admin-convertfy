@@ -1,6 +1,6 @@
 import { Metadata } from "next"
 import { Rocket } from "lucide-react"
-import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/server"
 import { PagePermissionWrapper } from "@/components/page-permission-wrapper"
 import { PageHeader } from "@/components/ui/page-header"
 import { OnboardingOverviewClient } from "@/components/onboarding/onboarding-overview-client"

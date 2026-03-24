@@ -8,7 +8,7 @@ import {
   Draggable,
   type DropResult,
 } from "@hello-pangea/dnd"
-import { Rocket, LayoutGrid, List, ChevronLeft, ChevronRight } from "lucide-react"
+import { LayoutGrid, List, ChevronLeft, ChevronRight } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
 import { BrandIcon, BRAND_ICONS } from "@/components/ui/icon"
 import { Badge } from "@/components/ui/badge"
@@ -329,7 +329,7 @@ function BoardView({
 
 function ListView({
   items,
-  phaseLabels,
+  phaseLabels: _phaseLabels,
   onClickItem,
 }: {
   items: OnboardingStoreItem[]

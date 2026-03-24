@@ -3,7 +3,6 @@ import Link from "next/link"
 import { createAdminClient, createClient } from "@/lib/supabase/server"
 import { resolveOrgId } from "@/lib/api/resolve-org"
 import { getStoreIntegrationStatus } from "@/lib/services/credentials.service"
-import { Badge } from "@/components/ui/badge"
 import { StatusBadge } from "@/components/ui/status-badge"
 import { PageHeader } from "@/components/ui/page-header"
 import { BrandIcon } from "@/components/ui/icon"
@@ -138,7 +137,7 @@ export default async function StoreDetailPage({
   }
 
   const integrationStatus = store.integrationStatus
-  const connectedCount = Object.values(integrationStatus).filter((s: any) => s?.connected).length
+  const _connectedCount = Object.values(integrationStatus).filter((s: unknown) => (s as Record<string, unknown>)?.connected).length
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const clientName = (store.clients as any)?.name || null
   const platformIcon = getPlatformIcon(store.platform)
