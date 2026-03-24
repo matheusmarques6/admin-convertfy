@@ -120,13 +120,13 @@ const logicTypes = [
 function TriggerNode({ data, selected }: { data: { label: string; type: string; config?: Record<string, unknown> }; selected: boolean }) {
   return (
     <div className={cn(
-      "relative rounded-xl shadow-lg min-w-[180px] transition-all",
+      "relative rounded-[8px] shadow-lg min-w-[180px] transition-all",
       selected ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : "",
     )}>
       {/* Green top bar */}
-      <div className="h-2 bg-emerald-500 rounded-t-xl" />
+      <div className="h-2 bg-emerald-500 rounded-t-[8px]" />
 
-      <div className="bg-card border border-t-0 rounded-b-xl px-4 py-3">
+      <div className="bg-card border border-t-0 rounded-b-[8px] px-4 py-3">
         <Handle type="source" position={Position.Bottom} className="!bg-emerald-500 !w-3 !h-3 !border-2 !border-background" />
 
         <div className="flex items-center gap-3">
@@ -155,13 +155,13 @@ function ActionNode({ data, selected }: { data: { label: string; type: string; c
 
   return (
     <div className={cn(
-      "relative rounded-xl shadow-lg min-w-[180px] transition-all",
+      "relative rounded-[8px] shadow-lg min-w-[180px] transition-all",
       selected ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : "",
     )}>
       {/* Colored top bar */}
-      <div className="h-2 rounded-t-xl" style={{ backgroundColor: color }} />
+      <div className="h-2 rounded-t-[8px]" style={{ backgroundColor: color }} />
 
-      <div className="bg-card border border-t-0 rounded-b-xl px-4 py-3">
+      <div className="bg-card border border-t-0 rounded-b-[8px] px-4 py-3">
         <Handle type="target" position={Position.Top} className="!w-3 !h-3 !border-2 !border-background" style={{ backgroundColor: color }} />
         <Handle type="source" position={Position.Bottom} className="!w-3 !h-3 !border-2 !border-background" style={{ backgroundColor: color }} />
 
@@ -199,12 +199,12 @@ function DelayNode({ data, selected }: { data: { label: string; config?: Record<
 
   return (
     <div className={cn(
-      "relative rounded-xl shadow-lg min-w-[140px] transition-all",
+      "relative rounded-[8px] shadow-lg min-w-[140px] transition-all",
       selected ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : "",
     )}>
-      <div className="h-2 bg-orange-500 rounded-t-xl" />
+      <div className="h-2 bg-orange-500 rounded-t-[8px]" />
 
-      <div className="bg-card border border-t-0 rounded-b-xl px-4 py-3">
+      <div className="bg-card border border-t-0 rounded-b-[8px] px-4 py-3">
         <Handle type="target" position={Position.Top} className="!bg-orange-500 !w-3 !h-3 !border-2 !border-background" />
         <Handle type="source" position={Position.Bottom} className="!bg-orange-500 !w-3 !h-3 !border-2 !border-background" />
 
@@ -230,12 +230,12 @@ function DelayNode({ data, selected }: { data: { label: string; config?: Record<
 function ConditionNode({ data, selected }: { data: { label: string; type: string; config?: Record<string, unknown> }; selected: boolean }) {
   return (
     <div className={cn(
-      "relative rounded-xl shadow-lg min-w-[160px] transition-all",
+      "relative rounded-[8px] shadow-lg min-w-[160px] transition-all",
       selected ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : "",
     )}>
-      <div className="h-2 bg-blue-500 rounded-t-xl" />
+      <div className="h-2 bg-blue-500 rounded-t-[8px]" />
 
-      <div className="bg-card border border-t-0 rounded-b-xl px-4 py-3">
+      <div className="bg-card border border-t-0 rounded-b-[8px] px-4 py-3">
         <Handle type="target" position={Position.Top} className="!bg-blue-500 !w-3 !h-3 !border-2 !border-background" />
         <Handle type="source" position={Position.Bottom} id="yes" className="!bg-emerald-500 !w-3 !h-3 !border-2 !border-background !left-[30%]" />
         <Handle type="source" position={Position.Bottom} id="no" className="!bg-red-500 !w-3 !h-3 !border-2 !border-background !left-[70%]" />
@@ -267,12 +267,12 @@ function RandomizerNode({ data, selected }: { data: { label: string; config?: Re
 
   return (
     <div className={cn(
-      "relative rounded-xl shadow-lg min-w-[140px] transition-all",
+      "relative rounded-[8px] shadow-lg min-w-[140px] transition-all",
       selected ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : "",
     )}>
-      <div className="h-2 bg-red-500 rounded-t-xl" />
+      <div className="h-2 bg-red-500 rounded-t-[8px]" />
 
-      <div className="bg-card border border-t-0 rounded-b-xl px-4 py-3">
+      <div className="bg-card border border-t-0 rounded-b-[8px] px-4 py-3">
         <Handle type="target" position={Position.Top} className="!bg-red-500 !w-3 !h-3 !border-2 !border-background" />
         <Handle type="source" position={Position.Bottom} id="a" className="!bg-blue-500 !w-3 !h-3 !border-2 !border-background !left-[30%]" />
         <Handle type="source" position={Position.Bottom} id="b" className="!bg-violet-500 !w-3 !h-3 !border-2 !border-background !left-[70%]" />

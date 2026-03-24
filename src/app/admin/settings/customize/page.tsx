@@ -131,7 +131,7 @@ function CustomFieldsTab() {
     }
   }
 
-  if (loading) return <Skeleton className="h-64 rounded-xl mt-6" />
+  if (loading) return <Skeleton className="h-64 rounded-[8px] mt-6" />
 
   return (
     <div className="mt-6 space-y-6">
@@ -264,7 +264,7 @@ function TagsTab() {
     }
   }
 
-  if (loading) return <Skeleton className="h-64 rounded-xl mt-6" />
+  if (loading) return <Skeleton className="h-64 rounded-[8px] mt-6" />
 
   return (
     <div className="mt-6 space-y-6">
@@ -420,7 +420,7 @@ function EmailTemplatesTab() {
     }
   }
 
-  if (loading) return <Skeleton className="h-64 rounded-xl mt-6" />
+  if (loading) return <Skeleton className="h-64 rounded-[8px] mt-6" />
 
   return (
     <div className="mt-6 space-y-4">

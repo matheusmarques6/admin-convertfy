@@ -100,7 +100,7 @@ interface OperationalOverviewProps {
 
 export function OperationalOverview({ activities, onboardings }: OperationalOverviewProps) {
   return (
-    <div className="rounded-xl border border-border bg-card">
+    <div className="rounded-[8px] border border-border bg-card">
       <CardHeader className="p-5 pb-3">
         <div className="flex items-center gap-2">
           <Activity className="h-4 w-4 text-muted-foreground" />

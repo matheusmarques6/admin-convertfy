@@ -97,7 +97,7 @@ export function CommemorativeDatesCard({ selectedMonth }: CommemorativeDatesCard
 
   return (
     <>
-      <div className="rounded-xl border border-border bg-card h-full flex flex-col">
+      <div className="rounded-[8px] border border-border bg-card h-full flex flex-col">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">

@@ -11,7 +11,7 @@ interface FooterStatsProps {
 
 export function FooterStats({ klaviyo, shopify, lastUpdated }: FooterStatsProps) {
   return (
-    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-4">
+    <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-4">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div className="flex items-center gap-3 sm:gap-6">
           <div className="flex items-center gap-2">

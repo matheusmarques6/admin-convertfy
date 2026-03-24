@@ -55,7 +55,7 @@ export function ConversionsSection({ shopify }: ConversionsSectionProps) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       {/* Coupon Conversions */}
-      <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5">
+      <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium text-slate-800 dark:text-slate-100 flex items-center gap-2">
             <Icon icon={Ticket} size={16} className="text-primary" />
@@ -103,10 +103,10 @@ export function ConversionsSection({ shopify }: ConversionsSectionProps) {
       </div>
 
       {/* UTM Conversions */}
-      <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5">
+      <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium text-slate-800 dark:text-slate-100 flex items-center gap-2">
-            <Icon icon={Link2} size={16} className="text-[#05AFF2]" />
+            <Icon icon={Link2} size={16} className="text-[#4E62D8] dark:text-[#7B8CEA]" />
             Conversoes por UTM
           </h3>
           <span className="text-xs text-slate-500 dark:text-slate-400">Pedidos pagos</span>

@@ -60,7 +60,7 @@ export function OnboardingPreview({ onboardings, userRole }: OnboardingPreviewPr
     .slice(0, 3)
 
   return (
-    <div className="rounded-xl border border-border bg-card h-full flex flex-col">
+    <div className="rounded-[8px] border border-border bg-card h-full flex flex-col">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -118,7 +118,7 @@ export function OnboardingPreview({ onboardings, userRole }: OnboardingPreviewPr
             })}
 
             {/* Average progress */}
-            <div className="space-y-1.5 p-3 rounded-xl bg-muted/20">
+            <div className="space-y-1.5 p-3 rounded-[8px] bg-muted/20">
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground font-medium">Progresso Medio</span>
                 <span className="font-bold text-foreground">{avgProgress}%</span>

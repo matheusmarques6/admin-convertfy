@@ -298,7 +298,7 @@ export default function PortalLayout({
         href={item.href}
         onClick={onLinkClick}
         className={cn(
-          "group relative flex items-center gap-3 h-10 px-3 rounded-xl text-[13px] transition-all duration-200",
+          "group relative flex items-center gap-3 h-10 px-3 rounded-[8px] text-[13px] transition-all duration-200",
           active
             ? "text-white font-medium"
             : "text-[#8b95a5] hover:text-white hover:bg-white/[0.06]"
@@ -307,7 +307,7 @@ export default function PortalLayout({
         {active && (
           <motion.div
             layoutId="portal-nav-active"
-            className="absolute inset-0 rounded-xl bg-white/[0.10] ring-1 ring-white/[0.08]"
+            className="absolute inset-0 rounded-[8px] bg-white/[0.10] ring-1 ring-white/[0.08]"
             transition={{ type: "spring", stiffness: 380, damping: 30 }}
           />
         )}
@@ -315,7 +315,7 @@ export default function PortalLayout({
           "relative z-10 flex items-center justify-center w-7 h-7 rounded-lg transition-colors duration-200",
           active ? "bg-white/[0.12]" : "bg-transparent group-hover:bg-white/[0.06]"
         )}>
-          <Icon className="h-[16px] w-[16px]" strokeWidth={1.8} />
+          <Icon className="h-[16px] w-[16px]" strokeWidth={2} />
         </div>
         <span className="relative z-10 truncate">{item.name}</span>
         {showBadge && (
@@ -359,18 +359,18 @@ export default function PortalLayout({
     return (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button className="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl hover:bg-white/[0.06] transition-all duration-200 text-left outline-none group">
+          <button className="flex items-center gap-3 w-full px-3 py-2.5 rounded-[8px] hover:bg-white/[0.06] transition-all duration-200 text-left outline-none group">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center shrink-0 ring-1 ring-white/[0.06]">
-              <Store className="h-4 w-4 text-primary" strokeWidth={1.8} />
+              <Store className="h-4 w-4 text-primary" strokeWidth={2} />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[12px] font-semibold text-[#e6edf3] truncate leading-tight">{activeStore?.name || "Selecionar loja"}</p>
-              <p className="text-[10px] text-[#6e7681] truncate leading-tight capitalize">{activeStore?.platform || ""}</p>
+              <p className="text-[12px] font-semibold text-[#EAEDF3] truncate leading-tight">{activeStore?.name || "Selecionar loja"}</p>
+              <p className="text-[10px] text-[#5C6378] truncate leading-tight capitalize">{activeStore?.platform || ""}</p>
             </div>
             <ChevronsUpDown className="h-3 w-3 text-[#4a5568] group-hover:text-[#8b95a5] shrink-0 transition-colors" />
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent side="top" align="start" className="w-56 rounded-xl p-1">
+        <DropdownMenuContent side="top" align="start" className="w-56 rounded-[8px] p-1">
           <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold px-2">Lojas</DropdownMenuLabel>
           {stores.map((store) => (
             <DropdownMenuItem
@@ -397,7 +397,7 @@ export default function PortalLayout({
   const AccountMenu = ({ side = "top" as "top" | "right" }: { side?: "top" | "right" }) => (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button className="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl hover:bg-white/[0.06] transition-all duration-200 text-left outline-none group">
+        <button className="flex items-center gap-3 w-full px-3 py-2.5 rounded-[8px] hover:bg-white/[0.06] transition-all duration-200 text-left outline-none group">
           <Avatar className="h-8 w-8 shrink-0 rounded-lg ring-1 ring-white/[0.08]">
             {user.avatar_url && <AvatarImage src={user.avatar_url} alt={user.name} />}
             <AvatarFallback className="rounded-lg bg-gradient-to-br from-[#1a2332] to-[#0d1520] text-[#c9d1d9] text-[10px] font-semibold">
@@ -405,13 +405,13 @@ export default function PortalLayout({
             </AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
-            <p className="text-[12px] font-semibold text-[#e6edf3] truncate leading-tight">{user.name}</p>
-            <p className="text-[10px] text-[#6e7681] truncate leading-tight">{user.clientName}</p>
+            <p className="text-[12px] font-semibold text-[#EAEDF3] truncate leading-tight">{user.name}</p>
+            <p className="text-[10px] text-[#5C6378] truncate leading-tight">{user.clientName}</p>
           </div>
           <ChevronDown className="h-3 w-3 text-[#4a5568] group-hover:text-[#8b95a5] shrink-0 transition-colors" />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent side={side} align="start" className="w-56 rounded-xl p-1">
+      <DropdownMenuContent side={side} align="start" className="w-56 rounded-[8px] p-1">
         <DropdownMenuLabel className="font-normal px-3 py-2.5">
           <p className="text-sm font-semibold">{user.name}</p>
           <p className="text-xs text-muted-foreground mt-0.5">{user.email}</p>
@@ -471,11 +471,11 @@ export default function PortalLayout({
         <div className="fixed top-0 left-0 right-0 z-40 flex h-14 items-center gap-3 border-b border-slate-200/60 dark:border-white/[0.06] bg-white/90 dark:bg-[#0a0d12]/90 backdrop-blur-xl px-4">
           <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
             <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl text-slate-600 dark:text-slate-400">
-                <Menu className="h-5 w-5" strokeWidth={1.5} />
+              <Button variant="ghost" size="icon" className="h-9 w-9 rounded-[8px] text-slate-600 dark:text-slate-400">
+                <Menu className="h-5 w-5" strokeWidth={2} />
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="w-[280px] p-0 bg-[#0d1117] border-none">
+            <SheetContent side="left" className="w-[280px] p-0 bg-[#1A1D27] border-none">
               <div className="flex flex-col h-full">
                 {/* Logo */}
                 <div className="flex h-16 items-center justify-between px-5">
@@ -503,11 +503,11 @@ export default function PortalLayout({
             <span className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{getPageTitle()}</span>
           </div>
 
-          <PortalThemeToggle className="h-9 w-9 rounded-xl text-slate-400 dark:text-slate-300 hover:text-slate-600 dark:hover:text-slate-100" />
+          <PortalThemeToggle className="h-9 w-9 rounded-[8px] text-slate-400 dark:text-slate-300 hover:text-slate-600 dark:hover:text-slate-100" />
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl">
+              <Button variant="ghost" size="icon" className="h-9 w-9 rounded-[8px]">
                 <Avatar className="h-8 w-8 rounded-lg">
                   {user.avatar_url && <AvatarImage src={user.avatar_url} alt={user.name} />}
                   <AvatarFallback className="rounded-lg bg-slate-100 dark:bg-[#21262d] text-slate-600 dark:text-[#c9d1d9] text-[11px] font-semibold">
@@ -516,7 +516,7 @@ export default function PortalLayout({
                 </Avatar>
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56 rounded-xl p-1">
+            <DropdownMenuContent align="end" className="w-56 rounded-[8px] p-1">
               <DropdownMenuLabel className="px-3 py-2.5">
                 <p className="font-semibold text-sm">{user.name}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">{user.email}</p>
@@ -545,9 +545,9 @@ export default function PortalLayout({
             )}
           </div>
           <div className="flex items-center gap-1.5">
-            <PortalThemeToggle className="h-8 w-8 rounded-xl text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.05] transition-all" />
-            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-xl text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.05]">
-              <Bell className="h-[18px] w-[18px]" strokeWidth={1.5} />
+            <PortalThemeToggle className="h-8 w-8 rounded-[8px] text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.05] transition-all" />
+            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-[8px] text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.05]">
+              <Bell className="h-[18px] w-[18px]" strokeWidth={2} />
             </Button>
           </div>
         </header>

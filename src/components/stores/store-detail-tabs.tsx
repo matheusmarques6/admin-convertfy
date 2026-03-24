@@ -293,7 +293,7 @@ export function StoreDetailTabs({
             {/* Info cards grid */}
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {/* Store Info */}
-              <Card className="rounded-xl">
+              <Card className="rounded-[8px]">
                 <CardHeader>
                   <CardTitle className="text-base">Informações da Loja</CardTitle>
                 </CardHeader>
@@ -341,7 +341,7 @@ export function StoreDetailTabs({
 
               {/* Onboarding Status */}
               {onboardingStatus && (
-                <Card className="rounded-xl">
+                <Card className="rounded-[8px]">
                   <CardHeader>
                     <CardTitle className="text-base">Status do Onboarding</CardTitle>
                   </CardHeader>
@@ -564,7 +564,7 @@ function CampaignsTab({
       )}
 
       {data?.campaigns && data.campaigns.length > 0 ? (
-        <Card className="rounded-xl">
+        <Card className="rounded-[8px]">
           <CardContent className="pt-6">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -691,7 +691,7 @@ function FlowsTab({
       )}
 
       {data?.flows && data.flows.length > 0 ? (
-        <Card className="rounded-xl">
+        <Card className="rounded-[8px]">
           <CardContent className="pt-6">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -799,7 +799,7 @@ function IntegrationStatusCard({
   ]
 
   return (
-    <Card className="rounded-xl md:col-span-2">
+    <Card className="rounded-[8px] md:col-span-2">
       <CardHeader>
         <CardTitle className="text-base">Status das Integrações</CardTitle>
         <CardDescription>Serviços conectados a esta loja</CardDescription>
@@ -1015,7 +1015,7 @@ function CredentialsForm({
   }
 
   return (
-    <Card className="rounded-xl">
+    <Card className="rounded-[8px]">
       <CardHeader>
         <CardTitle>Credenciais de Integração</CardTitle>
         <CardDescription>
@@ -1204,7 +1204,7 @@ function CredentialsForm({
 // --- Metric Card ---
 function MetricCard({ label, value }: { label: string; value: string | number }) {
   return (
-    <Card className="rounded-xl">
+    <Card className="rounded-[8px]">
       <CardContent className="pt-4 pb-3">
         <p className="text-sm text-muted-foreground">{label}</p>
         <p className="text-2xl font-bold mt-1">{value}</p>

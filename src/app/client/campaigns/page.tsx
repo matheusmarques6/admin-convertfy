@@ -203,16 +203,16 @@ function PortalCampaignsContent() {
     return (
       <div className="min-h-screen bg-slate-50/50 dark:bg-[#0B0E14] p-6 space-y-6">
         <div className="flex items-center justify-between">
-          <Skeleton className="h-10 w-64 bg-white dark:bg-[#151922]" />
-          <Skeleton className="h-10 w-32 bg-white dark:bg-[#151922]" />
+          <Skeleton className="h-10 w-64 bg-white dark:bg-[#1A1D27]" />
+          <Skeleton className="h-10 w-32 bg-white dark:bg-[#1A1D27]" />
         </div>
         <div className="grid gap-4 md:grid-cols-4">
           {[1, 2, 3, 4].map((i) => (
-            <Skeleton key={i} className="h-24 rounded-xl bg-white dark:bg-[#151922]" />
+            <Skeleton key={i} className="h-24 rounded-[8px] bg-white dark:bg-[#1A1D27]" />
           ))}
         </div>
-        <Skeleton className="h-12 rounded-xl bg-white dark:bg-[#151922]" />
-        <Skeleton className="h-[500px] rounded-xl bg-white dark:bg-[#151922]" />
+        <Skeleton className="h-12 rounded-[8px] bg-white dark:bg-[#1A1D27]" />
+        <Skeleton className="h-[500px] rounded-[8px] bg-white dark:bg-[#1A1D27]" />
       </div>
     )
   }
@@ -223,10 +223,8 @@ function PortalCampaignsContent() {
   if (error) {
     return (
       <div className="min-h-screen bg-slate-50/50 dark:bg-[#0B0E14] flex flex-col items-center justify-center p-6">
-        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-8 text-center max-w-md">
-          <div className="rounded-full bg-red-50 dark:bg-red-500/10 p-4 w-fit mx-auto mb-4">
-            <AlertCircle className="h-10 w-10 text-red-600" />
-          </div>
+        <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-8 text-center max-w-md">
+          <AlertCircle className="h-7 w-7 text-red-500 mx-auto mb-4" />
           <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-100 mb-2">Erro ao carregar</h2>
           <p className="text-slate-500 dark:text-slate-400 mb-6">{error}</p>
           <Button onClick={fetchCampaigns} className="bg-primary hover:bg-primary/85 text-white">
@@ -251,7 +249,7 @@ function PortalCampaignsContent() {
               variant="secondary"
               onClick={fetchCampaigns}
               disabled={loading}
-              className="bg-white dark:bg-[#151922] border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-white/[0.06]"
+              className="bg-white dark:bg-[#1A1D27] border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-white/[0.06]"
             >
               <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
               Atualizar
@@ -262,7 +260,7 @@ function PortalCampaignsContent() {
           <CampaignStatsBar stats={stats} />
 
           {/* Filters & Navigation */}
-          <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-4">
+          <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-4">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <CalendarNavigation
                 month={month}

@@ -66,7 +66,7 @@ export function WeekCalendarPreview({ meetings, tasks }: WeekCalendarPreviewProp
   )
 
   return (
-    <div className="rounded-xl border border-border bg-card h-full flex flex-col">
+    <div className="rounded-[8px] border border-border bg-card h-full flex flex-col">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -92,7 +92,7 @@ export function WeekCalendarPreview({ meetings, tasks }: WeekCalendarPreviewProp
               <div
                 key={i}
                 className={cn(
-                  "flex flex-col items-center py-2.5 rounded-xl transition-all duration-200",
+                  "flex flex-col items-center py-2.5 rounded-[8px] transition-all duration-200",
                   isToday ? "bg-primary/10 ring-1 ring-primary/30 shadow-sm" : "hover:bg-muted/50"
                 )}
               >

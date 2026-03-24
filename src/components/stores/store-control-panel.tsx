@@ -461,7 +461,7 @@ export function StoreControlPanel() {
       <div className="space-y-4">
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="rounded-xl border border-border p-4 space-y-3">
+            <div key={i} className="rounded-[8px] border border-border p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <Skeleton className="h-3 w-16" />
                 <Skeleton className="w-8 h-8 rounded-lg" />
@@ -472,9 +472,9 @@ export function StoreControlPanel() {
         </div>
         <div className="space-y-3">
           {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="rounded-xl border border-border p-4">
+            <div key={i} className="rounded-[8px] border border-border p-4">
               <div className="flex items-center gap-4">
-                <Skeleton className="w-10 h-10 rounded-xl shrink-0" />
+                <Skeleton className="w-10 h-10 rounded-[8px] shrink-0" />
                 <div className="flex-1 space-y-2">
                   <Skeleton className="h-4 w-32" />
                   <Skeleton className="h-3 w-24" />
@@ -503,7 +503,7 @@ export function StoreControlPanel() {
                 key={card.key}
                 onClick={() => handleFilterStatusChange(card.key)}
                 className={cn(
-                  "group rounded-xl border p-4 text-left transition-all duration-200",
+                  "group rounded-[8px] border p-4 text-left transition-all duration-200",
                   isActive
                     ? card.bgActive
                     : "border-border bg-card hover:border-border/80"
@@ -616,7 +616,7 @@ export function StoreControlPanel() {
       {/* ─── Store List ────────────────────────────────────────── */}
       {stores.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 px-4">
-          <div className="w-14 h-14 rounded-2xl bg-muted flex items-center justify-center mb-4">
+          <div className="w-14 h-14 rounded-[8px] bg-muted flex items-center justify-center mb-4">
             <Store className="w-7 h-7 text-muted-foreground" />
           </div>
           <p className="text-sm font-medium text-foreground mb-1">Nenhuma loja encontrada</p>
@@ -629,7 +629,7 @@ export function StoreControlPanel() {
       ) : (
         <>
           {/* Desktop Table (hidden on mobile) */}
-          <div className="hidden lg:block rounded-xl border border-border overflow-hidden bg-card">
+          <div className="hidden lg:block rounded-[8px] border border-border overflow-hidden bg-card">
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
@@ -659,7 +659,7 @@ export function StoreControlPanel() {
                         {/* Store / Client */}
                         <td className="px-4 py-3.5">
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/10 flex items-center justify-center shrink-0">
+                            <div className="w-10 h-10 rounded-[8px] bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/10 flex items-center justify-center shrink-0">
                               <Store className="w-4.5 h-4.5 text-primary" />
                             </div>
                             <div className="min-w-0">
@@ -847,14 +847,14 @@ export function StoreControlPanel() {
                   key={store.id}
                   onClick={() => router.push(`/admin/stores/${store.id}`)}
                   className={cn(
-                    "rounded-xl border border-border bg-card p-4 space-y-3 active:bg-muted/50 transition-colors cursor-pointer",
+                    "rounded-[8px] border border-border bg-card p-4 space-y-3 active:bg-muted/50 transition-colors cursor-pointer",
                     isLoading && "opacity-50"
                   )}
                 >
                   {/* Header */}
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/10 flex items-center justify-center shrink-0">
+                      <div className="w-10 h-10 rounded-[8px] bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/10 flex items-center justify-center shrink-0">
                         <Store className="w-4.5 h-4.5 text-primary" />
                       </div>
                       <div className="min-w-0">
@@ -1172,7 +1172,7 @@ export function StoreControlPanel() {
             <div className="space-y-4">
               <div className="rounded-lg bg-muted/30 border border-border p-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center">
+                  <div className="w-10 h-10 rounded-[8px] bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center">
                     <Store className="w-5 h-5 text-primary" />
                   </div>
                   <div>

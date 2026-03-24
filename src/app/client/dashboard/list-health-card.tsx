@@ -22,7 +22,7 @@ export function ListHealthCard({ bounceRate, unsubscribeRate }: ListHealthCardPr
   const progress = (score / 100) * circumference
 
   return (
-    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 hover:shadow-md transition-shadow duration-200">
+    <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5 hover:shadow-md transition-shadow duration-200">
       <div className="flex items-center gap-2 mb-4">
         <div className={`w-7 h-7 rounded-lg ${status.iconBg} flex items-center justify-center`}>
           <Icon icon={Shield} customSize={14} className={status.iconColor} />

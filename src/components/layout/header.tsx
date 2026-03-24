@@ -257,7 +257,7 @@ export function Header({ user: userProp }: HeaderProps) {
           <Button
             variant="ghost"
             size="sm"
-            className="hidden sm:flex items-center gap-2 h-9 px-3 text-muted-foreground hover:text-foreground rounded-xl border border-border bg-muted/50"
+            className="hidden sm:flex items-center gap-2 h-9 px-3 text-muted-foreground hover:text-foreground rounded-[8px] border border-border bg-muted/50"
             onClick={commandPalette.open}
           >
             <Search className="h-3.5 w-3.5" />
@@ -271,7 +271,7 @@ export function Header({ user: userProp }: HeaderProps) {
           <Button
             variant="ghost"
             size="icon"
-            className="sm:hidden h-9 w-9 text-muted-foreground hover:text-foreground rounded-xl"
+            className="sm:hidden h-9 w-9 text-muted-foreground hover:text-foreground rounded-[8px]"
             onClick={commandPalette.open}
           >
             <Search className="h-4 w-4" />
@@ -282,7 +282,7 @@ export function Header({ user: userProp }: HeaderProps) {
         <Button
           variant="ghost"
           size="icon"
-          className="h-9 w-9 text-muted-foreground hover:text-foreground rounded-xl"
+          className="h-9 w-9 text-muted-foreground hover:text-foreground rounded-[8px]"
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
         >
           <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
@@ -293,7 +293,7 @@ export function Header({ user: userProp }: HeaderProps) {
         {/* Notifications */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="relative h-9 w-9 text-muted-foreground hover:text-foreground rounded-xl">
+            <Button variant="ghost" size="icon" className="relative h-9 w-9 text-muted-foreground hover:text-foreground rounded-[8px]">
               <Bell className="h-4 w-4" />
               {unreadCount > 0 && (
                 <span className="absolute -top-0.5 -right-0.5 h-[18px] min-w-[18px] px-1 rounded-full bg-primary flex items-center justify-center text-[10px] font-bold text-white">

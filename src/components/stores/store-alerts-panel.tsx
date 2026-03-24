@@ -208,7 +208,7 @@ export function StoreAlertsPanel() {
       {/* Summary Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <div
-          className={`rounded-xl border p-4 transition-all ${
+          className={`rounded-[8px] border p-4 transition-all ${
             activeCount > 0
               ? "bg-destructive/5 border-destructive/20"
               : "bg-card border-border"
@@ -241,7 +241,7 @@ export function StoreAlertsPanel() {
                 setFilterType(type)
                 setFilterStatus("all")
               }}
-              className={`rounded-xl border p-4 text-left transition-all hover:bg-muted/50 ${
+              className={`rounded-[8px] border p-4 text-left transition-all hover:bg-muted/50 ${
                 filterType === type ? "ring-1 ring-border" : ""
               } ${count > 0 ? config.bgColor + " border-border" : "bg-card border-border"}`}
             >
@@ -329,7 +329,7 @@ export function StoreAlertsPanel() {
           </CardContent>
         </Card>
       ) : (
-        <div className="rounded-xl border border-border overflow-hidden">
+        <div className="rounded-[8px] border border-border overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>

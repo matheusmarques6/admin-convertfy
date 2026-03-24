@@ -69,10 +69,10 @@ export default function PortalFlowsPage() {
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[1, 2, 3, 4].map(i => (
-            <Skeleton key={i} className="h-24 bg-white dark:bg-[#151922] rounded-xl border border-slate-100 dark:border-slate-700/30" />
+            <Skeleton key={i} className="h-24 bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-100 dark:border-slate-700/30" />
           ))}
         </div>
-        <Skeleton className="h-80 bg-white dark:bg-[#151922] rounded-xl border border-slate-100 dark:border-slate-700/30" />
+        <Skeleton className="h-80 bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-100 dark:border-slate-700/30" />
       </div>
     )
   }
@@ -80,7 +80,7 @@ export default function PortalFlowsPage() {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh]">
-        <div className="bg-white dark:bg-[#151922] rounded-2xl border border-slate-200 dark:border-slate-700/40 p-10 text-center max-w-md">
+        <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200 dark:border-slate-700/40 p-10 text-center max-w-md">
           <div className="w-14 h-14 rounded-full bg-red-50 dark:bg-red-500/10 flex items-center justify-center mx-auto mb-4">
             <AlertCircle className="h-7 w-7 text-red-500" />
           </div>
@@ -127,11 +127,11 @@ export default function PortalFlowsPage() {
         </div>
         <div className="flex items-center gap-3">
           <Select value={period} onValueChange={setPeriod}>
-            <SelectTrigger className="w-[140px] h-10 bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40 text-slate-700 dark:text-slate-200 rounded-lg">
+            <SelectTrigger className="w-[140px] h-10 bg-white dark:bg-[#1A1D27] border-slate-200 dark:border-slate-700/40 text-slate-700 dark:text-slate-200 rounded-lg">
               <CalendarDays className="h-4 w-4 mr-2 text-slate-400 dark:text-slate-500" />
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40 shadow-lg">
+            <SelectContent className="bg-white dark:bg-[#1A1D27] border-slate-200 dark:border-slate-700/40 shadow-lg">
               <SelectItem value="7d">7 dias</SelectItem>
               <SelectItem value="15d">15 dias</SelectItem>
               <SelectItem value="30d">30 dias</SelectItem>
@@ -143,7 +143,7 @@ export default function PortalFlowsPage() {
             size="icon"
             onClick={() => fetchData(true)}
             disabled={refreshing}
-            className="h-10 w-10 bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06] rounded-lg"
+            className="h-10 w-10 bg-white dark:bg-[#1A1D27] border-slate-200 dark:border-slate-700/40 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06] rounded-lg"
           >
             <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
           </Button>
@@ -163,7 +163,7 @@ export default function PortalFlowsPage() {
 
         {/* Flows Table */}
         <AnimatedItem>
-          <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 overflow-hidden">
+          <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700/30">
               <h3 className="text-[15px] font-semibold text-slate-800 dark:text-slate-100">Todos os Flows</h3>
             </div>
@@ -218,11 +218,11 @@ export default function PortalFlowsPage() {
 
       {selectedFlow && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setSelectedFlow(null)}>
-          <div className="bg-white dark:bg-[#151922] rounded-2xl border border-slate-200 dark:border-slate-700/40 shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
+          <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200 dark:border-slate-700/40 shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
             <div className="p-6 border-b border-slate-100 dark:border-slate-700/30">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-purple-50 dark:bg-purple-500/10 flex items-center justify-center">
+                  <div className="w-10 h-10 rounded-[8px] bg-purple-50 dark:bg-purple-500/10 flex items-center justify-center">
                     <Zap className="h-5 w-5 text-purple-600" />
                   </div>
                   <div>
@@ -237,24 +237,24 @@ export default function PortalFlowsPage() {
             </div>
             <div className="p-6 space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-4">
+                <div className="bg-slate-50 dark:bg-slate-800/50 rounded-[8px] p-4">
                   <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Entregas</p>
                   <p className="text-xl font-bold text-slate-800 dark:text-slate-100">{formatNumber(selectedFlow.delivered)}</p>
                 </div>
-                <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-4">
+                <div className="bg-slate-50 dark:bg-slate-800/50 rounded-[8px] p-4">
                   <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Receita</p>
                   <p className="text-xl font-bold text-emerald-600">{formatCurrency(selectedFlow.revenue)}</p>
                 </div>
-                <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-4">
+                <div className="bg-slate-50 dark:bg-slate-800/50 rounded-[8px] p-4">
                   <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Taxa de Abertura</p>
                   <p className="text-xl font-bold text-slate-800 dark:text-slate-100">{selectedFlow.openRate.toFixed(1)}%</p>
                 </div>
-                <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-4">
+                <div className="bg-slate-50 dark:bg-slate-800/50 rounded-[8px] p-4">
                   <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Taxa de Clique</p>
                   <p className="text-xl font-bold text-slate-800 dark:text-slate-100">{selectedFlow.clickRate.toFixed(1)}%</p>
                 </div>
               </div>
-              <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-4">
+              <div className="bg-slate-50 dark:bg-slate-800/50 rounded-[8px] p-4">
                 <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Receita por Destinatário</p>
                 <p className="text-xl font-bold text-slate-800 dark:text-slate-100">
                   {formatCurrency(selectedFlow.delivered > 0 ? selectedFlow.revenue / selectedFlow.delivered : 0)}
@@ -288,7 +288,7 @@ function SummaryCard({
   isSmallValue?: boolean
 }) {
   return (
-    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-4 hover:shadow-md transition-shadow duration-200">
+    <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-4 hover:shadow-md transition-shadow duration-200">
       <div className="flex items-center gap-2 mb-3">
         <div className={`w-7 h-7 rounded-lg ${iconBg} flex items-center justify-center`}>
           <Icon className={`h-3.5 w-3.5 ${iconColor}`} />

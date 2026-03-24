@@ -135,7 +135,7 @@ export function WelcomeTour() {
         <div className="px-6 pt-8 pb-6 text-center">
           <div
             className={cn(
-              "mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl",
+              "mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-[8px]",
               "bg-primary/10"
             )}
           >

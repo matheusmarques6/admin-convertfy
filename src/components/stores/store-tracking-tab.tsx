@@ -176,7 +176,7 @@ export function StoreTrackingTab({ storeId }: StoreTrackingTabProps) {
   return (
     <div className="space-y-6">
       {/* Header com toggle */}
-      <Card className="rounded-xl">
+      <Card className="rounded-[8px]">
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
@@ -206,7 +206,7 @@ export function StoreTrackingTab({ storeId }: StoreTrackingTabProps) {
 
       <div className="grid gap-6 md:grid-cols-2">
         {/* Config */}
-        <Card className="rounded-xl">
+        <Card className="rounded-[8px]">
           <CardHeader>
             <CardTitle className="text-base">Configuração</CardTitle>
           </CardHeader>
@@ -282,7 +282,7 @@ export function StoreTrackingTab({ storeId }: StoreTrackingTabProps) {
         {/* Snippet + Stats */}
         <div className="space-y-6">
           {/* Snippet */}
-          <Card className="rounded-xl">
+          <Card className="rounded-[8px]">
             <CardHeader>
               <CardTitle className="text-base">Código para instalar na loja</CardTitle>
               <CardDescription>
@@ -308,7 +308,7 @@ export function StoreTrackingTab({ storeId }: StoreTrackingTabProps) {
           </Card>
 
           {/* Stats */}
-          <Card className="rounded-xl">
+          <Card className="rounded-[8px]">
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="text-base">Estatísticas</CardTitle>
@@ -356,7 +356,7 @@ export function StoreTrackingTab({ storeId }: StoreTrackingTabProps) {
           </Button>
 
           {showPreview && (
-            <Card className="rounded-xl overflow-hidden">
+            <Card className="rounded-[8px] overflow-hidden">
               <CardContent className="p-0">
                 <iframe
                   srcDoc={`<!DOCTYPE html><html><body style="margin:0;padding:16px;font-family:sans-serif;"><div id="convertfy-tracking"></div><script src="${origin}/api/script/widget.js" data-store-id="${storeId}"></script></body></html>`}

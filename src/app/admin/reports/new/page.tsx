@@ -468,7 +468,7 @@ export default function NewReportPage() {
         <div className="grid gap-6 lg:grid-cols-3">
           {/* Main Form */}
           <div className="lg:col-span-2 space-y-6">
-            <Card className="rounded-xl border">
+            <Card className="rounded-[8px] border">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <FileText className="h-5 w-5" />
@@ -702,7 +702,7 @@ export default function NewReportPage() {
 
           {/* Preview Panel */}
           <div className="space-y-6">
-            <Card className="rounded-xl border">
+            <Card className="rounded-[8px] border">
               <CardHeader>
                 <CardTitle className="text-base">Resumo</CardTitle>
               </CardHeader>
@@ -772,7 +772,7 @@ export default function NewReportPage() {
             </Card>
 
             {/* Help Card */}
-            <Card className="rounded-xl border bg-muted/50">
+            <Card className="rounded-[8px] border bg-muted/50">
               <CardContent className="pt-6">
                 <h4 className="font-medium mb-2">Dicas</h4>
                 <ul className="text-sm text-muted-foreground space-y-2">

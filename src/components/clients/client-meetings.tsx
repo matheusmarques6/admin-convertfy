@@ -74,7 +74,7 @@ export function ClientMeetings({ clientId }: ClientMeetingsProps) {
       </div>
 
       {/* Upcoming Meetings */}
-      <Card className="rounded-xl border">
+      <Card className="rounded-[8px] border">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <Icon icon={Calendar} size={20} className="text-primary" />
@@ -128,7 +128,7 @@ export function ClientMeetings({ clientId }: ClientMeetingsProps) {
 
       {/* Past Meetings */}
       {pastMeetings.length > 0 && (
-        <Card className="rounded-xl border">
+        <Card className="rounded-[8px] border">
           <CardHeader>
             <CardTitle className="text-base">Histórico de Reuniões</CardTitle>
           </CardHeader>

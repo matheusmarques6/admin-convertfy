@@ -78,10 +78,10 @@ const variantStyles: Record<
   },
   dark: {
     active: {
-      card: "border-[#05AFF2]/20 bg-[#05AFF2]/5",
-      icon: "text-[#05AFF2]",
+      card: "border-[#4E62D8]/20 bg-[#4E62D8]/5",
+      icon: "text-[#4E62D8]",
       text: "text-sm font-medium text-white",
-      progress: "[&>div]:bg-[#05AFF2]",
+      progress: "[&>div]:bg-[#4E62D8]",
       muted: "text-white/60",
     },
     done: {

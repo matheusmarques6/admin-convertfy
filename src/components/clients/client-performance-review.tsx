@@ -210,7 +210,7 @@ export function ClientPerformanceKPIs() {
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             {/* Receita Total (Loja) - via Klaviyo metric-aggregates */}
             <Card
-              className={`rounded-xl border bg-card p-6 ${isMultiStore ? "cursor-pointer hover:border-border/80 transition-colors" : ""}`}
+              className={`rounded-[8px] border bg-card p-6 ${isMultiStore ? "cursor-pointer hover:border-border/80 transition-colors" : ""}`}
               onClick={isMultiStore ? () => toggleCard("revenue") : undefined}
             >
               <div className="flex items-center justify-between pb-2">
@@ -254,7 +254,7 @@ export function ClientPerformanceKPIs() {
 
             {/* Revenue Atribuido (Email) */}
             <Card
-              className={`rounded-xl border bg-card p-6 ${isMultiStore ? "cursor-pointer hover:border-border/80 transition-colors" : ""}`}
+              className={`rounded-[8px] border bg-card p-6 ${isMultiStore ? "cursor-pointer hover:border-border/80 transition-colors" : ""}`}
               onClick={isMultiStore ? () => toggleCard("email") : undefined}
             >
               <div className="flex items-center justify-between pb-2">
@@ -300,7 +300,7 @@ export function ClientPerformanceKPIs() {
 
             {/* Campanhas & Flows + Open/Click Rate inline */}
             <Card
-              className={`rounded-xl border bg-card p-6 ${isMultiStore ? "cursor-pointer hover:border-border/80 transition-colors" : ""}`}
+              className={`rounded-[8px] border bg-card p-6 ${isMultiStore ? "cursor-pointer hover:border-border/80 transition-colors" : ""}`}
               onClick={isMultiStore ? () => toggleCard("campaigns") : undefined}
             >
               <div className="flex items-center justify-between pb-2">
@@ -357,7 +357,7 @@ export function ClientPerformanceKPIs() {
 
             {/* % Recuperacao Email — NO proportion bar (rates not additive) */}
             <Card
-              className={`rounded-xl border bg-card p-6 ${isMultiStore ? "cursor-pointer hover:border-border/80 transition-colors" : ""}`}
+              className={`rounded-[8px] border bg-card p-6 ${isMultiStore ? "cursor-pointer hover:border-border/80 transition-colors" : ""}`}
               onClick={isMultiStore ? () => toggleCard("recovery") : undefined}
             >
               <div className="flex items-center justify-between pb-2">
@@ -544,7 +544,7 @@ export function ClientPerformanceTables() {
     <div className="space-y-6">
       {/* Recent Campaigns Table */}
       {allCampaigns.length > 0 && (
-        <Card className="rounded-xl border">
+        <Card className="rounded-[8px] border">
           <CardHeader>
             <CardTitle className="text-base">Mensagens recentes de campanha</CardTitle>
           </CardHeader>
@@ -609,7 +609,7 @@ export function ClientPerformanceTables() {
 
       {/* Top Flows Table */}
       {allFlows.length > 0 && (
-        <Card className="rounded-xl border">
+        <Card className="rounded-[8px] border">
           <CardHeader>
             <CardTitle className="text-base">Fluxos com melhor desempenho</CardTitle>
           </CardHeader>

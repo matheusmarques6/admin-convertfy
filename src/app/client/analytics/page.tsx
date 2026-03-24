@@ -86,7 +86,7 @@ export default function PortalAnalyticsPage() {
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
           {[1, 2, 3, 4, 5].map((i) => (
-            <Skeleton key={i} className="h-24 bg-white dark:bg-[#151922] rounded-xl border border-slate-100 dark:border-slate-700/30" />
+            <Skeleton key={i} className="h-24 bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-100 dark:border-slate-700/30" />
           ))}
         </div>
       </div>
@@ -96,10 +96,8 @@ export default function PortalAnalyticsPage() {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh]">
-        <div className="bg-white dark:bg-[#151922] rounded-2xl border border-slate-200 dark:border-slate-700/40 p-10 text-center max-w-md">
-          <div className="w-14 h-14 rounded-full bg-red-50 dark:bg-red-500/10 flex items-center justify-center mx-auto mb-4">
-            <AlertCircle className="h-7 w-7 text-red-500" />
-          </div>
+        <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200 dark:border-slate-700/40 p-10 text-center max-w-md">
+          <AlertCircle className="h-7 w-7 text-red-500 mx-auto mb-4" />
           <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100 mb-2">Erro ao carregar</h2>
           <p className="text-slate-500 dark:text-slate-400 text-sm mb-6">{error}</p>
           <Button onClick={() => fetchData()} className="bg-primary hover:bg-primary/85 text-white">
@@ -136,11 +134,11 @@ export default function PortalAnalyticsPage() {
 
         <div className="flex items-center gap-3">
           <Select value={period} onValueChange={setPeriod}>
-            <SelectTrigger className="w-[140px] h-10 bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40 text-slate-700 dark:text-slate-200 rounded-lg">
+            <SelectTrigger className="w-[140px] h-10 bg-white dark:bg-[#1A1D27] border-slate-200 dark:border-slate-700/40 text-slate-700 dark:text-slate-200 rounded-lg">
               <CalendarDays className="h-4 w-4 mr-2 text-slate-400 dark:text-slate-500" />
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40 shadow-lg">
+            <SelectContent className="bg-white dark:bg-[#1A1D27] border-slate-200 dark:border-slate-700/40 shadow-lg">
               <SelectItem value="7d">7 dias</SelectItem>
               <SelectItem value="15d">15 dias</SelectItem>
               <SelectItem value="30d">30 dias</SelectItem>
@@ -153,7 +151,7 @@ export default function PortalAnalyticsPage() {
             size="icon"
             onClick={() => fetchData(true)}
             disabled={refreshing}
-            className="h-10 w-10 bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06] rounded-lg"
+            className="h-10 w-10 bg-white dark:bg-[#1A1D27] border-slate-200 dark:border-slate-700/40 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06] rounded-lg"
           >
             <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
           </Button>

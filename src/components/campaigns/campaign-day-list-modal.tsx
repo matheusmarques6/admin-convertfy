@@ -51,7 +51,7 @@ export function CampaignDayListModal({
 }: CampaignDayListModalProps) {
   return (
     <Dialog open={open} onOpenChange={() => onClose()}>
-      <DialogContent className="bg-white dark:bg-[#151922] border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-100">
+      <DialogContent className="bg-white dark:bg-[#1A1D27] border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-100">
         <DialogHeader>
           <DialogTitle className="text-slate-800 dark:text-slate-100">
             Campanhas em {date ? formatDate(date) : ""}
@@ -63,10 +63,10 @@ export function CampaignDayListModal({
               <div
                 key={campaign.id}
                 onClick={() => onSelect(campaign)}
-                className="flex items-center gap-4 p-4 rounded-xl bg-slate-50 dark:bg-[#1A1F2E] border border-slate-200/80 dark:border-slate-700/40 cursor-pointer hover:bg-white dark:hover:bg-[#151922] hover:shadow-md dark:hover:shadow-slate-900/30 transition-all"
+                className="flex items-center gap-4 p-4 rounded-[8px] bg-slate-50 dark:bg-[#1A1F2E] border border-slate-200/80 dark:border-slate-700/40 cursor-pointer hover:bg-white dark:hover:bg-[#1A1D27] hover:shadow-md dark:hover:shadow-slate-900/30 transition-all"
               >
                 <div
-                  className="w-12 h-12 rounded-xl flex items-center justify-center"
+                  className="w-12 h-12 rounded-[8px] flex items-center justify-center"
                   style={{ backgroundColor: campaign.color || "#3b82f6" }}
                 >
                   <Icon icon={CHANNEL_CONFIG[campaign.channel]?.icon || Mail} size={24} className="text-white" />

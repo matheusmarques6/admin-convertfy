@@ -77,7 +77,7 @@ export const CampaignCalendarCard = React.memo(function CampaignCalendarCard({
   return (
     <div
       onClick={onClick}
-      className="rounded-lg bg-slate-50 dark:bg-[#1A1F2E] border border-slate-200/80 dark:border-slate-700/40 p-3 cursor-pointer hover:bg-white dark:hover:bg-[#151922] transition-all group"
+      className="rounded-lg bg-slate-50 dark:bg-[#1A1F2E] border border-slate-200/80 dark:border-slate-700/40 p-3 cursor-pointer hover:bg-white dark:hover:bg-[#1A1D27] transition-all group"
     >
       <div className="flex items-start gap-3">
         <div

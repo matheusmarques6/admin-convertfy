@@ -185,19 +185,19 @@ export default function PortalDashboardPage() {
             <Skeleton className="h-4 w-32 rounded-lg" />
           </div>
           <div className="flex gap-3">
-            <Skeleton className="h-10 w-32 rounded-xl" />
-            <Skeleton className="h-10 w-10 rounded-xl" />
+            <Skeleton className="h-10 w-32 rounded-[8px]" />
+            <Skeleton className="h-10 w-10 rounded-[8px]" />
           </div>
         </div>
-        <Skeleton className="h-52 rounded-2xl" />
+        <Skeleton className="h-52 rounded-[8px]" />
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[1, 2, 3, 4].map((i) => (
-            <Skeleton key={i} className="h-24 rounded-xl" />
+            <Skeleton key={i} className="h-24 rounded-[8px]" />
           ))}
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {[1, 2, 3, 4, 5].map((i) => (
-            <Skeleton key={i} className="h-24 rounded-xl" />
+            <Skeleton key={i} className="h-24 rounded-[8px]" />
           ))}
         </div>
       </div>
@@ -207,15 +207,15 @@ export default function PortalDashboardPage() {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh]">
-        <div className="rounded-2xl border border-slate-200 dark:border-slate-700/40 bg-white dark:bg-slate-900/50 p-10 text-center max-w-md ">
-          <div className="w-14 h-14 rounded-2xl bg-red-50 dark:bg-red-500/10 flex items-center justify-center mx-auto mb-4">
+        <div className="rounded-[8px] border border-slate-200 dark:border-slate-700/40 bg-white dark:bg-slate-900/50 p-10 text-center max-w-md ">
+          <div className="w-14 h-14 rounded-[8px] bg-red-50 dark:bg-red-500/10 flex items-center justify-center mx-auto mb-4">
             <AlertCircle className="h-7 w-7 text-red-500" />
           </div>
           <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100 mb-2">Erro ao carregar</h2>
           <p className="text-slate-500 dark:text-slate-400 text-sm mb-6">{error}</p>
           <Button
             onClick={() => fetchDashboard()}
-            className="rounded-xl"
+            className="rounded-[8px]"
           >
             Tentar novamente
           </Button>
@@ -271,11 +271,11 @@ export default function PortalDashboardPage() {
           <StaleBadge period={period} lastFetchedAt={data?.lastFetchedAt} />
 
           <Select value={period} onValueChange={setPeriod}>
-            <SelectTrigger className="w-[130px] h-10 rounded-xl border-slate-200 dark:border-slate-700/40 bg-white dark:bg-slate-800/50 text-slate-700 dark:text-slate-200 ">
+            <SelectTrigger className="w-[130px] h-10 rounded-[8px] border-slate-200 dark:border-slate-700/40 bg-white dark:bg-slate-800/50 text-slate-700 dark:text-slate-200 ">
               <CalendarDays className="h-4 w-4 mr-2 text-slate-400 dark:text-slate-500" />
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="rounded-xl">
+            <SelectContent className="rounded-[8px]">
               <SelectItem value="7d">7 dias</SelectItem>
               <SelectItem value="15d">15 dias</SelectItem>
               <SelectItem value="30d">30 dias</SelectItem>
@@ -291,7 +291,7 @@ export default function PortalDashboardPage() {
               fetchDashboard(true)
             }}
             disabled={refreshing || realtimeRefreshing}
-            className="h-10 w-10 rounded-xl border-slate-200 dark:border-slate-700/40 bg-white dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 shadow-sm"
+            className="h-10 w-10 rounded-[8px] border-slate-200 dark:border-slate-700/40 bg-white dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 shadow-sm"
             title="Atualizar dados"
           >
             <RefreshCw className={`h-4 w-4 ${refreshing || realtimeRefreshing ? "animate-spin" : ""}`} />
@@ -311,9 +311,9 @@ export default function PortalDashboardPage() {
         <AnimatedItem>
           {klaviyoLoading ? (
             <div className="space-y-4">
-              <Skeleton className="h-48 rounded-2xl" />
+              <Skeleton className="h-48 rounded-[8px]" />
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                {[1,2,3,4].map(i => <Skeleton key={i} className="h-24 rounded-xl" />)}
+                {[1,2,3,4].map(i => <Skeleton key={i} className="h-24 rounded-[8px]" />)}
               </div>
             </div>
           ) : (
@@ -338,7 +338,7 @@ export default function PortalDashboardPage() {
             {klaviyoLoading ? (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                 {[1, 2, 3, 4, 5].map((i) => (
-                  <Skeleton key={i} className="h-[88px] rounded-xl" />
+                  <Skeleton key={i} className="h-[88px] rounded-[8px]" />
                 ))}
               </div>
             ) : (
@@ -375,7 +375,7 @@ export default function PortalDashboardPage() {
               {/* Invoices quick card */}
               {(data.invoices.pending > 0 || data.invoices.overdue > 0) && (
                 <Link href="/client/invoices" className="block group">
-                  <div className="h-full rounded-xl border border-slate-200/80 dark:border-slate-700/40 bg-white dark:bg-slate-800/40 p-5 transition-all duration-200 hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600">
+                  <div className="h-full rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 bg-white dark:bg-slate-800/40 p-5 transition-all duration-200 hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600">
                     <div className="flex items-center gap-2.5 mb-4">
                       <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center">
                         <DollarSign className="h-4 w-4 text-amber-600 dark:text-amber-400" />
@@ -406,7 +406,7 @@ export default function PortalDashboardPage() {
         <AnimatedItem>
           <button
             onClick={() => setShowAnalytics(!showAnalytics)}
-            className="w-full flex items-center justify-between p-4 rounded-xl border border-slate-200/80 dark:border-slate-700/40 bg-white dark:bg-slate-800/40 transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-600 group"
+            className="w-full flex items-center justify-between p-4 rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 bg-white dark:bg-slate-800/40 transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-600 group"
           >
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -485,7 +485,7 @@ function KpiCard({
   href?: string
 }) {
   const content = (
-    <div className={`group rounded-xl border border-slate-200/80 dark:border-slate-700/40 bg-white dark:bg-slate-800/40 p-4 transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-600 ${href ? "cursor-pointer" : ""}`}>
+    <div className={`group rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 bg-white dark:bg-slate-800/40 p-4 transition-all duration-200 hover:border-slate-300 dark:hover:border-slate-600 ${href ? "cursor-pointer" : ""}`}>
       <div className="flex items-center gap-2 mb-3">
         <div className={`w-7 h-7 rounded-lg ${bgClass} flex items-center justify-center`}>
           <Icon className={`h-3.5 w-3.5 ${accentClass}`} />

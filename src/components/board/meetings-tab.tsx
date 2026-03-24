@@ -192,7 +192,7 @@ export function MeetingsTab({ meetings, clients, members = [], onMeetingChange }
 
           {/* Stats Cards */}
           <div className="grid gap-4 md:grid-cols-3">
-            <Card className="rounded-xl border">
+            <Card className="rounded-[8px] border">
               <CardContent className="flex items-center gap-4 pt-6">
                 <div className="rounded-lg p-3 bg-primary/10">
                   <Icon icon={Calendar} size={20} className="text-primary" />
@@ -203,7 +203,7 @@ export function MeetingsTab({ meetings, clients, members = [], onMeetingChange }
                 </div>
               </CardContent>
             </Card>
-            <Card className="rounded-xl border">
+            <Card className="rounded-[8px] border">
               <CardContent className="flex items-center gap-4 pt-6">
                 <div className="rounded-lg p-3 bg-emerald-500/10">
                   <Icon icon={CheckCircle} size={20} className="text-emerald-500" />
@@ -216,7 +216,7 @@ export function MeetingsTab({ meetings, clients, members = [], onMeetingChange }
                 </div>
               </CardContent>
             </Card>
-            <Card className="rounded-xl border">
+            <Card className="rounded-[8px] border">
               <CardContent className="flex items-center gap-4 pt-6">
                 <div className="rounded-lg p-3 bg-amber-500/10">
                   <Icon icon={Video} size={20} className="text-amber-500" />
@@ -230,7 +230,7 @@ export function MeetingsTab({ meetings, clients, members = [], onMeetingChange }
           </div>
 
           {/* Upcoming Meetings */}
-          <Card className="rounded-xl border">
+          <Card className="rounded-[8px] border">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <Icon icon={Calendar} size={20} className="text-primary" />
@@ -344,7 +344,7 @@ export function MeetingsTab({ meetings, clients, members = [], onMeetingChange }
 
           {/* Past Meetings */}
           {pastMeetings.length > 0 && (
-            <Card className="rounded-xl border">
+            <Card className="rounded-[8px] border">
               <CardHeader>
                 <CardTitle className="text-base">Histórico</CardTitle>
               </CardHeader>

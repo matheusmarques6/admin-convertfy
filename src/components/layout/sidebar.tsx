@@ -255,7 +255,7 @@ export function SidebarMobileDrawer({ user }: Pick<SidebarProps, "user">) {
         {isMobileOpen && (
           <button
             onClick={closeMobile}
-            className="absolute top-4 right-4 z-10 w-8 h-8 rounded-full flex items-center justify-center bg-gray-100 dark:bg-[#242836] text-gray-500 dark:text-[#8B92A5] hover:bg-gray-200 dark:hover:bg-[#2E3347] transition-colors"
+            className="absolute top-4 right-4 z-10 w-8 h-8 rounded-[6px] flex items-center justify-center bg-gray-100 dark:bg-[#242836] text-gray-500 dark:text-[#8B92A5] hover:bg-gray-200 dark:hover:bg-[#2E3347] transition-colors"
           >
             <X className="h-4 w-4" />
           </button>

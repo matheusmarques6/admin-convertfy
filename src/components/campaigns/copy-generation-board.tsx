@@ -211,9 +211,7 @@ export function CopyGenerationBoard() {
   if (tasks.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-24 text-center">
-        <div className="rounded-full bg-muted p-4 mb-4">
-          <FileText className="h-8 w-8 text-muted-foreground" />
-        </div>
+        <FileText className="h-8 w-8 text-muted-foreground mb-4" />
         <h3 className="text-lg font-semibold">Nenhuma tarefa de campanha</h3>
         <p className="text-muted-foreground mt-1 max-w-md">
           As tarefas serao criadas automaticamente quando uma geracao de copy for aprovada.

@@ -47,7 +47,7 @@ export function QuickActions() {
           key={action.label}
           variant={action.primary ? "primary" : "secondary"}
           size="sm"
-          className="h-9 px-3.5 text-xs font-medium rounded-xl gap-1.5 transition-all duration-200 hover:shadow-sm"
+          className="h-9 px-3.5 text-xs font-medium rounded-[8px] gap-1.5 transition-all duration-200 hover:shadow-sm"
           asChild
         >
           <Link href={action.href}>

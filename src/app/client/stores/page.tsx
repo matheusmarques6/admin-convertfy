@@ -257,7 +257,7 @@ export default function PortalStoresPage() {
 
       {/* Stores Grid */}
       {stores.length === 0 ? (
-        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40">
+        <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40">
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Store className="h-12 w-12 text-slate-400 dark:text-slate-500 mb-4" />
             <h3 className="text-lg font-medium text-slate-800 dark:text-slate-100 mb-2">Nenhuma loja configurada</h3>
@@ -271,7 +271,7 @@ export default function PortalStoresPage() {
           {stores.map((store) => {
             const needsSetup = !store.hasKlaviyo || !store.shopify_access_token
             return (
-              <div key={store.id} className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40">
+              <div key={store.id} className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40">
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
@@ -357,15 +357,15 @@ export default function PortalStoresPage() {
 
       {/* Quick Stats Legend */}
       {stores.length > 0 && (
-        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40">
+        <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40">
           <CardHeader>
             <CardTitle className="text-[15px] font-semibold text-slate-800 dark:text-slate-100">Como ler seus relatórios</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid gap-4 md:grid-cols-4">
               <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-lg bg-[#05AFF2]/10 flex items-center justify-center flex-shrink-0">
-                  <Users className="h-4 w-4 text-[#05AFF2]" />
+                <div className="w-8 h-8 rounded-lg bg-[#4E62D8]/10 dark:bg-[#7B8CEA]/10 flex items-center justify-center flex-shrink-0">
+                  <Users className="h-4 w-4 text-[#4E62D8] dark:text-[#7B8CEA]" />
                 </div>
                 <div>
                   <p className="font-medium text-sm text-slate-800 dark:text-slate-100">Total de Leads</p>
@@ -414,7 +414,7 @@ export default function PortalStoresPage() {
 
       {/* Credentials Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-lg bg-white dark:bg-[#151922] border-slate-200/80 dark:border-slate-700/40">
+        <DialogContent className="sm:max-w-lg bg-white dark:bg-[#1A1D27] border-slate-200/80 dark:border-slate-700/40">
           <DialogHeader>
             <DialogTitle className="text-slate-800 dark:text-slate-100">Configurar Integrações</DialogTitle>
             <DialogDescription className="text-slate-500 dark:text-slate-400">

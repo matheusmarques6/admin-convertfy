@@ -88,7 +88,7 @@ export default function ChangePasswordPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
-      <Card className="w-full max-w-md rounded-xl border-border">
+      <Card className="w-full max-w-md rounded-[8px] border-border">
         <CardHeader className="space-y-1 text-center">
           <Icon icon={Lock} size={24} className="text-primary bg-primary/10 rounded-full mx-auto mb-4" />
           <CardTitle className="text-2xl">Alterar Senha</CardTitle>

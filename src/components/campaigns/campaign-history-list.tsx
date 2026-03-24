@@ -471,7 +471,7 @@ function ExpandableGenerationRow({
   const existingStoreIds = stores.map((s) => s.store_id)
 
   return (
-    <div className="rounded-lg border border-slate-200/80 dark:border-slate-700/40 bg-white dark:bg-[#151922] overflow-hidden">
+    <div className="rounded-lg border border-slate-200/80 dark:border-slate-700/40 bg-white dark:bg-[#1A1D27] overflow-hidden">
       {/* Generation header row */}
       <button
         type="button"
@@ -653,7 +653,7 @@ export interface CampaignHistoryListProps {
 export function CampaignHistoryList({ generations, allStores, onGenerationUpdated, onGenerationDeleted }: CampaignHistoryListProps) {
   if (generations.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 dark:border-slate-700/40 bg-white dark:bg-[#151922] p-12 text-center">
+      <div className="flex flex-col items-center justify-center rounded-[8px] border border-dashed border-slate-200 dark:border-slate-700/40 bg-white dark:bg-[#1A1D27] p-12 text-center">
         <FileText className="h-10 w-10 text-slate-300 dark:text-slate-600 mb-3" />
         <p className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-1">
           Nenhuma campanha gerada ainda

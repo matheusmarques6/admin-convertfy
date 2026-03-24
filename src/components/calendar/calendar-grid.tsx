@@ -74,7 +74,7 @@ export function CalendarGrid({ year, month, renderDay }: CalendarGridProps) {
     <div
       role="grid"
       aria-label="Calendário de campanhas"
-      className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 overflow-hidden"
+      className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 overflow-hidden"
     >
       {/* Week days header */}
       <div role="row" className="grid grid-cols-7 bg-slate-50 dark:bg-[#1A1F2E]">

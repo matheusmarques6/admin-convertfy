@@ -22,7 +22,7 @@ import { ROUTES } from "@/lib/routes"
 const WorkflowBuilder = dynamic(
   () => import("@/components/automations/workflow-builder").then(mod => ({ default: mod.WorkflowBuilder })),
   {
-    loading: () => <div className="h-[500px] rounded-xl border"><Skeleton className="h-full w-full" /></div>,
+    loading: () => <div className="h-[500px] rounded-[8px] border"><Skeleton className="h-full w-full" /></div>,
     ssr: false,
   }
 )
@@ -147,7 +147,7 @@ export default function NewAutomationPage() {
       />
 
       {/* Basic Info */}
-      <Card className="rounded-xl border">
+      <Card className="rounded-[8px] border">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <Zap className="h-4 w-4" />
@@ -177,7 +177,7 @@ export default function NewAutomationPage() {
       </Card>
 
       {/* Workflow Builder */}
-      <Card className="rounded-xl border">
+      <Card className="rounded-[8px] border">
         <CardHeader>
           <CardTitle className="text-base">Construtor de Fluxo</CardTitle>
           <CardDescription>
@@ -191,7 +191,7 @@ export default function NewAutomationPage() {
       </Card>
 
       {/* Tips */}
-      <Card className="rounded-xl border bg-muted/50">
+      <Card className="rounded-[8px] border bg-muted/50">
         <CardContent className="pt-6">
           <div className="grid gap-4 md:grid-cols-3 text-sm">
             <div className="flex items-start gap-3">

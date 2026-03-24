@@ -475,7 +475,7 @@ export function KlaviyoFullscreenReport({ storeId, storeName, period }: KlaviyoF
         {/* Main Content */}
         <div className="max-w-6xl mx-auto px-8 py-8 space-y-8">
           {/* Campanhas e Engajamento */}
-          <div className="bg-card rounded-2xl border border-border/50 overflow-hidden">
+          <div className="bg-card rounded-[8px] border border-border/50 overflow-hidden">
             <div className="bg-muted/50 px-6 py-4 border-b border-border/50">
               <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider flex items-center gap-2">
                 <Send className="w-4 h-4 text-primary" />
@@ -485,28 +485,28 @@ export function KlaviyoFullscreenReport({ storeId, storeName, period }: KlaviyoF
             </div>
             <div className="p-6">
               <div className="grid grid-cols-4 gap-4 mb-8">
-                <div className="bg-muted/30 rounded-xl p-4 border border-border/30 transition-all hover:border-primary/30 hover:bg-muted/50">
+                <div className="bg-muted/30 rounded-[8px] p-4 border border-border/30 transition-all hover:border-primary/30 hover:bg-muted/50">
                   <div className="flex items-center gap-2 mb-2">
                     <Mail className="w-4 h-4 text-muted-foreground" />
                     <span className="text-xs text-muted-foreground">Campanhas Enviadas</span>
                   </div>
                   <p className="text-2xl font-bold text-foreground">{sentCampaigns}</p>
                 </div>
-                <div className="bg-primary/10 rounded-xl p-4 border border-primary/20 transition-all hover:border-primary/40">
+                <div className="bg-primary/10 rounded-[8px] p-4 border border-primary/20 transition-all hover:border-primary/40">
                   <div className="flex items-center gap-2 mb-2">
                     <TrendingUp className="w-4 h-4 text-primary" />
                     <span className="text-xs text-muted-foreground">Taxa de Engajamento</span>
                   </div>
                   <p className="text-2xl font-bold text-primary">{formatPercent(engagementRate)}</p>
                 </div>
-                <div className="bg-primary/10 rounded-xl p-4 border border-primary/20 transition-all hover:border-primary/40">
+                <div className="bg-primary/10 rounded-[8px] p-4 border border-primary/20 transition-all hover:border-primary/40">
                   <div className="flex items-center gap-2 mb-2">
                     <Repeat className="w-4 h-4 text-primary/80" />
                     <span className="text-xs text-muted-foreground">Taxa Recorrência</span>
                   </div>
                   <p className="text-2xl font-bold text-primary/80">{formatPercent(recurringRate)}</p>
                 </div>
-                <div className="bg-muted/30 rounded-xl p-4 border border-border/30 transition-all hover:border-primary/30 hover:bg-muted/50">
+                <div className="bg-muted/30 rounded-[8px] p-4 border border-border/30 transition-all hover:border-primary/30 hover:bg-muted/50">
                   <div className="flex items-center gap-2 mb-2">
                     <UserCheck className="w-4 h-4 text-muted-foreground" />
                     <span className="text-xs text-muted-foreground">Novos Clientes</span>
@@ -515,19 +515,17 @@ export function KlaviyoFullscreenReport({ storeId, storeName, period }: KlaviyoF
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <div className="bg-muted/20 rounded-xl p-5 border border-border/30">
+                <div className="bg-muted/20 rounded-[8px] p-5 border border-border/30">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Total de Leads</p>
                       <p className="text-3xl font-bold text-foreground">{formatNumber(totalLeads)}</p>
                       <p className="text-xs text-muted-foreground mt-1">Contatos na base</p>
                     </div>
-                    <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center border border-border/50">
-                      <Users className="w-8 h-8 text-muted-foreground" />
-                    </div>
+                    <Users className="w-8 h-8 text-muted-foreground" />
                   </div>
                 </div>
-                <div className="bg-muted/30 rounded-xl p-5 border border-primary/20">
+                <div className="bg-muted/30 rounded-[8px] p-5 border border-primary/20">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-xs text-primary uppercase tracking-wider mb-1">Leads Engajados 90d</p>
@@ -542,7 +540,7 @@ export function KlaviyoFullscreenReport({ storeId, storeName, period }: KlaviyoF
           </div>
 
           {/* Resultados Financeiros */}
-          <div className="bg-card rounded-2xl border border-border/50 overflow-hidden">
+          <div className="bg-card rounded-[8px] border border-border/50 overflow-hidden">
             <div className="bg-muted/50 px-6 py-4 border-b border-border/50">
               <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider flex items-center gap-2">
                 <DollarSign className="w-4 h-4 text-primary" />
@@ -552,29 +550,29 @@ export function KlaviyoFullscreenReport({ storeId, storeName, period }: KlaviyoF
             </div>
             <div className="p-6">
               <div className="grid grid-cols-4 gap-4 mb-6">
-                <div className="bg-muted/30 rounded-xl p-5 border border-border/30 text-center transition-all hover:border-primary/30">
-                  <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center mx-auto mb-3">
+                <div className="bg-muted/30 rounded-[8px] p-5 border border-border/30 text-center transition-all hover:border-primary/30">
+                  <div className="w-12 h-12 rounded-[8px] bg-muted flex items-center justify-center mx-auto mb-3">
                     <DollarSign className="w-6 h-6 text-muted-foreground" />
                   </div>
                   <p className="text-2xl font-bold text-foreground">{formatCurrencyCompact(totalRevenue)}</p>
                   <p className="text-xs text-muted-foreground uppercase tracking-wider mt-1">Faturamento Total</p>
                 </div>
-                <div className="bg-muted/30 rounded-xl p-5 border border-border/30 text-center transition-all hover:border-primary/30">
-                  <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center mx-auto mb-3">
+                <div className="bg-muted/30 rounded-[8px] p-5 border border-border/30 text-center transition-all hover:border-primary/30">
+                  <div className="w-12 h-12 rounded-[8px] bg-muted flex items-center justify-center mx-auto mb-3">
                     <ShoppingCart className="w-6 h-6 text-muted-foreground" />
                   </div>
                   <p className="text-2xl font-bold text-foreground">{formatCurrency(avgTicket)}</p>
                   <p className="text-xs text-muted-foreground uppercase tracking-wider mt-1">Ticket Médio</p>
                 </div>
-                <div className="bg-muted/30 rounded-xl p-5 border border-border/30 text-center transition-all hover:border-primary/30">
-                  <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center mx-auto mb-3">
+                <div className="bg-muted/30 rounded-[8px] p-5 border border-border/30 text-center transition-all hover:border-primary/30">
+                  <div className="w-12 h-12 rounded-[8px] bg-muted flex items-center justify-center mx-auto mb-3">
                     <Package className="w-6 h-6 text-muted-foreground" />
                   </div>
                   <p className="text-2xl font-bold text-foreground">{formatNumber(totalOrders)}</p>
                   <p className="text-xs text-muted-foreground uppercase tracking-wider mt-1">Total de Pedidos</p>
                 </div>
-                <div className="bg-muted/30 rounded-xl p-5 border border-border/30 text-center transition-all hover:border-primary/30">
-                  <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center mx-auto mb-3">
+                <div className="bg-muted/30 rounded-[8px] p-5 border border-border/30 text-center transition-all hover:border-primary/30">
+                  <div className="w-12 h-12 rounded-[8px] bg-muted flex items-center justify-center mx-auto mb-3">
                     <Users className="w-6 h-6 text-muted-foreground" />
                   </div>
                   <p className="text-2xl font-bold text-foreground">{formatNumber(totalCustomers)}</p>
@@ -582,7 +580,7 @@ export function KlaviyoFullscreenReport({ storeId, storeName, period }: KlaviyoF
                 </div>
               </div>
 
-              <div className="bg-primary/10 rounded-xl p-6 border border-primary/20">
+              <div className="bg-primary/10 rounded-[8px] p-6 border border-primary/20">
                 <div className="flex items-center gap-2 mb-4">
                   <Sparkles className="w-5 h-5 text-primary" />
                   <h3 className="text-sm font-semibold text-foreground">Receita Atribuída Convertfy</h3>
@@ -607,7 +605,7 @@ export function KlaviyoFullscreenReport({ storeId, storeName, period }: KlaviyoF
               </div>
 
               <div className="grid grid-cols-2 gap-4 mt-4">
-                <div className="bg-muted/20 rounded-xl p-4 border border-border/30 flex items-center justify-between transition-all hover:border-primary/30">
+                <div className="bg-muted/20 rounded-[8px] p-4 border border-border/30 flex items-center justify-between transition-all hover:border-primary/30">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
                       <Mail className="w-5 h-5 text-primary" />
@@ -622,7 +620,7 @@ export function KlaviyoFullscreenReport({ storeId, storeName, period }: KlaviyoF
                     <p className="text-xs text-muted-foreground">do total</p>
                   </div>
                 </div>
-                <div className="bg-muted/20 rounded-xl p-4 border border-border/30 flex items-center justify-between transition-all hover:border-primary/30">
+                <div className="bg-muted/20 rounded-[8px] p-4 border border-border/30 flex items-center justify-between transition-all hover:border-primary/30">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
                       <MessageSquare className="w-5 h-5 text-primary/80" />
@@ -642,7 +640,7 @@ export function KlaviyoFullscreenReport({ storeId, storeName, period }: KlaviyoF
           </div>
 
           {/* Performance de Email */}
-          <div className="bg-card rounded-2xl border border-border/50 overflow-hidden">
+          <div className="bg-card rounded-[8px] border border-border/50 overflow-hidden">
             <div className="bg-muted/50 px-6 py-4 border-b border-border/50">
               <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider flex items-center gap-2">
                 <Mail className="w-4 h-4 text-primary" />
@@ -652,27 +650,27 @@ export function KlaviyoFullscreenReport({ storeId, storeName, period }: KlaviyoF
             </div>
             <div className="p-6">
               <div className="grid grid-cols-5 gap-4">
-                <div className="bg-muted/30 rounded-xl p-4 text-center border border-border/30 transition-all hover:border-primary/30 hover:scale-[1.02]">
+                <div className="bg-muted/30 rounded-[8px] p-4 text-center border border-border/30 transition-all hover:border-primary/30 hover:scale-[1.02]">
                   <Send className="w-5 h-5 text-muted-foreground mx-auto mb-2" />
                   <p className="text-xl font-bold text-foreground">{formatNumber(delivered)}</p>
                   <p className="text-xs text-muted-foreground mt-1">Entregues</p>
                 </div>
-                <div className="bg-primary/10 rounded-xl p-4 text-center border border-primary/20 transition-all hover:border-primary/40 hover:scale-[1.02]">
+                <div className="bg-primary/10 rounded-[8px] p-4 text-center border border-primary/20 transition-all hover:border-primary/40 hover:scale-[1.02]">
                   <Eye className="w-5 h-5 text-primary mx-auto mb-2" />
                   <p className="text-xl font-bold text-primary">{formatPercent(openRate)}</p>
                   <p className="text-xs text-muted-foreground mt-1">Taxa Abertura</p>
                 </div>
-                <div className="bg-primary/10 rounded-xl p-4 text-center border border-primary/20 transition-all hover:border-primary/40 hover:scale-[1.02]">
+                <div className="bg-primary/10 rounded-[8px] p-4 text-center border border-primary/20 transition-all hover:border-primary/40 hover:scale-[1.02]">
                   <MousePointer className="w-5 h-5 text-primary/80 mx-auto mb-2" />
                   <p className="text-xl font-bold text-primary/80">{formatPercent(clickRate)}</p>
                   <p className="text-xs text-muted-foreground mt-1">Taxa Clique</p>
                 </div>
-                <div className="bg-muted/30 rounded-xl p-4 text-center border border-border/30 transition-all hover:border-primary/30 hover:scale-[1.02]">
+                <div className="bg-muted/30 rounded-[8px] p-4 text-center border border-border/30 transition-all hover:border-primary/30 hover:scale-[1.02]">
                   <Target className="w-5 h-5 text-muted-foreground mx-auto mb-2" />
                   <p className="text-xl font-bold text-foreground">{formatPercent(ctor)}</p>
                   <p className="text-xs text-muted-foreground mt-1">CTOR</p>
                 </div>
-                <div className="bg-muted/30 rounded-xl p-4 text-center border border-border/30 transition-all hover:border-primary/30 hover:scale-[1.02]">
+                <div className="bg-muted/30 rounded-[8px] p-4 text-center border border-border/30 transition-all hover:border-primary/30 hover:scale-[1.02]">
                   <XCircle className="w-5 h-5 text-muted-foreground mx-auto mb-2" />
                   <p className="text-xl font-bold text-foreground">{formatNumber(bounced)}</p>
                   <p className="text-xs text-muted-foreground mt-1">Bounces</p>
@@ -683,7 +681,7 @@ export function KlaviyoFullscreenReport({ storeId, storeName, period }: KlaviyoF
 
           {/* Automações e Campanhas */}
           <div className="grid grid-cols-2 gap-6">
-            <div className="bg-card rounded-2xl border border-border/50 overflow-hidden">
+            <div className="bg-card rounded-[8px] border border-border/50 overflow-hidden">
               <div className="bg-muted/50 px-6 py-4 border-b border-border/50">
                 <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider flex items-center gap-2">
                   <Zap className="w-4 h-4 text-primary" />
@@ -709,7 +707,7 @@ export function KlaviyoFullscreenReport({ storeId, storeName, period }: KlaviyoF
                 </div>
               </div>
             </div>
-            <div className="bg-card rounded-2xl border border-border/50 overflow-hidden">
+            <div className="bg-card rounded-[8px] border border-border/50 overflow-hidden">
               <div className="bg-muted/50 px-6 py-4 border-b border-border/50">
                 <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider flex items-center gap-2">
                   <Send className="w-4 h-4 text-primary" />
@@ -739,7 +737,7 @@ export function KlaviyoFullscreenReport({ storeId, storeName, period }: KlaviyoF
 
           {/* Top Automações */}
           {reportData.flowPerformance?.flows && reportData.flowPerformance.flows.length > 0 && (
-            <div className="bg-card rounded-2xl border border-border/50 overflow-hidden">
+            <div className="bg-card rounded-[8px] border border-border/50 overflow-hidden">
               <div className="bg-muted/50 px-6 py-4 border-b border-border/50">
                 <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider flex items-center gap-2">
                   <BarChart2 className="w-4 h-4 text-primary" />
@@ -779,7 +777,7 @@ export function KlaviyoFullscreenReport({ storeId, storeName, period }: KlaviyoF
 
           {/* Produtos Mais Vendidos */}
           {shopifyData?.bestSellingProducts && shopifyData.bestSellingProducts.length > 0 && (
-            <div className="bg-card rounded-2xl border border-border/50 overflow-hidden">
+            <div className="bg-card rounded-[8px] border border-border/50 overflow-hidden">
               <div className="bg-muted/50 px-6 py-4 border-b border-border/50">
                 <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider flex items-center gap-2">
                   <Package className="w-4 h-4 text-primary" />
@@ -789,7 +787,7 @@ export function KlaviyoFullscreenReport({ storeId, storeName, period }: KlaviyoF
               <div className="p-6">
                 <div className="grid gap-3">
                   {shopifyData.bestSellingProducts.slice(0, 5).map((product, i) => (
-                    <div key={product.productId} className="flex items-center gap-4 bg-muted/20 rounded-xl p-4 border border-border/30 transition-all hover:border-primary/30 hover:bg-muted/40">
+                    <div key={product.productId} className="flex items-center gap-4 bg-muted/20 rounded-[8px] p-4 border border-border/30 transition-all hover:border-primary/30 hover:bg-muted/40">
                       <span className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold ${i < 3 ? 'bg-primary/20 text-primary' : 'bg-muted text-muted-foreground'}`}>{i + 1}</span>
                       <div className="flex-1">
                         <p className="text-sm font-medium text-foreground">{product.title}</p>

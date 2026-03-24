@@ -80,7 +80,7 @@ export const CalendarDayCell = React.memo(function CalendarDayCell({
         min-h-[120px] border border-slate-100 dark:border-slate-700/30 p-2 cursor-pointer transition-all
         hover:bg-slate-50 dark:hover:bg-white/[0.06]
         focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none
-        ${isToday ? "bg-primary/5 border-primary/30" : "bg-white dark:bg-[#151922]"}
+        ${isToday ? "bg-primary/5 border-primary/30" : "bg-white dark:bg-[#1A1D27]"}
       `}
     >
       <div className="flex items-center justify-between mb-2">

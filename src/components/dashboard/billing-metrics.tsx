@@ -155,7 +155,7 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
         </div>
         <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
           {[...Array(5)].map((_, i) => (
-            <div key={i} className="rounded-xl border">
+            <div key={i} className="rounded-[8px] border">
               <div className="h-28 flex items-center justify-center">
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
               </div>
@@ -169,7 +169,7 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
   // Show error state
   if (error && (!data || !data.connected)) {
     return (
-      <div className="rounded-xl border border-destructive/30 bg-destructive/5">
+      <div className="rounded-[8px] border border-destructive/30 bg-destructive/5">
         <div className="flex flex-col items-center justify-center py-12 px-6">
           <AlertCircle className="h-10 w-10 text-destructive mb-3" />
           <h3 className="text-base font-medium text-foreground">Erro no Resumo Financeiro</h3>
@@ -193,7 +193,7 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
   // Show connect message only after loading completes and we know it's not connected
   if (data && !data.connected) {
     return (
-      <div className="rounded-xl border border-dashed bg-card">
+      <div className="rounded-[8px] border border-dashed bg-card">
         <div className="flex flex-col items-center justify-center py-12 px-6">
           <DollarSign className="h-10 w-10 text-muted-foreground mb-3" />
           <h3 className="text-base font-medium text-foreground">Conecte a Asaas</h3>
@@ -328,14 +328,14 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
 
           {/* Secondary row */}
           <div className="grid gap-3 grid-cols-2 lg:grid-cols-5">
-            <div className="rounded-xl border border-border bg-card p-4">
+            <div className="rounded-[8px] border border-border bg-card p-4">
               <div className="flex items-center gap-2 mb-2">
                 <Users className="h-3.5 w-3.5 text-muted-foreground" />
                 <span className="text-xs text-muted-foreground">Clientes Asaas</span>
               </div>
               <p className="text-lg font-semibold text-foreground">{data?.summary.totalClients || 0}</p>
             </div>
-            <div className="rounded-xl border border-border bg-card p-4">
+            <div className="rounded-[8px] border border-border bg-card p-4">
               <div className="flex items-center gap-2 mb-2">
                 <AlertCircle className="h-3.5 w-3.5 text-muted-foreground" />
                 <span className="text-xs text-muted-foreground">Inadimplentes</span>
@@ -345,21 +345,21 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
                 {data?.inadimplentes?.totalCharges || 0} assinaturas · {formatCurrency(data?.inadimplentes?.totalValue || 0)}
               </p>
             </div>
-            <div className="rounded-xl border border-border bg-card p-4">
+            <div className="rounded-[8px] border border-border bg-card p-4">
               <div className="flex items-center gap-2 mb-2">
                 <Repeat className="h-3.5 w-3.5 text-muted-foreground" />
                 <span className="text-xs text-muted-foreground">Assinaturas Ativas</span>
               </div>
               <p className="text-lg font-semibold text-foreground">{data?.summary.activeSubscriptions || 0}</p>
             </div>
-            <div className="rounded-xl border border-border bg-card p-4">
+            <div className="rounded-[8px] border border-border bg-card p-4">
               <div className="flex items-center gap-2 mb-2">
                 <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
                 <span className="text-xs text-muted-foreground">Estornado</span>
               </div>
               <p className="text-lg font-semibold text-foreground">{formatCurrency(data?.summary.refunded || 0)}</p>
             </div>
-            <div className="rounded-xl border border-border bg-card p-4">
+            <div className="rounded-[8px] border border-border bg-card p-4">
               <div className="flex items-center gap-2 mb-2">
                 <RotateCcw className="h-3.5 w-3.5 text-violet-500" />
                 <span className="text-xs text-muted-foreground">Reembolsos (30d)</span>
@@ -382,7 +382,7 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
           </div>
 
           {/* Payment Methods */}
-          <div className="rounded-xl border border-border bg-card px-4 py-3">
+          <div className="rounded-[8px] border border-border bg-card px-4 py-3">
             <div className="flex items-center gap-6 flex-wrap">
               <span className="text-xs font-medium text-muted-foreground">Por método:</span>
               <div className="flex items-center gap-2">
@@ -405,7 +405,7 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
 
           {/* Overdue Alert */}
           {(data?.summary.overdue || 0) > 0 && (
-            <div className="rounded-xl border border-destructive/30 bg-destructive/5">
+            <div className="rounded-[8px] border border-destructive/30 bg-destructive/5">
               <div className="flex items-center gap-4 px-5 py-3">
                 <AlertCircle className="h-5 w-5 text-[#991B1B] dark:text-[#FCA5A5]" />
                 <div className="flex-1">

@@ -138,7 +138,7 @@ export default async function TeamPage() {
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/10">
+          <div className="flex items-center justify-center w-10 h-10 rounded-[8px] bg-primary/10">
             <Icon icon={Users} size={20} className="text-primary" />
           </div>
           <div>

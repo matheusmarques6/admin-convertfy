@@ -54,7 +54,7 @@ export function StoresPageTabs() {
       )}
 
       {/* Custom tab bar */}
-      <div className="flex items-center gap-1 p-1 bg-muted/50 rounded-xl w-fit">
+      <div className="flex items-center gap-1 p-1 bg-muted/50 rounded-[8px] w-fit">
         <button
           onClick={() => setActiveTab("stores")}
           className={cn(

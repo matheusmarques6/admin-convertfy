@@ -12,7 +12,7 @@ export function RankingsSection({ shopify }: RankingsSectionProps) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       {/* Top Customers */}
-      <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5">
+      <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium text-slate-800 dark:text-slate-100 flex items-center gap-2">
             <Icon icon={Crown} size={16} className="text-amber-400" />
@@ -55,10 +55,10 @@ export function RankingsSection({ shopify }: RankingsSectionProps) {
       </div>
 
       {/* Top Products */}
-      <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5">
+      <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium text-slate-800 dark:text-slate-100 flex items-center gap-2">
-            <Icon icon={ShoppingCart} size={16} className="text-[#05AFF2]" />
+            <Icon icon={ShoppingCart} size={16} className="text-[#4E62D8] dark:text-[#7B8CEA]" />
             Top Produtos
           </h3>
           <span className="text-xs text-slate-500 dark:text-slate-400">Por receita no período</span>
@@ -81,7 +81,7 @@ export function RankingsSection({ shopify }: RankingsSectionProps) {
                   <p className="text-xs text-slate-500 dark:text-slate-400">{product.quantity} unidades</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm font-bold text-[#05AFF2]">{formatCurrencyCompact(product.revenue)}</p>
+                  <p className="text-sm font-bold text-[#4E62D8] dark:text-[#7B8CEA]">{formatCurrencyCompact(product.revenue)}</p>
                 </div>
               </div>
             ))

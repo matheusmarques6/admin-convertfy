@@ -61,13 +61,13 @@ export function CampaignDetailModal({
 }: CampaignDetailModalProps) {
   return (
     <Dialog open={open} onOpenChange={() => onClose()}>
-      <DialogContent className="bg-white dark:bg-[#151922] border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 max-w-lg sm:max-w-2xl">
+      <DialogContent className="bg-white dark:bg-[#1A1D27] border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 max-w-lg sm:max-w-2xl">
         {campaign && (
           <>
             <DialogHeader>
               <div className="flex items-start gap-4">
                 <div
-                  className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
+                  className="w-12 h-12 rounded-[8px] flex items-center justify-center flex-shrink-0"
                   style={{ backgroundColor: campaign.color || "#3b82f6" }}
                 >
                   <Icon icon={CHANNEL_CONFIG[campaign.channel]?.icon || Mail} size={24} className="text-white" />
@@ -187,7 +187,7 @@ export function CampaignDetailModal({
                         <div className="grid grid-cols-2 gap-4">
                           <div className="rounded-lg bg-sky-50 dark:bg-sky-500/10 border border-sky-100 dark:border-sky-500/20 p-3">
                             <div className="flex items-center gap-2">
-                              <Icon icon={Users} size={16} className="text-[#05AFF2]" />
+                              <Icon icon={Users} size={16} className="text-[#4E62D8] dark:text-[#7B8CEA]" />
                               <span className="text-xs text-slate-500 dark:text-slate-400">Enviados</span>
                             </div>
                             <p className="text-lg font-bold text-slate-800 dark:text-slate-100 mt-1">

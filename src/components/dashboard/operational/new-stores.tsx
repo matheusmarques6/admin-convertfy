@@ -62,7 +62,7 @@ interface NewStoresProps {
 
 export function NewStores({ stores }: NewStoresProps) {
   return (
-    <div className="rounded-xl border border-border bg-card">
+    <div className="rounded-[8px] border border-border bg-card">
       <CardHeader className="p-5 pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">

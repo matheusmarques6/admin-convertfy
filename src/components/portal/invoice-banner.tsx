@@ -110,7 +110,7 @@ export function InvoiceBanner() {
       role="alert"
       aria-live="polite"
       className={`
-        relative mx-6 mt-4 lg:mx-8 rounded-xl border p-4 pr-10 shadow-sm
+        relative mx-6 mt-4 lg:mx-8 rounded-[8px] border p-4 pr-10 shadow-sm
         motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-2 motion-safe:duration-300
         ${isOverdueVariant
           ? "bg-red-50 border-red-200 dark:bg-red-500/10 dark:border-red-500/20"

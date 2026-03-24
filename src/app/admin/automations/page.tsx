@@ -123,7 +123,7 @@ export default async function AutomationsPage() {
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/10">
+          <div className="flex items-center justify-center w-10 h-10 rounded-[8px] bg-primary/10">
             <Icon icon={Zap} size={20} className="text-primary" />
           </div>
           <div>
@@ -141,7 +141,7 @@ export default async function AutomationsPage() {
 
       {/* Stats */}
       <div className="grid gap-4 md:grid-cols-4">
-        <Card className="rounded-xl border pt-6">
+        <Card className="rounded-[8px] border pt-6">
           <CardContent className="flex items-center gap-4">
             <div className="rounded-lg p-3 bg-primary/10">
               <Icon icon={Zap} size={20} className="text-primary" />
@@ -152,7 +152,7 @@ export default async function AutomationsPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="rounded-xl border pt-6">
+        <Card className="rounded-[8px] border pt-6">
           <CardContent className="flex items-center gap-4">
             <div className="rounded-lg p-3 bg-emerald-500/10">
               <Icon icon={Play} size={20} className="text-emerald-500" />
@@ -165,7 +165,7 @@ export default async function AutomationsPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="rounded-xl border pt-6">
+        <Card className="rounded-[8px] border pt-6">
           <CardContent className="flex items-center gap-4">
             <div className="rounded-lg p-3 bg-muted">
               <Icon icon={Pause} size={20} className="text-muted-foreground" />
@@ -178,7 +178,7 @@ export default async function AutomationsPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="rounded-xl border pt-6">
+        <Card className="rounded-[8px] border pt-6">
           <CardContent className="flex items-center gap-4">
             <div className="rounded-lg p-3 bg-info/10">
               <Icon icon={Activity} size={20} className="text-info" />
@@ -224,7 +224,7 @@ export default async function AutomationsPage() {
               const triggerLabel = triggerLabels[triggerType] || triggerType
 
               return (
-                <Card key={automation.id} className="rounded-xl border relative">
+                <Card key={automation.id} className="rounded-[8px] border relative">
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-3">

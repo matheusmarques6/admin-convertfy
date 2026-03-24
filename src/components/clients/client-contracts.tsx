@@ -245,7 +245,7 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
     <div className="space-y-6">
       {/* Active Contract */}
       {activeContract ? (
-        <Card className="rounded-xl border">
+        <Card className="rounded-[8px] border">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle className="text-base">Contrato Ativo</CardTitle>
@@ -310,7 +310,7 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
 
       {/* Contract History */}
       {pastContracts.length > 0 && (
-        <Card className="rounded-xl border">
+        <Card className="rounded-[8px] border">
           <CardHeader>
             <CardTitle className="text-base">Histórico de Contratos</CardTitle>
           </CardHeader>

@@ -224,10 +224,10 @@ function UtmAttributionSection({
   if (!hasAnyData && utmConversions.totalOrdersWithUtm === 0) return null
 
   return (
-    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5">
+    <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
       <div className="mb-4">
         <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-          <Link2 className="h-5 w-5 text-[#05AFF2]" />
+          <Link2 className="h-5 w-5 text-[#4E62D8] dark:text-[#7B8CEA]" />
           Atribuição UTM
         </h3>
         <p className="text-sm text-slate-500 dark:text-slate-400">Rastreamento de origem dos pedidos</p>
@@ -341,11 +341,11 @@ function UtmTemplatesSection({
   }
 
   return (
-    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5">
+    <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
       <div className="flex items-center justify-between mb-4">
         <div>
           <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-            <Tag className="h-5 w-5 text-[#05AFF2]" />
+            <Tag className="h-5 w-5 text-[#4E62D8] dark:text-[#7B8CEA]" />
             UTMs de Campanha
           </h3>
           <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -584,7 +584,7 @@ export default function PortalStoreReportPage({
         <TabsContent value="overview" className="space-y-6">
           {/* Key Metrics */}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5">
+            <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
               <div className="flex items-center justify-between pb-2">
                 <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Total de Leads</span>
                 <Users className="h-4 w-4 text-primary" />
@@ -595,10 +595,10 @@ export default function PortalStoreReportPage({
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Contatos na base</p>
             </div>
 
-            <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5">
+            <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
               <div className="flex items-center justify-between pb-2">
                 <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Leads Engajados</span>
-                <TrendingUp className="h-4 w-4 text-[#05AFF2]" />
+                <TrendingUp className="h-4 w-4 text-[#4E62D8] dark:text-[#7B8CEA]" />
               </div>
               <div className="text-2xl font-bold">
                 {formatNumber(klaviyo?.engagedLeads || 0)}
@@ -608,7 +608,7 @@ export default function PortalStoreReportPage({
               </p>
             </div>
 
-            <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5">
+            <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
               <div className="flex items-center justify-between pb-2">
                 <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Receita Email</span>
                 <DollarSign className="h-4 w-4 text-emerald-600" />
@@ -619,7 +619,7 @@ export default function PortalStoreReportPage({
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Atribuída via Klaviyo</p>
             </div>
 
-            <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5">
+            <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
               <div className="flex items-center justify-between pb-2">
                 <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Total Pedidos</span>
                 <ShoppingCart className="h-4 w-4 text-amber-600" />
@@ -633,7 +633,7 @@ export default function PortalStoreReportPage({
 
           {/* Email Performance Summary */}
           {klaviyo && (
-            <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5">
+            <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
               <div className="mb-4">
                 <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Performance de Email</h3>
                 <p className="text-sm text-slate-500 dark:text-slate-400">Métricas de engajamento no período</p>
@@ -680,7 +680,7 @@ export default function PortalStoreReportPage({
           {/* Revenue Breakdown */}
           {klaviyo && (
             <div className="grid gap-6 md:grid-cols-2">
-              <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5">
+              <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
                 <div className="mb-4">
                   <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Receita por Canal</h3>
                   <p className="text-sm text-slate-500 dark:text-slate-400">Distribuição de receita atribuída</p>
@@ -710,7 +710,7 @@ export default function PortalStoreReportPage({
               </div>
 
               {shopify && (
-                <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5">
+                <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
                   <div className="mb-4">
                     <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Métricas E-commerce</h3>
                     <p className="text-sm text-slate-500 dark:text-slate-400">Dados da loja</p>
@@ -744,7 +744,7 @@ export default function PortalStoreReportPage({
           {klaviyo ? (
             <>
               {/* Recent Campaigns */}
-              <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5">
+              <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
                 <div className="mb-4">
                   <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Campanhas Recentes</h3>
                   <p className="text-sm text-slate-500 dark:text-slate-400">Últimos emails enviados</p>
@@ -801,7 +801,7 @@ export default function PortalStoreReportPage({
               </div>
 
               {/* Top Flows */}
-              <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5">
+              <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
                 <div className="mb-4">
                   <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Top Automações</h3>
                   <p className="text-sm text-slate-500 dark:text-slate-400">Flows com melhor performance</p>
@@ -818,9 +818,7 @@ export default function PortalStoreReportPage({
                           key={flow.id}
                           className="flex items-center gap-4 p-4 border border-slate-200/80 dark:border-slate-700/40 rounded-lg"
                         >
-                          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-bold text-primary">
-                            {index + 1}
-                          </div>
+                          <span className="flex items-center justify-center w-6 h-6 rounded-[6px] bg-muted text-xs font-bold text-muted-foreground flex-shrink-0">{index + 1}</span>
                           <div className="flex-1">
                             <h4 className="font-medium">{flow.name}</h4>
                             <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -840,7 +838,7 @@ export default function PortalStoreReportPage({
               </div>
 
               {/* Lists */}
-              <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5">
+              <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
                 <div className="mb-4">
                   <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Listas de Email</h3>
                   <p className="text-sm text-slate-500 dark:text-slate-400">Segmentação da base</p>
@@ -866,7 +864,7 @@ export default function PortalStoreReportPage({
               </div>
             </>
           ) : (
-            <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40">
+            <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40">
               <div className="flex flex-col items-center justify-center py-12 px-5">
                 <Mail className="h-12 w-12 text-slate-500 dark:text-slate-400 mb-4" />
                 <h3 className="text-lg font-medium mb-2">Klaviyo não conectado</h3>
@@ -884,7 +882,7 @@ export default function PortalStoreReportPage({
             <>
               {/* E-commerce Metrics */}
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5">
+                <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
                   <div className="flex items-center justify-between pb-2">
                     <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Receita Total</span>
                     <DollarSign className="h-4 w-4 text-emerald-600" />
@@ -893,7 +891,7 @@ export default function PortalStoreReportPage({
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">No período</p>
                 </div>
 
-                <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5">
+                <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
                   <div className="flex items-center justify-between pb-2">
                     <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Total de Pedidos</span>
                     <ShoppingCart className="h-4 w-4 text-amber-600" />
@@ -902,16 +900,16 @@ export default function PortalStoreReportPage({
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Pedidos finalizados</p>
                 </div>
 
-                <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5">
+                <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
                   <div className="flex items-center justify-between pb-2">
                     <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Ticket Médio</span>
-                    <BarChart3 className="h-4 w-4 text-[#05AFF2]" />
+                    <BarChart3 className="h-4 w-4 text-[#4E62D8] dark:text-[#7B8CEA]" />
                   </div>
                   <div className="text-2xl font-bold">{formatCurrency(shopify.averageOrderValue)}</div>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Valor médio por pedido</p>
                 </div>
 
-                <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5">
+                <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
                   <div className="flex items-center justify-between pb-2">
                     <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Clientes Recorrentes</span>
                     <TrendingUp className="h-4 w-4 text-primary" />
@@ -922,7 +920,7 @@ export default function PortalStoreReportPage({
               </div>
 
               {/* Top Products */}
-              <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5">
+              <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
                 <div className="mb-4">
                   <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Produtos Mais Vendidos</h3>
                   <p className="text-sm text-slate-500 dark:text-slate-400">Top produtos no período</p>
@@ -939,9 +937,7 @@ export default function PortalStoreReportPage({
                           key={product.name}
                           className="flex items-center gap-4 p-4 border border-slate-200/80 dark:border-slate-700/40 rounded-lg"
                         >
-                          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-bold text-primary">
-                            {index + 1}
-                          </div>
+                          <span className="flex items-center justify-center w-6 h-6 rounded-[6px] bg-muted text-xs font-bold text-muted-foreground flex-shrink-0">{index + 1}</span>
                           <div className="flex-1">
                             <h4 className="font-medium">{product.name}</h4>
                             <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -968,7 +964,7 @@ export default function PortalStoreReportPage({
               />
             </>
           ) : (
-            <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40">
+            <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40">
               <div className="flex flex-col items-center justify-center py-12 px-5">
                 <ShoppingCart className="h-12 w-12 text-slate-500 dark:text-slate-400 mb-4" />
                 <h3 className="text-lg font-medium mb-2">Shopify não conectado</h3>

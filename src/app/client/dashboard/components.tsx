@@ -35,7 +35,7 @@ export function MetricCard({
   highlight?: boolean
 }) {
   return (
-    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-4 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200">
+    <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-4 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow duration-200">
       <div className="flex items-center gap-2 mb-3">
         <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
           highlight ? "bg-primary/10" : "bg-slate-100 dark:bg-slate-800"
@@ -96,10 +96,10 @@ export function ChannelCard({
   active?: boolean
 }) {
   return (
-    <div className={`rounded-xl p-4 border transition-all cursor-pointer ${
+    <div className={`rounded-[8px] p-4 border transition-all cursor-pointer ${
       active
         ? "bg-primary/5 dark:bg-primary/10 border-primary/30 shadow-sm"
-        : "bg-white dark:bg-[#151922] border-slate-200/80 dark:border-slate-700/40 hover:border-slate-300 dark:hover:border-slate-600"
+        : "bg-white dark:bg-[#1A1D27] border-slate-200/80 dark:border-slate-700/40 hover:border-slate-300 dark:hover:border-slate-600"
     }`}>
       <div className="flex items-center gap-2 mb-2">
         <Icon icon={IconComponent} size={16} className={active ? "text-primary" : "text-slate-400 dark:text-slate-500"} />
@@ -190,7 +190,7 @@ export function SimpleLineChart({ data, color = "emerald" }: { data: number[]; c
     return `${x},${y}`
   }).join(" ")
 
-  const strokeColor = color === "emerald" ? "#05AFF2" : "#05AFF2"
+  const strokeColor = color === "emerald" ? "#4E62D8" : "#4E62D8"
 
   return (
     <div className="h-20 w-full">

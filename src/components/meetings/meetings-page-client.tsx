@@ -366,7 +366,7 @@ export function MeetingsPageClient({
 
         {/* Stats */}
         <div className="grid gap-4 md:grid-cols-3">
-          <Card className="rounded-xl border pt-6">
+          <Card className="rounded-[8px] border pt-6">
             <CardContent className="flex items-center gap-4">
               <div className="rounded-lg p-3 bg-primary/10">
                 <Calendar className="h-5 w-5 text-primary" />
@@ -377,7 +377,7 @@ export function MeetingsPageClient({
               </div>
             </CardContent>
           </Card>
-          <Card className="rounded-xl border pt-6">
+          <Card className="rounded-[8px] border pt-6">
             <CardContent className="flex items-center gap-4">
               <div className="rounded-lg p-3 bg-emerald-500/10">
                 <CheckCircle className="h-5 w-5 text-emerald-500" />
@@ -390,7 +390,7 @@ export function MeetingsPageClient({
               </div>
             </CardContent>
           </Card>
-          <Card className="rounded-xl border pt-6">
+          <Card className="rounded-[8px] border pt-6">
             <CardContent className="flex items-center gap-4">
               <div className="rounded-lg p-3 bg-amber-500/10">
                 <Video className="h-5 w-5 text-amber-500" />
@@ -411,7 +411,7 @@ export function MeetingsPageClient({
           {viewMode === "list" ? (
             <div className="space-y-6 pb-6">
               {/* Upcoming */}
-              <Card className="rounded-xl border">
+              <Card className="rounded-[8px] border">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-base">
                     <Calendar className="h-5 w-5 text-primary" />
@@ -529,7 +529,7 @@ export function MeetingsPageClient({
 
               {/* History */}
               {pastMeetings.length > 0 && (
-                <Card className="rounded-xl border">
+                <Card className="rounded-[8px] border">
                   <CardHeader>
                     <CardTitle className="text-base">Histórico</CardTitle>
                   </CardHeader>

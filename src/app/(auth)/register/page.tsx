@@ -87,7 +87,7 @@ export default function RegisterPage() {
         {/* Logo */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center mb-4">
-            <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center">
+            <div className="w-12 h-12 rounded-[8px] bg-primary flex items-center justify-center">
               <span className="text-2xl font-bold text-white">C</span>
             </div>
           </div>
@@ -95,7 +95,7 @@ export default function RegisterPage() {
           <p className="text-muted-foreground mt-1">Sistema de Gestão para Agências</p>
         </div>
 
-        <Card className="rounded-xl border-border">
+        <Card className="rounded-[8px] border-border">
           <CardHeader className="space-y-1">
             <CardTitle className="text-2xl">Criar conta</CardTitle>
             <CardDescription>

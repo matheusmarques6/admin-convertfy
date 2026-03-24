@@ -39,7 +39,7 @@ export function RevenueChannels({ klaviyo }: RevenueChannelsProps) {
     "Receita Total Atribuída"
 
   return (
-    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5">
+    <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-medium text-slate-800 dark:text-slate-100 flex items-center gap-2">
           <Icon icon={BarChart3} size={16} className="text-primary" />
@@ -137,10 +137,10 @@ function ChannelCardLocal({
 }) {
   return (
     <div
-      className={`rounded-xl p-4 border transition-all cursor-pointer ${
+      className={`rounded-[8px] p-4 border transition-all cursor-pointer ${
         active
           ? `${color} border-current`
-          : "bg-white dark:bg-[#151922] border-slate-200/80 dark:border-slate-700/40 hover:border-primary/30"
+          : "bg-white dark:bg-[#1A1D27] border-slate-200/80 dark:border-slate-700/40 hover:border-primary/30"
       }`}
       onClick={onClick}
     >

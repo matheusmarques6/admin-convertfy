@@ -39,7 +39,7 @@ export function CampaignFilterBar({
           <Icon icon={Mail} size={16} className="mr-2 text-slate-400 dark:text-slate-500" />
           <SelectValue placeholder="Canal" />
         </SelectTrigger>
-        <SelectContent className="bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40">
+        <SelectContent className="bg-white dark:bg-[#1A1D27] border-slate-200 dark:border-slate-700/40">
           <SelectItem value="all" className="text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
             Todos os canais
           </SelectItem>
@@ -64,7 +64,7 @@ export function CampaignFilterBar({
           <Icon icon={Filter} size={16} className="mr-2 text-slate-400 dark:text-slate-500" />
           <SelectValue placeholder="Status" />
         </SelectTrigger>
-        <SelectContent className="bg-white dark:bg-[#151922] border-slate-200 dark:border-slate-700/40">
+        <SelectContent className="bg-white dark:bg-[#1A1D27] border-slate-200 dark:border-slate-700/40">
           <SelectItem value="all" className="text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
             Todos os status
           </SelectItem>

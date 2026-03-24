@@ -61,14 +61,14 @@ function StatCard({
   iconBgColor = "bg-emerald-50 dark:bg-emerald-500/10",
 }: StatCardProps) {
   return (
-    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow">
+    <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5 hover:shadow-md dark:hover:shadow-slate-900/30 transition-shadow">
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm text-slate-500 dark:text-slate-400 mb-1">{title}</p>
           <p className="text-2xl font-bold text-slate-800 dark:text-slate-100">{value}</p>
           {subtitle && <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{subtitle}</p>}
         </div>
-        <div className={`rounded-xl p-3 ${iconBgColor}`}>
+        <div className={`rounded-[8px] p-3 ${iconBgColor}`}>
           <IconWrapper icon={Icon} size={24} className={iconColor} />
         </div>
       </div>
@@ -104,7 +104,7 @@ export function CampaignStatsBar({ stats }: CampaignStatsBarProps) {
         value={formatNumber(stats.totalRecipients)}
         subtitle="emails enviados"
         icon={Users}
-        iconColor="text-[#05AFF2]"
+        iconColor="text-[#4E62D8] dark:text-[#7B8CEA]"
         iconBgColor="bg-sky-50 dark:bg-sky-500/10"
       />
       <StatCard

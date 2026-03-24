@@ -229,14 +229,14 @@ function StatCard({
         <p className="text-2xl font-bold text-foreground">{value}</p>
         {subtitle && <p className="text-xs text-muted-foreground/70 mt-1">{subtitle}</p>}
       </div>
-      <div className={`rounded-xl p-3 ${iconBgColor}`}>
+      <div className={`rounded-[8px] p-3 ${iconBgColor}`}>
         <Icon className={`h-6 w-6 ${iconColor}`} />
       </div>
     </div>
   )
 
   return (
-    <div className="bg-card rounded-xl border border-border p-5 hover:shadow-md transition-shadow">
+    <div className="bg-card rounded-[8px] border border-border p-5 hover:shadow-md transition-shadow">
       {content}
     </div>
   )
@@ -250,7 +250,7 @@ function BoletoCard({ invoice, onPayClick }: { invoice: Invoice; onPayClick: () 
 
   return (
     <div className={`
-      rounded-2xl border overflow-hidden bg-card shadow-md
+      rounded-[8px] border overflow-hidden bg-card shadow-md
       ${isOverdue
         ? "border-red-200 dark:border-red-500/20"
         : "border-border"
@@ -309,7 +309,7 @@ function BoletoCard({ invoice, onPayClick }: { invoice: Invoice; onPayClick: () 
 
         {/* Due Date Info */}
         <div className={`
-          rounded-xl p-4 flex items-center justify-between
+          rounded-[8px] p-4 flex items-center justify-between
           ${isOverdue ? "bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20" : "bg-muted border border-border"}
         `}>
           <div className="flex items-center gap-3">
@@ -339,7 +339,7 @@ function BoletoCard({ invoice, onPayClick }: { invoice: Invoice; onPayClick: () 
               </Badge>
             </div>
             <div className={`
-              rounded-xl p-4 text-center text-sm
+              rounded-[8px] p-4 text-center text-sm
               ${isOverdue ? "bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400" : "bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400"}
             `}>
               {getPaymentMethodInstruction(invoice.payment_method || "")}
@@ -414,7 +414,7 @@ function InvoiceRow({ invoice, onClick }: { invoice: Invoice; onClick: () => voi
   return (
     <div
       onClick={isLocalPending ? undefined : onClick}
-      className={`flex items-center gap-4 p-4 rounded-xl bg-card border border-border transition-all group ${
+      className={`flex items-center gap-4 p-4 rounded-[8px] bg-card border border-border transition-all group ${
         isLocalPending ? "cursor-default" : "hover:bg-accent/50 cursor-pointer"
       }`}
     >
@@ -508,7 +508,7 @@ function PixModal({
 
           {/* QR Code */}
           <div className="flex justify-center">
-            <div className="bg-card p-4 rounded-xl border border-border">
+            <div className="bg-card p-4 rounded-[8px] border border-border">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={`data:image/png;base64,${invoice.pix_qr_code.encodedImage}`}
@@ -661,13 +661,13 @@ export default function PortalInvoicesPage() {
           <Skeleton className="h-10 w-48 bg-muted" />
           <Skeleton className="h-10 w-32 bg-muted" />
         </div>
-        <Skeleton className="h-64 rounded-2xl bg-muted" />
+        <Skeleton className="h-64 rounded-[8px] bg-muted" />
         <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
           {[1, 2, 3, 4].map((i) => (
-            <Skeleton key={i} className="h-24 rounded-xl bg-muted" />
+            <Skeleton key={i} className="h-24 rounded-[8px] bg-muted" />
           ))}
         </div>
-        <Skeleton className="h-96 rounded-xl bg-muted" />
+        <Skeleton className="h-96 rounded-[8px] bg-muted" />
       </div>
     )
   }
@@ -678,7 +678,7 @@ export default function PortalInvoicesPage() {
   if (error) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6">
-        <div className="bg-card rounded-xl border border-border shadow-md p-8 text-center max-w-md">
+        <div className="bg-card rounded-[8px] border border-border shadow-md p-8 text-center max-w-md">
           <div className="rounded-full bg-red-50 dark:bg-red-500/10 p-4 w-fit mx-auto mb-4">
             <AlertCircle className="h-10 w-10 text-red-600" />
           </div>
@@ -701,7 +701,7 @@ export default function PortalInvoicesPage() {
 
         {/* ========== REVENUE CARD ========== */}
         {showRevenue && revenueGenerated != null && revenueGenerated > 0 && (
-          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-500 via-emerald-600 to-cyan-600 dark:from-emerald-600 dark:via-emerald-700 dark:to-cyan-700 shadow-lg shadow-emerald-500/20 dark:shadow-emerald-700/30 p-6 sm:p-8">
+          <div className="relative overflow-hidden rounded-[12px] bg-gradient-to-br from-emerald-500 via-emerald-600 to-cyan-600 dark:from-emerald-600 dark:via-emerald-700 dark:to-cyan-700 shadow-lg shadow-emerald-500/20 dark:shadow-emerald-700/30 p-6 sm:p-8">
             {/* Decorative background elements */}
             <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/3" />
             <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/5 rounded-full translate-y-1/2 -translate-x-1/4" />
@@ -709,7 +709,7 @@ export default function PortalInvoicesPage() {
 
             <div className="relative flex flex-col sm:flex-row items-center gap-4 sm:gap-6">
               {/* Icon */}
-              <div className="flex-shrink-0 rounded-2xl bg-white/15 backdrop-blur-sm p-4">
+              <div className="flex-shrink-0 rounded-[8px] bg-white/15 backdrop-blur-sm p-4">
                 <TrendingUp className="h-8 w-8 sm:h-10 sm:w-10 text-white" />
               </div>
 
@@ -742,7 +742,7 @@ export default function PortalInvoicesPage() {
 
         {/* ========== NO PENDING INVOICES MESSAGE ========== */}
         {!nextInvoice && stats && stats.pending === 0 && stats.overdue === 0 && (
-          <div className="rounded-2xl bg-card border border-emerald-200 dark:border-emerald-500/20 p-8 text-center">
+          <div className="rounded-[8px] bg-card border border-emerald-200 dark:border-emerald-500/20 p-8 text-center">
             <div className="rounded-full bg-emerald-50 dark:bg-emerald-500/10 p-4 w-fit mx-auto mb-4">
               <CheckCircle className="h-10 w-10 text-emerald-600" />
             </div>
@@ -794,7 +794,7 @@ export default function PortalInvoicesPage() {
         )}
 
         {/* ========== FILTERS ========== */}
-        <div className="bg-card rounded-xl border border-border p-4">
+        <div className="bg-card rounded-[8px] border border-border p-4">
           <div className="flex flex-col gap-4 md:flex-row md:items-center">
             <div className="flex-1">
               <div className="relative">
@@ -841,7 +841,7 @@ export default function PortalInvoicesPage() {
           <h2 className="text-[15px] font-semibold text-foreground">Histórico de Faturas</h2>
 
           {historyInvoices.length === 0 ? (
-            <div className="bg-card rounded-xl border border-border p-12 text-center">
+            <div className="bg-card rounded-[8px] border border-border p-12 text-center">
               <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
               <p className="text-lg font-medium text-muted-foreground mb-1">
                 Nenhuma fatura encontrada
@@ -870,7 +870,7 @@ export default function PortalInvoicesPage() {
         </div>
 
         {/* ========== PAYMENT INFO ========== */}
-        <div className="bg-card rounded-xl border border-border p-6">
+        <div className="bg-card rounded-[8px] border border-border p-6">
           <h3 className="text-[15px] font-semibold text-foreground mb-4">
             Informações de Pagamento
           </h3>

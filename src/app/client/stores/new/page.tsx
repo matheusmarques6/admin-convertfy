@@ -273,11 +273,9 @@ export default function PortalNewStorePage() {
   if (submitted) {
     return (
       <div className="space-y-6">
-        <div className="bg-white dark:bg-[#151922] rounded-2xl border border-slate-200/80 dark:border-slate-700/40 max-w-md mx-auto text-center">
+        <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 max-w-md mx-auto text-center">
           <CardHeader>
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-500/10">
-              <Check className="h-8 w-8 text-emerald-600" />
-            </div>
+            <Check className="h-8 w-8 text-emerald-600 mx-auto mb-4" />
             <CardTitle className="text-2xl">Loja Enviada!</CardTitle>
             <CardDescription className="text-base mt-2">
               Sua loja foi enviada para aprovação. Você será notificado quando o onboarding começar.
@@ -311,7 +309,7 @@ export default function PortalNewStorePage() {
 
       {/* Mode Selection */}
       {existingStores.length > 0 && (
-        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40">
+        <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40">
           <CardContent className="pt-6">
             <div className="flex gap-4">
               <Button
@@ -377,7 +375,7 @@ export default function PortalNewStorePage() {
       </div>
 
       {/* Form */}
-      <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40">
+      <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40">
         <CardHeader>
           <CardTitle>{STEPS[currentStep - 1].title}</CardTitle>
         </CardHeader>

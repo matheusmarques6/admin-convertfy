@@ -17,10 +17,10 @@ interface EmailPerformanceProps {
 
 export function EmailPerformance({ klaviyo }: EmailPerformanceProps) {
   return (
-    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5">
+    <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-medium text-slate-800 dark:text-slate-100 flex items-center gap-2">
-          <Mail className="h-4 w-4 text-[#05AFF2]" />
+          <Mail className="h-4 w-4 text-[#4E62D8] dark:text-[#7B8CEA]" />
           Email Performance
         </h3>
         <Button variant="ghost" size="sm" className="text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 h-8 px-2">

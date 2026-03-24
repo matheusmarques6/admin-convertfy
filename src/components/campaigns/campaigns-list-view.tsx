@@ -327,31 +327,31 @@ export function CampaignsListView() {
 
       {/* Summary KPI Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <Card className="rounded-xl border">
+        <Card className="rounded-[8px] border">
           <CardContent className="pt-4 pb-3">
             <p className="text-xs text-muted-foreground">Total Campanhas</p>
             <p className="text-xl font-bold mt-1">{summary.total}</p>
           </CardContent>
         </Card>
-        <Card className="rounded-xl border">
+        <Card className="rounded-[8px] border">
           <CardContent className="pt-4 pb-3">
             <p className="text-xs text-muted-foreground">Enviadas</p>
             <p className="text-xl font-bold mt-1">{summary.sent}</p>
           </CardContent>
         </Card>
-        <Card className="rounded-xl border">
+        <Card className="rounded-[8px] border">
           <CardContent className="pt-4 pb-3">
             <p className="text-xs text-muted-foreground">Total Receita</p>
             <p className="text-xl font-bold mt-1">{formatCurrency(summary.totalRevenue)}</p>
           </CardContent>
         </Card>
-        <Card className="rounded-xl border">
+        <Card className="rounded-[8px] border">
           <CardContent className="pt-4 pb-3">
             <p className="text-xs text-muted-foreground">Total Destinatários</p>
             <p className="text-xl font-bold mt-1">{summary.totalRecipients.toLocaleString()}</p>
           </CardContent>
         </Card>
-        <Card className="rounded-xl border">
+        <Card className="rounded-[8px] border">
           <CardContent className="pt-4 pb-3">
             <p className="text-xs text-muted-foreground">Méd. Abertura</p>
             <p className="text-xl font-bold mt-1">{summary.avgOpenRate.toFixed(1)}%</p>
@@ -363,7 +363,7 @@ export function CampaignsListView() {
       {storePerformance.length > 1 && filterStore === "all" && (
         <div className="grid gap-4 lg:grid-cols-2">
           {/* Top Performing Stores */}
-          <Card className="rounded-xl border">
+          <Card className="rounded-[8px] border">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
                 <TrendingUp className="h-4 w-4 text-success" />
@@ -398,7 +398,7 @@ export function CampaignsListView() {
 
           {/* Bottom Performing Stores */}
           {bottomStores.length > 0 && (
-            <Card className="rounded-xl border">
+            <Card className="rounded-[8px] border">
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm font-semibold flex items-center gap-2">
                   <TrendingDown className="h-4 w-4 text-warning" />
@@ -432,7 +432,7 @@ export function CampaignsListView() {
 
       {/* Best Campaign per Store */}
       {storePerformance.length > 0 && filterStore === "all" && (
-        <Card className="rounded-xl border">
+        <Card className="rounded-[8px] border">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
               <Trophy className="h-4 w-4 text-warning" />
@@ -485,7 +485,7 @@ export function CampaignsListView() {
       <div>
         <h3 className="text-sm font-semibold mb-3 text-muted-foreground">Campanhas Recentes</h3>
         {sorted.length > 0 ? (
-          <Card className="rounded-xl border">
+          <Card className="rounded-[8px] border">
             <CardContent className="pt-6">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">

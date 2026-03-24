@@ -89,7 +89,7 @@ export function StorePerformanceTables() {
     <div className="space-y-6">
       {/* Recent Campaigns Table */}
       {hasCampaigns && (
-        <Card className="rounded-xl">
+        <Card className="rounded-[8px]">
           <CardHeader>
             <CardTitle className="text-base">Campanhas recentes</CardTitle>
           </CardHeader>
@@ -141,7 +141,7 @@ export function StorePerformanceTables() {
 
       {/* Top Flows Table */}
       {hasFlows && (
-        <Card className="rounded-xl">
+        <Card className="rounded-[8px]">
           <CardHeader>
             <CardTitle className="text-base">Flows com melhor desempenho</CardTitle>
           </CardHeader>

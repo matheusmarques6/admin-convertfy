@@ -23,7 +23,7 @@ export function ErrorState({
   return (
     <div className={cn(
       "flex flex-col items-center justify-center text-center py-12 px-6",
-      "border border-destructive/20 rounded-xl bg-destructive/5",
+      "border border-destructive/20 rounded-[8px] bg-destructive/5",
       className
     )}>
       <IconWrapper icon={IconProp} customSize={32} className="mb-4 text-destructive" />

@@ -95,7 +95,7 @@ export function FinancialCharts({
   const hasRevenueData = displayRevenueData.some((d) => d.receita > 0)
 
   return (
-    <div className="rounded-xl border border-border bg-card h-full">
+    <div className="rounded-[8px] border border-border bg-card h-full">
       <CardHeader>
         <CardTitle className="text-base font-semibold text-foreground">Visão Geral</CardTitle>
         <CardDescription className="text-xs">Acompanhe o desempenho da sua agência</CardDescription>

@@ -151,13 +151,13 @@ function ProgressRing({ percent }: { percent: number }) {
           cy={size / 2}
           r={radius}
           fill="none"
-          stroke="#05AFF2"
+          stroke="#4E62D8"
           strokeWidth={stroke}
           strokeLinecap="round"
           strokeDasharray={circumference}
           strokeDashoffset={offset}
           className="transition-all duration-1200 ease-out"
-          style={{ filter: "drop-shadow(0 0 8px rgba(5,175,242,0.4))" }}
+          style={{ filter: "drop-shadow(0 0 8px rgba(78,98,216,0.4))" }}
         />
       </svg>
       <div className="absolute inset-0 flex items-center justify-center">
@@ -192,13 +192,13 @@ function PipelineDesktop({ phases, currentPhase }: { phases: PhaseTimelineItem[]
               <div className="relative">
                 {/* Sonar ping for active */}
                 {isActive && (
-                  <span className="absolute inset-[-4px] rounded-full bg-[#05AFF2]/15 animate-ping" />
+                  <span className="absolute inset-[-4px] rounded-full bg-[#4E62D8]/15 dark:bg-[#7B8CEA]/15 animate-ping" />
                 )}
                 <div
                   className={cn(
                     "flex items-center justify-center rounded-full transition-all duration-300",
                     isComplete && "h-11 w-11 bg-emerald-500 text-white",
-                    isActive && "h-13 w-13 bg-[#05AFF2] text-white",
+                    isActive && "h-13 w-13 bg-[#4E62D8] dark:bg-[#7B8CEA] text-white",
                     !isComplete && !isActive && "h-11 w-11 bg-slate-100 dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-600 text-slate-400 dark:text-slate-500"
                   )}
                   style={isActive ? { width: 52, height: 52 } : { width: 44, height: 44 }}
@@ -216,7 +216,7 @@ function PipelineDesktop({ phases, currentPhase }: { phases: PhaseTimelineItem[]
               <span className={cn(
                 "mt-2 text-xs font-medium text-center leading-tight max-w-[80px]",
                 isComplete && "text-emerald-600 dark:text-emerald-400",
-                isActive && "font-semibold text-[#05AFF2]",
+                isActive && "font-semibold text-[#4E62D8] dark:text-[#7B8CEA]",
                 !isComplete && !isActive && "text-slate-400 dark:text-slate-500"
               )}>
                 {phase.label}
@@ -228,7 +228,7 @@ function PipelineDesktop({ phases, currentPhase }: { phases: PhaseTimelineItem[]
                 </span>
               )}
               {isActive && !timeline?.completedAt && (
-                <span className="text-[10px] text-[#05AFF2] mt-0.5">agora</span>
+                <span className="text-[10px] text-[#4E62D8] dark:text-[#7B8CEA] mt-0.5">agora</span>
               )}
             </div>
 
@@ -240,7 +240,7 @@ function PipelineDesktop({ phases, currentPhase }: { phases: PhaseTimelineItem[]
                   className={cn(
                     "absolute inset-y-0 left-0 rounded-full transition-all duration-700 ease-out",
                     isComplete && "bg-emerald-400",
-                    isActive && "bg-gradient-to-r from-emerald-400 to-[#05AFF2]",
+                    isActive && "bg-gradient-to-r from-emerald-400 to-[#4E62D8]",
                   )}
                   style={{
                     width: mounted
@@ -276,13 +276,13 @@ function PipelineMobile({ phases, currentPhase }: { phases: PhaseTimelineItem[];
             <div className="flex items-center gap-3 py-2">
               <div className="relative">
                 {isActive && (
-                  <span className="absolute inset-[-3px] rounded-full bg-[#05AFF2]/15 animate-ping" />
+                  <span className="absolute inset-[-3px] rounded-full bg-[#4E62D8]/15 dark:bg-[#7B8CEA]/15 animate-ping" />
                 )}
                 <div
                   className={cn(
                     "flex items-center justify-center rounded-full",
                     isComplete && "h-9 w-9 bg-emerald-500 text-white",
-                    isActive && "h-10 w-10 bg-[#05AFF2] text-white",
+                    isActive && "h-10 w-10 bg-[#4E62D8] dark:bg-[#7B8CEA] text-white",
                     !isComplete && !isActive && "h-9 w-9 bg-slate-100 dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-600 text-slate-400"
                   )}
                 >
@@ -294,7 +294,7 @@ function PipelineMobile({ phases, currentPhase }: { phases: PhaseTimelineItem[];
                 <span className={cn(
                   "text-sm font-medium",
                   isComplete && "text-emerald-600 dark:text-emerald-400",
-                  isActive && "font-semibold text-[#05AFF2]",
+                  isActive && "font-semibold text-[#4E62D8] dark:text-[#7B8CEA]",
                   !isComplete && !isActive && "text-slate-400 dark:text-slate-500"
                 )}>
                   {phase.label}
@@ -315,7 +315,7 @@ function PipelineMobile({ phases, currentPhase }: { phases: PhaseTimelineItem[];
                   background: isComplete
                     ? "rgb(52, 211, 153)"
                     : isActive
-                    ? "linear-gradient(to bottom, #05AFF2, rgba(148,163,184,0.3))"
+                    ? "linear-gradient(to bottom, #4E62D8, rgba(148,163,184,0.3))"
                     : "rgba(148,163,184,0.3)"
                 }}
               />
@@ -393,17 +393,17 @@ export function OnboardingDashboard({ firstName }: OnboardingDashboardProps) {
             Acompanhe o progresso do seu onboarding
           </p>
         </div>
-        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#05AFF2]/10 text-[#05AFF2] text-xs font-semibold self-start">
-          <span className="w-1.5 h-1.5 rounded-full bg-[#05AFF2] animate-pulse" />
+        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#4E62D8]/10 dark:bg-[#7B8CEA]/10 text-[#4E62D8] dark:text-[#7B8CEA] text-xs font-semibold self-start">
+          <span className="w-1.5 h-1.5 rounded-full bg-[#4E62D8] dark:bg-[#7B8CEA] animate-pulse" />
           Onboarding
         </span>
       </div>
 
       {/* Hero Progress */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#0B0E14] via-[#12152B] to-[#1A1040] p-6 md:p-8 lg:p-10 shadow-xl">
+      <div className="relative overflow-hidden rounded-[12px] bg-gradient-to-br from-[#0B0E14] via-[#12152B] to-[#1A1040] p-6 md:p-8 lg:p-10 shadow-xl">
         {/* Decorative orbs */}
         <div className="absolute -top-20 -right-20 w-60 h-60 bg-primary/20 rounded-full blur-[80px]" />
-        <div className="absolute -bottom-16 -left-16 w-48 h-48 bg-[#05AFF2]/15 rounded-full blur-[60px]" />
+        <div className="absolute -bottom-16 -left-16 w-48 h-48 bg-[#4E62D8]/15 dark:bg-[#7B8CEA]/15 rounded-full blur-[60px]" />
 
         <div className="relative flex flex-col items-center text-center">
           <p className="text-sm text-slate-400 mb-6">Estamos preparando tudo</p>
@@ -420,16 +420,16 @@ export function OnboardingDashboard({ firstName }: OnboardingDashboardProps) {
       </div>
 
       {/* Phase Pipeline */}
-      <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-6">
+      <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-6">
         <PipelineDesktop phases={phases} currentPhase={currentPhase} />
         <PipelineMobile phases={phases} currentPhase={currentPhase} />
       </div>
 
       {/* Current Phase Detail */}
       {currentSteps.length > 0 && (
-        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-6">
+        <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-6">
           <div className="flex items-center gap-2 mb-1">
-            <PhaseIcon className="h-4 w-4 text-[#05AFF2]" />
+            <PhaseIcon className="h-4 w-4 text-[#4E62D8] dark:text-[#7B8CEA]" />
             <span className="text-xs uppercase tracking-wider text-slate-400 font-medium">
               O que esta acontecendo agora
             </span>
@@ -444,7 +444,7 @@ export function OnboardingDashboard({ firstName }: OnboardingDashboardProps) {
                 {step.status === "completed" || step.status === "skipped" ? (
                   <CheckCircle2 className="h-4.5 w-4.5 text-emerald-500 shrink-0" />
                 ) : step.status === "in_progress" ? (
-                  <Loader2 className="h-4.5 w-4.5 text-[#05AFF2] animate-spin shrink-0" />
+                  <Loader2 className="h-4.5 w-4.5 text-[#4E62D8] dark:text-[#7B8CEA] animate-spin shrink-0" />
                 ) : (
                   <Circle className="h-4.5 w-4.5 text-slate-300 dark:text-slate-600 shrink-0" />
                 )}
@@ -467,9 +467,9 @@ export function OnboardingDashboard({ firstName }: OnboardingDashboardProps) {
       {/* Bottom Row */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* ETA Card */}
-        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-6">
-          <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-[#05AFF2]/10 mb-4">
-            <CalendarClock className="h-5 w-5 text-[#05AFF2]" />
+        <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-6">
+          <div className="flex items-center justify-center h-10 w-10 rounded-[8px] bg-[#4E62D8]/10 dark:bg-[#7B8CEA]/10 mb-4">
+            <CalendarClock className="h-5 w-5 text-[#4E62D8] dark:text-[#7B8CEA]" />
           </div>
           <span className="text-xs uppercase tracking-wider text-slate-400 font-medium">
             Previsao de conclusao
@@ -495,8 +495,8 @@ export function OnboardingDashboard({ firstName }: OnboardingDashboardProps) {
         </div>
 
         {/* Support CTA */}
-        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-6">
-          <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-emerald-500/10 mb-4">
+        <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-6">
+          <div className="flex items-center justify-center h-10 w-10 rounded-[8px] bg-emerald-500/10 mb-4">
             <MessageCircle className="h-5 w-5 text-emerald-500" />
           </div>
           <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
@@ -506,14 +506,14 @@ export function OnboardingDashboard({ firstName }: OnboardingDashboardProps) {
             Fale com seu gerente de conta ou acesse o suporte.
           </p>
           <Button
-            className="bg-[#05AFF2] hover:bg-[#05AFF2]/85 text-white rounded-lg px-4 py-2 text-sm font-medium"
+            className="bg-[#4E62D8] dark:bg-[#7B8CEA] hover:bg-[#4E62D8]/85 text-white rounded-lg px-4 py-2 text-sm font-medium"
             asChild
           >
             <a href="mailto:suporte@convertfy.me">Falar com suporte</a>
           </Button>
           <Link
             href="/client/onboarding"
-            className="mt-3 inline-flex items-center gap-1 text-sm text-[#05AFF2] hover:text-[#05AFF2]/80 transition-colors"
+            className="mt-3 inline-flex items-center gap-1 text-sm text-[#4E62D8] dark:text-[#7B8CEA] hover:text-[#4E62D8]/80 dark:hover:text-[#7B8CEA]/80 transition-colors"
           >
             Ver detalhes completos do onboarding
             <ArrowRight className="h-3.5 w-3.5" />

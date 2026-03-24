@@ -97,7 +97,7 @@ export default function PortalLoginPage() {
       {/* Left Panel - Brand */}
       <div className="hidden lg:flex lg:w-[480px] bg-[#0B0E14] flex-col items-center justify-center relative overflow-hidden">
         <div className="absolute top-1/4 left-1/4 w-[400px] h-[400px] bg-primary/20 rounded-full blur-[120px]" />
-        <div className="absolute bottom-1/4 right-1/4 w-[300px] h-[300px] bg-[#05AFF2]/15 rounded-full blur-[100px]" />
+        <div className="absolute bottom-1/4 right-1/4 w-[300px] h-[300px] bg-[#4E62D8]/15 dark:bg-[#7B8CEA]/15 rounded-full blur-[100px]" />
 
         <div className="relative z-10 px-12 text-center">
           <Image
@@ -120,7 +120,7 @@ export default function PortalLoginPage() {
         <div className="w-full max-w-[400px]">
           {/* Mobile Logo */}
           <div className="lg:hidden flex flex-col items-center mb-10">
-            <div className="w-14 h-14 rounded-2xl bg-primary flex items-center justify-center mb-4 shadow-lg shadow-primary/25">
+            <div className="w-14 h-14 rounded-[8px] bg-primary flex items-center justify-center mb-4 shadow-lg shadow-primary/25">
               <span className="text-white font-bold text-xl">C</span>
             </div>
             <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100">Convertfy</h1>
@@ -128,7 +128,7 @@ export default function PortalLoginPage() {
           </div>
 
           {/* Form Card */}
-          <div className="bg-white dark:bg-[#151922] rounded-2xl border border-slate-200/80 dark:border-slate-700/40 p-8">
+          <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-8">
             <div className="mb-6">
               <h1 className="text-xl font-semibold text-slate-800 dark:text-slate-100 mb-1">Bem-vindo de volta</h1>
               <p className="text-sm text-slate-500 dark:text-slate-400">Entre com suas credenciais para acessar o portal</p>

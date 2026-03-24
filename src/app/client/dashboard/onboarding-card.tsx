@@ -59,7 +59,7 @@ export function OnboardingCard() {
   const nextStep = pendingSteps[0]
 
   return (
-    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 hover:shadow-md transition-shadow duration-200">
+    <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5 hover:shadow-md transition-shadow duration-200">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <div className="flex items-center justify-center h-7 w-7 rounded-lg bg-cyan-50 dark:bg-cyan-500/10">
@@ -67,7 +67,7 @@ export function OnboardingCard() {
           </div>
           <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Onboarding</h3>
         </div>
-        <span className="text-sm font-bold text-[#05AFF2]">{data.progress_percent}%</span>
+        <span className="text-sm font-bold text-[#4E62D8] dark:text-[#7B8CEA]">{data.progress_percent}%</span>
       </div>
 
       <Progress value={data.progress_percent} className="h-2 mb-3" />
@@ -81,7 +81,7 @@ export function OnboardingCard() {
         {pendingSteps.slice(0, 3).map((step) => (
           <div key={step.id} className="flex items-center gap-2">
             {step.status === "in_progress" ? (
-              <Icon icon={Loader2} customSize={14} className="text-[#05AFF2] animate-spin" />
+              <Icon icon={Loader2} customSize={14} className="text-[#4E62D8] dark:text-[#7B8CEA] animate-spin" />
             ) : step.status === "completed" ? (
               <Icon icon={CheckCircle2} customSize={14} className="text-emerald-600" />
             ) : (
@@ -95,7 +95,7 @@ export function OnboardingCard() {
       {nextStep && (
         <Link
           href="/client/onboarding"
-          className="inline-flex items-center gap-1 text-sm text-[#05AFF2] hover:text-[#05AFF2]/80 transition-colors"
+          className="inline-flex items-center gap-1 text-sm text-[#4E62D8] dark:text-[#7B8CEA] hover:text-[#4E62D8]/80 dark:hover:text-[#7B8CEA]/80 transition-colors"
         >
           Continuar setup
           <Icon icon={ArrowRight} customSize={14} />

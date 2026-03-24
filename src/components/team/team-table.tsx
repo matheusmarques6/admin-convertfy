@@ -174,9 +174,7 @@ export function TeamTable({ members, features, organizations, stores }: TeamTabl
     return (
       <>
         <div className="flex flex-col items-center justify-center py-12 text-center">
-          <div className="rounded-full bg-muted p-4 mb-4">
-            <Users2 className="h-8 w-8 text-muted-foreground" />
-          </div>
+          <Users2 className="h-8 w-8 text-muted-foreground mb-4" />
           <h3 className="text-lg font-medium">Nenhum membro encontrado</h3>
           <p className="text-muted-foreground mt-1">
             Comece adicionando o primeiro membro da equipe

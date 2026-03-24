@@ -110,7 +110,7 @@ export function RevenueComparisonChart({
 
   if (isLoading || financialLoading) {
     return (
-      <div className="rounded-xl border border-border bg-card">
+      <div className="rounded-[8px] border border-border bg-card">
         <CardHeader className="pb-3">
           <div className="flex items-center gap-2.5">
             <div className="h-8 w-8 rounded-lg bg-brand-400/10 flex items-center justify-center">
@@ -127,7 +127,7 @@ export function RevenueComparisonChart({
   }
 
   return (
-    <div className="rounded-xl border border-border bg-card">
+    <div className="rounded-[8px] border border-border bg-card">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2.5">

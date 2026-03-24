@@ -75,7 +75,7 @@ export function DashboardMetrics({ metrics }: DashboardMetricsProps) {
       {cards.map((card) => (
         <div
           key={card.title}
-          className="rounded-xl border border-border bg-card p-4"
+          className="rounded-[8px] border border-border bg-card p-4"
         >
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-medium text-muted-foreground">
@@ -107,7 +107,7 @@ export function DashboardMetrics({ metrics }: DashboardMetricsProps) {
 
       {/* Overdue Alert Card */}
       {metrics.overduePayments > 0 && (
-        <div className="col-span-2 lg:col-span-4 rounded-xl border border-destructive/30 bg-destructive/5 px-5 py-3 flex items-center gap-4">
+        <div className="col-span-2 lg:col-span-4 rounded-[8px] border border-destructive/30 bg-destructive/5 px-5 py-3 flex items-center gap-4">
           <div className="rounded-lg p-2 bg-destructive/10">
             <AlertCircle className="h-4 w-4 text-destructive" />
           </div>

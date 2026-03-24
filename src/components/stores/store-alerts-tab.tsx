@@ -326,7 +326,7 @@ export function StoreAlertsTab({ storeId }: StoreAlertsTabProps) {
             return (
               <Card
                 key={alert.id}
-                className={`rounded-xl ${
+                className={`rounded-[8px] ${
                   alert.status === "active" && alert.severity === "critical"
                     ? "border-destructive/30"
                     : alert.status === "active"

@@ -272,8 +272,8 @@ export default function AccountSettingsPage() {
     return (
       <div className="space-y-6">
         <Skeleton className="h-10 w-64" />
-        <Skeleton className="h-96 rounded-xl" />
-        <Skeleton className="h-72 rounded-xl" />
+        <Skeleton className="h-96 rounded-[8px]" />
+        <Skeleton className="h-72 rounded-[8px]" />
       </div>
     )
   }

@@ -109,7 +109,7 @@ export default function TrackPage() {
       {/* Header */}
       <header className="border-b border-slate-200/80 bg-white/80 backdrop-blur-sm">
         <div className="max-w-3xl mx-auto px-4 py-4 flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#0284C7] to-[#05AFF2] flex items-center justify-center">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#4E62D8] to-[#7B8CEA] flex items-center justify-center">
             <Package className="h-4 w-4 text-white" />
           </div>
           <span className="font-bold text-slate-800">Rastreamento</span>
@@ -135,13 +135,13 @@ export default function TrackPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Ex: BR123456789BR, #1001 ou email@exemplo.com"
-              className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#05AFF2]/30 focus:border-[#05AFF2] transition-all"
+              className="w-full pl-10 pr-4 py-3 rounded-[8px] border border-slate-200 bg-white text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#4E62D8]/30 focus:border-[#4E62D8] transition-all"
             />
           </div>
           <button
             type="submit"
             disabled={loading || query.length < 3}
-            className="px-6 py-3 rounded-xl bg-gradient-to-r from-[#0284C7] to-[#05AFF2] text-white font-semibold text-sm hover:shadow-lg hover:shadow-[#05AFF2]/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-6 py-3 rounded-[8px] bg-gradient-to-r from-[#4E62D8] to-[#7B8CEA] text-white font-semibold text-sm hover:shadow-lg hover:shadow-[#4E62D8]/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? (
               <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -154,13 +154,13 @@ export default function TrackPage() {
         {/* Results */}
         {loading && (
           <div className="text-center py-16">
-            <div className="w-10 h-10 border-3 border-slate-200 border-t-[#05AFF2] rounded-full animate-spin mx-auto mb-4" />
+            <div className="w-10 h-10 border-3 border-slate-200 border-t-[#4E62D8] rounded-full animate-spin mx-auto mb-4" />
             <p className="text-slate-400 text-sm">Buscando informações...</p>
           </div>
         )}
 
         {!loading && searched && results.length === 0 && (
-          <div className="text-center py-16 bg-white rounded-2xl border border-slate-200/80">
+          <div className="text-center py-16 bg-white rounded-[8px] border border-slate-200/80">
             <div className="w-16 h-16 rounded-full bg-slate-50 flex items-center justify-center mx-auto mb-4">
               <Package className="h-8 w-8 text-slate-300" />
             </div>
@@ -174,7 +174,7 @@ export default function TrackPage() {
         {!loading && results.length > 0 && (
           <div className="space-y-6">
             {results.map((result, idx) => (
-              <div key={idx} className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden">
+              <div key={idx} className="bg-white rounded-[8px] border border-slate-200/80 overflow-hidden">
                 {/* Order Header */}
                 <div className="p-5 border-b border-slate-100">
                   <div className="flex items-start justify-between">
@@ -209,7 +209,7 @@ export default function TrackPage() {
                   return (
                     <div key={track.id} className="p-5">
                       {/* Status Banner */}
-                      <div className={`flex items-center gap-3 p-4 rounded-xl ${config.bg} mb-5`}>
+                      <div className={`flex items-center gap-3 p-4 rounded-[8px] ${config.bg} mb-5`}>
                         <StatusIcon className={`h-6 w-6 ${config.color}`} />
                         <div>
                           <p className={`font-semibold text-sm ${config.color}`}>
@@ -243,7 +243,7 @@ export default function TrackPage() {
                             const isDelivered = event.status === "delivered"
                             return (
                               <div key={eventIdx} className="relative pb-6 last:pb-0">
-                                <div className={`absolute -left-5 top-1 w-4 h-4 rounded-full border-[3px] ${isFirst ? "border-[#05AFF2] bg-white" : "border-slate-300 bg-white"} ${isDelivered ? "border-emerald-500" : ""}`} />
+                                <div className={`absolute -left-5 top-1 w-4 h-4 rounded-full border-[3px] ${isFirst ? "border-[#4E62D8] bg-white" : "border-slate-300 bg-white"} ${isDelivered ? "border-emerald-500" : ""}`} />
                                 <div className={isFirst ? "" : "opacity-75"}>
                                   <p className={`text-sm font-medium ${isFirst ? "text-slate-800" : "text-slate-600"}`}>
                                     {event.description}

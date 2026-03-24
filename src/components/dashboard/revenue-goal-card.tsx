@@ -76,7 +76,7 @@ export function RevenueGoalCard({ currentRevenue, isLoading }: RevenueGoalCardPr
 
   if (goalLoading || isLoading) {
     return (
-      <div className="rounded-xl border border-border bg-card p-5">
+      <div className="rounded-[8px] border border-border bg-card p-5">
         <div className="flex items-center justify-center py-4">
           <Icon icon={Loader2} size={20} className="animate-spin text-muted-foreground" />
         </div>
@@ -89,10 +89,10 @@ export function RevenueGoalCard({ currentRevenue, isLoading }: RevenueGoalCardPr
       <>
         <button
           onClick={() => { setEditGoal(""); setSettingsOpen(true) }}
-          className="rounded-xl border border-dashed border-border bg-card p-5 hover:bg-accent/50 transition-colors w-full text-left"
+          className="rounded-[8px] border border-dashed border-border bg-card p-5 hover:bg-accent/50 transition-colors w-full text-left"
         >
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
+            <div className="h-10 w-10 rounded-[8px] bg-primary/10 flex items-center justify-center">
               <Icon icon={Target} size={20} className="text-primary" />
             </div>
             <div>
@@ -114,11 +114,11 @@ export function RevenueGoalCard({ currentRevenue, isLoading }: RevenueGoalCardPr
 
   return (
     <>
-      <div className="rounded-xl border border-border bg-card p-5 space-y-4">
+      <div className="rounded-[8px] border border-border bg-card p-5 space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className={cn(
-              "h-10 w-10 rounded-xl flex items-center justify-center",
+              "h-10 w-10 rounded-[8px] flex items-center justify-center",
               isAchieved ? "bg-success/10" : "bg-primary/10"
             )}>
               <Icon icon={Target} size={20} className={cn(isAchieved ? "text-success" : "text-primary")} />

@@ -56,7 +56,7 @@ export function OnboardingTimeline({ currentPhase, phases }: OnboardingTimelineP
   const currentIndex = PHASE_ORDER.indexOf(currentPhase)
 
   return (
-    <div className="rounded-xl border border-slate-200/80 dark:border-slate-700/40 bg-white dark:bg-[#151922] p-6">
+    <div className="rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 bg-white dark:bg-[#1A1D27] p-6">
       <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-6">Progresso do Onboarding</h3>
 
       {/* Desktop timeline */}

@@ -120,7 +120,7 @@ export function TaskListBoard() {
 
   if (isLoading) {
     return (
-      <div className="rounded-xl border border-border bg-card h-full flex flex-col">
+      <div className="rounded-[8px] border border-border bg-card h-full flex flex-col">
         <CardHeader className="pb-3">
           <div className="flex items-center gap-2.5">
             <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -137,7 +137,7 @@ export function TaskListBoard() {
   }
 
   return (
-    <div className="rounded-xl border border-border bg-card h-full flex flex-col">
+    <div className="rounded-[8px] border border-border bg-card h-full flex flex-col">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">

@@ -528,35 +528,35 @@ export default function PublicOnboardingPage() {
           {currentStepId === "create_shopify_app" && (
             <div className="space-y-6">
               {/* Passo 1 */}
-              <div className="rounded-xl bg-muted p-4 space-y-2">
+              <div className="rounded-[8px] bg-muted p-4 space-y-2">
                 <p className="font-semibold text-foreground">1. Acessar o Admin</p>
                 <p className="text-sm text-muted-foreground">Abra o admin da sua loja Shopify em <strong>suaLoja.myshopify.com/admin</strong></p>
                 <div className="rounded-lg border-2 border-dashed border-muted-foreground/20 p-6 text-center text-muted-foreground text-sm">[Imagem: tela de login do admin Shopify]</div>
               </div>
 
               {/* Passo 2 */}
-              <div className="rounded-xl bg-muted p-4 space-y-2">
+              <div className="rounded-[8px] bg-muted p-4 space-y-2">
                 <p className="font-semibold text-foreground">2. Ir para Apps</p>
                 <p className="text-sm text-muted-foreground">No menu lateral, clique em <strong>Configuracoes</strong> (icone de engrenagem), depois em <strong>Apps e canais de vendas</strong>. No canto superior, clique em <strong>Desenvolver apps</strong>.</p>
                 <div className="rounded-lg border-2 border-dashed border-muted-foreground/20 p-6 text-center text-muted-foreground text-sm">[Imagem: menu configuracoes &gt; apps]</div>
               </div>
 
               {/* Passo 3 */}
-              <div className="rounded-xl bg-muted p-4 space-y-2">
+              <div className="rounded-[8px] bg-muted p-4 space-y-2">
                 <p className="font-semibold text-foreground">3. Permitir desenvolvimento</p>
                 <p className="text-sm text-muted-foreground">Se for a primeira vez, clique em <strong>Permitir desenvolvimento de apps personalizados</strong> e confirme novamente.</p>
                 <div className="rounded-lg border-2 border-dashed border-muted-foreground/20 p-6 text-center text-muted-foreground text-sm">[Imagem: botao de permitir desenvolvimento]</div>
               </div>
 
               {/* Passo 4 */}
-              <div className="rounded-xl bg-muted p-4 space-y-2">
+              <div className="rounded-[8px] bg-muted p-4 space-y-2">
                 <p className="font-semibold text-foreground">4. Criar o App</p>
                 <p className="text-sm text-muted-foreground">Clique em <strong>Criar um app</strong>. No campo &quot;Nome do app&quot;, digite: <strong>convertfy</strong>. Clique em <strong>Criar app</strong>.</p>
                 <div className="rounded-lg border-2 border-dashed border-muted-foreground/20 p-6 text-center text-muted-foreground text-sm">[Imagem: modal de criar app]</div>
               </div>
 
               {/* Passo 5 — Permissoes com seletor interativo */}
-              <div className="rounded-xl bg-muted p-4 space-y-3">
+              <div className="rounded-[8px] bg-muted p-4 space-y-3">
                 <p className="font-semibold text-foreground">5. Configurar Permissoes</p>
                 <p className="text-sm text-muted-foreground">Na aba <strong>Configuracao</strong>, clique em <strong>Configurar escopos da API Admin</strong>. Selecione as permissoes abaixo:</p>
 
@@ -630,14 +630,14 @@ export default function PublicOnboardingPage() {
               </div>
 
               {/* Passo 6 */}
-              <div className="rounded-xl bg-muted p-4 space-y-2">
+              <div className="rounded-[8px] bg-muted p-4 space-y-2">
                 <p className="font-semibold text-foreground">6. Instalar o App</p>
                 <p className="text-sm text-muted-foreground">Volte para a aba <strong>Visao geral</strong>. Clique em <strong>Instalar app</strong> e confirme.</p>
                 <div className="rounded-lg border-2 border-dashed border-muted-foreground/20 p-6 text-center text-muted-foreground text-sm">[Imagem: botao instalar app]</div>
               </div>
 
               {/* Passo 7 */}
-              <div className="rounded-xl bg-muted p-4 space-y-2">
+              <div className="rounded-[8px] bg-muted p-4 space-y-2">
                 <p className="font-semibold text-foreground">7. Copiar o Token</p>
                 <p className="text-sm text-muted-foreground">Apos instalar, a tela mostrara o <strong>Admin API access token</strong>. Copie e guarde em local seguro.</p>
                 <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-700 dark:bg-amber-950/30">
@@ -651,7 +651,7 @@ export default function PublicOnboardingPage() {
           {/* Step: Collaborator Code (Shopify only) */}
           {currentStepId === "collaborator_code" && (
             <div className="space-y-4">
-              <div className="rounded-xl bg-muted p-4 text-sm space-y-2">
+              <div className="rounded-[8px] bg-muted p-4 text-sm space-y-2">
                 <div className="flex items-center gap-2">
                   <Icon icon={Info} size={16} className="text-muted-foreground" />
                   <p className="font-medium text-foreground">Como obter o codigo de colaborador:</p>
