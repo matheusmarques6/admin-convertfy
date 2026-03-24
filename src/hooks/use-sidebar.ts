@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useCallback } from "react"
+import { useEffect } from "react"
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
 
@@ -34,7 +34,7 @@ export const useSidebarStore = create<SidebarState>()(
       userToggled: false,
       toggle: () =>
         set((s) => ({ isExpanded: !s.isExpanded, userToggled: true })),
-      setExpanded: (isExpanded) => set({ isExpanded }),
+      setExpanded: (v) => set((s) => s.isExpanded === v ? s : { isExpanded: v }),
       openMobile: () => set({ isMobileOpen: true }),
       closeMobile: () => set({ isMobileOpen: false }),
     }),
@@ -51,20 +51,14 @@ export const useSidebarStore = create<SidebarState>()(
 export function useSidebar() {
   const store = useSidebarStore()
 
-  const syncWithViewport = useCallback(() => {
-    const w = window.innerWidth
-    if (w < BP_MD) {
-      // Mobile — sidebar hidden, drawer controls visibility
-      return
-    }
-    if (!store.userToggled) {
-      store.setExpanded(w >= BP_LG)
-    }
-  }, [store])
-
   useEffect(() => {
-    syncWithViewport()
+    // Sync on mount — use getState() to avoid dependency on store object
+    const w = window.innerWidth
+    if (w >= BP_MD && !useSidebarStore.getState().userToggled) {
+      useSidebarStore.getState().setExpanded(w >= BP_LG)
+    }
 
+    // Listen for viewport changes
     const mq = window.matchMedia(`(min-width: ${BP_LG}px)`)
     const handler = () => {
       if (!useSidebarStore.getState().userToggled) {
@@ -73,8 +67,7 @@ export function useSidebar() {
     }
     mq.addEventListener("change", handler)
     return () => mq.removeEventListener("change", handler)
-  }, [syncWithViewport])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps -- runs once on mount, uses getState()
 
-  // Close mobile drawer on route change would be handled by the sidebar component
   return store
 }
