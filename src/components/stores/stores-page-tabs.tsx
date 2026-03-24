@@ -1,46 +1,367 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Store, Bell } from "lucide-react"
-import { Icon } from "@/components/ui/icon"
+import { useState, useEffect, useCallback, useRef } from "react"
+import { useRouter } from "next/navigation"
+import {
+  Store,
+  Bell,
+  Search,
+  RefreshCw,
+  X,
+  ExternalLink,
+  Settings,
+  FileText,
+  Eye,
+  CheckCircle2,
+  AlertTriangle,
+  Clock,
+  Loader2,
+} from "lucide-react"
+import { Icon, BrandIcon, BRAND_ICONS } from "@/components/ui/icon"
 import { AlertBanner } from "@/components/ui/alert-banner"
-import { StoreControlPanel } from "@/components/stores/store-control-panel"
-import { StoreAlertsPanel } from "@/components/stores/store-alerts-panel"
+import { SegmentedTabs, SegmentedTabItem } from "@/components/ui/segmented-tabs"
+import { DataTable, type ColumnDef } from "@/components/ui/data-table"
+import { StatusBadge } from "@/components/ui/status-badge"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { ActionMenu } from "@/components/ui/action-menu"
+import { CountBadge } from "@/components/ui/count-badge"
+import { useToast } from "@/lib/hooks/use-toast"
 import { cn } from "@/lib/utils"
 
+// ─── Types ──────────────────────────────────────────────────
+
+interface StoreRow {
+  id: string
+  store_name: string
+  client_name: string | null
+  platform: string
+  is_active: boolean
+  has_klaviyo: boolean
+  has_shopify: boolean
+  total_revenue_30d: number
+  klaviyo_revenue_30d: number
+  currency: string
+  revenue_status: "loaded" | "no_integration" | "error"
+}
+
+interface AlertRow {
+  id: string
+  store_id: string
+  store_name: string
+  type: string
+  severity: string
+  title: string
+  message: string
+  status: string
+  created_at: string
+}
+
+// ─── Formatters ─────────────────────────────────────────────
+
+const fmtCurrency = (value: number, currency = "BRL") =>
+  new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(value)
+
+function timeAgo(dateStr: string): string {
+  const now = new Date()
+  const date = new Date(dateStr)
+  const diffMs = now.getTime() - date.getTime()
+  const diffMin = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMin / 60)
+  const diffDays = Math.floor(diffHours / 24)
+  if (diffMin < 1) return "agora"
+  if (diffMin < 60) return `${diffMin}min atrás`
+  if (diffHours < 24) return `${diffHours}h atrás`
+  if (diffDays < 7) return `${diffDays}d atrás`
+  return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })
+}
+
+const ALERT_TYPE_LABELS: Record<string, string> = {
+  low_revenue: "Faturamento Baixo",
+  klaviyo_account_error: "Erro Klaviyo",
+  campaign_failure: "Falha Campanha",
+  low_recovery_rate: "Recuperação Baixa",
+}
+
+// ─── Platform icon helper ───────────────────────────────────
+
+function PlatformIcon({ platform }: { platform: string }) {
+  const p = platform?.toLowerCase()
+  if (p === "shopify") return <BrandIcon src="/images/integrations/shopify.svg" alt="Shopify" size={20} />
+  return <Icon icon={Store} size={16} className="text-muted-foreground" />
+}
+
+// ─── Main Component ─────────────────────────────────────────
+
 export function StoresPageTabs() {
+  const router = useRouter()
+  const { toast } = useToast()
   const [activeTab, setActiveTab] = useState<"stores" | "alerts">("stores")
   const [activeAlertsCount, setActiveAlertsCount] = useState(0)
   const [noFeedbackCount, setNoFeedbackCount] = useState(0)
 
-  useEffect(() => {
-    async function fetchAlertCount() {
-      try {
-        const res = await fetch("/api/stores/alerts/summary")
-        const data = await res.json()
-        if (data.success) {
-          setActiveAlertsCount(data.summary.total_active)
-        }
-      } catch {
-        // Silently fail
-      }
-    }
+  // Stores state
+  const [stores, setStores] = useState<StoreRow[]>([])
+  const [storesLoading, setStoresLoading] = useState(true)
+  const [storesPage, setStoresPage] = useState(1)
+  const [storesTotalItems, setStoresTotalItems] = useState(0)
+  const [searchInput, setSearchInput] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
-    async function fetchNoFeedbackCount() {
-      try {
-        const res = await fetch("/api/stores/control?per_page=1")
-        const data = await res.json()
-        if (data.success && data.summary) {
-          setNoFeedbackCount(data.summary.never + data.summary.overdue)
-        }
-      } catch {
-        // Silently fail
-      }
-    }
+  // Alerts state
+  const [alerts, setAlerts] = useState<AlertRow[]>([])
+  const [alertsLoading, setAlertsLoading] = useState(true)
 
-    fetchAlertCount()
-    fetchNoFeedbackCount()
+  const perPage = 15
+
+  // ─── Fetch stores ──────────────────────────────────────
+  const fetchStores = useCallback(async () => {
+    setStoresLoading(true)
+    try {
+      const params = new URLSearchParams({
+        page: storesPage.toString(),
+        per_page: perPage.toString(),
+      })
+      if (debouncedSearch) params.set("search", debouncedSearch)
+
+      const res = await fetch(`/api/stores/control?${params}`)
+      const data = await res.json()
+      if (data.success) {
+        setStores(data.stores || [])
+        setStoresTotalItems(data.pagination?.total || data.stores?.length || 0)
+      }
+    } catch {
+      toast({ title: "Erro ao carregar lojas", variant: "destructive" })
+    } finally {
+      setStoresLoading(false)
+    }
+  }, [storesPage, debouncedSearch, toast])
+
+  // ─── Fetch alerts ──────────────────────────────────────
+  const fetchAlerts = useCallback(async () => {
+    setAlertsLoading(true)
+    try {
+      const res = await fetch("/api/stores/alerts?limit=200")
+      const data = await res.json()
+      if (data.success) {
+        setAlerts(data.alerts?.filter((a: AlertRow) => a.status === "active") || [])
+      }
+    } catch {
+      // silently fail
+    } finally {
+      setAlertsLoading(false)
+    }
   }, [])
+
+  // ─── Fetch counts ──────────────────────────────────────
+  useEffect(() => {
+    async function fetchCounts() {
+      try {
+        const [alertRes, feedbackRes] = await Promise.all([
+          fetch("/api/stores/alerts/summary"),
+          fetch("/api/stores/control?per_page=1"),
+        ])
+        const alertData = await alertRes.json()
+        const feedbackData = await feedbackRes.json()
+        if (alertData.success) setActiveAlertsCount(alertData.summary.total_active)
+        if (feedbackData.success && feedbackData.summary) {
+          setNoFeedbackCount(feedbackData.summary.never + feedbackData.summary.overdue)
+        }
+      } catch {
+        // silently fail
+      }
+    }
+    fetchCounts()
+  }, [])
+
+  useEffect(() => { fetchStores() }, [fetchStores])
+  useEffect(() => { if (activeTab === "alerts") fetchAlerts() }, [activeTab, fetchAlerts])
+
+  // ─── Debounced search ──────────────────────────────────
+  const handleSearchChange = useCallback((value: string) => {
+    setSearchInput(value)
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current)
+    searchTimeoutRef.current = setTimeout(() => {
+      setDebouncedSearch(value)
+      setStoresPage(1)
+    }, 300)
+  }, [])
+
+  useEffect(() => {
+    return () => { if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current) }
+  }, [])
+
+  // ─── Handle alert actions ──────────────────────────────
+  const handleAlertAction = async (alertId: string, action: "resolve" | "acknowledge") => {
+    try {
+      const res = await fetch(`/api/stores/alerts/${alertId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        toast({ title: action === "resolve" ? "Alerta resolvido" : "Alerta marcado como visto" })
+        fetchAlerts()
+        setActiveAlertsCount((prev) => Math.max(0, prev - 1))
+      }
+    } catch {
+      toast({ title: "Erro", variant: "destructive" })
+    }
+  }
+
+  // ─── Stores columns ───────────────────────────────────
+  const storeColumns: ColumnDef<StoreRow>[] = [
+    {
+      accessorKey: "store_name",
+      header: "Nome",
+      mobilePriority: "title",
+      cell: (row) => (
+        <div className="flex items-center gap-3">
+          <PlatformIcon platform={row.platform} />
+          <div className="min-w-0">
+            <p className="font-medium text-foreground truncate">{row.store_name}</p>
+            {row.client_name && (
+              <p className="text-xs text-muted-foreground truncate">{row.client_name}</p>
+            )}
+          </div>
+        </div>
+      ),
+    },
+    {
+      accessorKey: "platform",
+      header: "Plataforma",
+      mobilePriority: "badge",
+      cell: (row) => (
+        <Badge variant="neutral" showDot={false}>
+          {row.platform || "—"}
+        </Badge>
+      ),
+    },
+    {
+      accessorKey: "klaviyo_revenue_30d",
+      header: "Receita 30d",
+      type: "currency",
+      mobilePriority: "detail",
+      cell: (row) => {
+        if (row.revenue_status === "no_integration") return <span className="text-muted-foreground">—</span>
+        if (row.revenue_status === "error") {
+          return (
+            <span className="inline-flex items-center gap-1 text-xs text-[#92400E] dark:text-[#FCD34D]">
+              <Icon icon={AlertTriangle} size={16} /> Erro
+            </span>
+          )
+        }
+        return (
+          <span className="font-mono tabular-nums text-sm font-semibold">
+            {fmtCurrency(row.klaviyo_revenue_30d, row.currency)}
+          </span>
+        )
+      },
+    },
+    {
+      accessorKey: "has_klaviyo",
+      header: "Klaviyo",
+      mobilePriority: "badge",
+      cell: (row) => (
+        <StatusBadge
+          status={row.has_klaviyo ? "connected" : "disconnected"}
+        />
+      ),
+    },
+    {
+      accessorKey: "is_active",
+      header: "Status",
+      mobilePriority: "badge",
+      cell: (row) => (
+        <StatusBadge
+          status={row.is_active ? "active" : "inactive"}
+        />
+      ),
+    },
+    {
+      accessorKey: "id",
+      header: "",
+      type: "custom",
+      mobilePriority: "hidden",
+      cell: (row) => (
+        <div onClick={(e) => e.stopPropagation()}>
+          <ActionMenu
+            items={[
+              { label: "Ver loja", icon: Eye, onClick: () => router.push(`/admin/stores/${row.id}`) },
+              { label: "Configurar Klaviyo", icon: Settings, onClick: () => router.push(`/admin/stores/${row.id}?tab=integrations`) },
+              { label: "Gerar Report", icon: FileText, onClick: () => router.push(`/admin/stores/${row.id}?tab=reports`) },
+            ]}
+          />
+        </div>
+      ),
+    },
+  ]
+
+  // ─── Alerts columns ───────────────────────────────────
+  const alertColumns: ColumnDef<AlertRow>[] = [
+    {
+      accessorKey: "store_name",
+      header: "Loja",
+      mobilePriority: "title",
+      cell: (row) => (
+        <p className="font-medium text-sm">{row.store_name || "N/A"}</p>
+      ),
+    },
+    {
+      accessorKey: "type",
+      header: "Tipo",
+      mobilePriority: "badge",
+      cell: (row) => (
+        <Badge variant="neutral" showDot={false}>
+          {ALERT_TYPE_LABELS[row.type] || row.type}
+        </Badge>
+      ),
+    },
+    {
+      accessorKey: "message",
+      header: "Mensagem",
+      mobilePriority: "detail",
+      cell: (row) => (
+        <p className="text-sm text-muted-foreground truncate max-w-[300px]">{row.message}</p>
+      ),
+    },
+    {
+      accessorKey: "created_at",
+      header: "Data",
+      mobilePriority: "detail",
+      cell: (row) => (
+        <span className="text-xs text-muted-foreground font-mono tabular-nums">
+          {timeAgo(row.created_at)}
+        </span>
+      ),
+    },
+    {
+      accessorKey: "id",
+      header: "",
+      type: "custom",
+      mobilePriority: "hidden",
+      cell: (row) => (
+        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+          <Button variant="ghost" size="sm" onClick={() => handleAlertAction(row.id, "resolve")}>
+            <Icon icon={CheckCircle2} size={16} className="mr-1" />
+            Resolver
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => handleAlertAction(row.id, "acknowledge")}>
+            <Icon icon={Eye} size={16} className="mr-1" />
+            Ignorar
+          </Button>
+        </div>
+      ),
+    },
+  ]
 
   return (
     <div className="space-y-4">
@@ -48,49 +369,85 @@ export function StoresPageTabs() {
         <AlertBanner
           variant="warning"
           title="Lojas sem feedback agendado"
-          description="Agende calls de feedback para manter a saude dos clientes"
+          description="Agende calls de feedback para manter a saúde dos clientes"
           action={{ label: "Ver lojas", href: "/admin/stores" }}
         />
       )}
 
-      {/* Custom tab bar */}
-      <div className="flex items-center gap-1 p-1 bg-muted/50 rounded-[8px] w-fit">
-        <button
-          onClick={() => setActiveTab("stores")}
-          className={cn(
-            "flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all",
-            activeTab === "stores"
-              ? "bg-background text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground"
-          )}
-        >
-          <Icon icon={Store} size={16} />
-          Lojas
-        </button>
-        <button
-          onClick={() => setActiveTab("alerts")}
-          className={cn(
-            "flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all relative",
-            activeTab === "alerts"
-              ? "bg-background text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground"
-          )}
-        >
-          <Icon icon={Bell} size={16} />
-          Alertas
-          {activeAlertsCount > 0 && (
-            <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground px-1.5">
-              {activeAlertsCount}
-            </span>
-          )}
-        </button>
+      {/* SegmentedTabs: Lojas | Alertas */}
+      <div className="flex items-center justify-between gap-4">
+        <SegmentedTabs value={activeTab} onValueChange={(v) => setActiveTab(v as "stores" | "alerts")}>
+          <SegmentedTabItem value="stores">
+            <Icon icon={Store} size={16} className="mr-1.5" />
+            Lojas
+          </SegmentedTabItem>
+          <SegmentedTabItem value="alerts">
+            <Icon icon={Bell} size={16} className="mr-1.5" />
+            Alertas
+            {activeAlertsCount > 0 && (
+              <CountBadge count={activeAlertsCount} active className="ml-1.5" />
+            )}
+          </SegmentedTabItem>
+        </SegmentedTabs>
+
+        {activeTab === "stores" && (
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar loja..."
+                value={searchInput}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                className="pl-9 h-9 w-[220px] bg-card"
+              />
+              {searchInput && (
+                <button
+                  onClick={() => { handleSearchChange(""); setSearchInput("") }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            <Button
+              variant="secondary"
+              size="icon"
+              onClick={fetchStores}
+              disabled={storesLoading}
+              className="h-9 w-9"
+            >
+              <Icon icon={RefreshCw} size={16} className={cn(storesLoading && "animate-spin")} />
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Tab content */}
       {activeTab === "stores" ? (
-        <StoreControlPanel />
+        <DataTable
+          columns={storeColumns}
+          data={stores}
+          loading={storesLoading}
+          onRowClick={(row) => router.push(`/admin/stores/${row.id}`)}
+          emptyMessage="Nenhuma loja encontrada"
+          emptyDescription="Cadastre lojas nos clientes para vê-las aqui"
+          rowKey="id"
+          pagination={{
+            page: storesPage,
+            pageSize: perPage,
+            total: storesTotalItems,
+            onPageChange: setStoresPage,
+          }}
+        />
       ) : (
-        <StoreAlertsPanel />
+        <DataTable
+          columns={alertColumns}
+          data={alerts}
+          loading={alertsLoading}
+          emptyMessage="Nenhum alerta ativo"
+          emptyDescription="Todas as lojas estão saudáveis"
+          rowKey="id"
+        />
       )}
     </div>
   )
