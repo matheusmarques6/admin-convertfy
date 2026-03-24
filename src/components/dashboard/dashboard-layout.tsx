@@ -1,6 +1,8 @@
 "use client"
 
 import { useMemo, useState, useCallback, useRef } from "react"
+import { DashboardTopBar } from "./dashboard-top-bar"
+import type { DateRange } from "./date-range-panel"
 import Link from "next/link"
 import {
   AlertTriangle,
@@ -98,6 +100,7 @@ interface DashboardLayoutProps {
     pendingItems: PendingItems
   }
   userRole: string
+  userName: string
 }
 
 // Compact client health summary
@@ -307,19 +310,23 @@ function QuickActions() {
   )
 }
 
-export function DashboardLayout({ data, userRole }: DashboardLayoutProps) {
+export function DashboardLayout({ data, userRole, userName }: DashboardLayoutProps) {
   const { permissions, hasFeature } = usePermissions()
 
   const isAdminOrOwner = permissions?.isAdmin || permissions?.isOrgOwner
 
   // Revenue state for strategic cards
-  const [revenuePeriod, setRevenuePeriod] = useState("30d")
+  const [revenuePeriod, setRevenuePeriod] = useState<"today" | "7d" | "30d" | "90d" | "custom">("30d")
   const [revenueData, setRevenueData] = useState<TotalRevenueData | null>(null)
   const revenueResolved = useRef(false)
   const handleRevenueData = useCallback((d: TotalRevenueData | null) => {
     revenueResolved.current = true
     setRevenueData(d)
   }, [])
+
+  // Top bar state
+  const [compareEnabled, setCompareEnabled] = useState(false)
+  const [customRange, setCustomRange] = useState<DateRange | undefined>(undefined)
 
   // Compute critical alerts for top banner
   const criticalAlerts = useMemo(() => {
@@ -347,6 +354,19 @@ export function DashboardLayout({ data, userRole }: DashboardLayoutProps) {
 
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto">
+      {/* ============================================================ */}
+      {/* TOP BAR: Title + Greeting + Period + Compare                  */}
+      {/* ============================================================ */}
+      <DashboardTopBar
+        userName={userName}
+        period={revenuePeriod}
+        onPeriodChange={setRevenuePeriod}
+        customRange={customRange}
+        onCustomRangeChange={setCustomRange}
+        compareEnabled={compareEnabled}
+        onCompareToggle={setCompareEnabled}
+      />
+
       {/* ============================================================ */}
       {/* SECTION 1: Alertas Urgentes + Acoes Rapidas                   */}
       {/* ============================================================ */}
@@ -379,7 +399,7 @@ export function DashboardLayout({ data, userRole }: DashboardLayoutProps) {
       {/* ============================================================ */}
       {/* SECTION 2: Resultado Total (card grande) + Meta               */}
       {/* ============================================================ */}
-      <TotalRevenueBanner period={revenuePeriod} onPeriodChange={setRevenuePeriod} onDataChange={handleRevenueData} />
+      <TotalRevenueBanner period={revenuePeriod} onPeriodChange={(p) => setRevenuePeriod(p as typeof revenuePeriod)} onDataChange={handleRevenueData} />
 
       <RevenueGoalCard
         currentRevenue={revenueData?.totalRevenue || 0}

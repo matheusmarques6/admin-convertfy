@@ -261,7 +261,7 @@ export default async function DashboardPage() {
 
   const { data: authProfile } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, name")
     .eq("id", authUser.id)
     .single()
 
@@ -285,5 +285,7 @@ export default async function DashboardPage() {
     data = EMPTY_DASHBOARD_DATA
   }
 
-  return <DashboardLayout data={data} userRole={userRole} />
+  const userName = authProfile?.name || authUser.email?.split("@")[0] || "Usuário"
+
+  return <DashboardLayout data={data} userRole={userRole} userName={userName} />
 }
