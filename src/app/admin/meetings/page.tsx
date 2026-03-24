@@ -1,10 +1,10 @@
 import { Calendar } from "lucide-react"
-import { Icon } from "@/components/ui/icon"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
 import { logger } from "@/lib/logger"
 
 const log = logger.child("MeetingsPage")
 import { PagePermissionWrapper } from "@/components/page-permission-wrapper"
+import { PageHeader } from "@/components/ui/page-header"
 import { MeetingsPageClient } from "@/components/meetings/meetings-page-client"
 
 export const dynamic = "force-dynamic"
@@ -163,19 +163,19 @@ export default async function MeetingsPage() {
     }
   })
 
+  const meetingCount = transformedMeetings.filter(
+    (m) => m.status === "scheduled"
+  ).length
+
   return (
     <PagePermissionWrapper requiredFeatures={["calendar_control"]}>
       <div className="space-y-6">
-        {/* Header */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center w-10 h-10 rounded-[8px] bg-primary/10">
-            <Icon icon={Calendar} size={20} className="text-primary" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Reuniões</h1>
-            <p className="text-sm text-muted-foreground">Agende e acompanhe reuniões com clientes e equipe</p>
-          </div>
-        </div>
+        <PageHeader
+          icon={Calendar}
+          title="Reuniões"
+          badge={meetingCount}
+          description="Agende e acompanhe reuniões com clientes e equipe"
+        />
 
         <MeetingsPageClient
           meetings={transformedMeetings}
