@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { FormField } from "@/components/ui/form-field"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -148,29 +149,24 @@ export default function NewAutomationPage() {
       {/* Basic Info */}
       <Card className="rounded-[8px] border">
         <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <Zap className="h-4 w-4" />
-            Informações Básicas
-          </CardTitle>
+          <CardTitle className="text-sm font-semibold">Informações Básicas</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label>Nome da automação *</Label>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField label="Nome da automação" required>
               <Input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Ex: Lembrete de pagamento em atraso"
               />
-            </div>
-            <div className="space-y-2">
-              <Label>Descrição</Label>
+            </FormField>
+            <FormField label="Descrição">
               <Input
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Descreva o objetivo desta automação..."
               />
-            </div>
+            </FormField>
           </div>
         </CardContent>
       </Card>
@@ -192,7 +188,7 @@ export default function NewAutomationPage() {
       {/* Tips */}
       <Card className="rounded-[8px] border bg-muted/50">
         <CardContent className="pt-6">
-          <div className="grid gap-4 md:grid-cols-3 text-sm">
+          <div className="grid gap-4 sm:grid-cols-3 text-sm">
             <div className="flex items-start gap-3">
               <div className="rounded-lg p-2 bg-warning/10">
                 <Zap className="h-4 w-4 text-warning" />

@@ -9,9 +9,11 @@ interface SaveBarProps {
   onSave: () => void
   onCancel: () => void
   hasChanges: boolean
+  saveLabel?: string
+  savingLabel?: string
 }
 
-export function SaveBar({ isSaving, onSave, onCancel, hasChanges }: SaveBarProps) {
+export function SaveBar({ isSaving, onSave, onCancel, hasChanges, saveLabel = "Salvar alterações", savingLabel = "Salvando..." }: SaveBarProps) {
   if (!hasChanges) return null
 
   return (
@@ -30,10 +32,10 @@ export function SaveBar({ isSaving, onSave, onCancel, hasChanges }: SaveBarProps
         {isSaving ? (
           <>
             <Loader2 className="h-4 w-4 animate-spin" />
-            Salvando...
+            {savingLabel}
           </>
         ) : (
-          "Salvar alterações"
+          saveLabel
         )}
       </Button>
     </div>
