@@ -1,35 +1,28 @@
 "use client"
 
-import { useState, useEffect, useCallback, use, useMemo } from "react"
+import { useState, useEffect, useCallback, use } from "react"
 import Link from "next/link"
 import {
   ArrowLeft,
   Store,
   RefreshCw,
   AlertCircle,
-  TrendingUp,
+  ExternalLink,
   Users,
   DollarSign,
-  Mail,
   ShoppingCart,
-  MousePointerClick,
+  Mail,
   Eye,
-  BarChart3,
-  Percent,
-  Link2,
-  Globe,
-  Monitor,
-  Megaphone,
-  Copy,
-  Check,
+  CheckCircle2,
+  Circle,
   Clock,
-  Tag,
+  Key,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Progress } from "@/components/ui/progress"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { StatusBadge } from "@/components/ui/status-badge"
+import { Breadcrumbs } from "@/components/ui/breadcrumbs"
+import { UnderlineTabs, UnderlineTabItem } from "@/components/ui/underline-tabs"
 import {
   Select,
   SelectContent,
@@ -38,6 +31,9 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { formatCurrency as formatCurrencyUtil } from "@/lib/utils/format"
+import { cn } from "@/lib/utils"
+
+// ─── Types ──────────────────────────────────────────────
 
 interface StoreReport {
   store: {
@@ -47,6 +43,8 @@ interface StoreReport {
     platform: string
     is_active: boolean
     currency?: string
+    plan?: string
+    created_at?: string
   }
   klaviyo?: {
     totalLeads: number
@@ -92,18 +90,10 @@ interface StoreReport {
       totalRevenue: number
       averageOrderValue: number
       recurringCustomerRate: number
-      utmConversions?: {
-        totalOrdersWithUtm: number
-        utmTrackingRate: number
-        bySource: Array<{ source: string; orders: number; revenue: number }>
-        byMedium: Array<{ medium: string; orders: number; revenue: number }>
-        byCampaign: Array<{ campaign: string; orders: number; revenue: number }>
-      }
     }
     products?: {
       totalProducts: number
     }
-    // Flattened fields (used by existing template - may come from different mapping)
     totalOrders: number
     totalRevenue: number
     averageOrderValue: number
@@ -117,23 +107,17 @@ interface StoreReport {
   }
   period: string
   lastSyncedAt?: string
+  onboarding?: {
+    phases: Array<{
+      id: string
+      title: string
+      status: "completed" | "in_progress" | "pending"
+      completedAt?: string
+    }>
+  }
 }
 
-interface UtmTemplate {
-  id: string
-  name: string
-  description: string | null
-  utm_source: string
-  utm_medium: string
-  utm_campaign: string
-  utm_content: string | null
-  utm_term: string | null
-  usage_count: number
-  created_at: string
-}
-
-// formatCurrency is imported from @/lib/utils/format as formatCurrencyUtil
-// A local wrapper is used so the store currency is applied throughout the page
+// ─── Helpers ────────────────────────────────────────────
 
 function formatNumber(value: number): string {
   return new Intl.NumberFormat("pt-BR").format(value)
@@ -151,286 +135,194 @@ function formatDate(dateStr: string): string {
   })
 }
 
-/** Reusable ranked list for UTM data in the store report */
-function StoreUtmRankingList({
-  items,
-  labelKey,
-  icon: Icon,
-  currency = "BRL",
-}: {
-  items: Array<Record<string, string | number>>
-  labelKey: string
-  icon: React.ComponentType<{ className?: string }>
-  currency?: string
-}) {
-  if (!items || items.length === 0) {
+// ─── Brand Icons ────────────────────────────────────────
+
+function ShopifyIcon({ size = 32 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 109 124" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M94.27 23.49C94.17 22.79 93.57 22.42 93.07 22.39C92.57 22.36 82.47 21.87 82.47 21.87C82.47 21.87 73.47 13 72.57 12.1C71.67 11.2 69.87 11.47 69.17 11.67C69.07 11.7 67.37 12.23 64.57 13.1C63.97 11.15 63.07 8.82 61.67 6.49C57.77 0.09 52.27 0 50.67 0C50.37 0 50.17 0.03 49.97 0.03C49.37 -0.07 48.87 0.43 48.47 0.93C48.07 1.43 40.17 11.2 38.27 16.4C36.47 21.3 35.67 21.9 35.27 22.1C32.27 23.2 23.07 26.1 23.07 26.1L23 26.13C19.7 27.13 19.57 27.23 19.17 30.33C18.87 32.63 9 105.15 9 105.15L72.3 117.55L104.1 110.35C104.1 110.35 94.37 24.19 94.27 23.49Z" fill="#95BF47"/>
+      <path d="M53.07 41.39L49.37 55.09C49.37 55.09 46.07 53.39 42.07 53.59C36.07 53.89 36.07 57.59 36.07 58.49C36.37 64.49 49.87 65.59 50.57 77.89C51.17 87.49 45.37 94.09 36.97 94.59C26.87 95.19 21.37 89.39 21.37 89.39L23.67 80.59C23.67 80.59 29.17 84.69 33.57 84.39C36.47 84.19 37.57 81.79 37.47 80.09C37.07 72.39 26.07 72.79 25.47 61.59C24.97 52.09 31.07 42.49 45.47 41.59C50.67 41.29 53.07 41.39 53.07 41.39Z" fill="white"/>
+    </svg>
+  )
+}
+
+function KlaviyoIcon({ size = 32 }: { size?: number }) {
+  return (
+    <div className="flex items-center justify-center bg-black rounded-[6px]" style={{ width: size, height: size }}>
+      <svg width={size * 0.6} height={size * 0.6} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M22 12C22 12 17.5 16 12 16C6.5 16 2 12 2 12C2 12 6.5 8 12 8C17.5 8 22 12 22 12Z" fill="#BEF264"/>
+        <circle cx="12" cy="12" r="3" fill="#000"/>
+      </svg>
+    </div>
+  )
+}
+
+function PlatformIcon({ platform, size = 40 }: { platform: string; size?: number }) {
+  if (platform === "shopify") {
     return (
-      <div className="text-center py-6 text-slate-500 dark:text-slate-400">
-        <Link2 className="h-8 w-8 mx-auto mb-2 opacity-50" />
-        <p className="text-sm">Nenhum dado disponivel</p>
+      <div className="flex items-center justify-center rounded-[8px] bg-[#95BF47]/10" style={{ width: size, height: size }}>
+        <ShopifyIcon size={size * 0.55} />
       </div>
     )
   }
-
   return (
-    <div className="space-y-3">
-      {items.slice(0, 10).map((item, index) => (
-        <div
-          key={String(item[labelKey])}
-          className="flex items-center gap-4 p-3 border border-slate-200/80 dark:border-slate-700/40 rounded-lg"
-        >
-          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-            index === 0 ? "bg-cyan-500/20 text-cyan-600 dark:text-cyan-400" : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
-          }`}>
-            {index + 1}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="font-medium text-slate-800 dark:text-slate-100 truncate flex items-center gap-1.5">
-              <Icon className="h-3.5 w-3.5 shrink-0" />
-              {String(item[labelKey])}
-            </p>
-            <p className="text-sm text-slate-500 dark:text-slate-400">{item.orders} pedidos</p>
-          </div>
-          <div className="text-right">
-            <p className="font-bold text-cyan-600 dark:text-cyan-400">{formatCurrencyUtil(item.revenue as number, currency)}</p>
-          </div>
-        </div>
-      ))}
+    <div className="flex items-center justify-center rounded-[8px] bg-slate-100 dark:bg-slate-800" style={{ width: size, height: size }}>
+      <Store className="text-slate-500 dark:text-slate-400" style={{ width: size * 0.5, height: size * 0.5 }} />
     </div>
   )
 }
 
-/** UTM Attribution section for the store report page */
-function UtmAttributionSection({
-  utmConversions,
-  currency = "BRL",
+// ─── KPI Card ───────────────────────────────────────────
+
+function MiniKpi({
+  label,
+  value,
+  icon: Icon,
+  iconColor = "text-gray-400",
 }: {
-  currency?: string
-  utmConversions?: {
-    totalOrdersWithUtm: number
-    utmTrackingRate: number
-    bySource: Array<{ source: string; orders: number; revenue: number }>
-    byMedium: Array<{ medium: string; orders: number; revenue: number }>
-    byCampaign: Array<{ campaign: string; orders: number; revenue: number }>
-  }
+  label: string
+  value: string
+  icon: React.ComponentType<{ className?: string }>
+  iconColor?: string
 }) {
-  if (!utmConversions) return null
-
-  const hasAnyData =
-    (utmConversions.bySource?.length > 0) ||
-    (utmConversions.byMedium?.length > 0) ||
-    (utmConversions.byCampaign?.length > 0)
-
-  if (!hasAnyData && utmConversions.totalOrdersWithUtm === 0) return null
-
   return (
-    <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
-      <div className="mb-4">
-        <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-          <Link2 className="h-5 w-5 text-[#4E62D8] dark:text-[#7B8CEA]" />
-          Atribuição UTM
-        </h3>
-        <p className="text-sm text-slate-500 dark:text-slate-400">Rastreamento de origem dos pedidos</p>
+    <div className="p-4 rounded-[10px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1F2937]">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[13px] font-medium text-gray-400 dark:text-[#5C6378]">{label}</span>
+        <Icon className={cn("h-4 w-4", iconColor)} />
       </div>
-
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 gap-3 mb-5">
-        <div className="p-3 rounded-lg bg-slate-50 dark:bg-[#1A1F2E]">
-          <p className="text-xl font-bold text-slate-800 dark:text-slate-100">{formatNumber(utmConversions.totalOrdersWithUtm)}</p>
-          <p className="text-xs text-slate-500 dark:text-slate-400">Pedidos com UTM</p>
-        </div>
-        <div className="p-3 rounded-lg bg-slate-50 dark:bg-[#1A1F2E]">
-          <p className="text-xl font-bold text-cyan-600 dark:text-cyan-400">{formatPercent(utmConversions.utmTrackingRate)}</p>
-          <p className="text-xs text-slate-500 dark:text-slate-400">Taxa de rastreio</p>
-        </div>
-      </div>
-
-      {/* Sub-tabs */}
-      <Tabs defaultValue="source">
-        <TabsList className="grid w-full grid-cols-3 h-9 mb-4">
-          <TabsTrigger value="source" className="text-xs">Source</TabsTrigger>
-          <TabsTrigger value="medium" className="text-xs">Medium</TabsTrigger>
-          <TabsTrigger value="campaign" className="text-xs">Campaign</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="source" className="mt-0">
-          <StoreUtmRankingList
-            items={(utmConversions.bySource || []) as Array<Record<string, string | number>>}
-            labelKey="source"
-            icon={Globe}
-            currency={currency}
-          />
-        </TabsContent>
-
-        <TabsContent value="medium" className="mt-0">
-          <StoreUtmRankingList
-            items={(utmConversions.byMedium || []) as Array<Record<string, string | number>>}
-            labelKey="medium"
-            icon={Monitor}
-            currency={currency}
-          />
-        </TabsContent>
-
-        <TabsContent value="campaign" className="mt-0">
-          <StoreUtmRankingList
-            items={(utmConversions.byCampaign || []) as Array<Record<string, string | number>>}
-            labelKey="campaign"
-            icon={Megaphone}
-            currency={currency}
-          />
-        </TabsContent>
-      </Tabs>
+      <p className="text-xl font-bold text-gray-900 dark:text-[#EAEDF3] font-mono tabular-nums">
+        {value}
+      </p>
     </div>
   )
 }
 
-/** Format relative time for freshness indicator */
-function formatFreshness(isoDate: string): { text: string; isStale: boolean } {
-  const now = Date.now()
-  const fetched = new Date(isoDate).getTime()
-  const diffMs = now - fetched
-  const diffMinutes = Math.floor(diffMs / 60000)
+// ─── Integration Card (Portal DS pattern) ───────────────
 
-  if (diffMinutes < 1) return { text: "Atualizado agora", isStale: false }
-  if (diffMinutes < 60) return { text: `Atualizado ha ${diffMinutes} min`, isStale: diffMinutes > 30 }
-  const diffHours = Math.floor(diffMinutes / 60)
-  return { text: `Atualizado ha ${diffHours}h`, isStale: true }
-}
-
-/** Build a preview URL from UTM params using URL constructor for proper encoding */
-function buildUtmUrl(template: UtmTemplate, baseUrl?: string): string {
-  try {
-    const url = new URL(baseUrl || "https://loja.com")
-    if (template.utm_source) url.searchParams.set("utm_source", template.utm_source)
-    if (template.utm_medium) url.searchParams.set("utm_medium", template.utm_medium)
-    if (template.utm_campaign) url.searchParams.set("utm_campaign", template.utm_campaign)
-    if (template.utm_content) url.searchParams.set("utm_content", template.utm_content)
-    if (template.utm_term) url.searchParams.set("utm_term", template.utm_term)
-    return url.toString()
-  } catch {
-    return baseUrl || ""
-  }
-}
-
-/** UTM Templates section for the portal store page */
-function UtmTemplatesSection({
-  templates,
-  fetchedAt,
-  storeUrl,
+function IntegrationCard({
+  name,
+  icon,
+  connected,
+  details,
 }: {
-  templates: UtmTemplate[]
-  fetchedAt: string | null
-  storeUrl?: string
+  name: string
+  icon: React.ReactNode
+  connected: boolean
+  details: Array<{ label: string; value: string }>
 }) {
-  const [copiedId, setCopiedId] = useState<string | null>(null)
-
-  const freshness = useMemo(
-    () => (fetchedAt ? formatFreshness(fetchedAt) : null),
-    [fetchedAt]
-  )
-
-  const handleCopy = async (template: UtmTemplate) => {
-    const url = buildUtmUrl(template, storeUrl)
-    try {
-      await navigator.clipboard.writeText(url)
-      setCopiedId(template.id)
-      setTimeout(() => setCopiedId(null), 2000)
-    } catch {
-      // Fallback: no-op
-    }
-  }
-
   return (
-    <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-            <Tag className="h-5 w-5 text-[#4E62D8] dark:text-[#7B8CEA]" />
-            UTMs de Campanha
-          </h3>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            Templates configurados pela agencia
-          </p>
+    <div className="rounded-[10px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1F2937] p-5">
+      <div className="flex items-center gap-3 mb-4">
+        {icon}
+        <div className="flex-1 min-w-0">
+          <h4 className="text-sm font-semibold text-gray-900 dark:text-[#EAEDF3]">{name}</h4>
         </div>
-        {freshness && (
-          <span
-            className={`text-xs flex items-center gap-1 ${
-              freshness.isStale
-                ? "text-amber-600 dark:text-amber-400"
-                : "text-slate-400 dark:text-slate-500"
-            }`}
-          >
-            <Clock className="h-3 w-3" />
-            {freshness.text}
-          </span>
-        )}
+        <StatusBadge status={connected ? "connected" : "disconnected"} />
       </div>
-
-      {templates.length === 0 ? (
-        <div className="text-center py-8 text-slate-500 dark:text-slate-400">
-          <Tag className="h-8 w-8 mx-auto mb-2 opacity-50" />
-          <p className="text-sm">Nenhum template UTM configurado para esta loja</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {templates.map((template) => (
-            <div
-              key={template.id}
-              className="p-4 border border-slate-200/80 dark:border-slate-700/40 rounded-lg"
-            >
-              <div className="flex items-start justify-between mb-2">
-                <div className="flex-1 min-w-0">
-                  <h4 className="font-medium text-slate-800 dark:text-slate-100 truncate">
-                    {template.name}
-                  </h4>
-                  {template.description && (
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
-                      {template.description}
-                    </p>
-                  )}
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="shrink-0 ml-2"
-                  onClick={() => handleCopy(template)}
-                >
-                  {copiedId === template.id ? (
-                    <Check className="h-4 w-4 text-emerald-500" />
-                  ) : (
-                    <Copy className="h-4 w-4" />
-                  )}
-                </Button>
-              </div>
-
-              <div className="flex flex-wrap gap-2 text-xs">
-                <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-                  {template.utm_source}
-                </span>
-                <span className="text-slate-400">/</span>
-                <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-                  {template.utm_medium}
-                </span>
-                <span className="text-slate-400">/</span>
-                <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-                  {template.utm_campaign}
-                </span>
-              </div>
-
-              {template.usage_count > 0 && (
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-2">
-                  Usado {template.usage_count}x
-                </p>
-              )}
+      {connected && details.length > 0 && (
+        <div className="space-y-2 pt-3 border-t border-[rgba(0,0,0,0.06)] dark:border-[rgba(255,255,255,0.06)]">
+          {details.map((d) => (
+            <div key={d.label} className="flex items-center justify-between text-sm">
+              <span className="text-gray-400 dark:text-[#5C6378]">{d.label}</span>
+              <span className="font-medium text-gray-900 dark:text-[#EAEDF3] font-mono tabular-nums">{d.value}</span>
             </div>
           ))}
         </div>
+      )}
+      {!connected && (
+        <p className="text-sm text-gray-400 dark:text-[#5C6378] pt-3 border-t border-[rgba(0,0,0,0.06)] dark:border-[rgba(255,255,255,0.06)]">
+          Integração ainda não configurada. Entre em contato com a equipe Convertfy.
+        </p>
       )}
     </div>
   )
 }
 
-export default function PortalStoreReportPage({
+// ─── Onboarding Stepper (read-only) ─────────────────────
+
+const DEFAULT_ONBOARDING_PHASES = [
+  { id: "setup", title: "Configuração Inicial", status: "pending" as const },
+  { id: "integration", title: "Integração de Plataformas", status: "pending" as const },
+  { id: "design", title: "Design de Templates", status: "pending" as const },
+  { id: "flows", title: "Configuração de Flows", status: "pending" as const },
+  { id: "review", title: "Revisão e Aprovação", status: "pending" as const },
+  { id: "launch", title: "Lançamento", status: "pending" as const },
+]
+
+function OnboardingStepper({
+  phases,
+}: {
+  phases: Array<{
+    id: string
+    title: string
+    status: "completed" | "in_progress" | "pending"
+    completedAt?: string
+  }>
+}) {
+  return (
+    <div className="space-y-0">
+      {phases.map((phase, index) => {
+        const isLast = index === phases.length - 1
+        return (
+          <div key={phase.id} className="flex gap-3">
+            {/* Line + Icon */}
+            <div className="flex flex-col items-center">
+              {phase.status === "completed" ? (
+                <div className="w-8 h-8 rounded-full bg-[#10B981]/10 flex items-center justify-center shrink-0">
+                  <CheckCircle2 className="h-4 w-4 text-[#10B981]" />
+                </div>
+              ) : phase.status === "in_progress" ? (
+                <div className="w-8 h-8 rounded-full bg-[#4E8FFF]/10 flex items-center justify-center shrink-0">
+                  <Clock className="h-4 w-4 text-[#4E8FFF]" />
+                </div>
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-[#f3f4f6] dark:bg-[#374151] flex items-center justify-center shrink-0">
+                  <Circle className="h-4 w-4 text-[#9CA3AF]" />
+                </div>
+              )}
+              {!isLast && (
+                <div
+                  className={cn(
+                    "w-px flex-1 min-h-[24px]",
+                    phase.status === "completed"
+                      ? "bg-[#10B981]/30"
+                      : "bg-[rgba(0,0,0,0.08)] dark:bg-[rgba(255,255,255,0.08)]",
+                  )}
+                />
+              )}
+            </div>
+            {/* Content */}
+            <div className={cn("pb-6", isLast && "pb-0")}>
+              <p
+                className={cn(
+                  "text-sm font-medium leading-8",
+                  phase.status === "completed" && "text-[#10B981]",
+                  phase.status === "in_progress" && "text-gray-900 dark:text-[#EAEDF3]",
+                  phase.status === "pending" && "text-gray-400 dark:text-[#5C6378]",
+                )}
+              >
+                {phase.title}
+              </p>
+              {phase.completedAt && (
+                <p className="text-xs text-gray-400 dark:text-[#5C6378]">
+                  Concluído em {formatDate(phase.completedAt)}
+                </p>
+              )}
+              {phase.status === "in_progress" && (
+                <p className="text-xs text-[#4E8FFF]">Em andamento</p>
+              )}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ─── Main Component ─────────────────────────────────────
+
+export default function PortalStoreDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>
@@ -441,81 +333,81 @@ export default function PortalStoreReportPage({
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [period, setPeriod] = useState("30d")
-  const [utmTemplates, setUtmTemplates] = useState<UtmTemplate[]>([])
-  const [utmFetchedAt, setUtmFetchedAt] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState("overview")
 
-  const fetchUtmTemplates = useCallback(async () => {
-    try {
-      const response = await fetch(`/api/portal/stores/${id}/utm-templates`)
-      if (response.ok) {
+  const fetchReport = useCallback(
+    async (showRefresh = false) => {
+      if (showRefresh) setRefreshing(true)
+      try {
+        const refreshParam = showRefresh ? "&force_refresh=true" : ""
+        const response = await fetch(
+          `/api/portal/stores/${id}/report?period=${period}${refreshParam}`,
+        )
+        if (!response.ok) throw new Error("Erro ao carregar relatório")
         const data = await response.json()
-        setUtmTemplates(data.templates || [])
-        setUtmFetchedAt(data.fetchedAt || new Date().toISOString())
+        setReport(data)
+        setError(null)
+      } catch (err) {
+        console.error("Report fetch error:", err)
+        setError("Não foi possível carregar o relatório")
+      } finally {
+        setLoading(false)
+        setRefreshing(false)
       }
-    } catch {
-      // UTM templates are non-critical; silently ignore errors
-    }
-  }, [id])
-
-  const fetchReport = useCallback(async (showRefresh = false) => {
-    if (showRefresh) setRefreshing(true)
-    try {
-      const refreshParam = showRefresh ? "&force_refresh=true" : ""
-      const response = await fetch(`/api/portal/stores/${id}/report?period=${period}${refreshParam}`)
-      if (!response.ok) {
-        throw new Error("Erro ao carregar relatório")
-      }
-      const data = await response.json()
-      setReport(data)
-      setError(null)
-    } catch (err) {
-      console.error("Report fetch error:", err)
-      setError("Não foi possível carregar o relatório")
-    } finally {
-      setLoading(false)
-      setRefreshing(false)
-    }
-  }, [id, period])
+    },
+    [id, period],
+  )
 
   useEffect(() => {
     fetchReport()
-    fetchUtmTemplates()
-  }, [fetchReport, fetchUtmTemplates])
+  }, [fetchReport])
+
+  // ─── Loading ──────────────────────────────────────────
 
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center gap-4">
-          <Skeleton className="h-10 w-10" />
+        <Skeleton className="h-4 w-48 rounded-[6px]" />
+        <div className="flex items-center gap-3">
+          <Skeleton className="h-10 w-10 rounded-[8px]" />
           <div>
-            <Skeleton className="h-8 w-48 mb-2" />
-            <Skeleton className="h-4 w-32" />
+            <Skeleton className="h-6 w-40 mb-1 rounded-[6px]" />
+            <Skeleton className="h-4 w-28 rounded-[6px]" />
           </div>
         </div>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
           {[1, 2, 3, 4].map((i) => (
-            <Skeleton key={i} className="h-32" />
+            <Skeleton key={i} className="h-[88px] rounded-[10px]" />
           ))}
         </div>
-        <Skeleton className="h-96" />
+        <Skeleton className="h-10 w-full rounded-[6px]" />
+        <Skeleton className="h-64 rounded-[10px]" />
       </div>
     )
   }
 
+  // ─── Error ────────────────────────────────────────────
+
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] text-center">
-        <AlertCircle className="h-12 w-12 text-red-600 mb-4" />
-        <h2 className="text-xl font-semibold mb-2">Erro ao carregar</h2>
-        <p className="text-slate-500 dark:text-slate-400 mb-4">{error}</p>
+        <div className="w-14 h-14 rounded-full bg-[#fef2f2] dark:bg-red-500/10 flex items-center justify-center mb-4">
+          <AlertCircle className="h-6 w-6 text-[#EF4444]" />
+        </div>
+        <h2 className="text-base font-semibold text-gray-900 dark:text-[#EAEDF3] mb-1">
+          Erro ao carregar
+        </h2>
+        <p className="text-sm text-gray-400 dark:text-[#5C6378] mb-5">{error}</p>
         <div className="flex gap-2">
-          <Button variant="secondary" asChild>
+          <Button variant="secondary" asChild className="rounded-[6px] h-9">
             <Link href="/client/stores">
-              <ArrowLeft className="mr-2 h-4 w-4" />
+              <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
               Voltar
             </Link>
           </Button>
-          <Button onClick={() => fetchReport()} className="bg-primary hover:bg-primary/85 text-white shadow-sm">Tentar novamente</Button>
+          <Button onClick={() => fetchReport()} className="rounded-[6px] h-9">
+            Tentar novamente
+          </Button>
         </div>
       </div>
     )
@@ -527,30 +419,45 @@ export default function PortalStoreReportPage({
   const storeCurrency = store.currency || "BRL"
   const formatCurrency = (value: number) => formatCurrencyUtil(value, storeCurrency)
 
+  const onboardingPhases = report.onboarding?.phases || DEFAULT_ONBOARDING_PHASES
+
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" asChild>
-            <Link href="/client/stores">
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
-          </Button>
-          <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
-            <Store className="h-6 w-6 text-primary" />
-          </div>
+      {/* Breadcrumbs */}
+      <Breadcrumbs
+        items={[
+          { label: "Minhas Lojas", href: "/client/stores" },
+          { label: store.store_name },
+        ]}
+      />
+
+      {/* Store Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <PlatformIcon platform={store.platform} size={44} />
           <div>
-            <h1 className="text-2xl font-bold">{store.store_name}</h1>
-            <p className="text-slate-500 dark:text-slate-400 capitalize">{store.platform}</p>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-semibold text-gray-900 dark:text-[#EAEDF3]">
+                {store.store_name}
+              </h1>
+              <StatusBadge status={store.is_active ? "active" : "inactive"} />
+            </div>
+            {store.store_url && (
+              <a
+                href={store.store_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-sm text-gray-400 dark:text-[#5C6378] hover:text-[#4E8FFF] transition-colors"
+              >
+                {store.store_url}
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            )}
           </div>
-          <Badge variant={store.is_active ? "info" : "neutral"}>
-            {store.is_active ? "Ativa" : "Inativa"}
-          </Badge>
         </div>
         <div className="flex items-center gap-2">
           <Select value={period} onValueChange={setPeriod}>
-            <SelectTrigger className="w-[140px]">
+            <SelectTrigger className="w-[140px] h-9 rounded-[6px] text-sm">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -565,113 +472,162 @@ export default function PortalStoreReportPage({
             size="sm"
             onClick={() => fetchReport(true)}
             disabled={refreshing}
+            className="rounded-[6px] h-9 text-sm"
           >
-            <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
+            <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", refreshing && "animate-spin")} />
             Atualizar
           </Button>
         </div>
       </div>
 
-      {/* Tabs */}
-      <Tabs defaultValue="overview" className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="overview">Visão Geral</TabsTrigger>
-          <TabsTrigger value="email">Email Marketing</TabsTrigger>
-          <TabsTrigger value="ecommerce">E-commerce</TabsTrigger>
-        </TabsList>
+      {/* Mini KPIs */}
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+        <MiniKpi
+          label="Receita 30d"
+          value={formatCurrency(klaviyo?.totalRevenue || shopify?.totalRevenue || 0)}
+          icon={DollarSign}
+          iconColor="text-[#10B981]"
+        />
+        <MiniKpi
+          label="Pedidos 30d"
+          value={formatNumber(shopify?.totalOrders || 0)}
+          icon={ShoppingCart}
+          iconColor="text-[#F59E0B]"
+        />
+        <MiniKpi
+          label="Subscribers"
+          value={formatNumber(klaviyo?.totalLeads || 0)}
+          icon={Users}
+          iconColor="text-[#4E8FFF]"
+        />
+        <MiniKpi
+          label="Open Rate"
+          value={formatPercent(klaviyo?.openRate || 0)}
+          icon={Eye}
+          iconColor="text-[#8B5CF6]"
+        />
+      </div>
 
-        {/* Overview Tab */}
-        <TabsContent value="overview" className="space-y-6">
-          {/* Key Metrics */}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
-              <div className="flex items-center justify-between pb-2">
-                <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Total de Leads</span>
-                <Users className="h-4 w-4 text-primary" />
-              </div>
-              <div className="text-2xl font-bold">
-                {formatNumber(klaviyo?.totalLeads || 0)}
-              </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Contatos na base</p>
-            </div>
+      {/* UnderlineTabs */}
+      <UnderlineTabs value={activeTab} onValueChange={setActiveTab}>
+        <UnderlineTabItem value="overview">Overview</UnderlineTabItem>
+        <UnderlineTabItem value="integrations">Integrações</UnderlineTabItem>
+        <UnderlineTabItem value="onboarding">Onboarding</UnderlineTabItem>
+      </UnderlineTabs>
 
-            <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
-              <div className="flex items-center justify-between pb-2">
-                <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Leads Engajados</span>
-                <TrendingUp className="h-4 w-4 text-[#4E62D8] dark:text-[#7B8CEA]" />
+      {/* Tab Content */}
+      {activeTab === "overview" && (
+        <div className="space-y-6">
+          {/* Store Info - key:value pairs */}
+          <div className="rounded-[10px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1F2937] p-5">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-[#EAEDF3] mb-4">
+              Informações da Loja
+            </h3>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-400 dark:text-[#5C6378]">Plataforma</span>
+                <span className="font-medium text-gray-900 dark:text-[#EAEDF3] capitalize">{store.platform}</span>
               </div>
-              <div className="text-2xl font-bold">
-                {formatNumber(klaviyo?.engagedLeads || 0)}
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-400 dark:text-[#5C6378]">URL</span>
+                {store.store_url ? (
+                  <a
+                    href={store.store_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-medium text-[#4E8FFF] hover:underline inline-flex items-center gap-1"
+                  >
+                    {store.store_url}
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                ) : (
+                  <span className="text-gray-400 dark:text-[#5C6378]">—</span>
+                )}
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                {formatPercent(klaviyo?.engagementRate || 0)} de engajamento
-              </p>
-            </div>
-
-            <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
-              <div className="flex items-center justify-between pb-2">
-                <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Receita Email</span>
-                <DollarSign className="h-4 w-4 text-emerald-600" />
+              {store.plan && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-400 dark:text-[#5C6378]">Plano</span>
+                  <span className="font-medium text-gray-900 dark:text-[#EAEDF3]">{store.plan}</span>
+                </div>
+              )}
+              {store.created_at && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-400 dark:text-[#5C6378]">Data de criação</span>
+                  <span className="font-medium text-gray-900 dark:text-[#EAEDF3]">{formatDate(store.created_at)}</span>
+                </div>
+              )}
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-400 dark:text-[#5C6378]">Status</span>
+                <StatusBadge status={store.is_active ? "active" : "inactive"} />
               </div>
-              <div className="text-2xl font-bold text-emerald-600">
-                {formatCurrency(klaviyo?.totalRevenue || 0)}
-              </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Atribuída via Klaviyo</p>
-            </div>
-
-            <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
-              <div className="flex items-center justify-between pb-2">
-                <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Total Pedidos</span>
-                <ShoppingCart className="h-4 w-4 text-amber-600" />
-              </div>
-              <div className="text-2xl font-bold">
-                {formatNumber(shopify?.totalOrders || 0)}
-              </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">No período selecionado</p>
             </div>
           </div>
 
-          {/* Email Performance Summary */}
-          {klaviyo && (
-            <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
-              <div className="mb-4">
-                <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Performance de Email</h3>
-                <p className="text-sm text-slate-500 dark:text-slate-400">Métricas de engajamento no período</p>
+          {/* E-commerce Metrics */}
+          {shopify && (
+            <div className="rounded-[10px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1F2937] p-5">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-[#EAEDF3] mb-4">
+                Métricas E-commerce
+              </h3>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-400 dark:text-[#5C6378]">Receita Total</span>
+                  <span className="font-semibold text-gray-900 dark:text-[#EAEDF3] font-mono tabular-nums">
+                    {formatCurrency(shopify.totalRevenue)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-400 dark:text-[#5C6378]">Ticket Médio</span>
+                  <span className="font-semibold text-gray-900 dark:text-[#EAEDF3] font-mono tabular-nums">
+                    {formatCurrency(shopify.averageOrderValue)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-400 dark:text-[#5C6378]">Clientes Recorrentes</span>
+                  <span className="font-semibold text-gray-900 dark:text-[#EAEDF3] font-mono tabular-nums">
+                    {formatPercent(shopify.recurringCustomerRate)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-400 dark:text-[#5C6378]">Novos Clientes</span>
+                  <span className="font-semibold text-gray-900 dark:text-[#EAEDF3] font-mono tabular-nums">
+                    {formatNumber(shopify.newCustomers)}
+                  </span>
+                </div>
               </div>
-              <div>
-                <div className="grid gap-6 md:grid-cols-4">
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm text-slate-500 dark:text-slate-400">Taxa de Abertura</span>
-                      <Eye className="h-4 w-4 text-slate-500 dark:text-slate-400" />
-                    </div>
-                    <div className="text-2xl font-bold">{formatPercent(klaviyo.openRate)}</div>
-                    <Progress value={klaviyo.openRate} className="mt-2 h-2" />
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm text-slate-500 dark:text-slate-400">Taxa de Clique</span>
-                      <MousePointerClick className="h-4 w-4 text-slate-500 dark:text-slate-400" />
-                    </div>
-                    <div className="text-2xl font-bold">{formatPercent(klaviyo.clickRate)}</div>
-                    <Progress value={klaviyo.clickRate} className="mt-2 h-2" />
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm text-slate-500 dark:text-slate-400">Taxa de Conversão</span>
-                      <Percent className="h-4 w-4 text-slate-500 dark:text-slate-400" />
-                    </div>
-                    <div className="text-2xl font-bold">{formatPercent(klaviyo.conversionRate)}</div>
-                    <Progress value={klaviyo.conversionRate} className="mt-2 h-2" />
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm text-slate-500 dark:text-slate-400">Emails Enviados</span>
-                      <Mail className="h-4 w-4 text-slate-500 dark:text-slate-400" />
-                    </div>
-                    <div className="text-2xl font-bold">{formatNumber(klaviyo.emailsSent)}</div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">No período</p>
-                  </div>
+            </div>
+          )}
+
+          {/* Email Performance */}
+          {klaviyo && (
+            <div className="rounded-[10px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1F2937] p-5">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-[#EAEDF3] mb-4">
+                Performance de Email
+              </h3>
+              <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+                <div>
+                  <p className="text-[11px] text-gray-400 dark:text-[#5C6378] mb-0.5">Taxa de Abertura</p>
+                  <p className="text-lg font-bold text-gray-900 dark:text-[#EAEDF3] font-mono tabular-nums">
+                    {formatPercent(klaviyo.openRate)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-gray-400 dark:text-[#5C6378] mb-0.5">Taxa de Clique</p>
+                  <p className="text-lg font-bold text-gray-900 dark:text-[#EAEDF3] font-mono tabular-nums">
+                    {formatPercent(klaviyo.clickRate)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-gray-400 dark:text-[#5C6378] mb-0.5">Conversão</p>
+                  <p className="text-lg font-bold text-gray-900 dark:text-[#EAEDF3] font-mono tabular-nums">
+                    {formatPercent(klaviyo.conversionRate)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-gray-400 dark:text-[#5C6378] mb-0.5">Emails Enviados</p>
+                  <p className="text-lg font-bold text-gray-900 dark:text-[#EAEDF3] font-mono tabular-nums">
+                    {formatNumber(klaviyo.emailsSent)}
+                  </p>
                 </div>
               </div>
             </div>
@@ -679,307 +635,91 @@ export default function PortalStoreReportPage({
 
           {/* Revenue Breakdown */}
           {klaviyo && (
-            <div className="grid gap-6 md:grid-cols-2">
-              <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
-                <div className="mb-4">
-                  <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Receita por Canal</h3>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">Distribuição de receita atribuída</p>
+            <div className="rounded-[10px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1F2937] p-5">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-[#EAEDF3] mb-4">
+                Receita por Canal
+              </h3>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-400 dark:text-[#5C6378]">Campanhas</span>
+                  <span className="font-semibold text-gray-900 dark:text-[#EAEDF3] font-mono tabular-nums">
+                    {formatCurrency(klaviyo.campaignRevenue)}
+                  </span>
                 </div>
-                <div className="space-y-4">
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium">Campanhas</span>
-                      <span className="text-sm font-bold">{formatCurrency(klaviyo.campaignRevenue)}</span>
-                    </div>
-                    <Progress
-                      value={(klaviyo.campaignRevenue / (klaviyo.totalRevenue || 1)) * 100}
-                      className="h-2"
-                    />
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium">Automações (Flows)</span>
-                      <span className="text-sm font-bold">{formatCurrency(klaviyo.flowRevenue)}</span>
-                    </div>
-                    <Progress
-                      value={(klaviyo.flowRevenue / (klaviyo.totalRevenue || 1)) * 100}
-                      className="h-2"
-                    />
-                  </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-400 dark:text-[#5C6378]">Automações (Flows)</span>
+                  <span className="font-semibold text-gray-900 dark:text-[#EAEDF3] font-mono tabular-nums">
+                    {formatCurrency(klaviyo.flowRevenue)}
+                  </span>
                 </div>
-              </div>
-
-              {shopify && (
-                <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
-                  <div className="mb-4">
-                    <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Métricas E-commerce</h3>
-                    <p className="text-sm text-slate-500 dark:text-slate-400">Dados da loja</p>
-                  </div>
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-slate-500 dark:text-slate-400">Receita Total</span>
-                      <span className="font-bold">{formatCurrency(shopify.totalRevenue)}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-slate-500 dark:text-slate-400">Ticket Médio</span>
-                      <span className="font-bold">{formatCurrency(shopify.averageOrderValue)}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-slate-500 dark:text-slate-400">Clientes Recorrentes</span>
-                      <span className="font-bold">{formatPercent(shopify.recurringCustomerRate)}</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-slate-500 dark:text-slate-400">Novos Clientes</span>
-                      <span className="font-bold">{formatNumber(shopify.newCustomers)}</span>
-                    </div>
-                  </div>
+                <div className="flex items-center justify-between text-sm pt-2 border-t border-[rgba(0,0,0,0.06)] dark:border-[rgba(255,255,255,0.06)]">
+                  <span className="font-medium text-gray-900 dark:text-[#EAEDF3]">Total Atribuído</span>
+                  <span className="font-bold text-[#10B981] font-mono tabular-nums">
+                    {formatCurrency(klaviyo.totalRevenue)}
+                  </span>
                 </div>
-              )}
-            </div>
-          )}
-        </TabsContent>
-
-        {/* Email Marketing Tab */}
-        <TabsContent value="email" className="space-y-6">
-          {klaviyo ? (
-            <>
-              {/* Recent Campaigns */}
-              <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
-                <div className="mb-4">
-                  <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Campanhas Recentes</h3>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">Últimos emails enviados</p>
-                </div>
-                  {klaviyo.recentCampaigns.length === 0 ? (
-                    <div className="text-center py-8 text-slate-500 dark:text-slate-400">
-                      <Mail className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                      <p>Nenhuma campanha no período</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {klaviyo.recentCampaigns.map((campaign) => (
-                        <div
-                          key={campaign.id}
-                          className="p-4 border border-slate-200/80 dark:border-slate-700/40 rounded-lg"
-                        >
-                          <div className="flex items-start justify-between mb-3">
-                            <div>
-                              <h4 className="font-medium">{campaign.name}</h4>
-                              <p className="text-sm text-slate-500 dark:text-slate-400">
-                                Enviada em {formatDate(campaign.sentAt)}
-                              </p>
-                            </div>
-                            <Badge variant="neutral" showDot={false} className="bg-emerald-50 dark:bg-emerald-500/10 text-green-700 dark:text-emerald-400">
-                              {formatCurrency(campaign.revenue)}
-                            </Badge>
-                          </div>
-                          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
-                            <div>
-                              <p className="text-slate-500 dark:text-slate-400">Enviados</p>
-                              <p className="font-medium">{formatNumber(campaign.recipients)}</p>
-                            </div>
-                            <div>
-                              <p className="text-slate-500 dark:text-slate-400">Entregues</p>
-                              <p className="font-medium">{formatNumber(campaign.delivered)}</p>
-                            </div>
-                            <div>
-                              <p className="text-slate-500 dark:text-slate-400">Aberturas</p>
-                              <p className="font-medium">{formatPercent(campaign.openRate)}</p>
-                            </div>
-                            <div>
-                              <p className="text-slate-500 dark:text-slate-400">Cliques</p>
-                              <p className="font-medium">{formatPercent(campaign.clickRate)}</p>
-                            </div>
-                            <div>
-                              <p className="text-slate-500 dark:text-slate-400">Receita</p>
-                              <p className="font-medium text-emerald-600">{formatCurrency(campaign.revenue)}</p>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-              </div>
-
-              {/* Top Flows */}
-              <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
-                <div className="mb-4">
-                  <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Top Automações</h3>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">Flows com melhor performance</p>
-                </div>
-                  {klaviyo.topFlows.length === 0 ? (
-                    <div className="text-center py-8 text-slate-500 dark:text-slate-400">
-                      <BarChart3 className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                      <p>Nenhum flow ativo no período</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {klaviyo.topFlows.map((flow, index) => (
-                        <div
-                          key={flow.id}
-                          className="flex items-center gap-4 p-4 border border-slate-200/80 dark:border-slate-700/40 rounded-lg"
-                        >
-                          <span className="flex items-center justify-center w-6 h-6 rounded-[6px] bg-muted text-xs font-bold text-muted-foreground flex-shrink-0">{index + 1}</span>
-                          <div className="flex-1">
-                            <h4 className="font-medium">{flow.name}</h4>
-                            <p className="text-sm text-slate-500 dark:text-slate-400">
-                              {formatNumber(flow.recipients)} destinatários
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <p className="font-bold text-emerald-600">{formatCurrency(flow.revenue)}</p>
-                            <p className="text-xs text-slate-500 dark:text-slate-400">
-                              {formatPercent(flow.openRate)} abertura
-                            </p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-              </div>
-
-              {/* Lists */}
-              <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
-                <div className="mb-4">
-                  <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Listas de Email</h3>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">Segmentação da base</p>
-                </div>
-                  {klaviyo.lists.length === 0 ? (
-                    <div className="text-center py-8 text-slate-500 dark:text-slate-400">
-                      <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                      <p>Nenhuma lista encontrada</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {klaviyo.lists.map((list) => (
-                        <div
-                          key={list.name}
-                          className="flex items-center justify-between p-3 border border-slate-200/80 dark:border-slate-700/40 rounded-lg"
-                        >
-                          <span className="font-medium">{list.name}</span>
-                          <Badge variant="neutral" showDot={false}>{formatNumber(list.count)} contatos</Badge>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-              </div>
-            </>
-          ) : (
-            <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40">
-              <div className="flex flex-col items-center justify-center py-12 px-5">
-                <Mail className="h-12 w-12 text-slate-500 dark:text-slate-400 mb-4" />
-                <h3 className="text-lg font-medium mb-2">Klaviyo não conectado</h3>
-                <p className="text-slate-500 dark:text-slate-400 text-center max-w-md">
-                  Os dados de email marketing serão exibidos quando a integração com Klaviyo estiver configurada.
-                </p>
               </div>
             </div>
           )}
-        </TabsContent>
+        </div>
+      )}
 
-        {/* E-commerce Tab */}
-        <TabsContent value="ecommerce" className="space-y-6">
-          {shopify ? (
-            <>
-              {/* E-commerce Metrics */}
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
-                  <div className="flex items-center justify-between pb-2">
-                    <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Receita Total</span>
-                    <DollarSign className="h-4 w-4 text-emerald-600" />
-                  </div>
-                  <div className="text-2xl font-bold">{formatCurrency(shopify.totalRevenue)}</div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">No período</p>
-                </div>
+      {activeTab === "integrations" && (
+        <div className="grid gap-4 sm:grid-cols-2">
+          {/* Shopify Integration Card */}
+          <IntegrationCard
+            name="Shopify"
+            icon={<PlatformIcon platform="shopify" size={36} />}
+            connected={!!shopify?.connected || !!shopify}
+            details={
+              shopify
+                ? [
+                    { label: "Pedidos", value: formatNumber(shopify.totalOrders) },
+                    { label: "Receita", value: formatCurrency(shopify.totalRevenue) },
+                    { label: "Ticket Médio", value: formatCurrency(shopify.averageOrderValue) },
+                    { label: "Produtos", value: shopify.products ? formatNumber(shopify.products.totalProducts) : "—" },
+                  ]
+                : []
+            }
+          />
 
-                <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
-                  <div className="flex items-center justify-between pb-2">
-                    <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Total de Pedidos</span>
-                    <ShoppingCart className="h-4 w-4 text-amber-600" />
-                  </div>
-                  <div className="text-2xl font-bold">{formatNumber(shopify.totalOrders)}</div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Pedidos finalizados</p>
-                </div>
+          {/* Klaviyo Integration Card */}
+          <IntegrationCard
+            name="Klaviyo"
+            icon={<KlaviyoIcon size={36} />}
+            connected={!!klaviyo}
+            details={
+              klaviyo
+                ? [
+                    { label: "Subscribers", value: formatNumber(klaviyo.totalLeads) },
+                    { label: "Engajados", value: `${formatNumber(klaviyo.engagedLeads)} (${formatPercent(klaviyo.engagementRate)})` },
+                    { label: "Open Rate", value: formatPercent(klaviyo.openRate) },
+                    { label: "Click Rate", value: formatPercent(klaviyo.clickRate) },
+                    { label: "Receita Atribuída", value: formatCurrency(klaviyo.totalRevenue) },
+                  ]
+                : []
+            }
+          />
+        </div>
+      )}
 
-                <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
-                  <div className="flex items-center justify-between pb-2">
-                    <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Ticket Médio</span>
-                    <BarChart3 className="h-4 w-4 text-[#4E62D8] dark:text-[#7B8CEA]" />
-                  </div>
-                  <div className="text-2xl font-bold">{formatCurrency(shopify.averageOrderValue)}</div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Valor médio por pedido</p>
-                </div>
+      {activeTab === "onboarding" && (
+        <div className="rounded-[10px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1F2937] p-5">
+          <div className="mb-5">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-[#EAEDF3]">
+              Progresso do Onboarding
+            </h3>
+            <p className="text-xs text-gray-400 dark:text-[#5C6378] mt-0.5">
+              Acompanhe o progresso da configuração da sua loja
+            </p>
+          </div>
+          <OnboardingStepper phases={onboardingPhases} />
+        </div>
+      )}
 
-                <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
-                  <div className="flex items-center justify-between pb-2">
-                    <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Clientes Recorrentes</span>
-                    <TrendingUp className="h-4 w-4 text-primary" />
-                  </div>
-                  <div className="text-2xl font-bold">{formatPercent(shopify.recurringCustomerRate)}</div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Taxa de recompra</p>
-                </div>
-              </div>
-
-              {/* Top Products */}
-              <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
-                <div className="mb-4">
-                  <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Produtos Mais Vendidos</h3>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">Top produtos no período</p>
-                </div>
-                  {shopify.topProducts.length === 0 ? (
-                    <div className="text-center py-8 text-slate-500 dark:text-slate-400">
-                      <ShoppingCart className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                      <p>Nenhum produto vendido no período</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {shopify.topProducts.map((product, index) => (
-                        <div
-                          key={product.name}
-                          className="flex items-center gap-4 p-4 border border-slate-200/80 dark:border-slate-700/40 rounded-lg"
-                        >
-                          <span className="flex items-center justify-center w-6 h-6 rounded-[6px] bg-muted text-xs font-bold text-muted-foreground flex-shrink-0">{index + 1}</span>
-                          <div className="flex-1">
-                            <h4 className="font-medium">{product.name}</h4>
-                            <p className="text-sm text-slate-500 dark:text-slate-400">
-                              {formatNumber(product.quantity)} unidades vendidas
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <p className="font-bold">{formatCurrency(product.revenue)}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-              </div>
-
-              {/* UTM Attribution Section */}
-              <UtmAttributionSection utmConversions={shopify.orders?.utmConversions} currency={storeCurrency} />
-
-              {/* UTM Templates Section */}
-              <UtmTemplatesSection
-                templates={utmTemplates}
-                fetchedAt={utmFetchedAt}
-                storeUrl={store.store_url || undefined}
-              />
-            </>
-          ) : (
-            <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40">
-              <div className="flex flex-col items-center justify-center py-12 px-5">
-                <ShoppingCart className="h-12 w-12 text-slate-500 dark:text-slate-400 mb-4" />
-                <h3 className="text-lg font-medium mb-2">Shopify não conectado</h3>
-                <p className="text-slate-500 dark:text-slate-400 text-center max-w-md">
-                  Os dados de e-commerce serão exibidos quando a integração com Shopify estiver configurada.
-                </p>
-              </div>
-            </div>
-          )}
-        </TabsContent>
-      </Tabs>
-
-      {/* Last Updated */}
+      {/* Last Synced */}
       {report.lastSyncedAt && (
-        <p className="text-sm text-slate-500 dark:text-slate-400 text-center">
+        <p className="text-xs text-gray-400 dark:text-[#5C6378] text-center">
           Última sincronização: {formatDate(report.lastSyncedAt)}
         </p>
       )}
