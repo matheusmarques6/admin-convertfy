@@ -177,7 +177,7 @@ export function OnboardingStepCard({
   className,
 }: OnboardingStepCardProps) {
   const statusConfig = STEP_STATUS_CONFIG[step.status]
-  const StatusIcon = statusConfig.icon
+  const _StatusIcon = statusConfig.icon
   const categoryLabel = CATEGORY_LABELS[step.category] ?? step.category
   const actions = getAvailableActions(step.status)
   const isBlockedOrWaiting = step.status === "waiting" || step.status === "blocked"

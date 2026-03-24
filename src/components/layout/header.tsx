@@ -93,7 +93,7 @@ interface HeaderProps {
   }
 }
 
-export function Header({ user: userProp }: HeaderProps) {
+export function Header({ user: _userProp }: HeaderProps) {
   const pathname = usePathname()
   const { theme, setTheme } = useTheme()
   const { user } = useAuthStore()

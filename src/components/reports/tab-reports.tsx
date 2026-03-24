@@ -13,7 +13,7 @@ import {
   Send,
   CheckCircle,
   Clock,
-  Filter,
+
   Loader2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -40,7 +40,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { formatCurrency, cn } from "@/lib/utils"
+import { formatCurrency } from "@/lib/utils"
 import { toast } from "@/lib/hooks/use-toast"
 import { MobileFiltersSheet } from "./mobile-filters-sheet"
 import type { Report, ReportData, ReportStatus } from "@/types"
@@ -157,7 +157,7 @@ export function TabReports({
   totalCount,
   thisMonthCount,
   pendingStores,
-  initialStoreId,
+  initialStoreId: _initialStoreId,
 }: TabReportsProps) {
   const [reports, setReports] = useState(initialReports)
   const [searchTerm, setSearchTerm] = useState("")

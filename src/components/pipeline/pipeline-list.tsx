@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { MoreHorizontal, Eye, Trash2 } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
-import { StatusBadge } from "@/components/ui/status-badge"
+
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   DropdownMenu,
@@ -28,7 +28,6 @@ import {
 import { DataTable, type ColumnDef } from "@/components/ui/data-table"
 import { DealDialog } from "./deal-dialog"
 import { formatCurrency, getInitials } from "@/lib/utils"
-import { cn } from "@/lib/utils"
 import { toast } from "@/lib/hooks/use-toast"
 import type { PipelineStage, DealWithRelations, PipelineMemberRole } from "@/types"
 
