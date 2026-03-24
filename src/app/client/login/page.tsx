@@ -174,7 +174,7 @@ export default function ClientLoginPage() {
         <div className="flex items-center justify-end">
           <Link
             href="/forgot-password"
-            className="text-sm text-[#4E62D8] dark:text-[#7B8CEA] hover:underline min-h-[44px] flex items-center"
+            className="text-sm text-[#4E8FFF] dark:text-[#7B8CEA] hover:underline min-h-[44px] flex items-center"
           >
             Esqueci a senha
           </Link>

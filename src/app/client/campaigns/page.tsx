@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo, useCallback, Suspense } from "react"
-import { useSearchParams, useRouter } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import {
   Search,
   ChevronDown,
@@ -15,8 +15,16 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { StatusBadge } from "@/components/ui/status-badge"
+import { StatusTabs } from "@/components/ui/status-tabs"
 import { EmptyState } from "@/components/ui/empty-state"
 import { AnimatedContainer, AnimatedItem } from "@/components/ui/animated-container"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { usePortalCampaignsCalendar } from "@/lib/hooks/use-portal-campaigns-calendar"
 import type { PortalCampaign } from "@/lib/hooks/use-portal-campaigns-calendar"
 import { transformCampaignData } from "@/lib/utils/campaign-transform"
@@ -37,16 +45,35 @@ const CHANNEL_LABELS: Record<string, string> = {
   push: "Push",
 }
 
-const STATUS_TABS = [
+const STATUS_TAB_ITEMS = [
   { value: "all", label: "Todas" },
   { value: "sent", label: "Enviadas" },
   { value: "scheduled", label: "Agendadas" },
   { value: "draft", label: "Rascunho" },
-] as const
+]
+
+const PERIOD_OPTIONS = [
+  { value: "30d", label: "30 dias" },
+  { value: "90d", label: "90 dias" },
+  { value: "6m", label: "6 meses" },
+  { value: "1y", label: "1 ano" },
+]
 
 const PAGE_SIZE = 15
 
-// ─── ChannelBadge ───────────────────────────────────────
+// ─── ChannelDot (inline with name) ──────────────────────
+
+function ChannelDot({ channel }: { channel: string }) {
+  const color = CHANNEL_COLORS[channel] || "#6B7280"
+  return (
+    <span
+      className="inline-block w-[6px] h-[6px] rounded-full flex-shrink-0"
+      style={{ backgroundColor: color }}
+    />
+  )
+}
+
+// ─── ChannelBadge (for mobile cards) ────────────────────
 
 function ChannelBadge({ channel }: { channel: string }) {
   const color = CHANNEL_COLORS[channel] || "#6B7280"
@@ -94,29 +121,23 @@ function MetricCell({
   )
 }
 
-// ─── Expanded Row ───────────────────────────────────────
+// ─── Expanded Row (6 metrics: Enviados, Entregues, Aberturas, Cliques, Pedidos, Unsubs) ───
 
 function CampaignExpandedRow({ campaign }: { campaign: PortalCampaign }) {
   const metrics = [
-    { label: "Destinatários", value: campaign.recipients, fmt: "number" as const },
+    { label: "Enviados", value: campaign.recipients, fmt: "number" as const },
     { label: "Entregues", value: campaign.delivered, fmt: "number" as const },
     { label: "Aberturas", value: campaign.opened, fmt: "number" as const },
-    { label: "Taxa de Abertura", value: campaign.openRate, fmt: "percent" as const },
     { label: "Cliques", value: campaign.clicked, fmt: "number" as const },
-    { label: "Taxa de Clique", value: campaign.clickRate, fmt: "percent" as const },
-    { label: "Conversões", value: campaign.converted, fmt: "number" as const },
-    { label: "Taxa de Conversão", value: campaign.conversionRate, fmt: "percent" as const },
-    { label: "Receita", value: campaign.revenue, fmt: "currency" as const },
-    { label: "Receita/Destinatário", value: campaign.revenuePerRecipient, fmt: "currency" as const },
-    { label: "AOV", value: campaign.averageOrderValue, fmt: "currency" as const },
-    { label: "Taxa de Bounce", value: campaign.bounceRate, fmt: "percent" as const },
+    { label: "Pedidos", value: campaign.converted, fmt: "number" as const },
+    { label: "Unsubs", value: undefined as number | undefined, fmt: "number" as const },
   ]
 
   return (
     <tr>
-      <td colSpan={8} className="p-0">
+      <td colSpan={9} className="p-0">
         <div className="bg-[#F9FAFB] dark:bg-[#111827] border-t border-[rgba(0,0,0,0.04)] dark:border-[rgba(255,255,255,0.04)] px-6 py-4">
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-4">
             {metrics.map((m) => (
               <div key={m.label}>
                 <p className="text-[11px] text-gray-400 dark:text-[#5C6378] mb-0.5">
@@ -160,9 +181,7 @@ function CampaignCard({
   onToggle: () => void
 }) {
   return (
-    <div
-      className="rounded-[10px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1F2937] overflow-hidden"
-    >
+    <div className="rounded-[10px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1F2937] overflow-hidden">
       <button
         type="button"
         onClick={onToggle}
@@ -200,13 +219,11 @@ function CampaignCard({
         <div className="px-4 pb-4 border-t border-[rgba(0,0,0,0.04)] dark:border-[rgba(255,255,255,0.04)]">
           <div className="grid grid-cols-2 gap-3 pt-3">
             {[
-              { label: "Destinatários", value: campaign.recipients, fmt: "number" as const },
+              { label: "Enviados", value: campaign.recipients, fmt: "number" as const },
               { label: "Entregues", value: campaign.delivered, fmt: "number" as const },
               { label: "Aberturas", value: campaign.opened, fmt: "number" as const },
-              { label: "Tx. Abertura", value: campaign.openRate, fmt: "percent" as const },
               { label: "Cliques", value: campaign.clicked, fmt: "number" as const },
-              { label: "Tx. Clique", value: campaign.clickRate, fmt: "percent" as const },
-              { label: "Conversões", value: campaign.converted, fmt: "number" as const },
+              { label: "Pedidos", value: campaign.converted, fmt: "number" as const },
               { label: "Receita", value: campaign.revenue, fmt: "currency" as const },
             ].map((m) => (
               <div key={m.label}>
@@ -228,7 +245,7 @@ function CampaignCard({
 function formatScheduledDate(date: string, time?: string): string {
   try {
     const d = new Date(date + "T00:00:00")
-    const formatted = d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })
+    const formatted = d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })
     if (time) return `${formatted} · ${time}`
     return formatted
   } catch {
@@ -260,7 +277,6 @@ function PageSkeleton() {
 
 function CampaignsContent() {
   const searchParams = useSearchParams()
-  const router = useRouter()
 
   // Read initial filters from URL
   const urlStatus = searchParams.get("status") || "all"
@@ -271,6 +287,7 @@ function CampaignsContent() {
   const [searchQuery, setSearchQuery] = useState("")
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [page, setPage] = useState(1)
+  const [period, setPeriod] = useState("30d")
 
   // Fetch campaigns for current month
   const {
@@ -292,17 +309,14 @@ function CampaignsContent() {
   const filteredCampaigns = useMemo(() => {
     let result = allCampaigns
 
-    // Status filter
     if (statusFilter !== "all") {
       result = result.filter((c) => c.status === statusFilter)
     }
 
-    // Channel filter
     if (channelFilter !== "all") {
       result = result.filter((c) => c.channel === channelFilter)
     }
 
-    // Search
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase()
       result = result.filter(
@@ -322,6 +336,9 @@ function CampaignsContent() {
     () => filteredCampaigns.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
     [filteredCampaigns, page],
   )
+
+  const pageStart = (page - 1) * PAGE_SIZE + 1
+  const pageEnd = Math.min(page * PAGE_SIZE, filteredCampaigns.length)
 
   // Reset page when filters change
   const updateStatusFilter = useCallback((val: string) => {
@@ -349,12 +366,15 @@ function CampaignsContent() {
   const fetchCampaigns = useCallback(() => mutateCampaigns(), [mutateCampaigns])
 
   // Count per status tab
-  const statusCounts = useMemo(() => {
+  const statusTabItems = useMemo(() => {
     const counts: Record<string, number> = { all: allCampaigns.length }
     for (const c of allCampaigns) {
       counts[c.status] = (counts[c.status] || 0) + 1
     }
-    return counts
+    return STATUS_TAB_ITEMS.map((tab) => ({
+      ...tab,
+      count: counts[tab.value] ?? 0,
+    }))
   }, [allCampaigns])
 
   // ─── Error State ────────────────────────────────────
@@ -362,7 +382,7 @@ function CampaignsContent() {
   if (error) {
     return (
       <div className="space-y-6">
-        <PageHeader count={0} />
+        <PageHeader count={0} period={period} onPeriodChange={setPeriod} />
         <div className="flex flex-col items-center justify-center py-16">
           <div className="rounded-[10px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1F2937] p-8 text-center max-w-md">
             <AlertCircle className="h-7 w-7 text-[#EF4444] mx-auto mb-4" />
@@ -383,35 +403,24 @@ function CampaignsContent() {
 
   return (
     <AnimatedContainer className="space-y-5">
-      {/* Header */}
+      {/* Header with period selector */}
       <AnimatedItem>
-        <PageHeader count={allCampaigns.length} loading={loading} onRefresh={fetchCampaigns} />
+        <PageHeader
+          count={allCampaigns.length}
+          loading={loading}
+          onRefresh={fetchCampaigns}
+          period={period}
+          onPeriodChange={setPeriod}
+        />
       </AnimatedItem>
 
-      {/* Status Tabs */}
+      {/* StatusTabs (DS v3.0 segmented variant) */}
       <AnimatedItem>
-        <div className="flex items-center gap-1 border-b border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]">
-          {STATUS_TABS.map((tab) => (
-            <button
-              key={tab.value}
-              type="button"
-              onClick={() => updateStatusFilter(tab.value)}
-              className={cn(
-                "px-3 py-2 text-sm font-medium transition-colors duration-150 border-b-2 -mb-px",
-                statusFilter === tab.value
-                  ? "border-[#4E8FFF] text-[#4E8FFF]"
-                  : "border-transparent text-gray-400 dark:text-[#5C6378] hover:text-gray-600 dark:hover:text-[#9CA3AF]",
-              )}
-            >
-              {tab.label}
-              {(statusCounts[tab.value] ?? 0) > 0 && (
-                <span className="ml-1.5 text-xs font-mono tabular-nums">
-                  {statusCounts[tab.value]}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
+        <StatusTabs
+          value={statusFilter}
+          onValueChange={updateStatusFilter}
+          items={statusTabItems}
+        />
       </AnimatedItem>
 
       {/* Table Card */}
@@ -488,28 +497,28 @@ function CampaignsContent() {
               <div className="hidden md:block overflow-x-auto">
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b border-[rgba(0,0,0,0.06)] dark:border-[rgba(255,255,255,0.06)]">
-                      <th className="text-left text-[11px] font-semibold text-gray-400 dark:text-[#5C6378] uppercase tracking-wider px-4 py-2.5 w-8" />
-                      <th className="text-left text-[11px] font-semibold text-gray-400 dark:text-[#5C6378] uppercase tracking-wider px-4 py-2.5">
+                    <tr className="bg-[#F9FAFB] dark:bg-[#111827]/50 border-b border-[rgba(0,0,0,0.06)] dark:border-[rgba(255,255,255,0.06)]">
+                      <th className="text-left text-xs font-semibold text-gray-400 dark:text-[#5C6378] uppercase tracking-wider px-4 py-2.5 w-8" />
+                      <th className="text-left text-xs font-semibold text-gray-400 dark:text-[#5C6378] uppercase tracking-wider px-4 py-2.5">
                         Campanha
                       </th>
-                      <th className="text-left text-[11px] font-semibold text-gray-400 dark:text-[#5C6378] uppercase tracking-wider px-4 py-2.5">
-                        Canal
-                      </th>
-                      <th className="text-left text-[11px] font-semibold text-gray-400 dark:text-[#5C6378] uppercase tracking-wider px-4 py-2.5">
-                        Status
-                      </th>
-                      <th className="text-left text-[11px] font-semibold text-gray-400 dark:text-[#5C6378] uppercase tracking-wider px-4 py-2.5">
+                      <th className="text-left text-xs font-semibold text-gray-400 dark:text-[#5C6378] uppercase tracking-wider px-4 py-2.5">
                         Data
                       </th>
-                      <th className="text-right text-[11px] font-semibold text-gray-400 dark:text-[#5C6378] uppercase tracking-wider px-4 py-2.5">
-                        Destinatários
+                      <th className="text-right text-xs font-semibold text-gray-400 dark:text-[#5C6378] uppercase tracking-wider px-4 py-2.5">
+                        Enviados
                       </th>
-                      <th className="text-right text-[11px] font-semibold text-gray-400 dark:text-[#5C6378] uppercase tracking-wider px-4 py-2.5">
-                        Tx. Abertura
+                      <th className="text-right text-xs font-semibold text-gray-400 dark:text-[#5C6378] uppercase tracking-wider px-4 py-2.5">
+                        Open Rate
                       </th>
-                      <th className="text-right text-[11px] font-semibold text-gray-400 dark:text-[#5C6378] uppercase tracking-wider px-4 py-2.5">
+                      <th className="text-right text-xs font-semibold text-gray-400 dark:text-[#5C6378] uppercase tracking-wider px-4 py-2.5">
+                        Click Rate
+                      </th>
+                      <th className="text-right text-xs font-semibold text-gray-400 dark:text-[#5C6378] uppercase tracking-wider px-4 py-2.5">
                         Receita
+                      </th>
+                      <th className="text-left text-xs font-semibold text-gray-400 dark:text-[#5C6378] uppercase tracking-wider px-4 py-2.5">
+                        Status
                       </th>
                     </tr>
                   </thead>
@@ -541,31 +550,36 @@ function CampaignsContent() {
                 ))}
               </div>
 
-              {/* Pagination Footer */}
+              {/* Pagination Footer — "X de Y campanhas" + Anterior/Próximo */}
               {totalPages > 1 && (
                 <div className="px-4 py-3 border-t border-[rgba(0,0,0,0.06)] dark:border-[rgba(255,255,255,0.06)] flex items-center justify-between">
                   <p className="text-xs text-gray-400 dark:text-[#5C6378]">
-                    <span className="font-mono tabular-nums">{filteredCampaigns.length}</span> campanha{filteredCampaigns.length !== 1 ? "s" : ""}
+                    <span className="font-mono tabular-nums">{pageStart}–{pageEnd}</span>
+                    {" "}de{" "}
+                    <span className="font-mono tabular-nums">{filteredCampaigns.length}</span>
+                    {" "}campanha{filteredCampaigns.length !== 1 ? "s" : ""}
                   </p>
                   <div className="flex items-center gap-1">
                     <button
                       type="button"
                       onClick={() => setPage((p) => Math.max(1, p - 1))}
                       disabled={page === 1}
-                      className="p-1.5 rounded-[6px] text-gray-400 dark:text-[#5C6378] hover:bg-[#f3f4f6] dark:hover:bg-[#374151] disabled:opacity-30 transition-colors"
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-[6px] text-xs text-gray-500 dark:text-[#9CA3AF] hover:bg-[#f3f4f6] dark:hover:bg-[#374151] disabled:opacity-30 transition-colors"
                     >
-                      <ChevronLeft className="h-4 w-4" />
+                      <ChevronLeft className="h-3.5 w-3.5" />
+                      Anterior
                     </button>
-                    <span className="text-xs text-gray-500 dark:text-[#9CA3AF] px-2 font-mono tabular-nums">
+                    <span className="text-xs text-gray-400 dark:text-[#5C6378] px-2 font-mono tabular-nums">
                       {page} / {totalPages}
                     </span>
                     <button
                       type="button"
                       onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                       disabled={page === totalPages}
-                      className="p-1.5 rounded-[6px] text-gray-400 dark:text-[#5C6378] hover:bg-[#f3f4f6] dark:hover:bg-[#374151] disabled:opacity-30 transition-colors"
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-[6px] text-xs text-gray-500 dark:text-[#9CA3AF] hover:bg-[#f3f4f6] dark:hover:bg-[#374151] disabled:opacity-30 transition-colors"
                     >
-                      <ChevronRight className="h-4 w-4" />
+                      Próximo
+                      <ChevronRight className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 </div>
@@ -610,49 +624,59 @@ function TableRowGroup({
           />
         </td>
 
-        {/* Name */}
+        {/* Campanha (name + channel dot inline) */}
         <td className="px-4 py-3">
-          <p className="text-sm font-medium text-gray-900 dark:text-[#EAEDF3] truncate max-w-[260px]">
-            {campaign.name}
-          </p>
+          <div className="flex items-center gap-2 max-w-[280px]">
+            <ChannelDot channel={campaign.channel} />
+            <p className="text-[13px] font-medium text-gray-900 dark:text-[#EAEDF3] truncate">
+              {campaign.name}
+            </p>
+          </div>
         </td>
 
-        {/* Channel */}
+        {/* Data (dd/mm, right-aligned mono) */}
         <td className="px-4 py-3">
-          <ChannelBadge channel={campaign.channel} />
+          <span className="text-xs text-gray-500 dark:text-[#9CA3AF] font-mono tabular-nums whitespace-nowrap">
+            {formatScheduledDate(campaign.scheduledDate, campaign.scheduledTime)}
+          </span>
+        </td>
+
+        {/* Enviados (right-aligned) */}
+        <td className="px-4 py-3 text-right">
+          <span className="text-[13px] text-gray-700 dark:text-[#EAEDF3]">
+            <MetricCell value={campaign.recipients} />
+          </span>
+        </td>
+
+        {/* Open Rate (right-aligned) */}
+        <td className="px-4 py-3 text-right">
+          <span className="text-[13px] text-gray-700 dark:text-[#EAEDF3]">
+            <MetricCell value={campaign.openRate} formatter="percent" />
+          </span>
+        </td>
+
+        {/* Click Rate (right-aligned) */}
+        <td className="px-4 py-3 text-right">
+          <span className="text-[13px] text-gray-700 dark:text-[#EAEDF3]">
+            <MetricCell value={campaign.clickRate} formatter="percent" />
+          </span>
+        </td>
+
+        {/* Receita (right-aligned, green if > 0) */}
+        <td className="px-4 py-3 text-right">
+          <span className={cn(
+            "text-[13px] font-medium",
+            campaign.revenue && campaign.revenue > 0
+              ? "text-[#10B981]"
+              : "text-gray-900 dark:text-[#EAEDF3]",
+          )}>
+            <MetricCell value={campaign.revenue} formatter="currency" currency={campaign.currency} />
+          </span>
         </td>
 
         {/* Status */}
         <td className="px-4 py-3">
           <StatusBadge status={campaign.status} />
-        </td>
-
-        {/* Date */}
-        <td className="px-4 py-3">
-          <span className="text-sm text-gray-500 dark:text-[#9CA3AF] whitespace-nowrap">
-            {formatScheduledDate(campaign.scheduledDate, campaign.scheduledTime)}
-          </span>
-        </td>
-
-        {/* Recipients */}
-        <td className="px-4 py-3 text-right">
-          <span className="text-sm text-gray-700 dark:text-[#EAEDF3]">
-            <MetricCell value={campaign.recipients} />
-          </span>
-        </td>
-
-        {/* Open Rate */}
-        <td className="px-4 py-3 text-right">
-          <span className="text-sm text-gray-700 dark:text-[#EAEDF3]">
-            <MetricCell value={campaign.openRate} formatter="percent" />
-          </span>
-        </td>
-
-        {/* Revenue */}
-        <td className="px-4 py-3 text-right">
-          <span className="text-sm font-medium text-gray-900 dark:text-[#EAEDF3]">
-            <MetricCell value={campaign.revenue} formatter="currency" currency={campaign.currency} />
-          </span>
         </td>
       </tr>
 
@@ -668,10 +692,14 @@ function PageHeader({
   count,
   loading,
   onRefresh,
+  period,
+  onPeriodChange,
 }: {
   count: number
   loading?: boolean
   onRefresh?: () => void
+  period: string
+  onPeriodChange: (value: string) => void
 }) {
   return (
     <div className="flex items-center justify-between">
@@ -685,18 +713,32 @@ function PageHeader({
           </span>
         )}
       </div>
-      {onRefresh && (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onRefresh}
-          disabled={loading}
-          className="h-8 text-gray-400 dark:text-[#5C6378] hover:text-gray-600 dark:hover:text-[#9CA3AF]"
-        >
-          <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", loading && "animate-spin")} />
-          Atualizar
-        </Button>
-      )}
+      <div className="flex items-center gap-2">
+        <Select value={period} onValueChange={onPeriodChange}>
+          <SelectTrigger className="h-8 w-[110px] rounded-[6px] text-xs border-[#e5e7eb] dark:border-[#374151] bg-white dark:bg-[#111827]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="rounded-[8px]">
+            {PERIOD_OPTIONS.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {onRefresh && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onRefresh}
+            disabled={loading}
+            className="h-8 text-gray-400 dark:text-[#5C6378] hover:text-gray-600 dark:hover:text-[#9CA3AF]"
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", loading && "animate-spin")} />
+            Atualizar
+          </Button>
+        )}
+      </div>
     </div>
   )
 }

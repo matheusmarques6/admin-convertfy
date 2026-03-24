@@ -114,7 +114,7 @@ export default function PortalLayout({
     return (
       <div className="flex h-screen items-center justify-center bg-[#FCFCFD] dark:bg-[#0F1117]">
         <div className="flex flex-col items-center gap-3">
-          <div className="h-10 w-10 animate-spin rounded-full border-[3px] border-[#4E62D8]/20 border-t-[#4E62D8]" />
+          <div className="h-10 w-10 animate-spin rounded-full border-[3px] border-[#4E8FFF]/20 border-t-[#4E8FFF]" />
           <span className="text-sm text-gray-400 dark:text-[#5C6378]">Carregando...</span>
         </div>
       </div>
@@ -126,7 +126,7 @@ export default function PortalLayout({
     router.push("/client/login")
     return (
       <div className="flex h-screen items-center justify-center bg-[#FCFCFD] dark:bg-[#0F1117]">
-        <div className="h-10 w-10 animate-spin rounded-full border-[3px] border-[#4E62D8]/20 border-t-[#4E62D8]" />
+        <div className="h-10 w-10 animate-spin rounded-full border-[3px] border-[#4E8FFF]/20 border-t-[#4E8FFF]" />
       </div>
     )
   }
