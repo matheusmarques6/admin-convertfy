@@ -16,7 +16,7 @@ import {
   Store,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
+import { StatusBadge } from "@/components/ui/status-badge"
 import { Card, CardContent } from "@/components/ui/card"
 import {
   Select,
@@ -377,16 +377,20 @@ export function StoreAlertsPanel() {
 
                       {/* Severity */}
                       <td className="px-4 py-4 text-center">
-                        <Badge className={`${severityConfig.className} text-[10px]`}>
-                          {severityConfig.label}
-                        </Badge>
+                        <StatusBadge
+                          status={alert.severity}
+                          label={severityConfig.label}
+                          className="text-[10px]"
+                        />
                       </td>
 
                       {/* Status */}
                       <td className="px-4 py-4 text-center">
-                        <Badge className={`${statusConfig.className} text-[10px]`}>
-                          {statusConfig.label}
-                        </Badge>
+                        <StatusBadge
+                          status={alert.status === "acknowledged" ? "warning" : alert.status === "resolved" ? "completed" : "active"}
+                          label={statusConfig.label}
+                          className="text-[10px]"
+                        />
                       </td>
 
                       {/* Time */}

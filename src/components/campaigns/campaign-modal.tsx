@@ -27,6 +27,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { StatusBadge } from "@/components/ui/status-badge"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
@@ -68,14 +69,14 @@ const channelConfig = {
   whatsapp: { icon: MessageSquare, color: "bg-emerald-500", label: "WhatsApp" },
 }
 
-const statusConfig: Record<string, { color: string; label: string }> = {
-  draft: { color: "bg-gray-100 text-gray-800", label: "Rascunho" },
-  pending_review: { color: "bg-blue-100 text-blue-800", label: "Aguardando Revisão" },
-  approved: { color: "bg-emerald-100 text-emerald-800", label: "Aprovada" },
-  rejected: { color: "bg-orange-100 text-orange-800", label: "Rejeitada" },
-  scheduled: { color: "bg-yellow-100 text-yellow-800", label: "Agendada" },
-  sent: { color: "bg-green-100 text-green-800", label: "Enviada" },
-  cancelled: { color: "bg-red-100 text-red-800", label: "Cancelada" },
+const statusLabels: Record<string, string> = {
+  draft: "Rascunho",
+  pending_review: "Aguardando Revisão",
+  approved: "Aprovada",
+  rejected: "Rejeitada",
+  scheduled: "Agendada",
+  sent: "Enviada",
+  cancelled: "Cancelada",
 }
 
 const typeLabels = {
@@ -113,7 +114,7 @@ export function CampaignModal({
 
   const ChannelIcon = channelConfig[campaign.channel]?.icon || Mail
   const channelInfo = channelConfig[campaign.channel] || channelConfig.email
-  const statusInfo = statusConfig[campaign.status] || { color: "bg-gray-100 text-gray-800", label: campaign.status || "Desconhecido" }
+  const statusLabel = statusLabels[campaign.status] || campaign.status || "Desconhecido"
 
   const canSubmit = ["draft", "rejected"].includes(campaign.status)
   const canApprove = campaign.status === "pending_review"
@@ -270,7 +271,7 @@ export function CampaignModal({
               <div>
                 <CardTitle className="text-xl">{campaign.name}</CardTitle>
                 <div className="flex items-center gap-2 mt-1 flex-wrap">
-                  <Badge className={statusInfo.color}>{statusInfo.label}</Badge>
+                  <StatusBadge status={campaign.status} label={statusLabel} />
                   <Badge variant="neutral" showDot={false}>{typeLabels[campaign.campaign_type]}</Badge>
                   <Badge variant="neutral" showDot={false} className="capitalize">
                     {channelInfo?.label}
@@ -713,15 +714,11 @@ export function CampaignModal({
                         <div className="flex items-center gap-2">
                           {h.from_status && (
                             <>
-                              <Badge variant="neutral" showDot={false} className="text-xs">
-                                {statusConfig[h.from_status]?.label || h.from_status}
-                              </Badge>
+                              <StatusBadge status={h.from_status} label={statusLabels[h.from_status] || h.from_status} showDot={false} />
                               <span className="text-muted-foreground">→</span>
                             </>
                           )}
-                          <Badge className={statusConfig[h.to_status]?.color || ""}>
-                            {statusConfig[h.to_status]?.label || h.to_status}
-                          </Badge>
+                          <StatusBadge status={h.to_status} label={statusLabels[h.to_status] || h.to_status} />
                         </div>
                         {h.reason && (
                           <p className="text-sm text-muted-foreground mt-1">{h.reason}</p>

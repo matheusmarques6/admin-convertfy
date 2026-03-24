@@ -3,7 +3,7 @@
 import { Zap } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
+import { StatusBadge } from "@/components/ui/status-badge"
 import {
   Table,
   TableBody,
@@ -165,9 +165,7 @@ export function StorePerformanceTables() {
                         <div className="font-medium truncate" title={f.name}>
                           {f.name}
                         </div>
-                        <Badge variant={f.status === "live" ? "positive" : "neutral"} className="text-xs mt-1">
-                          {f.status}
-                        </Badge>
+                        <StatusBadge status={f.status === "live" ? "live" : "inactive"} className="text-xs mt-1" />
                       </TableCell>
                       <TableCell className="text-right">
                         {(delivered).toLocaleString("pt-BR")}

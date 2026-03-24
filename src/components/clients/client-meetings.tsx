@@ -7,7 +7,7 @@ import type { LucideIcon } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
+import { StatusBadge } from "@/components/ui/status-badge"
 import { formatDateTime } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
 import type { Meeting } from "@/types"
@@ -16,11 +16,11 @@ interface ClientMeetingsProps {
   clientId: string
 }
 
-const statusConfig: Record<string, { label: string; variant: "positive" | "negative" | "warning" | "neutral" | "info"; icon: LucideIcon }> = {
-  scheduled: { label: "Agendada", variant: "info", icon: Clock },
-  completed: { label: "Realizada", variant: "positive", icon: CheckCircle },
-  cancelled: { label: "Cancelada", variant: "neutral", icon: XCircle },
-  no_show: { label: "Não Compareceu", variant: "negative", icon: XCircle },
+const statusIconConfig: Record<string, { icon: LucideIcon }> = {
+  scheduled: { icon: Clock },
+  completed: { icon: CheckCircle },
+  cancelled: { icon: XCircle },
+  no_show: { icon: XCircle },
 }
 
 export function ClientMeetings({ clientId }: ClientMeetingsProps) {
@@ -117,7 +117,7 @@ export function ClientMeetings({ clientId }: ClientMeetingsProps) {
                         </a>
                       </Button>
                     )}
-                    <Badge>Agendada</Badge>
+                    <StatusBadge status="scheduled" label="Agendada" />
                   </div>
                 </div>
               ))}
@@ -135,7 +135,7 @@ export function ClientMeetings({ clientId }: ClientMeetingsProps) {
           <CardContent>
             <div className="space-y-3">
               {pastMeetings.map((meeting) => {
-                const config = statusConfig[meeting.status] || statusConfig.scheduled
+                const iconConfig = statusIconConfig[meeting.status] || statusIconConfig.scheduled
                 return (
                   <div
                     key={meeting.id}
@@ -143,7 +143,7 @@ export function ClientMeetings({ clientId }: ClientMeetingsProps) {
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <Icon icon={config.icon} size={16} className={
+                        <Icon icon={iconConfig.icon} size={16} className={
                           meeting.status === "completed"
                             ? "text-success"
                             : meeting.status === "no_show"
@@ -157,7 +157,15 @@ export function ClientMeetings({ clientId }: ClientMeetingsProps) {
                           </p>
                         </div>
                       </div>
-                      <Badge variant={config.variant}>{config.label}</Badge>
+                      <StatusBadge
+                        status={meeting.status === "no_show" ? "failed" : meeting.status}
+                        label={
+                          meeting.status === "completed" ? "Realizada" :
+                          meeting.status === "cancelled" ? "Cancelada" :
+                          meeting.status === "no_show" ? "Não Compareceu" :
+                          "Agendada"
+                        }
+                      />
                     </div>
                     {meeting.completion_notes && (
                       <div className="mt-2 ml-7 p-2 rounded bg-background/50 border-l-2 border-primary/30">

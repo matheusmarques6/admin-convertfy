@@ -16,6 +16,7 @@ import {
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { StatusBadge } from "@/components/ui/status-badge"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -81,11 +82,11 @@ const ROLE_CONFIG: Record<string, { label: string; icon: typeof Paintbrush; colo
   sdr: { label: "SDR", icon: User, color: "text-orange-500" },
 }
 
-const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-  pending: { label: "Pendente", color: "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300" },
-  in_progress: { label: "Em andamento", color: "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400" },
-  completed: { label: "Concluida", color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400" },
-  skipped: { label: "Pulada", color: "bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400" },
+const TASK_STATUS_LABELS: Record<string, string> = {
+  pending: "Pendente",
+  in_progress: "Em andamento",
+  completed: "Concluida",
+  skipped: "Pulada",
 }
 
 // ---------------------------------------------------------------------------
@@ -355,16 +356,11 @@ function GenerationCard({
           </Badge>
 
           {/* Generation status */}
-          <Badge className={`border-transparent ${
-            generation.status === "completed"
-              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400"
-              : generation.status === "approved"
-                ? "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400"
-                : "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400"
-          }`}>
-            {generation.status === "completed" ? "Concluida" :
-             generation.status === "approved" ? "Em progresso" : generation.status}
-          </Badge>
+          <StatusBadge
+            status={generation.status}
+            label={generation.status === "completed" ? "Concluida" :
+                   generation.status === "approved" ? "Em progresso" : generation.status}
+          />
 
           {/* Drive link */}
           {generation.drive_folder_url && (
@@ -430,7 +426,7 @@ function TaskCard({
     icon: User,
     color: "text-muted-foreground",
   }
-  const statusConfig = STATUS_CONFIG[task.status] || STATUS_CONFIG.pending
+  const taskStatusLabel = TASK_STATUS_LABELS[task.status] || TASK_STATUS_LABELS.pending
   const Icon = roleConfig.icon
   const assigneeName =
     task.assignee && !Array.isArray(task.assignee)
@@ -450,9 +446,7 @@ function TaskCard({
       <div className="flex items-center gap-2">
         <Icon className={`h-4 w-4 ${roleConfig.color}`} />
         <span className="text-sm font-medium">{roleConfig.label}</span>
-        <Badge className={`ml-auto text-[10px] border-transparent ${statusConfig.color}`}>
-          {statusConfig.label}
-        </Badge>
+        <StatusBadge status={task.status} label={taskStatusLabel} showDot={false} className="ml-auto text-[10px]" />
       </div>
 
       {/* Assignee */}

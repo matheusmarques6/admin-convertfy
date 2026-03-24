@@ -16,6 +16,7 @@ import {
 import { Icon as IconWrapper } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { StatusBadge } from "@/components/ui/status-badge"
 import { Card, CardContent } from "@/components/ui/card"
 import {
   Select,
@@ -344,12 +345,16 @@ export function StoreAlertsTab({ storeId }: StoreAlertsTabProps) {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-medium text-sm">{alert.title}</span>
-                        <Badge className={`${severityConfig.className} text-[10px]`}>
-                          {severityConfig.label}
-                        </Badge>
-                        <Badge className={`${statusConfig.className} text-[10px]`}>
-                          {statusConfig.label}
-                        </Badge>
+                        <StatusBadge
+                          status={alert.severity}
+                          label={severityConfig.label}
+                          className="text-[10px]"
+                        />
+                        <StatusBadge
+                          status={alert.status === "acknowledged" ? "warning" : alert.status === "resolved" ? "completed" : "active"}
+                          label={statusConfig.label}
+                          className="text-[10px]"
+                        />
                       </div>
                       <p className="text-sm text-muted-foreground mt-1">{alert.message}</p>
                       <div className="flex items-center gap-3 mt-2">

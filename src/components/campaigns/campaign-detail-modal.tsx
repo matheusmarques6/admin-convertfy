@@ -5,6 +5,7 @@ import { Icon } from "@/components/ui/icon"
 import { formatDistanceToNow } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { Badge } from "@/components/ui/badge"
+import { StatusBadge } from "@/components/ui/status-badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Dialog,
@@ -13,7 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { formatCurrency } from "@/lib/utils/format"
-import { CHANNEL_CONFIG, STATUS_CONFIG } from "@/lib/constants/calendar"
+import { CHANNEL_CONFIG } from "@/lib/constants/calendar"
 import type { PortalCampaign, PortalCampaignDetailMetrics } from "@/lib/hooks/use-portal-campaigns-calendar"
 
 // ============================================
@@ -89,9 +90,7 @@ export function CampaignDetailModal({
             <div className="space-y-5 mt-4">
               {/* Status, Channel and Source */}
               <div className="flex items-center gap-2 flex-wrap">
-                <Badge className={STATUS_CONFIG[campaign.status]?.color}>
-                  {STATUS_CONFIG[campaign.status]?.label}
-                </Badge>
+                <StatusBadge status={campaign.status} />
                 <Badge className={`${CHANNEL_CONFIG[campaign.channel]?.lightColor} ${CHANNEL_CONFIG[campaign.channel]?.textColor} border-0`}>
                   {CHANNEL_CONFIG[campaign.channel]?.label}
                 </Badge>

@@ -25,7 +25,7 @@ import {
   X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
+import { StatusBadge } from "@/components/ui/status-badge"
 import { Input } from "@/components/ui/input"
 import {
   Dialog,
@@ -741,10 +741,11 @@ export function StoreControlPanel() {
                         {/* Feedback Status */}
                         <td className="px-4 py-3.5 text-center">
                           <div className="flex flex-col items-center gap-1">
-                            <Badge variant="neutral" showDot={false} className={cn("text-[11px] font-medium gap-1 border", statusCfg.className)}>
-                              <span className={cn("w-1.5 h-1.5 rounded-full", statusCfg.dotColor)} />
-                              {statusCfg.label}
-                            </Badge>
+                            <StatusBadge
+                              status={store.feedback_status === "overdue" ? "overdue" : store.feedback_status === "due_soon" ? "warning" : store.feedback_status === "on_track" ? "active" : "unknown"}
+                              label={statusCfg.label}
+                              className="text-[11px]"
+                            />
                             {store.next_feedback_date && (
                               <span className="text-[10px] text-muted-foreground">{formatDate(store.next_feedback_date)}</span>
                             )}
@@ -943,10 +944,11 @@ export function StoreControlPanel() {
 
                     <div>
                       <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-0.5">Feedback</p>
-                      <Badge variant="neutral" showDot={false} className={cn("text-[10px] font-medium gap-1 border px-1.5 py-0", statusCfg.className)}>
-                        <span className={cn("w-1.5 h-1.5 rounded-full", statusCfg.dotColor)} />
-                        {statusCfg.label}
-                      </Badge>
+                      <StatusBadge
+                        status={store.feedback_status === "overdue" ? "overdue" : store.feedback_status === "due_soon" ? "warning" : store.feedback_status === "on_track" ? "active" : "unknown"}
+                        label={statusCfg.label}
+                        className="text-[10px]"
+                      />
                     </div>
                   </div>
 

@@ -5,7 +5,7 @@ import { Plus, FileText, Calendar, Loader2, Upload, X, Paperclip, ExternalLink }
 import { Icon } from "@/components/ui/icon"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
+import { StatusBadge } from "@/components/ui/status-badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -35,15 +35,6 @@ interface ClientContractsProps {
   clientId: string
 }
 
-const statusConfig: Record<
-  string,
-  { label: string; variant: "positive" | "negative" | "warning" | "neutral" | "info" }
-> = {
-  active: { label: "Ativo", variant: "positive" },
-  expired: { label: "Expirado", variant: "neutral" },
-  cancelled: { label: "Cancelado", variant: "negative" },
-  pending: { label: "Pendente", variant: "warning" },
-}
 
 interface ContractFormData {
   plan_name: string
@@ -263,7 +254,7 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <Badge variant="positive">Ativo</Badge>
+              <StatusBadge status="active" />
               <Button variant="secondary" size="sm" onClick={handleOpenDialog}>
                 <Icon icon={Plus} size={16} className="mr-2" />
                 Novo Contrato
@@ -324,9 +315,7 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
             <CardTitle className="text-base">Histórico de Contratos</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {pastContracts.map((contract) => {
-              const config = statusConfig[contract.status] || statusConfig.pending
-              return (
+            {pastContracts.map((contract) => (
                 <div
                   key={contract.id}
                   className="flex items-center justify-between p-4 rounded-lg bg-muted/50"
@@ -364,11 +353,10 @@ export function ClientContracts({ clientId }: ClientContractsProps) {
                     <p className="font-medium">
                       {formatCurrency(contract.monthly_value)}/mês
                     </p>
-                    <Badge variant={config.variant}>{config.label}</Badge>
+                    <StatusBadge status={contract.status} />
                   </div>
                 </div>
-              )
-            })}
+              ))}
           </CardContent>
         </Card>
       )}

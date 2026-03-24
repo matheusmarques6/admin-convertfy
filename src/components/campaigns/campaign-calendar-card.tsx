@@ -3,9 +3,9 @@
 import React from "react"
 import { Users } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
-import { Badge } from "@/components/ui/badge"
+import { StatusBadge } from "@/components/ui/status-badge"
 import { formatCurrencyCompact } from "@/lib/utils/format"
-import { CHANNEL_CONFIG, STATUS_CONFIG } from "@/lib/constants/calendar"
+import { CHANNEL_CONFIG } from "@/lib/constants/calendar"
 import type { PortalCampaign } from "@/lib/hooks/use-portal-campaigns-calendar"
 
 // ============================================
@@ -47,7 +47,6 @@ export const CampaignCalendarCard = React.memo(function CampaignCalendarCard({
   onClick,
 }: CampaignCalendarCardProps) {
   const channelConfig = CHANNEL_CONFIG[campaign.channel] || CHANNEL_CONFIG.email
-  const statusConfig = STATUS_CONFIG[campaign.status] || STATUS_CONFIG.scheduled
   if (compact) {
     return (
       <div
@@ -94,9 +93,7 @@ export const CampaignCalendarCard = React.memo(function CampaignCalendarCard({
                 {formatTime(campaign.scheduledTime)}
               </span>
             )}
-            <Badge className={`text-[10px] ${statusConfig.color}`}>
-              {statusConfig.label}
-            </Badge>
+            <StatusBadge status={campaign.status} showDot={false} />
           </div>
           <p className="font-medium text-slate-800 dark:text-slate-100 text-sm truncate group-hover:text-primary transition-colors">
             {campaign.name}

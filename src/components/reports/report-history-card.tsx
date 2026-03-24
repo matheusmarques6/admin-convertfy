@@ -16,7 +16,7 @@ import { formatDistanceToNow } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { ROUTES } from "@/lib/routes"
 import { Card, CardContent } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
+import { StatusBadge } from "@/components/ui/status-badge"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import type { ReportJob, ReportJobStatus } from "@/types/report"
@@ -27,18 +27,26 @@ interface ReportHistoryCardProps {
   onDownloadCsv?: (jobId: string) => void
 }
 
-const STATUS_CONFIG: Record<
-  ReportJobStatus,
-  { icon: LucideIcon; label: string; variant: "positive" | "negative" | "warning" | "neutral" | "info" }
-> = {
-  queued: { icon: Clock, label: "Na fila", variant: "neutral" },
-  processing: { icon: Loader2, label: "Processando", variant: "info" },
-  paused: { icon: Pause, label: "Pausado", variant: "neutral" },
-  completed: { icon: Check, label: "Concluido", variant: "positive" },
-  partial: { icon: AlertTriangle, label: "Parcial", variant: "warning" },
-  failed: { icon: AlertTriangle, label: "Falhou", variant: "negative" },
-  cancelled: { icon: Clock, label: "Cancelado", variant: "neutral" },
-  expired: { icon: Clock, label: "Expirado", variant: "neutral" },
+const STATUS_ICON_CONFIG: Record<ReportJobStatus, { icon: LucideIcon }> = {
+  queued: { icon: Clock },
+  processing: { icon: Loader2 },
+  paused: { icon: Pause },
+  completed: { icon: Check },
+  partial: { icon: AlertTriangle },
+  failed: { icon: AlertTriangle },
+  cancelled: { icon: Clock },
+  expired: { icon: Clock },
+}
+
+const STATUS_LABEL_MAP: Record<ReportJobStatus, { status: string; label: string }> = {
+  queued: { status: "queued", label: "Na fila" },
+  processing: { status: "processing", label: "Processando" },
+  paused: { status: "paused", label: "Pausado" },
+  completed: { status: "completed", label: "Concluido" },
+  partial: { status: "warning", label: "Parcial" },
+  failed: { status: "failed", label: "Falhou" },
+  cancelled: { status: "cancelled", label: "Cancelado" },
+  expired: { status: "expired", label: "Expirado" },
 }
 
 function formatDateRange(startDate: string | null, endDate: string | null): string {
@@ -72,8 +80,9 @@ function getProgress(job: ReportJob): { completed: number; total: number; percen
 
 export function ReportHistoryCard({ job, onRetry, onDownloadCsv }: ReportHistoryCardProps) {
   const router = useRouter()
-  const config = STATUS_CONFIG[job.status] || STATUS_CONFIG.queued
-  const StatusIcon = config.icon
+  const iconConfig = STATUS_ICON_CONFIG[job.status] || STATUS_ICON_CONFIG.queued
+  const labelConfig = STATUS_LABEL_MAP[job.status] || STATUS_LABEL_MAP.queued
+  const StatusIcon = iconConfig.icon
   const progress = getProgress(job)
   const isPending = job.status === "queued" || job.status === "processing" || job.status === "paused"
   const isComplete = job.status === "completed" || job.status === "partial"
@@ -124,9 +133,7 @@ export function ReportHistoryCard({ job, onRetry, onDownloadCsv }: ReportHistory
             <span className="text-sm font-medium truncate">
               {formatDateRange(job.start_date, job.end_date)}
             </span>
-            <Badge variant={config.variant} className="text-[10px] px-1.5 py-0">
-              {config.label}
-            </Badge>
+            <StatusBadge status={labelConfig.status} label={labelConfig.label} className="text-[10px] px-1.5 py-0" />
           </div>
 
           <div className="flex items-center gap-3 text-xs text-muted-foreground">

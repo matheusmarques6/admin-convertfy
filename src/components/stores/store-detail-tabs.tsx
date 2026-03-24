@@ -27,6 +27,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { StatusBadge } from "@/components/ui/status-badge"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Input } from "@/components/ui/input"
@@ -582,9 +583,7 @@ function CampaignsTab({
                     <tr key={c.id} className="border-b last:border-0">
                       <td className="py-2 pr-4 font-medium max-w-[200px] truncate">{c.name}</td>
                       <td className="py-2 pr-4">
-                        <Badge variant={c.status === "sent" ? "positive" : "neutral"}>
-                          {c.status}
-                        </Badge>
+                        <StatusBadge status={c.status === "sent" ? "sent" : "draft"} />
                       </td>
                       <td className="py-2 text-right">{(c.recipients || 0).toLocaleString()}</td>
                       <td className="py-2 text-right">{(c.openRate || 0).toFixed(2)}%</td>
@@ -711,9 +710,7 @@ function FlowsTab({
                     <tr key={f.id} className="border-b last:border-0">
                       <td className="py-2 pr-4 font-medium max-w-[200px] truncate">{f.name}</td>
                       <td className="py-2 pr-4">
-                        <Badge variant={f.status === "live" ? "positive" : "neutral"}>
-                          {f.status}
-                        </Badge>
+                        <StatusBadge status={f.status === "live" ? "live" : "inactive"} />
                       </td>
                       <td className="py-2 pr-4 text-muted-foreground">{f.triggerType || "-"}</td>
                       <td className="py-2 text-right">{(f.recipients || 0).toLocaleString()}</td>

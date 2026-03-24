@@ -2,7 +2,7 @@
 
 import { Mail } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
-import { Badge } from "@/components/ui/badge"
+import { StatusBadge } from "@/components/ui/status-badge"
 import {
   Dialog,
   DialogContent,
@@ -10,7 +10,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { formatCurrencyCompact } from "@/lib/utils/format"
-import { CHANNEL_CONFIG, STATUS_CONFIG } from "@/lib/constants/calendar"
+import { CHANNEL_CONFIG } from "@/lib/constants/calendar"
 import type { PortalCampaign } from "@/lib/hooks/use-portal-campaigns-calendar"
 
 // ============================================
@@ -59,7 +59,6 @@ export function CampaignDayListModal({
         </DialogHeader>
         <div className="space-y-3 mt-4">
           {campaigns.map((campaign) => {
-            const statusConfig = STATUS_CONFIG[campaign.status]
             return (
               <div
                 key={campaign.id}
@@ -80,9 +79,7 @@ export function CampaignDayListModal({
                   </p>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  <Badge className={statusConfig?.color}>
-                    {statusConfig?.label}
-                  </Badge>
+                  <StatusBadge status={campaign.status} showDot={false} />
                   {campaign.status === "sent" && campaign.hasKlaviyoMetrics && (campaign.revenue ?? 0) > 0 && (
                     <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
                       {formatCurrencyCompact(campaign.revenue ?? 0)}
