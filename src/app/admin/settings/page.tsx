@@ -1,67 +1,51 @@
 import Link from "next/link"
-import {
-  User,
-  Building,
-  Puzzle,
-  Plug,
-  Settings,
-  ChevronRight,
-  Users,
-} from "lucide-react"
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { User, Settings2, Users, Palette, Plug } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
+import { PageHeader } from "@/components/ui/page-header"
 import { createClient } from "@/lib/supabase/server"
+import { cn } from "@/lib/utils"
 import { type LucideIcon } from "lucide-react"
 
-interface SettingItem {
+interface SettingSection {
   title: string
   description: string
   href: string
   icon: LucideIcon
-  badge?: string
-}
-
-interface SettingGroup {
-  items: SettingItem[]
   adminOnly?: boolean
 }
 
-const settingsGroups: SettingGroup[] = [
+const SETTINGS_SECTIONS: SettingSection[] = [
   {
-    items: [
-      {
-        title: "Minha Conta",
-        description: "Perfil, aparencia, notificacoes e seguranca",
-        href: "/settings/profile",
-        icon: User,
-      },
-      {
-        title: "Empresa",
-        description: "Dados da organizacao, CNPJ e endereco",
-        href: "/settings/company",
-        icon: Building,
-      },
-      {
-        title: "Equipe e Permissoes",
-        description: "Usuarios, cargos e controle de acesso",
-        href: "/settings/users",
-        icon: Users,
-        badge: "Admin",
-      },
-      {
-        title: "Personalizacao",
-        description: "Campos customizados, tags e templates de email",
-        href: "/settings/custom-fields",
-        icon: Puzzle,
-        badge: "Admin",
-      },
-      {
-        title: "Integracoes",
-        description: "Asaas, Meta, Google, Klaviyo e mais",
-        href: "/settings/integrations",
-        icon: Plug,
-      },
-    ],
+    title: "Conta",
+    description: "Dados pessoais, empresa e senha",
+    icon: User,
+    href: "/admin/settings/account",
+  },
+  {
+    title: "Preferências",
+    description: "Notificações, aparência e tema",
+    icon: Settings2,
+    href: "/admin/settings/preferences",
+  },
+  {
+    title: "Equipe",
+    description: "Usuários, roles e permissões",
+    icon: Users,
+    href: "/admin/settings/team",
+    adminOnly: true,
+  },
+  {
+    title: "Personalização",
+    description: "Campos custom, tags e templates de email",
+    icon: Palette,
+    href: "/admin/settings/customize",
+    adminOnly: true,
+  },
+  {
+    title: "Integrações",
+    description: "Shopify, Klaviyo, Asaas, Wise e outras conexões",
+    icon: Plug,
+    href: "/admin/settings/integrations",
   },
 ]
 
@@ -91,53 +75,48 @@ export default async function SettingsPage() {
     }
   }
 
-  // Filter admin-only items
-  const items = settingsGroups[0].items.filter(
-    (item) => !item.badge || (item.badge === "Admin" && isAdmin) || item.badge !== "Admin"
+  const visibleSections = SETTINGS_SECTIONS.filter(
+    (s) => !s.adminOnly || isAdmin
   )
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
-          <Icon icon={Settings} size={24} className="text-primary" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Configuracoes</h1>
-          <p className="text-sm text-muted-foreground">
-            Gerencie sua conta, equipe e integracoes do sistema.
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        title="Configurações"
+        description="Gerencie sua conta, equipe e integrações."
+      />
 
-      {/* Settings Grid - 5 consolidated items */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {items.map((item) => (
-          <Link key={item.href} href={item.href} className="group">
-            <Card className="h-full rounded-xl border transition-all duration-200 hover:border-primary/40 hover:shadow-md hover:shadow-primary/5">
-              <CardHeader className="p-5">
-                <div className="flex items-start gap-4">
-                  <Icon icon={item.icon} size={20} className="text-primary" />
-                  <div className="flex-1 space-y-1">
-                    <CardTitle className="flex items-center justify-between text-base font-semibold">
-                      <span className="flex items-center gap-2">
-                        {item.title}
-                        {item.badge && isAdmin && (
-                          <span className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                            {item.badge}
-                          </span>
-                        )}
-                      </span>
-                      <Icon icon={ChevronRight} size={16} className="text-muted-foreground/50 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-primary" />
-                    </CardTitle>
-                    <CardDescription className="text-sm leading-relaxed">
-                      {item.description}
-                    </CardDescription>
-                  </div>
-                </div>
-              </CardHeader>
-            </Card>
+      <div className={cn(
+        "grid gap-3",
+        "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3",
+      )}>
+        {visibleSections.map((section) => (
+          <Link
+            key={section.href}
+            href={section.href}
+            className={cn(
+              "rounded-[8px] border border-[rgba(0,0,0,0.08)] bg-white",
+              "dark:border-[rgba(255,255,255,0.08)] dark:bg-[#1A1D27]",
+              "p-5 text-left block",
+              "hover:border-[rgba(0,0,0,0.15)] dark:hover:border-[rgba(255,255,255,0.14)]",
+              "hover:shadow-[0_1px_2px_rgba(0,0,0,0.03),0_1px_3px_rgba(0,0,0,0.05)]",
+              "focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_#4E62D8]",
+              "dark:focus-visible:shadow-[0_0_0_2px_#7B8CEA]",
+              "transition-all duration-150 ease-[cubic-bezier(0.16,1,0.3,1)]",
+              "min-h-[44px]",
+            )}
+          >
+            <Icon
+              icon={section.icon}
+              size={20}
+              className="text-gray-400 dark:text-[#5C6378] mb-3"
+            />
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-[#EAEDF3]">
+              {section.title}
+            </h3>
+            <p className="text-xs text-gray-500 dark:text-[#8B92A5] mt-1 leading-relaxed">
+              {section.description}
+            </p>
           </Link>
         ))}
       </div>

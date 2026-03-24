@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
 import {
   DollarSign,
   Facebook,
@@ -18,15 +17,16 @@ import {
   Settings,
   RefreshCw,
   Plug,
-  ArrowLeft,
   AlertTriangle,
   BarChart3,
 } from "lucide-react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { PageHeader } from "@/components/ui/page-header"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Dialog,
   DialogContent,
@@ -48,8 +48,8 @@ import { INTEGRATION_CONFIGS, getIntegrationConfig } from "@/lib/integrations/co
 import { toast } from "@/lib/hooks/use-toast"
 import { GoogleCalendarCard } from "@/components/settings/google-calendar-card"
 import type { IntegrationType, Integration } from "@/types"
+import { cn } from "@/lib/utils"
 
-// Call backend API to test connection (avoids CORS issues)
 async function testIntegrationConnection(
   type: string,
   credentials: Record<string, string>
@@ -63,30 +63,14 @@ async function testIntegrationConnection(
 }
 
 const ICONS: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
-  DollarSign,
-  Facebook,
-  Search,
-  Mail,
-  ShoppingBag,
-  MessageCircle,
-  Calendar,
-  Instagram,
+  DollarSign, Facebook, Search, Mail, ShoppingBag, MessageCircle, Calendar, Instagram,
 }
 
 export default function IntegrationsPage() {
-  const router = useRouter()
   const {
-    integrations,
-    statuses,
-    isLoading,
-    isTesting,
-    setIntegrations,
-    addIntegration,
-    updateIntegration,
-    removeIntegration,
-    setStatus,
-    setLoading,
-    setTesting,
+    integrations, statuses, isLoading, isTesting,
+    setIntegrations, addIntegration, updateIntegration, removeIntegration,
+    setStatus, setLoading, setTesting,
   } = useIntegrationsStore()
 
   const [configDialogOpen, setConfigDialogOpen] = useState(false)
@@ -94,29 +78,18 @@ export default function IntegrationsPage() {
   const [credentials, setCredentials] = useState<Record<string, string>>({})
   const [isSaving, setIsSaving] = useState(false)
 
-  useEffect(() => {
-    loadIntegrations()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  useEffect(() => { loadIntegrations() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadIntegrations() {
     setLoading(true)
     try {
       const supabase = createClient()
-      const { data, error } = await supabase
-        .from("integrations")
-        .select("*")
-        .order("created_at", { ascending: true })
-
+      const { data, error } = await supabase.from("integrations").select("*").order("created_at", { ascending: true })
       if (error) throw error
       setIntegrations(data || [])
     } catch (error) {
       console.error("Error loading integrations:", error)
-      toast({
-        variant: "destructive",
-        title: "Erro ao carregar integrações",
-        description: "Tente novamente mais tarde",
-      })
+      toast({ variant: "destructive", title: "Erro ao carregar integrações", description: "Tente novamente mais tarde" })
     } finally {
       setLoading(false)
     }
@@ -124,60 +97,33 @@ export default function IntegrationsPage() {
 
   function openConfigDialog(type: IntegrationType) {
     setSelectedType(type)
-    // Don't pre-fill credentials — they're encrypted in the DB
-    // User must re-enter credentials when editing
     setCredentials({})
     setConfigDialogOpen(true)
   }
 
   async function handleTestConnection() {
     if (!selectedType) return
-
     setTesting(selectedType)
     try {
       const result = await testIntegrationConnection(selectedType, credentials)
-
       if (result.success) {
         setStatus(selectedType, { connected: true, error: undefined, details: result.details })
-
-        // Klaviyo: differentiated toast based on reporting access
         if (selectedType === "klaviyo" && result.details) {
-          if (result.details.hasReportingAccess) {
-            toast({
-              title: "Conexão completa!",
-              description: "Relatórios disponíveis.",
-            })
-          } else {
-            toast({
-              title: "Conectado, mas sem acesso a relatórios",
-              description: "Verifique os scopes da API Key no Klaviyo.",
-              variant: "destructive",
-            })
-          }
-        } else {
           toast({
-            title: "Conexão bem sucedida!",
-            description: "A integração está funcionando corretamente.",
+            title: result.details.hasReportingAccess ? "Conexão completa!" : "Conectado, mas sem acesso a relatórios",
+            description: result.details.hasReportingAccess ? "Relatórios disponíveis." : "Verifique os scopes da API Key no Klaviyo.",
+            variant: result.details.hasReportingAccess ? "default" : "destructive",
           })
+        } else {
+          toast({ title: "Conexão bem sucedida!", description: "A integração está funcionando corretamente." })
         }
       } else {
         setStatus(selectedType, { connected: false, error: result.error })
-        toast({
-          variant: "destructive",
-          title: "Falha na conexão",
-          description: result.error || "Verifique suas credenciais",
-        })
+        toast({ variant: "destructive", title: "Falha na conexão", description: result.error || "Verifique suas credenciais" })
       }
     } catch (error) {
-      setStatus(selectedType, {
-        connected: false,
-        error: error instanceof Error ? error.message : "Erro desconhecido",
-      })
-      toast({
-        variant: "destructive",
-        title: "Erro ao testar conexão",
-        description: error instanceof Error ? error.message : "Erro desconhecido",
-      })
+      setStatus(selectedType, { connected: false, error: error instanceof Error ? error.message : "Erro desconhecido" })
+      toast({ variant: "destructive", title: "Erro ao testar conexão", description: error instanceof Error ? error.message : "Erro desconhecido" })
     } finally {
       setTesting(null)
     }
@@ -185,83 +131,46 @@ export default function IntegrationsPage() {
 
   async function handleSaveIntegration() {
     if (!selectedType) return
-
     setIsSaving(true)
     try {
       const config = getIntegrationConfig(selectedType)
       const existing = integrations.find((i) => i.type === selectedType)
-
-      // Validate required fields
-      const missingFields = config?.requiredCredentials.filter(
-        (field) => !credentials[field.key]
-      )
-
+      const missingFields = config?.requiredCredentials.filter((field) => !credentials[field.key])
       if (missingFields && missingFields.length > 0) {
-        toast({
-          variant: "destructive",
-          title: "Campos obrigatórios",
-          description: `Preencha: ${missingFields.map((f) => f.label).join(", ")}`,
-        })
+        toast({ variant: "destructive", title: "Campos obrigatórios", description: `Preencha: ${missingFields.map((f) => f.label).join(", ")}` })
         setIsSaving(false)
         return
       }
 
-      // Test connection first
       const testResult = await testIntegrationConnection(selectedType, credentials)
       const now = new Date().toISOString()
-
-      // Save via server-side API (encrypts credentials)
       const response = await fetch("/api/integrations/save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          integration_id: existing?.id,
-          type: selectedType,
-          name: config?.name || selectedType,
-          credentials,
-          is_active: testResult.success,
-          last_sync: testResult.success ? now : null,
+          integration_id: existing?.id, type: selectedType, name: config?.name || selectedType,
+          credentials, is_active: testResult.success, last_sync: testResult.success ? now : null,
         }),
       })
-
       const result = await response.json()
       if (!response.ok) throw new Error(result.error || "Erro ao salvar")
 
-      // Update local store
       if (existing) {
-        updateIntegration(existing.id, {
-          is_active: testResult.success,
-          last_sync: testResult.success ? now : undefined,
-        })
+        updateIntegration(existing.id, { is_active: testResult.success, last_sync: testResult.success ? now : undefined })
       } else if (result.data?.integration) {
         addIntegration(result.data.integration as Integration)
       }
-
-      setStatus(selectedType, {
-        connected: testResult.success,
-        lastSync: testResult.success ? now : undefined,
-        error: testResult.error,
-        details: testResult.details,
-      })
-
+      setStatus(selectedType, { connected: testResult.success, lastSync: testResult.success ? now : undefined, error: testResult.error, details: testResult.details })
       toast({
         title: testResult.success ? "Integração salva!" : "Integração salva (desconectada)",
-        description: testResult.success
-          ? "A integração foi configurada e está ativa."
-          : testResult.error || "Verifique suas credenciais",
+        description: testResult.success ? "A integração foi configurada e está ativa." : testResult.error || "Verifique suas credenciais",
         variant: testResult.success ? "default" : "destructive",
       })
-
       setConfigDialogOpen(false)
-      // Reload to get fresh data
       loadIntegrations()
     } catch (error) {
       console.error("Error saving integration:", error)
-      toast({
-        variant: "destructive",
-        title: "Erro ao salvar",
-        description: error instanceof Error ? error.message : "Tente novamente",
-      })
+      toast({ variant: "destructive", title: "Erro ao salvar", description: error instanceof Error ? error.message : "Tente novamente" })
     } finally {
       setIsSaving(false)
     }
@@ -270,26 +179,14 @@ export default function IntegrationsPage() {
   async function handleDisconnect(type: IntegrationType) {
     const integration = integrations.find((i) => i.type === type)
     if (!integration) return
-
     try {
-      const response = await fetch(`/api/integrations/save?id=${integration.id}`, {
-        method: "DELETE",
-      })
-
+      const response = await fetch(`/api/integrations/save?id=${integration.id}`, { method: "DELETE" })
       const result = await response.json()
       if (!response.ok) throw new Error(result.error || "Erro ao desconectar")
-
       removeIntegration(integration.id)
-      toast({
-        title: "Integração desconectada",
-        description: "A integração foi removida com sucesso.",
-      })
+      toast({ title: "Integração desconectada", description: "A integração foi removida com sucesso." })
     } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "Erro ao desconectar",
-        description: error instanceof Error ? error.message : "Tente novamente",
-      })
+      toast({ variant: "destructive", title: "Erro ao desconectar", description: error instanceof Error ? error.message : "Tente novamente" })
     }
   }
 
@@ -298,48 +195,24 @@ export default function IntegrationsPage() {
     try {
       const integration = integrations.find((i) => i.type === type)
       if (!integration) return
-
-      // Call the sync API based on integration type
       let syncUrl = ""
       switch (type) {
-        case "asaas":
-          syncUrl = "/api/integrations/asaas/sync"
-          break
+        case "asaas": syncUrl = "/api/integrations/asaas/sync"; break
         default:
-          // For other integrations, inform user to use config dialog to test
-          toast({
-            title: "Use Configurar para testar",
-            description: "Abra o diálogo de configuração para testar a conexão.",
-          })
+          toast({ title: "Use Configurar para testar", description: "Abra o diálogo de configuração para testar a conexão." })
           return
       }
-
       const response = await fetch(syncUrl, { method: "POST" })
       const result = await response.json()
-
       if (result.success) {
-        updateIntegration(integration.id, {
-          last_sync: new Date().toISOString(),
-        })
+        updateIntegration(integration.id, { last_sync: new Date().toISOString() })
         setStatus(type, { connected: true, lastSync: new Date().toISOString() })
-
-        toast({
-          title: "Sincronização concluída!",
-          description: `${result.stats?.synced || 0} novos, ${result.stats?.updated || 0} atualizados`,
-        })
+        toast({ title: "Sincronização concluída!", description: `${result.stats?.synced || 0} novos, ${result.stats?.updated || 0} atualizados` })
       } else {
-        toast({
-          variant: "destructive",
-          title: "Falha na sincronização",
-          description: result.error,
-        })
+        toast({ variant: "destructive", title: "Falha na sincronização", description: result.error })
       }
     } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "Erro na sincronização",
-        description: error instanceof Error ? error.message : "Erro desconhecido",
-      })
+      toast({ variant: "destructive", title: "Erro na sincronização", description: error instanceof Error ? error.message : "Erro desconhecido" })
     } finally {
       setTesting(null)
     }
@@ -347,293 +220,172 @@ export default function IntegrationsPage() {
 
   const selectedConfig = selectedType ? getIntegrationConfig(selectedType) : null
 
+  // Separate active and available
+  const activeTypes = new Set(integrations.filter(i => i.is_active).map(i => i.type))
+  const allConfigs = Object.values(INTEGRATION_CONFIGS)
+
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => router.back()}>
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <p className="text-muted-foreground">
-          Conecte suas ferramentas favoritas ao Convertfy
-        </p>
-      </div>
+      <PageHeader
+        title="Integrações"
+        description="Conecte suas ferramentas e plataformas."
+        breadcrumb={[
+          { label: "Configurações", href: "/admin/settings" },
+          { label: "Integrações" },
+        ]}
+      />
 
-      {/* Per-user Integrations (OAuth-based) */}
-      <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          <h3 className="text-sm font-medium text-muted-foreground">Suas conexoes pessoais</h3>
-          <div className="h-px flex-1 bg-border" />
-        </div>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <GoogleCalendarCard />
-        </div>
-      </div>
-
-      {/* Org-level Integration Cards */}
-      <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          <h3 className="text-sm font-medium text-muted-foreground">Integracoes da organizacao</h3>
-          <div className="h-px flex-1 bg-border" />
-        </div>
-      </div>
       {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+          {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-48 rounded-[8px]" />)}
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {Object.values(INTEGRATION_CONFIGS).map((config) => {
-            const status = statuses[config.type]
-            const Icon = ICONS[config.icon] || Plug
-            const isConnected = status?.connected
+        <>
+          {/* Per-user integrations */}
+          <div>
+            <p className="text-xs font-semibold text-gray-400 dark:text-[#5C6378] uppercase tracking-[0.04em] mb-3">
+              Conexões pessoais
+            </p>
+            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+              <GoogleCalendarCard />
+            </div>
+          </div>
 
-            return (
-              <Card
-                key={config.type}
-                className={`rounded-xl border bg-card relative overflow-hidden ${
-                  isConnected ? "border-success/50" : ""
-                }`}
-              >
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                      <div
-                        className="rounded-lg p-2"
-                        style={{ backgroundColor: `${config.color}20` }}
-                      >
-                        <Icon
-                          className="h-6 w-6"
-                          style={{ color: config.color }}
-                        />
+          {/* Org-level integrations */}
+          <div>
+            <p className="text-xs font-semibold text-gray-400 dark:text-[#5C6378] uppercase tracking-[0.04em] mb-3">
+              Integrações da organização
+            </p>
+            <div className={cn("grid gap-3", "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3")}>
+              {allConfigs.map((config) => {
+                const status = statuses[config.type]
+                const IconComp = ICONS[config.icon] || Plug
+                const isConnected = status?.connected
+
+                return (
+                  <Card key={config.type} className="p-4">
+                    <div className="flex items-start gap-3">
+                      {/* Icon — naked inline (Rule 1) */}
+                      <div className="shrink-0 mt-0.5">
+                        <IconComp className="h-5 w-5" style={{ color: config.color }} />
                       </div>
-                      <div>
-                        <CardTitle className="text-base">{config.name}</CardTitle>
-                        <div className="flex items-center gap-2 mt-1 flex-wrap">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm font-semibold text-gray-900 dark:text-[#EAEDF3]">
+                            {config.name}
+                          </h4>
                           {isConnected ? (
-                            <Badge variant="neutral" showDot={false} className="text-success border-success">
-                              <CheckCircle2 className="h-3 w-3 mr-1" />
-                              Conectado
-                            </Badge>
+                            <Badge variant="positive" showDot={false} className="text-[10px]">Conectado</Badge>
                           ) : (
-                            <Badge variant="neutral" showDot={false} className="text-muted-foreground">
-                              <XCircle className="h-3 w-3 mr-1" />
-                              Desconectado
-                            </Badge>
-                          )}
-                          {isConnected && config.type === "klaviyo" && status?.details && (
-                            status.details.hasReportingAccess ? (
-                              <Badge variant="neutral" showDot={false} className="text-success border-success">
-                                <BarChart3 className="h-3 w-3 mr-1" />
-                                Relatórios OK
-                              </Badge>
-                            ) : (
-                              <Badge variant="neutral" showDot={false} className="text-warning border-warning">
-                                <AlertTriangle className="h-3 w-3 mr-1" />
-                                Sem relatórios
-                              </Badge>
-                            )
+                            <Badge variant="neutral" showDot={false} className="text-[10px]">Desconectado</Badge>
                           )}
                         </div>
+                        <p className="text-xs text-gray-500 dark:text-[#8B92A5] mt-0.5 line-clamp-1">
+                          {config.description}
+                        </p>
+                        {isConnected && config.type === "klaviyo" && status?.details && (
+                          <div className="mt-1">
+                            {status.details.hasReportingAccess ? (
+                              <Badge variant="positive" showDot={false} className="text-[10px]">
+                                <BarChart3 className="h-3 w-3 mr-1" />Relatórios OK
+                              </Badge>
+                            ) : (
+                              <Badge variant="warning" showDot={false} className="text-[10px]">
+                                <AlertTriangle className="h-3 w-3 mr-1" />Sem relatórios
+                              </Badge>
+                            )}
+                          </div>
+                        )}
+                        {status?.lastSync && isConnected && (
+                          <p className="text-[11px] font-mono text-gray-400 dark:text-[#5C6378] mt-1">
+                            Sync: {new Date(status.lastSync).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                          </p>
+                        )}
                       </div>
                     </div>
-                  </div>
-                  <CardDescription className="mt-2">
-                    {config.description}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {/* Features */}
-                    <div className="text-xs text-muted-foreground">
-                      <ul className="space-y-1">
-                        {config.features.slice(0, 2).map((feature, i) => (
-                          <li key={i} className="flex items-center gap-1">
-                            <CheckCircle2 className="h-3 w-3 text-success" />
-                            {feature}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
 
-                    {/* Last sync */}
-                    {status?.lastSync && (
-                      <p className="text-xs text-muted-foreground">
-                        Última sync:{" "}
-                        {new Date(status.lastSync).toLocaleDateString("pt-BR", {
-                          day: "2-digit",
-                          month: "2-digit",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </p>
-                    )}
-
-                    {/* Actions */}
-                    <div className="flex gap-2 pt-2">
+                    <div className="mt-3 pt-3 border-t border-[rgba(0,0,0,0.04)] dark:border-[rgba(255,255,255,0.04)] flex gap-2">
                       {isConnected ? (
                         <>
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            className="flex-1"
-                            onClick={() => openConfigDialog(config.type)}
-                          >
-                            <Settings className="h-4 w-4 mr-1" />
-                            Configurar
+                          <Button variant="secondary" size="sm" className="flex-1" onClick={() => openConfigDialog(config.type)}>
+                            <Settings className="h-3.5 w-3.5 mr-1" /> Configurar
                           </Button>
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => handleSync(config.type)}
-                            disabled={isTesting === config.type}
-                          >
-                            {isTesting === config.type ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <RefreshCw className="h-4 w-4" />
-                            )}
+                          <Button variant="secondary" size="sm" onClick={() => handleSync(config.type)} disabled={isTesting === config.type}>
+                            {isTesting === config.type ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
                           </Button>
                         </>
                       ) : (
-                        <Button
-                          size="sm"
-                          className="flex-1"
-                          onClick={() => openConfigDialog(config.type)}
-                        >
-                          <Plug className="h-4 w-4 mr-1" />
-                          Conectar
+                        <Button size="sm" className="flex-1" onClick={() => openConfigDialog(config.type)}>
+                          <Plug className="h-3.5 w-3.5 mr-1" /> Conectar
                         </Button>
                       )}
                       {config.docsUrl && (
                         <Button variant="ghost" size="sm" asChild>
-                          <a
-                            href={config.docsUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            <ExternalLink className="h-4 w-4" />
+                          <a href={config.docsUrl} target="_blank" rel="noopener noreferrer">
+                            <ExternalLink className="h-3.5 w-3.5" />
                           </a>
                         </Button>
                       )}
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )
-          })}
-        </div>
+                  </Card>
+                )
+              })}
+            </div>
+          </div>
+        </>
       )}
 
-      {/* Config Dialog */}
+      {/* Config Dialog — preserved from original */}
       <Dialog open={configDialogOpen} onOpenChange={setConfigDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              {selectedConfig && (
-                <>
-                  {(() => {
-                    const Icon = ICONS[selectedConfig.icon] || Plug
-                    return (
-                      <Icon
-                        className="h-5 w-5"
-                        style={{ color: selectedConfig.color }}
-                      />
-                    )
-                  })()}
-                  Configurar {selectedConfig.name}
-                </>
-              )}
+              {selectedConfig && (() => {
+                const IconComp = ICONS[selectedConfig.icon] || Plug
+                return <><IconComp className="h-5 w-5" style={{ color: selectedConfig.color }} /> Configurar {selectedConfig.name}</>
+              })()}
             </DialogTitle>
-            <DialogDescription>
-              {selectedConfig?.description}
-            </DialogDescription>
+            <DialogDescription>{selectedConfig?.description}</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
-            {/* Required Credentials */}
             {selectedConfig?.requiredCredentials.map((field) => (
               <div key={field.key} className="space-y-2">
                 <Label htmlFor={field.key}>
-                  {field.label}
-                  <span className="text-destructive ml-1">*</span>
+                  {field.label}<span className="text-[#991B1B] dark:text-[#FCA5A5] ml-1">*</span>
                 </Label>
                 {field.type === "select" ? (
-                  <Select
-                    value={credentials[field.key] || ""}
-                    onValueChange={(value) =>
-                      setCredentials({ ...credentials, [field.key]: value })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder={field.placeholder || `Selecione...`} />
-                    </SelectTrigger>
+                  <Select value={credentials[field.key] || ""} onValueChange={(value) => setCredentials({ ...credentials, [field.key]: value })}>
+                    <SelectTrigger><SelectValue placeholder={field.placeholder || "Selecione..."} /></SelectTrigger>
                     <SelectContent>
-                      {field.options?.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </SelectItem>
-                      ))}
+                      {field.options?.map((opt) => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 ) : (
-                  <Input
-                    id={field.key}
-                    type={field.type === "password" ? "password" : "text"}
-                    placeholder={field.placeholder}
-                    value={credentials[field.key] || ""}
-                    onChange={(e) =>
-                      setCredentials({ ...credentials, [field.key]: e.target.value })
-                    }
-                  />
+                  <Input id={field.key} type={field.type === "password" ? "password" : "text"} placeholder={field.placeholder} value={credentials[field.key] || ""} onChange={(e) => setCredentials({ ...credentials, [field.key]: e.target.value })} />
                 )}
-                {field.helpText && (
-                  <p className="text-xs text-muted-foreground">{field.helpText}</p>
-                )}
+                {field.helpText && <p className="text-xs text-gray-400 dark:text-[#5C6378]">{field.helpText}</p>}
               </div>
             ))}
-
-            {/* Optional Credentials */}
             {selectedConfig?.optionalCredentials && selectedConfig.optionalCredentials.length > 0 && (
               <>
-                <div className="border-t pt-4">
+                <div className="border-t border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] pt-4">
                   <p className="text-sm font-medium mb-3">Configurações opcionais</p>
                 </div>
                 {selectedConfig.optionalCredentials.map((field) => (
                   <div key={field.key} className="space-y-2">
                     <Label htmlFor={field.key}>{field.label}</Label>
                     {field.type === "select" ? (
-                      <Select
-                        value={credentials[field.key] || ""}
-                        onValueChange={(value) =>
-                          setCredentials({ ...credentials, [field.key]: value })
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder={field.placeholder || `Selecione...`} />
-                        </SelectTrigger>
+                      <Select value={credentials[field.key] || ""} onValueChange={(value) => setCredentials({ ...credentials, [field.key]: value })}>
+                        <SelectTrigger><SelectValue placeholder={field.placeholder || "Selecione..."} /></SelectTrigger>
                         <SelectContent>
-                          {field.options?.map((opt) => (
-                            <SelectItem key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </SelectItem>
-                          ))}
+                          {field.options?.map((opt) => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
                         </SelectContent>
                       </Select>
                     ) : (
-                      <Input
-                        id={field.key}
-                        type={field.type === "password" ? "password" : "text"}
-                        placeholder={field.placeholder}
-                        value={credentials[field.key] || ""}
-                        onChange={(e) =>
-                          setCredentials({ ...credentials, [field.key]: e.target.value })
-                        }
-                      />
+                      <Input id={field.key} type={field.type === "password" ? "password" : "text"} placeholder={field.placeholder} value={credentials[field.key] || ""} onChange={(e) => setCredentials({ ...credentials, [field.key]: e.target.value })} />
                     )}
-                    {field.helpText && (
-                      <p className="text-xs text-muted-foreground">{field.helpText}</p>
-                    )}
+                    {field.helpText && <p className="text-xs text-gray-400 dark:text-[#5C6378]">{field.helpText}</p>}
                   </div>
                 ))}
               </>
@@ -642,37 +394,17 @@ export default function IntegrationsPage() {
 
           <DialogFooter className="flex-col sm:flex-row gap-2">
             {selectedType && statuses[selectedType]?.connected && (
-              <Button
-                variant="destructive"
-                onClick={() => {
-                  handleDisconnect(selectedType)
-                  setConfigDialogOpen(false)
-                }}
-                className="w-full sm:w-auto"
-              >
+              <Button variant="destructive" onClick={() => { handleDisconnect(selectedType); setConfigDialogOpen(false) }} className="w-full sm:w-auto">
                 Desconectar
               </Button>
             )}
             <div className="flex gap-2 w-full sm:w-auto">
-              <Button
-                variant="secondary"
-                onClick={handleTestConnection}
-                disabled={isTesting !== null || isSaving}
-                className="flex-1 sm:flex-initial"
-              >
-                {isTesting === selectedType ? (
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                ) : null}
+              <Button variant="secondary" onClick={handleTestConnection} disabled={isTesting !== null || isSaving} className="flex-1 sm:flex-initial">
+                {isTesting === selectedType && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
                 Testar Conexão
               </Button>
-              <Button
-                onClick={handleSaveIntegration}
-                disabled={isTesting !== null || isSaving}
-                className="flex-1 sm:flex-initial"
-              >
-                {isSaving ? (
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                ) : null}
+              <Button onClick={handleSaveIntegration} disabled={isTesting !== null || isSaving} className="flex-1 sm:flex-initial">
+                {isSaving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
                 Salvar
               </Button>
             </div>
