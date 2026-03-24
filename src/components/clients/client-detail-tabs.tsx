@@ -1,7 +1,8 @@
 "use client"
 
-import { useState } from "react"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useState, useEffect } from "react"
+import { useSearchParams, useRouter, usePathname } from "next/navigation"
+import { UnderlineTabs, UnderlineTabItem } from "@/components/ui/underline-tabs"
 import { ClientOverview, type ClientWithRelations } from "@/components/clients/client-overview"
 import { ClientFinancial } from "@/components/clients/client-financial"
 import { ClientContracts } from "@/components/clients/client-contracts"
@@ -19,65 +20,82 @@ interface ClientDetailTabsProps {
   client: ClientWithRelations
 }
 
+const VALID_TABS = ["overview", "stores", "financial", "timeline", "config"] as const
+type TabValue = typeof VALID_TABS[number]
+
 export function ClientDetailTabs({ client }: ClientDetailTabsProps) {
-  const [activeTab, setActiveTab] = useState("overview")
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const pathname = usePathname()
+
+  // Read initial tab from URL ?tab= param
+  const tabParam = searchParams.get("tab")
+  const initialTab = VALID_TABS.includes(tabParam as TabValue) ? (tabParam as TabValue) : "overview"
+  const [activeTab, setActiveTab] = useState<TabValue>(initialTab)
+
+  // Sync URL when tab changes
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString())
+    if (activeTab === "overview") {
+      params.delete("tab")
+    } else {
+      params.set("tab", activeTab)
+    }
+    const qs = params.toString()
+    const url = qs ? `${pathname}?${qs}` : pathname
+    router.replace(url, { scroll: false })
+  }, [activeTab, pathname, router, searchParams])
 
   return (
-    <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-      <TabsList>
-        <TabsTrigger value="overview">Visão Geral</TabsTrigger>
-        <TabsTrigger value="stores">Lojas</TabsTrigger>
-        <TabsTrigger value="financial">Financeiro</TabsTrigger>
-        <TabsTrigger value="timeline">Timeline</TabsTrigger>
-        <TabsTrigger value="config">Configurações</TabsTrigger>
-      </TabsList>
+    <div className="mt-6">
+      {/* UnderlineTabs — DS v3.0 Rule 18 */}
+      <UnderlineTabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabValue)}>
+        <UnderlineTabItem value="overview">Visão Geral</UnderlineTabItem>
+        <UnderlineTabItem value="stores">Lojas</UnderlineTabItem>
+        <UnderlineTabItem value="financial">Financeiro</UnderlineTabItem>
+        <UnderlineTabItem value="timeline">Timeline</UnderlineTabItem>
+        <UnderlineTabItem value="config">Configurações</UnderlineTabItem>
+      </UnderlineTabs>
 
-      <TabsContent value="overview">
-        {activeTab === "overview" && (
-          <ClientPerformanceProvider
-            clientId={client.id}
-            onNavigateToStores={() => setActiveTab("stores")}
-          >
-            <div className="space-y-6">
-              <ClientPerformanceKPIs />
-              <ClientOverview client={client} />
-              <ClientPerformanceTables />
-            </div>
-          </ClientPerformanceProvider>
-        )}
-      </TabsContent>
+      {/* Tab content — lazy render */}
+      {activeTab === "overview" && (
+        <ClientPerformanceProvider
+          clientId={client.id}
+          onNavigateToStores={() => setActiveTab("stores")}
+        >
+          <div className="space-y-6">
+            <ClientPerformanceKPIs />
+            <ClientOverview client={client} />
+            <ClientPerformanceTables />
+          </div>
+        </ClientPerformanceProvider>
+      )}
 
-      <TabsContent value="stores">
-        {activeTab === "stores" && (
+      {activeTab === "stores" && (
+        <div className="mt-6">
           <ClientStores clientId={client.id} clientName={client.name} />
-        )}
-      </TabsContent>
+        </div>
+      )}
 
-      <TabsContent value="financial">
-        {activeTab === "financial" && (
-          <div className="space-y-6">
-            <ClientFinancial clientId={client.id} clientName={client.name} />
-            <ClientContracts clientId={client.id} />
-          </div>
-        )}
-      </TabsContent>
+      {activeTab === "financial" && (
+        <div className="mt-6 space-y-6">
+          <ClientFinancial clientId={client.id} clientName={client.name} />
+          <ClientContracts clientId={client.id} />
+        </div>
+      )}
 
-      <TabsContent value="timeline">
-        {activeTab === "timeline" && (
-          <div className="space-y-6">
-            <ClientTimeline clientId={client.id} />
-            <ClientMeetings clientId={client.id} />
-          </div>
-        )}
-      </TabsContent>
+      {activeTab === "timeline" && (
+        <div className="mt-6 space-y-6">
+          <ClientTimeline clientId={client.id} />
+          <ClientMeetings clientId={client.id} />
+        </div>
+      )}
 
-      <TabsContent value="config">
-        {activeTab === "config" && (
-          <div className="space-y-6">
-            <ClientPortalUsers clientId={client.id} clientName={client.name} />
-          </div>
-        )}
-      </TabsContent>
-    </Tabs>
+      {activeTab === "config" && (
+        <div className="mt-6 space-y-6">
+          <ClientPortalUsers clientId={client.id} clientName={client.name} />
+        </div>
+      )}
+    </div>
   )
 }
