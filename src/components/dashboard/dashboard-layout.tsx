@@ -1,15 +1,15 @@
 "use client"
 
-import { useState, useCallback, useRef, lazy, Suspense } from "react"
+import { useState, useCallback, useRef, useMemo, lazy, Suspense } from "react"
 import { DashboardTopBar } from "./dashboard-top-bar"
 import type { DateRange } from "./date-range-panel"
-import { TotalRevenueBanner, type TotalRevenueData } from "./total-revenue-banner"
+import { TotalRevenueBanner, type TotalRevenueData, type RevenueStoreItem } from "./total-revenue-banner"
 import { KpiCard } from "@/components/ui/kpi-card"
 import { KpiCardRow } from "@/components/ui/kpi-card-row"
 import { Skeleton } from "@/components/ui/skeleton"
 import { AnimatedContainer, AnimatedItem } from "@/components/ui/animated-container"
 import { formatCurrency } from "@/lib/utils"
-import type { Meeting } from "@/types"
+import type { Meeting, DashboardAlert } from "@/types"
 
 // ─── Lazy-loaded components (below the fold) ──────────────
 const DashboardRevenueChart = lazy(() =>
@@ -46,36 +46,39 @@ interface TaskPreview {
   due_date: string | null
 }
 
-interface DashboardLayoutProps {
+interface OnboardingEntry {
+  id: string
+  status: string
+  current_phase?: string | null
+  progress_percent: number
+  target_completion_date?: string | null
+  started_at?: string | null
+  client?: { id: string; name: string } | { id: string; name: string }[] | null
+  store?: { id: string; store_name: string } | { id: string; store_name: string }[] | null
+}
+
+export interface DashboardLayoutProps {
   data: {
     upcomingMeetings: Meeting[]
     activeTasks: TaskPreview[]
     activities?: unknown[]
-    alerts?: unknown[]
+    alerts?: DashboardAlert[]
     weekMeetings?: unknown[]
     weekTasks?: unknown[]
-    activeOnboardings?: unknown[]
+    activeOnboardings?: OnboardingEntry[]
     pendingItems?: unknown
   }
   userRole: string
   userName: string
 }
 
-// ─── Mock KPI data ──────────────────────────────────────────
+// ─── Fallback sparklines (used when historical data is not yet available) ──
 
-const MOCK_KPI = {
-  totalRevenue: 2280000,
-  totalRevenueGrowth: 34.2,
-  totalRevenueSparkline: [95, 110, 125, 140, 155, 170, 190, 210, 240, 265, 290, 320],
-  campaignRevenue: 1280000,
-  campaignGrowth: 22.1,
-  campaignSparkline: [60, 65, 72, 80, 88, 95, 102, 110, 115, 120, 125, 128],
-  automationRevenue: 1020000,
-  automationGrowth: -1.8,
-  automationSparkline: [92, 95, 98, 100, 102, 99, 97, 100, 103, 101, 102, 102],
-  convertfyRate: 21,
-  convertfyRateGrowth: 3.2,
-  convertfyRateSparkline: [18, 17, 19, 18, 20, 19, 20, 21, 20, 21, 22, 21],
+const FALLBACK_SPARKLINES = {
+  revenue: [95, 110, 125, 140, 155, 170, 190, 210, 240, 265, 290, 320],
+  campaigns: [60, 65, 72, 80, 88, 95, 102, 110, 115, 120, 125, 128],
+  automations: [92, 95, 98, 100, 102, 99, 97, 100, 103, 101, 102, 102],
+  rate: [18, 17, 19, 18, 20, 19, 20, 21, 20, 21, 22, 21],
 }
 
 // ─── Chart Skeleton ──────────────────────────────────────────
@@ -104,22 +107,14 @@ function CardSkeleton() {
 }
 
 // ─── Dashboard Layout (6 ROWs — DS v3.0) ────────────────────
-//
-// ROW 1: 4 KPI Cards (Receita Total, Campanhas, Automações, Taxa Convertfy)
-// ROW 2: Revenue AreaChart (3fr) + Performance BarChart (2fr)
-// ROW 3: Email Performance (1fr) + Client Health (1fr)
-// ROW 4: 3 Flow Performance cards (1fr each)
-// ROW 5: Onboarding (1fr) + Alerts (1fr)
-// ROW 6: Clients by Revenue table (full-width)
-// ──────────────────────────────────────────────────────────────
 
-export function DashboardLayout({ data: _data, userRole: _userRole, userName }: DashboardLayoutProps) {
+export function DashboardLayout({ data, userRole: _userRole, userName }: DashboardLayoutProps) {
   // Period & compare state
   const [revenuePeriod, setRevenuePeriod] = useState<"today" | "7d" | "30d" | "90d" | "custom">("30d")
   const [compareEnabled, setCompareEnabled] = useState(false)
   const [customRange, setCustomRange] = useState<DateRange | undefined>(undefined)
 
-  // Revenue data from TotalRevenueBanner
+  // Revenue data from TotalRevenueBanner (real API)
   const [revenueData, setRevenueData] = useState<TotalRevenueData | null>(null)
   const revenueResolved = useRef(false)
   const handleRevenueData = useCallback((d: TotalRevenueData | null) => {
@@ -129,6 +124,22 @@ export function DashboardLayout({ data: _data, userRole: _userRole, userName }: 
 
   const isLoading = !revenueResolved.current
 
+  // ─── Computed KPI values from REAL data ─────────────────
+
+  const totalRevenue = revenueData?.totalRevenue ?? 0
+  const campaignRevenue = revenueData?.campaignRevenue ?? 0
+  const flowRevenue = revenueData?.flowRevenue ?? 0
+
+  // Taxa Convertfy = attributed / total store revenue
+  const storeBreakdown = revenueData?.storeBreakdown ?? []
+  const totalStoreRevenue = useMemo(
+    () => storeBreakdown.reduce((sum, s) => sum + (Number(s.totalRevenueBRL) || 0), 0),
+    [storeBreakdown],
+  )
+  const convertfyRate = totalStoreRevenue > 0
+    ? (totalRevenue / totalStoreRevenue) * 100
+    : 0
+
   // Format compact currency
   const fmtCompact = (v: number) => {
     if (v >= 1_000_000) return `R$ ${(v / 1_000_000).toFixed(2).replace(".", ",")}M`
@@ -136,15 +147,46 @@ export function DashboardLayout({ data: _data, userRole: _userRole, userName }: 
     return formatCurrency(v)
   }
 
-  const totalRevenue = revenueData?.totalRevenue ?? MOCK_KPI.totalRevenue
-  const campaignRevenue = revenueData?.campaignRevenue ?? MOCK_KPI.campaignRevenue
-  const flowRevenue = revenueData?.flowRevenue ?? MOCK_KPI.automationRevenue
+  // ─── Map storeBreakdown for Client Health + Clients Revenue ──
+
+  const clientStoreData: RevenueStoreItem[] = storeBreakdown
+
+  // ─── Map onboarding data from page.tsx ────────────────────
+
+  const onboardingData = useMemo(() => {
+    const entries = data.activeOnboardings ?? []
+    return entries.map((ob) => {
+      const client = Array.isArray(ob.client) ? ob.client[0] : ob.client
+      const store = Array.isArray(ob.store) ? ob.store[0] : ob.store
+      const started = ob.started_at ? new Date(ob.started_at) : (ob.target_completion_date ? new Date(ob.target_completion_date) : new Date())
+      const days = Math.max(1, Math.ceil((Date.now() - started.getTime()) / (1000 * 60 * 60 * 24)))
+      return {
+        id: ob.id,
+        storeName: store?.store_name ?? client?.name ?? "Loja",
+        phase: ob.current_phase ?? ob.status ?? "in_progress",
+        days,
+        isNew: days <= 2,
+        isLate: ob.target_completion_date ? new Date(ob.target_completion_date) < new Date() : false,
+      }
+    })
+  }, [data.activeOnboardings])
+
+  // ─── Map alerts from page.tsx ─────────────────────────────
+
+  const alertsData = useMemo(() => {
+    const alerts = data.alerts ?? []
+    return alerts.map((a) => ({
+      id: a.id,
+      title: a.title,
+      description: a.description,
+      clientName: a.store_name ?? "",
+      severity: a.severity === "high" ? 0 : a.severity === "medium" ? 1 : 2,
+    }))
+  }, [data.alerts])
 
   return (
     <div className="max-w-[1600px] mx-auto">
-      {/* ════════════════════════════════════════════════ */}
-      {/* TOP BAR                                          */}
-      {/* ════════════════════════════════════════════════ */}
+      {/* TOP BAR */}
       <DashboardTopBar
         userName={userName}
         period={revenuePeriod}
@@ -155,7 +197,7 @@ export function DashboardLayout({ data: _data, userRole: _userRole, userName }: 
         onCompareToggle={setCompareEnabled}
       />
 
-      {/* Hidden revenue fetcher */}
+      {/* Hidden: TotalRevenueBanner fetches real API data */}
       <div className="hidden">
         <TotalRevenueBanner
           period={revenuePeriod}
@@ -165,46 +207,42 @@ export function DashboardLayout({ data: _data, userRole: _userRole, userName }: 
       </div>
 
       <AnimatedContainer className="space-y-5">
-        {/* ════════════════════════════════════════════════ */}
-        {/* ROW 1: 4 KPI Cards                              */}
-        {/* ════════════════════════════════════════════════ */}
+        {/* ══════════ ROW 1: 4 KPI Cards ══════════ */}
         <AnimatedItem>
           <KpiCardRow columns={4}>
             <KpiCard
               label="Receita Total"
               value={fmtCompact(totalRevenue)}
-              delta={{ value: MOCK_KPI.totalRevenueGrowth, label: "vs anterior" }}
-              sparkData={MOCK_KPI.totalRevenueSparkline}
+              delta={{ value: 0, label: "vs anterior" }}
+              sparkData={FALLBACK_SPARKLINES.revenue}
               loading={isLoading}
             />
             <KpiCard
               label="Receita Campanhas"
               value={fmtCompact(campaignRevenue)}
-              delta={{ value: MOCK_KPI.campaignGrowth, label: "vs anterior" }}
-              sparkData={MOCK_KPI.campaignSparkline}
+              delta={{ value: 0, label: "vs anterior" }}
+              sparkData={FALLBACK_SPARKLINES.campaigns}
               loading={isLoading}
             />
             <KpiCard
               label="Receita Automações"
               value={fmtCompact(flowRevenue)}
-              delta={{ value: MOCK_KPI.automationGrowth, label: "vs anterior" }}
-              sparkData={MOCK_KPI.automationSparkline}
+              delta={{ value: 0, label: "vs anterior" }}
+              sparkData={FALLBACK_SPARKLINES.automations}
               loading={isLoading}
             />
             <KpiCard
               label="Taxa média da Convertfy"
-              value={`${MOCK_KPI.convertfyRate}%`}
-              delta={{ value: MOCK_KPI.convertfyRateGrowth, label: "vs período anterior" }}
-              sparkData={MOCK_KPI.convertfyRateSparkline}
+              value={`${convertfyRate.toFixed(1)}%`}
+              delta={{ value: 0, label: "vs período anterior" }}
+              sparkData={FALLBACK_SPARKLINES.rate}
               variant="gradient"
               loading={isLoading}
             />
           </KpiCardRow>
         </AnimatedItem>
 
-        {/* ════════════════════════════════════════════════ */}
-        {/* ROW 2: Revenue AreaChart + Weekly Performance    */}
-        {/* ════════════════════════════════════════════════ */}
+        {/* ══════════ ROW 2: Charts ══════════ */}
         <AnimatedItem>
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
             <div className="lg:col-span-3">
@@ -220,23 +258,22 @@ export function DashboardLayout({ data: _data, userRole: _userRole, userName }: 
           </div>
         </AnimatedItem>
 
-        {/* ════════════════════════════════════════════════ */}
-        {/* ROW 3: Email Performance + Client Health         */}
-        {/* ════════════════════════════════════════════════ */}
+        {/* ══════════ ROW 3: Email Perf + Client Health ══════════ */}
         <AnimatedItem>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-stretch">
             <Suspense fallback={<CardSkeleton />}>
               <DashboardEmailPerf loading={isLoading} />
             </Suspense>
             <Suspense fallback={<CardSkeleton />}>
-              <DashboardClientHealth loading={isLoading} />
+              <DashboardClientHealth
+                loading={isLoading}
+                storeBreakdown={clientStoreData}
+              />
             </Suspense>
           </div>
         </AnimatedItem>
 
-        {/* ════════════════════════════════════════════════ */}
-        {/* ROW 4: Flow Performance (3 cards)                */}
-        {/* ════════════════════════════════════════════════ */}
+        {/* ══════════ ROW 4: Flow Performance ══════════ */}
         <AnimatedItem>
           <Suspense fallback={
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -249,26 +286,31 @@ export function DashboardLayout({ data: _data, userRole: _userRole, userName }: 
           </Suspense>
         </AnimatedItem>
 
-        {/* ════════════════════════════════════════════════ */}
-        {/* ROW 5: Onboarding + Alerts                       */}
-        {/* ════════════════════════════════════════════════ */}
+        {/* ══════════ ROW 5: Onboarding + Alerts ══════════ */}
         <AnimatedItem>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
             <Suspense fallback={<CardSkeleton />}>
-              <DashboardOnboarding loading={isLoading} />
+              <DashboardOnboarding
+                loading={isLoading}
+                onboardings={onboardingData}
+              />
             </Suspense>
             <Suspense fallback={<CardSkeleton />}>
-              <DashboardAlerts loading={isLoading} />
+              <DashboardAlerts
+                loading={isLoading}
+                alerts={alertsData}
+              />
             </Suspense>
           </div>
         </AnimatedItem>
 
-        {/* ════════════════════════════════════════════════ */}
-        {/* ROW 6: Clients by Revenue (full-width table)     */}
-        {/* ════════════════════════════════════════════════ */}
+        {/* ══════════ ROW 6: Clients by Revenue ══════════ */}
         <AnimatedItem>
           <Suspense fallback={<CardSkeleton />}>
-            <DashboardClientsRevenue loading={isLoading} />
+            <DashboardClientsRevenue
+              loading={isLoading}
+              storeBreakdown={clientStoreData}
+            />
           </Suspense>
         </AnimatedItem>
       </AnimatedContainer>

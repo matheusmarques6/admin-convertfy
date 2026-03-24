@@ -1,11 +1,22 @@
 "use client"
 
+import { useMemo } from "react"
 import { cn } from "@/lib/utils"
 
 // ─── Types ────────────────────────────────────────────────
 
+interface OnboardingProp {
+  id: string
+  storeName: string
+  phase: string
+  days: number
+  isNew?: boolean
+  isLate?: boolean
+}
+
 interface DashboardOnboardingProps {
   loading?: boolean
+  onboardings?: OnboardingProp[]
 }
 
 interface OnboardingStore {
@@ -163,7 +174,59 @@ function KpiCell({
 
 // ─── DashboardOnboarding (exported) ───────────────────────
 
-export function DashboardOnboarding({ loading = false }: DashboardOnboardingProps) {
+function mapPhase(raw: string): Phase {
+  const lower = raw.toLowerCase()
+  if (lower.includes("config") || lower === "setup") return "config"
+  if (lower.includes("brief")) return "briefing"
+  if (lower.includes("klaviyo") || lower.includes("integra")) return "klaviyo"
+  if (lower.includes("camp") || lower.includes("1a") || lower.includes("first")) return "camp"
+  if (lower.includes("golive") || lower.includes("go_live") || lower.includes("live") || lower === "completed") return "golive"
+  if (lower === "in_progress") return "klaviyo"
+  return "config"
+}
+
+export function DashboardOnboarding({ loading = false, onboardings }: DashboardOnboardingProps) {
+  // Derive stores from real data or fallback to mock
+  const stores: OnboardingStore[] = useMemo(() => {
+    if (onboardings && onboardings.length > 0) {
+      return onboardings.map((ob) => ({
+        name: ob.storeName,
+        phase: mapPhase(ob.phase),
+        days: ob.days,
+        badge: ob.isNew ? "novo" as const : ob.isLate ? "atrasado" as const : undefined,
+      }))
+    }
+    return MOCK_STORES
+  }, [onboardings])
+
+  // Derive KPIs from real stores
+  const kpi = useMemo(() => {
+    const inProgress = stores.length
+    const avgDays = stores.length > 0
+      ? Math.round(stores.reduce((sum, s) => sum + s.days, 0) / stores.length)
+      : 0
+    const overdue = stores.filter((s) => s.badge === "atrasado").length
+    return {
+      inProgress,
+      avgTime: `${avgDays}d`,
+      completed30d: onboardings ? 0 : MOCK_KPI.completed30d, // no completed data from props
+      overdue,
+    }
+  }, [stores, onboardings])
+
+  // Derive pipeline from real stores
+  const pipelineSegments = useMemo(() => {
+    const counts: Record<Phase, number> = { config: 0, briefing: 0, klaviyo: 0, camp: 0, golive: 0 }
+    for (const s of stores) {
+      counts[s.phase]++
+    }
+    return (Object.keys(counts) as Phase[])
+      .filter((phase) => counts[phase] > 0)
+      .map((phase) => ({ phase, count: counts[phase] }))
+  }, [stores])
+
+  const totalPipeline = pipelineSegments.reduce((s, seg) => s + seg.count, 0)
+
   return (
     <div
       className={cn(
@@ -190,24 +253,24 @@ export function DashboardOnboarding({ loading = false }: DashboardOnboardingProp
 
           {/* ── KPI Row ── */}
           <div className="mb-4 grid grid-cols-4">
-            <KpiCell label="Em andamento" value={MOCK_KPI.inProgress} />
-            <KpiCell label="Tempo médio" value={MOCK_KPI.avgTime} />
-            <KpiCell label="Concluídos 30d" value={MOCK_KPI.completed30d} />
+            <KpiCell label="Em andamento" value={kpi.inProgress} />
+            <KpiCell label="Tempo médio" value={kpi.avgTime} />
+            <KpiCell label="Concluídos 30d" value={kpi.completed30d} />
             <KpiCell
               label="Atrasados"
-              value={MOCK_KPI.overdue}
-              isRed={MOCK_KPI.overdue > 0}
+              value={kpi.overdue}
+              isRed={kpi.overdue > 0}
               isLast
             />
           </div>
 
           {/* ── Pipeline Bar ── */}
           <div className="mb-2 flex h-2 w-full overflow-hidden rounded-full">
-            {PIPELINE_SEGMENTS.map((seg) => (
+            {pipelineSegments.map((seg) => (
               <div
                 key={seg.phase}
                 style={{
-                  width: `${(seg.count / TOTAL_PIPELINE) * 100}%`,
+                  width: `${(seg.count / totalPipeline) * 100}%`,
                   backgroundColor: PHASES[seg.phase].color,
                 }}
               />
@@ -216,7 +279,7 @@ export function DashboardOnboarding({ loading = false }: DashboardOnboardingProp
 
           {/* ── Pipeline Legend ── */}
           <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1">
-            {PIPELINE_SEGMENTS.map((seg) => (
+            {pipelineSegments.map((seg) => (
               <div key={seg.phase} className="flex items-center gap-1.5">
                 <span
                   className="inline-block h-1.5 w-1.5 rounded-full"
@@ -234,7 +297,7 @@ export function DashboardOnboarding({ loading = false }: DashboardOnboardingProp
 
           {/* ── Store Table ── */}
           <div className="border-t border-[rgba(0,0,0,0.06)] dark:border-[rgba(255,255,255,0.06)]">
-            {MOCK_STORES.map((store) => (
+            {stores.map((store) => (
               <div
                 key={store.name}
                 className="flex items-center justify-between border-b border-[rgba(0,0,0,0.04)] py-2.5 dark:border-[rgba(255,255,255,0.04)]"
@@ -282,7 +345,7 @@ export function DashboardOnboarding({ loading = false }: DashboardOnboardingProp
 
           {/* ── Footer ── */}
           <div className="mt-3 text-[12px] text-gray-400 dark:text-gray-500">
-            9 em andamento &middot; m&eacute;dia 5 dias
+            {kpi.inProgress} em andamento &middot; m&eacute;dia {kpi.avgTime}
           </div>
         </>
       )}

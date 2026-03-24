@@ -34,8 +34,21 @@ interface ClientHealth {
   problem?: string
 }
 
+interface StoreBreakdownItem {
+  storeId: string
+  storeName: string
+  clientName: string
+  totalRevenue: number
+  campaignRevenue: number
+  flowRevenue: number
+  totalRevenueBRL?: number
+  campaignRevenueBRL?: number
+  flowRevenueBRL?: number
+}
+
 interface DashboardClientHealthProps {
   loading?: boolean
+  storeBreakdown?: StoreBreakdownItem[]
 }
 
 type SortKey = "score" | "attributedRevenue" | "revenuePercent" | "storeRevenue"
@@ -335,16 +348,44 @@ function ClientTooltipContent({ client }: { client: ClientHealth }) {
 
 export function DashboardClientHealth({
   loading = false,
+  storeBreakdown,
 }: DashboardClientHealthProps) {
   const [sortKey, setSortKey] = useState<SortKey>("score")
   const [page, setPage] = useState(0)
 
-  const needsAttention = MOCK_CLIENTS.filter((c) => c.score < 70).length
-  const pageSize = MOCK_CLIENTS.length
-  const totalPages = 1 // mock: single page
+  // Map real storeBreakdown to ClientHealth format, fallback to mock
+  const clients: ClientHealth[] = useMemo(() => {
+    if (storeBreakdown && storeBreakdown.length > 0) {
+      const totalAllRevenue = storeBreakdown.reduce(
+        (sum, s) => sum + (Number(s.totalRevenueBRL) || s.totalRevenue || 0), 0
+      )
+      return storeBreakdown.map((s, i) => {
+        const storeRev = Number(s.totalRevenueBRL) || s.totalRevenue || 0
+        const attributed = (Number(s.campaignRevenueBRL) || s.campaignRevenue || 0) +
+          (Number(s.flowRevenueBRL) || s.flowRevenue || 0)
+        const pct = storeRev > 0 ? (attributed / storeRev) * 100 : 0
+        // Simple score based on attribution rate (0-100)
+        const score = Math.min(100, Math.round(pct * 2.5))
+        return {
+          id: s.storeId || String(i),
+          name: s.clientName || s.storeName,
+          storeRevenue: storeRev,
+          attributedRevenue: attributed,
+          revenuePercent: Math.round(pct * 10) / 10,
+          score,
+        }
+      })
+    }
+    return MOCK_CLIENTS
+  }, [storeBreakdown])
+
+  const needsAttention = clients.filter((c) => c.score < 70).length
+  const pageSize = clients.length
+  const totalClients = clients.length
+  const totalPages = 1
 
   const sorted = useMemo(() => {
-    const copy = [...MOCK_CLIENTS]
+    const copy = [...clients]
     copy.sort((a, b) => {
       if (sortKey === "score") return a.score - b.score
       if (sortKey === "attributedRevenue")
@@ -356,7 +397,7 @@ export function DashboardClientHealth({
       return 0
     })
     return copy
-  }, [sortKey])
+  }, [sortKey, clients])
 
   if (loading) {
     return <ClientHealthSkeleton />
@@ -377,7 +418,7 @@ export function DashboardClientHealth({
           </h3>
           <p className="mt-0.5 text-[12px] text-gray-400 dark:text-gray-500">
             {needsAttention} precisam atenção &middot; {pageSize} de{" "}
-            {TOTAL_CLIENTS}
+            {totalClients}
           </p>
         </div>
 
@@ -515,7 +556,7 @@ export function DashboardClientHealth({
       {/* ── Footer ─────────────────────────────────────── */}
       <div className="flex items-center justify-between border-t border-[rgba(0,0,0,0.06)] px-5 py-3 dark:border-[rgba(255,255,255,0.06)]">
         <span className="text-[12px] text-gray-400 dark:text-gray-500">
-          {pageSize} de {TOTAL_CLIENTS} clientes
+          {pageSize} de {totalClients} clientes
         </span>
         <div className="flex gap-1.5">
           <button

@@ -21,8 +21,21 @@ interface ClientRevenueRow {
   status: "active" | "at-risk" | "churned"
 }
 
+interface StoreBreakdownItem {
+  storeId: string
+  storeName: string
+  clientName: string
+  totalRevenue: number
+  campaignRevenue: number
+  flowRevenue: number
+  totalRevenueBRL?: number
+  campaignRevenueBRL?: number
+  flowRevenueBRL?: number
+}
+
 interface DashboardClientsRevenueProps {
   loading?: boolean
+  storeBreakdown?: StoreBreakdownItem[]
 }
 
 // ─── Mock Data ────────────────────────────────────────────
@@ -151,15 +164,37 @@ function MobileClientCard({ client }: { client: ClientRevenueRow }) {
 
 // ─── Main Component ───────────────────────────────────────
 
-export function DashboardClientsRevenue({ loading = false }: DashboardClientsRevenueProps) {
+export function DashboardClientsRevenue({ loading = false, storeBreakdown }: DashboardClientsRevenueProps) {
   const [search, setSearch] = useState("")
   const [page, setPage] = useState(0)
 
+  // Map real storeBreakdown to ClientRevenueRow, fallback to mock
+  const allClients: ClientRevenueRow[] = useMemo(() => {
+    if (storeBreakdown && storeBreakdown.length > 0) {
+      return storeBreakdown
+        .map((s, i) => {
+          const rev = Number(s.totalRevenueBRL) || s.totalRevenue || 0
+          return {
+            id: s.storeId || String(i),
+            name: s.clientName || s.storeName,
+            revenue: rev,
+            openRate: 0,
+            clickRate: 0,
+            trend: "flat" as TrendDirection,
+            sparklinePoints: [rev, rev, rev, rev, rev, rev, rev],
+            status: "active" as const,
+          }
+        })
+        .sort((a, b) => b.revenue - a.revenue)
+    }
+    return MOCK_CLIENTS
+  }, [storeBreakdown])
+
   const filtered = useMemo(() => {
-    if (!search.trim()) return MOCK_CLIENTS
+    if (!search.trim()) return allClients
     const q = search.toLowerCase().trim()
-    return MOCK_CLIENTS.filter((c) => c.name.toLowerCase().includes(q))
-  }, [search])
+    return allClients.filter((c) => c.name.toLowerCase().includes(q))
+  }, [search, allClients])
 
   // Reset page when search changes
   const safePageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))

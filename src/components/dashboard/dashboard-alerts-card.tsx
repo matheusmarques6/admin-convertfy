@@ -74,27 +74,50 @@ const FILTER_OPTIONS: { value: FilterValue; label: string; severity?: Severity }
   { value: "info", label: "Info", severity: 2 },
 ]
 
-interface DashboardAlertsProps {
-  loading?: boolean
+interface AlertProp {
+  id: string
+  title: string
+  description: string
+  clientName: string
+  severity: number
 }
 
-export function DashboardAlerts({ loading }: DashboardAlertsProps) {
+interface DashboardAlertsProps {
+  loading?: boolean
+  alerts?: AlertProp[]
+}
+
+export function DashboardAlerts({ loading, alerts: alertsProp }: DashboardAlertsProps) {
   const [filter, setFilter] = useState<FilterValue>("all")
 
+  // Use real data when available, fallback to mock
+  const allAlerts: Alert[] = useMemo(() => {
+    if (alertsProp && alertsProp.length > 0) {
+      return alertsProp.map((a) => ({
+        id: a.id,
+        title: a.title,
+        description: a.description,
+        client: a.clientName,
+        severity: (Math.min(2, Math.max(0, a.severity)) as Severity),
+      }))
+    }
+    return MOCK_ALERTS
+  }, [alertsProp])
+
   const criticalCount = useMemo(
-    () => MOCK_ALERTS.filter((a) => a.severity === 0).length,
-    []
+    () => allAlerts.filter((a) => a.severity === 0).length,
+    [allAlerts]
   )
 
   const filteredAlerts = useMemo(() => {
-    if (filter === "all") return MOCK_ALERTS
+    if (filter === "all") return allAlerts
     const option = FILTER_OPTIONS.find((o) => o.value === filter)
-    if (option?.severity === undefined) return MOCK_ALERTS
-    return MOCK_ALERTS.filter((a) => a.severity === option.severity)
-  }, [filter])
+    if (option?.severity === undefined) return allAlerts
+    return allAlerts.filter((a) => a.severity === option.severity)
+  }, [filter, allAlerts])
 
   const filterLabel = (opt: (typeof FILTER_OPTIONS)[number]) => {
-    if (opt.value === "all") return `Todos(${MOCK_ALERTS.length})`
+    if (opt.value === "all") return `Todos(${allAlerts.length})`
     return opt.label
   }
 
@@ -184,7 +207,7 @@ export function DashboardAlerts({ loading }: DashboardAlertsProps) {
       {/* Footer */}
       <div className="px-4 py-3">
         <p className="text-[12px] text-gray-400 dark:text-gray-500">
-          {filteredAlerts.length} de {MOCK_ALERTS.length} alertas
+          {filteredAlerts.length} de {allAlerts.length} alertas
         </p>
       </div>
     </div>
