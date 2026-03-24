@@ -11,9 +11,9 @@ import { Icon } from "@/components/ui/icon"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { FormField } from "@/components/ui/form-field"
 import { toast } from "@/lib/hooks/use-toast"
+import { AuthLayout } from "@/components/auth/auth-layout"
 
 const registerSchema = z.object({
   name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres"),
@@ -30,6 +30,7 @@ type RegisterForm = z.infer<typeof registerSchema>
 export default function RegisterPage() {
   const router = useRouter()
   const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
 
   const {
@@ -82,122 +83,101 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <div className="w-full max-w-md">
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center mb-4">
-            <div className="w-12 h-12 rounded-[8px] bg-primary flex items-center justify-center">
-              <span className="text-2xl font-bold text-white">C</span>
-            </div>
-          </div>
-          <h1 className="text-2xl font-bold text-foreground">Convertfy Admin</h1>
-          <p className="text-muted-foreground mt-1">Sistema de Gestão para Agências</p>
-        </div>
-
-        <Card className="rounded-[8px] border-border">
-          <CardHeader className="space-y-1">
-            <CardTitle className="text-2xl">Criar conta</CardTitle>
-            <CardDescription>
-              Preencha os dados abaixo para se cadastrar
-            </CardDescription>
-          </CardHeader>
-          <form onSubmit={handleSubmit(onSubmit)}>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Nome completo</Label>
-                <Input
-                  id="name"
-                  type="text"
-                  placeholder="Seu nome"
-                  {...register("name")}
-                  disabled={isLoading}
-                />
-                {errors.name && (
-                  <p className="text-sm text-destructive">{errors.name.message}</p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="seu@email.com"
-                  {...register("email")}
-                  disabled={isLoading}
-                />
-                {errors.email && (
-                  <p className="text-sm text-destructive">{errors.email.message}</p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="password">Senha</Label>
-                <div className="relative">
-                  <Input
-                    id="password"
-                    type={showPassword ? "text" : "password"}
-                    placeholder="******"
-                    {...register("password")}
-                    disabled={isLoading}
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
-                    onClick={() => setShowPassword(!showPassword)}
-                    disabled={isLoading}
-                  >
-                    {showPassword ? (
-                      <Icon icon={EyeOff} size={16} className="text-muted-foreground" />
-                    ) : (
-                      <Icon icon={Eye} size={16} className="text-muted-foreground" />
-                    )}
-                  </Button>
-                </div>
-                {errors.password && (
-                  <p className="text-sm text-destructive">{errors.password.message}</p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="confirmPassword">Confirmar senha</Label>
-                <Input
-                  id="confirmPassword"
-                  type="password"
-                  placeholder="******"
-                  {...register("confirmPassword")}
-                  disabled={isLoading}
-                />
-                {errors.confirmPassword && (
-                  <p className="text-sm text-destructive">{errors.confirmPassword.message}</p>
-                )}
-              </div>
-            </CardContent>
-
-            <CardFooter className="flex flex-col space-y-4">
-              <Button
-                type="submit"
-                className="w-full"
-                variant="primary"
-                disabled={isLoading}
-              >
-                {isLoading && <Icon icon={Loader2} size={16} className="mr-2 animate-spin" />}
-                Criar conta
-              </Button>
-
-              <p className="text-sm text-center text-muted-foreground">
-                Já tem uma conta?{" "}
-                <Link href="/login" className="text-primary hover:underline">
-                  Faça login
-                </Link>
-              </p>
-            </CardFooter>
-          </form>
-        </Card>
+    <AuthLayout>
+      <div className="text-center mb-6">
+        <h1 className="text-xl font-semibold text-gray-900 dark:text-[#EAEDF3]">
+          Criar conta
+        </h1>
+        <p className="text-sm text-gray-500 dark:text-[#8B92A5] mt-1">
+          Preencha os dados abaixo para se cadastrar
+        </p>
       </div>
-    </div>
+
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <FormField label="Nome completo" required error={errors.name?.message}>
+          <Input
+            type="text"
+            placeholder="Seu nome"
+            className="h-11"
+            {...register("name")}
+            disabled={isLoading}
+          />
+        </FormField>
+
+        <FormField label="Email" required error={errors.email?.message}>
+          <Input
+            type="email"
+            placeholder="seu@email.com"
+            className="h-11"
+            {...register("email")}
+            disabled={isLoading}
+          />
+        </FormField>
+
+        <FormField label="Senha" required error={errors.password?.message}>
+          <div className="relative">
+            <Input
+              type={showPassword ? "text" : "password"}
+              placeholder="••••••••"
+              className="h-11 pr-10"
+              {...register("password")}
+              disabled={isLoading}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-[#8B92A5] transition-colors"
+              tabIndex={-1}
+            >
+              <Icon icon={showPassword ? EyeOff : Eye} size={16} />
+            </button>
+          </div>
+          <p className="text-xs text-gray-400 dark:text-[#5C6378] mt-1">
+            Mínimo 6 caracteres
+          </p>
+        </FormField>
+
+        <FormField label="Confirmar senha" required error={errors.confirmPassword?.message}>
+          <div className="relative">
+            <Input
+              type={showConfirmPassword ? "text" : "password"}
+              placeholder="••••••••"
+              className="h-11 pr-10"
+              {...register("confirmPassword")}
+              disabled={isLoading}
+            />
+            <button
+              type="button"
+              onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-[#8B92A5] transition-colors"
+              tabIndex={-1}
+            >
+              <Icon icon={showConfirmPassword ? EyeOff : Eye} size={16} />
+            </button>
+          </div>
+        </FormField>
+
+        <Button
+          type="submit"
+          variant="primary"
+          size="lg"
+          className="w-full"
+          disabled={isLoading}
+        >
+          {isLoading && <Icon icon={Loader2} size={16} className="mr-2 animate-spin" />}
+          Criar conta
+        </Button>
+      </form>
+
+      <p className="text-sm text-gray-500 dark:text-[#8B92A5] text-center mt-6">
+        Já tem uma conta?{" "}
+        <Link
+          href="/login"
+          className="text-[#4E62D8] dark:text-[#7B8CEA] hover:underline font-medium"
+        >
+          Faça login
+        </Link>
+      </p>
+    </AuthLayout>
   )
 }

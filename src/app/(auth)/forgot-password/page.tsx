@@ -5,15 +5,15 @@ import Link from "next/link"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
-import { ArrowLeft, Loader2, Mail, CheckCircle, AlertTriangle } from "lucide-react"
+import { ArrowLeft, Loader2, Mail, AlertTriangle } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { FormField } from "@/components/ui/form-field"
 import { toast } from "@/lib/hooks/use-toast"
 import { rateLimitService } from "@/lib/services"
+import { AuthLayout } from "@/components/auth/auth-layout"
 
 const forgotPasswordSchema = z.object({
   email: z.string().email("Email inválido"),
@@ -45,17 +45,14 @@ export default function ForgotPasswordPage() {
       const normalizedEmail = data.email.toLowerCase().trim()
 
       // Step 1: Check daily email limit (low & slow attack protection)
-      // This prevents attackers from spreading attempts over 24h
       let dailyCheck
       try {
         dailyCheck = await rateLimitService.checkAndRecord(
           normalizedEmail,
           "daily_email"
         )
-        console.log("Daily check result:", dailyCheck)
       } catch (rateLimitError) {
         console.error("Daily rate limit check failed:", rateLimitError)
-        // Continue without daily limit if check fails
         dailyCheck = { isLimited: false, remainingAttempts: 10, retryAfterSeconds: 0 }
       }
 
@@ -63,7 +60,6 @@ export default function ForgotPasswordPage() {
         setIsDailyLimited(true)
         setRetryAfter(dailyCheck.retryAfterSeconds)
 
-        // Log the blocked attempt (generic - don't reveal daily vs per-minute)
         await rateLimitService.logPasswordResetAudit({
           email: normalizedEmail,
           accountType: "admin",
@@ -82,17 +78,14 @@ export default function ForgotPasswordPage() {
       }
 
       // Step 2: Check password_reset rate limit (burst protection)
-      // Uses atomic checkAndRecord for single DB call
       let rateLimitResult
       try {
         rateLimitResult = await rateLimitService.checkAndRecord(
           normalizedEmail,
           "password_reset"
         )
-        console.log("Password reset rate limit result:", rateLimitResult)
       } catch (rateLimitError) {
         console.error("Password reset rate limit check failed:", rateLimitError)
-        // Continue without rate limit if check fails
         rateLimitResult = { isLimited: false, remainingAttempts: 3, retryAfterSeconds: 0 }
       }
 
@@ -100,7 +93,6 @@ export default function ForgotPasswordPage() {
         setIsRateLimited(true)
         setRetryAfter(rateLimitResult.retryAfterSeconds)
 
-        // Log the blocked attempt
         await rateLimitService.logPasswordResetAudit({
           email: normalizedEmail,
           accountType: "admin",
@@ -129,8 +121,7 @@ export default function ForgotPasswordPage() {
         success: true,
       })
 
-      // Always attempt to send the reset email
-      // We don't check if email exists to avoid email enumeration
+      // Always attempt to send — don't reveal if email exists
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
         redirectTo: `${window.location.origin}/reset-password`,
       })
@@ -145,11 +136,9 @@ export default function ForgotPasswordPage() {
         return
       }
 
-      // Always show success message (security: don't reveal if email exists)
       setSentEmail(normalizedEmail)
       setEmailSent(true)
 
-      // Show remaining attempts if getting close to limit
       if (rateLimitResult.remainingAttempts <= 2 && rateLimitResult.remainingAttempts > 0) {
         toast({
           title: "Verificando...",
@@ -175,7 +164,6 @@ export default function ForgotPasswordPage() {
 
   async function handleResend() {
     if (sentEmail) {
-      // Check daily limit first (don't record, just check)
       const dailyCheck = await rateLimitService.checkAndRecord(
         sentEmail,
         "daily_email"
@@ -192,7 +180,6 @@ export default function ForgotPasswordPage() {
         return
       }
 
-      // Check password_reset rate limit
       const rateLimitCheck = await rateLimitService.checkAndRecord(
         sentEmail,
         "password_reset"
@@ -215,164 +202,151 @@ export default function ForgotPasswordPage() {
     setIsDailyLimited(false)
   }
 
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <div className="w-full max-w-md">
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center mb-4">
-            <div className="w-12 h-12 rounded-[8px] bg-primary flex items-center justify-center">
-              <span className="text-2xl font-bold text-white">C</span>
-            </div>
-          </div>
-          <h1 className="text-2xl font-bold text-foreground">Convertfy Admin</h1>
-          <p className="text-muted-foreground mt-1">Sistema de Gestão para Agências</p>
+  // Daily limit state
+  if (isDailyLimited) {
+    return (
+      <AuthLayout>
+        <div className="text-center space-y-4">
+          <Icon
+            icon={AlertTriangle}
+            size={24}
+            className="text-[#D97706] dark:text-[#FBBF24] mx-auto"
+          />
+          <h1 className="text-xl font-semibold text-gray-900 dark:text-[#EAEDF3]">
+            Limite Diário Atingido
+          </h1>
+          <p className="text-sm text-gray-500 dark:text-[#8B92A5]">
+            Você atingiu o limite de solicitações de recuperação por hoje.
+            Por segurança, tente novamente amanhã.
+          </p>
+          <p className="text-xs text-gray-400 dark:text-[#5C6378]">
+            Se você não solicitou a recuperação de senha, pode ignorar este aviso.
+          </p>
+          <Button asChild variant="ghost" size="lg" className="w-full">
+            <Link href="/login">
+              <Icon icon={ArrowLeft} size={16} className="mr-2" />
+              Voltar ao login
+            </Link>
+          </Button>
         </div>
+      </AuthLayout>
+    )
+  }
 
-        {isDailyLimited ? (
-          <Card className="rounded-[8px] border-border">
-            <CardHeader className="space-y-1 text-center">
-              <div className="flex justify-center mb-4">
-                <Icon icon={AlertTriangle} customSize={32} className="text-warning bg-warning/10 rounded-full" />
-              </div>
-              <CardTitle className="text-2xl">Limite Diário Atingido</CardTitle>
-              <CardDescription className="text-base">
-                Você atingiu o limite de solicitações de recuperação por hoje.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="text-center space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Por segurança, tente novamente amanhã.
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Se você não solicitou a recuperação de senha, pode ignorar este aviso.
-              </p>
-            </CardContent>
-            <CardFooter>
-              <Button asChild variant="ghost" className="w-full">
-                <Link href="/login">
-                  <Icon icon={ArrowLeft} size={16} className="mr-2" />
-                  Voltar ao login
-                </Link>
-              </Button>
-            </CardFooter>
-          </Card>
-        ) : isRateLimited ? (
-          <Card className="rounded-[8px] border-border">
-            <CardHeader className="space-y-1 text-center">
-              <div className="flex justify-center mb-4">
-                <Icon icon={AlertTriangle} customSize={32} className="text-warning bg-warning/10 rounded-full" />
-              </div>
-              <CardTitle className="text-2xl">Muitas Tentativas</CardTitle>
-              <CardDescription className="text-base">
-                Você excedeu o limite de tentativas de recuperação de senha.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="text-center space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Por segurança, aguarde{" "}
-                <span className="font-semibold text-foreground">
-                  {rateLimitService.formatRetryTime(retryAfter)}
-                </span>{" "}
-                antes de tentar novamente.
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Se você não solicitou a recuperação de senha, pode ignorar este aviso.
-              </p>
-            </CardContent>
-            <CardFooter>
-              <Button asChild variant="ghost" className="w-full">
-                <Link href="/login">
-                  <Icon icon={ArrowLeft} size={16} className="mr-2" />
-                  Voltar ao login
-                </Link>
-              </Button>
-            </CardFooter>
-          </Card>
-        ) : emailSent ? (
-          <Card className="rounded-[8px] border-border">
-            <CardHeader className="space-y-1 text-center">
-              <div className="flex justify-center mb-4">
-                <Icon icon={CheckCircle} customSize={32} className="text-success bg-success/10 rounded-full" />
-              </div>
-              <CardTitle className="text-2xl">Verifique seu Email</CardTitle>
-              <CardDescription className="text-base">
-                Se houver uma conta associada a este email, você receberá um link de recuperação.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="text-center space-y-4">
-              <p className="font-medium text-lg">{sentEmail}</p>
-              <p className="text-sm text-muted-foreground">
-                Verifique sua caixa de entrada e spam. O link expira em 1 hora.
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Não recebeu? Verifique se o email está correto ou tente novamente.
-              </p>
-            </CardContent>
-            <CardFooter className="flex flex-col space-y-4">
-              <Button
-                variant="secondary"
-                className="w-full"
-                onClick={handleResend}
-              >
-                <Icon icon={Mail} size={16} className="mr-2" />
-                Tentar novamente
-              </Button>
-              <Button asChild variant="ghost" className="w-full">
-                <Link href="/login">
-                  <Icon icon={ArrowLeft} size={16} className="mr-2" />
-                  Voltar ao login
-                </Link>
-              </Button>
-            </CardFooter>
-          </Card>
-        ) : (
-          <Card className="rounded-[8px] border-border">
-            <CardHeader className="space-y-1">
-              <CardTitle className="text-2xl">Recuperar Senha</CardTitle>
-              <CardDescription>
-                Digite seu email para receber um link de recuperação
-              </CardDescription>
-            </CardHeader>
-            <form onSubmit={handleSubmit(onSubmit)}>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="seu@email.com"
-                    {...register("email")}
-                    disabled={isLoading}
-                  />
-                  {errors.email && (
-                    <p className="text-sm text-destructive">{errors.email.message}</p>
-                  )}
-                </div>
-              </CardContent>
+  // Rate limited state
+  if (isRateLimited) {
+    return (
+      <AuthLayout>
+        <div className="text-center space-y-4">
+          <Icon
+            icon={AlertTriangle}
+            size={24}
+            className="text-[#D97706] dark:text-[#FBBF24] mx-auto"
+          />
+          <h1 className="text-xl font-semibold text-gray-900 dark:text-[#EAEDF3]">
+            Muitas Tentativas
+          </h1>
+          <p className="text-sm text-gray-500 dark:text-[#8B92A5]">
+            Por segurança, aguarde{" "}
+            <span className="font-semibold text-gray-900 dark:text-[#EAEDF3]">
+              {rateLimitService.formatRetryTime(retryAfter)}
+            </span>{" "}
+            antes de tentar novamente.
+          </p>
+          <Button asChild variant="ghost" size="lg" className="w-full">
+            <Link href="/login">
+              <Icon icon={ArrowLeft} size={16} className="mr-2" />
+              Voltar ao login
+            </Link>
+          </Button>
+        </div>
+      </AuthLayout>
+    )
+  }
 
-              <CardFooter className="flex flex-col space-y-4">
-                <Button
-                  type="submit"
-                  className="w-full"
-                  variant="primary"
-                  disabled={isLoading}
-                >
-                  {isLoading && <Icon icon={Loader2} size={16} className="mr-2 animate-spin" />}
-                  Enviar Link de Recuperação
-                </Button>
+  // Email sent state
+  if (emailSent) {
+    return (
+      <AuthLayout>
+        <div className="text-center space-y-4">
+          <Icon
+            icon={Mail}
+            size={24}
+            className="text-[#4E62D8] dark:text-[#7B8CEA] mx-auto"
+          />
+          <h1 className="text-xl font-semibold text-gray-900 dark:text-[#EAEDF3]">
+            Verifique seu Email
+          </h1>
+          <p className="text-sm font-medium text-gray-900 dark:text-[#EAEDF3]">
+            {sentEmail}
+          </p>
+          <p className="text-sm text-gray-500 dark:text-[#8B92A5]">
+            Se houver uma conta associada a este email, você receberá um link de recuperação.
+            Verifique sua caixa de entrada e spam. O link expira em 1 hora.
+          </p>
+          <div className="space-y-2 pt-2">
+            <Button
+              variant="secondary"
+              size="lg"
+              className="w-full"
+              onClick={handleResend}
+            >
+              <Icon icon={Mail} size={16} className="mr-2" />
+              Tentar novamente
+            </Button>
+            <Button asChild variant="ghost" size="lg" className="w-full">
+              <Link href="/login">
+                <Icon icon={ArrowLeft} size={16} className="mr-2" />
+                Voltar ao login
+              </Link>
+            </Button>
+          </div>
+        </div>
+      </AuthLayout>
+    )
+  }
 
-                <Button asChild variant="ghost" className="w-full">
-                  <Link href="/login">
-                    <Icon icon={ArrowLeft} size={16} className="mr-2" />
-                    Voltar ao login
-                  </Link>
-                </Button>
-              </CardFooter>
-            </form>
-          </Card>
-        )}
+  // Default form state
+  return (
+    <AuthLayout>
+      <div className="text-center mb-6">
+        <h1 className="text-xl font-semibold text-gray-900 dark:text-[#EAEDF3]">
+          Recuperar Senha
+        </h1>
+        <p className="text-sm text-gray-500 dark:text-[#8B92A5] mt-1">
+          Digite seu email para receber um link de recuperação
+        </p>
       </div>
-    </div>
+
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <FormField label="Email" required error={errors.email?.message}>
+          <Input
+            type="email"
+            placeholder="seu@email.com"
+            className="h-11"
+            {...register("email")}
+            disabled={isLoading}
+          />
+        </FormField>
+
+        <Button
+          type="submit"
+          variant="primary"
+          size="lg"
+          className="w-full"
+          disabled={isLoading}
+        >
+          {isLoading && <Icon icon={Loader2} size={16} className="mr-2 animate-spin" />}
+          Enviar Link de Recuperação
+        </Button>
+
+        <Button asChild variant="ghost" size="lg" className="w-full">
+          <Link href="/login">
+            <Icon icon={ArrowLeft} size={16} className="mr-2" />
+            Voltar ao login
+          </Link>
+        </Button>
+      </form>
+    </AuthLayout>
   )
 }

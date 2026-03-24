@@ -6,15 +6,15 @@ import Link from "next/link"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
-import { Eye, EyeOff, Loader2, AlertTriangle, ArrowLeft } from "lucide-react"
+import { Eye, EyeOff, Loader2, ArrowLeft } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { FormField } from "@/components/ui/form-field"
 import { toast } from "@/lib/hooks/use-toast"
 import { rateLimitService } from "@/lib/services"
+import { AuthLayout } from "@/components/auth/auth-layout"
 
 const loginSchema = z.object({
   email: z.string().email("Email inválido"),
@@ -29,6 +29,7 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [isRateLimited, setIsRateLimited] = useState(false)
   const [retryAfter, setRetryAfter] = useState(0)
+  const [error, setError] = useState("")
 
   const {
     register,
@@ -40,12 +41,12 @@ export default function LoginPage() {
 
   async function onSubmit(data: LoginForm) {
     setIsLoading(true)
+    setError("")
 
     try {
       const supabase = createClient()
       const normalizedEmail = data.email.toLowerCase().trim()
 
-      // Check login attempt rate limit
       const rateLimitResult = await rateLimitService.checkAndRecord(
         normalizedEmail,
         "login_attempt"
@@ -54,32 +55,20 @@ export default function LoginPage() {
       if (rateLimitResult.isLimited) {
         setIsRateLimited(true)
         setRetryAfter(rateLimitResult.retryAfterSeconds)
-
-        // Show generic error to prevent user enumeration
-        toast({
-          variant: "destructive",
-          title: "Erro ao fazer login",
-          description: "Email ou senha incorretos",
-        })
+        setError("Email ou senha incorretos")
         return
       }
 
-      const { error } = await supabase.auth.signInWithPassword({
+      const { error: authError } = await supabase.auth.signInWithPassword({
         email: data.email,
         password: data.password,
       })
 
-      if (error) {
-        // Generic error message - don't reveal if email exists
-        toast({
-          variant: "destructive",
-          title: "Erro ao fazer login",
-          description: "Email ou senha incorretos",
-        })
+      if (authError) {
+        setError("Email ou senha incorretos")
         return
       }
 
-      // Clear rate limit on successful login
       await rateLimitService.clearRateLimit(normalizedEmail, "login_attempt")
 
       toast({
@@ -90,154 +79,123 @@ export default function LoginPage() {
       router.push("/admin/dashboard")
       router.refresh()
     } catch {
-      toast({
-        variant: "destructive",
-        title: "Erro inesperado",
-        description: "Tente novamente mais tarde",
-      })
+      setError("Erro inesperado. Tente novamente mais tarde.")
     } finally {
       setIsLoading(false)
     }
   }
 
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <div className="w-full max-w-md">
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center mb-4">
-            <div className="w-12 h-12 rounded-[8px] bg-primary flex items-center justify-center">
-              <span className="text-2xl font-bold text-white">C</span>
-            </div>
+  if (isRateLimited) {
+    return (
+      <AuthLayout>
+        <div className="text-center space-y-4">
+          <h1 className="text-xl font-semibold text-gray-900 dark:text-[#EAEDF3]">
+            Conta Temporariamente Bloqueada
+          </h1>
+          <p className="text-sm text-gray-500 dark:text-[#8B92A5]">
+            Muitas tentativas de login. Aguarde{" "}
+            <span className="font-semibold text-gray-900 dark:text-[#EAEDF3]">
+              {rateLimitService.formatRetryTime(retryAfter)}
+            </span>{" "}
+            antes de tentar novamente.
+          </p>
+          <div className="space-y-2 pt-4">
+            <Button asChild variant="secondary" size="lg" className="w-full">
+              <Link href="/forgot-password">Recuperar Senha</Link>
+            </Button>
+            <Button
+              variant="ghost"
+              size="lg"
+              className="w-full"
+              onClick={() => setIsRateLimited(false)}
+            >
+              <Icon icon={ArrowLeft} size={16} className="mr-2" />
+              Tentar novamente
+            </Button>
           </div>
-          <h1 className="text-2xl font-bold text-foreground">Convertfy Admin</h1>
-          <p className="text-muted-foreground mt-1">Sistema de Gestão para Agências</p>
+        </div>
+      </AuthLayout>
+    )
+  }
+
+  return (
+    <AuthLayout>
+      <div className="text-center mb-6">
+        <h1 className="text-xl font-semibold text-gray-900 dark:text-[#EAEDF3]">
+          Entrar na sua conta
+        </h1>
+        <p className="text-sm text-gray-500 dark:text-[#8B92A5] mt-1">
+          Acesse o painel da Convertfy
+        </p>
+      </div>
+
+      {error && (
+        <div className="mb-4 p-3 rounded-[6px] bg-[#FEF2F2] dark:bg-[#3B1111] text-sm text-[#991B1B] dark:text-[#FCA5A5]">
+          {error}
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <FormField label="Email" required error={errors.email?.message}>
+          <Input
+            type="email"
+            placeholder="seu@email.com"
+            className="h-11"
+            {...register("email")}
+            disabled={isLoading}
+          />
+        </FormField>
+
+        <FormField label="Senha" required error={errors.password?.message}>
+          <div className="relative">
+            <Input
+              type={showPassword ? "text" : "password"}
+              placeholder="••••••••"
+              className="h-11 pr-10"
+              {...register("password")}
+              disabled={isLoading}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-[#8B92A5] transition-colors"
+              tabIndex={-1}
+            >
+              <Icon icon={showPassword ? EyeOff : Eye} size={16} />
+            </button>
+          </div>
+        </FormField>
+
+        <div className="flex items-center justify-end">
+          <Link
+            href="/forgot-password"
+            className="text-sm text-[#4E62D8] dark:text-[#7B8CEA] hover:underline min-h-[44px] flex items-center"
+          >
+            Esqueci a senha
+          </Link>
         </div>
 
-        {isRateLimited ? (
-          <Card className="rounded-[8px] border-border">
-            <CardHeader className="space-y-1 text-center">
-              <div className="flex justify-center mb-4">
-                <Icon icon={AlertTriangle} customSize={32} className="text-warning bg-warning/10 rounded-full" />
-              </div>
-              <CardTitle className="text-2xl">Conta Temporariamente Bloqueada</CardTitle>
-              <CardDescription className="text-base">
-                Muitas tentativas de login incorretas.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="text-center space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Por segurança, aguarde{" "}
-                <span className="font-semibold text-foreground">
-                  {rateLimitService.formatRetryTime(retryAfter)}
-                </span>{" "}
-                antes de tentar novamente.
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Se você esqueceu sua senha, use a opção de recuperação.
-              </p>
-            </CardContent>
-            <CardFooter className="flex flex-col space-y-4">
-              <Button asChild variant="secondary" className="w-full">
-                <Link href="/forgot-password">
-                  Recuperar Senha
-                </Link>
-              </Button>
-              <Button
-                variant="ghost"
-                className="w-full"
-                onClick={() => setIsRateLimited(false)}
-              >
-                <Icon icon={ArrowLeft} size={16} className="mr-2" />
-                Tentar novamente
-              </Button>
-            </CardFooter>
-          </Card>
-        ) : (
-          <Card className="rounded-[8px] border-border">
-            <CardHeader className="space-y-1">
-              <CardTitle className="text-2xl">Entrar</CardTitle>
-              <CardDescription>
-                Digite suas credenciais para acessar o sistema
-              </CardDescription>
-            </CardHeader>
-            <form onSubmit={handleSubmit(onSubmit)}>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="seu@email.com"
-                    {...register("email")}
-                    disabled={isLoading}
-                  />
-                  {errors.email && (
-                    <p className="text-sm text-destructive">{errors.email.message}</p>
-                  )}
-                </div>
+        <Button
+          type="submit"
+          variant="primary"
+          size="lg"
+          className="w-full"
+          disabled={isLoading}
+        >
+          {isLoading && <Icon icon={Loader2} size={16} className="mr-2 animate-spin" />}
+          Entrar
+        </Button>
+      </form>
 
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="password">Senha</Label>
-                    <Link
-                      href="/forgot-password"
-                      className="text-sm text-primary hover:underline"
-                    >
-                      Esqueceu a senha?
-                    </Link>
-                  </div>
-                  <div className="relative">
-                    <Input
-                      id="password"
-                      type={showPassword ? "text" : "password"}
-                      placeholder="******"
-                      {...register("password")}
-                      disabled={isLoading}
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
-                      onClick={() => setShowPassword(!showPassword)}
-                      disabled={isLoading}
-                    >
-                      {showPassword ? (
-                        <Icon icon={EyeOff} size={16} className="text-muted-foreground" />
-                      ) : (
-                        <Icon icon={Eye} size={16} className="text-muted-foreground" />
-                      )}
-                    </Button>
-                  </div>
-                  {errors.password && (
-                    <p className="text-sm text-destructive">{errors.password.message}</p>
-                  )}
-                </div>
-              </CardContent>
-
-              <CardFooter className="flex flex-col space-y-4">
-                <Button
-                  type="submit"
-                  className="w-full"
-                  variant="primary"
-                  disabled={isLoading}
-                >
-                  {isLoading && <Icon icon={Loader2} size={16} className="mr-2 animate-spin" />}
-                  Entrar
-                </Button>
-
-                <p className="text-sm text-center text-muted-foreground">
-                  Não tem uma conta?{" "}
-                  <Link href="/register" className="text-primary hover:underline">
-                    Cadastre-se
-                  </Link>
-                </p>
-              </CardFooter>
-            </form>
-          </Card>
-        )}
-      </div>
-    </div>
+      <p className="text-sm text-gray-500 dark:text-[#8B92A5] text-center mt-6">
+        Não tem conta?{" "}
+        <Link
+          href="/register"
+          className="text-[#4E62D8] dark:text-[#7B8CEA] hover:underline font-medium"
+        >
+          Criar conta
+        </Link>
+      </p>
+    </AuthLayout>
   )
 }

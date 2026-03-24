@@ -1,16 +1,16 @@
 "use client"
 
 import { useState } from "react"
-import { z } from "zod"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { Lock, Loader2, Eye, EyeOff } from "lucide-react"
+import { z } from "zod"
+import { Loader2, Eye, EyeOff } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { useToast } from "@/lib/hooks/use-toast"
+import { FormField } from "@/components/ui/form-field"
+import { toast } from "@/lib/hooks/use-toast"
+import { AuthLayout } from "@/components/auth/auth-layout"
 
 const changePasswordSchema = z
   .object({
@@ -28,7 +28,6 @@ export default function ChangePasswordPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [showNewPassword, setShowNewPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
-  const { toast } = useToast()
 
   const {
     register,
@@ -66,7 +65,6 @@ export default function ChangePasswordPage() {
           title: "Senha alterada com sucesso!",
           description: "Você será redirecionado para o dashboard.",
         })
-        // Use window.location for full page reload to ensure session cookies are refreshed
         window.location.href = "/admin/dashboard"
       } else {
         toast({
@@ -87,96 +85,71 @@ export default function ChangePasswordPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
-      <Card className="w-full max-w-md rounded-[8px] border-border">
-        <CardHeader className="space-y-1 text-center">
-          <Icon icon={Lock} size={24} className="text-primary bg-primary/10 rounded-full mx-auto mb-4" />
-          <CardTitle className="text-2xl">Alterar Senha</CardTitle>
-          <CardDescription>
-            Por segurança, você precisa criar uma nova senha para acessar o sistema.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="newPassword">Nova Senha</Label>
-              <div className="relative">
-                <Input
-                  id="newPassword"
-                  type={showNewPassword ? "text" : "password"}
-                  placeholder="Digite sua nova senha"
-                  {...register("newPassword")}
-                  disabled={isLoading}
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
-                  onClick={() => setShowNewPassword(!showNewPassword)}
-                >
-                  {showNewPassword ? (
-                    <Icon icon={EyeOff} size={16} className="text-muted-foreground" />
-                  ) : (
-                    <Icon icon={Eye} size={16} className="text-muted-foreground" />
-                  )}
-                </Button>
-              </div>
-              {errors.newPassword && (
-                <p className="text-sm text-destructive">{errors.newPassword.message}</p>
-              )}
-            </div>
+    <AuthLayout>
+      <div className="text-center mb-6">
+        <h1 className="text-xl font-semibold text-gray-900 dark:text-[#EAEDF3]">
+          Alterar Senha
+        </h1>
+        <p className="text-sm text-gray-500 dark:text-[#8B92A5] mt-1">
+          Por segurança, você precisa criar uma nova senha para acessar o sistema.
+        </p>
+      </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Confirmar Senha</Label>
-              <div className="relative">
-                <Input
-                  id="confirmPassword"
-                  type={showConfirmPassword ? "text" : "password"}
-                  placeholder="Confirme sua nova senha"
-                  {...register("confirmPassword")}
-                  disabled={isLoading}
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                >
-                  {showConfirmPassword ? (
-                    <Icon icon={EyeOff} size={16} className="text-muted-foreground" />
-                  ) : (
-                    <Icon icon={Eye} size={16} className="text-muted-foreground" />
-                  )}
-                </Button>
-              </div>
-              {errors.confirmPassword && (
-                <p className="text-sm text-destructive">{errors.confirmPassword.message}</p>
-              )}
-            </div>
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <FormField label="Nova Senha" required error={errors.newPassword?.message}>
+          <div className="relative">
+            <Input
+              type={showNewPassword ? "text" : "password"}
+              placeholder="Digite sua nova senha"
+              className="h-11 pr-10"
+              {...register("newPassword")}
+              disabled={isLoading}
+            />
+            <button
+              type="button"
+              onClick={() => setShowNewPassword(!showNewPassword)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-[#8B92A5] transition-colors"
+              tabIndex={-1}
+            >
+              <Icon icon={showNewPassword ? EyeOff : Eye} size={16} />
+            </button>
+          </div>
+          <p className="text-xs text-gray-400 dark:text-[#5C6378] mt-1">
+            Mínimo 6 caracteres. Recomendamos usar letras, números e símbolos.
+          </p>
+        </FormField>
 
-            <div className="text-sm text-muted-foreground">
-              <p>Sua senha deve ter:</p>
-              <ul className="list-disc list-inside mt-1 space-y-1">
-                <li>Pelo menos 6 caracteres</li>
-                <li>Recomendamos usar letras, números e símbolos</li>
-              </ul>
-            </div>
+        <FormField label="Confirmar Senha" required error={errors.confirmPassword?.message}>
+          <div className="relative">
+            <Input
+              type={showConfirmPassword ? "text" : "password"}
+              placeholder="Confirme sua nova senha"
+              className="h-11 pr-10"
+              {...register("confirmPassword")}
+              disabled={isLoading}
+            />
+            <button
+              type="button"
+              onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-[#8B92A5] transition-colors"
+              tabIndex={-1}
+            >
+              <Icon icon={showConfirmPassword ? EyeOff : Eye} size={16} />
+            </button>
+          </div>
+        </FormField>
 
-            <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? (
-                <>
-                  <Icon icon={Loader2} size={16} className="mr-2 animate-spin" />
-                  Alterando...
-                </>
-              ) : (
-                "Alterar Senha"
-              )}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
+        <Button
+          type="submit"
+          variant="primary"
+          size="lg"
+          className="w-full"
+          disabled={isLoading}
+        >
+          {isLoading && <Icon icon={Loader2} size={16} className="mr-2 animate-spin" />}
+          Alterar Senha
+        </Button>
+      </form>
+    </AuthLayout>
   )
 }
