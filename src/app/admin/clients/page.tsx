@@ -1,26 +1,11 @@
-import { Suspense } from "react"
 import Link from "next/link"
-import {
-  Plus,
-  Users,
-  UserCheck,
-  UserX,
-  Activity,
-  AlertTriangle,
-  TrendingUp,
-  TrendingDown,
-} from "lucide-react"
+import { Plus, Users } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { ClientsTable } from "@/components/clients/clients-table"
-import { ClientsFilters } from "@/components/clients/clients-filters"
 import { ImportAsaasButton } from "@/components/clients/import-asaas-button"
-import { Skeleton } from "@/components/ui/skeleton"
 import { PagePermissionWrapper } from "@/components/page-permission-wrapper"
 import { PageHeader } from "@/components/ui/page-header"
-import { cn } from "@/lib/utils"
+import { ClientsContent } from "@/components/clients/clients-content"
 import { sanitizeSearch } from "@/lib/utils/sanitize-search"
 
 export const dynamic = "force-dynamic"
@@ -129,13 +114,9 @@ async function getClientStats() {
     supabase.from("clients").select("*", { count: "exact", head: true }).eq("status", "onboarding"),
     supabase.from("clients").select("*", { count: "exact", head: true }).eq("status", "churned"),
     supabase.from("clients").select("*", { count: "exact", head: true }).lt("health_score", 40),
-    // Trend: new clients in last 30 days
     supabase.from("clients").select("*", { count: "exact", head: true }).gte("created_at", thirtyDaysAgo),
-    // Trend: new clients in previous 30 days (30-60 days ago)
     supabase.from("clients").select("*", { count: "exact", head: true }).gte("created_at", sixtyDaysAgo).lt("created_at", thirtyDaysAgo),
-    // Trend: churned in last 30 days
     supabase.from("clients").select("*", { count: "exact", head: true }).eq("status", "churned").gte("updated_at", thirtyDaysAgo),
-    // Trend: churned in previous 30 days
     supabase.from("clients").select("*", { count: "exact", head: true }).eq("status", "churned").gte("updated_at", sixtyDaysAgo).lt("updated_at", thirtyDaysAgo),
   ])
 
@@ -155,153 +136,6 @@ async function getClientStats() {
   }
 }
 
-function TableSkeleton() {
-  return (
-    <div className="space-y-4">
-      <Skeleton className="h-10 w-full" />
-      <Skeleton className="h-[400px] w-full" />
-    </div>
-  )
-}
-
-function StatsSkeleton() {
-  return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-      {Array.from({ length: 5 }).map((_, i) => (
-        <Skeleton key={i} className="h-[88px] w-full rounded-xl" />
-      ))}
-    </div>
-  )
-}
-
-interface StatsRowProps {
-  stats: {
-    total: number
-    active: number
-    prospect: number
-    onboarding: number
-    churned: number
-    critical: number
-    trends: {
-      newLast30: number
-      newPrev30: number
-      churnedLast30: number
-      churnedPrev30: number
-    }
-  }
-}
-
-function TrendBadge({ current, previous, invertColor }: { current: number; previous: number; invertColor?: boolean }) {
-  if (current === 0 && previous === 0) return null
-  const diff = current - previous
-  if (diff === 0) return null
-  const isUp = diff > 0
-  const pct = previous > 0 ? Math.round(Math.abs(diff / previous) * 100) : null
-  const isPositive = invertColor ? !isUp : isUp
-
-  return (
-    <span className={cn(
-      "inline-flex items-center gap-0.5 text-[10px] font-medium",
-      isPositive ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
-    )}>
-      {isUp ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-      {pct !== null ? `${pct}%` : `${Math.abs(diff)}`}
-      <span className="text-muted-foreground/50 ml-0.5">30d</span>
-    </span>
-  )
-}
-
-function StatsRow({ stats }: StatsRowProps) {
-  const activeRate = stats.total > 0
-    ? Math.round((stats.active / stats.total) * 100)
-    : 0
-
-  const items = [
-    {
-      label: "Total de Clientes",
-      value: stats.total,
-      icon: Users,
-      color: "text-blue-600 dark:text-blue-400",
-      bg: "bg-blue-100/80 dark:bg-blue-950/60",
-      borderColor: "border-blue-200 dark:border-blue-900/50",
-      subtitle: null,
-      trend: { current: stats.trends.newLast30, previous: stats.trends.newPrev30 },
-    },
-    {
-      label: "Ativos",
-      value: stats.active,
-      icon: UserCheck,
-      color: "text-emerald-600 dark:text-emerald-400",
-      bg: "bg-emerald-100/80 dark:bg-emerald-950/60",
-      borderColor: "border-emerald-200 dark:border-emerald-900/50",
-      subtitle: `${activeRate}% do total`,
-      trend: null,
-    },
-    {
-      label: "Em Onboarding",
-      value: stats.onboarding,
-      icon: Activity,
-      color: "text-amber-600 dark:text-amber-400",
-      bg: "bg-amber-100/80 dark:bg-amber-950/60",
-      borderColor: "border-amber-200 dark:border-amber-900/50",
-      subtitle: null,
-      trend: null,
-    },
-    {
-      label: "Churned",
-      value: stats.churned,
-      icon: UserX,
-      color: "text-rose-600 dark:text-rose-400",
-      bg: "bg-rose-100/80 dark:bg-rose-950/60",
-      borderColor: "border-rose-200 dark:border-rose-900/50",
-      subtitle: stats.total > 0 ? `${Math.round((stats.churned / stats.total) * 100)}% do total` : null,
-      trend: { current: stats.trends.churnedLast30, previous: stats.trends.churnedPrev30, invertColor: true },
-    },
-    {
-      label: "Saude Critica",
-      value: stats.critical,
-      icon: AlertTriangle,
-      color: "text-orange-600 dark:text-orange-400",
-      bg: "bg-orange-100/80 dark:bg-orange-950/60",
-      borderColor: "border-orange-200 dark:border-orange-900/50",
-      subtitle: stats.critical > 0 ? "Requer atencao" : null,
-      trend: null,
-    },
-  ]
-
-  return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-      {items.map((item) => (
-        <Card key={item.label} className={`border ${item.borderColor} transition-shadow`}>
-          <CardContent className="p-4">
-            <div className="flex items-start gap-3">
-              <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${item.bg}`}>
-                <item.icon className={`h-4.5 w-4.5 ${item.color}`} />
-              </div>
-              <div className="min-w-0 space-y-0.5">
-                <div className="flex items-center gap-2">
-                  <p className="text-2xl font-bold leading-none tracking-tight">{item.value}</p>
-                  {item.trend && (
-                    <TrendBadge
-                      current={item.trend.current}
-                      previous={item.trend.previous}
-                      invertColor={"invertColor" in item.trend ? item.trend.invertColor : false}
-                    />
-                  )}
-                </div>
-                <p className="truncate text-xs font-medium text-muted-foreground">{item.label}</p>
-                {item.subtitle && (
-                  <p className="truncate text-[11px] text-muted-foreground/70">{item.subtitle}</p>
-                )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
-    </div>
-  )
-}
-
 interface PageProps {
   searchParams: Promise<{
     page?: string
@@ -318,101 +152,44 @@ export default async function ClientsPage({ searchParams }: PageProps) {
   const status = VALID_STATUSES.includes(params.status as typeof VALID_STATUSES[number]) ? params.status : undefined
   const health = VALID_HEALTH.includes(params.health as typeof VALID_HEALTH[number]) ? params.health : undefined
 
-  const hasActiveFilters = !!(search || status || health)
   const [{ clients, totalCount }, stats] = await Promise.all([
     getClients({ page, search, status, health }),
     getClientStats(),
   ])
 
-  const statusTabs = [
-    { value: "all", label: "Todos", count: stats.total },
-    { value: "active", label: "Ativos", count: stats.active },
-    { value: "prospect", label: "Prospect", count: stats.prospect },
-    { value: "onboarding", label: "Onboarding", count: stats.onboarding },
-    { value: "churned", label: "Churned", count: stats.churned },
-  ]
-
-  const currentStatusTab = status || "all"
-
-  function buildTabHref(tabValue: string) {
-    const params = new URLSearchParams()
-    if (tabValue !== "all") params.set("status", tabValue)
-    if (search) params.set("search", search)
-    if (health) params.set("health", health)
-    const qs = params.toString()
-    return qs ? `/admin/clients?${qs}` : "/admin/clients"
-  }
-
   return (
     <PagePermissionWrapper requiredFeatures={["create_clients"]}>
-    <div className="space-y-6">
-      {/* Page Header */}
-      <PageHeader
-        icon={Users}
-        title="Clientes"
-        badge={stats.total}
-        description="Gerencie sua carteira e acompanhe a saúde de cada conta"
-        actions={
-          <>
-            <ImportAsaasButton />
-            <Button asChild>
-              <Link href="/admin/clients/new">
-                <Plus className="mr-2 h-4 w-4" />
-                Novo Cliente
-              </Link>
-            </Button>
-          </>
-        }
-      />
+      <div className="space-y-6">
+        {/* Page Header — DS v3.0 Rule 14 (inline icon, no circle) */}
+        <PageHeader
+          icon={Users}
+          title="Clientes"
+          badge={stats.total}
+          description="Gerencie sua carteira e acompanhe a saúde de cada conta"
+          actions={
+            <>
+              <ImportAsaasButton />
+              <Button asChild>
+                <Link href="/admin/clients/new">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Novo Cliente
+                </Link>
+              </Button>
+            </>
+          }
+        />
 
-      {/* Stats Summary */}
-      <Suspense fallback={<StatsSkeleton />}>
-        <StatsRow stats={stats} />
-      </Suspense>
-
-      {/* Status Tabs */}
-      <div className="inline-flex h-10 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground overflow-x-auto max-w-full">
-        {statusTabs.map((tab) => (
-          <Link
-            key={tab.value}
-            href={buildTabHref(tab.value)}
-            className={cn(
-              "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-              currentStatusTab === tab.value
-                ? "bg-background text-foreground shadow-sm"
-                : "hover:text-foreground/80"
-            )}
-          >
-            {tab.label}
-            <Badge
-              variant={currentStatusTab === tab.value ? "neutral" : "neutral"} showDot={false}
-              className="ml-0.5 h-5 min-w-[20px] px-1.5 text-[11px] tabular-nums"
-            >
-              {tab.count}
-            </Badge>
-          </Link>
-        ))}
+        {/* Client content: StatusTabs + Filters + DataTable */}
+        <ClientsContent
+          clients={clients}
+          totalCount={totalCount}
+          currentPage={page}
+          stats={stats}
+          currentStatus={status}
+          currentSearch={search}
+          currentHealth={health}
+        />
       </div>
-
-      {/* Filters */}
-      <div className="space-y-3">
-        <ClientsFilters />
-
-        {/* Results count indicator */}
-        {hasActiveFilters && (
-          <div className="flex items-center gap-2">
-            <Badge variant="neutral" showDot={false} className="font-normal">
-              {totalCount} {totalCount === 1 ? "resultado encontrado" : "resultados encontrados"}
-            </Badge>
-          </div>
-        )}
-      </div>
-
-      {/* Table */}
-      <Suspense fallback={<TableSkeleton />}>
-        <ClientsTable clients={clients} totalCount={totalCount} currentPage={page} hasActiveFilters={hasActiveFilters} />
-      </Suspense>
-    </div>
     </PagePermissionWrapper>
   )
 }
