@@ -11,12 +11,9 @@ import {
   SquareKanban,
   Calendar,
   Mail,
-  Zap,
   DollarSign,
   FileBarChart,
-  UserCog,
   Rocket,
-  Sparkles,
   Settings,
   Bell,
   ChevronLeft,
@@ -53,7 +50,6 @@ const NAV_GROUPS = [
   { key: "gestao", label: "Gestao" },
   { key: "marketing", label: "Marketing" },
   { key: "operacional", label: "Operacional" },
-  { key: "ferramentas", label: "Ferramentas" },
 ] as const
 
 const navigation: NavItem[] = [
@@ -67,14 +63,10 @@ const navigation: NavItem[] = [
   { name: "Reunioes", href: ROUTES.ADMIN.MEETINGS.LIST, icon: Calendar, group: "gestao", requiredFeatures: ["calendar_control"] },
   // MARKETING
   { name: "Campanhas", href: ROUTES.ADMIN.CAMPAIGNS.LIST, icon: Mail, group: "marketing", requiredFeatures: ["campaign_control", "campaign_view", "campaign_copy"] },
-  { name: "Automacoes", href: ROUTES.ADMIN.AUTOMATIONS.LIST, icon: Zap, group: "marketing", requiredFeatures: ["campaign_control"] },
   // OPERACIONAL
   { name: "Financeiro", href: ROUTES.ADMIN.FINANCIAL, icon: DollarSign, group: "operacional", requiredFeatures: ["view_financial"] },
   { name: "Reports", href: ROUTES.ADMIN.REPORTS.LIST, icon: FileBarChart, group: "operacional", requiredFeatures: ["view_reports"] },
-  { name: "Equipe", href: ROUTES.ADMIN.TEAM, icon: UserCog, group: "operacional", requiredFeatures: ["team_control", "team_view"] },
   { name: "Onboarding", href: ROUTES.ADMIN.ONBOARDING, icon: Rocket, group: "operacional", requiredFeatures: ["onboarding_control", "onboarding_view"] },
-  // FERRAMENTAS
-  { name: "Ferramentas", href: ROUTES.ADMIN.TOOLS, icon: Sparkles, group: "ferramentas" },
 ]
 
 // ---------------------------------------------------------------------------
