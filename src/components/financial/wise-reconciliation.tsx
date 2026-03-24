@@ -15,20 +15,13 @@ import {
   ArrowDownRight,
   Building2,
 } from "lucide-react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Icon } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
+import { DataTable, type ColumnDef } from "@/components/ui/data-table"
 import {
   Select,
   SelectContent,
@@ -81,7 +74,6 @@ export function WiseReconciliation() {
     to: new Date(),
   })
 
-  // Reconciliation dialog
   const [reconcileDialog, setReconcileDialog] = useState<{
     open: boolean
     payment: Payment | null
@@ -91,7 +83,6 @@ export function WiseReconciliation() {
   const [saving, setSaving] = useState(false)
   const [localReconciled, setLocalReconciled] = useState<Set<string>>(new Set())
 
-  // SWR hooks for all 3 data sources
   const {
     data: transactionsData,
     error: transactionsError,
@@ -112,7 +103,6 @@ export function WiseReconciliation() {
     mutate: mutateReconciled,
   } = useWiseReconciled()
 
-  // Derive state from SWR data
   const payments: Payment[] = (transactionsData as Record<string, unknown>)?.payments as Payment[] || []
   const clients: Client[] = (transactionsData as Record<string, unknown>)?.clients as Client[] || []
   const balances: Balance[] = (balancesData as Record<string, unknown>)?.balances as Balance[] || []
@@ -123,7 +113,6 @@ export function WiseReconciliation() {
         (r) => r.transaction_reference
       )
     )
-    // Merge locally added reconciliations (optimistic)
     localReconciled.forEach(ref => refs.add(ref))
     return refs
   }, [reconciledData, localReconciled])
@@ -143,7 +132,6 @@ export function WiseReconciliation() {
     setSelectedClient("")
     setNotes("")
 
-    // Try to auto-match client by sender name
     const senderName = payment.transaction.details.senderName?.toLowerCase() || ""
     const matchedClient = clients.find(
       (c) =>
@@ -179,7 +167,6 @@ export function WiseReconciliation() {
         throw new Error(err.error || "Failed to reconcile")
       }
 
-      // Optimistic update + revalidate
       setLocalReconciled((prev) =>
         new Set(Array.from(prev).concat([reconcileDialog.payment!.transaction.referenceNumber]))
       )
@@ -211,7 +198,7 @@ export function WiseReconciliation() {
     )
   })
 
-  const formatCurrency = (value: number, currency: string) => {
+  const formatCurrencyValue = (value: number, currency: string) => {
     return new Intl.NumberFormat("pt-BR", {
       style: "currency",
       currency,
@@ -226,36 +213,140 @@ export function WiseReconciliation() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <Loader2 className="h-8 w-8 animate-spin text-gray-400 dark:text-[#5C6378]" />
       </div>
     )
   }
 
   if (error) {
     return (
-      <Card>
-        <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-          <AlertCircle className="h-12 w-12 text-destructive mb-4" />
-          <h3 className="font-semibold text-lg mb-2">Erro ao carregar dados</h3>
-          <p className="text-muted-foreground mb-4">{error}</p>
+      <div className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1A1D27]">
+        <div className="flex flex-col items-center justify-center py-12 text-center px-6">
+          <AlertCircle className="h-12 w-12 text-[#991B1B] dark:text-[#FCA5A5] mb-4" />
+          <h3 className="font-semibold text-lg text-gray-900 dark:text-[#EAEDF3] mb-2">Erro ao carregar dados</h3>
+          <p className="text-gray-500 dark:text-[#8B92A5] mb-4">{error}</p>
           <Button onClick={handleRefresh}>Tentar novamente</Button>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     )
   }
 
+  // Flatten Payment for DataTable (accessorKey must be top-level key)
+  type FlatPayment = Payment & {
+    id: string
+    _description: string
+    _amount: string
+    _status: string
+    _action: string
+  }
+
+  const flatPayments: FlatPayment[] = filteredPayments.map((p) => ({
+    ...p,
+    id: p.transaction.referenceNumber,
+    _description: p.transaction.details.description || p.transaction.details.paymentReference || "—",
+    _amount: formatCurrencyValue(p.transaction.amount.value, p.currency),
+    _status: reconciled.has(p.transaction.referenceNumber) ? "reconciled" : "pending",
+    _action: "",
+  }))
+
+  const flatColumns: ColumnDef<FlatPayment>[] = [
+    {
+      accessorKey: "transaction",
+      header: "Data",
+      type: "date",
+      mobilePriority: "detail",
+      cell: (row) => (
+        <span className="text-sm font-mono tabular-nums text-gray-600 dark:text-[#8B92A5]">
+          {format(new Date(row.transaction.date), "dd/MM/yyyy", { locale: ptBR })}
+        </span>
+      ),
+    },
+    {
+      accessorKey: "currency",
+      header: "Remetente",
+      type: "text",
+      mobilePriority: "title",
+      cell: (row) => (
+        <div className="flex items-center gap-2">
+          <Building2 className="h-4 w-4 text-gray-400 dark:text-[#5C6378]" />
+          <span className="text-sm font-medium text-gray-900 dark:text-[#EAEDF3]">
+            {row.transaction.details.senderName || "—"}
+          </span>
+        </div>
+      ),
+    },
+    {
+      accessorKey: "_description",
+      header: "Descrição",
+      type: "text",
+      mobilePriority: "hidden",
+      hideOnTablet: true,
+      cell: (row) => (
+        <span className="text-sm text-gray-600 dark:text-[#8B92A5] truncate max-w-[200px] block">
+          {row._description}
+        </span>
+      ),
+    },
+    {
+      accessorKey: "_amount",
+      header: "Valor",
+      type: "currency",
+      mobilePriority: "detail",
+      cell: (row) => (
+        <span className="text-sm font-medium font-mono tabular-nums text-emerald-600 dark:text-emerald-400 text-right">
+          +{formatCurrencyValue(row.transaction.amount.value, row.currency)}
+        </span>
+      ),
+    },
+    {
+      accessorKey: "_status",
+      header: "Status",
+      type: "badge",
+      mobilePriority: "badge",
+      cell: (row) => {
+        const isRecon = reconciled.has(row.transaction.referenceNumber)
+        return isRecon ? (
+          <Badge variant="positive">
+            <Check className="h-3 w-3 mr-1" />
+            Reconciliado
+          </Badge>
+        ) : (
+          <Badge variant="neutral">Pendente</Badge>
+        )
+      },
+    },
+    {
+      accessorKey: "_action",
+      header: "",
+      type: "custom",
+      mobilePriority: "hidden",
+      width: "100px",
+      cell: (row) => {
+        const isRecon = reconciled.has(row.transaction.referenceNumber)
+        if (isRecon) return null
+        return (
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => openReconcileDialog(row)}
+          >
+            <Link2 className="h-4 w-4 mr-1" />
+            Atribuir
+          </Button>
+        )
+      },
+    },
+  ]
+
   return (
     <div className="space-y-6">
-      {/* Header with balances */}
+      {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            <Wallet className="h-5 w-5 text-emerald-500" />
-            Wise - Conciliação de Pagamentos
+        <div className="flex items-center gap-2">
+          <Wallet className="h-5 w-5 text-emerald-500" />
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-[#EAEDF3]">
+            Wise - Conciliação
           </h2>
-          <p className="text-sm text-muted-foreground">
-            Atribua pagamentos recebidos aos clientes
-          </p>
         </div>
         <Button
           variant="secondary"
@@ -268,172 +359,85 @@ export function WiseReconciliation() {
         </Button>
       </div>
 
-      {/* Balance Cards */}
+      {/* Balance Cards — DS v3.0 Rule 2 */}
       {balances.length > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {Object.entries(totalByCurrency).map(([currency, amount]) => (
-            <Card key={currency} className="rounded-xl border">
-              <CardHeader className="pb-2">
-                <CardDescription>Saldo {currency}</CardDescription>
-                <CardTitle className="text-xl">
-                  {formatCurrency(amount, currency)}
-                </CardTitle>
-              </CardHeader>
-            </Card>
+            <div
+              key={currency}
+              className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1A1D27] p-4"
+            >
+              <p className="text-[13px] font-medium text-gray-500 dark:text-[#8B92A5] mb-1">
+                Saldo {currency}
+              </p>
+              <p className="text-xl font-semibold font-mono tabular-nums text-gray-900 dark:text-[#EAEDF3]">
+                {formatCurrencyValue(amount, currency)}
+              </p>
+            </div>
           ))}
         </div>
       )}
 
       {/* Filters */}
-      <Card className="rounded-xl border">
-        <CardHeader>
-          <CardTitle className="text-base">Filtros</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex-1">
-              <Label htmlFor="search">Buscar</Label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="search"
-                  placeholder="Nome do remetente, descrição..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-9"
-                />
-              </div>
-            </div>
-            <div>
-              <Label>Período</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="secondary"
-                    className={cn(
-                      "w-full sm:w-[280px] justify-start text-left font-normal"
-                    )}
-                  >
-                    <Calendar className="mr-2 h-4 w-4" />
-                    {format(dateRange.from, "dd/MM/yyyy", { locale: ptBR })} -{" "}
-                    {format(dateRange.to, "dd/MM/yyyy", { locale: ptBR })}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="end">
-                  <CalendarComponent
-                    mode="range"
-                    selected={{ from: dateRange.from, to: dateRange.to }}
-                    onSelect={(range) => {
-                      if (range?.from && range?.to) {
-                        setDateRange({ from: range.from, to: range.to })
-                      }
-                    }}
-                    numberOfMonths={2}
-                    locale={ptBR}
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
+      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-end">
+        <div className="flex-1 w-full sm:w-auto">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 dark:text-[#5C6378]" />
+            <Input
+              placeholder="Buscar remetente, descrição..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-9"
+            />
           </div>
-        </CardContent>
-      </Card>
+        </div>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant="secondary"
+              className="w-full sm:w-auto justify-start text-left font-normal"
+            >
+              <Calendar className="mr-2 h-4 w-4" />
+              <span className="font-mono tabular-nums text-sm">
+                {format(dateRange.from, "dd/MM/yyyy", { locale: ptBR })} -{" "}
+                {format(dateRange.to, "dd/MM/yyyy", { locale: ptBR })}
+              </span>
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="end">
+            <CalendarComponent
+              mode="range"
+              selected={{ from: dateRange.from, to: dateRange.to }}
+              onSelect={(range) => {
+                if (range?.from && range?.to) {
+                  setDateRange({ from: range.from, to: range.to })
+                }
+              }}
+              numberOfMonths={2}
+              locale={ptBR}
+            />
+          </PopoverContent>
+        </Popover>
+      </div>
 
-      {/* Transactions Table */}
-      <Card className="rounded-xl border">
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <ArrowDownRight className="h-4 w-4 text-success" />
-            Pagamentos Recebidos
-            <Badge variant="neutral" className="ml-2">
-              {filteredPayments.length}
-            </Badge>
-          </CardTitle>
-          <CardDescription>
-            Pagamentos do período selecionado
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {filteredPayments.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              Nenhum pagamento encontrado no período selecionado
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Data</TableHead>
-                  <TableHead>Remetente</TableHead>
-                  <TableHead>Descrição</TableHead>
-                  <TableHead className="text-right">Valor</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Ação</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredPayments.map((payment) => {
-                  const isReconciled = reconciled.has(
-                    payment.transaction.referenceNumber
-                  )
-                  return (
-                    <TableRow key={payment.transaction.referenceNumber}>
-                      <TableCell>
-                        {format(
-                          new Date(payment.transaction.date),
-                          "dd/MM/yyyy",
-                          { locale: ptBR }
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <Building2 className="h-4 w-4 text-muted-foreground" />
-                          <span className="font-medium">
-                            {payment.transaction.details.senderName || "—"}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="max-w-[200px] truncate">
-                        {payment.transaction.details.description ||
-                          payment.transaction.details.paymentReference ||
-                          "—"}
-                      </TableCell>
-                      <TableCell className="text-right font-medium text-success">
-                        +{formatCurrency(
-                          payment.transaction.amount.value,
-                          payment.currency
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {isReconciled ? (
-                          <Badge
-                            variant="positive"
-                          >
-                            <Check className="h-3 w-3 mr-1" />
-                            Reconciliado
-                          </Badge>
-                        ) : (
-                          <Badge variant="neutral">Pendente</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {!isReconciled && (
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => openReconcileDialog(payment)}
-                          >
-                            <Link2 className="h-4 w-4 mr-1" />
-                            Atribuir
-                          </Button>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      {/* Transactions count */}
+      <div className="flex items-center gap-2">
+        <ArrowDownRight className="h-4 w-4 text-emerald-500" />
+        <span className="text-sm font-medium text-gray-900 dark:text-[#EAEDF3]">
+          Pagamentos Recebidos
+        </span>
+        <Badge variant="neutral" className="font-mono tabular-nums">
+          {filteredPayments.length}
+        </Badge>
+      </div>
+
+      {/* DataTable — DS v3.0 Rule 5 */}
+      <DataTable
+        columns={flatColumns}
+        data={flatPayments}
+        emptyMessage="Nenhum pagamento encontrado no período"
+        rowKey="id"
+      />
 
       {/* Reconcile Dialog */}
       <Dialog
@@ -453,27 +457,26 @@ export function WiseReconciliation() {
           {reconcileDialog.payment && (
             <div className="space-y-4">
               {/* Payment Info */}
-              <div className="rounded-lg border p-4 bg-muted/30">
+              <div className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] p-4 bg-gray-50 dark:bg-[#0F1117]">
                 <div className="grid gap-2 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Valor:</span>
-                    <span className="font-semibold text-success">
-                      {formatCurrency(
+                    <span className="text-gray-500 dark:text-[#8B92A5]">Valor:</span>
+                    <span className="font-semibold font-mono tabular-nums text-emerald-600 dark:text-emerald-400">
+                      {formatCurrencyValue(
                         reconcileDialog.payment.transaction.amount.value,
                         reconcileDialog.payment.currency
                       )}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Remetente:</span>
-                    <span>
-                      {reconcileDialog.payment.transaction.details.senderName ||
-                        "—"}
+                    <span className="text-gray-500 dark:text-[#8B92A5]">Remetente:</span>
+                    <span className="text-gray-900 dark:text-[#EAEDF3]">
+                      {reconcileDialog.payment.transaction.details.senderName || "—"}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Data:</span>
-                    <span>
+                    <span className="text-gray-500 dark:text-[#8B92A5]">Data:</span>
+                    <span className="font-mono tabular-nums text-gray-900 dark:text-[#EAEDF3]">
                       {format(
                         new Date(reconcileDialog.payment.transaction.date),
                         "dd/MM/yyyy",
@@ -481,15 +484,11 @@ export function WiseReconciliation() {
                       )}
                     </span>
                   </div>
-                  {reconcileDialog.payment.transaction.details
-                    .paymentReference && (
+                  {reconcileDialog.payment.transaction.details.paymentReference && (
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Referência:</span>
-                      <span>
-                        {
-                          reconcileDialog.payment.transaction.details
-                            .paymentReference
-                        }
+                      <span className="text-gray-500 dark:text-[#8B92A5]">Referência:</span>
+                      <span className="text-gray-900 dark:text-[#EAEDF3]">
+                        {reconcileDialog.payment.transaction.details.paymentReference}
                       </span>
                     </div>
                   )}
@@ -509,7 +508,7 @@ export function WiseReconciliation() {
                         <div className="flex flex-col">
                           <span>{client.name}</span>
                           {client.company && (
-                            <span className="text-xs text-muted-foreground">
+                            <span className="text-xs text-gray-400 dark:text-[#5C6378]">
                               {client.company}
                             </span>
                           )}

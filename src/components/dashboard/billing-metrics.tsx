@@ -260,77 +260,67 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
         <>
           {/* Main Metrics */}
           <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
-            <div className="rounded-xl border border-border bg-card p-4">
+            <div className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1A1D27] p-4">
               <div className="flex items-center gap-2 mb-3">
-                <div className="rounded-full p-1.5 bg-emerald-500/10">
-                  <TrendingUp className="h-3.5 w-3.5 text-emerald-500" />
-                </div>
-                <span className="text-xs font-medium text-muted-foreground">Recebido</span>
+                <TrendingUp className="h-4 w-4 text-emerald-500" />
+                <span className="text-[13px] font-medium text-gray-500 dark:text-[#8B92A5]">Recebido</span>
               </div>
-              <p className="text-xl font-semibold tracking-tight text-foreground">
+              <p className="text-xl font-semibold tracking-tight font-mono tabular-nums text-gray-900 dark:text-[#EAEDF3]">
                 {formatCurrency(data?.summary.received || 0)}
               </p>
-              <p className="text-[11px] text-muted-foreground mt-1">
+              <p className="text-[11px] text-gray-400 dark:text-[#5C6378] mt-1">
                 {data?.counts.received || 0} assinaturas pagas
               </p>
             </div>
 
-            <div className="rounded-xl border border-border bg-card p-4">
+            <div className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1A1D27] p-4">
               <div className="flex items-center gap-2 mb-3">
-                <div className="rounded-full p-1.5 bg-amber-500/10">
-                  <Clock className="h-3.5 w-3.5 text-amber-500" />
-                </div>
-                <span className="text-xs font-medium text-muted-foreground">Pendente</span>
+                <Clock className="h-4 w-4 text-amber-500" />
+                <span className="text-[13px] font-medium text-gray-500 dark:text-[#8B92A5]">Pendente</span>
               </div>
-              <p className="text-xl font-semibold tracking-tight text-foreground">
+              <p className="text-xl font-semibold tracking-tight font-mono tabular-nums text-gray-900 dark:text-[#EAEDF3]">
                 {formatCurrency(data?.summary.pending || 0)}
               </p>
-              <p className="text-[11px] text-muted-foreground mt-1">
+              <p className="text-[11px] text-gray-400 dark:text-[#5C6378] mt-1">
                 {data?.counts.pending || 0} assinaturas a receber
               </p>
             </div>
 
-            <div className="rounded-xl border border-border bg-card p-4">
+            <div className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1A1D27] p-4">
               <div className="flex items-center gap-2 mb-3">
-                <div className="rounded-full p-1.5 bg-red-500/10">
-                  <AlertCircle className="h-3.5 w-3.5 text-red-500" />
-                </div>
-                <span className="text-xs font-medium text-muted-foreground">Vencido</span>
+                <AlertCircle className="h-4 w-4 text-red-500" />
+                <span className="text-[13px] font-medium text-gray-500 dark:text-[#8B92A5]">Vencido</span>
               </div>
-              <p className="text-xl font-semibold tracking-tight text-foreground">
+              <p className="text-xl font-semibold tracking-tight font-mono tabular-nums text-gray-900 dark:text-[#EAEDF3]">
                 {formatCurrency(data?.summary.overdue || 0)}
               </p>
-              <p className="text-[11px] text-muted-foreground mt-1">
+              <p className="text-[11px] text-gray-400 dark:text-[#5C6378] mt-1">
                 {data?.counts.overdue || 0} assinaturas vencidas
               </p>
             </div>
 
-            <div className="rounded-xl border border-border bg-card p-4">
+            <div className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1A1D27] p-4">
               <div className="flex items-center gap-2 mb-3">
-                <div className="rounded-full p-1.5 bg-muted">
-                  <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
-                </div>
-                <span className="text-xs font-medium text-muted-foreground">Total Período</span>
+                <DollarSign className="h-4 w-4 text-gray-500 dark:text-[#8B92A5]" />
+                <span className="text-[13px] font-medium text-gray-500 dark:text-[#8B92A5]">Total Período</span>
               </div>
-              <p className="text-xl font-semibold tracking-tight text-foreground">
+              <p className="text-xl font-semibold tracking-tight font-mono tabular-nums text-gray-900 dark:text-[#EAEDF3]">
                 {formatCurrency((data?.summary.received || 0) + (data?.summary.pending || 0))}
               </p>
-              <p className="text-[11px] text-muted-foreground mt-1">
+              <p className="text-[11px] text-gray-400 dark:text-[#5C6378] mt-1">
                 {data?.counts.total || 0} assinaturas no período
               </p>
             </div>
 
-            <div className="rounded-xl border border-border bg-card p-4">
+            <div className="rounded-[8px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1A1D27] p-4">
               <div className="flex items-center gap-2 mb-3">
-                <div className="rounded-full p-1.5 bg-primary/10">
-                  <Repeat className="h-3.5 w-3.5 text-primary" />
-                </div>
-                <span className="text-xs font-medium text-muted-foreground">MRR</span>
+                <Repeat className="h-4 w-4 text-[#4E62D8] dark:text-[#7B8CEA]" />
+                <span className="text-[13px] font-medium text-gray-500 dark:text-[#8B92A5]">MRR</span>
               </div>
-              <p className="text-xl font-semibold tracking-tight text-foreground">
+              <p className="text-xl font-semibold tracking-tight font-mono tabular-nums text-gray-900 dark:text-[#EAEDF3]">
                 {formatCurrency(data?.connected && data?.asaasMrr ? data.asaasMrr : mrr)}
               </p>
-              <p className="text-[11px] text-muted-foreground mt-1">
+              <p className="text-[11px] text-gray-400 dark:text-[#5C6378] mt-1">
                 Receita recorrente mensal
               </p>
             </div>
@@ -417,9 +407,7 @@ export function BillingMetrics({ mrr = 0 }: BillingMetricsProps) {
           {(data?.summary.overdue || 0) > 0 && (
             <div className="rounded-xl border border-destructive/30 bg-destructive/5">
               <div className="flex items-center gap-4 px-5 py-3">
-                <div className="rounded-lg p-2.5 bg-destructive/10">
-                  <AlertCircle className="h-5 w-5 text-destructive" />
-                </div>
+                <AlertCircle className="h-5 w-5 text-[#991B1B] dark:text-[#FCA5A5]" />
                 <div className="flex-1">
                   <p className="text-sm font-medium text-destructive">Atenção: Assinaturas Vencidas</p>
                   <p className="text-xs text-muted-foreground">
