@@ -1,7 +1,7 @@
 import { Suspense } from "react"
 import { ClipboardList } from "lucide-react"
-import { Icon } from "@/components/ui/icon"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
+import { PageHeader } from "@/components/ui/page-header"
 import { TaskBoardWithCalendar } from "@/components/board/task-board-with-calendar"
 import { Skeleton } from "@/components/ui/skeleton"
 import { PagePermissionWrapper } from "@/components/page-permission-wrapper"
@@ -45,10 +45,6 @@ async function resolveCurrentUser(): Promise<ResolvedUser | null> {
   }
 }
 
-/**
- * Busca a board_config do membro ou retorna defaults da role.
- * Retorna os source_types permitidos para filtrar tasks.
- */
 async function getAllowedSourceTypes(orgMemberId: string, role: OrgRole): Promise<TaskSourceType[]> {
   const adminClient = createAdminClient()
 
@@ -60,7 +56,7 @@ async function getAllowedSourceTypes(orgMemberId: string, role: OrgRole): Promis
 
   const effectiveConfig = config ?? getDefaultsForRole(role)
 
-  const allowed: TaskSourceType[] = ["manual"] // manual tasks always show
+  const allowed: TaskSourceType[] = ["manual"]
 
   const mapping: [string, TaskSourceType | TaskSourceType[]][] = [
     ["show_onboarding_tasks", ["auto_onboarding", "auto_onboarding_step"]],
@@ -87,8 +83,6 @@ async function getAllowedSourceTypes(orgMemberId: string, role: OrgRole): Promis
 async function getTasks(orgId: string, allowedSourceTypes: TaskSourceType[], orgMemberId: string) {
   const adminClient = createAdminClient()
 
-  // Fetch tasks that match allowed source types OR are assigned to the current member
-  // This ensures the user always sees their own assigned tasks regardless of config
   const { data: tasks, error } = await adminClient
     .from("tasks")
     .select(`
@@ -119,7 +113,6 @@ async function getTeamMembers() {
   const supabase = await createClient()
   const adminClient = createAdminClient()
 
-  // Get current user's org_id
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return []
 
@@ -133,7 +126,6 @@ async function getTeamMembers() {
 
   if (!currentMember?.org_id) return []
 
-  // Fetch all active members of the same org
   const { data: members } = await adminClient
     .from("org_members")
     .select(`
@@ -145,7 +137,6 @@ async function getTeamMembers() {
     .eq("is_active", true)
     .order("role", { ascending: true })
 
-  // Transform profile from array to single object (Supabase quirk)
   return (members || []).map(m => ({
     ...m,
     profile: Array.isArray(m.profile) ? m.profile[0] : m.profile
@@ -175,7 +166,6 @@ async function getClients(orgId: string) {
 async function getStores(orgId: string) {
   const adminClient = createAdminClient()
 
-  // Get org's client IDs first, then filter stores
   const { data: orgClients } = await adminClient
     .from("clients")
     .select("id")
@@ -196,7 +186,6 @@ async function getStores(orgId: string) {
     .eq("is_active", true)
     .order("store_name", { ascending: true })
 
-  // Transform client from array to single object (Supabase quirk)
   return (stores || []).map(s => ({
     ...s,
     client: Array.isArray(s.client) ? s.client[0] : s.client
@@ -207,11 +196,9 @@ async function getMeetings(orgId: string) {
   const supabase = await createClient()
   const adminClient = createAdminClient()
 
-  // Get current user to filter meetings where they are a participant
   const { data: { user } } = await supabase.auth.getUser()
   const userId = user?.id
 
-  // Get org_member_id for the current user (if they are an org member)
   let orgMemberId: string | null = null
   if (userId) {
     const { data: orgMember } = await adminClient
@@ -223,7 +210,6 @@ async function getMeetings(orgId: string) {
     orgMemberId = orgMember?.id || null
   }
 
-  // Get meetings scoped to org
   const { data: meetings } = await adminClient
     .from("meetings")
     .select(`
@@ -241,23 +227,16 @@ async function getMeetings(orgId: string) {
     .eq("org_id", orgId)
     .order("scheduled_at", { ascending: true })
 
-  // Filter to include meetings where user is owner OR participant
   const filteredMeetings = (meetings || []).filter(m => {
-    // User is owner
     if (m.user_id === userId) return true
-
-    // User is a participant
     const participants = m.participants || []
     return participants.some((p: { participant_id: string; participant_type: string }) => {
-      // Direct profile participant
       if (p.participant_type === "profile" && p.participant_id === userId) return true
-      // Org member participant
       if (p.participant_type === "org_member" && p.participant_id === orgMemberId) return true
       return false
     })
   })
 
-  // Fetch profiles for participants separately (polymorphic participant_id has no FK)
   const boardProfIds = new Set<string>()
   const boardOmIds = new Set<string>()
   filteredMeetings.forEach(m => {
@@ -283,33 +262,34 @@ async function getMeetings(orgId: string) {
   return filteredMeetings.map(m => {
     const clientRaw = Array.isArray(m.client) ? m.client[0] : m.client
     return {
-    ...m,
-    client: clientRaw ? {
-      id: clientRaw.id,
-      name: clientRaw.name,
-      company: clientRaw.company,
-      stores: (Array.isArray(clientRaw.client_stores) ? clientRaw.client_stores : [])
-        .map((s: { store_name: string }) => s.store_name)
-        .filter(Boolean),
-    } : null,
-    user: Array.isArray(m.user) ? m.user[0] : m.user,
-    participants: (m.participants || []).map((p: Record<string, unknown>) => ({
-      ...p,
-      profile: boardProfilesMap.get(p.participant_id as string) || null,
-    })),
-  }})
+      ...m,
+      client: clientRaw ? {
+        id: clientRaw.id,
+        name: clientRaw.name,
+        company: clientRaw.company,
+        stores: (Array.isArray(clientRaw.client_stores) ? clientRaw.client_stores : [])
+          .map((s: { store_name: string }) => s.store_name)
+          .filter(Boolean),
+      } : null,
+      user: Array.isArray(m.user) ? m.user[0] : m.user,
+      participants: (m.participants || []).map((p: Record<string, unknown>) => ({
+        ...p,
+        profile: boardProfilesMap.get(p.participant_id as string) || null,
+      })),
+    }
+  })
 }
 
 function BoardSkeleton() {
   return (
-    <div className="flex gap-4 h-full">
+    <div className="flex gap-3 h-full overflow-x-auto">
       {[1, 2, 3, 4].map((i) => (
         <div key={i} className="flex-1 min-w-[280px]">
-          <Skeleton className="h-10 w-full mb-4" />
-          <div className="space-y-3">
-            <Skeleton className="h-32 w-full" />
-            <Skeleton className="h-32 w-full" />
-            <Skeleton className="h-32 w-full" />
+          <Skeleton className="h-10 w-full mb-3 rounded-[8px]" />
+          <div className="space-y-2">
+            <Skeleton className="h-28 w-full rounded-[8px]" />
+            <Skeleton className="h-28 w-full rounded-[8px]" />
+            <Skeleton className="h-28 w-full rounded-[8px]" />
           </div>
         </div>
       ))}
@@ -321,8 +301,10 @@ export default async function BoardPage() {
   const currentUser = await resolveCurrentUser()
   if (!currentUser) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <p className="text-muted-foreground">Acesso negado — organização não encontrada.</p>
+      <div className="flex items-center justify-center py-16">
+        <p className="text-sm text-gray-500 dark:text-[#8B92A5]">
+          Acesso negado — organização não encontrada.
+        </p>
       </div>
     )
   }
@@ -340,17 +322,14 @@ export default async function BoardPage() {
 
   return (
     <PagePermissionWrapper requiredFeatures={["request_control", "request_execute"]}>
-      <div className="h-[calc(100vh-10rem)] sm:h-[calc(100vh-8rem)] flex flex-col">
-        {/* Header */}
-        <div className="flex items-center gap-3 mb-4">
-          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/10">
-            <Icon icon={ClipboardList} size={20} className="text-primary" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Board</h1>
-            <p className="text-sm text-muted-foreground">Gerencie tarefas e acompanhe o progresso da equipe</p>
-          </div>
-        </div>
+      <div className="h-[calc(100vh-10rem)] sm:h-[calc(100vh-8rem)] flex flex-col space-y-4">
+        {/* PageHeader — DS v3.0 Rule 14, no icon-in-circle */}
+        <PageHeader
+          title="Board"
+          description="Gerencie tarefas e acompanhe o progresso da equipe"
+          icon={ClipboardList}
+          badge={tasks.length}
+        />
 
         <Suspense fallback={<BoardSkeleton />}>
           <TaskBoardWithCalendar

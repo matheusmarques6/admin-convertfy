@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { TaskCard } from "./task-card"
 import { cn } from "@/lib/utils"
+import { TASK_STATUS_CONFIG } from "@/lib/constants/board"
 import type { Task, TaskStatus } from "@/types"
 
 interface UserProfile {
@@ -85,33 +86,41 @@ export function TaskColumn({
   return (
     <div
       className={cn(
-        "flex flex-col min-w-[280px] max-w-[300px] w-[80vw] sm:w-auto sm:min-w-[300px] bg-muted/30 rounded-lg transition-colors",
-        isOver && isDragging && "bg-muted/60 ring-2 ring-primary/50"
+        "flex flex-col min-w-[260px] max-w-[300px] w-[80vw] sm:w-auto sm:min-w-[280px] shrink-0",
+        "rounded-[8px] bg-gray-50 dark:bg-[#0F1117]",
+        "transition-colors duration-150",
+        isOver && isDragging && "bg-[#4E62D8]/5 dark:bg-[#7B8CEA]/5",
       )}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
       {/* Column Header */}
-      <div className="flex items-center gap-2 p-3 border-b">
-        <div className={cn("w-3 h-3 rounded-full", color)} />
-        <h3 className="font-medium text-sm">{title}</h3>
-        <span className="ml-auto text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+      <div className="px-3 py-3 flex items-center gap-2">
+        <div className={cn("w-2.5 h-2.5 rounded-full shrink-0", color)} />
+        <h3 className="text-[13px] font-semibold text-gray-900 dark:text-[#EAEDF3] truncate">
+          {title}
+        </h3>
+        <span className={cn(
+          "inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded ml-auto shrink-0",
+          "text-[11px] font-mono font-semibold tabular-nums",
+          "bg-gray-200 text-gray-500 dark:bg-[#242836] dark:text-[#5C6378]",
+        )}>
           {tasks.length}
         </span>
       </div>
 
       {/* Tasks */}
-      <div className="flex-1 overflow-y-auto p-2 space-y-2">
+      <div className="flex-1 overflow-y-auto px-2 pb-2 space-y-2 min-h-[120px]">
         {tasks.length === 0 ? (
-          <div
-            className={cn(
-              "flex items-center justify-center h-24 border-2 border-dashed rounded-lg text-muted-foreground text-sm",
-              isOver && isDragging && "border-primary bg-primary/5"
-            )}
-          >
+          <p className={cn(
+            "text-xs text-center py-8",
+            isOver && isDragging
+              ? "text-[#4E62D8] dark:text-[#7B8CEA]"
+              : "text-gray-400 dark:text-[#5C6378]",
+          )}>
             {isDragging ? "Solte aqui" : "Nenhuma tarefa"}
-          </div>
+          </p>
         ) : (
           tasks.map((task) => (
             <TaskCard
