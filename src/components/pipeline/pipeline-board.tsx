@@ -6,11 +6,10 @@ import {
   DragDropContext,
   Droppable,
   Draggable,
-  DropResult,
+  type DropResult,
 } from "@hello-pangea/dnd"
-import { Plus, MoreHorizontal, Trash2, Edit, Lock } from "lucide-react"
+import { Plus, MoreHorizontal, Trash2, Edit } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
-import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -30,11 +29,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { DealDialog } from "./deal-dialog"
 import { formatCurrency, getInitials } from "@/lib/utils"
 import { toast } from "@/lib/hooks/use-toast"
+import { cn } from "@/lib/utils"
 import type { PipelineStage, DealWithRelations, PipelineMemberRole } from "@/types"
+
+// ─── Types ────────────────────────────────────────────────
 
 interface PipelineBoardProps {
   stages: PipelineStage[]
@@ -42,6 +43,87 @@ interface PipelineBoardProps {
   pipelineId?: string
   currentUserRole: PipelineMemberRole | null
 }
+
+// ─── DealCard ─────────────────────────────────────────────
+
+interface DealCardProps {
+  deal: DealWithRelations
+  canEdit: boolean
+  onEdit: (deal: DealWithRelations) => void
+  onDelete: (deal: DealWithRelations) => void
+}
+
+function DealCard({ deal, canEdit, onEdit, onDelete }: DealCardProps) {
+  return (
+    <div className="flex flex-col gap-2">
+      {/* Top: title + actions */}
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-gray-900 dark:text-[#EAEDF3] truncate">
+            {deal.title}
+          </p>
+          {deal.client && (
+            <p className="text-[13px] text-gray-500 dark:text-[#8B92A5] truncate">
+              {deal.client.name}
+            </p>
+          )}
+        </div>
+        {canEdit && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <Icon icon={MoreHorizontal} customSize={12} />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => onEdit(deal)}>
+                <Icon icon={Edit} size={16} className="mr-2" />
+                Editar
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="text-[#991B1B] dark:text-[#FCA5A5]"
+                onClick={() => onDelete(deal)}
+              >
+                <Icon icon={Trash2} size={16} className="mr-2" />
+                Excluir
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
+
+      {/* Value */}
+      <p className="text-sm font-semibold text-gray-900 dark:text-[#EAEDF3] font-mono tabular-nums">
+        {formatCurrency(deal.value)}
+      </p>
+
+      {/* Bottom: avatar + probability */}
+      <div className="flex items-center justify-between">
+        {deal.owner ? (
+          <Avatar className="h-6 w-6">
+            <AvatarImage src={deal.owner.avatar_url} />
+            <AvatarFallback className="text-[10px] bg-[#EEF0FB] text-[#4E62D8] dark:bg-[#141C3D] dark:text-[#7B8CEA]">
+              {getInitials(deal.owner.name)}
+            </AvatarFallback>
+          </Avatar>
+        ) : (
+          <span />
+        )}
+        {deal.probability != null && (
+          <Badge variant="neutral" showDot={false} className="text-[10px]">
+            {deal.probability}%
+          </Badge>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── PipelineBoard ────────────────────────────────────────
 
 export function PipelineBoard({
   stages,
@@ -72,7 +154,6 @@ export function PipelineBoard({
       )
     )
 
-    // Update in database
     try {
       const res = await fetch("/api/pipeline/deals", {
         method: "PATCH",
@@ -89,7 +170,6 @@ export function PipelineBoard({
         description: "O deal foi movido com sucesso.",
       })
     } catch {
-      // Revert on error
       setDeals(initialDeals)
       toast({
         variant: "destructive",
@@ -114,7 +194,7 @@ export function PipelineBoard({
       setDeletingDeal(null)
 
       toast({
-        title: "Deal excluido",
+        title: "Deal excluído",
         description: `"${deletingDeal.title}" foi removido.`,
       })
     } catch {
@@ -144,19 +224,18 @@ export function PipelineBoard({
     setShowNewDeal(true)
   }
 
-  // Show message if no stages (empty pipeline or no pipeline selected)
+  // Empty state — plain text, no icon-in-circle (Rule 19)
   if (stages.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full">
+      <div className="flex items-center justify-center py-16">
         <div className="text-center">
-          <Icon icon={Lock} customSize={48} className="mx-auto text-muted-foreground/50 mb-3" />
-          <p className="text-lg font-medium">
+          <p className="text-sm font-medium text-gray-500 dark:text-[#8B92A5]">
             {pipelineId ? "Pipeline sem etapas" : "Nenhuma pipeline selecionada"}
           </p>
-          <p className="text-muted-foreground">
+          <p className="text-xs text-gray-400 dark:text-[#5C6378] mt-1">
             {pipelineId
-              ? "Configure as etapas desta pipeline nas configuracoes."
-              : "Selecione ou crie uma pipeline para comecar."}
+              ? "Configure as etapas desta pipeline nas configurações."
+              : "Selecione ou crie uma pipeline para começar."}
           </p>
         </div>
       </div>
@@ -166,7 +245,7 @@ export function PipelineBoard({
   return (
     <>
       <DragDropContext onDragEnd={handleDragEnd}>
-        <div className="flex gap-4 overflow-x-auto pb-4 h-full">
+        <div className="flex gap-3 overflow-x-auto pb-4 h-full">
           {stages.map((stage) => {
             const stageDeals = getDealsForStage(stage.id)
             const stageTotal = getStageTotal(stage.id)
@@ -174,136 +253,100 @@ export function PipelineBoard({
             return (
               <div
                 key={stage.id}
-                className="flex flex-col w-[300px] flex-shrink-0 bg-muted/50 rounded-lg"
+                className={cn(
+                  "flex flex-col w-[280px] shrink-0 rounded-[8px]",
+                  "bg-gray-50 dark:bg-[#242836]",
+                )}
               >
                 {/* Stage Header */}
-                <div
-                  className="p-4 border-b border-border"
-                  style={{ borderTopColor: stage.color, borderTopWidth: 3 }}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-semibold">{stage.name}</h3>
-                      <Badge variant="neutral">
-                        {stageDeals.length}
-                      </Badge>
-                    </div>
-                    {canEdit && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => handleAddDeal(stage.id)}
-                      >
-                        <Icon icon={Plus} size={16} />
-                      </Button>
-                    )}
+                <div className="p-3 pb-2">
+                  <div className="flex items-center gap-2 mb-1">
+                    <div
+                      className="w-2.5 h-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: stage.color }}
+                    />
+                    <h3 className="text-[13px] font-semibold text-gray-900 dark:text-[#EAEDF3] truncate">
+                      {stage.name}
+                    </h3>
+                    <Badge variant="neutral" showDot={false} className="text-[10px] ml-auto shrink-0">
+                      {stageDeals.length}
+                    </Badge>
                   </div>
-                  <p className="text-sm text-muted-foreground mt-1">
+                  <p className="text-[12px] text-gray-500 dark:text-[#5C6378] font-mono tabular-nums pl-[18px]">
                     {formatCurrency(stageTotal)}
                   </p>
                 </div>
 
-                {/* Deals */}
+                {/* Deals Droppable */}
                 <Droppable droppableId={stage.id} isDropDisabled={!canEdit}>
                   {(provided, snapshot) => (
-                    <ScrollArea className="flex-1">
-                      <div
-                        ref={provided.innerRef}
-                        {...provided.droppableProps}
-                        className={`p-2 min-h-[200px] transition-colors ${
-                          snapshot.isDraggingOver ? "bg-accent/50" : ""
-                        }`}
-                      >
-                        {stageDeals.map((deal, index) => (
-                          <Draggable
-                            key={deal.id}
-                            draggableId={deal.id}
-                            index={index}
-                            isDragDisabled={!canEdit}
-                          >
-                            {(provided, snapshot) => (
-                              <Card
-                                ref={provided.innerRef}
-                                {...provided.draggableProps}
-                                {...provided.dragHandleProps}
-                                className={`mb-2 transition-shadow ${
-                                  canEdit
-                                    ? "cursor-grab active:cursor-grabbing"
-                                    : "cursor-default"
-                                } ${snapshot.isDragging ? "shadow-lg" : ""}`}
-                              >
-                                <CardContent className="p-3">
-                                  <div className="flex items-start justify-between gap-2">
-                                    <div className="flex-1 min-w-0">
-                                      <p className="font-medium truncate">
-                                        {deal.title}
-                                      </p>
-                                      {deal.client && (
-                                        <p className="text-sm text-muted-foreground truncate">
-                                          {deal.client.name}
-                                        </p>
-                                      )}
-                                    </div>
-                                    {canEdit && (
-                                      <DropdownMenu>
-                                        <DropdownMenuTrigger asChild>
-                                          <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="h-6 w-6 flex-shrink-0"
-                                          >
-                                            <Icon icon={MoreHorizontal} customSize={12} />
-                                          </Button>
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent align="end">
-                                          <DropdownMenuItem
-                                            onClick={() => setEditingDeal(deal)}
-                                          >
-                                            <Icon icon={Edit} size={16} className="mr-2" />
-                                            Editar
-                                          </DropdownMenuItem>
-                                          <DropdownMenuItem
-                                            className="text-destructive"
-                                            onClick={() => setDeletingDeal(deal)}
-                                          >
-                                            <Icon icon={Trash2} size={16} className="mr-2" />
-                                            Excluir
-                                          </DropdownMenuItem>
-                                        </DropdownMenuContent>
-                                      </DropdownMenu>
-                                    )}
-                                  </div>
+                    <div
+                      ref={provided.innerRef}
+                      {...provided.droppableProps}
+                      className={cn(
+                        "flex-1 overflow-y-auto p-2 pt-0 space-y-2 min-h-[120px]",
+                        "transition-colors duration-150",
+                        snapshot.isDraggingOver && "bg-[#4E62D8]/5 dark:bg-[#7B8CEA]/5",
+                      )}
+                    >
+                      {stageDeals.map((deal, index) => (
+                        <Draggable
+                          key={deal.id}
+                          draggableId={deal.id}
+                          index={index}
+                          isDragDisabled={!canEdit}
+                        >
+                          {(provided, snapshot) => (
+                            <div
+                              ref={provided.innerRef}
+                              {...provided.draggableProps}
+                              {...provided.dragHandleProps}
+                              className={cn(
+                                "group rounded-[8px] border p-3",
+                                "border-[rgba(0,0,0,0.08)] bg-white",
+                                "dark:border-[rgba(255,255,255,0.08)] dark:bg-[#1A1D27]",
+                                "transition-all duration-150",
+                                canEdit && "cursor-grab active:cursor-grabbing",
+                                canEdit && !snapshot.isDragging && "hover:shadow-sm",
+                                snapshot.isDragging && "shadow-md opacity-95 scale-[1.02]",
+                              )}
+                            >
+                              <DealCard
+                                deal={deal}
+                                canEdit={canEdit}
+                                onEdit={setEditingDeal}
+                                onDelete={setDeletingDeal}
+                              />
+                            </div>
+                          )}
+                        </Draggable>
+                      ))}
+                      {provided.placeholder}
 
-                                  <p className="text-lg font-semibold text-primary mt-2">
-                                    {formatCurrency(deal.value)}
-                                  </p>
-
-                                  <div className="flex items-center justify-between mt-3">
-                                    {deal.owner && (
-                                      <Avatar className="h-6 w-6">
-                                        <AvatarImage src={deal.owner.avatar_url} />
-                                        <AvatarFallback className="text-xs">
-                                          {getInitials(deal.owner.name)}
-                                        </AvatarFallback>
-                                      </Avatar>
-                                    )}
-                                    {deal.probability != null && (
-                                      <Badge variant="neutral" showDot={false} className="text-xs">
-                                        {deal.probability}%
-                                      </Badge>
-                                    )}
-                                  </div>
-                                </CardContent>
-                              </Card>
-                            )}
-                          </Draggable>
-                        ))}
-                        {provided.placeholder}
-                      </div>
-                    </ScrollArea>
+                      {/* Empty stage — plain text (Rule 19) */}
+                      {stageDeals.length === 0 && !snapshot.isDraggingOver && (
+                        <p className="text-xs text-gray-400 dark:text-[#5C6378] text-center py-6">
+                          Nenhum deal nesta etapa
+                        </p>
+                      )}
+                    </div>
                   )}
                 </Droppable>
+
+                {/* Add deal button */}
+                {canEdit && (
+                  <div className="p-2 pt-0">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full text-gray-500 dark:text-[#5C6378] hover:text-gray-700 dark:hover:text-[#8B92A5]"
+                      onClick={() => handleAddDeal(stage.id)}
+                    >
+                      <Icon icon={Plus} size={16} className="mr-1.5" />
+                      Adicionar
+                    </Button>
+                  </div>
+                )}
               </div>
             )
           })}
@@ -335,10 +378,10 @@ export function PipelineBoard({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Excluir deal?</AlertDialogTitle>
+            <AlertDialogTitle>Excluir deal</AlertDialogTitle>
             <AlertDialogDescription>
-              O deal &quot;{deletingDeal?.title}&quot; sera excluido
-              permanentemente. Esta acao nao pode ser desfeita.
+              O deal &quot;{deletingDeal?.title}&quot; será excluído
+              permanentemente. Esta ação não pode ser desfeita.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
