@@ -120,7 +120,7 @@ export function Sidebar({ user, forceExpanded }: SidebarProps) {
     <TooltipProvider delayDuration={0}>
       <aside
         className={cn(
-          "flex flex-col h-screen sticky top-0 bg-white border-r border-[rgba(0,0,0,0.08)]",
+          "flex flex-col h-full bg-white border-r border-[rgba(0,0,0,0.08)]",
           "dark:bg-[#1A1D27] dark:border-[rgba(255,255,255,0.08)]",
           "transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]",
           "relative z-30",

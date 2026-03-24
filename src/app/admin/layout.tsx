@@ -213,7 +213,7 @@ export default async function DashboardLayout({
   return (
     <DashboardClientWrapper initialPermissions={permissions}>
       <CommandPalette>
-        <div className="flex min-h-screen bg-[#FCFCFD] dark:bg-[#0F1117]">
+        <div className="flex h-screen overflow-hidden bg-[#FCFCFD] dark:bg-[#0F1117]">
           {/* Sidebar — desktop/tablet (hidden on mobile) */}
           <div className="hidden md:block shrink-0">
             <Sidebar user={userData} />
