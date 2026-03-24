@@ -73,7 +73,7 @@ const MOCK_KPI = {
 // hierarchy levels.
 // ──────────────────────────────────────────────────────────
 
-export function DashboardLayout({ data, userRole, userName }: DashboardLayoutProps) {
+export function DashboardLayout({ data, userRole: _userRole, userName }: DashboardLayoutProps) {
   // Period & compare state (shared with TopBar + TotalRevenueBanner)
   const [revenuePeriod, setRevenuePeriod] = useState<"today" | "7d" | "30d" | "90d" | "custom">("30d")
   const [compareEnabled, setCompareEnabled] = useState(false)

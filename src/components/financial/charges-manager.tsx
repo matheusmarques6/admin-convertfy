@@ -43,8 +43,6 @@ import { formatCurrency, formatDate, cn } from "@/lib/utils"
 import { toast } from "@/lib/hooks/use-toast"
 import { RefundDialog, type RefundCharge } from "@/components/financial/refund-dialog"
 import Link from "next/link"
-import { format } from "date-fns"
-import { ptBR } from "date-fns/locale"
 
 interface Charge {
   id: string

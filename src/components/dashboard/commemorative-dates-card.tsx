@@ -1,11 +1,10 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { CalendarHeart, Sparkles, X, TrendingUp, Mail, Workflow, ArrowRight } from "lucide-react"
+import { CalendarHeart, Sparkles, TrendingUp, Mail, Workflow } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
 import { CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,

@@ -3,7 +3,6 @@
 import { useState, useMemo } from "react"
 import {
   CalendarDays,
-  BarChart3,
   Plus,
   RefreshCw,
   Zap,

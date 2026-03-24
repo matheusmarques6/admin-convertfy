@@ -10,8 +10,6 @@ import {
   MessageCircle,
   Calendar,
   Instagram,
-  CheckCircle2,
-  XCircle,
   Loader2,
   ExternalLink,
   Settings,
@@ -20,7 +18,7 @@ import {
   AlertTriangle,
   BarChart3,
 } from "lucide-react"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -221,7 +219,7 @@ export default function IntegrationsPage() {
   const selectedConfig = selectedType ? getIntegrationConfig(selectedType) : null
 
   // Separate active and available
-  const activeTypes = new Set(integrations.filter(i => i.is_active).map(i => i.type))
+  const _activeTypes = new Set(integrations.filter(i => i.is_active).map(i => i.type))
   const allConfigs = Object.values(INTEGRATION_CONFIGS)
 
   return (

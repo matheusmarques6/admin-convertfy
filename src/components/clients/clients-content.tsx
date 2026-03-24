@@ -108,7 +108,7 @@ const HEALTH_OPTIONS = [
   { value: "critical", label: "Crítico (0-39)" },
 ]
 
-const statusLabels: Record<string, { label: string; variant: "positive" | "negative" | "warning" | "neutral" | "info" }> = {
+const _statusLabels: Record<string, { label: string; variant: "positive" | "negative" | "warning" | "neutral" | "info" }> = {
   active: { label: "Ativo", variant: "positive" },
   inactive: { label: "Inativo", variant: "neutral" },
   churned: { label: "Churned", variant: "negative" },
@@ -139,7 +139,7 @@ export function ClientsContent({
   currentHealth,
 }: ClientsContentProps) {
   const router = useRouter()
-  const searchParams = useSearchParams()
+  const _searchParams = useSearchParams()
   const isMobile = useMediaQuery("(max-width: 767px)")
   const { permissions } = usePermissions()
   const { user } = useAuthStore()

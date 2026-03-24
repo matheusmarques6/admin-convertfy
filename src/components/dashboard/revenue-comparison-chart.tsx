@@ -9,12 +9,10 @@ import {
   CartesianGrid,
   Tooltip as RechartsTooltip,
   ResponsiveContainer,
-  Legend,
 } from "recharts"
 import {
   BarChart3,
   RefreshCw,
-  Loader2,
   Store,
 } from "lucide-react"
 import { CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -29,7 +27,7 @@ import {
 } from "@/components/ui/select"
 import { formatCurrency, cn } from "@/lib/utils"
 
-interface ChartDataPoint {
+interface _ChartDataPoint {
   month: string
   storeRevenue: number
   convertfyRevenue: number
@@ -53,7 +51,7 @@ interface RevenueComparisonChartProps {
 }
 
 export function RevenueComparisonChart({
-  storeBreakdown,
+  storeBreakdown: _storeBreakdown,
   totalRevenue = 0,
   campaignRevenue = 0,
   flowRevenue = 0,

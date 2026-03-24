@@ -19,9 +19,8 @@ import {
   Plug,
   ChevronDown,
   LucideIcon,
-  X,
 } from "lucide-react"
-import { motion, LayoutGroup, AnimatePresence } from "framer-motion"
+import { motion, LayoutGroup } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {

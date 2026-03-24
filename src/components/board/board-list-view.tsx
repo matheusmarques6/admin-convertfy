@@ -1,6 +1,6 @@
 "use client"
 
-import { MoreHorizontal, Eye, Trash2, ArrowRight } from "lucide-react"
+import { MoreHorizontal, Eye, Trash2 } from "lucide-react"
 import { Icon } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import { StatusBadge } from "@/components/ui/status-badge"

@@ -1,7 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react"
-import { format } from "date-fns"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import {
   Loader2,
   RefreshCw,
@@ -15,7 +14,6 @@ import { StatusBadge } from "@/components/ui/status-badge"
 import { FilterSelect } from "@/components/ui/filter-select"
 import { ChannelBadge, ChannelDot } from "@/components/ui/channel-badge"
 import { cn } from "@/lib/utils"
-import { formatCurrency } from "@/lib/utils"
 import type { Campaign } from "@/types"
 
 // ── Types ────────────────────────────────────────────────────────────────────

@@ -11,8 +11,8 @@ import { BillingMetrics } from "@/components/dashboard/billing-metrics"
 import { FinancialCharts } from "@/components/dashboard/financial-charts"
 import { PermissionGate } from "@/components/permission-gate"
 
-const VALID_TABS = ["analysis", "charges", "subscriptions", "wise"] as const
-type TabValue = typeof VALID_TABS[number]
+const _VALID_TABS = ["analysis", "charges", "subscriptions", "wise"] as const
+type TabValue = typeof _VALID_TABS[number]
 
 export default function FinancialPage() {
   const [activeTab, setActiveTab] = useState<TabValue>("analysis")

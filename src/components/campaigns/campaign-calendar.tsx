@@ -5,16 +5,13 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
-  Loader2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { StatusBadge } from "@/components/ui/status-badge"
-import { Badge } from "@/components/ui/badge"
 import { ChannelBadge, ChannelDot, DS_CHANNEL_CONFIG } from "@/components/ui/channel-badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useMediaQuery } from "@/hooks/use-media-query"
 import { cn } from "@/lib/utils"
-import { formatCurrency } from "@/lib/utils"
 import type { Campaign } from "@/types"
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -352,7 +349,7 @@ function CampaignSidePanelCard({ campaign, onClick }: { campaign: Campaign; onCl
 // ── Agenda View (mobile) — Rule 23 ───────────────────────────────────────────
 
 function AgendaView({
-  campaigns,
+  campaigns: _campaigns,
   campaignsByDate,
   currentMonth,
   onCampaignClick,

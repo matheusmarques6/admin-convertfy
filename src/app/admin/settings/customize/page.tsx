@@ -4,7 +4,6 @@ import { useState, useEffect } from "react"
 import {
   Plus,
   Trash2,
-  Loader2,
   Edit2,
   X,
 } from "lucide-react"
@@ -15,7 +14,6 @@ import { Label } from "@/components/ui/label"
 import { PageHeader } from "@/components/ui/page-header"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Icon } from "@/components/ui/icon"
 import { FormField } from "@/components/ui/form-field"
 import { SegmentedTabs, SegmentedTabItem } from "@/components/ui/segmented-tabs"
 import { Skeleton } from "@/components/ui/skeleton"

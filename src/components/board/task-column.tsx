@@ -3,7 +3,6 @@
 import { useState } from "react"
 import { TaskCard } from "./task-card"
 import { cn } from "@/lib/utils"
-import { TASK_STATUS_CONFIG } from "@/lib/constants/board"
 import type { Task, TaskStatus } from "@/types"
 
 interface UserProfile {
