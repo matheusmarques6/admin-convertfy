@@ -17,6 +17,8 @@ export interface StatusConfigEntry {
   label: string
   color: string
   dotColor: string
+  /** StatusBadge-compatible status key for DS migration */
+  statusKey: string
 }
 
 // ============================================
@@ -63,36 +65,43 @@ export const STATUS_CONFIG: Record<string, StatusConfigEntry> = {
     label: "Rascunho",
     color: "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700/40",
     dotColor: "bg-slate-400",
+    statusKey: "draft",
   },
   pending_review: {
     label: "Em Revisão",
     color: "bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-500/20",
     dotColor: "bg-blue-500",
+    statusKey: "pending_review",
   },
   approved: {
     label: "Aprovada",
     color: "bg-teal-50 dark:bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-200 dark:border-teal-500/20",
     dotColor: "bg-teal-500",
+    statusKey: "approved",
   },
   rejected: {
     label: "Rejeitada",
     color: "bg-orange-50 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-500/20",
     dotColor: "bg-orange-500",
+    statusKey: "rejected",
   },
   scheduled: {
     label: "Agendada",
     color: "bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-500/20",
     dotColor: "bg-blue-500",
+    statusKey: "scheduled",
   },
   sent: {
     label: "Enviada",
     color: "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20",
     dotColor: "bg-emerald-500",
+    statusKey: "sent",
   },
   cancelled: {
     label: "Cancelada",
     color: "bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 border-red-200 dark:border-red-500/20",
     dotColor: "bg-red-500",
+    statusKey: "cancelled",
   },
 }
 

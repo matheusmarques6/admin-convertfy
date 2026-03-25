@@ -30,7 +30,7 @@ const DEFAULT_STAGES = [
   { name: "Lead", color: "#94A3B8", order: 1 },
   { name: "Qualificacao", color: "#F59E0B", order: 2 },
   { name: "Proposta", color: "#3B82F6", order: 3 },
-  { name: "Negociacao", color: "#05AFF2", order: 4 },
+  { name: "Negociacao", color: "#4E62D8", order: 4 },
   { name: "Fechado Ganho", color: "#22C55E", order: 5 },
   { name: "Fechado Perdido", color: "#EF4444", order: 6 },
 ]
@@ -87,7 +87,7 @@ export function PipelineCreateDialog({
       ...prev,
       {
         name: "",
-        color: "#05AFF2",
+        color: "#4E62D8",
         order: prev.length + 1,
       },
     ])
@@ -241,7 +241,7 @@ export function PipelineCreateDialog({
               <Label>Etapas da Pipeline</Label>
               <Button
                 type="button"
-                variant="outline"
+                variant="secondary"
                 size="sm"
                 onClick={handleAddStage}
                 disabled={isLoading}
@@ -329,7 +329,7 @@ export function PipelineCreateDialog({
           <div className="flex justify-end gap-2 pt-4">
             <Button
               type="button"
-              variant="outline"
+              variant="secondary"
               onClick={() => onOpenChange(false)}
               disabled={isLoading}
             >

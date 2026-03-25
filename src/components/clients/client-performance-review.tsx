@@ -179,7 +179,7 @@ export function ClientPerformanceKPIs() {
           <CardContent className="flex items-center gap-3 py-4">
             <AlertCircle className="h-5 w-5 text-destructive" />
             <p className="text-sm text-destructive">{error}</p>
-            <Button variant="outline" size="sm" onClick={refresh} className="ml-auto">
+            <Button variant="secondary" size="sm" onClick={refresh} className="ml-auto">
               Tentar novamente
             </Button>
           </CardContent>
@@ -210,7 +210,7 @@ export function ClientPerformanceKPIs() {
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             {/* Receita Total (Loja) - via Klaviyo metric-aggregates */}
             <Card
-              className={`rounded-xl border bg-card p-6 ${isMultiStore ? "cursor-pointer hover:border-border/80 transition-colors" : ""}`}
+              className={`rounded-[8px] border bg-card p-6 ${isMultiStore ? "cursor-pointer hover:border-border/80 transition-colors" : ""}`}
               onClick={isMultiStore ? () => toggleCard("revenue") : undefined}
             >
               <div className="flex items-center justify-between pb-2">
@@ -254,7 +254,7 @@ export function ClientPerformanceKPIs() {
 
             {/* Revenue Atribuido (Email) */}
             <Card
-              className={`rounded-xl border bg-card p-6 ${isMultiStore ? "cursor-pointer hover:border-border/80 transition-colors" : ""}`}
+              className={`rounded-[8px] border bg-card p-6 ${isMultiStore ? "cursor-pointer hover:border-border/80 transition-colors" : ""}`}
               onClick={isMultiStore ? () => toggleCard("email") : undefined}
             >
               <div className="flex items-center justify-between pb-2">
@@ -300,7 +300,7 @@ export function ClientPerformanceKPIs() {
 
             {/* Campanhas & Flows + Open/Click Rate inline */}
             <Card
-              className={`rounded-xl border bg-card p-6 ${isMultiStore ? "cursor-pointer hover:border-border/80 transition-colors" : ""}`}
+              className={`rounded-[8px] border bg-card p-6 ${isMultiStore ? "cursor-pointer hover:border-border/80 transition-colors" : ""}`}
               onClick={isMultiStore ? () => toggleCard("campaigns") : undefined}
             >
               <div className="flex items-center justify-between pb-2">
@@ -357,7 +357,7 @@ export function ClientPerformanceKPIs() {
 
             {/* % Recuperacao Email — NO proportion bar (rates not additive) */}
             <Card
-              className={`rounded-xl border bg-card p-6 ${isMultiStore ? "cursor-pointer hover:border-border/80 transition-colors" : ""}`}
+              className={`rounded-[8px] border bg-card p-6 ${isMultiStore ? "cursor-pointer hover:border-border/80 transition-colors" : ""}`}
               onClick={isMultiStore ? () => toggleCard("recovery") : undefined}
             >
               <div className="flex items-center justify-between pb-2">
@@ -482,7 +482,7 @@ export function ClientPerformanceTables() {
             Configure as integrações Klaviyo e Shopify nas lojas do cliente para visualizar dados de performance.
           </p>
           <Button
-            variant="outline"
+            variant="secondary"
             size="sm"
             className="mt-4"
             onClick={onNavigateToStores}
@@ -509,7 +509,7 @@ export function ClientPerformanceTables() {
             enquanto a Visão Geral busca dados completos de campanhas e flows.
           </p>
           <Button
-            variant="outline"
+            variant="secondary"
             size="sm"
             className="mt-4"
             onClick={onNavigateToStores}
@@ -544,7 +544,7 @@ export function ClientPerformanceTables() {
     <div className="space-y-6">
       {/* Recent Campaigns Table */}
       {allCampaigns.length > 0 && (
-        <Card className="rounded-xl border bg-card">
+        <Card className="rounded-[8px] border">
           <CardHeader>
             <CardTitle className="text-base">Mensagens recentes de campanha</CardTitle>
           </CardHeader>
@@ -609,7 +609,7 @@ export function ClientPerformanceTables() {
 
       {/* Top Flows Table */}
       {allFlows.length > 0 && (
-        <Card className="rounded-xl border bg-card">
+        <Card className="rounded-[8px] border">
           <CardHeader>
             <CardTitle className="text-base">Fluxos com melhor desempenho</CardTitle>
           </CardHeader>

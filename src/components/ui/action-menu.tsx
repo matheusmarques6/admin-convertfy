@@ -1,4 +1,5 @@
 import { MoreHorizontal, type LucideIcon } from "lucide-react"
+import { Icon as IconWrapper } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -38,7 +39,7 @@ export function ActionMenu({ items, label = "Ações", triggerClassName, align =
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon-sm" className={cn("h-8 w-8", triggerClassName)}>
-          <MoreHorizontal className="h-4 w-4" />
+          <IconWrapper icon={MoreHorizontal} size={16} />
           <span className="sr-only">{label}</span>
         </Button>
       </DropdownMenuTrigger>
@@ -46,7 +47,6 @@ export function ActionMenu({ items, label = "Ações", triggerClassName, align =
         <DropdownMenuLabel>{label}</DropdownMenuLabel>
         <DropdownMenuSeparator />
         {regularItems.map((item) => {
-          const Icon = item.icon
           return (
             <DropdownMenuItem
               key={item.label}
@@ -56,12 +56,12 @@ export function ActionMenu({ items, label = "Ações", triggerClassName, align =
             >
               {item.href ? (
                 <a href={item.href}>
-                  {Icon && <Icon className="mr-2 h-4 w-4" />}
+                  {item.icon && <IconWrapper icon={item.icon} size={16} className="mr-2" />}
                   {item.label}
                 </a>
               ) : (
                 <>
-                  {Icon && <Icon className="mr-2 h-4 w-4" />}
+                  {item.icon && <IconWrapper icon={item.icon} size={16} className="mr-2" />}
                   {item.label}
                 </>
               )}
@@ -72,7 +72,6 @@ export function ActionMenu({ items, label = "Ações", triggerClassName, align =
           <>
             <DropdownMenuSeparator />
             {destructiveItems.map((item) => {
-              const Icon = item.icon
               return (
                 <DropdownMenuItem
                   key={item.label}
@@ -80,7 +79,7 @@ export function ActionMenu({ items, label = "Ações", triggerClassName, align =
                   disabled={item.disabled}
                   className="text-destructive focus:text-destructive"
                 >
-                  {Icon && <Icon className="mr-2 h-4 w-4" />}
+                  {item.icon && <IconWrapper icon={item.icon} size={16} className="mr-2" />}
                   {item.label}
                 </DropdownMenuItem>
               )

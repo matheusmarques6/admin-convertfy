@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { useToast } from "@/lib/hooks/use-toast"
 import { Check, X, MessageSquare, Store, User, Calendar, Loader2, FileText, ExternalLink, ImageIcon, BookOpen } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import Link from "next/link"
 
 interface PendingOnboarding {
@@ -174,7 +175,7 @@ export function OnboardingApprovals() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-48">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <Icon icon={Loader2} size={24} className="animate-spin text-muted-foreground" />
       </div>
     )
   }
@@ -182,7 +183,7 @@ export function OnboardingApprovals() {
   if (onboardings.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-48 text-muted-foreground">
-        <Check className="h-12 w-12 mb-2" />
+        <Icon icon={Check} customSize={48} className="mb-2" />
         <p className="text-lg font-medium">Nenhuma aprovação pendente</p>
         <p className="text-sm">Todos os formulários foram processados</p>
       </div>
@@ -193,25 +194,25 @@ export function OnboardingApprovals() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">Aprovações Pendentes</h3>
-        <Badge variant="secondary">{onboardings.length} pendente{onboardings.length > 1 ? "s" : ""}</Badge>
+        <Badge variant="neutral">{onboardings.length} pendente{onboardings.length > 1 ? "s" : ""}</Badge>
       </div>
 
       {onboardings.map((onb) => (
-        <Card key={onb.id} className="border-l-4 border-l-orange-400">
+        <Card key={onb.id}>
           <CardHeader className="pb-3">
             <div className="flex items-start justify-between">
               <div>
                 <CardTitle className="text-base flex items-center gap-2">
-                  <Store className="h-4 w-4" />
+                  <Icon icon={Store} size={16} />
                   {onb.store?.store_name || "Loja sem nome"}
                 </CardTitle>
                 <CardDescription className="flex items-center gap-2 mt-1">
-                  <User className="h-3 w-3" />
+                  <Icon icon={User} customSize={12} />
                   {onb.client?.name} {onb.client?.company ? `(${onb.client.company})` : ""}
                 </CardDescription>
               </div>
               <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                <Calendar className="h-3 w-3" />
+                <Icon icon={Calendar} customSize={12} />
                 {formatDate(onb.submitted_at)}
               </div>
             </div>
@@ -270,7 +271,7 @@ export function OnboardingApprovals() {
                     <p>
                       <a href={onb.store.store_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">
                         {onb.store.store_url}
-                        <ExternalLink className="h-3 w-3" />
+                        <Icon icon={ExternalLink} customSize={12} />
                       </a>
                     </p>
                   ) : (
@@ -295,7 +296,7 @@ export function OnboardingApprovals() {
                     <div>
                       <span className="text-muted-foreground text-xs">Sensibilidade de preço</span>
                       <p>
-                        <Badge variant="outline" className="text-xs">
+                        <Badge variant="neutral" showDot={false} className="text-xs">
                           {priceSensitivityLabel[onb.store_onboarding_data.price_sensitivity] || onb.store_onboarding_data.price_sensitivity}
                         </Badge>
                       </p>
@@ -324,19 +325,19 @@ export function OnboardingApprovals() {
                 <div className="flex flex-wrap gap-2">
                   {onb.store_onboarding_data?.logo_url && (
                     <a href={onb.store_onboarding_data.logo_url} target="_blank" rel="noopener noreferrer">
-                      <Badge variant="secondary" className="cursor-pointer hover:bg-muted gap-1">
-                        <ImageIcon className="h-3 w-3" />
+                      <Badge variant="neutral" className="cursor-pointer hover:bg-muted gap-1">
+                        <Icon icon={ImageIcon} customSize={12} />
                         Logo
-                        <ExternalLink className="h-3 w-3" />
+                        <Icon icon={ExternalLink} customSize={12} />
                       </Badge>
                     </a>
                   )}
                   {onb.store_onboarding_data?.brand_manual_url && (
                     <a href={onb.store_onboarding_data.brand_manual_url} target="_blank" rel="noopener noreferrer">
-                      <Badge variant="secondary" className="cursor-pointer hover:bg-muted gap-1">
-                        <BookOpen className="h-3 w-3" />
+                      <Badge variant="neutral" className="cursor-pointer hover:bg-muted gap-1">
+                        <Icon icon={BookOpen} customSize={12} />
                         Manual da Marca
-                        <ExternalLink className="h-3 w-3" />
+                        <Icon icon={ExternalLink} customSize={12} />
                       </Badge>
                     </a>
                   )}
@@ -348,7 +349,7 @@ export function OnboardingApprovals() {
             {/* Notas do formulário */}
             {onb.notes && (
               <div className="p-2 rounded bg-amber-500/10 text-amber-700 dark:text-amber-400 text-sm">
-                <FileText className="h-3 w-3 inline mr-1" />
+                <Icon icon={FileText} customSize={12} className="inline mr-1" />
                 {onb.notes}
               </div>
             )}
@@ -357,28 +358,28 @@ export function OnboardingApprovals() {
             <div className="flex items-center justify-between pt-2 border-t">
               <div className="flex items-center gap-2">
                 {onb.store_onboarding_data?.is_complete ? (
-                  <Badge variant="default" className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs">Formulário Completo</Badge>
+                  <Badge variant="info" className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs">Formulário Completo</Badge>
                 ) : (
-                  <Badge variant="secondary" className="text-xs">Formulário Parcial</Badge>
+                  <Badge variant="neutral" className="text-xs">Formulário Parcial</Badge>
                 )}
                 <Button size="sm" variant="ghost" asChild>
                   <Link href={`/admin/stores/${onb.store_id}`}>
-                    <Store className="h-4 w-4 mr-1" />
+                    <Icon icon={Store} size={16} className="mr-1" />
                     Ver Loja
                   </Link>
                 </Button>
               </div>
               <div className="flex gap-2">
                 <Button size="sm" onClick={() => openAction(onb, "approved")} className="bg-emerald-600 hover:bg-emerald-700 text-white">
-                  <Check className="h-4 w-4 mr-1" />
+                  <Icon icon={Check} size={16} className="mr-1" />
                   Aprovar
                 </Button>
-                <Button size="sm" variant="outline" onClick={() => openAction(onb, "revision_requested")}>
-                  <MessageSquare className="h-4 w-4 mr-1" />
+                <Button size="sm" variant="secondary" onClick={() => openAction(onb, "revision_requested")}>
+                  <Icon icon={MessageSquare} size={16} className="mr-1" />
                   Revisão
                 </Button>
                 <Button size="sm" variant="destructive" onClick={() => openAction(onb, "rejected")}>
-                  <X className="h-4 w-4 mr-1" />
+                  <Icon icon={X} size={16} className="mr-1" />
                   Rejeitar
                 </Button>
               </div>
@@ -425,7 +426,7 @@ export function OnboardingApprovals() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setActionDialog({ open: false })}>
+            <Button variant="secondary" onClick={() => setActionDialog({ open: false })}>
               Cancelar
             </Button>
             <Button
@@ -439,7 +440,7 @@ export function OnboardingApprovals() {
                   : ""
               }
             >
-              {processing ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+              {processing ? <Icon icon={Loader2} size={16} className="animate-spin mr-1" /> : null}
               {actionDialog.action === "approved" ? "Confirmar Aprovação" : "Confirmar"}
             </Button>
           </DialogFooter>

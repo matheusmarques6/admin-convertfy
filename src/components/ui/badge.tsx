@@ -3,32 +3,66 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 const badgeVariants = cva(
-  "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+  "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-[6px] border text-[11px] font-semibold tracking-[0.02em] transition-colors duration-150",
   {
     variants: {
       variant: {
-        default: "border-transparent bg-primary text-primary-foreground hover:bg-primary/80",
-        secondary: "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        destructive: "border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80",
-        outline: "text-foreground",
-        success: "border-transparent bg-success text-success-foreground hover:bg-success/80",
-        warning: "border-transparent bg-warning text-warning-foreground hover:bg-warning/80",
+        positive:
+          "bg-[#ECFDF5] text-[#065F46] border-[#A7F3D0] dark:bg-[#052E1C] dark:text-[#6EE7B7] dark:border-[rgba(110,231,183,0.15)]",
+        negative:
+          "bg-[#FEF2F2] text-[#991B1B] border-[#FECACA] dark:bg-[#3B1111] dark:text-[#FCA5A5] dark:border-[rgba(252,165,165,0.15)]",
+        warning:
+          "bg-[#FFFBEB] text-[#92400E] border-[#FDE68A] dark:bg-[#3B2506] dark:text-[#FCD34D] dark:border-[rgba(252,211,77,0.15)]",
+        neutral:
+          "bg-[#F3F4F6] text-[#374151] border-[#E5E7EB] dark:bg-[#242836] dark:text-[#8B92A5] dark:border-[rgba(255,255,255,0.08)]",
+        info: "bg-[#EEF0FB] text-[#2137B6] border-[#C7CDEF] dark:bg-[#141C3D] dark:text-[#A8B8F0] dark:border-[rgba(168,184,240,0.15)]",
       },
     },
     defaultVariants: {
-      variant: "default",
+      variant: "neutral",
     },
   }
 )
 
-export interface BadgeProps
-  extends React.HTMLAttributes<HTMLDivElement>,
-    VariantProps<typeof badgeVariants> {}
-
-function Badge({ className, variant, ...props }: BadgeProps) {
-  return (
-    <div className={cn(badgeVariants({ variant }), className)} {...props} />
-  )
+const dotColors: Record<string, string> = {
+  positive: "bg-[#065F46] dark:bg-[#6EE7B7]",
+  negative: "bg-[#991B1B] dark:bg-[#FCA5A5]",
+  warning: "bg-[#92400E] dark:bg-[#FCD34D]",
+  neutral: "bg-[#6B7280] dark:bg-[#8B92A5]",
+  info: "bg-[#4E62D8] dark:bg-[#7B8CEA]",
 }
+
+export interface BadgeProps
+  extends React.HTMLAttributes<HTMLSpanElement>,
+    VariantProps<typeof badgeVariants> {
+  /** Hide the status dot. Default: true */
+  showDot?: boolean
+}
+
+const Badge = React.forwardRef<HTMLSpanElement, BadgeProps>(
+  (
+    { className, variant = "neutral", showDot = true, children, ...props },
+    ref
+  ) => {
+    return (
+      <span
+        ref={ref}
+        className={cn(badgeVariants({ variant }), className)}
+        {...props}
+      >
+        {showDot && (
+          <span
+            className={cn(
+              "w-1.5 h-1.5 rounded-full shrink-0",
+              dotColors[variant ?? "neutral"]
+            )}
+          />
+        )}
+        {children}
+      </span>
+    )
+  }
+)
+Badge.displayName = "Badge"
 
 export { Badge, badgeVariants }

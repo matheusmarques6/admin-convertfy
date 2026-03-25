@@ -8,7 +8,8 @@ import { parseDateRangeInTimezone } from "@/lib/integrations/klaviyo"
 import type { DataStatus } from "@/lib/shared/data-status"
 
 // Decomposed services (Story 54.6)
-import { fetchKlaviyoFromCache, mapCacheToPortalKlaviyo } from "@/lib/services/portal-klaviyo-cache.service"
+import { fetchKlaviyoFromCache, mapCacheToPortalKlaviyo, fetchPeriodComparison } from "@/lib/services/portal-klaviyo-cache.service"
+import type { PeriodComparison } from "@/lib/services/portal-klaviyo-cache.service"
 import { fetchShopifyData, mapShopifyData } from "@/lib/services/portal-shopify-cache.service"
 import { aggregateKlaviyoData, aggregateShopifyData } from "@/lib/services/portal-aggregation.service"
 
@@ -331,6 +332,12 @@ export async function GET(request: NextRequest) {
             response.lastFetchedAt = cacheResult.fetchedAt
             response.isRefreshing = false
             response.source = cacheResult.isStale ? "stale-cache" : "cache"
+
+            // Fetch comparison data for "vs previous period"
+            const comparison = await fetchPeriodComparison(selectedStore.id, period, adminClient, storeOrgId)
+            if (comparison) {
+              response.previousPeriod = comparison
+            }
           } else {
             // Cache empty — cron will populate data
             response.dataStatus = "syncing" satisfies DataStatus
@@ -388,6 +395,22 @@ export async function GET(request: NextRequest) {
             response.dataStatus = "ready" satisfies DataStatus
             response.source = "cache"
             response.isRefreshing = false
+          }
+
+          // Fetch comparison data for all stores and aggregate
+          const comparisonPromises = storesWithKlaviyo.map(store =>
+            fetchPeriodComparison(store.id, period, adminClient, (store as Record<string, unknown>).org_id as string | undefined)
+          )
+          const comparisonResults = await Promise.all(comparisonPromises)
+          const validComparisons = comparisonResults.filter((c): c is PeriodComparison => c !== null)
+          if (validComparisons.length > 0) {
+            response.previousPeriod = {
+              storeRevenue: validComparisons.reduce((s, c) => s + c.storeRevenue, 0),
+              storeOrders: validComparisons.reduce((s, c) => s + c.storeOrders, 0),
+              totalRevenue: validComparisons.reduce((s, c) => s + c.totalRevenue, 0),
+              openRate: validComparisons.reduce((s, c) => s + c.openRate, 0) / validComparisons.length,
+              clickRate: validComparisons.reduce((s, c) => s + c.clickRate, 0) / validComparisons.length,
+            } satisfies PeriodComparison
           }
           // Use earliest fetchedAt from cache results
           response.lastFetchedAt = withCache.reduce<string | null>((oldest, r) => {

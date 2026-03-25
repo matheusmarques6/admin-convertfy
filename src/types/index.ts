@@ -811,7 +811,7 @@ export interface MemberWithDetails {
   updated_at: string
   job_title?: string
   organization?: Organization
-  profile?: { id: string; name: string; email: string; avatar_url?: string }
+  profile?: { id: string; name: string; email: string; avatar_url?: string; last_sign_in_at?: string }
   enabled_features?: string[]
   store_access_count?: number
 }

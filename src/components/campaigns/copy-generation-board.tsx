@@ -16,6 +16,7 @@ import {
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { StatusBadge } from "@/components/ui/status-badge"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -81,11 +82,11 @@ const ROLE_CONFIG: Record<string, { label: string; icon: typeof Paintbrush; colo
   sdr: { label: "SDR", icon: User, color: "text-orange-500" },
 }
 
-const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-  pending: { label: "Pendente", color: "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300" },
-  in_progress: { label: "Em andamento", color: "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400" },
-  completed: { label: "Concluida", color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400" },
-  skipped: { label: "Pulada", color: "bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400" },
+const TASK_STATUS_LABELS: Record<string, string> = {
+  pending: "Pendente",
+  in_progress: "Em andamento",
+  completed: "Concluida",
+  skipped: "Pulada",
 }
 
 // ---------------------------------------------------------------------------
@@ -210,9 +211,7 @@ export function CopyGenerationBoard() {
   if (tasks.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-24 text-center">
-        <div className="rounded-full bg-muted p-4 mb-4">
-          <FileText className="h-8 w-8 text-muted-foreground" />
-        </div>
+        <FileText className="h-8 w-8 text-muted-foreground mb-4" />
         <h3 className="text-lg font-semibold">Nenhuma tarefa de campanha</h3>
         <p className="text-muted-foreground mt-1 max-w-md">
           As tarefas serao criadas automaticamente quando uma geracao de copy for aprovada.
@@ -259,7 +258,7 @@ export function CopyGenerationBoard() {
           <div className="space-y-3">
             <div className="flex items-center gap-2 text-sm">
               <span className="text-muted-foreground">Role:</span>
-              <Badge variant="outline">
+              <Badge variant="neutral" showDot={false}>
                 {ROLE_CONFIG[actionTask?.role || ""]?.label || actionTask?.role}
               </Badge>
             </div>
@@ -272,13 +271,13 @@ export function CopyGenerationBoard() {
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setActionTask(null)}>
+            <Button variant="secondary" onClick={() => setActionTask(null)}>
               Cancelar
             </Button>
             <Button
               onClick={handleTaskAction}
               disabled={submitting}
-              variant={actionType === "skip" ? "secondary" : "default"}
+              variant={actionType === "skip" ? "secondary" : "primary"}
             >
               {submitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               {actionType === "start" && "Iniciar"}
@@ -348,23 +347,18 @@ function GenerationCard({
 
           {/* Progress badge */}
           <Badge
-            variant="outline"
+            variant="neutral"
             className={allDone ? "border-emerald-500 text-emerald-600" : ""}
           >
             {completedCount}/{tasks.length}
           </Badge>
 
           {/* Generation status */}
-          <Badge className={`border-transparent ${
-            generation.status === "completed"
-              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400"
-              : generation.status === "approved"
-                ? "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400"
-                : "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400"
-          }`}>
-            {generation.status === "completed" ? "Concluida" :
-             generation.status === "approved" ? "Em progresso" : generation.status}
-          </Badge>
+          <StatusBadge
+            status={generation.status}
+            label={generation.status === "completed" ? "Concluida" :
+                   generation.status === "approved" ? "Em progresso" : generation.status}
+          />
 
           {/* Drive link */}
           {generation.drive_folder_url && (
@@ -430,7 +424,7 @@ function TaskCard({
     icon: User,
     color: "text-muted-foreground",
   }
-  const statusConfig = STATUS_CONFIG[task.status] || STATUS_CONFIG.pending
+  const taskStatusLabel = TASK_STATUS_LABELS[task.status] || TASK_STATUS_LABELS.pending
   const Icon = roleConfig.icon
   const assigneeName =
     task.assignee && !Array.isArray(task.assignee)
@@ -450,9 +444,7 @@ function TaskCard({
       <div className="flex items-center gap-2">
         <Icon className={`h-4 w-4 ${roleConfig.color}`} />
         <span className="text-sm font-medium">{roleConfig.label}</span>
-        <Badge className={`ml-auto text-[10px] border-transparent ${statusConfig.color}`}>
-          {statusConfig.label}
-        </Badge>
+        <StatusBadge status={task.status} label={taskStatusLabel} showDot={false} className="ml-auto text-[10px]" />
       </div>
 
       {/* Assignee */}

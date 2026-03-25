@@ -1,9 +1,11 @@
 "use client"
 
 import { Mail, Users, Eye, FileText, Target } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { formatDistanceToNow } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { Badge } from "@/components/ui/badge"
+import { StatusBadge } from "@/components/ui/status-badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Dialog,
@@ -12,7 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { formatCurrency } from "@/lib/utils/format"
-import { CHANNEL_CONFIG, STATUS_CONFIG } from "@/lib/constants/calendar"
+import { CHANNEL_CONFIG } from "@/lib/constants/calendar"
 import type { PortalCampaign, PortalCampaignDetailMetrics } from "@/lib/hooks/use-portal-campaigns-calendar"
 
 // ============================================
@@ -59,19 +61,16 @@ export function CampaignDetailModal({
 }: CampaignDetailModalProps) {
   return (
     <Dialog open={open} onOpenChange={() => onClose()}>
-      <DialogContent className="bg-white dark:bg-[#151922] border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 max-w-lg sm:max-w-2xl">
+      <DialogContent className="bg-white dark:bg-[#1A1D27] border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-100 max-w-lg sm:max-w-2xl">
         {campaign && (
           <>
             <DialogHeader>
               <div className="flex items-start gap-4">
                 <div
-                  className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
+                  className="w-12 h-12 rounded-[8px] flex items-center justify-center flex-shrink-0"
                   style={{ backgroundColor: campaign.color || "#3b82f6" }}
                 >
-                  {(() => {
-                    const ChannelIcon = CHANNEL_CONFIG[campaign.channel]?.icon || Mail
-                    return <ChannelIcon className="h-6 w-6 text-white" />
-                  })()}
+                  <Icon icon={CHANNEL_CONFIG[campaign.channel]?.icon || Mail} size={24} className="text-white" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <DialogTitle className="text-xl text-slate-800 dark:text-slate-100">
@@ -91,9 +90,7 @@ export function CampaignDetailModal({
             <div className="space-y-5 mt-4">
               {/* Status, Channel and Source */}
               <div className="flex items-center gap-2 flex-wrap">
-                <Badge className={STATUS_CONFIG[campaign.status]?.color}>
-                  {STATUS_CONFIG[campaign.status]?.label}
-                </Badge>
+                <StatusBadge status={campaign.status} />
                 <Badge className={`${CHANNEL_CONFIG[campaign.channel]?.lightColor} ${CHANNEL_CONFIG[campaign.channel]?.textColor} border-0`}>
                   {CHANNEL_CONFIG[campaign.channel]?.label}
                 </Badge>
@@ -109,7 +106,7 @@ export function CampaignDetailModal({
               {campaign.subjectLine && (
                 <div className="rounded-lg bg-slate-50 dark:bg-[#1A1F2E] border border-slate-100 dark:border-slate-700/30 p-4">
                   <div className="flex items-center gap-2 mb-2">
-                    <FileText className="h-4 w-4 text-slate-400 dark:text-slate-500" />
+                    <Icon icon={FileText} size={16} className="text-slate-400 dark:text-slate-500" />
                     <p className="text-xs text-slate-400 dark:text-slate-500 uppercase tracking-wide">Assunto</p>
                   </div>
                   <p className="text-sm text-slate-800 dark:text-slate-100">{campaign.subjectLine}</p>
@@ -120,7 +117,7 @@ export function CampaignDetailModal({
               {campaign.segmentName && (
                 <div className="rounded-lg bg-slate-50 dark:bg-[#1A1F2E] border border-slate-100 dark:border-slate-700/30 p-4">
                   <div className="flex items-center gap-2 mb-2">
-                    <Target className="h-4 w-4 text-slate-400 dark:text-slate-500" />
+                    <Icon icon={Target} size={16} className="text-slate-400 dark:text-slate-500" />
                     <p className="text-xs text-slate-400 dark:text-slate-500 uppercase tracking-wide">Segmento</p>
                   </div>
                   <p className="text-sm text-slate-800 dark:text-slate-100">{campaign.segmentName}</p>
@@ -190,7 +187,7 @@ export function CampaignDetailModal({
                         <div className="grid grid-cols-2 gap-4">
                           <div className="rounded-lg bg-sky-50 dark:bg-sky-500/10 border border-sky-100 dark:border-sky-500/20 p-3">
                             <div className="flex items-center gap-2">
-                              <Users className="h-4 w-4 text-[#05AFF2]" />
+                              <Icon icon={Users} size={16} className="text-[#4E62D8] dark:text-[#7B8CEA]" />
                               <span className="text-xs text-slate-500 dark:text-slate-400">Enviados</span>
                             </div>
                             <p className="text-lg font-bold text-slate-800 dark:text-slate-100 mt-1">
@@ -199,7 +196,7 @@ export function CampaignDetailModal({
                           </div>
                           <div className="rounded-lg bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 p-3">
                             <div className="flex items-center gap-2">
-                              <Eye className="h-4 w-4 text-emerald-600" />
+                              <Icon icon={Eye} size={16} className="text-emerald-600" />
                               <span className="text-xs text-slate-500 dark:text-slate-400">Abertura</span>
                             </div>
                             <p className="text-lg font-bold text-slate-800 dark:text-slate-100 mt-1">

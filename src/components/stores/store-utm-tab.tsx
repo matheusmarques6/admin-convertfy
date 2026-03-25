@@ -189,7 +189,7 @@ export function StoreUtmTab({ storeId, storeUrl, period, customDates, currency =
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
         ) : !utmData || utmData.totalOrdersWithUtm === 0 ? (
-          <Card className="rounded-xl">
+          <Card className="rounded-[8px]">
             <CardContent className="py-16 text-center">
               <Link2 className="h-10 w-10 mx-auto mb-3 text-muted-foreground/40" />
               <p className="text-muted-foreground font-medium">Nenhum dado UTM encontrado</p>
@@ -202,7 +202,7 @@ export function StoreUtmTab({ storeId, storeUrl, period, customDates, currency =
           <div className="space-y-6">
             {/* Summary Cards */}
             <div className="grid gap-4 sm:grid-cols-2">
-              <Card className="rounded-xl">
+              <Card className="rounded-[8px]">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground">
                     Pedidos com UTM
@@ -211,7 +211,7 @@ export function StoreUtmTab({ storeId, storeUrl, period, customDates, currency =
                 <CardContent>
                   <div className="flex items-baseline gap-2">
                     <span className="text-3xl font-bold">{utmData.totalOrdersWithUtm}</span>
-                    <Badge variant="secondary" className="text-xs">
+                    <Badge variant="neutral" className="text-xs">
                       <TrendingUp className="h-3 w-3 mr-1" />
                       {formatPercent(utmData.utmTrackingRate)} do total
                     </Badge>
@@ -219,7 +219,7 @@ export function StoreUtmTab({ storeId, storeUrl, period, customDates, currency =
                 </CardContent>
               </Card>
 
-              <Card className="rounded-xl">
+              <Card className="rounded-[8px]">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground">
                     Taxa de Rastreio UTM
@@ -450,7 +450,7 @@ function UtmTemplatesSection({
 
       {/* Warning if store_url is missing */}
       {!storeUrl && (
-        <Card className="rounded-xl border-yellow-500/50 bg-yellow-500/5 mb-4">
+        <Card className="rounded-[8px] border-yellow-500/50 bg-yellow-500/5 mb-4">
           <CardContent className="py-4 flex items-center gap-3">
             <AlertTriangle className="h-5 w-5 text-yellow-500 shrink-0" />
             <p className="text-sm text-yellow-700 dark:text-yellow-400">
@@ -465,7 +465,7 @@ function UtmTemplatesSection({
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
       ) : templates.length === 0 ? (
-        <Card className="rounded-xl">
+        <Card className="rounded-[8px]">
           <CardContent className="py-12 text-center">
             <Link2 className="h-8 w-8 mx-auto mb-3 text-muted-foreground/40" />
             <p className="text-muted-foreground font-medium">Nenhum template criado</p>
@@ -475,7 +475,7 @@ function UtmTemplatesSection({
           </CardContent>
         </Card>
       ) : (
-        <Card className="rounded-xl">
+        <Card className="rounded-[8px]">
           <CardContent className="pt-6">
             <Table>
               <TableHeader>
@@ -501,23 +501,23 @@ function UtmTemplatesSection({
                       )}
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="text-xs font-mono">
+                      <Badge variant="neutral" showDot={false} className="text-xs font-mono">
                         {t.utm_source}
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="text-xs font-mono">
+                      <Badge variant="neutral" showDot={false} className="text-xs font-mono">
                         {t.utm_medium}
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="text-xs font-mono">
+                      <Badge variant="neutral" showDot={false} className="text-xs font-mono">
                         {t.utm_campaign}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-center">{t.usage_count}</TableCell>
                     <TableCell className="text-center">
-                      <Badge variant={t.is_active ? "default" : "secondary"} className="text-xs">
+                      <Badge variant={t.is_active ? "info" : "neutral"} className="text-xs">
                         {t.is_active ? "Ativo" : "Inativo"}
                       </Badge>
                     </TableCell>
@@ -823,7 +823,7 @@ function UtmTemplateDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+          <Button variant="secondary" onClick={() => onOpenChange(false)} disabled={saving}>
             Cancelar
           </Button>
           <Button onClick={handleSubmit} disabled={saving}>
@@ -859,7 +859,7 @@ function UtmTable({
 }) {
   if (!data || data.length === 0) {
     return (
-      <Card className="rounded-xl">
+      <Card className="rounded-[8px]">
         <CardContent className="py-10 text-center text-muted-foreground">
           Nenhum dado para esta dimensao.
         </CardContent>
@@ -870,7 +870,7 @@ function UtmTable({
   const sorted = [...data].sort((a, b) => b.orders - a.orders)
 
   return (
-    <Card className="rounded-xl">
+    <Card className="rounded-[8px]">
       <CardContent className="pt-6">
         <Table>
           <TableHeader>

@@ -95,7 +95,7 @@ export function FinancialCharts({
   const hasRevenueData = displayRevenueData.some((d) => d.receita > 0)
 
   return (
-    <div className="rounded-xl border border-border bg-card h-full">
+    <div className="rounded-[8px] border border-border bg-card h-full">
       <CardHeader>
         <CardTitle className="text-base font-semibold text-foreground">Visão Geral</CardTitle>
         <CardDescription className="text-xs">Acompanhe o desempenho da sua agência</CardDescription>
@@ -153,14 +153,14 @@ export function FinancialCharts({
               ) : hasRevenueData ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={displayRevenueData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                     <XAxis
                       dataKey="month"
-                      stroke="hsl(var(--muted-foreground))"
+                      stroke="var(--muted-foreground)"
                       fontSize={12}
                     />
                     <YAxis
-                      stroke="hsl(var(--muted-foreground))"
+                      stroke="var(--muted-foreground)"
                       fontSize={12}
                       tickFormatter={(value) =>
                         value >= 1000 ? `${(value / 1000).toFixed(0)}k` : String(value)
@@ -168,13 +168,13 @@ export function FinancialCharts({
                     />
                     <Tooltip
                       contentStyle={{
-                        backgroundColor: "hsl(var(--card))",
-                        border: "1px solid hsl(var(--border))",
+                        backgroundColor: "var(--card)",
+                        border: "1px solid var(--border)",
                         borderRadius: "8px",
                       }}
-                      formatter={(value: number) => [formatCurrency(value), "Receita"]}
+                      formatter={(value) => [formatCurrency(Number(value)), "Receita"]}
                     />
-                    <Bar dataKey="receita" fill="hsl(var(--success))" radius={[4, 4, 0, 0]} name="Receita" isAnimationActive={true} animationDuration={800} />
+                    <Bar dataKey="receita" fill="var(--success)" radius={[4, 4, 0, 0]} name="Receita" isAnimationActive={true} animationDuration={800} />
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
@@ -242,32 +242,32 @@ export function FinancialCharts({
               {hasPipelineData ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={pipelineData} layout="vertical">
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                     <XAxis
                       type="number"
-                      stroke="hsl(var(--muted-foreground))"
+                      stroke="var(--muted-foreground)"
                       fontSize={12}
                       tickFormatter={(value) => `${value / 1000}k`}
                     />
                     <YAxis
                       dataKey="stage"
                       type="category"
-                      stroke="hsl(var(--muted-foreground))"
+                      stroke="var(--muted-foreground)"
                       fontSize={12}
                       width={100}
                     />
                     <Tooltip
                       contentStyle={{
-                        backgroundColor: "hsl(var(--card))",
-                        border: "1px solid hsl(var(--border))",
+                        backgroundColor: "var(--card)",
+                        border: "1px solid var(--border)",
                         borderRadius: "8px",
                       }}
-                      formatter={(value: number, _name, props) => [
-                        `${formatCurrency(value)} (${props.payload.deals} deals)`,
+                      formatter={(value, _name, props) => [
+                        `${formatCurrency(Number(value))} (${(props as { payload?: { deals?: number } }).payload?.deals ?? 0} deals)`,
                         "Valor",
                       ]}
                     />
-                    <Bar dataKey="value" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} isAnimationActive={true} animationDuration={800} />
+                    <Bar dataKey="value" fill="var(--primary)" radius={[0, 4, 4, 0]} isAnimationActive={true} animationDuration={800} />
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
@@ -299,11 +299,11 @@ export function FinancialCharts({
                     </Pie>
                     <Tooltip
                       contentStyle={{
-                        backgroundColor: "hsl(var(--card))",
-                        border: "1px solid hsl(var(--border))",
+                        backgroundColor: "var(--card)",
+                        border: "1px solid var(--border)",
                         borderRadius: "8px",
                       }}
-                      formatter={(value: number) => [`${value} clientes`, ""]}
+                      formatter={(value) => [`${value} clientes`, ""]}
                     />
                   </PieChart>
                 </ResponsiveContainer>

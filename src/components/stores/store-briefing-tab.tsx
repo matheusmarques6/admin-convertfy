@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { Loader2 } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import {
   Dialog,
   DialogContent,
@@ -72,7 +73,7 @@ export function StoreBriefingTab({ storeId, clientId }: StoreBriefingTabProps) {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <Icon icon={Loader2} customSize={32} className="animate-spin text-muted-foreground" />
       </div>
     )
   }
@@ -82,7 +83,7 @@ export function StoreBriefingTab({ storeId, clientId }: StoreBriefingTabProps) {
       {/* AC 12.1.1 — Indicador de aguardando N8N quando sem briefing e sem loading */}
       {briefing === null && (
         <div className="flex items-center gap-2 mb-4 rounded-md border border-muted bg-muted/30 px-4 py-3">
-          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground shrink-0" />
+          <Icon icon={Loader2} size={16} className="animate-spin text-muted-foreground" />
           <p className="text-sm text-muted-foreground">
             Briefing sendo gerado pelo N8N. Atualizando automaticamente a cada 10 segundos...
           </p>
@@ -102,7 +103,7 @@ export function StoreBriefingTab({ storeId, clientId }: StoreBriefingTabProps) {
           </DialogHeader>
           {formLoading ? (
             <div className="flex items-center justify-center py-10">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              <Icon icon={Loader2} customSize={32} className="animate-spin text-muted-foreground" />
             </div>
           ) : (
             <StoreOnboardingForm

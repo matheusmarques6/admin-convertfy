@@ -1,6 +1,7 @@
 "use client"
 
-import { Clock, Check, AlertTriangle, FileText } from "lucide-react"
+import { Clock, Check, AlertTriangle, FileText, type LucideIcon } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { ReportHistoryCard } from "./report-history-card"
 import type { ReportJob } from "@/types/report"
 
@@ -13,7 +14,7 @@ interface ReportHistoryListProps {
 interface Section {
   key: string
   title: string
-  icon: React.ElementType
+  icon: LucideIcon
   jobs: ReportJob[]
 }
 
@@ -33,7 +34,7 @@ export function ReportHistoryList({ jobs, onRetry, onDownloadCsv }: ReportHistor
   if (sections.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center">
-        <FileText className="h-12 w-12 text-muted-foreground/50 mb-4" />
+        <Icon icon={FileText} customSize={48} className="text-muted-foreground/50 mb-4" />
         <h3 className="text-lg font-medium mb-1">Nenhum relatorio gerado</h3>
         <p className="text-sm text-muted-foreground max-w-sm">
           Gere seu primeiro relatorio clicando no botao acima para acompanhar o desempenho das lojas.
@@ -45,11 +46,10 @@ export function ReportHistoryList({ jobs, onRetry, onDownloadCsv }: ReportHistor
   return (
     <div className="space-y-8">
       {sections.map((section) => {
-        const SectionIcon = section.icon
         return (
           <div key={section.key}>
             <div className="flex items-center gap-2 mb-3">
-              <SectionIcon className="h-4 w-4 text-muted-foreground" />
+              <Icon icon={section.icon} size={16} className="text-muted-foreground" />
               <h3 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
                 {section.title} ({section.jobs.length})
               </h3>

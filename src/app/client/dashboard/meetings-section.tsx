@@ -195,7 +195,7 @@ function ParticipantsList({ participants }: { participants?: PortalMeetingPartic
 function MeetSourceBadge({ source }: { source?: string }) {
   if (source !== "google_meet") return null
   return (
-    <Badge variant="outline" className="gap-1 text-[10px] px-1.5 py-0 h-4 border-blue-200 dark:border-blue-500/30 text-blue-600 dark:text-blue-400">
+    <Badge variant="neutral" showDot={false} className="gap-1 text-[10px] px-1.5 py-0 h-4 border-blue-200 dark:border-blue-500/30 text-blue-600 dark:text-blue-400">
       <Video className="h-2.5 w-2.5" />
       Meet
     </Badge>
@@ -251,7 +251,7 @@ export function MeetingsSection({ meetings }: MeetingsSectionProps) {
   const completedMeetings = localMeetings.filter(m => m.status === "completed")
 
   return (
-    <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20 p-5 relative">
+    <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5 relative">
       {/* Toast notification */}
       {toastMessage && (
         <div
@@ -271,7 +271,7 @@ export function MeetingsSection({ meetings }: MeetingsSectionProps) {
         <>
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-medium text-slate-800 dark:text-slate-100 flex items-center gap-2">
-              <Video className="h-4 w-4 text-[#05AFF2]" />
+              <Video className="h-4 w-4 text-[#4E62D8] dark:text-[#7B8CEA]" />
               Proximas Reunioes
             </h3>
             <span className="text-xs text-slate-500 dark:text-slate-400">{upcomingMeetings.length} agendadas</span>
@@ -301,14 +301,14 @@ export function MeetingsSection({ meetings }: MeetingsSectionProps) {
                   key={meeting.id}
                   className={`p-3 rounded-lg border ${
                     isToday
-                      ? "border-[#05AFF2]/30 bg-[#05AFF2]/5"
+                      ? "border-[#4E62D8]/30 dark:border-[#7B8CEA]/30 bg-[#4E62D8]/5 dark:bg-[#7B8CEA]/5"
                       : "border-slate-200/80 dark:border-slate-700/40 bg-slate-50/50 dark:bg-slate-800/30"
                   }`}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className={`rounded-lg p-2 shrink-0 ${isToday ? "bg-[#05AFF2]/15" : "bg-slate-100 dark:bg-slate-800"}`}>
-                        <Video className={`h-4 w-4 ${isToday ? "text-[#05AFF2]" : "text-slate-400 dark:text-slate-500"}`} />
+                      <div className={`rounded-lg p-2 shrink-0 ${isToday ? "bg-[#4E62D8]/15 dark:bg-[#7B8CEA]/15" : "bg-slate-100 dark:bg-slate-800"}`}>
+                        <Video className={`h-4 w-4 ${isToday ? "text-[#4E62D8] dark:text-[#7B8CEA]" : "text-slate-400 dark:text-slate-500"}`} />
                       </div>
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
@@ -377,7 +377,7 @@ export function MeetingsSection({ meetings }: MeetingsSectionProps) {
                   </p>
                   <ParticipantsList participants={meeting.participants} />
                   {meeting.completionNotes && (
-                    <div className="bg-white dark:bg-[#1A1F2E] rounded-lg p-3 border-l-2 border-[#05AFF2]/30 mt-2">
+                    <div className="bg-white dark:bg-[#1A1F2E] rounded-lg p-3 border-l-2 border-[#4E62D8]/30 dark:border-[#7B8CEA]/30 mt-2">
                       <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 mb-1.5">
                         <FileText className="h-3 w-3" />
                         Notas da reuniao

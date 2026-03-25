@@ -1,10 +1,8 @@
-import { Suspense } from "react"
 import { Kanban } from "lucide-react"
 import { createClient, createAdminClient } from "@/lib/supabase/server"
-import { PipelineBoard } from "@/components/pipeline/pipeline-board"
-import { PipelineHeader } from "@/components/pipeline/pipeline-header"
+import { PageHeader } from "@/components/ui/page-header"
+import { PipelineContent } from "@/components/pipeline/pipeline-content"
 import { PipelineStoreInitializer } from "@/components/pipeline/pipeline-store-initializer"
-import { Skeleton } from "@/components/ui/skeleton"
 import type { PipelineMemberRole } from "@/types"
 
 export const dynamic = "force-dynamic"
@@ -57,7 +55,7 @@ async function getPipelineData(searchPipelineId?: string) {
     }
   }
 
-  // Fetch stages, deals, members, and import rules in parallel (adminClient bypasses RLS)
+  // Fetch stages, deals, members, and import rules in parallel
   const [stagesResult, dealsResult, membersResult, rulesResult] =
     await Promise.all([
       adminClient
@@ -126,16 +124,6 @@ async function getPipelineData(searchPipelineId?: string) {
   }
 }
 
-function BoardSkeleton() {
-  return (
-    <div className="flex gap-4 overflow-x-auto pb-4">
-      {[...Array(5)].map((_, i) => (
-        <Skeleton key={i} className="h-[500px] w-[300px] flex-shrink-0" />
-      ))}
-    </div>
-  )
-}
-
 export default async function PipelinePage({
   searchParams,
 }: {
@@ -145,17 +133,14 @@ export default async function PipelinePage({
   const data = await getPipelineData(params.id)
 
   return (
-    <div className="space-y-6 h-full flex flex-col">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/10">
-          <Kanban className="w-5 h-5 text-primary" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Pipeline</h1>
-          <p className="text-sm text-muted-foreground">Gerencie oportunidades e acompanhe o funil de vendas</p>
-        </div>
-      </div>
+    <div className="space-y-5 h-full flex flex-col">
+      {/* PageHeader — DS v3.0 Rule 14, no icon-in-circle */}
+      <PageHeader
+        title="Pipeline"
+        description="Gerencie oportunidades e acompanhe o funil de vendas"
+        icon={Kanban}
+        badge={data.deals.length}
+      />
 
       {/* Sync server data into Zustand store */}
       <PipelineStoreInitializer
@@ -168,27 +153,16 @@ export default async function PipelinePage({
         currentUserRole={data.currentUserRole}
       />
 
-      {/* Header */}
-      <PipelineHeader
+      {/* Pipeline Content — view switcher + kanban/list + dialogs */}
+      <PipelineContent
         pipelines={data.pipelines}
         currentPipeline={data.pipeline}
         stages={data.stages}
+        deals={data.deals}
         members={data.members}
         importRules={data.importRules}
         currentUserRole={data.currentUserRole}
       />
-
-      {/* Kanban Board */}
-      <div className="flex-1 min-h-0">
-        <Suspense fallback={<BoardSkeleton />}>
-          <PipelineBoard
-            stages={data.stages}
-            deals={data.deals}
-            pipelineId={data.pipeline?.id}
-            currentUserRole={data.currentUserRole}
-          />
-        </Suspense>
-      </div>
     </div>
   )
 }

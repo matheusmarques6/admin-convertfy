@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils"
 import { Check, type LucideIcon } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 
 export interface StepperStep {
   id: string
@@ -33,7 +34,7 @@ export function OnboardingStepper({ steps, currentIndex, onNavigate }: Onboardin
           />
 
           {steps.map((step, i) => {
-            const Icon = step.icon
+            const StepIcon = step.icon
             const isActive = i === currentIndex
             const isComplete = i < currentIndex
 
@@ -57,17 +58,19 @@ export function OnboardingStepper({ steps, currentIndex, onNavigate }: Onboardin
                   )}
                 >
                   <Icon
+                    icon={StepIcon}
+                    customSize={isActive ? 20 : 16}
                     className={cn(
                       "transition-all duration-300",
-                      isActive && "h-5 w-5 sm:h-8 sm:w-8 text-primary drop-shadow-[0_0_10px_rgba(124,58,237,0.4)]",
-                      isComplete && "h-4 w-4 sm:h-6 sm:w-6 text-primary opacity-85",
-                      !isActive && !isComplete && "h-4 w-4 sm:h-6 sm:w-6 text-muted-foreground/20"
+                      isActive && "sm:!h-8 sm:!w-8 text-primary",
+                      isComplete && "sm:!h-6 sm:!w-6 text-primary opacity-85",
+                      !isActive && !isComplete && "sm:!h-6 sm:!w-6 text-muted-foreground/20"
                     )}
                   />
                   {/* Check badge for completed steps */}
                   {isComplete && (
                     <span className="absolute -bottom-0.5 -right-1 flex items-center justify-center w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full bg-emerald-500 border-2 border-background">
-                      <Check className="h-2 w-2 sm:h-2.5 sm:w-2.5 text-white" strokeWidth={3} />
+                      <Icon icon={Check} customSize={8} className="sm:!h-2.5 sm:!w-2.5 text-white [stroke-width:3]" />
                     </span>
                   )}
                 </div>

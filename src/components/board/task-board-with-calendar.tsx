@@ -2,15 +2,21 @@
 
 import { useState, useCallback, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { Plus, LayoutGrid, Calendar, Video } from "lucide-react"
+import { LayoutGrid, List, Calendar, Video, Plus } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { SegmentedTabs, SegmentedTabItem } from "@/components/ui/segmented-tabs"
 import { TaskBoard } from "./task-board"
+import { BoardMobileKanban } from "./board-mobile-kanban"
+import { BoardListView } from "./board-list-view"
 import { BoardCalendarView } from "./board-calendar-view"
 import { MeetingsTab } from "./meetings-tab"
 import { TaskDialog } from "./task-dialog"
 import { useRealtimeBoard } from "@/hooks/use-realtime-board"
-import type { Task, Meeting } from "@/types"
+import { useMediaQuery } from "@/hooks/use-media-query"
+import { toast } from "@/lib/hooks/use-toast"
+import { TASK_STATUS_CONFIG } from "@/lib/constants/board"
+import type { Task, TaskStatus, Meeting } from "@/types"
 
 interface UserProfile {
   id: string
@@ -60,7 +66,7 @@ interface TaskBoardWithCalendarProps {
   orgMemberId: string
 }
 
-type ViewMode = "kanban" | "meetings" | "calendar"
+type ViewMode = "kanban" | "list" | "meetings" | "calendar"
 
 export function TaskBoardWithCalendar({
   tasks,
@@ -71,13 +77,14 @@ export function TaskBoardWithCalendar({
   orgMemberId,
 }: TaskBoardWithCalendarProps) {
   const router = useRouter()
+  const isMobile = useMediaQuery("(max-width: 767px)")
   const [viewMode, setViewMode] = useState<ViewMode>("kanban")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingTask, setEditingTask] = useState<TaskWithRelations | null>(null)
   const [localTasks, setLocalTasks] = useState<TaskWithRelations[]>(tasks)
   const [localMeetings, setLocalMeetings] = useState<MeetingWithRelations[]>(meetings)
 
-  // Sync server props → local state (for router.refresh() or initial load changes)
+  // Sync server props → local state
   useEffect(() => {
     setLocalTasks(tasks)
   }, [tasks])
@@ -86,7 +93,7 @@ export function TaskBoardWithCalendar({
     setLocalMeetings(meetings)
   }, [meetings])
 
-  // Realtime subscription: auto-refresh board when tasks change in DB
+  // Realtime subscription
   useRealtimeBoard({
     onDataUpdate: useCallback(() => {
       router.refresh()
@@ -117,81 +124,118 @@ export function TaskBoardWithCalendar({
     if (newTask) {
       setLocalTasks((prev) => {
         if (wasEditing) {
-          // Update existing task in state
           return prev.map((t) => (t.id === newTask.id ? { ...t, ...newTask } : t))
         }
-        // Add new task to state
         return [newTask, ...prev]
       })
     }
 
-    // Also refresh server data in the background
     router.refresh()
   }, [handleDialogClose, editingTask, router])
 
-  // Count upcoming items
-  const today = new Date()
-  const upcomingTasks = localTasks.filter(t => t.due_date && new Date(t.due_date) >= today).length
-  const upcomingMeetings = localMeetings.filter(m => m.status === "scheduled" && new Date(m.scheduled_at) >= today).length
+  const handleStatusChange = useCallback(async (taskId: string, newStatus: TaskStatus) => {
+    // Optimistic update
+    setLocalTasks((prev) =>
+      prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t))
+    )
 
-  const getSubtitle = () => {
-    switch (viewMode) {
-      case "kanban":
-        return "Gerencie suas tarefas no estilo Kanban"
-      case "meetings":
-        return `${upcomingMeetings} reuniões agendadas`
-      case "calendar":
-        return `${upcomingTasks} tarefas e ${upcomingMeetings} reuniões agendadas`
+    try {
+      const response = await fetch(`/api/tasks/${taskId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      })
+
+      if (!response.ok) throw new Error("Failed")
+
+      toast({
+        title: "Status atualizado",
+        description: `Movido para ${TASK_STATUS_CONFIG[newStatus].label}`,
+      })
+    } catch {
+      router.refresh()
+      toast({
+        variant: "destructive",
+        title: "Erro ao atualizar",
+      })
     }
-  }
+  }, [router])
+
+  const handleDeleteTask = useCallback(async (taskId: string) => {
+    setLocalTasks((prev) => prev.filter((t) => t.id !== taskId))
+
+    try {
+      const response = await fetch(`/api/tasks/${taskId}`, { method: "DELETE" })
+      if (!response.ok) throw new Error("Failed")
+      toast({ title: "Tarefa excluída" })
+    } catch {
+      router.refresh()
+      toast({ variant: "destructive", title: "Erro ao excluir" })
+    }
+  }, [router])
 
   return (
     <>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold">Board</h1>
-          <p className="text-muted-foreground">{getSubtitle()}</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)}>
-            <TabsList>
-              <TabsTrigger value="kanban" className="gap-2">
-                <LayoutGrid className="h-4 w-4" />
-                Tarefas
-              </TabsTrigger>
-              <TabsTrigger value="meetings" className="gap-2">
-                <Video className="h-4 w-4" />
-                Reuniões
-              </TabsTrigger>
-              <TabsTrigger value="calendar" className="gap-2">
-                <Calendar className="h-4 w-4" />
-                Calendário
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
-          {viewMode === "kanban" && (
-            <Button onClick={handleNewTask}>
-              <Plus className="mr-2 h-4 w-4" />
-              Nova Tarefa
-            </Button>
-          )}
-        </div>
+      {/* Toolbar: View switcher + New Task */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
+        <SegmentedTabs value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)}>
+          <SegmentedTabItem value="kanban">
+            <Icon icon={LayoutGrid} size={16} className="mr-1.5 hidden sm:inline" />
+            Tarefas
+          </SegmentedTabItem>
+          <SegmentedTabItem value="list">
+            <Icon icon={List} size={16} className="mr-1.5 hidden sm:inline" />
+            Lista
+          </SegmentedTabItem>
+          <SegmentedTabItem value="meetings">
+            <Icon icon={Video} size={16} className="mr-1.5 hidden sm:inline" />
+            Reuniões
+          </SegmentedTabItem>
+          <SegmentedTabItem value="calendar">
+            <Icon icon={Calendar} size={16} className="mr-1.5 hidden sm:inline" />
+            Calendário
+          </SegmentedTabItem>
+        </SegmentedTabs>
+
+        {(viewMode === "kanban" || viewMode === "list") && (
+          <Button size="sm" onClick={handleNewTask}>
+            <Plus className="mr-1.5 h-4 w-4" />
+            Nova Tarefa
+          </Button>
+        )}
       </div>
 
       {/* Content */}
       <div className="flex-1 overflow-hidden">
         {viewMode === "kanban" && (
-          <TaskBoard
+          isMobile ? (
+            <BoardMobileKanban
+              tasks={localTasks}
+              onTaskClick={handleTaskClick}
+              onStatusChange={handleStatusChange}
+            />
+          ) : (
+            <TaskBoard
+              tasks={localTasks}
+              members={members}
+              clients={clients}
+              stores={stores}
+              externalDialogOpen={dialogOpen}
+              externalEditingTask={editingTask}
+              onExternalDialogClose={handleDialogClose}
+            />
+          )
+        )}
+
+        {viewMode === "list" && (
+          <BoardListView
             tasks={localTasks}
-            members={members}
-            clients={clients}
-            stores={stores}
-            externalDialogOpen={dialogOpen}
-            externalEditingTask={editingTask}
-            onExternalDialogClose={handleDialogClose}
+            onTaskClick={handleTaskClick}
+            onStatusChange={handleStatusChange}
+            onDeleteTask={handleDeleteTask}
           />
         )}
+
         {viewMode === "meetings" && (
           <MeetingsTab
             meetings={localMeetings}
@@ -207,6 +251,7 @@ export function TaskBoardWithCalendar({
             }))}
           />
         )}
+
         {viewMode === "calendar" && (
           <BoardCalendarView
             tasks={localTasks}
@@ -217,15 +262,17 @@ export function TaskBoardWithCalendar({
       </div>
 
       {/* Dialog for task creation/editing */}
-      <TaskDialog
-        open={dialogOpen}
-        onClose={handleDialogClose}
-        onSuccess={handleDialogSuccess}
-        task={editingTask}
-        members={members}
-        clients={clients}
-        stores={stores}
-      />
+      {viewMode !== "kanban" && (
+        <TaskDialog
+          open={dialogOpen}
+          onClose={handleDialogClose}
+          onSuccess={handleDialogSuccess}
+          task={editingTask ?? undefined}
+          members={members}
+          clients={clients}
+          stores={stores}
+        />
+      )}
     </>
   )
 }

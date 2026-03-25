@@ -237,7 +237,7 @@ export function ClientPortalUsers({ clientId, clientName }: ClientPortalUsersPro
   const hasLoggedIn = (user: ClientPortalUser) => (user.login_count || 0) > 0
 
   return (
-    <Card className="rounded-xl border bg-card">
+    <Card className="rounded-[8px] border">
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
@@ -278,30 +278,28 @@ export function ClientPortalUsers({ clientId, clientName }: ClientPortalUsersPro
                 }`}
               >
                 <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                    <User className="h-5 w-5 text-primary" />
-                  </div>
+                  <User className="h-5 w-5 text-muted-foreground" />
                   <div>
                     <div className="flex items-center gap-2">
                       <p className="font-medium">{user.name}</p>
                       {user.is_primary && (
-                        <Badge variant="secondary" className="text-xs">
+                        <Badge variant="neutral" className="text-xs">
                           Principal
                         </Badge>
                       )}
                       {!user.is_active && (
-                        <Badge variant="destructive" className="text-xs">
+                        <Badge variant="negative" className="text-xs">
                           Inativo
                         </Badge>
                       )}
                       {user.is_active && !hasLoggedIn(user) && (
-                        <Badge variant="outline" className="text-xs text-amber-600 border-amber-300 bg-amber-50">
+                        <Badge variant="neutral" showDot={false} className="text-xs text-amber-600 border-amber-300 bg-amber-50">
                           <Clock className="h-3 w-3 mr-1" />
                           Convite pendente
                         </Badge>
                       )}
                       {user.is_active && hasLoggedIn(user) && (
-                        <Badge variant="outline" className="text-xs text-emerald-600 border-emerald-300 bg-emerald-50">
+                        <Badge variant="neutral" showDot={false} className="text-xs text-emerald-600 border-emerald-300 bg-emerald-50">
                           <CheckCircle2 className="h-3 w-3 mr-1" />
                           Ativo
                         </Badge>
@@ -467,7 +465,7 @@ export function ClientPortalUsers({ clientId, clientName }: ClientPortalUsersPro
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAddModal(false)}>
+            <Button variant="secondary" onClick={() => setShowAddModal(false)}>
               Cancelar
             </Button>
             <Button onClick={handleCreateUser} disabled={submitting || !formData.name || !formData.email}>

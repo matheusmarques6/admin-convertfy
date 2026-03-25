@@ -6,6 +6,7 @@ import {
   ClipboardList,
   Rocket,
 } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 import { formatNumber } from "@/lib/utils"
 import { cn } from "@/lib/utils"
 
@@ -23,7 +24,7 @@ export function OperationalMetrics({ metrics }: OperationalMetricsProps) {
     title: string
     value: string
     subtitle?: string
-    icon: React.ElementType
+    icon: LucideIcon
     iconColor: string
     iconBg: string
   }> = [
@@ -62,7 +63,7 @@ export function OperationalMetrics({ metrics }: OperationalMetricsProps) {
       {cards.map((card) => (
         <div
           key={card.title}
-          className="rounded-xl border border-border bg-card p-4"
+          className="rounded-[8px] border border-border bg-card p-4"
         >
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-medium text-muted-foreground">

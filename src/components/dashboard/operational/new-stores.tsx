@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { Store } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -61,15 +62,15 @@ interface NewStoresProps {
 
 export function NewStores({ stores }: NewStoresProps) {
   return (
-    <div className="rounded-xl border border-border bg-card">
+    <div className="rounded-[8px] border border-border bg-card">
       <CardHeader className="p-5 pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Store className="h-4 w-4 text-success" />
+            <Icon icon={Store} size={16} className="text-success" />
             <CardTitle className="text-sm font-medium text-foreground">Lojas para Implementação</CardTitle>
           </div>
           {stores.length > 0 && (
-            <Badge variant="secondary" className="rounded-full text-xs">
+            <Badge variant="neutral" className="text-xs">
               {stores.length}
             </Badge>
           )}
@@ -99,13 +100,13 @@ export function NewStores({ stores }: NewStoresProps) {
                   >
                     <div className="flex items-start gap-3">
                       <div className="rounded-md p-1.5 bg-success/10 shrink-0">
-                        <Store className="h-3.5 w-3.5 text-success" />
+                        <Icon icon={Store} customSize={14} className="text-success" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <p className="text-sm font-medium truncate text-foreground">{store.store_name}</p>
                           <Badge
-                            variant="secondary"
+                            variant="neutral"
                             className={cn("text-[10px] h-5 px-2 shrink-0", platform.color)}
                           >
                             {platform.label}
@@ -121,7 +122,7 @@ export function NewStores({ stores }: NewStoresProps) {
                           <div className="mt-1.5 space-y-1">
                             <div className="flex items-center justify-between">
                               <Badge
-                                variant="secondary"
+                                variant="neutral"
                                 className={cn("text-[10px] h-5 px-2", onboardingStatus?.color)}
                               >
                                 {onboardingStatus?.label} {onboarding.progress_percent}%
@@ -136,7 +137,7 @@ export function NewStores({ stores }: NewStoresProps) {
                           </div>
                         ) : (
                           <div className="mt-1.5">
-                            <Badge variant="secondary" className="text-[10px] h-5 px-2 bg-yellow-500/10 text-yellow-600 dark:text-yellow-400">
+                            <Badge variant="neutral" className="text-[10px] h-5 px-2 bg-yellow-500/10 text-yellow-600 dark:text-yellow-400">
                               Sem onboarding
                             </Badge>
                             <span className="text-[10px] text-muted-foreground ml-2">
@@ -153,7 +154,7 @@ export function NewStores({ stores }: NewStoresProps) {
           </ScrollArea>
         ) : (
           <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-            <Store className="h-8 w-8 mb-2 opacity-50" />
+            <Icon icon={Store} customSize={32} className="mb-2 opacity-50" />
             <p className="text-sm">Nenhuma loja pendente de implementacao</p>
           </div>
         )}

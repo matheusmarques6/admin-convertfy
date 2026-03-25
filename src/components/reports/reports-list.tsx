@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react"
 import Link from "next/link"
+import useSWR from "swr"
 import {
   Plus,
   FileText,
@@ -21,6 +22,7 @@ import {
   X,
   AlertCircle,
   Zap,
+  Loader2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -52,7 +54,9 @@ import {
 } from "@/components/ui/alert-dialog"
 import { formatCurrency } from "@/lib/utils"
 import { toast } from "@/lib/hooks/use-toast"
+import { apiFetcher } from "@/lib/hooks/use-api-data"
 import type { Report, ReportData, ReportStatus } from "@/types"
+import type { ReportJob } from "@/types/report"
 
 interface ReportWithRelations extends Report {
   client?: { id: string; name: string; company?: string } | null
@@ -162,30 +166,30 @@ function getPeriodLabel(period: string): string {
 function getStatusBadge(status: ReportStatus | undefined) {
   switch (status) {
     case "draft":
-      return <Badge variant="secondary" className="text-xs"><Clock className="mr-1 h-3 w-3" />Rascunho</Badge>
+      return <Badge variant="neutral" className="text-xs"><Clock className="mr-1 h-3 w-3" />Rascunho</Badge>
     case "published":
-      return <Badge variant="default" className="text-xs"><CheckCircle className="mr-1 h-3 w-3" />Publicado</Badge>
+      return <Badge variant="info" className="text-xs"><CheckCircle className="mr-1 h-3 w-3" />Publicado</Badge>
     case "sent":
-      return <Badge variant="outline" className="text-xs bg-emerald-500/10 text-emerald-500 border-emerald-500/30"><Send className="mr-1 h-3 w-3" />Enviado</Badge>
+      return <Badge variant="neutral" showDot={false} className="text-xs bg-emerald-500/10 text-emerald-500 border-emerald-500/30"><Send className="mr-1 h-3 w-3" />Enviado</Badge>
     case "archived":
-      return <Badge variant="outline" className="text-xs"><Archive className="mr-1 h-3 w-3" />Arquivado</Badge>
+      return <Badge variant="neutral" showDot={false} className="text-xs"><Archive className="mr-1 h-3 w-3" />Arquivado</Badge>
     default:
-      return <Badge variant="secondary" className="text-xs">-</Badge>
+      return <Badge variant="neutral" className="text-xs">-</Badge>
   }
 }
 
 function getReportTypeBadge(type: string) {
   switch (type) {
     case "klaviyo":
-      return <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/30">Klaviyo</Badge>
+      return <Badge variant="neutral" showDot={false} className="text-xs bg-primary/10 text-primary border-primary/30">Klaviyo</Badge>
     case "shopify":
-      return <Badge variant="outline" className="text-xs bg-emerald-500/10 text-emerald-500 border-emerald-500/30">Shopify</Badge>
+      return <Badge variant="neutral" showDot={false} className="text-xs bg-emerald-500/10 text-emerald-500 border-emerald-500/30">Shopify</Badge>
     case "combined":
-      return <Badge variant="outline" className="text-xs bg-blue-500/10 text-blue-500 border-blue-500/30">Combinado</Badge>
+      return <Badge variant="neutral" showDot={false} className="text-xs bg-blue-500/10 text-blue-500 border-blue-500/30">Combinado</Badge>
     case "manual":
-      return <Badge variant="outline" className="text-xs">Manual</Badge>
+      return <Badge variant="neutral" showDot={false} className="text-xs">Manual</Badge>
     default:
-      return <Badge variant="secondary" className="text-xs">{type}</Badge>
+      return <Badge variant="neutral" className="text-xs">{type}</Badge>
   }
 }
 
@@ -199,6 +203,15 @@ export function ReportsList({
   initialStoreId,
 }: ReportsListProps) {
   const [reports, setReports] = useState(initialReports)
+
+  // Report jobs
+  const { data: jobsData } = useSWR<{ jobs: ReportJob[]; pagination: { has_more: boolean; next_cursor: string | null; count: number } }>(
+    "/api/reports?status=all&limit=5",
+    apiFetcher,
+    { refreshInterval: 15000 }
+  )
+  const activeJobs = jobsData?.jobs?.filter(j => j.status === "processing" || j.status === "queued") || []
+  const recentJobs = jobsData?.jobs?.slice(0, 5) || []
 
   // Filters
   const [searchTerm, setSearchTerm] = useState("")
@@ -404,7 +417,7 @@ export function ReportsList({
 
       {/* Stats */}
       <div className="grid gap-4 md:grid-cols-3">
-        <Card className="rounded-xl border bg-card">
+        <Card className="rounded-[8px] border">
           <CardContent className="flex items-center gap-4 pt-6">
             <div className="rounded-lg p-3 bg-primary/10">
               <FileText className="h-5 w-5 text-primary" />
@@ -415,7 +428,7 @@ export function ReportsList({
             </div>
           </CardContent>
         </Card>
-        <Card className="rounded-xl border bg-card">
+        <Card className="rounded-[8px] border">
           <CardContent className="flex items-center gap-4 pt-6">
             <div className="rounded-lg p-3 bg-emerald-500/10">
               <Calendar className="h-5 w-5 text-emerald-500" />
@@ -426,7 +439,7 @@ export function ReportsList({
             </div>
           </CardContent>
         </Card>
-        <Card className="rounded-xl border bg-card">
+        <Card className="rounded-[8px] border">
           <CardContent className="flex items-center gap-4 pt-6">
             <div className="rounded-lg p-3 bg-amber-500/10">
               <Clock className="h-5 w-5 text-amber-500" />
@@ -439,9 +452,58 @@ export function ReportsList({
         </Card>
       </div>
 
+      {/* Report Jobs in Processing */}
+      {(activeJobs.length > 0 || recentJobs.length > 0) && (
+        <Card className="border-primary/20 bg-primary/5">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                {activeJobs.length > 0 && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
+                <CardTitle className="text-sm">
+                  {activeJobs.length > 0
+                    ? `${activeJobs.length} relatório(s) em processamento`
+                    : "Últimos processamentos"
+                  }
+                </CardTitle>
+              </div>
+              <Link href="/admin/report-jobs">
+                <Button variant="ghost" size="sm" className="text-xs">
+                  Ver histórico completo
+                </Button>
+              </Link>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="space-y-2">
+              {recentJobs.map(job => (
+                <div key={job.id} className="flex items-center justify-between p-2 rounded-lg bg-background/80">
+                  <div className="flex items-center gap-2 min-w-0">
+                    {job.status === "processing" || job.status === "queued" ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-primary shrink-0" />
+                    ) : job.status === "completed" ? (
+                      <CheckCircle className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                    ) : (
+                      <AlertCircle className="h-3.5 w-3.5 text-destructive shrink-0" />
+                    )}
+                    <span className="text-xs text-foreground truncate">
+                      {job.store_ids?.length === 1 ? "1 loja" : `${job.store_ids?.length || 0} lojas`}
+                      {" · "}
+                      {job.period || "personalizado"}
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-muted-foreground shrink-0 ml-2">
+                    {new Date(job.created_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Pending Reports Section */}
       {pendingStores.length > 0 && (
-        <Card className="rounded-xl border bg-card">
+        <Card className="rounded-[8px] border">
           <CardHeader>
             <div className="flex items-center gap-2">
               <AlertCircle className="h-5 w-5 text-amber-500" />
@@ -465,12 +527,12 @@ export function ReportsList({
                     </p>
                     <div className="flex items-center gap-2 mt-1">
                       {store.has_klaviyo && (
-                        <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/30">
+                        <Badge variant="neutral" showDot={false} className="text-xs bg-primary/10 text-primary border-primary/30">
                           Klaviyo
                         </Badge>
                       )}
                       {store.has_shopify && (
-                        <Badge variant="outline" className="text-xs bg-emerald-500/10 text-emerald-500 border-emerald-500/30">
+                        <Badge variant="neutral" showDot={false} className="text-xs bg-emerald-500/10 text-emerald-500 border-emerald-500/30">
                           Shopify
                         </Badge>
                       )}
@@ -492,7 +554,7 @@ export function ReportsList({
       )}
 
       {/* Filters */}
-      <Card className="rounded-xl border bg-card">
+      <Card className="rounded-[8px] border">
         <CardContent className="pt-6">
           <div className="flex flex-col gap-4">
             <div className="flex items-center gap-4">
@@ -506,14 +568,14 @@ export function ReportsList({
                 />
               </div>
               <Button
-                variant="outline"
+                variant="secondary"
                 onClick={() => setShowFilters(!showFilters)}
                 className={hasActiveFilters ? "border-primary" : ""}
               >
                 <Filter className="mr-2 h-4 w-4" />
                 Filtros
                 {hasActiveFilters && (
-                  <Badge variant="secondary" className="ml-2 h-5 w-5 p-0 flex items-center justify-center">
+                  <Badge variant="neutral" className="ml-2 h-5 w-5 p-0 flex items-center justify-center">
                     !
                   </Badge>
                 )}
@@ -634,7 +696,7 @@ export function ReportsList({
             </p>
             <div className="flex gap-2 mt-4">
               {monthFilter !== "all" && (
-                <Button variant="outline" onClick={() => setMonthFilter("all")}>
+                <Button variant="secondary" onClick={() => setMonthFilter("all")}>
                   Ver todos os meses
                 </Button>
               )}
@@ -649,7 +711,7 @@ export function ReportsList({
         </Card>
       ) : (
         displayedMonths.map((month) => (
-          <Card key={month} className="rounded-xl border bg-card">
+          <Card key={month} className="rounded-[8px] border">
             <CardHeader>
               <CardTitle className="text-base">{formatMonth(month)}</CardTitle>
               <CardDescription>
@@ -777,13 +839,13 @@ export function ReportsList({
 
                         {/* Actions */}
                         <div className="flex gap-2">
-                          <Button variant="outline" size="sm" className="flex-1" asChild>
+                          <Button variant="secondary" size="sm" className="flex-1" asChild>
                             <Link href={`/admin/reports/${report.id}`}>
                               <Eye className="mr-2 h-3 w-3" />
                               Ver
                             </Link>
                           </Button>
-                          <Button variant="outline" size="sm" asChild>
+                          <Button variant="secondary" size="sm" asChild>
                             <Link href={`/admin/reports/${report.id}/edit`}>
                               <Pencil className="h-3 w-3" />
                             </Link>

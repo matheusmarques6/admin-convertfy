@@ -7,6 +7,7 @@ import { z } from "zod"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { CalendarIcon, Plus, MessageSquare, CheckSquare } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import {
   Dialog,
   DialogContent,
@@ -348,11 +349,11 @@ export function TaskDialog({
             <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="details">Detalhes</TabsTrigger>
               <TabsTrigger value="comments">
-                <MessageSquare className="h-4 w-4 mr-1" />
+                <Icon icon={MessageSquare} size={16} className="mr-1" />
                 Comentários {comments.length > 0 && `(${comments.length})`}
               </TabsTrigger>
               <TabsTrigger value="checklist">
-                <CheckSquare className="h-4 w-4 mr-1" />
+                <Icon icon={CheckSquare} size={16} className="mr-1" />
                 Checklist {checklists.length > 0 && `(${checklists.filter((c) => c.is_completed).length}/${checklists.length})`}
               </TabsTrigger>
             </TabsList>
@@ -454,13 +455,13 @@ export function TaskDialog({
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button
-                        variant="outline"
+                        variant="secondary"
                         className={cn(
                           "justify-start text-left font-normal",
                           !dueDate && "text-muted-foreground"
                         )}
                       >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        <Icon icon={CalendarIcon} size={16} className="mr-2" />
                         {dueDate ? format(dueDate, "PPP", { locale: ptBR }) : "Selecione uma data"}
                       </Button>
                     </PopoverTrigger>
@@ -605,7 +606,7 @@ export function TaskDialog({
                     onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleAddChecklist())}
                   />
                   <Button type="button" onClick={handleAddChecklist}>
-                    <Plus className="h-4 w-4" />
+                    <Icon icon={Plus} size={16} />
                   </Button>
                 </div>
               </TabsContent>
@@ -613,7 +614,7 @@ export function TaskDialog({
           </Tabs>
 
           <DialogFooter className="pt-4 border-t">
-            <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting}>
+            <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting}>
               Cancelar
             </Button>
             <Button type="submit" disabled={isSubmitting}>

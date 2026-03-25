@@ -4,6 +4,7 @@ import { useState } from "react"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { Filter, X, CalendarIcon } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import {
   Select,
@@ -64,7 +65,7 @@ export function MeetingFilters({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Filter className="h-4 w-4 text-muted-foreground" />
+      <Icon icon={Filter} size={16} className="text-muted-foreground" />
 
       {/* Status filter */}
       <Select
@@ -115,8 +116,8 @@ export function MeetingFilters({
       {filters.period === "custom" && (
         <Popover open={showCustomDate} onOpenChange={setShowCustomDate}>
           <PopoverTrigger asChild>
-            <Button variant="outline" size="sm" className="h-8 text-xs gap-1">
-              <CalendarIcon className="h-3 w-3" />
+            <Button variant="secondary" size="sm" className="h-8 text-xs gap-1">
+              <Icon icon={CalendarIcon} customSize={12} />
               {filters.customDateStart && filters.customDateEnd
                 ? `${format(filters.customDateStart, "dd/MM")} - ${format(filters.customDateEnd, "dd/MM")}`
                 : "Selecionar datas"}
@@ -181,7 +182,7 @@ export function MeetingFilters({
           className="h-8 text-xs gap-1 text-muted-foreground"
           onClick={clearFilters}
         >
-          <X className="h-3 w-3" />
+          <Icon icon={X} customSize={12} />
           Limpar filtros
         </Button>
       )}

@@ -2,9 +2,10 @@
 
 import React from "react"
 import { Users } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
+import { Icon } from "@/components/ui/icon"
+import { StatusBadge } from "@/components/ui/status-badge"
 import { formatCurrencyCompact } from "@/lib/utils/format"
-import { CHANNEL_CONFIG, STATUS_CONFIG } from "@/lib/constants/calendar"
+import { CHANNEL_CONFIG } from "@/lib/constants/calendar"
 import type { PortalCampaign } from "@/lib/hooks/use-portal-campaigns-calendar"
 
 // ============================================
@@ -46,9 +47,6 @@ export const CampaignCalendarCard = React.memo(function CampaignCalendarCard({
   onClick,
 }: CampaignCalendarCardProps) {
   const channelConfig = CHANNEL_CONFIG[campaign.channel] || CHANNEL_CONFIG.email
-  const statusConfig = STATUS_CONFIG[campaign.status] || STATUS_CONFIG.scheduled
-  const ChannelIcon = channelConfig.icon
-
   if (compact) {
     return (
       <div
@@ -64,7 +62,7 @@ export const CampaignCalendarCard = React.memo(function CampaignCalendarCard({
         title={campaign.name}
       >
         <div className="flex items-center gap-1.5 truncate">
-          <ChannelIcon className="h-3 w-3 flex-shrink-0" />
+          <Icon icon={channelConfig.icon} customSize={12} />
           <span className="truncate">{campaign.name}</span>
         </div>
         {campaign.hasKlaviyoMetrics && campaign.status === "sent" && (
@@ -79,14 +77,14 @@ export const CampaignCalendarCard = React.memo(function CampaignCalendarCard({
   return (
     <div
       onClick={onClick}
-      className="rounded-lg bg-slate-50 dark:bg-[#1A1F2E] border border-slate-200/80 dark:border-slate-700/40 p-3 cursor-pointer hover:bg-white dark:hover:bg-[#151922] hover:shadow-sm dark:hover:shadow-slate-900/20 transition-all group"
+      className="rounded-lg bg-slate-50 dark:bg-[#1A1F2E] border border-slate-200/80 dark:border-slate-700/40 p-3 cursor-pointer hover:bg-white dark:hover:bg-[#1A1D27] transition-all group"
     >
       <div className="flex items-start gap-3">
         <div
           className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
           style={{ backgroundColor: campaign.color || "#3b82f6" }}
         >
-          <ChannelIcon className="h-5 w-5 text-white" />
+          <Icon icon={channelConfig.icon} size={20} className="text-white" />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
@@ -95,9 +93,7 @@ export const CampaignCalendarCard = React.memo(function CampaignCalendarCard({
                 {formatTime(campaign.scheduledTime)}
               </span>
             )}
-            <Badge className={`text-[10px] ${statusConfig.color}`}>
-              {statusConfig.label}
-            </Badge>
+            <StatusBadge status={campaign.status} showDot={false} />
           </div>
           <p className="font-medium text-slate-800 dark:text-slate-100 text-sm truncate group-hover:text-primary transition-colors">
             {campaign.name}
@@ -109,7 +105,7 @@ export const CampaignCalendarCard = React.memo(function CampaignCalendarCard({
           )}
           {campaign.recipients && (
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              <Users className="h-3 w-3 inline mr-1" />
+              <Icon icon={Users} customSize={12} className="inline mr-1" />
               {formatNumber(campaign.recipients)} destinatarios
             </p>
           )}

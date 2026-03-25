@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Check, X, Clock } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "@/lib/hooks/use-toast"
@@ -56,8 +57,8 @@ export function MeetingInviteActions({
 
   if (currentStatus === "accepted") {
     return (
-      <Badge variant="outline" className="text-emerald-500 border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-500/20 text-xs">
-        <Check className="mr-1 h-3 w-3" />
+      <Badge variant="neutral" showDot={false} className="text-emerald-500 border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-500/20 text-xs">
+        <Icon icon={Check} customSize={12} className="mr-1" />
         Aceito
       </Badge>
     )
@@ -65,8 +66,8 @@ export function MeetingInviteActions({
 
   if (currentStatus === "declined") {
     return (
-      <Badge variant="outline" className="text-destructive border-destructive/30 bg-destructive/10 dark:bg-destructive/20 text-xs">
-        <X className="mr-1 h-3 w-3" />
+      <Badge variant="neutral" showDot={false} className="text-destructive border-destructive/30 bg-destructive/10 dark:bg-destructive/20 text-xs">
+        <Icon icon={X} customSize={12} className="mr-1" />
         Recusado
       </Badge>
     )
@@ -74,8 +75,8 @@ export function MeetingInviteActions({
 
   if (currentStatus === "tentative") {
     return (
-      <Badge variant="outline" className="text-amber-500 border-amber-500/30 bg-amber-500/10 dark:bg-amber-500/20 text-xs">
-        <Clock className="mr-1 h-3 w-3" />
+      <Badge variant="neutral" showDot={false} className="text-amber-500 border-amber-500/30 bg-amber-500/10 dark:bg-amber-500/20 text-xs">
+        <Icon icon={Clock} customSize={12} className="mr-1" />
         Talvez
       </Badge>
     )
@@ -85,25 +86,25 @@ export function MeetingInviteActions({
   return (
     <div className="flex items-center gap-1">
       <Button
-        variant="outline"
+        variant="secondary"
         size={compact ? "icon" : "sm"}
         className={compact ? "h-7 w-7" : "h-7 text-xs"}
         onClick={() => handleResponse("accepted")}
         disabled={isLoading}
         title="Aceitar"
       >
-        <Check className={compact ? "h-3.5 w-3.5 text-emerald-500" : "mr-1 h-3 w-3 text-emerald-500"} />
+        <Icon icon={Check} customSize={compact ? 14 : 12} className={compact ? "text-emerald-500" : "mr-1 text-emerald-500"} />
         {!compact && "Aceitar"}
       </Button>
       <Button
-        variant="outline"
+        variant="secondary"
         size={compact ? "icon" : "sm"}
         className={compact ? "h-7 w-7" : "h-7 text-xs"}
         onClick={() => handleResponse("declined")}
         disabled={isLoading}
         title="Recusar"
       >
-        <X className={compact ? "h-3.5 w-3.5 text-destructive" : "mr-1 h-3 w-3 text-destructive"} />
+        <Icon icon={X} customSize={compact ? 14 : 12} className={compact ? "text-destructive" : "mr-1 text-destructive"} />
         {!compact && "Recusar"}
       </Button>
     </div>

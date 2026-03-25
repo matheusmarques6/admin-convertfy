@@ -139,6 +139,14 @@ export interface UpcomingCampaign {
   scheduledDate: string
 }
 
+export interface PreviousPeriodData {
+  storeRevenue: number
+  storeOrders: number
+  totalRevenue: number
+  openRate: number
+  clickRate: number
+}
+
 export interface DashboardData {
   client: {
     id: string
@@ -155,6 +163,8 @@ export interface DashboardData {
   shopify?: ShopifyData | null
   /** Story 54.5: Shopify data loading status — "syncing" means background fetch in progress */
   shopifyStatus?: "ready" | "syncing" | "partial"
+  /** Previous period comparison data for KPI variation badges */
+  previousPeriod?: PreviousPeriodData
   invoices: {
     pending: number
     overdue: number

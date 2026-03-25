@@ -1,6 +1,9 @@
 import { Ticket, Tag, Link2, Globe, Megaphone, Monitor } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { formatPercent, formatCurrencyCompact } from "@/lib/utils/format"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { EmptyState } from "@/components/ui/empty-state"
 import type { ShopifyData } from "./types"
 
 interface ConversionsSectionProps {
@@ -11,19 +14,14 @@ interface ConversionsSectionProps {
 function UtmRankingList({
   items,
   labelKey,
-  icon: Icon,
+  icon: IconComponent,
 }: {
   items: Array<Record<string, string | number>>
   labelKey: string
-  icon: React.ComponentType<{ className?: string }>
+  icon: LucideIcon
 }) {
   if (!items || items.length === 0) {
-    return (
-      <div className="text-center py-6">
-        <Link2 className="h-8 w-8 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
-        <p className="text-sm text-slate-500 dark:text-slate-400">Nenhum dado disponivel</p>
-      </div>
-    )
+    return <EmptyState compact icon={Link2} title="Nenhum dado disponivel" />
   }
 
   return (
@@ -37,7 +35,7 @@ function UtmRankingList({
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate flex items-center gap-1">
-              <Icon className="h-3 w-3" />
+              <Icon icon={IconComponent} customSize={12} />
               {String(item[labelKey])}
             </p>
             <p className="text-xs text-slate-500 dark:text-slate-400">{item.orders} pedidos</p>
@@ -57,10 +55,10 @@ export function ConversionsSection({ shopify }: ConversionsSectionProps) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       {/* Coupon Conversions */}
-      <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20">
+      <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium text-slate-800 dark:text-slate-100 flex items-center gap-2">
-            <Ticket className="h-4 w-4 text-primary" />
+            <Icon icon={Ticket} size={16} className="text-primary" />
             Conversoes por Cupom
           </h3>
           <span className="text-xs text-slate-500 dark:text-slate-400">Pedidos pagos</span>
@@ -88,7 +86,7 @@ export function ConversionsSection({ shopify }: ConversionsSectionProps) {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate flex items-center gap-1">
-                    <Tag className="h-3 w-3" />
+                    <Icon icon={Tag} customSize={12} />
                     {coupon.code}
                   </p>
                   <p className="text-xs text-slate-500 dark:text-slate-400">{coupon.orders} pedidos</p>
@@ -99,19 +97,16 @@ export function ConversionsSection({ shopify }: ConversionsSectionProps) {
               </div>
             ))
           ) : (
-            <div className="text-center py-6">
-              <Ticket className="h-8 w-8 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
-              <p className="text-sm text-slate-500 dark:text-slate-400">Nenhum cupom utilizado</p>
-            </div>
+            <EmptyState compact icon={Ticket} title="Nenhum cupom utilizado" />
           )}
         </div>
       </div>
 
       {/* UTM Conversions */}
-      <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20">
+      <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium text-slate-800 dark:text-slate-100 flex items-center gap-2">
-            <Link2 className="h-4 w-4 text-[#05AFF2]" />
+            <Icon icon={Link2} size={16} className="text-[#4E62D8] dark:text-[#7B8CEA]" />
             Conversoes por UTM
           </h3>
           <span className="text-xs text-slate-500 dark:text-slate-400">Pedidos pagos</span>

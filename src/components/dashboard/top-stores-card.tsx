@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react"
 import Link from "next/link"
 import { Trophy } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -33,12 +34,12 @@ export function TopStoresCard({ stores: storesProp, allStores, isLoading, dataSt
   const maxRevenue = stores[0]?.totalRevenueBRL ?? stores[0]?.totalRevenue ?? 1
 
   return (
-    <div className="rounded-xl border border-border bg-card h-full flex flex-col">
+    <div className="rounded-[8px] border border-border bg-card h-full flex flex-col">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="h-8 w-8 rounded-lg bg-success/10 flex items-center justify-center">
-              <Trophy className="h-4 w-4 text-success" />
+              <Icon icon={Trophy} size={16} className="text-success" />
             </div>
             <CardTitle className="text-sm font-semibold">Top Lojas</CardTitle>
           </div>

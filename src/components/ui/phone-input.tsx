@@ -3,6 +3,7 @@
 import * as React from "react"
 import { AsYouType, parsePhoneNumber, type CountryCode } from "libphonenumber-js"
 import { Check, ChevronsUpDown } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -182,7 +183,7 @@ export function PhoneInputIntl({
           >
             <span className="text-base leading-none">{selectedCountry.flag}</span>
             <span className="text-sm text-muted-foreground">{selectedCountry.dialCode}</span>
-            <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
+            <Icon icon={ChevronsUpDown} size={16} className="opacity-50" />
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-[280px] p-0" align="start">
@@ -202,7 +203,7 @@ export function PhoneInputIntl({
                     <span className="flex-1">{country.name}</span>
                     <span className="text-muted-foreground text-sm">{country.dialCode}</span>
                     {selectedCountry.code === country.code && (
-                      <Check className="h-4 w-4 shrink-0 text-primary" />
+                      <Icon icon={Check} size={16} className="text-primary" />
                     )}
                   </CommandItem>
                 ))}

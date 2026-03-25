@@ -1,5 +1,7 @@
 import { Crown, ShoppingCart } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { formatCurrency, formatCurrencyCompact } from "@/lib/utils/format"
+import { EmptyState } from "@/components/ui/empty-state"
 import type { ShopifyData } from "./types"
 
 interface RankingsSectionProps {
@@ -10,10 +12,10 @@ export function RankingsSection({ shopify }: RankingsSectionProps) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       {/* Top Customers */}
-      <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20">
+      <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium text-slate-800 dark:text-slate-100 flex items-center gap-2">
-            <Crown className="h-4 w-4 text-amber-400" />
+            <Icon icon={Crown} size={16} className="text-amber-400" />
             Top Clientes
           </h3>
           <span className="text-xs text-slate-500 dark:text-slate-400">Por receita no período</span>
@@ -29,7 +31,7 @@ export function RankingsSection({ shopify }: RankingsSectionProps) {
                   index === 2 ? "bg-orange-500/15 text-orange-600 dark:bg-orange-500/20 dark:text-orange-400" :
                   "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
                 }`}>
-                  {index < 3 ? <Crown className="h-3.5 w-3.5" /> : index + 1}
+                  {index < 3 ? <Icon icon={Crown} customSize={14} /> : index + 1}
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">{customer.email}</p>
@@ -47,19 +49,16 @@ export function RankingsSection({ shopify }: RankingsSectionProps) {
               </div>
             ))
           ) : (
-            <div className="text-center py-8">
-              <Crown className="h-10 w-10 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
-              <p className="text-sm text-slate-500 dark:text-slate-400">Nenhum cliente no período</p>
-            </div>
+            <EmptyState compact icon={Crown} title="Nenhum cliente no período" className="py-8" />
           )}
         </div>
       </div>
 
       {/* Top Products */}
-      <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 p-5 shadow-sm dark:shadow-slate-900/20">
+      <div className="bg-white dark:bg-[#1A1D27] rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium text-slate-800 dark:text-slate-100 flex items-center gap-2">
-            <ShoppingCart className="h-4 w-4 text-[#05AFF2]" />
+            <Icon icon={ShoppingCart} size={16} className="text-[#4E62D8] dark:text-[#7B8CEA]" />
             Top Produtos
           </h3>
           <span className="text-xs text-slate-500 dark:text-slate-400">Por receita no período</span>
@@ -82,15 +81,12 @@ export function RankingsSection({ shopify }: RankingsSectionProps) {
                   <p className="text-xs text-slate-500 dark:text-slate-400">{product.quantity} unidades</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm font-bold text-[#05AFF2]">{formatCurrencyCompact(product.revenue)}</p>
+                  <p className="text-sm font-bold text-[#4E62D8] dark:text-[#7B8CEA]">{formatCurrencyCompact(product.revenue)}</p>
                 </div>
               </div>
             ))
           ) : (
-            <div className="text-center py-8">
-              <ShoppingCart className="h-10 w-10 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
-              <p className="text-sm text-slate-500 dark:text-slate-400">Nenhum produto no período</p>
-            </div>
+            <EmptyState compact icon={ShoppingCart} title="Nenhum produto no período" className="py-8" />
           )}
         </div>
       </div>

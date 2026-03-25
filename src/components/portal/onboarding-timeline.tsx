@@ -1,6 +1,8 @@
 "use client"
 
 import { Check, Clock, Palette, Code2, Sparkles, CircleDot } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
+import { Icon as IconWrapper } from "@/components/ui/icon"
 
 interface TimelinePhase {
   id: string
@@ -24,7 +26,7 @@ const DEFAULT_PHASES: TimelinePhase[] = [
 
 const PHASE_ORDER = ["pending_approval", "generating_copies", "design", "implementation", "completed"]
 
-const PHASE_ICONS: Record<string, React.ElementType> = {
+const PHASE_ICONS: Record<string, LucideIcon> = {
   pending_approval: Clock,
   generating_copies: Sparkles,
   design: Palette,
@@ -54,7 +56,7 @@ export function OnboardingTimeline({ currentPhase, phases }: OnboardingTimelineP
   const currentIndex = PHASE_ORDER.indexOf(currentPhase)
 
   return (
-    <div className="rounded-xl border border-slate-200/80 dark:border-slate-700/40 bg-white dark:bg-[#151922] p-6 shadow-sm dark:shadow-slate-900/20">
+    <div className="rounded-[8px] border border-slate-200/80 dark:border-slate-700/40 bg-white dark:bg-[#1A1D27] p-6">
       <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-6">Progresso do Onboarding</h3>
 
       {/* Desktop timeline */}
@@ -64,7 +66,7 @@ export function OnboardingTimeline({ currentPhase, phases }: OnboardingTimelineP
           const isCompleted = phaseIndex < currentIndex
           const isActive = phaseIndex === currentIndex
           const isFuture = phaseIndex > currentIndex
-          const Icon = PHASE_ICONS[phase.id] || CircleDot
+          const PhaseIcon = PHASE_ICONS[phase.id] || CircleDot
 
           return (
             <div key={phase.id} className="flex items-center flex-1">
@@ -76,7 +78,7 @@ export function OnboardingTimeline({ currentPhase, phases }: OnboardingTimelineP
                     ${isFuture ? "bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-400 dark:text-slate-500" : ""}
                   `}
                 >
-                  {isCompleted ? <Check className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
+                  {isCompleted ? <IconWrapper icon={Check} size={20} /> : <IconWrapper icon={PhaseIcon} size={20} />}
                 </div>
                 <span
                   className={`mt-2 text-xs font-medium text-center
@@ -112,7 +114,7 @@ export function OnboardingTimeline({ currentPhase, phases }: OnboardingTimelineP
           const isCompleted = phaseIndex < currentIndex
           const isActive = phaseIndex === currentIndex
           const isFuture = phaseIndex > currentIndex
-          const Icon = PHASE_ICONS[phase.id] || CircleDot
+          const PhaseIcon = PHASE_ICONS[phase.id] || CircleDot
 
           return (
             <div key={phase.id} className="flex items-center gap-3">
@@ -123,7 +125,7 @@ export function OnboardingTimeline({ currentPhase, phases }: OnboardingTimelineP
                   ${isFuture ? "bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-400 dark:text-slate-500" : ""}
                 `}
               >
-                {isCompleted ? <Check className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
+                {isCompleted ? <IconWrapper icon={Check} size={16} /> : <IconWrapper icon={PhaseIcon} size={16} />}
               </div>
               <div className="flex-1">
                 <span className={`text-sm font-medium ${isActive ? "text-blue-700 dark:text-blue-400" : isCompleted ? "text-green-700 dark:text-green-400" : "text-slate-400 dark:text-slate-500"}`}>

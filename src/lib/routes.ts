@@ -63,6 +63,11 @@ export const ROUTES = {
       DETAIL: (id: string) => `/admin/report-jobs/${id}` as const,
     },
 
+    PRODUCTIVITY: {
+      HOME: "/admin/productivity",
+      BOARD: "/admin/productivity/board",
+    },
+
     PIPELINE: "/admin/pipeline",
     TEAM: "/admin/team",
     NOTIFICATIONS: "/admin/notifications",
@@ -110,9 +115,6 @@ export const ROUTES = {
     TRACKING: {
       ROOT: "/client/tracking",
       PAGE: "/client/tracking/page",
-      SCRIPT: "/client/tracking/script",
-      ORDERS: "/client/tracking/orders",
-      STORES: "/client/tracking/stores",
     },
 
     INVOICES: "/client/invoices",

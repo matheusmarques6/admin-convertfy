@@ -3,9 +3,11 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { Plus, Calendar, Video, CheckCircle, XCircle, Clock, Loader2, FileText } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
+import { StatusBadge } from "@/components/ui/status-badge"
 import { formatDateTime } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
 import type { Meeting } from "@/types"
@@ -14,11 +16,11 @@ interface ClientMeetingsProps {
   clientId: string
 }
 
-const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "success" | "destructive" | "warning"; icon: React.ElementType }> = {
-  scheduled: { label: "Agendada", variant: "default", icon: Clock },
-  completed: { label: "Realizada", variant: "success", icon: CheckCircle },
-  cancelled: { label: "Cancelada", variant: "secondary", icon: XCircle },
-  no_show: { label: "Não Compareceu", variant: "destructive", icon: XCircle },
+const statusIconConfig: Record<string, { icon: LucideIcon }> = {
+  scheduled: { icon: Clock },
+  completed: { icon: CheckCircle },
+  cancelled: { icon: XCircle },
+  no_show: { icon: XCircle },
 }
 
 export function ClientMeetings({ clientId }: ClientMeetingsProps) {
@@ -44,7 +46,7 @@ export function ClientMeetings({ clientId }: ClientMeetingsProps) {
     return (
       <Card>
         <CardContent className="flex items-center justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <Icon icon={Loader2} size={24} className="animate-spin text-muted-foreground" />
         </CardContent>
       </Card>
     )
@@ -65,17 +67,17 @@ export function ClientMeetings({ clientId }: ClientMeetingsProps) {
       <div className="flex justify-end">
         <Button asChild>
           <Link href="/admin/meetings">
-            <Plus className="mr-2 h-4 w-4" />
+            <Icon icon={Plus} size={16} className="mr-2" />
             Agendar Reunião
           </Link>
         </Button>
       </div>
 
       {/* Upcoming Meetings */}
-      <Card className="rounded-xl border bg-card">
+      <Card className="rounded-[8px] border">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
-            <Calendar className="h-5 w-5 text-primary" />
+            <Icon icon={Calendar} size={20} className="text-primary" />
             Próximas Reuniões
           </CardTitle>
         </CardHeader>
@@ -93,7 +95,7 @@ export function ClientMeetings({ clientId }: ClientMeetingsProps) {
                 >
                   <div className="flex items-center gap-4">
                     <div className="rounded-lg p-2 bg-primary/10">
-                      <Video className="h-4 w-4 text-primary" />
+                      <Icon icon={Video} size={16} className="text-primary" />
                     </div>
                     <div>
                       <p className="font-medium">{meeting.title}</p>
@@ -105,7 +107,7 @@ export function ClientMeetings({ clientId }: ClientMeetingsProps) {
                   </div>
                   <div className="flex items-center gap-2">
                     {meeting.meeting_url && (
-                      <Button variant="outline" size="sm" asChild>
+                      <Button variant="secondary" size="sm" asChild>
                         <a
                           href={meeting.meeting_url}
                           target="_blank"
@@ -115,7 +117,7 @@ export function ClientMeetings({ clientId }: ClientMeetingsProps) {
                         </a>
                       </Button>
                     )}
-                    <Badge>Agendada</Badge>
+                    <StatusBadge status="scheduled" label="Agendada" />
                   </div>
                 </div>
               ))}
@@ -126,14 +128,14 @@ export function ClientMeetings({ clientId }: ClientMeetingsProps) {
 
       {/* Past Meetings */}
       {pastMeetings.length > 0 && (
-        <Card className="rounded-xl border bg-card">
+        <Card className="rounded-[8px] border">
           <CardHeader>
             <CardTitle className="text-base">Histórico de Reuniões</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
               {pastMeetings.map((meeting) => {
-                const config = statusConfig[meeting.status] || statusConfig.scheduled
+                const iconConfig = statusIconConfig[meeting.status] || statusIconConfig.scheduled
                 return (
                   <div
                     key={meeting.id}
@@ -141,13 +143,13 @@ export function ClientMeetings({ clientId }: ClientMeetingsProps) {
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <config.icon className={`h-4 w-4 ${
+                        <Icon icon={iconConfig.icon} size={16} className={
                           meeting.status === "completed"
                             ? "text-success"
                             : meeting.status === "no_show"
                             ? "text-destructive"
                             : "text-muted-foreground"
-                        }`} />
+                        } />
                         <div>
                           <p className="text-sm font-medium">{meeting.title}</p>
                           <p className="text-xs text-muted-foreground">
@@ -155,12 +157,20 @@ export function ClientMeetings({ clientId }: ClientMeetingsProps) {
                           </p>
                         </div>
                       </div>
-                      <Badge variant={config.variant}>{config.label}</Badge>
+                      <StatusBadge
+                        status={meeting.status === "no_show" ? "failed" : meeting.status}
+                        label={
+                          meeting.status === "completed" ? "Realizada" :
+                          meeting.status === "cancelled" ? "Cancelada" :
+                          meeting.status === "no_show" ? "Não Compareceu" :
+                          "Agendada"
+                        }
+                      />
                     </div>
                     {meeting.completion_notes && (
                       <div className="mt-2 ml-7 p-2 rounded bg-background/50 border-l-2 border-primary/30">
                         <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1">
-                          <FileText className="h-3 w-3" />
+                          <Icon icon={FileText} customSize={12} />
                           Notas da reunião
                         </div>
                         <p className="text-sm whitespace-pre-wrap line-clamp-3">

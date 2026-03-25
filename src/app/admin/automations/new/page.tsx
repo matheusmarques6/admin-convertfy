@@ -2,11 +2,9 @@
 
 import { useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import Link from "next/link"
 import dynamic from "next/dynamic"
 import type { Node, Edge } from "reactflow"
 import {
-  ArrowLeft,
   Save,
   Zap,
   Loader2,
@@ -14,14 +12,17 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { FormField } from "@/components/ui/form-field"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
 import { Skeleton } from "@/components/ui/skeleton"
+import { PageHeader } from "@/components/ui/page-header"
+import { ROUTES } from "@/lib/routes"
 
 const WorkflowBuilder = dynamic(
   () => import("@/components/automations/workflow-builder").then(mod => ({ default: mod.WorkflowBuilder })),
   {
-    loading: () => <div className="h-[500px] rounded-xl border"><Skeleton className="h-full w-full" /></div>,
+    loading: () => <div className="h-[500px] rounded-[8px] border"><Skeleton className="h-full w-full" /></div>,
     ssr: false,
   }
 )
@@ -120,68 +121,58 @@ export default function NewAutomationPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" asChild>
-            <Link href="/admin/automations">
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
-          </Button>
-          <div>
-            <h1 className="text-2xl font-bold">Nova Automação</h1>
-            <p className="text-muted-foreground">
-              Crie um fluxo visual de automação
-            </p>
+      <PageHeader
+        title="Nova Automação"
+        description="Crie um fluxo visual de automação"
+        breadcrumb={[
+          { label: "Automações", href: ROUTES.ADMIN.AUTOMATIONS.LIST },
+          { label: "Nova Automação" },
+        ]}
+        actions={
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Switch checked={isActive} onCheckedChange={setIsActive} />
+              <Label>{isActive ? "Ativa" : "Inativa"}</Label>
+            </div>
+            <Button onClick={handleSave} disabled={isLoading}>
+              {isLoading ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="mr-2 h-4 w-4" />
+              )}
+              Salvar
+            </Button>
           </div>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <Switch checked={isActive} onCheckedChange={setIsActive} />
-            <Label>{isActive ? "Ativa" : "Inativa"}</Label>
-          </div>
-          <Button onClick={handleSave} disabled={isLoading}>
-            {isLoading ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Save className="mr-2 h-4 w-4" />
-            )}
-            Salvar
-          </Button>
-        </div>
-      </div>
+        }
+      />
 
       {/* Basic Info */}
-      <Card className="rounded-xl border bg-card">
+      <Card className="rounded-[8px] border">
         <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <Zap className="h-4 w-4" />
-            Informações Básicas
-          </CardTitle>
+          <CardTitle className="text-sm font-semibold">Informações Básicas</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label>Nome da automação *</Label>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField label="Nome da automação" required>
               <Input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Ex: Lembrete de pagamento em atraso"
               />
-            </div>
-            <div className="space-y-2">
-              <Label>Descrição</Label>
+            </FormField>
+            <FormField label="Descrição">
               <Input
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Descreva o objetivo desta automação..."
               />
-            </div>
+            </FormField>
           </div>
         </CardContent>
       </Card>
 
       {/* Workflow Builder */}
-      <Card className="rounded-xl border bg-card">
+      <Card className="rounded-[8px] border">
         <CardHeader>
           <CardTitle className="text-base">Construtor de Fluxo</CardTitle>
           <CardDescription>
@@ -195,9 +186,9 @@ export default function NewAutomationPage() {
       </Card>
 
       {/* Tips */}
-      <Card className="rounded-xl border bg-muted/50">
+      <Card className="rounded-[8px] border bg-muted/50">
         <CardContent className="pt-6">
-          <div className="grid gap-4 md:grid-cols-3 text-sm">
+          <div className="grid gap-4 sm:grid-cols-3 text-sm">
             <div className="flex items-start gap-3">
               <div className="rounded-lg p-2 bg-warning/10">
                 <Zap className="h-4 w-4 text-warning" />

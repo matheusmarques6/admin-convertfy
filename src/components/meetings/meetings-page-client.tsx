@@ -28,10 +28,11 @@ import {
   RefreshCw,
   Clock,
 } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { SegmentedTabs, SegmentedTabItem } from "@/components/ui/segmented-tabs"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -122,7 +123,8 @@ export function MeetingsPageClient({
 }: MeetingsPageClientProps) {
   const calendarStatus = useGoogleCalendarStatus()
   const [localMeetings, setLocalMeetings] = useState<MeetingWithRelations[]>(initialMeetings)
-  const [viewMode, setViewMode] = useState<"list" | "calendar">("list")
+  // Calendar is now the default view (absorbs dashboard calendar)
+  const [viewMode, setViewMode] = useState<"calendar" | "list">("calendar")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingMeeting, setEditingMeeting] = useState<MeetingWithRelations | null>(null)
   const [initialDate, setInitialDate] = useState<Date | undefined>()
@@ -141,10 +143,8 @@ export function MeetingsPageClient({
   // Filter meetings
   const filteredMeetings = useMemo(() => {
     return localMeetings.filter((m) => {
-      // Status filter
       if (filters.status !== "all" && m.status !== filters.status) return false
 
-      // Period filter
       const date = parseISO(m.scheduled_at)
       switch (filters.period) {
         case "today":
@@ -273,8 +273,8 @@ export function MeetingsPageClient({
         throw new Error(data.error || "Erro ao sincronizar")
       }
       toast({
-        title: "Sincronizacao iniciada",
-        description: "Os dados do Google Calendar serao atualizados em instantes",
+        title: "Sincronização iniciada",
+        description: "Os dados do Google Calendar serão atualizados em instantes",
       })
     } catch (error) {
       toast({
@@ -292,12 +292,12 @@ export function MeetingsPageClient({
   return (
     <>
       <div className="space-y-4 h-full flex flex-col">
-        {/* AC 42.7.6: Reconnection banner when Google Calendar is disconnected or has error */}
+        {/* Google Calendar reconnection banner */}
         {calendarStatus.connected && !calendarStatus.isActive && !calendarStatus.isLoading && (
           <AlertBanner
             variant="warning"
-            title="Seu Google Calendar esta desconectado"
-            description={calendarStatus.syncError || "Reconecte para sincronizar reunioes."}
+            title="Seu Google Calendar está desconectado"
+            description={calendarStatus.syncError || "Reconecte para sincronizar reuniões."}
             action={{
               label: "Reconectar",
               href: "/api/integrations/google/authorize?scope=calendar&context=admin",
@@ -305,19 +305,27 @@ export function MeetingsPageClient({
           />
         )}
 
-        {/* Header */}
-        <div className="flex items-center justify-between">
+        {/* Toolbar: SegmentedTabs + Sync + New Meeting */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
-            <p className="text-muted-foreground">
-              Gerencie as reunioes com seus clientes
-            </p>
-            {/* AC 42.13.4: Last sync timestamp */}
+            <SegmentedTabs value={viewMode} onValueChange={(v) => setViewMode(v as "calendar" | "list")}>
+              <SegmentedTabItem value="calendar">
+                <Icon icon={Calendar} size={16} className="mr-1.5" />
+                Calendário
+              </SegmentedTabItem>
+              <SegmentedTabItem value="list">
+                <Icon icon={List} size={16} className="mr-1.5" />
+                Lista
+              </SegmentedTabItem>
+            </SegmentedTabs>
+
+            {/* Last sync timestamp */}
             {hasGoogleCalendar && lastSyncedAt && (
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <Clock className="h-3 w-3" />
+                      <Icon icon={Clock} size={16} />
                       <span>
                         Sync: {formatDistanceToNow(new Date(lastSyncedAt), { locale: ptBR, addSuffix: true })}
                       </span>
@@ -325,7 +333,7 @@ export function MeetingsPageClient({
                   </TooltipTrigger>
                   <TooltipContent>
                     <p className="text-xs">
-                      Ultimo sync: {format(new Date(lastSyncedAt), "dd/MM/yyyy 'as' HH:mm", { locale: ptBR })}
+                      Último sync: {format(new Date(lastSyncedAt), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
                     </p>
                   </TooltipContent>
                 </Tooltip>
@@ -339,68 +347,43 @@ export function MeetingsPageClient({
                 onClick={handleManualSync}
                 disabled={isSyncing}
               >
-                <RefreshCw className={cn("h-3 w-3", isSyncing && "animate-spin")} />
+                <Icon icon={RefreshCw} size={16} className={cn(isSyncing && "animate-spin")} />
                 {isSyncing ? "Sincronizando..." : "Sincronizar"}
               </Button>
             )}
           </div>
-          <div className="flex items-center gap-3">
-            <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "list" | "calendar")}>
-              <TabsList className="h-9">
-                <TabsTrigger value="list" className="gap-2">
-                  <List className="h-4 w-4" />
-                  Lista
-                </TabsTrigger>
-                <TabsTrigger value="calendar" className="gap-2">
-                  <Calendar className="h-4 w-4" />
-                  Calendário
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
-            <Button onClick={handleNewMeeting}>
-              <Plus className="mr-2 h-4 w-4" />
-              Agendar Reunião
-            </Button>
-          </div>
+
+          <Button onClick={handleNewMeeting}>
+            <Plus className="mr-2 h-4 w-4" />
+            Nova Reunião
+          </Button>
         </div>
 
-        {/* Stats */}
-        <div className="grid gap-4 md:grid-cols-3">
-          <Card className="rounded-xl border bg-card pt-6">
-            <CardContent className="flex items-center gap-4">
-              <div className="rounded-lg p-3 bg-primary/10">
-                <Calendar className="h-5 w-5 text-primary" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Próximas</p>
-                <p className="text-2xl font-bold">{upcomingMeetings.length}</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="rounded-xl border bg-card pt-6">
-            <CardContent className="flex items-center gap-4">
-              <div className="rounded-lg p-3 bg-emerald-500/10">
-                <CheckCircle className="h-5 w-5 text-emerald-500" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Realizadas</p>
-                <p className="text-2xl font-bold">
-                  {filteredMeetings.filter((m) => m.status === "completed").length}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="rounded-xl border bg-card pt-6">
-            <CardContent className="flex items-center gap-4">
-              <div className="rounded-lg p-3 bg-amber-500/10">
-                <Video className="h-5 w-5 text-amber-500" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Hoje</p>
-                <p className="text-2xl font-bold">{todayMeetings.length}</p>
-              </div>
-            </CardContent>
-          </Card>
+        {/* Stats — DS v3.0: no icon-in-circle, naked inline icons */}
+        <div className="grid gap-4 grid-cols-3">
+          <div className="rounded-[8px] border border-border bg-card p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <Icon icon={Calendar} size={16} className="text-muted-foreground" />
+              <span className="text-xs text-muted-foreground">Próximas</span>
+            </div>
+            <p className="text-2xl font-bold font-mono tabular-nums">{upcomingMeetings.length}</p>
+          </div>
+          <div className="rounded-[8px] border border-border bg-card p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <Icon icon={CheckCircle} size={16} className="text-muted-foreground" />
+              <span className="text-xs text-muted-foreground">Realizadas</span>
+            </div>
+            <p className="text-2xl font-bold font-mono tabular-nums">
+              {filteredMeetings.filter((m) => m.status === "completed").length}
+            </p>
+          </div>
+          <div className="rounded-[8px] border border-border bg-card p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <Icon icon={Video} size={16} className="text-muted-foreground" />
+              <span className="text-xs text-muted-foreground">Hoje</span>
+            </div>
+            <p className="text-2xl font-bold font-mono tabular-nums">{todayMeetings.length}</p>
+          </div>
         </div>
 
         {/* Filters */}
@@ -408,22 +391,29 @@ export function MeetingsPageClient({
 
         {/* Content */}
         <div className="flex-1 min-h-0">
-          {viewMode === "list" ? (
+          {viewMode === "calendar" ? (
+            <div className="h-[calc(100vh-380px)]">
+              <MeetingCalendar
+                meetings={filteredMeetings}
+                onMeetingClick={handleEditMeeting}
+                onSlotClick={handleSlotClick}
+                onStatusChange={handleStatusChange}
+                defaultView="week"
+              />
+            </div>
+          ) : (
             <div className="space-y-6 pb-6">
               {/* Upcoming */}
-              <Card className="rounded-xl border bg-card">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <Calendar className="h-5 w-5 text-primary" />
-                    Próximas Reuniões
-                  </CardTitle>
+              <Card className="rounded-[8px] border">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-semibold">Próximas Reuniões</CardTitle>
                 </CardHeader>
                 <CardContent>
                   {upcomingMeetings.length === 0 ? (
                     <div className="text-center py-8 text-muted-foreground">
-                      <Video className="h-10 w-10 mx-auto mb-2 opacity-50" />
-                      <p>Nenhuma reunião agendada</p>
-                      <Button variant="link" onClick={handleNewMeeting}>
+                      <Icon icon={Video} customSize={32} className="mx-auto mb-2 opacity-30" />
+                      <p className="text-sm">Nenhuma reunião agendada</p>
+                      <Button variant="ghost" size="sm" onClick={handleNewMeeting} className="mt-2">
                         Agendar primeira reunião
                       </Button>
                     </div>
@@ -438,26 +428,24 @@ export function MeetingsPageClient({
                           <div
                             key={meeting.id}
                             className={cn(
-                              "flex items-center justify-between p-4 rounded-lg border transition-colors",
-                              isHappeningNow && "border-primary bg-primary/5",
-                              isToday(new Date(meeting.scheduled_at)) && !isHappeningNow && "bg-amber-50/50 dark:bg-amber-950/20"
+                              "flex items-center justify-between p-4 rounded-[8px] border transition-colors",
+                              isHappeningNow && "border-[#4E62D8] bg-[#EEF0FB] dark:border-[#7B8CEA] dark:bg-[#141C3D]",
+                              isToday(new Date(meeting.scheduled_at)) && !isHappeningNow && "bg-[#FFFBEB] dark:bg-[#3B2506]/30"
                             )}
                           >
-                            <div className="flex items-center gap-4">
-                              <div className={cn(
-                                "rounded-lg p-2",
-                                isHappeningNow ? "bg-primary/20" : "bg-primary/10"
-                              )}>
-                                <Video className={cn(
-                                  "h-4 w-4",
-                                  isHappeningNow ? "text-primary animate-pulse" : "text-primary"
-                                )} />
-                              </div>
+                            <div className="flex items-center gap-3">
+                              <Icon
+                                icon={Video}
+                                size={16}
+                                className={cn(
+                                  isHappeningNow ? "text-[#4E62D8] dark:text-[#7B8CEA]" : "text-muted-foreground"
+                                )}
+                              />
                               <div>
                                 <div className="flex items-center gap-2">
-                                  <p className="font-medium">{meeting.title}</p>
+                                  <p className="font-medium text-sm">{meeting.title}</p>
                                   {isHappeningNow && (
-                                    <Badge variant="default" className="text-xs">Agora</Badge>
+                                    <Badge variant="info" className="text-[10px]">Agora</Badge>
                                   )}
                                   <GoogleSyncBadge
                                     status={meeting.google_sync_status}
@@ -465,15 +453,15 @@ export function MeetingsPageClient({
                                     compact
                                   />
                                 </div>
-                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
                                   {meeting.client && <span>{formatClientDisplay(meeting.client)}</span>}
-                                  {meeting.client && <span>•</span>}
+                                  {meeting.client && <span>·</span>}
                                   <span>{formatMeetingDate(meeting.scheduled_at)}</span>
-                                  <span>•</span>
+                                  <span>·</span>
                                   <span>{meeting.duration_minutes}min</span>
                                   {meeting.participants && meeting.participants.length > 0 && (
                                     <>
-                                      <span>•</span>
+                                      <span>·</span>
                                       <RsvpSummary participants={meeting.participants} />
                                     </>
                                   )}
@@ -487,7 +475,7 @@ export function MeetingsPageClient({
                               />
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Ações da reunião">
+                                  <Button variant="ghost" size="icon-sm" className="h-8 w-8" aria-label="Ações da reunião">
                                     <MoreHorizontal className="h-4 w-4" />
                                   </Button>
                                 </DropdownMenuTrigger>
@@ -529,9 +517,9 @@ export function MeetingsPageClient({
 
               {/* History */}
               {pastMeetings.length > 0 && (
-                <Card className="rounded-xl border bg-card">
-                  <CardHeader>
-                    <CardTitle className="text-base">Histórico</CardTitle>
+                <Card className="rounded-[8px] border">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-semibold">Histórico</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-2">
@@ -540,16 +528,19 @@ export function MeetingsPageClient({
                         return (
                           <div
                             key={meeting.id}
-                            className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted/70 transition-colors cursor-pointer"
+                            className="flex items-center justify-between p-3 rounded-[8px] bg-muted/50 hover:bg-muted/70 transition-colors cursor-pointer"
                             onClick={() => handleOpenCompletion(meeting)}
                           >
                             <div className="flex items-center gap-3">
-                              <config.icon className={cn(
-                                "h-4 w-4",
-                                meeting.status === "completed" && "text-emerald-500",
-                                meeting.status === "no_show" && "text-destructive",
-                                meeting.status === "cancelled" && "text-muted-foreground"
-                              )} />
+                              <Icon
+                                icon={config.icon}
+                                size={16}
+                                className={cn(
+                                  meeting.status === "completed" && "text-[#065F46] dark:text-[#6EE7B7]",
+                                  meeting.status === "no_show" && "text-[#991B1B] dark:text-[#FCA5A5]",
+                                  meeting.status === "cancelled" && "text-muted-foreground"
+                                )}
+                              />
                               <div>
                                 <div className="flex items-center gap-2">
                                   <p className="text-sm font-medium">{meeting.title}</p>
@@ -561,12 +552,12 @@ export function MeetingsPageClient({
                                 </div>
                                 <div className="flex items-center gap-1 text-xs text-muted-foreground">
                                   <span>
-                                    {meeting.client && `${formatClientDisplay(meeting.client)} • `}
+                                    {meeting.client && `${formatClientDisplay(meeting.client)} · `}
                                     {format(new Date(meeting.scheduled_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
                                   </span>
                                   {meeting.participants && meeting.participants.length > 0 && (
                                     <>
-                                      <span>•</span>
+                                      <span>·</span>
                                       <RsvpSummary participants={meeting.participants} />
                                     </>
                                   )}
@@ -581,15 +572,6 @@ export function MeetingsPageClient({
                   </CardContent>
                 </Card>
               )}
-            </div>
-          ) : (
-            <div className="h-[calc(100vh-340px)]">
-              <MeetingCalendar
-                meetings={filteredMeetings}
-                onMeetingClick={handleEditMeeting}
-                onSlotClick={handleSlotClick}
-                onStatusChange={handleStatusChange}
-              />
             </div>
           )}
         </div>

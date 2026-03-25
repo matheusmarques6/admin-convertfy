@@ -213,13 +213,13 @@ export function RecoveryAnalysis({ stores, selectedStoreId }: RecoveryAnalysisPr
                 onChange={(e) => setNewCode(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addDiscountCode())}
               />
-              <Button variant="outline" size="sm" onClick={addDiscountCode}>
+              <Button variant="secondary" size="sm" onClick={addDiscountCode}>
                 Adicionar
               </Button>
             </div>
             <div className="flex flex-wrap gap-1.5 mt-2">
               {discountCodes.map((code) => (
-                <Badge key={code} variant="secondary" className="gap-1 px-2 py-0.5">
+                <Badge key={code} variant="neutral" className="gap-1 px-2 py-0.5">
                   {code}
                   <button onClick={() => removeDiscountCode(code)} className="hover:text-destructive">
                     <X className="h-3 w-3" />
@@ -239,13 +239,13 @@ export function RecoveryAnalysis({ stores, selectedStoreId }: RecoveryAnalysisPr
                 onChange={(e) => setNewUtm(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addUtmSource())}
               />
-              <Button variant="outline" size="sm" onClick={addUtmSource}>
+              <Button variant="secondary" size="sm" onClick={addUtmSource}>
                 Adicionar
               </Button>
             </div>
             <div className="flex flex-wrap gap-1.5 mt-2">
               {utmSources.map((source) => (
-                <Badge key={source} variant="secondary" className="gap-1 px-2 py-0.5">
+                <Badge key={source} variant="neutral" className="gap-1 px-2 py-0.5">
                   {source}
                   <button onClick={() => removeUtmSource(source)} className="hover:text-destructive">
                     <X className="h-3 w-3" />
@@ -358,7 +358,7 @@ export function RecoveryAnalysis({ stores, selectedStoreId }: RecoveryAnalysisPr
                       {data.byDiscountCode.map((item) => (
                         <TableRow key={item.code}>
                           <TableCell>
-                            <Badge variant="outline">{item.code}</Badge>
+                            <Badge variant="neutral" showDot={false}>{item.code}</Badge>
                           </TableCell>
                           <TableCell className="text-right">{item.orders}</TableCell>
                           <TableCell className="text-right font-medium">
@@ -391,7 +391,7 @@ export function RecoveryAnalysis({ stores, selectedStoreId }: RecoveryAnalysisPr
                       {data.byUtmSource.map((item) => (
                         <TableRow key={item.source}>
                           <TableCell>
-                            <Badge variant="outline">{item.source}</Badge>
+                            <Badge variant="neutral" showDot={false}>{item.source}</Badge>
                           </TableCell>
                           <TableCell className="text-right">{item.orders}</TableCell>
                           <TableCell className="text-right font-medium">

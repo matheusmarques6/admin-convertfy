@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { Calendar, AlertCircle, Clock, FileText, HeartPulse, TrendingDown, ShieldAlert, Mail, Zap, AlertTriangle } from "lucide-react"
+import { Icon as IconWrapper } from "@/components/ui/icon"
 import { CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -47,14 +48,14 @@ export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps)
     return hasFeature(requiredFeature)
   })
 
-  const getSeverityColor = (severity: "high" | "medium" | "low") => {
+  const getSeverityColor = (severity: "high" | "medium" | "low"): "positive" | "negative" | "warning" | "neutral" | "info" => {
     switch (severity) {
       case "high":
-        return "destructive"
+        return "negative"
       case "medium":
         return "warning"
       case "low":
-        return "secondary"
+        return "neutral"
     }
   }
 
@@ -64,17 +65,17 @@ export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps)
   const totalAlerts = filteredAlerts.length
 
   return (
-    <div className="rounded-xl border border-border bg-card h-full flex flex-col">
+    <div className="rounded-[8px] border border-border bg-card h-full flex flex-col">
       <CardHeader className="p-5 pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="h-8 w-8 rounded-lg bg-warning/10 flex items-center justify-center">
-              <AlertTriangle className="h-4 w-4 text-warning" />
+              <IconWrapper icon={AlertTriangle} size={16} className="text-warning" />
             </div>
             <CardTitle className="text-sm font-semibold text-foreground">Alertas</CardTitle>
           </div>
           {totalAlerts > 0 && (
-            <Badge variant="destructive" className="bg-destructive/10 text-destructive border-0 rounded-full text-xs px-2.5 h-6 font-semibold">
+            <Badge variant="negative" className="bg-destructive/10 text-destructive border-0 text-xs px-2.5 h-6 font-semibold">
               {totalAlerts}
             </Badge>
           )}
@@ -86,19 +87,19 @@ export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps)
           <ScrollArea className="flex-1 max-h-[280px]">
             <div className="space-y-2">
               {filteredAlerts.map((alert) => {
-                const Icon = ALERT_ICONS[alert.type] || Clock
+                const AlertIcon = ALERT_ICONS[alert.type] || Clock
                 const content = (
                   <div
-                    className="flex items-start gap-3 p-3 rounded-xl bg-muted/30 hover:bg-muted/50 transition-all duration-200"
+                    className="flex items-start gap-3 p-3 rounded-[8px] bg-muted/30 hover:bg-muted/50 transition-all duration-200"
                   >
                     <div className={`rounded-lg p-2 shrink-0 ${
                       alert.severity === "high" ? "bg-destructive/10" :
                       alert.severity === "medium" ? "bg-warning/10" : "bg-muted"
                     }`}>
-                      <Icon className={`h-4 w-4 ${
+                      <IconWrapper icon={AlertIcon} size={16} className={
                         alert.severity === "high" ? "text-destructive" :
                         alert.severity === "medium" ? "text-warning" : "text-muted-foreground"
-                      }`} />
+                      } />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-foreground">{alert.title}</p>
@@ -138,7 +139,7 @@ export function DashboardAlerts({ meetings, alerts = [] }: DashboardAlertsProps)
         {meetings.length > 0 && (
           <>
             <div className="flex items-center gap-2 pt-2 mt-auto border-t border-border">
-              <Calendar className="h-4 w-4 text-muted-foreground" />
+              <IconWrapper icon={Calendar} size={16} className="text-muted-foreground" />
               <span className="text-xs font-semibold text-foreground uppercase tracking-wider">Proximas Reunioes</span>
             </div>
             <div className="space-y-1.5">

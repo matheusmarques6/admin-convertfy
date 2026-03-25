@@ -21,6 +21,7 @@ import {
 } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { ChevronLeft, ChevronRight, Video, CheckCircle } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
@@ -131,14 +132,14 @@ export function MeetingCalendar({
         </div>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1">
-            <Button variant="outline" size="icon" className="h-8 w-8" aria-label="Período anterior" onClick={() => navigate("prev")}>
-              <ChevronLeft className="h-4 w-4" />
+            <Button variant="secondary" size="icon" className="h-8 w-8" aria-label="Período anterior" onClick={() => navigate("prev")}>
+              <Icon icon={ChevronLeft} size={16} />
             </Button>
-            <Button variant="outline" size="sm" className="h-8" onClick={goToToday}>
+            <Button variant="secondary" size="sm" className="h-8" onClick={goToToday}>
               Hoje
             </Button>
-            <Button variant="outline" size="icon" className="h-8 w-8" aria-label="Próximo período" onClick={() => navigate("next")}>
-              <ChevronRight className="h-4 w-4" />
+            <Button variant="secondary" size="icon" className="h-8 w-8" aria-label="Próximo período" onClick={() => navigate("next")}>
+              <Icon icon={ChevronRight} size={16} />
             </Button>
           </div>
           <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as CalendarViewMode)}>
@@ -210,10 +211,10 @@ export function MeetingCalendar({
                                 )}
                                 title={meeting.title}
                               >
-                                <Video className="h-3 w-3 flex-shrink-0" />
+                                <Icon icon={Video} customSize={12} />
                                 <span className="truncate">{meeting.title}</span>
                                 {meeting.google_sync_status === "synced" && (
-                                  <CheckCircle className="h-2.5 w-2.5 text-green-500 flex-shrink-0" />
+                                  <Icon icon={CheckCircle} customSize={10} className="text-green-500" />
                                 )}
                               </div>
                             ))}
@@ -242,10 +243,10 @@ export function MeetingCalendar({
 
                 {selectedDate && selectedDateMeetings.length === 0 ? (
                   <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground text-sm">
-                    <Video className="h-8 w-8 mb-2 opacity-30" />
+                    <Icon icon={Video} customSize={32} className="mb-2 opacity-30" />
                     <p>Nenhuma reunião</p>
                     <Button
-                      variant="link"
+                      variant="ghost"
                       size="sm"
                       className="mt-1"
                       onClick={() => handleSlotClick(selectedDate)}
@@ -265,7 +266,7 @@ export function MeetingCalendar({
                             className="w-full text-left p-3 rounded-lg border hover:bg-accent/50 transition-colors bg-primary/5 border-primary/20 dark:bg-primary/10 dark:border-primary/20"
                           >
                             <div className="flex items-start gap-2">
-                              <Video className="h-4 w-4 mt-0.5 text-primary dark:text-primary" />
+                              <Icon icon={Video} size={16} className="mt-0.5 text-primary dark:text-primary" />
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-1.5">
                                   <p className="font-medium text-sm truncate">{meeting.title}</p>

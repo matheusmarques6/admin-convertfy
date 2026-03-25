@@ -6,21 +6,17 @@ import {
   Store,
   ExternalLink,
   AlertCircle,
-  TrendingUp,
-  Users,
-  DollarSign,
-  Mail,
   Key,
   Loader2,
   CheckCircle2,
   Settings,
+  Plus,
 } from "lucide-react"
-import { CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-// Badge removed - not currently used
 import { Skeleton } from "@/components/ui/skeleton"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { StatusBadge } from "@/components/ui/status-badge"
 import {
   Dialog,
   DialogContent,
@@ -30,6 +26,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { toast } from "@/lib/hooks/use-toast"
+import { cn } from "@/lib/utils"
+
+// ─── Types ──────────────────────────────────────────────
 
 interface StoreData {
   id: string
@@ -46,6 +45,164 @@ interface StoresResponse {
   stores: StoreData[]
 }
 
+// ─── Brand Icons ────────────────────────────────────────
+
+function ShopifyIcon({ size = 32, className }: { size?: number; className?: string }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 109 124"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+    >
+      <path
+        d="M94.27 23.49C94.17 22.79 93.57 22.42 93.07 22.39C92.57 22.36 82.47 21.87 82.47 21.87C82.47 21.87 73.47 13 72.57 12.1C71.67 11.2 69.87 11.47 69.17 11.67C69.07 11.7 67.37 12.23 64.57 13.1C63.97 11.15 63.07 8.82 61.67 6.49C57.77 0.09 52.27 0 50.67 0C50.37 0 50.17 0.03 49.97 0.03C49.37 -0.07 48.87 0.43 48.47 0.93C48.07 1.43 40.17 11.2 38.27 16.4C36.47 21.3 35.67 21.9 35.27 22.1C32.27 23.2 23.07 26.1 23.07 26.1L23 26.13C19.7 27.13 19.57 27.23 19.17 30.33C18.87 32.63 9 105.15 9 105.15L72.3 117.55L104.1 110.35C104.1 110.35 94.37 24.19 94.27 23.49Z"
+        fill="#95BF47"
+      />
+      <path
+        d="M64.57 13.1C63.97 11.15 63.07 8.82 61.67 6.49C57.77 0.09 52.27 0 50.67 0L48.47 0.93C48.07 1.43 40.17 11.2 38.27 16.4C36.47 21.3 35.67 21.9 35.27 22.1C32.27 23.2 23.07 26.1 23.07 26.1L23 26.13C19.7 27.13 19.57 27.23 19.17 30.33C18.87 32.63 9 105.15 9 105.15L50.67 113.15V0C50.37 0 50.17 0.03 49.97 0.03C49.37 -0.07 48.87 0.43 48.47 0.93"
+        fill="#5E8E3E"
+      />
+      <path
+        d="M53.07 41.39L49.37 55.09C49.37 55.09 46.07 53.39 42.07 53.59C36.07 53.89 36.07 57.59 36.07 58.49C36.37 64.49 49.87 65.59 50.57 77.89C51.17 87.49 45.37 94.09 36.97 94.59C26.87 95.19 21.37 89.39 21.37 89.39L23.67 80.59C23.67 80.59 29.17 84.69 33.57 84.39C36.47 84.19 37.57 81.79 37.47 80.09C37.07 72.39 26.07 72.79 25.47 61.59C24.97 52.09 31.07 42.49 45.47 41.59C50.67 41.29 53.07 41.39 53.07 41.39Z"
+        fill="white"
+      />
+    </svg>
+  )
+}
+
+function KlaviyoIcon({ size = 32, className }: { size?: number; className?: string }) {
+  return (
+    <div
+      className={cn(
+        "flex items-center justify-center bg-black rounded-[6px]",
+        className,
+      )}
+      style={{ width: size, height: size }}
+    >
+      <svg
+        width={size * 0.6}
+        height={size * 0.6}
+        viewBox="0 0 24 24"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M22 12C22 12 17.5 16 12 16C6.5 16 2 12 2 12C2 12 6.5 8 12 8C17.5 8 22 12 22 12Z"
+          fill="#BEF264"
+        />
+        <circle cx="12" cy="12" r="3" fill="#000" />
+      </svg>
+    </div>
+  )
+}
+
+function PlatformIcon({ platform, size = 32 }: { platform: string; size?: number }) {
+  if (platform === "shopify") {
+    return (
+      <div
+        className="flex items-center justify-center rounded-[6px] bg-[#95BF47]/10"
+        style={{ width: size, height: size }}
+      >
+        <ShopifyIcon size={size * 0.6} />
+      </div>
+    )
+  }
+  return (
+    <div
+      className="flex items-center justify-center rounded-[6px] bg-slate-100 dark:bg-slate-800"
+      style={{ width: size, height: size }}
+    >
+      <Store className="text-slate-500 dark:text-slate-400" style={{ width: size * 0.5, height: size * 0.5 }} />
+    </div>
+  )
+}
+
+// ─── Store Card ─────────────────────────────────────────
+
+function StoreCard({
+  store,
+  onConfigure,
+}: {
+  store: StoreData
+  onConfigure: (store: StoreData) => void
+}) {
+  const needsSetup = !store.hasKlaviyo || !store.shopify_access_token
+
+  return (
+    <Link
+      href={`/client/stores/${store.id}`}
+      className="block group"
+    >
+      <div className="p-5 rounded-[10px] border border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)] bg-white dark:bg-[#1F2937] cursor-pointer hover:border-[rgba(0,0,0,0.15)] dark:hover:border-[rgba(255,255,255,0.14)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] transition-all duration-150">
+        {/* Header: platform icon + name + status */}
+        <div className="flex items-center gap-3 mb-3">
+          <PlatformIcon platform={store.platform} size={36} />
+          <div className="flex-1 min-w-0">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-[#EAEDF3] truncate">
+              {store.store_name}
+            </h3>
+            <p className="text-xs text-gray-400 dark:text-[#5C6378] truncate">
+              {store.store_url || store.shopify_store_domain || store.platform}
+            </p>
+          </div>
+          <StatusBadge status={store.is_active ? "active" : "inactive"} />
+        </div>
+
+        {/* Integration status + action */}
+        <div className="grid grid-cols-3 gap-3 pt-3 border-t border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]">
+          <div>
+            <p className="text-[11px] text-gray-400 dark:text-[#5C6378] mb-0.5">Shopify</p>
+            <StatusBadge
+              status={store.shopify_access_token ? "connected" : "disconnected"}
+              showDot={false}
+            />
+          </div>
+          <div>
+            <p className="text-[11px] text-gray-400 dark:text-[#5C6378] mb-0.5">Klaviyo</p>
+            <StatusBadge
+              status={store.hasKlaviyo ? "connected" : "disconnected"}
+              showDot={false}
+            />
+          </div>
+          <div className="flex items-end justify-end">
+            {needsSetup ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                className="h-7 px-2.5 text-xs rounded-[6px] border-[rgba(0,0,0,0.08)] dark:border-[rgba(255,255,255,0.08)]"
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  onConfigure(store)
+                }}
+              >
+                <Settings className="h-3 w-3 mr-1" />
+                Configurar
+              </Button>
+            ) : store.store_url ? (
+              <a
+                href={store.store_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="inline-flex items-center gap-1 text-xs text-gray-400 dark:text-[#5C6378] hover:text-gray-600 dark:hover:text-[#EAEDF3] transition-colors"
+              >
+                <ExternalLink className="h-3 w-3" />
+                Visitar
+              </a>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </Link>
+  )
+}
+
+// ─── Main Component ─────────────────────────────────────
+
 export default function PortalStoresPage() {
   const [stores, setStores] = useState<StoreData[]>([])
   const [loading, setLoading] = useState(true)
@@ -60,15 +217,17 @@ export default function PortalStoresPage() {
     shopify_access_token: "",
   })
   const [testing, setTesting] = useState<"klaviyo" | "shopify" | null>(null)
-  const [testResult, setTestResult] = useState<{ type: string; success: boolean; message: string } | null>(null)
+  const [testResult, setTestResult] = useState<{
+    type: string
+    success: boolean
+    message: string
+  } | null>(null)
   const [saving, setSaving] = useState(false)
 
   const fetchStores = async () => {
     try {
       const response = await fetch("/api/portal/stores")
-      if (!response.ok) {
-        throw new Error("Erro ao carregar lojas")
-      }
+      if (!response.ok) throw new Error("Erro ao carregar lojas")
       const data: StoresResponse = await response.json()
       setStores(data.stores)
       setError(null)
@@ -109,19 +268,15 @@ export default function PortalStoresPage() {
         body: JSON.stringify({ api_key: credForm.klaviyo_private_key }),
       })
       const data = await res.json()
-      if (data.success) {
-        setTestResult({
-          type: "klaviyo",
-          success: true,
-          message: data.account ? `Conectado: ${data.account}` : "Conexão OK!",
-        })
-      } else {
-        setTestResult({
-          type: "klaviyo",
-          success: false,
-          message: data.error || "Falha na autenticação",
-        })
-      }
+      setTestResult({
+        type: "klaviyo",
+        success: data.success,
+        message: data.success
+          ? data.account
+            ? `Conectado: ${data.account}`
+            : "Conexão OK!"
+          : data.error || "Falha na autenticação",
+      })
     } catch {
       setTestResult({ type: "klaviyo", success: false, message: "Erro ao testar conexão" })
     } finally {
@@ -146,19 +301,15 @@ export default function PortalStoresPage() {
         }),
       })
       const data = await res.json()
-      if (data.success) {
-        setTestResult({
-          type: "shopify",
-          success: true,
-          message: data.shop?.name ? `Conectado: ${data.shop.name}` : "Conexão OK!",
-        })
-      } else {
-        setTestResult({
-          type: "shopify",
-          success: false,
-          message: data.error || "Falha na conexão",
-        })
-      }
+      setTestResult({
+        type: "shopify",
+        success: data.success,
+        message: data.success
+          ? data.shop?.name
+            ? `Conectado: ${data.shop.name}`
+            : "Conexão OK!"
+          : data.error || "Falha na conexão",
+      })
     } catch {
       setTestResult({ type: "shopify", success: false, message: "Erro ao testar conexão" })
     } finally {
@@ -191,10 +342,7 @@ export default function PortalStoresPage() {
       })
 
       const data = await res.json()
-
-      if (!res.ok) {
-        throw new Error(data.error || "Erro ao salvar")
-      }
+      if (!res.ok) throw new Error(data.error || "Erro ao salvar")
 
       toast({ title: "Credenciais salvas com sucesso!" })
       setDialogOpen(false)
@@ -210,260 +358,162 @@ export default function PortalStoresPage() {
     }
   }
 
+  // ─── Loading ────────────────────────────────────────────
+
   if (loading) {
     return (
       <div className="space-y-6">
-        <div>
-          <Skeleton className="h-8 w-48 mb-2" />
-          <Skeleton className="h-4 w-64" />
+        <div className="flex items-center justify-between">
+          <div>
+            <Skeleton className="h-7 w-40 mb-1.5 rounded-[6px]" />
+            <Skeleton className="h-4 w-56 rounded-[6px]" />
+          </div>
+          <Skeleton className="h-9 w-28 rounded-[6px]" />
         </div>
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-48" />
+            <Skeleton key={i} className="h-[140px] rounded-[10px]" />
           ))}
         </div>
       </div>
     )
   }
 
+  // ─── Error ──────────────────────────────────────────────
+
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] text-center">
-        <AlertCircle className="h-12 w-12 text-red-600 mb-4" />
-        <h2 className="text-xl font-semibold text-slate-800 dark:text-slate-100 mb-2">Erro ao carregar</h2>
-        <p className="text-slate-500 dark:text-slate-400 mb-4">{error}</p>
-        <Button onClick={fetchStores} className="bg-primary hover:bg-primary/85 text-white shadow-sm">Tentar novamente</Button>
+        <div className="w-14 h-14 rounded-full bg-[#fef2f2] dark:bg-red-500/10 flex items-center justify-center mb-4">
+          <AlertCircle className="h-6 w-6 text-[#EF4444]" />
+        </div>
+        <h2 className="text-base font-semibold text-gray-900 dark:text-[#EAEDF3] mb-1">
+          Erro ao carregar
+        </h2>
+        <p className="text-sm text-gray-400 dark:text-[#5C6378] mb-5">{error}</p>
+        <Button
+          onClick={fetchStores}
+          className="rounded-[6px] h-9 px-4 text-sm"
+        >
+          Tentar novamente
+        </Button>
       </div>
     )
   }
 
+  // ─── Render ─────────────────────────────────────────────
+
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* PageHeader */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Suas Lojas</h1>
-          <p className="text-slate-500 dark:text-slate-400">
-            Acompanhe os resultados e configure as integrações de cada loja
+          <h1 className="text-xl font-semibold text-gray-900 dark:text-[#EAEDF3]">
+            Minhas Lojas
+            {stores.length > 0 && (
+              <span className="ml-2 text-sm font-normal text-gray-400 dark:text-[#5C6378]">
+                ({stores.length})
+              </span>
+            )}
+          </h1>
+          <p className="text-sm text-gray-400 dark:text-[#5C6378] mt-0.5">
+            Acompanhe status e integrações de cada loja
           </p>
         </div>
-        <Button asChild className="bg-primary hover:bg-primary/85 text-white shadow-sm">
+        <Button
+          asChild
+          className="rounded-[6px] h-9 px-4 text-sm gap-1.5"
+        >
           <Link href="/client/stores/new">
-            <Store className="h-4 w-4 mr-2" />
-            Nova Loja
+            <Plus className="h-3.5 w-3.5" />
+            Adicionar Loja
           </Link>
         </Button>
       </div>
 
-      {/* Stores Grid */}
+      {/* Grid de StoreCards ou Empty State */}
       {stores.length === 0 ? (
-        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20">
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <Store className="h-12 w-12 text-slate-400 dark:text-slate-500 mb-4" />
-            <h3 className="text-lg font-medium text-slate-800 dark:text-slate-100 mb-2">Nenhuma loja configurada</h3>
-            <p className="text-slate-500 dark:text-slate-400 text-center max-w-md">
-              Suas lojas serão exibidas aqui assim que forem configuradas pela equipe Convertfy.
-            </p>
-          </CardContent>
+        <div className="text-center py-12 px-6 border-2 border-dashed border-[#e5e7eb] dark:border-[rgba(255,255,255,0.08)] rounded-[12px] bg-[#fafbfc] dark:bg-[#1F2937]/50">
+          <div className="w-16 h-16 rounded-full bg-[#f3f4f6] dark:bg-slate-800 flex items-center justify-center mx-auto mb-4">
+            <Store className="h-7 w-7 text-gray-400 dark:text-[#5C6378]" />
+          </div>
+          <h3 className="text-base font-semibold text-gray-900 dark:text-[#EAEDF3] mb-2">
+            Nenhuma loja configurada
+          </h3>
+          <p className="text-sm text-gray-400 dark:text-[#5C6378] max-w-sm mx-auto mb-5">
+            Suas lojas serão exibidas aqui assim que forem configuradas pela equipe Convertfy.
+          </p>
+          <Button asChild className="rounded-[6px] h-9 px-4 text-sm gap-1.5">
+            <Link href="/client/stores/new">
+              <Plus className="h-3.5 w-3.5" />
+              Adicionar Loja
+            </Link>
+          </Button>
         </div>
       ) : (
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {stores.map((store) => {
-            const needsSetup = !store.hasKlaviyo || !store.shopify_access_token
-            return (
-              <div key={store.id} className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20">
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                        <Store className="h-6 w-6 text-primary" />
-                      </div>
-                      <div>
-                        <CardTitle className="text-lg text-slate-800 dark:text-slate-100">{store.store_name}</CardTitle>
-                        <CardDescription className="capitalize text-slate-500 dark:text-slate-400">{store.platform}</CardDescription>
-                      </div>
-                    </div>
-                    {store.is_active ? (
-                      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">
-                        Ativa
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
-                        Inativa
-                      </span>
-                    )}
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  {/* Integration Status */}
-                  <div className="space-y-2 mb-4">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-slate-500 dark:text-slate-400">Klaviyo</span>
-                      {store.hasKlaviyo ? (
-                        <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/30">
-                          Conectado
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/30">
-                          Não conectado
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-slate-500 dark:text-slate-400">Shopify</span>
-                      {store.shopify_access_token ? (
-                        <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/30">
-                          Conectado
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/30">
-                          Não conectado
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex gap-2">
-                    <Button asChild className="flex-1 bg-primary hover:bg-primary/85 text-white shadow-sm">
-                      <Link href={`/client/stores/${store.id}`}>
-                        Ver Relatório
-                      </Link>
-                    </Button>
-                    {needsSetup && (
-                      <Button
-                        variant="outline"
-                        onClick={() => openCredentialsDialog(store)}
-                        className="border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]"
-                      >
-                        <Settings className="h-4 w-4 mr-1" />
-                        Configurar
-                      </Button>
-                    )}
-                    {!needsSetup && store.store_url && (
-                      <Button variant="outline" size="icon" asChild className="border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
-                        <a href={store.store_url} target="_blank" rel="noopener noreferrer">
-                          <ExternalLink className="h-4 w-4" />
-                        </a>
-                      </Button>
-                    )}
-                  </div>
-                </CardContent>
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      {/* Quick Stats Legend */}
-      {stores.length > 0 && (
-        <div className="bg-white dark:bg-[#151922] rounded-xl border border-slate-200/80 dark:border-slate-700/40 shadow-sm dark:shadow-slate-900/20">
-          <CardHeader>
-            <CardTitle className="text-[15px] font-semibold text-slate-800 dark:text-slate-100">Como ler seus relatórios</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 md:grid-cols-4">
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-lg bg-[#05AFF2]/10 flex items-center justify-center flex-shrink-0">
-                  <Users className="h-4 w-4 text-[#05AFF2]" />
-                </div>
-                <div>
-                  <p className="font-medium text-sm text-slate-800 dark:text-slate-100">Total de Leads</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Total de contatos cadastrados na sua base
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
-                  <TrendingUp className="h-4 w-4 text-emerald-600" />
-                </div>
-                <div>
-                  <p className="font-medium text-sm text-slate-800 dark:text-slate-100">Leads Engajados</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Contatos que interagiram nos últimos 90 dias
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                  <DollarSign className="h-4 w-4 text-primary" />
-                </div>
-                <div>
-                  <p className="font-medium text-sm text-slate-800 dark:text-slate-100">Receita Atribuída</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Vendas geradas via email marketing
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center flex-shrink-0">
-                  <Mail className="h-4 w-4 text-amber-600" />
-                </div>
-                <div>
-                  <p className="font-medium text-sm text-slate-800 dark:text-slate-100">Campanhas</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Emails enviados e suas métricas
-                  </p>
-                </div>
-              </div>
-            </div>
-          </CardContent>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {stores.map((store) => (
+            <StoreCard
+              key={store.id}
+              store={store}
+              onConfigure={openCredentialsDialog}
+            />
+          ))}
         </div>
       )}
 
       {/* Credentials Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-lg bg-white dark:bg-[#151922] border-slate-200/80 dark:border-slate-700/40">
+        <DialogContent className="sm:max-w-lg bg-white dark:bg-[#1F2937] border-[#e5e7eb] dark:border-[#374151]">
           <DialogHeader>
-            <DialogTitle className="text-slate-800 dark:text-slate-100">Configurar Integrações</DialogTitle>
-            <DialogDescription className="text-slate-500 dark:text-slate-400">
-              {selectedStore?.store_name} &mdash; Insira suas credenciais para conectar as integrações.
+            <DialogTitle className="text-gray-900 dark:text-[#EAEDF3]">
+              Configurar Integrações
+            </DialogTitle>
+            <DialogDescription className="text-gray-400 dark:text-[#5C6378]">
+              {selectedStore?.store_name} &mdash; Insira suas credenciais para conectar.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-6 py-4">
             {/* Klaviyo Section */}
             {selectedStore && !selectedStore.hasKlaviyo && (
-              <div className="space-y-4">
-                <h4 className="font-medium flex items-center gap-2 text-slate-800 dark:text-slate-100">
-                  <Key className="h-4 w-4 text-primary" />
+              <div className="space-y-3">
+                <h4 className="text-sm font-semibold text-gray-900 dark:text-[#EAEDF3] flex items-center gap-2">
+                  <KlaviyoIcon size={20} />
                   Klaviyo
                 </h4>
-                <div className="space-y-2">
-                  <Label className="text-[13px] font-medium text-slate-700 dark:text-slate-200">Private API Key</Label>
+                <div className="space-y-1.5">
+                  <Label className="text-[13px] font-medium text-[#374151] dark:text-[#9CA3AF]">
+                    Private API Key
+                  </Label>
                   <Input
                     type="password"
                     placeholder="pk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                     value={credForm.klaviyo_private_key}
                     onChange={(e) => setCredForm({ ...credForm, klaviyo_private_key: e.target.value })}
-                    className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100"
+                    className="h-10 rounded-[6px] border-[#e5e7eb] dark:border-[#374151] bg-white dark:bg-[#111827] text-gray-900 dark:text-[#F9FAFB]"
                   />
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Encontre em Klaviyo &rarr; Settings &rarr; API Keys &rarr; Create Private API Key
+                  <p className="text-xs text-gray-400 dark:text-[#5C6378]">
+                    Klaviyo &rarr; Settings &rarr; API Keys &rarr; Create Private API Key
                   </p>
                 </div>
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   size="sm"
                   onClick={testKlaviyo}
                   disabled={testing === "klaviyo" || !credForm.klaviyo_private_key}
-                  className="border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]"
+                  className="rounded-[6px] h-8 text-xs"
                 >
                   {testing === "klaviyo" ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
                   ) : (
-                    <Key className="h-4 w-4 mr-2" />
+                    <Key className="h-3.5 w-3.5 mr-1.5" />
                   )}
                   Testar Conexão
                 </Button>
                 {testResult?.type === "klaviyo" && (
-                  <div className={`flex items-center gap-2 text-sm ${testResult.success ? "text-emerald-600" : "text-red-600"}`}>
-                    {testResult.success ? (
-                      <CheckCircle2 className="h-4 w-4" />
-                    ) : (
-                      <AlertCircle className="h-4 w-4" />
-                    )}
+                  <div className={`flex items-center gap-1.5 text-sm ${testResult.success ? "text-[#10B981]" : "text-[#EF4444]"}`}>
+                    {testResult.success ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertCircle className="h-3.5 w-3.5" />}
                     {testResult.message}
                   </div>
                 )}
@@ -472,82 +522,83 @@ export default function PortalStoresPage() {
 
             {/* Shopify Section */}
             {selectedStore && !selectedStore.shopify_access_token && (
-              <div className="space-y-4">
-                <h4 className="font-medium flex items-center gap-2 text-slate-800 dark:text-slate-100">
-                  <Store className="h-4 w-4 text-emerald-600" />
+              <div className="space-y-3">
+                <h4 className="text-sm font-semibold text-gray-900 dark:text-[#EAEDF3] flex items-center gap-2">
+                  <PlatformIcon platform="shopify" size={20} />
                   Shopify
                 </h4>
-                <div className="space-y-2">
-                  <Label className="text-[13px] font-medium text-slate-700 dark:text-slate-200">Domínio da Loja</Label>
+                <div className="space-y-1.5">
+                  <Label className="text-[13px] font-medium text-[#374151] dark:text-[#9CA3AF]">
+                    Domínio da Loja
+                  </Label>
                   <Input
                     placeholder="minhaloja.myshopify.com"
                     value={credForm.shopify_store_domain}
                     onChange={(e) => setCredForm({ ...credForm, shopify_store_domain: e.target.value })}
-                    className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100"
+                    className="h-10 rounded-[6px] border-[#e5e7eb] dark:border-[#374151] bg-white dark:bg-[#111827] text-gray-900 dark:text-[#F9FAFB]"
                   />
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Domínio .myshopify.com da sua loja
-                  </p>
                 </div>
-                <div className="space-y-2">
-                  <Label className="text-[13px] font-medium text-slate-700 dark:text-slate-200">Admin API Access Token</Label>
+                <div className="space-y-1.5">
+                  <Label className="text-[13px] font-medium text-[#374151] dark:text-[#9CA3AF]">
+                    Admin API Access Token
+                  </Label>
                   <Input
                     type="password"
                     placeholder="shpat_xxxxxxxxxxxxxxxx"
                     value={credForm.shopify_access_token}
                     onChange={(e) => setCredForm({ ...credForm, shopify_access_token: e.target.value })}
-                    className="h-10 bg-slate-50 dark:bg-[#1A1F2E] border-slate-200 dark:border-slate-700/40 text-slate-800 dark:text-slate-100"
+                    className="h-10 rounded-[6px] border-[#e5e7eb] dark:border-[#374151] bg-white dark:bg-[#111827] text-gray-900 dark:text-[#F9FAFB]"
                   />
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Settings &rarr; Apps &rarr; Develop apps &rarr; Create app &rarr; Admin API access token
+                  <p className="text-xs text-gray-400 dark:text-[#5C6378]">
+                    Settings &rarr; Apps &rarr; Develop apps &rarr; Admin API access token
                   </p>
                 </div>
                 <Button
-                  variant="outline"
+                  variant="secondary"
                   size="sm"
                   onClick={testShopify}
                   disabled={testing === "shopify" || !credForm.shopify_store_domain || !credForm.shopify_access_token}
-                  className="border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]"
+                  className="rounded-[6px] h-8 text-xs"
                 >
                   {testing === "shopify" ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
                   ) : (
-                    <Store className="h-4 w-4 mr-2" />
+                    <Store className="h-3.5 w-3.5 mr-1.5" />
                   )}
                   Testar Conexão
                 </Button>
                 {testResult?.type === "shopify" && (
-                  <div className={`flex items-center gap-2 text-sm ${testResult.success ? "text-emerald-600" : "text-red-600"}`}>
-                    {testResult.success ? (
-                      <CheckCircle2 className="h-4 w-4" />
-                    ) : (
-                      <AlertCircle className="h-4 w-4" />
-                    )}
+                  <div className={`flex items-center gap-1.5 text-sm ${testResult.success ? "text-[#10B981]" : "text-[#EF4444]"}`}>
+                    {testResult.success ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertCircle className="h-3.5 w-3.5" />}
                     {testResult.message}
                   </div>
                 )}
               </div>
             )}
 
-            {/* All connected message */}
+            {/* All connected */}
             {selectedStore?.hasKlaviyo && selectedStore?.shopify_access_token && (
-              <div className="flex items-center gap-3 py-4 text-emerald-600">
-                <CheckCircle2 className="h-6 w-6" />
-                <p className="font-medium">Todas as integrações estão conectadas!</p>
+              <div className="flex items-center gap-2.5 py-4 text-[#10B981]">
+                <CheckCircle2 className="h-5 w-5" />
+                <p className="text-sm font-medium">Todas as integrações estão conectadas!</p>
               </div>
             )}
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)} className="border-slate-200/80 dark:border-slate-700/40 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.06]">
+            <Button
+              variant="secondary"
+              onClick={() => setDialogOpen(false)}
+              className="rounded-[6px] h-9"
+            >
               Cancelar
             </Button>
             <Button
               onClick={handleSaveCredentials}
               disabled={saving || (!credForm.klaviyo_private_key && !credForm.shopify_access_token)}
-              className="bg-primary hover:bg-primary/85 text-white shadow-sm"
+              className="rounded-[6px] h-9"
             >
-              {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              {saving && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
               Salvar Credenciais
             </Button>
           </DialogFooter>

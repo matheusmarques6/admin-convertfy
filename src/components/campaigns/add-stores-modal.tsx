@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useCallback } from "react"
 import { Loader2 } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -129,7 +130,7 @@ export function AddStoresModal({
 
         <DialogFooter>
           <Button
-            variant="outline"
+            variant="secondary"
             onClick={() => handleOpenChange(false)}
             disabled={isSubmitting}
           >
@@ -141,7 +142,7 @@ export function AddStoresModal({
           >
             {isSubmitting ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Icon icon={Loader2} size={16} className="mr-2 animate-spin" />
                 Adicionando...
               </>
             ) : (

@@ -24,7 +24,7 @@ function SkeletonShimmer({
       className={cn(
         "relative overflow-hidden rounded-md bg-muted",
         "after:absolute after:inset-0 after:translate-x-[-100%]",
-        "after:bg-gradient-to-r after:from-transparent after:via-white/20 after:to-transparent",
+        "after:bg-gradient-to-r after:from-transparent after:via-white/20 dark:after:via-white/5 after:to-transparent",
         "after:animate-shimmer",
         className
       )}

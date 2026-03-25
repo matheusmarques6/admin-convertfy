@@ -6,7 +6,8 @@ import Link from "next/link"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
-import { ArrowLeft, Loader2, Zap, Plus, Trash2 } from "lucide-react"
+import { Loader2, Zap, Plus, Trash2 } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -24,6 +25,8 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { toast } from "@/lib/hooks/use-toast"
 import { Skeleton } from "@/components/ui/skeleton"
+import { PageHeader } from "@/components/ui/page-header"
+import { ROUTES } from "@/lib/routes"
 import type { Automation, AutomationTriggerType, AutomationActionType, AutomationAction } from "@/types"
 
 const triggerOptions: { value: AutomationTriggerType; label: string }[] = [
@@ -245,30 +248,27 @@ export default function EditAutomationPage() {
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" asChild>
-          <Link href="/admin/automations">
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
-        </Button>
-        <div className="flex-1">
-          <h1 className="text-2xl font-bold">Editar Automação</h1>
-          <p className="text-muted-foreground">
-            Configure os detalhes da automação
-          </p>
-        </div>
-        <Badge variant={isActive ? "default" : "secondary"}>
-          {isActive ? "Ativa" : "Pausada"}
-        </Badge>
-      </div>
+      <PageHeader
+        title="Editar Automação"
+        description="Configure os detalhes da automação"
+        breadcrumb={[
+          { label: "Automações", href: ROUTES.ADMIN.AUTOMATIONS.LIST },
+          { label: automation?.name || "Automação" },
+        ]}
+        actions={
+          <Badge variant={isActive ? "info" : "neutral"}>
+            {isActive ? "Ativa" : "Pausada"}
+          </Badge>
+        }
+      />
 
       {/* Form */}
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         {/* Basic Info */}
-        <Card className="rounded-xl border bg-card">
+        <Card className="rounded-[8px] border">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Zap className="h-5 w-5" />
+              <Icon icon={Zap} size={20} />
               Informações Básicas
             </CardTitle>
           </CardHeader>
@@ -319,7 +319,7 @@ export default function EditAutomationPage() {
         </Card>
 
         {/* Trigger */}
-        <Card className="rounded-xl border bg-card">
+        <Card className="rounded-[8px] border">
           <CardHeader>
             <CardTitle>Gatilho</CardTitle>
             <CardDescription>
@@ -353,7 +353,7 @@ export default function EditAutomationPage() {
         </Card>
 
         {/* Actions */}
-        <Card className="rounded-xl border bg-card">
+        <Card className="rounded-[8px] border">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
@@ -364,12 +364,12 @@ export default function EditAutomationPage() {
               </div>
               <Button
                 type="button"
-                variant="outline"
+                variant="secondary"
                 size="sm"
                 onClick={addAction}
                 disabled={isLoading}
               >
-                <Plus className="mr-2 h-4 w-4" />
+                <Icon icon={Plus} size={16} className="mr-2" />
                 Adicionar Ação
               </Button>
             </div>
@@ -432,7 +432,7 @@ export default function EditAutomationPage() {
                       onClick={() => removeAction(action.id)}
                       disabled={isLoading}
                     >
-                      <Trash2 className="h-4 w-4 text-destructive" />
+                      <Icon icon={Trash2} size={16} className="text-destructive" />
                     </Button>
                   </div>
                 ))}
@@ -443,11 +443,11 @@ export default function EditAutomationPage() {
 
         {/* Actions */}
         <div className="flex justify-end gap-4">
-          <Button type="button" variant="outline" asChild disabled={isLoading}>
+          <Button type="button" variant="secondary" asChild disabled={isLoading}>
             <Link href="/admin/automations">Cancelar</Link>
           </Button>
           <Button type="submit" disabled={isLoading}>
-            {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {isLoading && <Icon icon={Loader2} size={16} className="mr-2 animate-spin" />}
             Salvar Alterações
           </Button>
         </div>

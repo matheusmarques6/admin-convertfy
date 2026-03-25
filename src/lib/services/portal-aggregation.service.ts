@@ -57,7 +57,7 @@ export function aggregateKlaviyoData(klaviyoDataList: PortalKlaviyoData[]) {
     totalRevenue: aggTotalRevenue,
     campaignRevenue: aggCampaignRevenue,
     flowRevenue: aggFlowRevenue,
-    smsRevenue: 0,
+    smsRevenue: klaviyoDataList.reduce((sum, k) => sum + (k.smsRevenue || 0), 0),
     emailsSent: totalDelivered,
     delivered: totalDelivered,
     opened: totalOpened,

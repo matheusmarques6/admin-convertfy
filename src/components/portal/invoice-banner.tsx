@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { AlertCircle, Clock, TrendingUp, X } from "lucide-react"
+import { Icon } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 
 interface InvoiceStatus {
@@ -109,7 +110,7 @@ export function InvoiceBanner() {
       role="alert"
       aria-live="polite"
       className={`
-        relative mx-6 mt-4 lg:mx-8 rounded-xl border p-4 pr-10 shadow-sm
+        relative mx-6 mt-4 lg:mx-8 rounded-[8px] border p-4 pr-10 shadow-sm
         motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-2 motion-safe:duration-300
         ${isOverdueVariant
           ? "bg-red-50 border-red-200 dark:bg-red-500/10 dark:border-red-500/20"
@@ -127,15 +128,15 @@ export function InvoiceBanner() {
             : "text-amber-400 hover:text-amber-600 dark:text-amber-400/60 dark:hover:text-amber-300"
         }`}
       >
-        <X className="h-4 w-4" />
+        <Icon icon={X} size={16} />
       </button>
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         {/* Left: icon + text */}
         <div className="flex items-start gap-3 flex-1 min-w-0">
           {isOverdueVariant ? (
-            <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" aria-hidden="true" />
+            <Icon icon={AlertCircle} size={20} className="text-red-600 dark:text-red-400 mt-0.5" aria-hidden="true" />
           ) : (
-            <Clock className="h-5 w-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" aria-hidden="true" />
+            <Icon icon={Clock} size={20} className="text-amber-600 dark:text-amber-400 mt-0.5" aria-hidden="true" />
           )}
           <div className="min-w-0">
             <p className={`text-sm font-medium ${isOverdueVariant ? "text-red-800 dark:text-red-300" : "text-amber-800 dark:text-amber-300"}`}>
@@ -145,7 +146,7 @@ export function InvoiceBanner() {
             {/* Revenue block */}
             {status.showRevenue && status.revenueGenerated && (
               <div className="mt-2 flex items-center gap-2 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 px-3 py-2">
-                <TrendingUp className="h-4 w-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" aria-hidden="true" />
+                <Icon icon={TrendingUp} size={16} className="text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
                 <p className="text-sm text-emerald-800 dark:text-emerald-300">
                   <span className="font-medium">Receita gerada pela Convertfy:</span>{" "}
                   <span className="font-bold">{formatCurrency(status.revenueGenerated)}</span>
