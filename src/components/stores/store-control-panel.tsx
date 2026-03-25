@@ -20,6 +20,7 @@ import {
   Pencil,
   Video,
   Trash2,
+  ArrowRightLeft,
   ChevronLeft,
   ChevronRight,
   X,
@@ -69,6 +70,7 @@ import { DateRangePicker } from "@/components/ui/date-range-picker"
 import { ReportJobCard } from "@/components/shared/report-job-card"
 import { useReportJob } from "@/hooks/use-report-job"
 import { cn } from "@/lib/utils"
+import { StoreTransferAction } from "@/components/stores/store-transfer-action"
 
 const PERIOD_OPTIONS = [
   { value: "7d", label: "7 dias" },
@@ -231,6 +233,7 @@ export function StoreControlPanel() {
   const [isRegisterDialogOpen, setIsRegisterDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [isTransferDialogOpen, setIsTransferDialogOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -820,6 +823,10 @@ export function StoreControlPanel() {
                                   </>
                                 )}
                                 <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={() => { setSelectedStore(store); setIsTransferDialogOpen(true) }}>
+                                  <ArrowRightLeft className="w-4 h-4 mr-2" />
+                                  Transferir Loja
+                                </DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => { setSelectedStore(store); setIsDeleteDialogOpen(true) }} className="text-destructive focus:text-destructive">
                                   <Trash2 className="w-4 h-4 mr-2" />
                                   Excluir Loja
@@ -895,6 +902,10 @@ export function StoreControlPanel() {
                             </>
                           )}
                           <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => { setSelectedStore(store); setIsTransferDialogOpen(true) }}>
+                            <ArrowRightLeft className="w-4 h-4 mr-2" />
+                            Transferir Loja
+                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => { setSelectedStore(store); setIsDeleteDialogOpen(true) }} className="text-destructive focus:text-destructive">
                             <Trash2 className="w-4 h-4 mr-2" />
                             Excluir Loja
@@ -1252,6 +1263,21 @@ export function StoreControlPanel() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Transfer Store */}
+      {selectedStore && (
+        <StoreTransferAction
+          storeId={selectedStore.id}
+          storeName={selectedStore.store_name}
+          currentClientId={selectedStore.client_id}
+          currentClientName={selectedStore.client_name || undefined}
+          open={isTransferDialogOpen}
+          onOpenChange={(open) => {
+            setIsTransferDialogOpen(open)
+            if (!open) setSelectedStore(null)
+          }}
+        />
+      )}
 
       {/* Delete Confirmation */}
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={(open) => {
