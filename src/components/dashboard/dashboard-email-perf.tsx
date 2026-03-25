@@ -11,7 +11,6 @@ import {
   ResponsiveContainer,
 } from "recharts"
 import { cn } from "@/lib/utils"
-import { formatNumber, formatPercent, formatCurrencyCompact } from "@/lib/utils/format"
 
 // ─── Types ────────────────────────────────────────────────
 

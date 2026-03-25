@@ -2,13 +2,12 @@
 
 import { useState, useEffect } from "react"
 import { CheckCircle2, XCircle, AlertTriangle, RefreshCw, Loader2, ExternalLink } from "lucide-react"
-import { cn } from "@/lib/utils"
 import { Icon } from "@/components/ui/icon"
 import { BrandIcon } from "@/components/ui/icon"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { StatusBadge } from "@/components/ui/status-badge"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { toast } from "@/lib/hooks/use-toast"
 
 interface IntegrationStatusData {

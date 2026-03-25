@@ -33,11 +33,6 @@ interface DashboardRevenueChartProps {
 
 // ─── Mock Data ────────────────────────────────────────────
 
-const MONTH_LABELS = [
-  "Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
-  "Jul", "Ago", "Set", "Out", "Nov", "Dez",
-]
-
 const MOCK_DATA: RevenueDataPoint[] = [
   { month: "Jan", current: 42, previous: 35, fatAtribuido: 42000, campanhas: 24000, automacoes: 18000, fatTotalLojas: 210000, taxaReceita: 20.0 },
   { month: "Fev", current: 38, previous: 32, fatAtribuido: 38000, campanhas: 22000, automacoes: 16000, fatTotalLojas: 195000, taxaReceita: 19.5 },
@@ -235,7 +230,7 @@ function ChartSkeleton() {
 
 // ─── Main Component ───────────────────────────────────────
 
-export function DashboardRevenueChart({ loading, period }: DashboardRevenueChartProps) {
+export function DashboardRevenueChart({ loading, period: _period }: DashboardRevenueChartProps) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
   const chartRef = useRef<HTMLDivElement>(null)
 

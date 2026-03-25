@@ -1,5 +1,6 @@
 "use client"
 
+import Image from "next/image"
 import { useTheme } from "next-themes"
 import { cn } from "@/lib/utils"
 
@@ -30,14 +31,16 @@ export function AuthLayout({ children, className }: AuthLayoutProps) {
     >
       {/* Logo */}
       <div className="mb-8">
-        <img
+        <Image
           src={
             resolvedTheme === "dark"
               ? "/images/logo da convertfy com escrito branco.png"
               : "/images/logo da convertfy com escrito preto.png"
           }
           alt="Convertfy"
-          className="h-8"
+          width={160}
+          height={32}
+          className="h-8 w-auto"
         />
       </div>
 

@@ -5,10 +5,7 @@ import {
   CalendarDays,
   RefreshCw,
   AlertCircle,
-  ShoppingCart,
-  Receipt,
   Send,
-  Zap,
   Users,
   DollarSign,
   Eye,
@@ -99,7 +96,7 @@ function RevenueAreaChart({ klaviyo }: { klaviyo?: KlaviyoData }) {
     const labels = ["Sem 1", "Sem 2", "Sem 3", "Sem 4"]
     const base = totalRevenue / 4
     const storeBase = storeRevenue / 4
-    return labels.map((label, i) => {
+    return labels.map((label, _i) => {
       const variance = 0.7 + Math.random() * 0.6
       return {
         name: label,

@@ -1,25 +1,10 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useCallback } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { format } from "date-fns"
 import {
-  Store,
-  BarChart3,
-  Zap,
-  CalendarDays,
-  Settings,
   Loader2,
-  CheckCircle2,
-  XCircle,
-  RefreshCw,
-  BookOpen,
-  FileText,
-  AlertTriangle,
-  Package,
-  Link2,
-  Key,
-  FileJson,
   Save,
   Eye,
   EyeOff,
@@ -35,15 +20,10 @@ import { Label } from "@/components/ui/label"
 import { KlaviyoPerformanceReport } from "@/components/clients/klaviyo-performance-report"
 import { formatCurrency } from "@/lib/utils"
 import { useKlaviyoCampaigns, useKlaviyoFlows } from "@/lib/hooks/use-api-data"
-import { RateLimitBanner } from "@/components/ui/rate-limit-banner"
 import { StoreBriefingTab } from "@/components/stores/store-briefing-tab"
 import { StoreFormTab } from "@/components/stores/store-form-tab"
-import { StoreAlertsTab } from "@/components/stores/store-alerts-tab"
-import { StoreTrackingTab } from "@/components/stores/store-tracking-tab"
-import { StoreUtmTab } from "@/components/stores/store-utm-tab"
 import { StorePerformanceKPIs } from "@/components/stores/store-performance-kpis"
 import { StorePerformanceTables } from "@/components/stores/store-performance-tables"
-import { DateRangePicker } from "@/components/ui/date-range-picker"
 import { useStorePerformance, StorePerformanceContext } from "@/lib/hooks/use-store-performance"
 import { toast } from "@/lib/hooks/use-toast"
 import { OnboardingStepper } from "@/components/stores/onboarding-stepper"
@@ -93,19 +73,6 @@ interface CampaignData {
   revenue: number
 }
 
-interface FlowData {
-  id: string
-  name: string
-  status: string
-  triggerType: string
-  recipients: number
-  opened: number
-  openRate: number
-  clicked: number
-  clickRate: number
-  revenue: number
-}
-
 type Period = "7d" | "30d" | "90d" | "all" | "custom"
 
 const VALID_TABS = [
@@ -146,7 +113,7 @@ export function StoreDetailTabs({
   onboardingStatus,
   onboardingProgress,
   hasBriefing,
-  driveFolderUrl,
+  driveFolderUrl: _driveFolderUrl,
   currency: storeCurrency,
 }: StoreDetailTabsProps) {
   const searchParams = useSearchParams()
@@ -172,10 +139,10 @@ export function StoreDetailTabs({
 
   const [period, setPeriodRaw] = useState<Period>("30d")
   const [customDates, setCustomDates] = useState<CustomDateRange | undefined>()
-  const [customStart, setCustomStart] = useState<Date | undefined>()
-  const [customEnd, setCustomEnd] = useState<Date | undefined>()
+  const [_customStart, setCustomStart] = useState<Date | undefined>()
+  const [_customEnd, setCustomEnd] = useState<Date | undefined>()
 
-  const setPeriod = (p: Period) => {
+  const _setPeriod = (p: Period) => {
     setPeriodRaw(p)
     if (p !== "custom") {
       setCustomDates(undefined)
@@ -184,7 +151,7 @@ export function StoreDetailTabs({
     }
   }
 
-  const handleCustomDateApply = (start: Date, end: Date) => {
+  const _handleCustomDateApply = (start: Date, end: Date) => {
     setCustomStart(start)
     setCustomEnd(end)
     const dates: CustomDateRange = {
@@ -196,20 +163,20 @@ export function StoreDetailTabs({
   }
 
   const klaviyoConnected = integrationStatus.klaviyo?.connected || false
-  const shopifyConnected = integrationStatus?.shopify?.connected ?? false
+  const _shopifyConnected = integrationStatus?.shopify?.connected ?? false
 
   const {
     data: campaignsData,
     isLoading: campaignsInitialLoading,
-    isValidating: campaignsLoading,
-    mutate: mutateCampaigns,
+    isValidating: _campaignsLoading,
+    mutate: _mutateCampaigns,
   } = useKlaviyoCampaigns(klaviyoConnected ? storeId : null, period, customDates)
 
   const {
-    data: flowsData,
-    isLoading: flowsInitialLoading,
-    isValidating: flowsLoading,
-    mutate: mutateFlows,
+    data: _flowsData,
+    isLoading: _flowsInitialLoading,
+    isValidating: _flowsLoading,
+    mutate: _mutateFlows,
   } = useKlaviyoFlows(klaviyoConnected ? storeId : null, period, customDates)
 
   // Store performance hook for overview tab
@@ -412,7 +379,7 @@ export function StoreDetailTabs({
 
 // --- Latest Campaigns Mini Table (max 5) ---
 function LatestCampaignsTable({
-  storeId,
+  storeId: _storeId,
   data,
   loading,
   currency: storeCurrency,

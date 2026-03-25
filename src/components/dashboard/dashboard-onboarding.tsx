@@ -64,18 +64,6 @@ const MOCK_KPI = {
   overdue: 2,
 }
 
-// ─── Pipeline counts ──────────────────────────────────────
-
-const PIPELINE_SEGMENTS: { phase: Phase; count: number }[] = [
-  { phase: "config", count: 2 },
-  { phase: "briefing", count: 2 },
-  { phase: "klaviyo", count: 2 },
-  { phase: "camp", count: 2 },
-  { phase: "golive", count: 1 },
-]
-
-const TOTAL_PIPELINE = PIPELINE_SEGMENTS.reduce((s, seg) => s + seg.count, 0)
-
 // ─── Helpers ──────────────────────────────────────────────
 
 function getDaysColor(days: number): string {

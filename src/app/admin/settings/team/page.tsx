@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import Image from "next/image"
 import {
   UserPlus,
   Loader2,
@@ -271,7 +272,7 @@ export default function TeamSettingsPage() {
                           <div className="flex items-center gap-3">
                             <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-[#242836] flex items-center justify-center text-xs font-semibold text-gray-500 dark:text-[#8B92A5] shrink-0 overflow-hidden">
                               {member.avatar_url ? (
-                                <img src={member.avatar_url} alt={member.name} className="w-8 h-8 rounded-full object-cover" />
+                                <Image src={member.avatar_url} alt={member.name} width={32} height={32} className="w-8 h-8 rounded-full object-cover" />
                               ) : (
                                 member.name.charAt(0).toUpperCase()
                               )}
@@ -336,7 +337,7 @@ export default function TeamSettingsPage() {
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-[#242836] flex items-center justify-center text-xs font-semibold text-gray-500 dark:text-[#8B92A5] shrink-0 overflow-hidden">
                           {member.avatar_url ? (
-                            <img src={member.avatar_url} alt={member.name} className="w-8 h-8 rounded-full object-cover" />
+                            <Image src={member.avatar_url} alt={member.name} width={32} height={32} className="w-8 h-8 rounded-full object-cover" />
                           ) : (
                             member.name.charAt(0).toUpperCase()
                           )}

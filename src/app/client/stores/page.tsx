@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
-import Image from "next/image"
 import {
   Store,
   ExternalLink,
@@ -27,7 +26,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { toast } from "@/lib/hooks/use-toast"
-import { formatCompactNumber, cn } from "@/lib/utils"
+import { cn } from "@/lib/utils"
 
 // ─── Types ──────────────────────────────────────────────
 

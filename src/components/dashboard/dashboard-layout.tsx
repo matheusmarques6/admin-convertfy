@@ -131,7 +131,10 @@ export function DashboardLayout({ data, userRole: _userRole, userName }: Dashboa
   const flowRevenue = revenueData?.flowRevenue ?? 0
 
   // Taxa Convertfy = média da % de receita atribuída de cada loja
-  const storeBreakdown = revenueData?.storeBreakdown ?? []
+  const storeBreakdown = useMemo(
+    () => revenueData?.storeBreakdown ?? [],
+    [revenueData?.storeBreakdown],
+  )
   const convertfyRate = useMemo(() => {
     const storesWithRevenue = storeBreakdown.filter((s) => {
       const storeRev = Number(s.totalRevenueBRL) || s.totalRevenue || 0

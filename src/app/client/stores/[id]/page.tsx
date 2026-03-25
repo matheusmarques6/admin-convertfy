@@ -11,12 +11,10 @@ import {
   Users,
   DollarSign,
   ShoppingCart,
-  Mail,
   Eye,
   CheckCircle2,
   Circle,
   Clock,
-  Key,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"

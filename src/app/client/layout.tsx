@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react"
 import { useRouter, usePathname } from "next/navigation"
-import { cn } from "@/lib/utils"
 import { createClient } from "@/lib/supabase/client"
 import { InvoiceBanner } from "@/components/portal/invoice-banner"
 import { ClientSidebar, ClientSidebarMobileDrawer } from "@/components/client-layout/client-sidebar"
