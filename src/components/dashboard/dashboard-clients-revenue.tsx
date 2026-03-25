@@ -176,7 +176,7 @@ export function DashboardClientsRevenue({ loading = false, storeBreakdown }: Das
           const rev = Number(s.totalRevenueBRL) || s.totalRevenue || 0
           return {
             id: s.storeId || String(i),
-            name: s.clientName || s.storeName,
+            name: s.storeName || s.clientName,
             revenue: rev,
             openRate: 0,
             clickRate: 0,

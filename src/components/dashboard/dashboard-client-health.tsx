@@ -178,7 +178,7 @@ const MOCK_CLIENTS: ClientHealth[] = [
   },
 ]
 
-const TOTAL_CLIENTS = 248
+// (removed TOTAL_CLIENTS — now derived from real data)
 
 // ─── Helpers ──────────────────────────────────────────────
 
@@ -353,12 +353,11 @@ export function DashboardClientHealth({
   const [sortKey, setSortKey] = useState<SortKey>("score")
   const [page, setPage] = useState(0)
 
+  const MAX_VISIBLE = 9
+
   // Map real storeBreakdown to ClientHealth format, fallback to mock
-  const clients: ClientHealth[] = useMemo(() => {
+  const allClients: ClientHealth[] = useMemo(() => {
     if (storeBreakdown && storeBreakdown.length > 0) {
-      const totalAllRevenue = storeBreakdown.reduce(
-        (sum, s) => sum + (Number(s.totalRevenueBRL) || s.totalRevenue || 0), 0
-      )
       return storeBreakdown.map((s, i) => {
         const storeRev = Number(s.totalRevenueBRL) || s.totalRevenue || 0
         const attributed = (Number(s.campaignRevenueBRL) || s.campaignRevenue || 0) +
@@ -368,7 +367,7 @@ export function DashboardClientHealth({
         const score = Math.min(100, Math.round(pct * 2.5))
         return {
           id: s.storeId || String(i),
-          name: s.clientName || s.storeName,
+          name: s.storeName || s.clientName,
           storeRevenue: storeRev,
           attributedRevenue: attributed,
           revenuePercent: Math.round(pct * 10) / 10,
@@ -379,13 +378,12 @@ export function DashboardClientHealth({
     return MOCK_CLIENTS
   }, [storeBreakdown])
 
-  const needsAttention = clients.filter((c) => c.score < 70).length
-  const pageSize = clients.length
-  const totalClients = clients.length
-  const totalPages = 1
+  const totalStores = allClients.length
+  const needsAttention = allClients.filter((c) => c.score < 70).length
+  const totalPages = 1 // single page with max 9 visible
 
   const sorted = useMemo(() => {
-    const copy = [...clients]
+    const copy = [...allClients]
     copy.sort((a, b) => {
       if (sortKey === "score") return a.score - b.score
       if (sortKey === "attributedRevenue")
@@ -396,8 +394,8 @@ export function DashboardClientHealth({
         return b.storeRevenue - a.storeRevenue
       return 0
     })
-    return copy
-  }, [sortKey, clients])
+    return copy.slice(0, MAX_VISIBLE)
+  }, [sortKey, allClients])
 
   if (loading) {
     return <ClientHealthSkeleton />
@@ -414,11 +412,11 @@ export function DashboardClientHealth({
       <div className="flex items-center justify-between px-5 py-4">
         <div>
           <h3 className="text-[14px] font-medium text-gray-700 dark:text-gray-300">
-            Saúde dos Clientes
+            Saúde das Lojas
           </h3>
           <p className="mt-0.5 text-[12px] text-gray-400 dark:text-gray-500">
-            {needsAttention} precisam atenção &middot; {pageSize} de{" "}
-            {totalClients}
+            {needsAttention} precisam atenção &middot; {Math.min(MAX_VISIBLE, totalStores)} de{" "}
+            {totalStores}
           </p>
         </div>
 
@@ -457,7 +455,7 @@ export function DashboardClientHealth({
           <thead>
             <tr className="bg-[#F9FAFB] dark:bg-[#111827]/50">
               <th className="px-5 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-                Cliente
+                Loja
               </th>
               <th className="px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
                 Fat. Loja
@@ -489,7 +487,7 @@ export function DashboardClientHealth({
                           "dark:border-[rgba(255,255,255,0.04)] dark:hover:bg-[rgba(255,255,255,0.02)]"
                         )}
                       >
-                        {/* Cliente */}
+                        {/* Loja */}
                         <td className="px-5 py-2.5">
                           <div className="flex items-center gap-2">
                             {dotColor && (
@@ -556,7 +554,7 @@ export function DashboardClientHealth({
       {/* ── Footer ─────────────────────────────────────── */}
       <div className="flex items-center justify-between border-t border-[rgba(0,0,0,0.06)] px-5 py-3 dark:border-[rgba(255,255,255,0.06)]">
         <span className="text-[12px] text-gray-400 dark:text-gray-500">
-          {pageSize} de {totalClients} clientes
+          {Math.min(MAX_VISIBLE, totalStores)} de {totalStores} lojas
         </span>
         <div className="flex gap-1.5">
           <button

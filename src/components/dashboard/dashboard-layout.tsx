@@ -130,15 +130,22 @@ export function DashboardLayout({ data, userRole: _userRole, userName }: Dashboa
   const campaignRevenue = revenueData?.campaignRevenue ?? 0
   const flowRevenue = revenueData?.flowRevenue ?? 0
 
-  // Taxa Convertfy = attributed / total store revenue
+  // Taxa Convertfy = média da % de receita atribuída de cada loja
   const storeBreakdown = revenueData?.storeBreakdown ?? []
-  const totalStoreRevenue = useMemo(
-    () => storeBreakdown.reduce((sum, s) => sum + (Number(s.totalRevenueBRL) || 0), 0),
-    [storeBreakdown],
-  )
-  const convertfyRate = totalStoreRevenue > 0
-    ? (totalRevenue / totalStoreRevenue) * 100
-    : 0
+  const convertfyRate = useMemo(() => {
+    const storesWithRevenue = storeBreakdown.filter((s) => {
+      const storeRev = Number(s.totalRevenueBRL) || s.totalRevenue || 0
+      return storeRev > 0
+    })
+    if (storesWithRevenue.length === 0) return 0
+    const sumPercents = storesWithRevenue.reduce((sum, s) => {
+      const storeRev = Number(s.totalRevenueBRL) || s.totalRevenue || 0
+      const attributed = (Number(s.campaignRevenueBRL) || s.campaignRevenue || 0) +
+        (Number(s.flowRevenueBRL) || s.flowRevenue || 0)
+      return sum + (attributed / storeRev) * 100
+    }, 0)
+    return sumPercents / storesWithRevenue.length
+  }, [storeBreakdown])
 
   // Format compact currency
   const fmtCompact = (v: number) => {
